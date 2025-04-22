@@ -1,0 +1,5 @@
+# Requirements pour le service Gateway
+-r ../requirements-shared.txt
+websockets==11.0.3
+requests==2.31.0
+asyncio==3.4.3

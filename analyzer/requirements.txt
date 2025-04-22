@@ -1,0 +1,6 @@
+# Requirements pour le service Analyzer
+-r ../requirements-shared.txt
+pandas==2.1.0
+numpy==1.24.4
+ta-lib==0.4.28  # Nécessite l'installation de TA-Lib C (https://github.com/TA-Lib/ta-lib-python)
+scikit-learn==1.3.0  # Pour des fonctionnalités avancées d'analyse

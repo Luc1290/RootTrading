@@ -1,0 +1,5 @@
+# Requirements pour le service Portfolio
+-r ../requirements-shared.txt
+fastapi==0.103.1
+uvicorn==0.23.2
+psycopg2-binary==2.9.7
