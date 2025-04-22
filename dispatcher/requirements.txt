@@ -1,0 +1,2 @@
+# Requirements pour le service Dispatcher
+-r ../requirements-shared.txt

@@ -1,6 +1,6 @@
 📄 .env
 📁 .git/
-│   ..........
+│   
 📄 .gitignore
 📄 Makefile
 📄 READMEencours.md

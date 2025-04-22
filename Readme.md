@@ -1,133 +1,228 @@
-# RootTrading - Plateforme de Trading Automatisé
+# 📈 RootTrading - Système de Trading Automatisé
 
-## Table des matières
+RootTrading est une plateforme complète de trading automatisé conçue pour analyser les marchés de crypto-monnaies, générer des signaux de trading, exécuter des trades et gérer un portefeuille de manière autonome. Le système est construit comme une architecture microservices hautement modulaire, permettant une scalabilité, une maintenance et une évolution efficaces.
 
-1. [Vue d'ensemble](#vue-densemble)
-2. [Architecture](#architecture)
-   - [Diagramme de flux](#diagramme-de-flux)
-   - [Services](#services)
-3. [Configuration](#configuration)
-   - [Variables d'environnement](#variables-denvironnement)
-   - [Sécurité](#sécurité)
-4. [Installation et démarrage](#installation-et-démarrage)
-5. [Guide de développement](#guide-de-développement)
-   - [Ajouter une nouvelle stratégie](#ajouter-une-nouvelle-stratégie)
-   - [Ajouter une nouvelle paire de trading](#ajouter-une-nouvelle-paire-de-trading)
-   - [Personnaliser les signaux de trading](#personnaliser-les-signaux-de-trading)
-6. [Structure des données](#structure-des-données)
-   - [Market Data](#market-data)
-   - [Signaux de trading](#signaux-de-trading)
-   - [Transactions](#transactions)
-7. [Communication entre services](#communication-entre-services)
-   - [Canaux Redis](#canaux-redis)
-   - [Format des messages](#format-des-messages)
-8. [Base de données](#base-de-données)
-   - [Schéma](#schéma)
-   - [Requêtes communes](#requêtes-communes)
-9. [APIs REST](#apis-rest)
-   - [Portfolio API](#portfolio-api)
-   - [Trader API](#trader-api)
-10. [Optimisation](#optimisation)
-    - [Gestion des appels API Binance](#gestion-des-appels-api-binance)
-    - [Performance Redis](#performance-redis)
-11. [Mode démo vs Mode réel](#mode-démo-vs-mode-réel)
-12. [Logging et diagnostic](#logging-et-diagnostic)
-13. [Extensions futures](#extensions-futures)
+## 📋 Table des matières
 
-## Vue d'ensemble
+- [Architecture globale](#architecture-globale)
+- [Services principaux](#services-principaux)
+- [Services secondaires](#services-secondaires)
+- [Infrastructure](#infrastructure)
+- [Flux de données](#flux-de-données)
+- [Configuration et déploiement](#configuration-et-déploiement)
+- [API REST](#api-rest)
+- [Stratégies de trading](#stratégies-de-trading)
+- [Gestion du portefeuille](#gestion-du-portefeuille)
+- [Gestion des risques](#gestion-des-risques)
+- [Interface utilisateur](#interface-utilisateur)
+- [Modes de fonctionnement](#modes-de-fonctionnement)
+- [Journalisation et monitoring](#journalisation-et-monitoring)
+- [Commandes utiles](#commandes-utiles)
+- [Dépannage](#dépannage)
 
-RootTrading est une plateforme modulaire de trading automatisé pour le marché des cryptomonnaies, construite sur une architecture microservices. Elle permet l'exécution automatique de stratégies de trading, la gestion des ordres, le suivi du portefeuille et l'analyse des performances.
+## 🏗️ Architecture globale
 
-**Caractéristiques principales:**
-- Architecture microservices avec Docker
-- Connexion à l'API Binance
-- Stratégies de trading personnalisables
-- Communication asynchrone via Redis
-- Stockage persistant avec PostgreSQL
-- Interface utilisateur React/Tailwind
-- Mode démo pour tester sans risque
+RootTrading est construit comme un ensemble de microservices communiquant entre eux via Kafka, Redis et des API REST. Cette architecture permet d'isoler les responsabilités, de scaler indépendamment chaque composant et de maintenir une haute disponibilité.
 
-## Architecture
+![Architecture RootTrading](architecture_diagram.png)
 
-### Diagramme de flux
+## 🔍 Services principaux
+
+### Gateway (Port 5000)
+
+Le Gateway est le point d'entrée des données de marché. Il:
+- Se connecte aux WebSockets de Binance pour récupérer les données en temps réel
+- Convertit et nettoie les données de marché
+- Publie les données sur Kafka pour être consommées par les autres services
+- Assure la persistance des connexions et la gestion des reconnexions
+
+**Technologies**: Python, WebSockets, Kafka
+**Dépendances**: Kafka, Redis
+
+### Analyzer (Port 5001)
+
+L'Analyzer est le cerveau analytique du système. Il:
+- Consomme les données de marché depuis Kafka
+- Exécute diverses stratégies de trading sur ces données
+- Génère des signaux d'achat/vente lorsque les conditions sont remplies
+- Publie les signaux sur Redis pour être traités par le Trader
+- Utilise un système multiprocessus pour exécuter les stratégies en parallèle
+
+**Technologies**: Python, NumPy, Pandas, TA-Lib, multiprocessing
+**Dépendances**: Redis, Kafka
+
+### Trader (Port 5002)
+
+Le Trader gère l'exécution des ordres. Il:
+- Écoute les signaux générés par l'Analyzer
+- Valide les signaux selon les règles commerciales et les vérifications de risques
+- Crée et gère des cycles de trading (de l'entrée à la sortie)
+- Exécute les ordres sur Binance (ou simule en mode démo)
+- Gère les stop-loss, take-profit et trailing stops
+- Expose une API REST pour le contrôle manuel
+
+**Technologies**: Python, Flask, PostgreSQL
+**Dépendances**: Redis, PostgreSQL
+
+### Portfolio (Port 8000)
+
+Le Portfolio gère le suivi des actifs et l'allocation du capital. Il:
+- Maintient un registre des soldes d'actifs
+- Divise le capital en poches (active, buffer, safety)
+- Calcule les métriques de performance
+- Optimise l'allocation des fonds
+- Expose une API REST pour la visualisation et la gestion
+
+**Technologies**: Python, FastAPI, PostgreSQL, TimescaleDB
+**Dépendances**: Redis, PostgreSQL
+
+### Frontend (Port 3000)
+
+Le Frontend fournit une interface utilisateur pour visualiser et contrôler le système. Il:
+- Affiche le tableau de bord avec les métriques clés
+- Visualise les trades actifs et l'historique
+- Permet de créer et gérer des trades manuellement
+- Affiche les signaux générés et les performances par stratégie
+
+**Technologies**: React, Recharts, TailwindCSS
+**Dépendances**: APIs des autres services
+
+## 🧩 Services secondaires
+
+### Coordinator (Port 5003)
+
+Le Coordinator fait le lien entre les signaux et les exécutions. Il:
+- Reçoit les signaux de l'Analyzer via Redis
+- Coordonne avec Portfolio pour vérifier la disponibilité des fonds
+- Applique des filtres basés sur les conditions de marché
+- Transmet les ordres validés au Trader
+
+**Technologies**: Python
+**Dépendances**: Redis
+
+### Dispatcher (Port 5004)
+
+Le Dispatcher route les messages entre Kafka et Redis. Il:
+- Convertit les messages Kafka en messages Redis et vice-versa
+- Assure la compatibilité entre les différents systèmes de messagerie
+- Standardise le format des messages
+
+**Technologies**: Python, Kafka, Redis
+**Dépendances**: Kafka, Redis
+
+### Logger (Port 5005)
+
+Le Logger centralise la journalisation de tous les services. Il:
+- Collecte les logs depuis Kafka et Redis
+- Normalise et stocke les logs dans PostgreSQL
+- Permet une recherche et une analyse des logs
+- Gère la rotation et l'archivage des logs
+
+**Technologies**: Python, PostgreSQL
+**Dépendances**: Kafka, Redis, PostgreSQL
+
+### PnL Tracker (Port 5006)
+
+Le PnL Tracker analyse les performances et optimise les stratégies. Il:
+- Calcule les métriques de profit et perte
+- Génère des rapports de performance
+- Optimise les paramètres des stratégies via backtesting
+- Exporte les statistiques pour analyse externe
+
+**Technologies**: Python, Pandas, NumPy, PostgreSQL
+**Dépendances**: PostgreSQL
+
+### Risk Manager (Port 5007)
+
+Le Risk Manager applique les règles de gestion des risques. Il:
+- Surveille l'exposition par actif et par stratégie
+- Applique des règles de risque configurables
+- Peut limiter ou bloquer les trades en cas de risque élevé
+- S'adapte aux conditions de marché
+
+**Technologies**: Python, YAML
+**Dépendances**: Redis, PostgreSQL
+
+### Scheduler (Port 5008)
+
+Le Scheduler gère les tâches périodiques et surveille la santé du système. Il:
+- Effectue des vérifications de santé régulières
+- Génère des rapports sur l'état du système
+- Exécute des tâches planifiées (nettoyage, synchronisation)
+- Peut redémarrer des services en cas de problème
+
+**Technologies**: Python
+**Dépendances**: HTTP vers les autres services
+
+## 🏢 Infrastructure
+
+### Redis (Port 6379)
+
+Redis est utilisé comme broker de messages et cache:
+- Canal pour les signaux de trading
+- Canal pour les données de marché en temps réel
+- État partagé entre les services
+- Cache pour les données fréquemment accédées
+- Communication publish/subscribe entre services
+
+### Kafka (Port 9092)
+
+Kafka est utilisé pour la distribution des données à haut débit:
+- Transport des données de marché brutes
+- Journalisation distribuée
+- Communication asynchrone entre services
+- Tampon pour les pics de charge
+
+### PostgreSQL/TimescaleDB (Port 5432)
+
+La base de données est le stockage persistant du système:
+- Historique des trades et des cycles
+- Données de marché historiques
+- État du portefeuille et des poches
+- Métriques de performance
+- Utilise TimescaleDB pour optimiser les séries temporelles
+
+## 🔄 Flux de données
+
+1. Le **Gateway** se connecte aux WebSockets de Binance et reçoit les données de marché en temps réel
+2. Les données sont publiées sur les topics Kafka spécifiques à chaque symbole
+3. Le **Dispatcher** relaie ces données vers Redis pour une consommation plus facile
+4. L'**Analyzer** traite ces données via ses différentes stratégies
+5. Lorsqu'une condition de trading est remplie, l'**Analyzer** génère un signal
+6. Le **Coordinator** reçoit le signal, vérifie sa validité et la disponibilité des fonds via le **Portfolio**
+7. Si le signal est validé, un ordre est transmis au **Trader**
+8. Le **Trader** crée un cycle de trading et exécute l'ordre sur Binance
+9. Le **Portfolio** met à jour les soldes et l'allocation des poches
+10. Le **PnL Tracker** calcule et enregistre les performances
+11. Le **Risk Manager** surveille continuellement les risques et peut intervenir à tout moment
+12. Le **Frontend** visualise toutes ces données et permet le contrôle manuel
+
+## ⚙️ Configuration et déploiement
+
+### Fichier .env
+
+Le fichier `.env` contient toutes les variables de configuration du système:
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Gateway   │────▶│  Analyzer   │────▶│   Trader    │────▶│  Portfolio  │
-└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
-       │                                        │                  │
-       │                                        │                  │
-       ▼                                        ▼                  ▼
-┌─────────────┐                         ┌─────────────┐     ┌─────────────┐
-│   Binance   │                         │  PostgreSQL │     │  Frontend   │
-└─────────────┘                         └─────────────┘     └─────────────┘
-       ▲                                        ▲                  │
-       │                                        │                  │
-       └────────────────────────────────────────┴──────────────────┘
-```
+# Mode de trading
+TRADING_MODE=demo        # demo ou live
 
-### Services
-
-1. **Gateway**:
-   - **Technologie**: Node.js
-   - **Rôle**: Se connecte à l'API Binance, récupère les données de marché et les publie sur Redis
-   - **Fichiers clés**: 
-     - `gateway/src/index.js` - Point d'entrée principal
-     - `gateway/src/binance-connector.js` - Gestion des connexions Binance
-     - `gateway/src/redis-publisher.js` - Publication des données vers Redis
-
-2. **Analyzer**:
-   - **Technologie**: Python
-   - **Rôle**: Reçoit les données de marché, exécute les stratégies et génère des signaux de trading
-   - **Fichiers clés**:
-     - `analyzer/main.py` - Point d'entrée
-     - `analyzer/strategy_manager.py` - Gestion des stratégies de trading
-     - `analyzer/strategies/` - Dossier contenant toutes les stratégies
-
-3. **Trader**:
-   - **Technologie**: Python
-   - **Rôle**: Reçoit les signaux, exécute les ordres sur Binance et les enregistre en base de données
-   - **Fichiers clés**:
-     - `trader/main.py` - Point d'entrée et API
-     - `trader/binance_executor.py` - Exécution des ordres sur Binance
-     - `trader/order_manager.py` - Gestion et enregistrement des ordres
-
-4. **Portfolio**:
-   - **Technologie**: Python (FastAPI)
-   - **Rôle**: Fournit une API pour accéder aux données du portefeuille et à l'historique des trades
-   - **Fichiers clés**:
-     - `portfolio/src/main.py` - Point d'entrée et configuration FastAPI
-     - `portfolio/src/routes.py` - Endpoints API
-     - `portfolio/src/manager.py` - Gestion des données du portefeuille
-
-5. **Frontend**:
-   - **Technologie**: React, Tailwind CSS
-   - **Rôle**: Interface utilisateur pour visualiser le portefeuille et passer des ordres manuels
-   - **Fichiers clés**:
-     - `frontend/src/App.jsx` - Point d'entrée React
-     - `frontend/src/components/` - Composants UI
-     - `frontend/src/api/` - Clients API pour backend
-
-6. **Services partagés**:
-   - **Redis**: Communication entre services
-   - **PostgreSQL**: Stockage des données de transactions
-
-## Configuration
-
-### Variables d'environnement
-
-Toutes les configurations sont centralisées dans un fichier `.env` à la racine:
-
-```bash
-# Clés API Binance
-BINANCE_API_KEY=votre_clé_api
-BINANCE_SECRET_KEY=votre_clé_secrète
+# API Binance
+BINANCE_API_KEY=votre_api_key
+BINANCE_SECRET_KEY=votre_secret_key
 
 # Redis
 REDIS_HOST=redis
 REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
+CHANNEL_PREFIX=roottrading
 
-# PostgreSQL
+# Kafka
+KAFKA_BROKER=kafka:9092
+KAFKA_GROUP_ID=roottrading
+
+# Base de données PostgreSQL
 PGUSER=postgres
 PGPASSWORD=postgres
 PGDATABASE=trading
@@ -135,754 +230,283 @@ PGHOST=db
 PGPORT=5432
 
 # Paramètres de trading
-SYMBOL=BTCUSDC           # Paire de trading principale
-INTERVAL=1m              # Intervalle des bougies (1m, 5m, 15m, etc.)
-TRADING_MODE=demo        # demo ou live
-TRADE_QUANTITY=0.00017   # Quantité par défaut pour les ordres
+SYMBOLS=BTCUSDC,ETHUSDC
+INTERVAL=1m
+TRADE_QUANTITY=0.00017
 
-# Paramètres des stratégies
-RSI_WINDOW=14            # Période RSI
-RSI_OVERBOUGHT=70        # Seuil de surachat
-RSI_OVERSOLD=30          # Seuil de survente
-SHORT_WINDOW=5           # Période courte pour MA Cross
-LONG_WINDOW=20           # Période longue pour MA Cross
+# Configuration des poches
+POCKET_ACTIVE_PERCENT=60
+POCKET_BUFFER_PERCENT=30
+POCKET_SAFETY_PERCENT=10
+
+# Logging
+LOG_LEVEL=INFO
+
+# Ports des services
+GATEWAY_PORT=5000
+ANALYZER_PORT=5001
+TRADER_PORT=5002
+PORTFOLIO_PORT=8000
+FRONTEND_PORT=3000
+COORDINATOR_PORT=5003
+DISPATCHER_PORT=5004
+LOGGER_PORT=5005
+PNL_TRACKER_PORT=5006
+RISK_MANAGER_PORT=5007
+SCHEDULER_PORT=5008
 ```
 
-Ces variables sont accessibles dans tous les services via les fichiers de configuration (`utils/config.py` pour Python, et via `dotenv` pour Node.js).
+### Déploiement avec Docker Compose
 
-### Sécurité
-
-Les clés API Binance doivent avoir les permissions minimales nécessaires:
-- Lecture du solde du compte
-- Lecture des données de marché
-- Passage d'ordres (uniquement si TRADING_MODE=live)
-
-## Installation et démarrage
-
-### Prérequis
-
-- Docker et Docker Compose
-
-### Étapes de démarrage
-
-1. Configurer le fichier .env:
-   ```
-   # Modifier .env avec vos clés API et configurations
-   ```
-
-2. Lancer l'application avec Docker Compose:
-   ```
-   docker-compose up -d
-   ou docker-compose up -- build
-   ```
-
-3. Accéder à l'interface:
-   ```
-   http://localhost:3000
-   ```
-
-4. Vérifier les logs:
+1. Créez votre fichier `.env` à partir du modèle `.env.exemple`
+2. Lancez d'abord l'infrastructure:
    ```bash
-   docker-compose logs -f
-   # ou pour un service spécifique:
-   docker-compose logs -f analyzer
+   make up-infra
    ```
-
-## Guide de développement
-
-### Ajouter une nouvelle stratégie
-
-1. Créer un nouveau fichier Python dans `analyzer/strategies/` (par exemple `bollinger_bands.py`):
-
-```python
-# analyzer/strategies/bollinger_bands.py
-import os
-import numpy as np
-import pandas as pd
-from collections import deque
-from typing import Optional, Dict, Any
-from .base_strategy import BaseStrategy
-
-class BollingerBandsStrategy(BaseStrategy):
-    """
-    Stratégie basée sur les bandes de Bollinger
-    """
-    def __init__(self):
-        self.window = int(os.getenv('BB_WINDOW', 20))
-        self.num_std = float(os.getenv('BB_STD', 2.0))
-        self.prices = deque(maxlen=self.window * 3)
-        self.prev_price = None
-
-    @property
-    def name(self) -> str:
-        return 'Bollinger_Bands'
-
-    def generate_signal(self, market_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        price = market_data.get('close')
-        if price is None:
-            return None
-
-        # Ajouter le nouveau prix
-        self.prices.append(price)
-
-        # Attendre d'avoir assez de données
-        if len(self.prices) < self.window:
-            self.prev_price = price
-            return None
-
-        # Calcul des bandes de Bollinger
-        prices_array = np.array(self.prices)
-        mean = np.mean(prices_array[-self.window:])
-        std = np.std(prices_array[-self.window:])
-        upper_band = mean + (std * self.num_std)
-        lower_band = mean - (std * self.num_std)
-
-        signal = None
-        if self.prev_price:
-            # Signal d'achat: prix traverse la bande inférieure vers le haut
-            if self.prev_price <= lower_band and price > lower_band:
-                signal = 'BUY'
-            # Signal de vente: prix traverse la bande supérieure vers le bas
-            elif self.prev_price >= upper_band and price < upper_band:
-                signal = 'SELL'
-
-        self.prev_price = price
-
-        if signal:
-            return {
-                'strategy': self.name,
-                'symbol': market_data.get('symbol'),
-                'side': signal,
-                'timestamp': market_data.get('startTime'),
-                'price': price,
-                'bb_upper': upper_band,
-                'bb_lower': lower_band,
-                'bb_mean': mean
-            }
-        return None
-```
-
-2. Ajouter les variables de configuration dans le fichier `.env`:
-   ```
-   BB_WINDOW=20
-   BB_STD=2.0
-   ```
-
-3. Redémarrer uniquement le service Analyzer:
+3. Puis lancez les services principaux:
    ```bash
-   docker-compose restart analyzer
+   make up-gateway
+   make up-analyzer
+   make up-trader
+   make up-portfolio
+   make up-frontend
    ```
-
-4. Vérifier les logs pour confirmer le chargement de la stratégie:
+4. Enfin, lancez les services secondaires:
    ```bash
-   docker-compose logs -f analyzer
-   # chercher: "Stratégies chargées: RSI_Strategy, SimpleMA_Cross, Bollinger_Bands"
+   docker-compose up -d coordinator dispatcher logger pnl_tracker risk_manager scheduler
    ```
 
-### Ajouter une nouvelle paire de trading
+## 📡 API REST
 
-Pour surveiller et trader plusieurs paires de cryptomonnaies, vous pouvez:
+### Portfolio API (Port 8000)
 
-1. Modifier le fichier `.env` pour changer la paire principale:
-   ```
-   SYMBOL=ETHUSDC
-   ```
+- `GET /summary` - Récupère un résumé du portefeuille
+- `GET /balances` - Récupère les soldes actuels
+- `GET /pockets` - Récupère l'état des poches de capital
+- `PUT /pockets/sync` - Synchronise les poches avec les trades actifs
+- `PUT /pockets/allocation` - Met à jour l'allocation des poches
+- `POST /pockets/{pocket_type}/reserve` - Réserve des fonds
+- `POST /pockets/{pocket_type}/release` - Libère des fonds réservés
+- `GET /trades` - Récupère l'historique des trades avec pagination et filtrage
+- `GET /performance/{period}` - Récupère les statistiques de performance
+- `GET /performance/strategy` - Récupère les performances par stratégie
+- `GET /performance/symbol` - Récupère les performances par symbole
+- `POST /balances/update` - Met à jour les soldes manuellement
 
-2. Pour supporter plusieurs paires simultanément, modifiez le Gateway:
-   
-   Dans `gateway/src/index.js`, ajoutez des abonnements supplémentaires:
+### Trader API (Port 5002)
 
-   ```javascript
-   // S'abonner à plusieurs paires
-   const symbols = ['BTCUSDC', 'ETHUSDC', 'SOLUSDC'];
-   const interval = process.env.INTERVAL || '1m';
-   
-   symbols.forEach(symbol => {
-     subscribeToCandles(binanceClient, symbol, interval, (candleData) => {
-       const channel = `market:data:${candleData.symbol}`;
-       publishToRedis(redisPublisher, channel, candleData);
-       logger.debug(`Publié sur ${channel} → ${JSON.stringify(candleData)}`);
-     });
-   });
-   ```
+- `GET /health` - Vérifie l'état du service
+- `GET /orders` - Récupère les ordres actifs
+- `POST /order` - Crée un ordre manuel
+- `DELETE /order/{order_id}` - Annule un ordre existant
+- `POST /close/{cycle_id}` - Ferme un cycle de trading
 
-3. Modifier le subscriber dans `analyzer/redis_subscriber.py` pour écouter plusieurs canaux:
+## 📊 Stratégies de trading
 
-   ```python
-   def subscribe_market_data(callback, stop_event=None):
-       """
-       Souscrit aux channels de plusieurs symboles.
-       """
-       symbols = os.getenv('SYMBOLS', 'BTCUSDC,ETHUSDC,SOLUSDC').split(',')
-       
-       # Connexion Redis
-       redis_client = Redis(host=REDIS_HOST, port=REDIS_PORT)
-       pubsub = redis_client.pubsub(ignore_subscribe_messages=True)
-       
-       # S'abonner à chaque symbole
-       channels = []
-       for symbol in symbols:
-           channel = f"{CHANNEL_PREFIX}:{symbol}"
-           pubsub.subscribe(channel)
-           channels.append(channel)
-           logger.info(f"✅ Abonné au channel Redis {channel}")
-       
-       # Boucle d'écoute
-       for message in pubsub.listen():
-           # [...le reste du code reste identique...]
-   ```
+RootTrading implémente plusieurs stratégies de trading qui peuvent être exécutées en parallèle:
 
-4. Redémarrer les services Gateway et Analyzer:
-   ```bash
-   docker-compose restart gateway analyzer
-   ```
+### RSI (Relative Strength Index)
 
-### Personnaliser les signaux de trading
+La stratégie RSI utilise l'indicateur de surachat/survente pour détecter les retournements potentiels:
+- Achat lorsque le RSI passe sous le niveau de survente puis remonte
+- Vente lorsque le RSI passe au-dessus du niveau de surachat puis redescend
+- Paramètres configurables: période RSI, niveaux de surachat/survente
 
-Vous pouvez personnaliser les conditions qui génèrent des signaux dans n'importe quelle stratégie:
+### Bollinger Bands
 
-1. Dans les fichiers de stratégie (`analyzer/strategies/`), modifiez la logique de la méthode `generate_signal()`:
+La stratégie Bollinger utilise les bandes de volatilité:
+- Achat lorsque le prix touche la bande inférieure et commence à remonter
+- Vente lorsque le prix touche la bande supérieure et commence à redescendre
+- Paramètres configurables: période, nombre d'écarts-types
 
-   Par exemple, ajoutons une condition de volume pour la stratégie RSI:
+### EMA Cross
 
-   ```python
-   def generate_signal(self, market_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-       price = market_data.get('close')
-       volume = market_data.get('volume', 0)
-       
-       # Ignorer si volume trop faible
-       min_volume = float(os.getenv('MIN_VOLUME', 10))
-       if volume < min_volume:
-           return None
-           
-       # Reste du code RSI...
-   ```
+La stratégie de croisement de moyennes mobiles exponentielles:
+- Achat lorsque l'EMA courte croise l'EMA longue vers le haut
+- Vente lorsque l'EMA courte croise l'EMA longue vers le bas
+- Paramètres configurables: périodes courte et longue
 
-2. Ajouter le nouveau paramètre dans `.env`:
-   ```
-   MIN_VOLUME=10
-   ```
+### Breakout
 
-3. Redémarrer l'analyzer:
-   ```bash
-   docker-compose restart analyzer
-   ```
+La stratégie de cassure de niveau:
+- Achat lorsque le prix casse à la hausse un niveau de résistance
+- Vente lorsque le prix casse à la baisse un niveau de support
+- Paramètres configurables: période de recherche, confirmation
 
-## Structure des données
+### Reversal Divergence
 
-### Market Data
+La stratégie de divergence avec les oscillateurs:
+- Détecte les divergences entre le prix et les oscillateurs (RSI, MACD)
+- Signale les retournements potentiels du marché
+- Paramètres configurables: type d'oscillateur, période, seuil
 
-Format des données de marché publiées par le Gateway:
+### Ride or React
 
-```json
-{
-  "symbol": "BTCUSDC",
-  "startTime": 1616554800000,
-  "closeTime": 1616554859999,
-  "open": 55432.10,
-  "high": 55450.00,
-  "low": 55421.20,
-  "close": 55445.80,
-  "volume": 2.34567
-}
+La stratégie adaptative qui s'ajuste aux conditions de marché:
+- Mode "Ride" en tendance forte: laisse courir les positions, filtre les signaux opposés
+- Mode "React" en consolidation: plus réactif, prend les profits plus rapidement
+- Paramètres configurables: seuils de détection de tendance, périodes d'analyse
+
+## 💼 Gestion du portefeuille
+
+Le système divise le capital en trois types de poches:
+
+### Poche Active (60% par défaut)
+
+- Capital dédié aux trades actifs
+- Réserve automatiquement des fonds lors de l'ouverture de trades
+- Libère les fonds à la fermeture des trades
+
+### Poche Buffer (30% par défaut)
+
+- Sert de tampon pour augmenter la capacité de trading
+- Utilisée lorsque la poche active est épuisée
+- Permet d'exploiter les opportunités additionnelles
+
+### Poche Safety (10% par défaut)
+
+- Capital de sécurité non utilisé pour le trading
+- Sert de réserve en cas de besoin
+- Peut être utilisé pour des situations d'urgence ou des opportunités exceptionnelles
+
+## ⚠️ Gestion des risques
+
+Le Risk Manager applique un ensemble de règles configurables dans `risk_manager/src/rules.yaml`, notamment:
+
+- Limite du nombre maximum de trades actifs simultanés
+- Arrêt du trading si la perte quotidienne dépasse un seuil
+- Limitation de l'exposition maximale par symbole
+- Adaptation aux périodes de volatilité
+- Limitation du nombre de trades par jour
+- Protection contre les crashs soudains
+
+## 🖥️ Interface utilisateur
+
+Le Frontend fournit:
+
+- Un tableau de bord avec la valeur du portefeuille, performances et allocations
+- Visualisation des cycles de trading actifs et historiques
+- Graphiques de distribution des signaux
+- Interface pour créer et gérer des trades manuellement
+- Visualisation des performances par stratégie et par symbole
+
+## 🔄 Modes de fonctionnement
+
+RootTrading peut fonctionner en deux modes:
+
+### Mode Démo
+
+- Simule les exécutions d'ordres sans interaction réelle avec Binance
+- Parfait pour tester des stratégies sans risque financier
+- Utilise un ensemble de données de marché réelles mais des ordres simulés
+
+### Mode Live
+
+- Exécute réellement les ordres sur Binance
+- Nécessite des clés API valides avec les permissions appropriées
+- Utilise des fonds réels, donc implique des risques financiers
+
+## 📝 Journalisation et monitoring
+
+Le système utilise plusieurs approches pour la journalisation et le monitoring:
+
+- Logs centralisés via le service Logger
+- Métriques de performance stockées dans la base de données
+- Vérifications de santé périodiques par le Scheduler
+- Alertes en cas de problèmes détectés
+- Rapports de performance générés par le PnL Tracker
+
+## 🛠️ Commandes utiles
+
+Le Makefile fournit plusieurs commandes utiles:
+
+```bash
+# Services
+make build                # Construit toutes les images Docker
+make up                   # Démarre tous les services
+make down                 # Arrête tous les services
+make logs                 # Affiche les logs de tous les services
+make ps                   # Liste les services en cours d'exécution
+make restart              # Redémarre tous les services
+make clean                # Nettoie tout (y compris les volumes)
+
+# Infrastructure
+make up-infra             # Démarre uniquement l'infrastructure (Redis, Kafka, PostgreSQL)
+
+# Services spécifiques
+make up-gateway           # Démarre le service Gateway
+make up-analyzer          # Démarre le service Analyzer
+make up-trader            # Démarre le service Trader
+make up-portfolio         # Démarre le service Portfolio
+make up-frontend          # Démarre le service Frontend
+
+# Logs
+make logs-gateway         # Affiche les logs du service Gateway
+make logs-analyzer        # Affiche les logs du service Analyzer
+make logs-trader          # Affiche les logs du service Trader
+make logs-portfolio       # Affiche les logs du service Portfolio
+
+# Base de données
+make db-init              # Initialise la base de données
+make db-backup            # Sauvegarde la base de données
+make db-reset             # Réinitialise la base de données
 ```
 
-### Signaux de trading
-
-Format des signaux générés par l'Analyzer et envoyés au Trader:
-
-```json
-{
-  "strategy": "RSI_Strategy",
-  "symbol": "BTCUSDC",
-  "side": "BUY",
-  "timestamp": 1616554800000,
-  "price": 55445.80,
-  "rsi": 28.5
-}
-```
-
-### Transactions
-
-Structure d'une transaction stockée en base de données:
-
-```json
-{
-  "id": 12345678,
-  "symbol": "BTCUSDC",
-  "side": "BUY",
-  "price": 55445.80,
-  "quantity": 0.00017,
-  "quote_quantity": 9.42,
-  "fee": 0.0094,
-  "role": "taker",
-  "timestamp": "2023-01-15T14:30:00Z",
-  "status": "FILLED",
-  "demo": false
-}
-```
-
-## Communication entre services
-
-### Canaux Redis
-
-Les services communiquent via ces canaux Redis:
-
-| Canal | Description | Publication | Abonnement |
-|-------|-------------|------------|------------|
-| `market:data:{SYMBOL}` | Données de marché en temps réel | Gateway | Analyzer |
-| `analyze:signal` | Signaux de trading générés | Analyzer | Trader |
-| `account:balances` | Mise à jour des soldes du compte | Gateway | Portfolio |
-| `account:total_balance` | Valeur totale du portefeuille | Gateway | Portfolio |
-
-### Format des messages
-
-Tous les messages sont en format JSON. Exemple:
-
-```json
-// Canal: market:data:BTCUSDC
-{
-  "symbol": "BTCUSDC",
-  "startTime": 1616554800000,
-  "closeTime": 1616554859999,
-  "open": 55432.10,
-  "high": 55450.00,
-  "low": 55421.20,
-  "close": 55445.80,
-  "volume": 2.34567
-}
-
-// Canal: analyze:signal
-{
-  "strategy": "RSI_Strategy",
-  "symbol": "BTCUSDC",
-  "side": "BUY",
-  "timestamp": 1616554800000,
-  "price": 55445.80,
-  "metadata": {
-    "rsi": 28.5
-  }
-}
-
-// Canal: account:balances
-[
-  {
-    "asset": "BTC",
-    "disponible": 0.00445841,
-    "en_ordre": 0,
-    "total": 0.00445841,
-    "eur_value": 330.96
-  },
-  {
-    "asset": "USDC",
-    "disponible": 66.8915,
-    "en_ordre": 0,
-    "total": 66.8915,
-    "eur_value": 59.54
-  }
-]
-```
-
-## Base de données
-
-### Schéma
-
-La base de données PostgreSQL contient les tables suivantes:
-
-**Table: trades**
-```sql
-CREATE TABLE trades (
-    id BIGINT PRIMARY KEY,
-    order_id BIGINT,
-    symbol VARCHAR NOT NULL,
-    side VARCHAR NOT NULL,
-    status VARCHAR NOT NULL,
-    price NUMERIC(16, 8) NOT NULL,
-    quantity NUMERIC(16, 8) NOT NULL,
-    fee NUMERIC(16, 8),
-    role VARCHAR,
-    quote_quantity NUMERIC(16, 8),
-    timestamp TIMESTAMP NOT NULL,
-    demo BOOLEAN NOT NULL DEFAULT FALSE
-);
-```
-
-### Requêtes communes
-
-Exemples de requêtes SQL pour analyser les performances:
-
-```sql
--- Résumé des trades par symbole
-SELECT symbol, 
-       COUNT(*) as trade_count,
-       SUM(CASE WHEN side = 'BUY' THEN quote_quantity ELSE 0 END) as buy_volume,
-       SUM(CASE WHEN side = 'SELL' THEN quote_quantity ELSE 0 END) as sell_volume,
-       SUM(CASE WHEN side = 'SELL' THEN quote_quantity ELSE -quote_quantity END) as net_pnl
-FROM trades
-GROUP BY symbol
-ORDER BY net_pnl DESC;
-
--- Performance par stratégie (si la stratégie est enregistrée)
-SELECT t.strategy,
-       COUNT(*) as trade_count,
-       SUM(CASE WHEN side = 'SELL' THEN quote_quantity ELSE -quote_quantity END) as net_pnl
-FROM trades t
-GROUP BY t.strategy
-ORDER BY net_pnl DESC;
-```
-
-## APIs REST
-
-### Portfolio API
-
-| Endpoint | Méthode | Description |
-|---------|---------|-------------|
-| `/portfolio/summary` | GET | Résumé du portefeuille (valeur totale, trades) |
-| `/portfolio/balance` | GET | Soldes actuels par actif |
-| `/portfolio/trades` | GET | Historique des trades avec pagination |
-
-Paramètres pour `/portfolio/trades`:
-- `symbol` (optionnel): Filtrer par paire
-- `limit` (défaut: 50): Nombre de résultats par page
-- `page` (défaut: 1): Numéro de page
-
-### Trader API
-
-| Endpoint | Méthode | Description |
-|---------|---------|-------------|
-| `/trade` | POST | Passer un ordre manuellement |
-
-Format de la requête pour `/trade`:
-```json
-{
-  "symbol": "BTCUSDC",
-  "side": "BUY",
-  "quantity": 0.001
-}
-```
+## 🔧 Dépannage
 
-## Optimisation
+### Connexion à Binance impossible
 
-### Gestion des appels API Binance
+- Vérifiez vos clés API dans le fichier `.env`
+- Assurez-vous que les clés ont les permissions nécessaires
+- Vérifiez votre connexion internet
 
-Pour éviter d'atteindre les limites de l'API Binance:
+### Services qui ne démarrent pas
 
-1. Minimiser les appels en mettant en cache les données:
-   - Pour les prix, utiliser les WebSockets au lieu des requêtes REST
-   - Mettre en cache les informations qui changent rarement (info sur les actifs)
+- Vérifiez les logs avec `make logs-<service>`
+- Assurez-vous que les services dépendants sont en cours d'exécution
+- Vérifiez les variables d'environnement dans `.env`
 
-2. Utiliser les bons intervalles de mise à jour:
-   - Soldes du compte: toutes les minutes
-   - Prix pour conversion: mises à jour périodiques
+### Problèmes de base de données
 
-3. Regrouper les requêtes:
-   - Au lieu de demander le prix de chaque actif séparément, utiliser `getPrices()`
+- Vérifiez la connexion à PostgreSQL
+- Réinitialisez la base de données avec `make db-reset`
+- Vérifiez l'espace disque disponible
 
-### Performance Redis
+### Données de marché manquantes
 
-Redis est utilisé comme bus de communication:
+- Vérifiez les logs du Gateway avec `make logs-gateway`
+- Assurez-vous que les symboles sont correctement configurés dans `.env`
+- Vérifiez la connexion entre Gateway et Kafka
 
-1. Optimiser la taille des messages:
-   - N'inclure que les champs nécessaires
-   - Pour les grandes quantités de données, utiliser la compression
+### Signaux non générés
 
-2. Gestion des connexions:
-   - Réutiliser les connexions Redis
-   - Implémenter une logique de reconnexion en cas d'échec
+- Vérifiez les logs de l'Analyzer avec `make logs-analyzer`
+- Assurez-vous que les stratégies sont correctement configurées
+- Vérifiez si les données de marché sont reçues correctement
 
-## Mode démo vs Mode réel
+### Ordres non exécutés
 
-Le système fonctionne dans deux modes:
+- Vérifiez les logs du Trader avec `make logs-trader`
+- Assurez-vous que le mode de trading est correctement configuré
+- Vérifiez les soldes disponibles dans les poches
 
-1. **Mode démo** (`TRADING_MODE=demo`):
-   - Les ordres ne sont pas réellement exécutés sur Binance
-   - Simulation locale dans `binance_executor.py`
-   - Les trades simulés sont marqués avec `demo=True` dans la base de données
-   - Parfait pour tester les stratégies sans risque
+---
 
-2. **Mode réel** (`TRADING_MODE=live`):
-   - Les ordres sont exécutés sur Binance avec les vraies clés API
-   - Nécessite des permissions d'API pour le trading
-   - Les transactions réelles sont persistées en base de données
+## 🔐 Sécurité
 
-Pour basculer entre les modes:
-1. Modifier la variable `TRADING_MODE` dans `.env`
-2. Redémarrer les services:
-   ```bash
-   docker-compose restart trader
-   ```
+N'oubliez pas:
+- Ne partagez jamais vos clés API Binance
+- Utilisez des clés API avec les permissions minimales nécessaires
+- Déployez le système sur un serveur sécurisé
+- Sauvegardez régulièrement la base de données
+- Commencez avec de petits montants en mode Live
 
-## Logging et diagnostic
+---
 
-Chaque service a son propre système de logging:
+## 📜 Licence
 
-1. Niveau de log configurable via `.env`:
-   ```
-   LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR
-   ```
+Ce projet est sous licence MIT.
 
-2. Voir les logs des services:
-   ```bash
-   # Tous les services
-   docker-compose logs -f
-   
-   # Service spécifique
-   docker-compose logs -f analyzer
-   ```
+---
 
-3. Debug des stratégies:
-   - Mettre `LOG_LEVEL=DEBUG` pour voir les calculs d'indicateurs
-   - Les signaux générés sont toujours loggés en niveau INFO
-
-## Extensions futures
-
-
-🧱 Phase 1 – Scalabilité de base
-🔁 1. Ajouter d’autres cryptos
-✅ Déjà prêt côté Gateway/Analyzer.
-
-🔧 À faire :
-
-Étendre la liste SYMBOLS dans .env (BTCUSDC, ETHUSDC, SOLUSDC, etc.)
-
-Adapter gateway/src/index.js pour tous les abonnements.
-
-Adapter analyzer/redis_subscriber.py pour écouter toutes les paires.
-
-🧠 2. Ajouter de nouvelles stratégies
-🧩 Crée des fichiers dans analyzer/strategies/
-
-🎛️ Ajoute les variables .env associées (ex : BB_STD, EMA_SHORT, etc.)
-
-🧪 Redémarre le service analyzer et vérifie les logs
-
-🚀 Phase 2 – Interface & Monitoring
-🧾 3. Frontend amélioré
-📊 Ajouter :
-
-Tableau PnL par paire et stratégie
-
-Graphiques Candle + signaux (avec Chart.js ou Recharts)
-
-Historique des positions ouvertes/fermées
-
-Stats temps réel (balance, nombre de trades, % win)
-
-⚙️ Organiser les composants :
-
-Dashboard.jsx, TradeHistory.jsx, SignalChart.jsx, etc.
-
-Créer un useStats() hook qui appelle le backend pour live refresh
-
-📡 4. Logs & Stats live
-Backend :
-
-Ajouter une route /stats/live dans portfolio
-
-Calculer le nombre de signaux, trades, performances instantanées
-
-Frontend :
-
-useEffect avec interval pour fetch régulier (ou via WebSocket plus tard)
-
-Bonus : intégrer socket.io pour stats en temps réel (optionnel mais sexy)
-
-🛡️ Phase 3 – Gestion du risque
-🔒 5. Stop-Loss / Take-Profit
-Implémenter dans trader/order_manager.py :
-
-Ajout de stop_price / target_price selon stratégie
-
-Vérification continue (peut être via un watcher de marché)
-
-Ajouter au message signal :
-
-json
-Copier
-Modifier
-{
-  "stop_loss": 55000,
-  "take_profit": 57000
-}
-🔁 6. Trailing Stop
-Stocker le trailing_start_price à l’achat
-
-À chaque nouveau candle, ajuster le stop_loss à max_price - trailing_gap
-
-Fermer la position si prix chute sous le trailing stop dynamique
-
-🚨 7. Gestion des limites d’exposition
-Exemple : max 20% de ton capital sur une seule crypto
-
-Implémenter un risk_manager.py dans trader/
-
-Vérifie avant d’envoyer un ordre si la limite est déjà atteinte
-
-📅 strategie à mettre en place plus tard, a voir si autorisé sur binance France car pas de futures ni de short long:
-
-1. Trend‑Following avec Cross EMA
-Horizon : 2–10 jours
-
-Indicateurs : EMA 21 vs EMA 50 sur l’unité journalier (D1).
-
-Entrée : quand EMA 21 croise au‑dessus de l’EMA 50 = début de tendance haussière.
-
-Sortie :
-
-Take‑profit automatique à + 5–10 % (ajuste selon la volatilité).
-
-Stop‑loss sous le dernier plus bas swing (- 3 % par ex.).
-
-Bot‑flow : scan D1 toutes les 4 h, ouvre position spot (BTC, ETH, LINK…) dès le cross, ferme au TP/SL.
-
-Pourquoi : tu suis la tendance, tu restes dans le train quand ça part.
-
-2. Reversal RSI Divergence
-Horizon : 1–5 jours
-
-Indicateur : RSI 14 en daily ou 4 h.
-
-Entrée :
-
-Prix fait un plus bas plus bas (bearish structure)
-
-RSI fait un plus bas plus haut (divergence haussière)
-
-Sortie : clôture quand RSI revient > 50 ou atteint target + 4–6 %.
-
-Bot‑flow : vérifie daily + H4, repère divergences, place ordre limit sur le support identifié.
-
-Pourquoi : tu captes les retournements précoces, rendement sympa sans courir après la hype.
-
-3. Breakout de Range
-Horizon : 3–7 jours
-
-Setup : repère consolidation (range horizontal) au moins 5 barres D1.
-
-Entrée :
-
-Buy stop quelques pips au‑dessus de la résistance pour buy breakout.
-
-Sell stop sous le support pour take advantage d’un effondrement.
-
-Sortie :
-
-TP = largeur du range (hauteur) projetée à la sortie.
-
-SL = juste de l’autre côté du range.
-
-Bot‑flow : détecte range en scan (plus haut/plus bas) 5–10 jours, place OCO (TP+SL), exécute dès la cassure.
-
-Pourquoi : tu profites du momentum généré par la sortie de zone de congestion.
-
-4. Rotation de Pairs Corrélées
-Horizon : 5–14 jours
-
-Principe : passer de la crypto la plus faible à la plus forte sur un panier.
-
-Étapes :
-
-Chaque jour, calcule la perf 7 jours de BTC, ETH, LINK, DOT…
-
-Sell la plus faible (en USDC) + Buy la plus forte.
-
-Rééquilibre hebdo ou quand la perf se renverse.
-
-Bot‑flow : récupère perf 7 jours via l’API, génère ordre market USDC→top crypto et inverse pour la plus faible.
-
-Pourquoi : tu capturés les leaders de marché, tu suis la dynamique sectorielle.
-
-💡 Bonus Risk‑Mgmt
-Taille de position : 2–5 % par trade.
-
-Stop‑loss “volatilité” : place ton SL à 1,5× ATR(14) pour laisser respirer.
-
-Take‑profit partiel : ferme 50 % à + 5 %, laisse le reste courir avec un trailing SL.
-
-
-
-1. Triangular Spot (USDC ⇄ ALT ⇄ ALT ⇄ USDC)
-Pourquoi : tu joues sur les micro‑écarts entre paires spot sans jamais sortir de Binance.
-
-Loop type : USDC → LINK → ETH → USDC (ou remplace LINK/ETH par ATOM, BNB…)
-
-Bot‑flow :
-
-Récupère en temps réel les order‑books USDC/ALT1, ALT1/ALT2, ALT2/USDC.
-
-Simule le swap en chaîne ; si profit net > frais+0,15 %, envoie les 3 ordres “post‑only”.
-
-Répète dès que tu trouves un spread exploitable.
-
-2. Stablecoin‑Swap & Savings
-Pourquoi : profite des différences de taux et rewards entre USDC, BUSD et DAI.
-
-Options :
-
-Convertisseur instantané (USDC↔BUSD↔DAI) pour capter 0,02–0,1 % de micro‑arbitrage.
-
-Binance Earn (Flex Savings vs Locked) : déplace tes stablecoins vers la meilleure offre (ex : DAI Locked 7 % APY vs USDC Flex 3 %).
-
-Bot‑flow : scrute /sapi/v1/bswap/poolList et /sapi/v1/lending/union/position/list, déplace les fonds quand l’écart de yield dépasse ton seuil (ex. + 1 %).
-
-3. BNB Fee‑Rebate Hack
-Principe : utilise BNB pour payer tous tes frais spot et gagne 25 % de discount, que tu peux convertir en BUSD/USDC.
-
-Bot‑flow :
-
-Vérifie chaque ordre : si tu peux payer en BNB, active l’option “Discount”.
-
-Stocke automatiquement le BNB économisé dans un wallet “rebate” et convertis-le en stable dès que tu atteins ton palier (ex 50 USDC).
-
-Résultat : ton portefeuille croît “gratuitement” à chaque trade.
-
-4. Cross‑Pair Swing Spot
-Principe : exploiter les divergences de momentum entre deux paires corrélées (ex BTC/USDC ↔ ETH/USDC).
-
-Setup :
-
-Monitor RSI ou MACD court terme sur BTC/USDC et ETH/USDC.
-
-Si ETH tape un support (RSI<30) alors que BTC reste stable, passe un ordre limit ETH/USDC, et reverse si ETH → surachat.
-
-Bot‑flow : check indicateurs toutes les 5 min, place OCO (Take‑Profit + Stop‑Loss) dès qu’un signal se confirme.
-
-1. Funding‑Rate Hedge (Spot ⇄ Perpétuels)
-Identique à avant, mais avec USDC comme référence si tu veux te couvrir en stable :
-
-Quand funding ⬆︎ sur ETH/BTC/LINK perp > 0 → Short perp + Long spot (en USDC)
-
-Quand funding ⬇︎ (< 0) → Long perp + Short spot
-
-API Binance toutes les 15 min, seuil ≈ 0,01 % de funding, close à 0 ou target heures de funding encaissé.
-
-2. Calendar‑Spread (Perpétuel vs Futures Trimestriels)
-Toujours top pour du roll‐yield sans directionnel :
-
-Compare SYMBOL_PERP vs SYMBOL_YYYYMMDD (BTC, ETH, LINK…)
-
-If prix(trimestriel) > prix(perp) + frais → Short trimestriel + Long perp
-
-Else inverse
-
-Trigger > 0,2 % de spread, rebalance avant expiry ou take‑profit.
-
-3. Triangular Spot (USDC ⇄ ALT ⇄ ALT ⇄ USDC)
-Exploite les écarts entre paires spot USDC/ALT :
-
-Boucle type : USDC → LINK → ETH → USDC
-
-Récupère order books pour USDC/LINK, LINK/ETH, ETH/USDC
-
-Simule profit net > frais + buffer (0,2 %), puis exécute les 3 ordres en “post‐only”.
-
-Rapide (ms) et 100 % on‑exchange.
-
-4. Stablecoin Arbitrage & Liquid Swap
-Sans USDT, tu joues sur USDC, BUSD et DAI :
-
-Liquid Swap Pools : surveille les APY et les taux de swap USDC–BUSD et USDC–DAI.
-
-Quand écart > 0,02 % ou APY promo > 10 % (récompenses BNB/SXP…), dépose/enlève du pool.
-
-Utilise le convertisseur “instantané” pour passer USDC ↔ BUSD ↔ DAI en un clic et capter le micro‑arbitrage.
+Ce README fournit une vue d'ensemble technique du système RootTrading. Pour des informations plus détaillées sur chaque composant, consultez la documentation spécifique dans chaque répertoire de service.

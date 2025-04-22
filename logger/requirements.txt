@@ -1,0 +1,3 @@
+# Requirements pour le service Logger
+-r ../requirements-shared.txt
+psycopg2-binary==2.9.7

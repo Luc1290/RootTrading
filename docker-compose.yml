@@ -123,6 +123,92 @@ services:
       - trader
     restart: unless-stopped
 
+  coordinator:
+    build:
+      context: .
+      dockerfile: ./coordinator/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      portfolio:
+        condition: service_started
+      trader:
+        condition: service_started
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      - "${COORDINATOR_PORT:-5003}:5003"
+
+  dispatcher:
+    build:
+      context: .
+      dockerfile: ./dispatcher/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      - "${DISPATCHER_PORT:-5004}:5004"
+
+  logger:
+    build:
+      context: .
+      dockerfile: ./logger/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      - "${LOGGER_PORT:-5005}:5005"
+
+  pnl_tracker:
+    build:
+      context: .
+      dockerfile: ./pnl_tracker/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      - "${PNL_TRACKER_PORT:-5006}:5006"
+
+  risk_manager:
+    build:
+      context: .
+      dockerfile: ./risk_manager/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      trader:
+        condition: service_started
+      portfolio:
+        condition: service_started
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      - "${RISK_MANAGER_PORT:-5007}:5007"
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: ./scheduler/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      - "${SCHEDULER_PORT:-5008}:5008"
+
 volumes:
   redis_data:
   kafka_data:

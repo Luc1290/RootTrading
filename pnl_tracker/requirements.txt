@@ -1,0 +1,6 @@
+# Requirements pour le service PnL Tracker
+-r ../requirements-shared.txt
+pandas==2.1.0
+numpy==1.24.4
+matplotlib==3.7.2
+psycopg2-binary==2.9.7
