@@ -6,7 +6,7 @@ import CycleList from './components/CycleList';
 import StatsPanel from './components/StatsPanel';
 
 // Import icons
-import { ChartPie, ArrowsLeftRight, List, BarChart2 } from 'lucide-react';
+import { PieChart, MoveHorizontal, List, BarChart } from 'lucide-react';
 
 const App = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -22,7 +22,7 @@ const App = () => {
               onClick={() => setSidebarOpen(!sidebarOpen)} 
               className="p-1 rounded-full hover:bg-gray-700"
             >
-              <ArrowsLeftRight size={20} />
+              <MoveHorizontal size={20} />
             </button>
           </div>
           
@@ -30,7 +30,7 @@ const App = () => {
             <ul>
               <li>
                 <Link to="/" className="flex items-center py-3 px-4 hover:bg-gray-800">
-                  <ChartPie size={20} />
+                  <PieChart size={20} />
                   {sidebarOpen && <span className="ml-4">Dashboard</span>}
                 </Link>
               </li>
@@ -42,7 +42,7 @@ const App = () => {
               </li>
               <li>
                 <Link to="/stats" className="flex items-center py-3 px-4 hover:bg-gray-800">
-                  <BarChart2 size={20} />
+                  <BarChart size={20} />
                   {sidebarOpen && <span className="ml-4">Statistics</span>}
                 </Link>
               </li>

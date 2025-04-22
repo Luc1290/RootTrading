@@ -1,0 +1,84 @@
+PS E:\RootTrading\RootTrading> docker-compose up -d
+Compose can now delegate builds to bake for better performance.
+ To do so, set COMPOSE_BAKE=true.
+2025/04/22 21:22:46 http2: server: error reading preface from client //./pipe/dockerDesktopLinuxEngine: file has already been closed
+[+] Building 0.0s (0/0)  docker:desktop-linux
+
+
+
+
+
+
+
+
+
+
+
+
+
+[+] Building 7.8s (23/30)                                                                                                                                docker:desktop-linux
+ => [analyzer internal] load build definition from Dockerfile                                                                                                            0.0s
+ => => transferring dockerfile: 1.30kB                                                                                                                                   0.0s 
+ => [frontend internal] load build definition from Dockerfile                                                                                                            0.0s 
+ => => transferring dockerfile: 647B                                                                                                                                     0.0s 
+ => [analyzer internal] load metadata for docker.io/library/python:3.10-slim                                                                                             2.4s 
+ => [frontend internal] load metadata for docker.io/library/nginx:alpine                                                                                                 2.9s 
+ => [frontend internal] load metadata for docker.io/library/node:18-alpine                                                                                               2.9s 
+ => [frontend auth] library/nginx:pull token for registry-1.docker.io                                                                                                    0.0s
+ => [analyzer auth] library/python:pull token for registry-1.docker.io                                                                                                   0.0s
+ => [frontend auth] library/node:pull token for registry-1.docker.io                                                                                                     0.0s 
+ => [analyzer internal] load .dockerignore                                                                                                                               0.0s
+ => => transferring context: 2B                                                                                                                                          0.0s 
+ => [analyzer 1/9] FROM docker.io/library/python:3.10-slim@sha256:65c843653048a3ba22c8d5083a022f44aef774974f0f7f70cbf8cee4e931ac96                                       0.0s 
+ => => resolve docker.io/library/python:3.10-slim@sha256:65c843653048a3ba22c8d5083a022f44aef774974f0f7f70cbf8cee4e931ac96                                                0.0s 
+ => [analyzer internal] load build context                                                                                                                               0.0s 
+ => => transferring context: 138.18kB                                                                                                                                    0.0s 
+ => CACHED [analyzer 2/9] WORKDIR /app                                                                                                                                   0.0s 
+ => CACHED [analyzer 3/9] RUN apt-get update && apt-get install -y --no-install-recommends     gcc     build-essential     librdkafka-dev     wget     make     && rm -  0.0s 
+ => CANCELED [analyzer 4/9] RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz &&     tar -xzf ta-lib-0.4.0-src.tar.gz &&     cd ta-lib/ &&      5.3s
+ => [frontend internal] load .dockerignore                                                                                                                               0.0s 
+ => => transferring context: 2B                                                                                                                                          0.0s 
+ => [frontend build 1/6] FROM docker.io/library/node:18-alpine@sha256:8d6421d663b4c28fd3ebc498332f249011d118945588d0a35cb9bc4b8ca09d9e                                   0.0s 
+ => => resolve docker.io/library/node:18-alpine@sha256:8d6421d663b4c28fd3ebc498332f249011d118945588d0a35cb9bc4b8ca09d9e                                                  0.0s 
+ => [frontend internal] load build context                                                                                                                               0.0s 
+ => => transferring context: 73.66kB                                                                                                                                     0.0s 
+ => [frontend stage-1 1/3] FROM docker.io/library/nginx:alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10                                   0.0s 
+ => => resolve docker.io/library/nginx:alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10                                                    0.0s 
+ => CACHED [frontend build 2/6] WORKDIR /app                                                                                                                             0.0s 
+ => CACHED [frontend build 3/6] COPY frontend/package.json ./                                                                                                            0.0s 
+ => CACHED [frontend build 4/6] RUN npm install                                                                                                                          0.0s 
+ => CACHED [frontend build 5/6] COPY frontend/ ./                                                                                                                        0.0s 
+ => ERROR [frontend build 6/6] RUN npm run build                                                                                                                         4.7s 
+------
+ > [frontend build 6/6] RUN npm run build:
+0.584
+0.584 > roottrading-frontend@1.0.0 build
+0.584 > vite build
+0.584
+0.900 vite v4.5.13 building for production...
+1.319 transforming...
+4.595 ✓ 2037 modules transformed.
+4.595 ✓ built in 3.69s
+4.596 "ArrowsLeftRight" is not exported by "node_modules/lucide-react/dist/esm/lucide-react.js", imported by "src/App.jsx".
+4.596 file: /app/src/App.jsx:9:19
+4.596  7:
+4.596  8: // Import icons
+4.596  9: import { ChartPie, ArrowsLeftRight, List, BarChart2 } from 'lucide-react';
+4.596                        ^
+4.596 10:
+4.596 11: const App = () => {
+4.600 error during build:
+4.600 RollupError: "ArrowsLeftRight" is not exported by "node_modules/lucide-react/dist/esm/lucide-react.js", imported by "src/App.jsx".
+4.600     at error (file:///app/node_modules/rollup/dist/es/shared/node-entry.js:2287:30)
+4.600     at Module.error (file:///app/node_modules/rollup/dist/es/shared/node-entry.js:13745:16)
+4.600     at Module.traceVariable (file:///app/node_modules/rollup/dist/es/shared/node-entry.js:14175:29)
+4.600     at ModuleScope.findVariable (file:///app/node_modules/rollup/dist/es/shared/node-entry.js:12615:39)
+4.600     at ReturnValueScope.findVariable (file:///app/node_modules/rollup/dist/es/shared/node-entry.js:7124:38)
+4.600     at ChildScope.findVariable (file:///app/node_modules/rollup/dist/es/shared/node-entry.js:7124:38)
+4.600     at Identifier.bind (file:///app/node_modules/rollup/dist/es/shared/node-entry.js:8319:40)
+4.600     at CallExpression.bind (file:///app/node_modules/rollup/dist/es/shared/node-entry.js:5888:28)
+4.600     at CallExpression.bind (file:///app/node_modules/rollup/dist/es/shared/node-entry.js:9890:15)
+4.600     at Property.bind (file:///app/node_modules/rollup/dist/es/shared/node-entry.js:5892:23)
+------
+failed to solve: process "/bin/sh -c npm run build" did not complete successfully: exit code: 1
+PS E:\RootTrading\RootTrading> 

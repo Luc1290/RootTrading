@@ -2,16 +2,17 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Mise à jour du système et installation des dépendances
+# Install build dependencies including TA-Lib
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    g++ \
     build-essential \
     librdkafka-dev \
     wget \
     make \
     && rm -rf /var/lib/apt/lists/*
 
-# Installation de TA-Lib depuis les sources
+# Install TA-Lib from source
 RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz && \
     tar -xzf ta-lib-0.4.0-src.tar.gz && \
     cd ta-lib/ && \
@@ -21,25 +22,31 @@ RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz && \
     cd .. && \
     rm -rf ta-lib ta-lib-0.4.0-src.tar.gz
 
-# Copie des requirements et installation
+# Copy shared requirements first
 COPY requirements-shared.txt /app/
 
-# Ensuite copier les requirements spécifiques au service
+# Copy analyzer requirements and modify
 COPY analyzer/requirements.txt /app/
+RUN sed -i 's|-r ../requirements-shared.txt|-r /app/requirements-shared.txt|g' /app/requirements.txt
 
-# Installer les dépendances
-# Remplacer la référence relative par le chemin absolu
-RUN sed -i 's|-r ../requirements-shared.txt|-r /app/requirements-shared.txt|g' /app/requirements.txt && \
-    pip install --no-cache-dir -r /app/requirements.txt
+# Install NumPy first at a compatible version
+RUN pip install --no-cache-dir numpy==1.23.5
 
-# Copie des modules partagés
+# Install other dependencies but exclude TA-Lib
+RUN pip install --no-cache-dir -r /app/requirements-shared.txt && \
+    grep -v "ta-lib" /app/requirements.txt | pip install --no-cache-dir -r /dev/stdin
+
+# Install TA-Lib Python wrapper separately with NumPy already installed
+RUN pip install --no-cache-dir ta-lib==0.4.24
+
+# Copy shared modules
 COPY shared /app/shared
 
-# Copie du code du service
+# Copy analyzer code
 COPY analyzer /app/analyzer
 
-# Exposition du port
+# Expose port
 EXPOSE 5001
 
-# Commande de démarrage
+# Start command
 CMD ["python", "analyzer/src/main.py"]
