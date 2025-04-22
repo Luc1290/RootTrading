@@ -1,0 +1,168 @@
+---
+# Configuration des règles de gestion des risques pour RootTrading
+# Ce fichier définit les règles qui seront évaluées par le risk_manager
+
+rules:
+  - name: "max_concurrent_trades"
+    description: "Limite le nombre maximum de trades actifs simultanés"
+    type: "exposure"
+    scope: "global"
+    condition: "active_trades > {max_trades}"
+    parameters:
+      max_trades: 10
+    action: "pause_new_trades"
+    severity: "warning"
+    enabled: true
+
+  - name: "max_daily_loss"
+    description: "Arrête le trading si la perte quotidienne dépasse un seuil"
+    type: "drawdown"
+    scope: "global"
+    condition: "daily_pnl_percent < {max_loss_percent}"
+    parameters:
+      max_loss_percent: -5.0
+    action: "disable_trading"
+    severity: "critical"
+    enabled: true
+
+  - name: "max_symbol_exposure_btc"
+    description: "Limite l'exposition maximale pour BTC"
+    type: "exposure"
+    scope: "symbol"
+    symbol: "BTCUSDC"
+    condition: "BTCUSDC_exposure_percent > {max_percent}"
+    parameters:
+      max_percent: 30.0
+    action: "pause_symbol"
+    severity: "warning"
+    enabled: true
+
+  - name: "max_symbol_exposure_eth"
+    description: "Limite l'exposition maximale pour ETH"
+    type: "exposure"
+    scope: "symbol"
+    symbol: "ETHUSDC"
+    condition: "ETHUSDC_exposure_percent > {max_percent}"
+    parameters:
+      max_percent: 25.0
+    action: "pause_symbol"
+    severity: "warning"
+    enabled: true
+
+  - name: "btc_high_volatility"
+    description: "Réduit le trading en période de forte volatilité sur BTC"
+    type: "volatility"
+    scope: "symbol"
+    symbol: "BTCUSDC"
+    condition: "BTCUSDC_volatility_1h > {volatility_threshold}"
+    parameters:
+      volatility_threshold: 3.5
+    action: "pause_symbol"
+    severity: "warning"
+    enabled: true
+
+  - name: "eth_high_volatility"
+    description: "Réduit le trading en période de forte volatilité sur ETH"
+    type: "volatility"
+    scope: "symbol"
+    symbol: "ETHUSDC"
+    condition: "ETHUSDC_volatility_1h > {volatility_threshold}"
+    parameters:
+      volatility_threshold: 4.0
+    action: "pause_symbol"
+    severity: "warning"
+    enabled: true
+
+  - name: "max_daily_trades"
+    description: "Limite le nombre de nouveaux trades par jour"
+    type: "frequency"
+    scope: "global"
+    condition: "daily_trades > {max_trades}"
+    parameters:
+      max_trades: 3000
+    action: "pause_new_trades"
+    severity: "warning"
+    enabled: true
+
+  - name: "max_btc_active_trades"
+    description: "Limite le nombre de trades actifs sur BTC"
+    type: "exposure"
+    scope: "symbol"
+    symbol: "BTCUSDC"
+    condition: "BTCUSDC_active_trades > {max_trades}"
+    parameters:
+      max_trades: 5
+    action: "pause_symbol"
+    severity: "info"
+    enabled: true
+
+  - name: "extreme_market_conditions"
+    description: "Arrête le trading en cas de conditions de marché extrêmes (forte volatilité simultanée sur BTC et ETH)"
+    type: "volatility"
+    scope: "global"
+    condition: "BTCUSDC_volatility_1h > {btc_threshold} and ETHUSDC_volatility_1h > {eth_threshold}"
+    parameters:
+      btc_threshold: 5.0
+      eth_threshold: 6.0
+    action: "disable_trading"
+    severity: "critical"
+    enabled: true
+
+  - name: "daily_profit_taking"
+    description: "Réduit le trading après un profit quotidien significatif"
+    type: "profit"
+    scope: "global"
+    condition: "daily_pnl_percent > {profit_threshold}"
+    parameters:
+      profit_threshold: 3.0
+    action: "pause_new_trades"
+    severity: "info"
+    enabled: false  # Désactivé par défaut, à activer selon les préférences
+
+  - name: "low_capital_warning"
+    description: "Alerte lorsque le capital disponible devient trop faible"
+    type: "capital"
+    scope: "global"
+    condition: "total_value < {min_capital}"
+    parameters:
+      min_capital: 500.0  # Valeur minimale en USDC
+    action: "alert_only"
+    severity: "warning"
+    enabled: true
+
+  # Règles par stratégie
+  - name: "rsi_strategy_loss_limit"
+    description: "Désactive la stratégie RSI après des pertes consécutives"
+    type: "strategy_performance"
+    scope: "strategy"
+    strategy: "RSI_Strategy"
+    condition: "strategy_consecutive_losses > {max_losses}"
+    parameters:
+      max_losses: 3
+    action: "pause_strategy"
+    severity: "warning"
+    enabled: true
+
+  - name: "ride_or_react_mode"
+    description: "Mode adaptatif pour les stratégies basé sur la détection de tendances fortes"
+    type: "market_conditions"
+    scope: "global"
+    condition: "BTCUSDC_volatility_1h > {volatility_threshold} and BTCUSDC_price_change_24h > {change_threshold}"
+    parameters:
+      volatility_threshold: 2.5
+      change_threshold: 5.0
+    action: "alert_only"  # Juste une alerte, le mode Ride_or_React prend ses propres décisions
+    severity: "info"
+    enabled: true
+
+  # Règle de protection contre les crashs
+  - name: "flash_crash_protection"
+    description: "Arrête le trading en cas de chute brutale des prix"
+    type: "crash"
+    scope: "global"
+    condition: "BTCUSDC_price_change_1h < {crash_threshold}"
+    parameters:
+      crash_threshold: -10.0  # Chute de 10% en 1 heure
+    action: "disable_trading"
+    severity: "critical"
+    enabled: true
