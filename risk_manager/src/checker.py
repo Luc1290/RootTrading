@@ -338,33 +338,36 @@ class RuleChecker:
         else:
             return 0.0
     
-    def _evaluate_condition(self, condition: str, parameters: Dict[str, Any], 
-                           state: Dict[str, Any]) -> bool:
-        """
-        Évalue une condition de règle.
-        
-        Args:
-            condition: Condition à évaluer
-            parameters: Paramètres pour la condition
-            state: État du système
-            
-        Returns:
-            True si la condition est remplie, False sinon
-        """
+    def _evaluate_condition(self, condition: str, parameters: Dict[str, Any], state: Dict[str, Any]) -> bool:
+    
+        """Évalue une condition de règle de manière sécurisée."""
         try:
             # Remplacer les placeholders par les valeurs de paramètres
             formatted_condition = condition
             for param_name, param_value in parameters.items():
                 placeholder = "{" + param_name + "}"
                 formatted_condition = formatted_condition.replace(placeholder, str(param_value))
-            
-            # Créer un environnement d'évaluation avec l'état du système
-            eval_env = state.copy()
-            
-            # Évaluer la condition
-            result = eval(formatted_condition, {"__builtins__": {}}, eval_env)
-            return bool(result)
-            
+        
+            # Créer un environnement d'évaluation restreint avec l'état du système
+            safe_dict = {k: v for k, v in state.items()}
+        
+            # Ajouter des fonctions mathématiques sécurisées
+            safe_dict.update({
+                'abs': abs,
+                'max': max,
+                'min': min,
+                'round': round,
+                'sum': sum
+            })
+        
+            # Remplacer les opérateurs logiques textuels par leurs équivalents Python
+            formatted_condition = formatted_condition.replace(" and ", " and ")
+            formatted_condition = formatted_condition.replace(" or ", " or ")
+            formatted_condition = formatted_condition.replace(" not ", " not ")
+        
+            # Évaluer la condition de manière restreinte
+            return eval(formatted_condition, {"__builtins__": {}}, safe_dict)
+        
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'évaluation de la condition '{condition}': {str(e)}")
             return False

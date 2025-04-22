@@ -141,7 +141,18 @@ class KafkaClient:
         """
         # Créer le producteur si nécessaire
         if not self.producer:
-            self.producer = self._create_producer()
+            conf = {
+                'bootstrap.servers': self.broker,
+                'client.id': f'roottrading-producer-{time.time()}',
+                'queue.buffering.max.messages': 100000,  # Augmenté à 100k
+                'queue.buffering.max.ms': 50,  # Réduit à 50ms pour un équilibre latence/débit
+                'batch.num.messages': 1000,  # Augmenté à 1000
+                'linger.ms': 5,  # Attendre 5ms pour collecter plus de messages
+                'compression.type': 'snappy',  # Ajouter la compression
+                'message.max.bytes': 2000000,  # 2MB
+                'default.topic.config': {'acks': 'all'}
+            }
+            self.producer = Producer(conf)
         
         # S'assurer que le topic existe
         self._ensure_topics_exist([topic])

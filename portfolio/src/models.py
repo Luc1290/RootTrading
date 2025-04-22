@@ -3,6 +3,7 @@ Modèles de données pour le service Portfolio.
 Définit les structures de données et les interactions avec la base de données.
 """
 import logging
+import time
 from typing import Dict, List, Any, Optional, Union
 from datetime import datetime
 import psycopg2
@@ -192,6 +193,15 @@ class PortfolioModel:
         Returns:
             Liste des soldes par actif
         """
+        # Vérifier si un cache existe et s'il est toujours valide (moins de 5 secondes)
+        cache_key = 'latest_balances'
+        current_time = time.time()
+    
+        if hasattr(self, '_cache') and cache_key in self._cache:
+            cache_time, cache_data = self._cache[cache_key]
+            if current_time - cache_time < 5:  # 5 secondes de validité
+                return cache_data
+            
         query = """
         WITH latest_balances AS (
             SELECT 
@@ -232,102 +242,94 @@ class PortfolioModel:
                 total=float(row['total']),
                 value_usdc=float(row['value_usdc']) if row['value_usdc'] is not None else None
             )
-            balances.append(balance)
+            balances.append(balance)       
         
+        # Initialiser le cache si nécessaire
+        if not hasattr(self, '_cache'):
+            self._cache = {}
+    
+        # Mettre en cache
+        self._cache[cache_key] = (current_time, balances)
+    
         return balances
     
     def get_portfolio_summary(self) -> Optional[PortfolioSummary]:
         """
-        Récupère un résumé du portefeuille actuel.
-        
-        Returns:
-            Résumé du portefeuille ou None en cas d'erreur
+        Récupère un résumé du portefeuille actuel avec une seule requête SQL.
         """
-        # Récupérer les derniers soldes
-        balances = self.get_latest_balances()
-        
-        if not balances:
-            return None
-        
-        # Calculer la valeur totale
-        total_value = sum(b.value_usdc or 0 for b in balances)
-        
-        # Récupérer le nombre de trades actifs
         query = """
-        SELECT COUNT(*) as active_trades
-        FROM trade_cycles
-        WHERE status NOT IN ('completed', 'canceled', 'failed')
-        """
-        
-        active_trades_result = self.db.execute_query(query, fetch_one=True)
-        active_trades = active_trades_result['active_trades'] if active_trades_result else 0
-        
-        # Calculer la performance sur 24h et 7j
-        perf_query = """
-        WITH current_values AS (
+        WITH current_balances AS (
             SELECT 
                 asset,
+                free,
+                locked,
+                total,
                 value_usdc,
                 timestamp
             FROM 
-                portfolio_balances
+                portfolio_balances pb1
             WHERE 
-                timestamp = (SELECT MAX(timestamp) FROM portfolio_balances)
+                timestamp = (
+                    SELECT MAX(timestamp) 
+                    FROM portfolio_balances pb2 
+                    WHERE pb2.asset = pb1.asset
+                )
         ),
-        day_ago_values AS (
-            SELECT 
-                asset,
-                value_usdc
-            FROM 
-                portfolio_balances
-            WHERE 
-                timestamp >= NOW() - INTERVAL '1 day'
-            ORDER BY 
-                timestamp ASC
+        day_ago_value AS (
+            SELECT SUM(value_usdc) as total
+            FROM portfolio_balances
+            WHERE timestamp >= NOW() - INTERVAL '1 day'
+            ORDER BY timestamp ASC
             LIMIT 1
         ),
-        week_ago_values AS (
-            SELECT 
-                asset,
-                value_usdc
-            FROM 
-                portfolio_balances
-            WHERE 
-                timestamp >= NOW() - INTERVAL '7 day'
-            ORDER BY 
-                timestamp ASC
+        week_ago_value AS (
+            SELECT SUM(value_usdc) as total
+            FROM portfolio_balances
+            WHERE timestamp >= NOW() - INTERVAL '7 day'
+            ORDER BY timestamp ASC
             LIMIT 1
+        ),
+        active_trades_count AS (
+            SELECT COUNT(*) as count
+            FROM trade_cycles
+            WHERE status NOT IN ('completed', 'canceled', 'failed')
         )
         SELECT 
-            (SELECT SUM(value_usdc) FROM current_values) as current_total,
-            (SELECT SUM(value_usdc) FROM day_ago_values) as day_ago_total,
-            (SELECT SUM(value_usdc) FROM week_ago_values) as week_ago_total
+            (SELECT SUM(value_usdc) FROM current_balances) as total_value,
+            (SELECT total FROM day_ago_value) as day_ago_total,
+            (SELECT total FROM week_ago_value) as week_ago_total,
+            (SELECT count FROM active_trades_count) as active_trades
         """
-        
-        perf_result = self.db.execute_query(perf_query, fetch_one=True)
-        
+    
+        result = self.db.execute_query(query, fetch_one=True)
+    
+        if not result or result['total_value'] is None:
+            return None
+    
+        # Récupérer les balances actuelles
+        balances = self.get_latest_balances()
+    
         # Calculer les performances
+        total_value = float(result['total_value'])
+        day_ago_total = float(result['day_ago_total'] or 0)
+        week_ago_total = float(result['week_ago_total'] or 0)
+    
         performance_24h = None
         performance_7d = None
-        
-        if perf_result:
-            current_total = float(perf_result['current_total'] or 0)
-            day_ago_total = float(perf_result['day_ago_total'] or 0)
-            week_ago_total = float(perf_result['week_ago_total'] or 0)
-            
-            if day_ago_total > 0:
-                performance_24h = ((current_total - day_ago_total) / day_ago_total) * 100
-            
-            if week_ago_total > 0:
-                performance_7d = ((current_total - week_ago_total) / week_ago_total) * 100
-        
+    
+        if day_ago_total > 0:
+            performance_24h = ((total_value - day_ago_total) / day_ago_total) * 100
+    
+        if week_ago_total > 0:
+            performance_7d = ((total_value - week_ago_total) / week_ago_total) * 100
+    
         # Créer le résumé
         return PortfolioSummary(
             balances=balances,
             total_value=total_value,
             performance_24h=performance_24h,
             performance_7d=performance_7d,
-            active_trades=active_trades,
+            active_trades=int(result['active_trades']),
             timestamp=datetime.now()
         )
     

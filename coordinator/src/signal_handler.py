@@ -72,6 +72,10 @@ class SignalHandler:
         # Stratégies spéciales pour le filtrage
         self.filter_strategies = ['Ride_or_React_Strategy']
         self.market_filters = {}  # {symbol: {filter_data}}
+
+        # Circuit breakers pour éviter les appels répétés à des services en échec
+        self.trader_circuit = CircuitBreaker()
+        self.portfolio_circuit = CircuitBreaker()
         
         logger.info(f"✅ SignalHandler initialisé en mode {'DÉMO' if self.demo_mode else 'RÉEL'}")
     
@@ -185,77 +189,114 @@ class SignalHandler:
     def _create_trade_cycle(self, signal: StrategySignal) -> Optional[str]:
         """
         Crée un cycle de trading à partir d'un signal.
-        
+
         Args:
             signal: Signal de trading validé
-            
+
         Returns:
             ID du cycle créé ou None en cas d'échec
         """
+        # Vérifier le circuit breaker pour le portfolio
+        if not self.portfolio_circuit.can_execute():
+            logger.warning(f"Circuit ouvert pour le service Portfolio, signal ignoré")
+            return None
+    
         try:
             # Calculer le montant à trader
             trade_amount = self._calculate_trade_amount(signal)
-            
+        
             # Déterminer la poche à utiliser
-            pocket_type = self.pocket_checker.determine_best_pocket(trade_amount)
-            
+            try:
+                pocket_type = self.pocket_checker.determine_best_pocket(trade_amount)
+                # Appel au portfolio réussi
+                self.portfolio_circuit.record_success()
+            except Exception as e:
+                self.portfolio_circuit.record_failure()
+                logger.error(f"❌ Erreur lors de l'interaction avec Portfolio: {str(e)}")
+                return None
+        
             if not pocket_type:
                 logger.warning(f"❌ Aucune poche disponible pour un trade de {trade_amount:.2f} USDC")
                 return None
-            
-            # Convertir le montant en quantité (combien de BTC/ETH acheter)
+        
+            # Convertir le montant en quantité
             quantity = trade_amount / signal.price
-            
+        
             # Calculer le stop-loss et take-profit
             stop_price = signal.metadata.get('stop_price')
             target_price = signal.metadata.get('target_price')
-            
+        
             # Préparer la requête pour le Trader
             order_data = {
                 "symbol": signal.symbol,
                 "side": signal.side.value,
                 "quantity": quantity,
-                "price": signal.price  # Peut être None pour un ordre au marché
+                "price": signal.price
             }
-            
+        
             # Réserver les fonds dans la poche
-            # Note: Normalement, l'ID du cycle serait fourni par le Trader, mais ici nous devons
-            # réserver les fonds avant de créer le cycle, donc nous utiliserons un ID temporaire
-            # qui sera mis à jour une fois que nous aurons reçu l'ID réel du cycle
             temp_cycle_id = f"temp_{int(time.time())}"
-            reserved = self.pocket_checker.reserve_funds(trade_amount, temp_cycle_id, pocket_type)
-            
+            try:
+                reserved = self.pocket_checker.reserve_funds(trade_amount, temp_cycle_id, pocket_type)
+                # Autre appel au portfolio réussi
+                self.portfolio_circuit.record_success()
+            except Exception as e:
+                self.portfolio_circuit.record_failure()
+                logger.error(f"❌ Erreur lors de la réservation des fonds: {str(e)}")
+                return None
+        
             if not reserved:
                 logger.error(f"❌ Échec de réservation des fonds pour le trade")
                 return None
-            
+        
+            # Vérifier le circuit breaker pour le Trader
+            if not self.trader_circuit.can_execute():
+                logger.warning(f"Circuit ouvert pour le service Trader, libération des fonds réservés")
+                self.pocket_checker.release_funds(trade_amount, temp_cycle_id, pocket_type)
+                return None
+        
             # Créer le cycle via l'API du Trader
             try:
                 response = requests.post(f"{self.trader_api_url}/order", json=order_data)
                 response.raise_for_status()
-                
+            
                 result = response.json()
                 cycle_id = result.get('order_id')
-                
+            
+                # Appel au trader réussi
+                self.trader_circuit.record_success()
+            
                 if not cycle_id:
                     logger.error("❌ Réponse invalide du Trader: pas d'ID de cycle")
                     # Libérer les fonds réservés
                     self.pocket_checker.release_funds(trade_amount, temp_cycle_id, pocket_type)
                     return None
-                
+            
                 # Mettre à jour la réservation avec l'ID réel du cycle
-                self.pocket_checker.release_funds(trade_amount, temp_cycle_id, pocket_type)
-                self.pocket_checker.reserve_funds(trade_amount, cycle_id, pocket_type)
-                
+                try:
+                    self.pocket_checker.release_funds(trade_amount, temp_cycle_id, pocket_type)
+                    self.pocket_checker.reserve_funds(trade_amount, cycle_id, pocket_type)
+                    self.portfolio_circuit.record_success()
+                except Exception as e:
+                    self.portfolio_circuit.record_failure()
+                    logger.error(f"❌ Erreur lors de la mise à jour de la réservation: {str(e)}")
+                    # Tenter d'annuler le cycle créé
+                    try:
+                        requests.delete(f"{self.trader_api_url}/order/{cycle_id}")
+                    except:
+                        pass
+                    return None
+            
                 logger.info(f"✅ Cycle de trading créé: {cycle_id} ({signal.side} {signal.symbol})")
                 return cycle_id
                 
             except requests.RequestException as e:
+                self.trader_circuit.record_failure()
                 logger.error(f"❌ Erreur lors de la création du cycle: {str(e)}")
                 # Libérer les fonds réservés
                 self.pocket_checker.release_funds(trade_amount, temp_cycle_id, pocket_type)
                 return None
-            
+        
         except Exception as e:
             logger.error(f"❌ Erreur lors de la création du cycle de trading: {str(e)}")
             return None
@@ -339,3 +380,41 @@ class SignalHandler:
         self.redis_client.unsubscribe()
         
         logger.info("✅ Gestionnaire de signaux arrêté")
+
+class CircuitBreaker:
+    """Circuit breaker pour éviter les appels répétés à des services en échec."""
+    
+    def __init__(self, max_failures=3, reset_timeout=60):
+        self.max_failures = max_failures
+        self.reset_timeout = reset_timeout
+        self.failure_count = 0
+        self.open_since = None
+        self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
+    
+    def record_success(self):
+        """Enregistre un succès et réinitialise le circuit."""
+        self.failure_count = 0
+        self.state = "CLOSED"
+        self.open_since = None
+    
+    def record_failure(self):
+        """Enregistre un échec et ouvre le circuit si nécessaire."""
+        self.failure_count += 1
+        if self.failure_count >= self.max_failures:
+            self.state = "OPEN"
+            self.open_since = time.time()
+    
+    def can_execute(self):
+        """Vérifie si une opération peut être exécutée."""
+        if self.state == "CLOSED":
+            return True
+        
+        if self.state == "OPEN":
+            # Vérifier si le temps de reset est écoulé
+            if time.time() - self.open_since > self.reset_timeout:
+                self.state = "HALF_OPEN"
+                return True
+            return False
+        
+        # HALF_OPEN: permettre un essai
+        return True

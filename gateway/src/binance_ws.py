@@ -92,23 +92,30 @@ class BinanceWebSocket:
             await self._handle_reconnect()
     
     async def _handle_reconnect(self) -> None:
-        """
-        Gère la logique de reconnexion avec backoff exponentiel.
-        """
-        if not self.running:
+        # Limiter le nombre de tentatives
+        max_retries = 20
+        retry_count = 0
+    
+        while not self.running:
             return
-            
-        logger.warning(f"Tentative de reconnexion dans {self.reconnect_delay} secondes...")
-        await asyncio.sleep(self.reconnect_delay)
+    
+        while self.running and retry_count < max_retries:
+            logger.warning(f"Tentative de reconnexion {retry_count+1}/{max_retries} dans {self.reconnect_delay} secondes...")
+            await asyncio.sleep(self.reconnect_delay)
         
-        # Backoff exponentiel (max 60 secondes)
-        self.reconnect_delay = min(60, self.reconnect_delay * 2)
+            # Backoff exponentiel avec plafond plus élevé
+            self.reconnect_delay = min(300, self.reconnect_delay * 2)  # 5 minutes max
         
-        try:
-            await self._connect()
-        except Exception as e:
-            logger.error(f"❌ Échec de reconnexion: {str(e)}")
-            await self._handle_reconnect()
+            try:
+                await self._connect()
+                return  # Reconnexion réussie
+            except Exception as e:
+                retry_count += 1
+                logger.error(f"❌ Échec de reconnexion: {str(e)}")
+    
+        logger.critical("Impossible de se reconnecter après plusieurs tentatives. Arrêt du service.")
+        # Signaler l'arrêt au service principal
+        self.running = False
     
     async def _heartbeat_check(self) -> None:
         """

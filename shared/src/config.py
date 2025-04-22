@@ -30,6 +30,10 @@ PGDATABASE = os.getenv("PGDATABASE", "trading")
 PGHOST = os.getenv("PGHOST", "db")
 PGPORT = int(os.getenv("PGPORT", 5432))
 
+# Ajouter des paramètres pour le pool de connexions
+DB_MIN_CONNECTIONS = int(os.getenv("DB_MIN_CONNECTIONS", "1"))
+DB_MAX_CONNECTIONS = int(os.getenv("DB_MAX_CONNECTIONS", "10"))
+
 # Paramètres de trading
 DEFAULT_SYMBOL = os.getenv("SYMBOL", "BTCUSDC")
 SYMBOLS = os.getenv("SYMBOLS", "BTCUSDC,ETHUSDC").split(",")

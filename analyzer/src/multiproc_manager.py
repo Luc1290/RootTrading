@@ -50,8 +50,20 @@ class AnalyzerManager:
             use_threads: Utiliser des threads au lieu de processus
         """
         self.symbols = symbols or SYMBOLS
-        self.max_workers = max_workers or max(1, mp.cpu_count() - 1)  # Laisser un cœur libre
+        if max_workers is None:
+            max_workers = max(1, int(mp.cpu_count() * 0.75))
+        self.max_workers = max_workers
         self.use_threads = use_threads
+
+        # Regrouper les symboles par worker pour réduire la surcharge
+        symbols_per_worker = max(1, len(self.symbols) // self.max_workers)
+        self.symbol_groups = [
+            self.symbols[i:i+symbols_per_worker] 
+            for i in range(0, len(self.symbols), symbols_per_worker)
+        ]
+    
+        # Ajuster le nombre de workers en fonction des groupes
+        self.max_workers = min(self.max_workers, len(self.symbol_groups))
         
         # File d'attente de données à analyser
         self.data_queue = mp.Queue() if not use_threads else queue.Queue()

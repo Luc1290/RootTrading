@@ -16,6 +16,7 @@ from typing import Dict, List, Any, Optional, Tuple, Union
 import threading
 import psycopg2
 from psycopg2.extras import RealDictCursor, execute_values
+from concurrent.futures import ThreadPoolExecutor
 
 # Importer les modules partagés
 import sys
@@ -583,23 +584,27 @@ class PnLLogger:
         """
         logger.info("Mise à jour des statistiques PnL...")
         
-        # Calculer les statistiques globales
-        self.stats_cache["global"] = self.calculate_global_stats()
+        # Utiliser un ThreadPoolExecutor pour paralléliser les calculs
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            # Soumettre les tâches
+            global_future = executor.submit(self.calculate_global_stats)
+            strategy_future = executor.submit(self.calculate_strategy_stats)
+            symbol_future = executor.submit(self.calculate_symbol_stats)
+            daily_future = executor.submit(self.calculate_daily_stats)
+            drawdown_future = executor.submit(self.calculate_drawdown)
+            sharpe_future = executor.submit(self.calculate_sharpe_ratio)
         
-        # Calculer les statistiques par stratégie
-        self.stats_cache["by_strategy"] = self.calculate_strategy_stats()
+            # Récupérer les résultats
+            self.stats_cache["global"] = global_future.result()
+            self.stats_cache["by_strategy"] = strategy_future.result()
+            self.stats_cache["by_symbol"] = symbol_future.result()
+            self.stats_cache["daily"] = daily_future.result()
         
-        # Calculer les statistiques par symbole
-        self.stats_cache["by_symbol"] = self.calculate_symbol_stats()
-        
-        # Calculer les statistiques quotidiennes
-        self.stats_cache["daily"] = self.calculate_daily_stats()
-        
-        # Ajouter des métriques avancées
-        self.stats_cache["global"]["drawdown"] = self.calculate_drawdown()
-        self.stats_cache["global"]["sharpe_ratio"] = self.calculate_sharpe_ratio()
-        self.stats_cache["global"]["updated_at"] = datetime.now().isoformat()
-        
+            # Ajouter des métriques avancées
+            self.stats_cache["global"]["drawdown"] = drawdown_future.result()
+            self.stats_cache["global"]["sharpe_ratio"] = sharpe_future.result()
+            self.stats_cache["global"]["updated_at"] = datetime.now().isoformat()
+    
         logger.info("✅ Statistiques PnL mises à jour")
     
     def export_stats_to_csv(self, filename: str = None) -> str:

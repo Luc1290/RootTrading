@@ -45,6 +45,24 @@ up-portfolio:
 up-frontend:
 	$(COMPOSE) up -d frontend
 
+up-coordinator:
+    $(COMPOSE) up -d coordinator
+
+up-dispatcher:
+    $(COMPOSE) up -d dispatcher
+
+up-logger:
+    $(COMPOSE) up -d logger
+
+up-pnl_tracker:
+    $(COMPOSE) up -d pnl_tracker
+
+up-risk_manager:
+    $(COMPOSE) up -d risk_manager
+
+up-scheduler:
+    $(COMPOSE) up -d scheduler
+
 # Commandes de logs par service
 logs-gateway:
 	$(COMPOSE) logs -f gateway
@@ -58,13 +76,41 @@ logs-trader:
 logs-portfolio:
 	$(COMPOSE) logs -f portfolio
 
+logs-frontend:
+	$(COMPOSE) logs -f frontend
+
+logs-coordinator:
+    $(COMPOSE) logs -f coordinator
+
+logs-dispatcher:
+    $(COMPOSE) logs -f dispatcher
+
+logs-logger:
+    $(COMPOSE) logs -f logger
+
+logs-pnl_tracker:
+    $(COMPOSE) logs -f pnl_tracker
+
+logs-risk_manager:
+    $(COMPOSE) logs -f risk_manager
+
+logs-scheduler:
+    $(COMPOSE) logs -f scheduler
+
 # Commandes d'installation
 install-requirements:
-	pip install -r requirements-shared.txt
-	pip install -r gateway/requirements.txt
-	pip install -r analyzer/requirements.txt
-	pip install -r trader/requirements.txt
-	pip install -r portfolio/requirements.txt
+    pip install -r requirements-shared.txt
+    pip install -r gateway/requirements.txt
+    pip install -r analyzer/requirements.txt
+    pip install -r trader/requirements.txt
+    pip install -r portfolio/requirements.txt
+	pip install -r frontend/requirements.txt
+    pip install -r coordinator/requirements.txt
+    pip install -r dispatcher/requirements.txt
+    pip install -r logger/requirements.txt
+    pip install -r pnl_tracker/requirements.txt
+    pip install -r risk_manager/requirements.txt
+    pip install -r scheduler/requirements.txt
 
 # Commandes de base de données
 db-init:

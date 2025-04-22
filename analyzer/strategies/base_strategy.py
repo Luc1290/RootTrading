@@ -56,20 +56,21 @@ class BaseStrategy(ABC):
         pass
     
     def add_market_data(self, data: Dict[str, Any]) -> None:
-        """
-        Ajoute des données de marché au buffer de la stratégie.
-        
-        Args:
-            data: Données de marché à ajouter
-        """
         # Vérifier que les données concernent le bon symbole
         if data.get('symbol') != self.symbol:
             return
-        
+    
         # Ajouter au buffer uniquement si le chandelier est fermé
         if data.get('is_closed', False):
+            # Vérifier si le buffer est devenu trop grand (sécurité additionnelle)
+            if len(self.data_buffer) >= self.buffer_size * 2:
+                # Vider la moitié du buffer
+                for _ in range(self.buffer_size):
+                    if self.data_buffer:
+                        self.data_buffer.popleft()
+        
             self.data_buffer.append(data)
-            
+        
             # Déboguer les données
             logger.debug(f"[{self.name}] Données ajoutées pour {self.symbol}: "
                         f"close={data['close']}, time={datetime.fromtimestamp(data['start_time']/1000)}")

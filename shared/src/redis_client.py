@@ -34,34 +34,29 @@ class RedisClient:
         self.subscription_thread = None
         self.stop_event = threading.Event()
     
+    # Dans shared/src/redis_client.py
     def _create_redis_connection(self) -> Redis:
         """Crée et retourne une connexion Redis."""
         try:
+            connection_params = {
+                'host': self.host,
+                'port': self.port,
+                'db': self.db,
+                'socket_timeout': 5,
+                'socket_connect_timeout': 5,
+                'retry_on_timeout': True,
+                'decode_responses': True  # Décode les réponses en strings
+            }
+        
+            # Ajouter le mot de passe si défini
             if self.password:
-                connection = Redis(
-                    host=self.host,
-                    port=self.port,
-                    password=self.password,
-                    db=self.db,
-                    socket_timeout=5,
-                    socket_connect_timeout=5,
-                    retry_on_timeout=True,
-                    decode_responses=True  # Décode les réponses en strings
-                )
-            else:
-                connection = Redis(
-                    host=self.host,
-                    port=self.port,
-                    db=self.db,
-                    socket_timeout=5,
-                    socket_connect_timeout=5,
-                    retry_on_timeout=True,
-                    decode_responses=True
-                )
-            
+                connection_params['password'] = self.password
+        
+            connection = Redis(**connection_params)
+        
             # Test de la connexion
             connection.ping()
-            logger.info(f"✅ Connexion Redis établie à {self.host}:{self.port}")
+            logger.info(f"✅ Connexion Redis établie à {self.host}:{self.port} (DB: {self.db})")
             return connection
             
         except (ConnectionError, TimeoutError) as e:
