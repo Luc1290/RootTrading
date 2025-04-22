@@ -13,6 +13,7 @@ from typing import Dict, List, Any, Optional, Callable
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 import queue
 from functools import partial
+from multiprocessing import Manager
 
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
@@ -61,16 +62,19 @@ class AnalyzerManager:
             self.symbols[i:i+symbols_per_worker] 
             for i in range(0, len(self.symbols), symbols_per_worker)
         ]
+
+        # Créer un Manager pour partager les files d'attente entre processus
+        if not use_threads:
+            self.mp_manager = Manager()
+            self.data_queue = self.mp_manager.Queue()
+            self.signal_queue = self.mp_manager.Queue()
+        else:
+            self.data_queue = queue.Queue()
+            self.signal_queue = queue.Queue()
     
         # Ajuster le nombre de workers en fonction des groupes
-        self.max_workers = min(self.max_workers, len(self.symbol_groups))
-        
-        # File d'attente de données à analyser
-        self.data_queue = mp.Queue() if not use_threads else queue.Queue()
-        
-        # File d'attente de signaux générés
-        self.signal_queue = mp.Queue() if not use_threads else queue.Queue()
-        
+        self.max_workers = min(self.max_workers, len(self.symbol_groups))       
+             
         # Créer le chargeur de stratégies
         self.strategy_loader = get_strategy_loader()
         
@@ -194,7 +198,7 @@ class AnalyzerManager:
         else:
             self.queue_processor = mp.Process(
                 target=self._process_data_queue,
-                daemon=True
+                daemon=False
             )
         
         self.queue_processor.start()

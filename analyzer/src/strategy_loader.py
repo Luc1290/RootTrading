@@ -91,44 +91,29 @@ class StrategyLoader:
         logger.info(f"📊 Total: {total_strategies} stratégies chargées pour {len(self.symbols)} symboles")
     
     def process_market_data(self, data: Dict[str, Any]) -> List[StrategySignal]:
-        """
-        Traite les données de marché avec toutes les stratégies pour le symbole concerné.
-        
-        Args:
-            data: Données de marché
-            
-        Returns:
-            Liste des signaux générés
-        """
-        symbol = data.get('symbol')
-        if not symbol or symbol not in self.strategies:
-            return []
-        
         signals = []
-        start_time = time.time()
-        
-        # Parcourir toutes les stratégies pour ce symbole
-        for strategy_name, strategy in self.strategies[symbol].items():
+    
+        symbol = data.get('symbol')
+        if not symbol:
+            return []
+    
+        # Obtenir les stratégies pour ce symbole
+        strategies = self.strategies.get(symbol, [])
+    
+        for strategy in strategies:
             try:
-                # Ajouter les données à la stratégie
+                # Ajouter les données
                 strategy.add_market_data(data)
-                
-                # Analyser les données et générer un signal si les conditions sont remplies
+            
+                # Générer un signal si possible
                 signal = strategy.analyze()
+            
+                # Vérifier que le signal est complet avec tous les champs requis
                 if signal:
                     signals.append(signal)
-                    logger.info(f"🔔 Signal généré par {strategy_name} pour {symbol}: {signal.side} @ {signal.price}")
-            
             except Exception as e:
-                logger.error(f"❌ Erreur lors de l'exécution de {strategy_name} pour {symbol}: {str(e)}")
-        
-        # Mesurer le temps d'exécution
-        execution_time = time.time() - start_time
-        if signals:
-            logger.info(f"⏱️ Analyse de {symbol} terminée en {execution_time:.3f}s avec {len(signals)} signaux")
-        else:
-            logger.debug(f"⏱️ Analyse de {symbol} terminée en {execution_time:.3f}s sans signal")
-        
+                logger.error(f"❌ Erreur lors du traitement de la stratégie {strategy.name}: {str(e)}")
+    
         return signals
     
     def get_strategy_list(self) -> Dict[str, List[str]]:

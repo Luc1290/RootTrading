@@ -161,7 +161,7 @@ class BaseStrategy(ABC):
         return min(self.buffer_size, 20)
     
     def create_signal(self, side: OrderSide, price: float, confidence: float = 0.7, 
-                     metadata: Dict[str, Any] = None) -> StrategySignal:
+                    metadata: Dict[str, Any] = None) -> StrategySignal:
         """
         Crée un objet signal standardisé.
         

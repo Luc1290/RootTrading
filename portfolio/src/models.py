@@ -253,85 +253,45 @@ class PortfolioModel:
     
         return balances
     
-    def get_portfolio_summary(self) -> Optional[PortfolioSummary]:
+    def get_portfolio_summary(self):
         """
-        Récupère un résumé du portefeuille actuel avec une seule requête SQL.
+        Récupère un résumé du portefeuille.
         """
-        query = """
-        WITH current_balances AS (
-            SELECT 
-                asset,
-                free,
-                locked,
-                total,
-                value_usdc,
-                timestamp
-            FROM 
-                portfolio_balances pb1
-            WHERE 
-                timestamp = (
-                    SELECT MAX(timestamp) 
-                    FROM portfolio_balances pb2 
-                    WHERE pb2.asset = pb1.asset
-                )
-        ),
-        day_ago_value AS (
-            SELECT SUM(value_usdc) as total
-            FROM portfolio_balances
-            WHERE timestamp >= NOW() - INTERVAL '1 day'
-            ORDER BY timestamp ASC
-            LIMIT 1
-        ),
-        week_ago_value AS (
-            SELECT SUM(value_usdc) as total
-            FROM portfolio_balances
-            WHERE timestamp >= NOW() - INTERVAL '7 day'
-            ORDER BY timestamp ASC
-            LIMIT 1
-        ),
-        active_trades_count AS (
-            SELECT COUNT(*) as count
-            FROM trade_cycles
-            WHERE status NOT IN ('completed', 'canceled', 'failed')
-        )
-        SELECT 
-            (SELECT SUM(value_usdc) FROM current_balances) as total_value,
-            (SELECT total FROM day_ago_value) as day_ago_total,
-            (SELECT total FROM week_ago_value) as week_ago_total,
-            (SELECT count FROM active_trades_count) as active_trades
-        """
+        try:
+            # Récupérer les soldes récents
+            balances = self.get_latest_balances()
+        
+            if not balances:
+                balances = []
+        
+            # Calculer la valeur totale
+            total_value = sum(b.value_usdc or 0 for b in balances)
+        
+            # Obtenir les performances
+            performance_24h = self._calculate_performance(days=1) if hasattr(self, "_calculate_performance") else None
+            performance_7d = self._calculate_performance(days=7) if hasattr(self, "_calculate_performance") else None
+
+            # Compter les trades actifs
+            active_trades = self._count_active_trades() if hasattr(self, "_count_active_trades") else 0
+        
+        
+            return PortfolioSummary(
+                balances=balances,
+                total_value=total_value,
+                performance_24h=performance_24h,
+                performance_7d=performance_7d,
+                active_trades=active_trades,
+                timestamp=datetime.utcnow()
+            )
     
-        result = self.db.execute_query(query, fetch_one=True)
-    
-        if not result or result['total_value'] is None:
-            return None
-    
-        # Récupérer les balances actuelles
-        balances = self.get_latest_balances()
-    
-        # Calculer les performances
-        total_value = float(result['total_value'])
-        day_ago_total = float(result['day_ago_total'] or 0)
-        week_ago_total = float(result['week_ago_total'] or 0)
-    
-        performance_24h = None
-        performance_7d = None
-    
-        if day_ago_total > 0:
-            performance_24h = ((total_value - day_ago_total) / day_ago_total) * 100
-    
-        if week_ago_total > 0:
-            performance_7d = ((total_value - week_ago_total) / week_ago_total) * 100
-    
-        # Créer le résumé
-        return PortfolioSummary(
-            balances=balances,
-            total_value=total_value,
-            performance_24h=performance_24h,
-            performance_7d=performance_7d,
-            active_trades=int(result['active_trades']),
-            timestamp=datetime.now()
-        )
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la récupération du résumé du portefeuille: {str(e)}")
+            return PortfolioSummary(
+                balances=[],
+                total_value=0,
+                active_trades=0,
+                timestamp=datetime.utcnow()
+            )
     
     def update_balances(self, balances: List[AssetBalance]) -> bool:
         """

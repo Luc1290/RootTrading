@@ -545,9 +545,21 @@ ORDER BY
     total_profit_loss DESC;
 
 -- Vue des performances par symbole
+-- Vue des performances par symbole
 CREATE OR REPLACE VIEW symbol_performance AS
 SELECT 
     symbol,
     COUNT(*) as total_cycles,
     SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_cycles,
-    SUM(CASE WHEN profit_loss > 0 AND status = 'completed' THEN 1 ELSE 0 END) as winning_trades
+    SUM(CASE WHEN profit_loss > 0 AND status = 'completed' THEN 1 ELSE 0 END) as winning_trades,
+    SUM(CASE WHEN profit_loss < 0 AND status = 'completed' THEN 1 ELSE 0 END) as losing_trades, 
+    SUM(CASE WHEN profit_loss = 0 AND status = 'completed' THEN 1 ELSE 0 END) as break_even_trades,
+    SUM(profit_loss) as total_profit_loss,
+    AVG(CASE WHEN status = 'completed' THEN profit_loss_percent ELSE NULL END) as avg_profit_loss_percent,
+    COUNT(DISTINCT strategy) as strategy_count
+FROM 
+    trade_cycles
+GROUP BY 
+    symbol
+ORDER BY 
+    total_profit_loss DESC;

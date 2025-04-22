@@ -173,7 +173,7 @@ class PnLLogger:
                 cursor.execute(query_pf)
                 pf_result = cursor.fetchone()
                 
-                if pf_result and pf_result["gross_loss"] and pf_result["gross_loss"] > 0:
+                if pf_result and pf_result["gross_loss"] is not None and pf_result["gross_loss"] > 0:
                     stats["profit_factor"] = pf_result["gross_profit"] / pf_result["gross_loss"]
                 else:
                     stats["profit_factor"] = 0
@@ -261,7 +261,7 @@ class PnLLogger:
                                 stats[k] = float(v) if isinstance(v, (Decimal, float)) else v
                         
                         # Calcul du profit factor
-                        if pf_result["gross_loss"] and pf_result["gross_loss"] > 0:
+                        if pf_result["gross_loss"] is not None and pf_result["gross_loss"] > 0:
                             stats["profit_factor"] = pf_result["gross_profit"] / pf_result["gross_loss"]
                         else:
                             stats["profit_factor"] = float('inf') if pf_result["gross_profit"] > 0 else 0
@@ -346,7 +346,7 @@ class PnLLogger:
                                 stats[k] = float(v) if isinstance(v, (Decimal, float)) else v
                         
                         # Calcul du profit factor
-                        if pf_result["gross_loss"] and pf_result["gross_loss"] > 0:
+                        if pf_result["gross_loss"] is not None and pf_result["gross_loss"] > 0:
                             stats["profit_factor"] = pf_result["gross_profit"] / pf_result["gross_loss"]
                         else:
                             stats["profit_factor"] = float('inf') if pf_result["gross_profit"] > 0 else 0
@@ -388,7 +388,7 @@ class PnLLogger:
                     trade_cycles
                 WHERE 
                     status = 'completed'
-                    AND completed_at >= NOW() - INTERVAL %s DAY
+                    AND completed_at >= NOW() - INTERVAL '%s days'
                 GROUP BY 
                     DATE(completed_at)
                 ORDER BY 
@@ -445,7 +445,7 @@ class PnLLogger:
                         trade_cycles
                     WHERE 
                         status = 'completed'
-                        AND completed_at >= NOW() - INTERVAL %s DAY
+                        AND completed_at >= NOW() - INTERVAL '%s days'
                     GROUP BY 
                         DATE(completed_at)
                     ORDER BY 
@@ -537,7 +537,7 @@ class PnLLogger:
                     trade_cycles
                 WHERE 
                     status = 'completed'
-                    AND completed_at >= NOW() - INTERVAL %s DAY
+                    AND completed_at >= NOW() - INTERVAL '%s days'
                 GROUP BY 
                     DATE(completed_at)
                 ORDER BY 
@@ -707,7 +707,7 @@ class PnLLogger:
                 FROM 
                     trade_cycles
                 WHERE 
-                    created_at >= NOW() - INTERVAL %s DAY
+                    created_at >= NOW() - INTERVAL '%s days'
                 ORDER BY 
                     created_at DESC
                 """
