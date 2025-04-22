@@ -9,10 +9,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copie des requirements et installation
-COPY pnl_tracker/requirements.txt .
-COPY requirements-shared.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+    COPY requirements-shared.txt /app/
+
+    # Ensuite copier les requirements spécifiques au service
+    COPY pnl_tracker/requirements.txt /app/
+    
+    # Installer les dépendances
+    # Remplacer la référence relative par le chemin absolu
+    RUN sed -i 's|-r ../requirements-shared.txt|-r /app/requirements-shared.txt|g' /app/requirements.txt && \
+        pip install --no-cache-dir -r /app/requirements.txt
 
 # Copie des modules partagés
 COPY shared /app/shared

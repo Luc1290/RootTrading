@@ -115,7 +115,8 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: .
+      dockerfile: frontend/Dockerfile
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:

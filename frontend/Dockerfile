@@ -1,31 +1,28 @@
-FROM node:18-alpine as build
+FROM node:18-alpine AS build
 
 WORKDIR /app
 
-# Copier les fichiers de configuration
-COPY frontend/package.json frontend/package-lock.json ./
+# Adjust the path to point to the frontend directory
+COPY frontend/package.json ./
 
-# Installer les dépendances
-RUN npm ci
+# Install dependencies
+RUN npm install
 
-# Copier le code source
+# Copy the rest of the frontend files
 COPY frontend/ ./
 
-# Construire l'application
+# Build the application
 RUN npm run build
 
-# Étape de production avec Nginx
+# Etape de production avec Nginx
 FROM nginx:alpine
 
-# Copier la configuration Nginx personnalisée si nécessaire
-# COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
-
-# Copier les fichiers construits depuis l'étape précédente
+# Copy the built files from the previous stage
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 3000
 
-# Configurer Nginx pour écouter sur le port 3000
+# Configure Nginx to listen on port 3000
 RUN sed -i 's/listen\s*80;/listen 3000;/g' /etc/nginx/conf.d/default.conf
 
 CMD ["nginx", "-g", "daemon off;"]

@@ -418,39 +418,47 @@ Le système utilise plusieurs approches pour la journalisation et le monitoring:
 
 ## 🛠️ Commandes utiles
 
-Le Makefile fournit plusieurs commandes utiles:
-
-```bash
-# Services
-make build                # Construit toutes les images Docker
-make up                   # Démarre tous les services
-make down                 # Arrête tous les services
-make logs                 # Affiche les logs de tous les services
-make ps                   # Liste les services en cours d'exécution
-make restart              # Redémarre tous les services
-make clean                # Nettoie tout (y compris les volumes)
-
-# Infrastructure
-make up-infra             # Démarre uniquement l'infrastructure (Redis, Kafka, PostgreSQL)
-
-# Services spécifiques
-make up-gateway           # Démarre le service Gateway
-make up-analyzer          # Démarre le service Analyzer
-make up-trader            # Démarre le service Trader
-make up-portfolio         # Démarre le service Portfolio
-make up-frontend          # Démarre le service Frontend
-
-# Logs
-make logs-gateway         # Affiche les logs du service Gateway
-make logs-analyzer        # Affiche les logs du service Analyzer
-make logs-trader          # Affiche les logs du service Trader
-make logs-portfolio       # Affiche les logs du service Portfolio
-
-# Base de données
-make db-init              # Initialise la base de données
-make db-backup            # Sauvegarde la base de données
-make db-reset             # Réinitialise la base de données
-```
+Commandes d'infrastructure et démarrage
+Pour démarrer l'infrastructure (Redis, Kafka, PostgreSQL):
+docker-compose up -d redis kafka db
+Pour démarrer les services principaux un par un:
+docker-compose up -d gateway
+docker-compose up -d analyzer
+docker-compose up -d trader
+docker-compose up -d portfolio
+docker-compose up -d frontend
+Pour démarrer les services secondaires:
+docker-compose up -d coordinator
+docker-compose up -d dispatcher
+docker-compose up -d logger
+docker-compose up -d pnl_tracker
+docker-compose up -d risk_manager
+docker-compose up -d scheduler
+Pour démarrer tous les services en une seule commande:
+docker-compose up -d
+Commandes pour afficher les logs
+Pour voir tous les logs:
+docker-compose logs -f
+Pour voir les logs d'un service spécifique:
+docker-compose logs -f gateway
+docker-compose logs -f analyzer
+docker-compose logs -f trader
+docker-compose logs -f portfolio
+Commandes de gestion
+Pour voir l'état des services:
+docker-compose ps
+Pour arrêter tous les services:
+docker-compose down
+Pour redémarrer tous les services:
+docker-compose restart
+Pour tout nettoyer (y compris les volumes):
+docker-compose down -v --remove-orphans
+Manipulation de la base de données
+Pour initialiser la base de données:
+docker-compose exec db psql -U postgres -d trading -f /app/database/schema.sql
+Pour faire une sauvegarde de la base de données:
+docker-compose exec db pg_dump -U postgres trading > backup_$(date +"%Y%m%d_%H%M%S").sql
+Ces commandes vous permettent de gérer l'ensemble de votre système RootTrading directement avec Docker Compose, sans avoir besoin de Make.
 
 ## 🔧 Dépannage
 

@@ -145,6 +145,29 @@ class OrderManager:
                 time.sleep(1)  # Pause pour éviter une boucle d'erreur infinie
         
         logger.info("Boucle de traitement des signaux arrêtée")
+
+    # Calculer le pourcentage minimal de changement de prix nécessaire pour être rentable
+    def calculate_min_profitable_change(self, symbol: str) -> float:
+        """
+        Calcule le pourcentage minimal de changement de prix nécessaire pour être rentable,
+        en tenant compte des frais d'achat et de vente.
+    
+        Args:
+            symbol: Le symbole de la paire de trading
+        
+        Returns:
+            Le pourcentage minimal nécessaire (ex: 0.3 pour 0.3%)
+        """
+        maker_fee, taker_fee = self.binance_executor.get_trade_fee(symbol)
+    
+        # Calculer l'impact total des frais (achat + vente)
+        # Pour être sûr, on considère les frais taker qui sont généralement plus élevés
+        total_fee_impact = (1 + taker_fee) * (1 + taker_fee) - 1
+    
+        # Ajouter une petite marge de sécurité (20% supplémentaire)
+        min_profitable_change = total_fee_impact * 1.2 * 100  # Convertir en pourcentage
+    
+        return min_profitable_change
     
     def _handle_signal(self, signal: StrategySignal) -> None:
         """
@@ -200,6 +223,14 @@ class OrderManager:
             elif stop_price is None and signal.side == OrderSide.SELL:
                 # Pour une vente, stop = prix + 2%
                 stop_price = current_price * 1.02
+
+             # Vérifier que le gain potentiel est supérieur au seuil minimal
+            min_change = self.calculate_min_profitable_change(signal.symbol)
+            target_price_percent = abs((target_price - current_price) / current_price * 100)
+        
+            if target_price_percent < min_change:
+                logger.info(f"⚠️ Signal ignoré: gain potentiel {target_price_percent:.2f}% inférieur au seuil minimal {min_change:.2f}%")
+                return
             
             # Déterminer la poche à utiliser (par défaut: active)
             pocket = metadata.get('pocket', 'active')

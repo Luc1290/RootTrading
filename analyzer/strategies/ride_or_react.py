@@ -159,40 +159,85 @@ class RideOrReactStrategy(BaseStrategy):
         
         return percent_change, current_price
     
-    def _evaluate_market_condition(self) -> Dict[str, Any]:
+    def calculate_atr(self, period: int = 14) -> float:
         """
-        Évalue les conditions actuelles du marché sur plusieurs timeframes.
+        Calcule l'ATR (Average True Range) pour mesurer la volatilité.
+    
+        Args:
+            period: Période pour le calcul de l'ATR
         
         Returns:
-            Dictionnaire avec les conditions de marché
+            Valeur ATR normalisée (en pourcentage du prix)
+        """
+        df = self.get_data_as_dataframe()
+        if df is None or len(df) < period + 1:
+            return 0.0
+    
+        # Calculer le True Range
+        df['high'] = df['high'].astype(float)
+        df['low'] = df['low'].astype(float)
+        df['close'] = df['close'].astype(float)
+    
+        df['previous_close'] = df['close'].shift(1)
+        df['tr1'] = df['high'] - df['low']
+        df['tr2'] = abs(df['high'] - df['previous_close'])
+        df['tr3'] = abs(df['low'] - df['previous_close'])
+        df['true_range'] = df[['tr1', 'tr2', 'tr3']].max(axis=1)
+    
+        # Calculer l'ATR comme la moyenne mobile du True Range
+        atr = df['true_range'].rolling(window=period).mean().iloc[-1]
+    
+        # Normaliser en pourcentage du prix actuel pour faciliter les comparaisons
+        current_price = df['close'].iloc[-1]
+        atr_percent = (atr / current_price) * 100
+    
+        return atr_percent
+        
+    def _evaluate_market_condition(self) -> Dict[str, Any]:
+        """
+        Évalue les conditions actuelles du marché sur plusieurs timeframes,
+        en tenant compte de la volatilité (ATR).
         """
         results = {}
         current_price = 0.0
-        
-        # Évaluer les variations sur différentes timeframes
+    
+        # Calculer l'ATR actuel
+        atr_percent = self.calculate_atr(period=14)
+        results["atr_percent"] = atr_percent
+    
+        # Facteur d'ajustement basé sur l'ATR
+        # Si l'ATR est élevé (marché volatil), on augmente nos seuils pour éviter le surtrading
+        # Si l'ATR est faible (marché calme), on peut être plus sensible aux mouvements de prix
+        atr_adjustment = atr_percent / 1.5  # 1.5% est considéré comme un ATR "normal"
+    
+        # Évaluer les variations sur différentes timeframes avec ajustement ATR
         for hours, key in [(1, '1h'), (3, '3h'), (6, '6h'), (12, '12h'), (24, '24h')]:
             percent_change, price = self._get_price_change(hours)
-            current_price = price  # Mettre à jour le prix actuel
-            threshold = self.thresholds[key]
-            
+            current_price = price
+        
+            # Ajuster le seuil en fonction de la volatilité actuelle
+            base_threshold = self.thresholds[key]
+            adjusted_threshold = base_threshold * atr_adjustment
+        
             results[f"{key}_change"] = percent_change
-            results[f"{key}_threshold"] = threshold
-            results[f"{key}_exceeded"] = percent_change >= threshold
-        
-        # Déterminer le mode global
+            results[f"{key}_base_threshold"] = base_threshold
+            results[f"{key}_adjusted_threshold"] = adjusted_threshold
+            results[f"{key}_exceeded"] = percent_change >= adjusted_threshold
+    
+        # Déterminer le mode global avec les seuils ajustés
         ride_conditions_met = sum(results[f"{key}_exceeded"] for key in ['1h', '3h', '6h', '12h', '24h'])
-        
-        # Si au moins deux timeframes montrent une tendance forte, passer en mode "ride"
+    
         if ride_conditions_met >= 2:
             results["mode"] = "ride"
             results["action"] = "wait_for_reversal"
         else:
             results["mode"] = "react"
             results["action"] = "normal_trading"
-        
-        # Stocker le prix actuel
+    
+        # Stocker le prix actuel et l'ATR
         results["current_price"] = current_price
-        
+        results["market_volatility"] = "high" if atr_percent > 2.0 else "medium" if atr_percent > 1.0 else "low"
+    
         return results
     
     def generate_signal(self) -> Optional[StrategySignal]:
@@ -232,7 +277,7 @@ class RideOrReactStrategy(BaseStrategy):
             confidence=0.8,
             metadata=market_condition
         )
-    
+        
     def should_filter_signal(self, signal: StrategySignal) -> bool:
         """
         Détermine si un signal d'une autre stratégie doit être filtré en fonction du mode actuel.
