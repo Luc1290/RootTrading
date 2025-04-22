@@ -1,11 +1,10 @@
 📄 .env
 📁 .git/
-│   ......
+│   ..........
+📄 .gitignore
 📄 Makefile
 📄 READMEencours.md
 📄 Readme.md
-📄 docker-compose.yml
-📄 requirements-shared.txt
 📁 analyzer/
 │   📄 Dockerfile
 │   📄 requirements.txt
@@ -32,6 +31,8 @@
 │   📁 src/
 │   │   📄 main.py
 │   │   📄 message_router.py
+📄 docker-compose.yml
+📄 env.exemple
 📁 frontend/
 │   📁 src/
 │   │   📄 App.jsx
@@ -54,6 +55,7 @@
 │   │   📄 binance_ws.py
 │   │   📄 kafka_producer.py
 │   │   📄 main.py
+📄 gen_structure.exe
 📁 logger/
 │   📁 src/
 │   │   📄 consumer.py
@@ -70,6 +72,7 @@
 │   │   📄 main.py
 │   │   📄 models.py
 │   │   📄 pockets.py
+📄 requirements-shared.txt
 📁 risk_manager/
 │   📁 src/
 │   │   📄 checker.py
@@ -85,6 +88,7 @@
 │   │   📄 kafka_client.py
 │   │   📄 redis_client.py
 │   │   📄 schemas.py
+📄 structure.txt
 📁 trader/
 │   📄 Dockerfile
 │   📄 requirements.txt
