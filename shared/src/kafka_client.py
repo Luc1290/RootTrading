@@ -79,6 +79,55 @@ class KafkaClient:
         except KafkaException as e:
             logger.error(f"❌ Erreur lors de la création du consommateur Kafka: {str(e)}")
             raise
+
+    def _resolve_wildcard_topics(self, topics: List[str]) -> List[str]:
+        """
+        Résout les topics contenant des caractères joker (*) en les correspondant aux topics existants.
+    
+        Args:
+            topics: Liste des topics, certains pouvant contenir des caractères joker
+        
+        Returns:
+            Liste de topics résolus sans caractères joker
+        """
+        resolved_topics = []
+    
+        # Récupérer tous les topics existants
+        if not self.admin_client:
+            self.admin_client = AdminClient({'bootstrap.servers': self.broker})
+    
+        try:
+            existing_topics = list(self.admin_client.list_topics(timeout=10).topics.keys())
+        except Exception as e:
+            logger.error(f"Impossible de lister les topics existants: {str(e)}")
+            # En cas d'erreur, retourner les topics tels quels (sauf ceux avec *)
+            return [t for t in topics if '*' not in t]
+    
+        # Résoudre chaque topic
+        for topic in topics:
+            if '*' in topic:
+                # C'est un pattern, convertir en expression régulière
+                pattern = topic.replace('.', '\.').replace('*', '.*')
+                import re
+                regex = re.compile(f"^{pattern}$")
+            
+                # Trouver tous les topics correspondants
+                matches = [t for t in existing_topics if regex.match(t)]
+            
+                if matches:
+                    resolved_topics.extend(matches)
+                    logger.info(f"Pattern {topic} résolu en {len(matches)} topics: {', '.join(matches[:3])}...")
+                else:
+                    # Créer des topics par défaut pour le pattern
+                    base_topic = topic.split('*')[0]
+                    default_topics = [f"{base_topic}info", f"{base_topic}error", f"{base_topic}debug"]
+                    logger.info(f"Aucun topic correspondant à {topic}, création des topics par défaut: {default_topics}")
+                    self._ensure_topics_exist(default_topics)
+                    resolved_topics.extend(default_topics)
+            else:
+                resolved_topics.append(topic)
+    
+        return resolved_topics
     
     def _ensure_topics_exist(self, topics: List[str]) -> None:
         """
@@ -196,21 +245,20 @@ class KafkaClient:
     
     def consume(self, topics: List[str], callback: Callable[[str, Dict[str, Any]], None], 
                batch_size: int = 100, poll_timeout: float = 1.0) -> None:
-        """
-        Commence à consommer des messages des topics spécifiés dans un thread séparé.
-        
-        Args:
-            topics: Liste des topics à consommer
-            callback: Fonction appelée pour chaque message avec (topic, message)
-            batch_size: Nombre maximum de messages à traiter par lot
-            poll_timeout: Timeout en secondes pour le poll Kafka
-        """
         # Réinitialiser le drapeau d'arrêt
         self.stop_flag.clear()
-        
+    
+        # S'assurer que les topics existent
+        try:
+            resolved_topics = self._resolve_wildcard_topics(topics)
+            self._ensure_topics_exist(resolved_topics)
+        except Exception as e:
+            logger.warning(f"⚠️ Impossible de vérifier/créer les topics: {str(e)}")
+            resolved_topics = [t for t in topics if '*' not in t]  # Utiliser seulement les topics sans wildcard
+    
         # Créer le consommateur
-        self.consumer = self._create_consumer(topics)
-        
+        self.consumer = self._create_consumer(resolved_topics)
+    
         # Lancer la consommation dans un thread séparé
         self.consumer_thread = threading.Thread(
             target=self._consume_loop,
@@ -218,7 +266,7 @@ class KafkaClient:
             daemon=True
         )
         self.consumer_thread.start()
-        
+    
         logger.info(f"✅ Démarrage de la consommation depuis les topics: {', '.join(topics)}")
     
     def _consume_loop(self, callback: Callable[[str, Dict[str, Any]], None], 

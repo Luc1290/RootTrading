@@ -236,55 +236,29 @@ class ServiceMonitor:
     
     def restart_service(self, service_name: str) -> bool:
         """
-        Redémarre un service.
-        
+        Signale qu'un service devrait être redémarré, mais ne tente pas de le faire directement.
+    
         Args:
             service_name: Nom du service à redémarrer
-            
+        
         Returns:
-            True si le redémarrage a réussi, False sinon
+            Toujours False car nous ne redémarrons pas réellement le service
         """
-        restart_command = self.services[service_name].get("restart_command")
+        logger.info(f"🔄 Service {service_name} nécessite un redémarrage")
+    
+        # Enregistrer que nous avons détecté un problème
+        now = datetime.now().isoformat()
+        if service_name in self.service_states:
+            if "restarts" not in self.service_states[service_name]:
+                self.service_states[service_name]["restarts"] = []
         
-        if not restart_command:
-            logger.error(f"❌ Pas de commande de redémarrage définie pour {service_name}")
-            return False
-        
-        try:
-            logger.info(f"🔄 Redémarrage du service {service_name}...")
-            
-            # Exécuter la commande de redémarrage
-            result = subprocess.run(
-                restart_command.split(), 
-                capture_output=True, 
-                text=True, 
-                check=True
-            )
-            
-            if result.returncode == 0:
-                logger.info(f"✅ Service {service_name} redémarré avec succès")
-                
-                # Mettre à jour l'état du service
-                now = datetime.now().isoformat()
-                if service_name in self.service_states:
-                    if "restarts" not in self.service_states[service_name]:
-                        self.service_states[service_name]["restarts"] = []
-                    
-                    self.service_states[service_name]["restarts"].append(now)
-                    self.service_states[service_name]["last_restart"] = now
-                    self.service_states[service_name]["consecutive_degraded"] = 0
-                
-                # Envoyer une alerte pour le redémarrage
-                self.send_alert(f"Service {service_name} redémarré automatiquement", "info")
-                
-                return True
-            else:
-                logger.error(f"❌ Échec du redémarrage de {service_name}: {result.stderr}")
-                return False
-        
-        except subprocess.SubprocessError as e:
-            logger.error(f"❌ Erreur lors du redémarrage de {service_name}: {str(e)}")
-            return False
+            self.service_states[service_name]["restarts"].append(now)
+            self.service_states[service_name]["last_restart_request"] = now
+    
+        # Envoyer une alerte pour le besoin de redémarrage
+        self.send_alert(f"Le service {service_name} nécessite un redémarrage (vérifier manuellement)", "warning")
+    
+        return False
     
     def send_alert(self, message: str, level: str = "warning") -> bool:
         """

@@ -512,20 +512,10 @@ class PnLLogger:
             return {"max_drawdown": 0, "max_drawdown_percent": 0}
     
     def calculate_sharpe_ratio(self, days: int = 90, risk_free_rate: float = 0.02) -> float:
-        """
-        Calcule le ratio de Sharpe sur une période donnée.
-        
-        Args:
-            days: Nombre de jours à inclure
-            risk_free_rate: Taux sans risque annuel
-            
-        Returns:
-            Ratio de Sharpe
-        """
         if not self._ensure_connection():
             logger.error("❌ Impossible de calculer le ratio de Sharpe: pas de connexion à la base de données")
             return 0.0
-        
+    
         try:
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 # Requête pour obtenir le PnL quotidien
@@ -543,37 +533,52 @@ class PnLLogger:
                 ORDER BY 
                     trade_date
                 """
-                
+            
                 cursor.execute(query, (days,))
                 results = cursor.fetchall()
-                
-                if not results:
+            
+                # Vérifier qu'il y a suffisamment de données
+                if not results or len(results) < 2:
+                    logger.warning("⚠️ Pas assez de données pour calculer le ratio de Sharpe")
                     return 0.0
-                
+            
                 # Convertir en DataFrame pour faciliter les calculs
                 df = pd.DataFrame(results)
+                if 'daily_return' not in df.columns or df['daily_return'].isnull().all():
+                    logger.warning("⚠️ Données de retour quotidien manquantes ou invalides")
+                    return 0.0
+                
                 df['daily_return'] = df['daily_return'].astype(float)
-                
+            
                 # Calcul du ratio de Sharpe
-                # Sharpe = (Rendement annualisé - Taux sans risque) / Volatilité annualisée
                 daily_returns = df['daily_return'].values
-                
-                # Annualisation des rendements (252 jours de trading par an)
+            
+                # Vérifier les valeurs NaN ou None
+                if np.isnan(daily_returns).any() or None in daily_returns:
+                    logger.warning("⚠️ Valeurs NaN ou None détectées dans les retours quotidiens")
+                    daily_returns = np.array([r for r in daily_returns if r is not None and not np.isnan(r)])
+                    if len(daily_returns) < 2:
+                        return 0.0
+            
+                # Annualisation des rendements
                 avg_daily_return = np.mean(daily_returns)
                 annualized_return = avg_daily_return * 252
-                
+            
                 # Volatilité annualisée
                 daily_std = np.std(daily_returns)
+            
+                # Vérification supplémentaire pour éviter la division par zéro
+                if daily_std is None or daily_std <= 0:
+                    logger.warning("⚠️ Volatilité nulle, ratio de Sharpe non calculable")
+                    return 0.0
+                
                 annualized_std = daily_std * np.sqrt(252)
-                
+            
                 # Ratio de Sharpe
-                if annualized_std > 0:
-                    sharpe_ratio = (annualized_return - risk_free_rate) / annualized_std
-                else:
-                    sharpe_ratio = 0.0
-                
+                sharpe_ratio = (annualized_return - risk_free_rate) / annualized_std
+            
                 return float(sharpe_ratio)
-        
+    
         except Exception as e:
             logger.error(f"❌ Erreur lors du calcul du ratio de Sharpe: {str(e)}")
             return 0.0

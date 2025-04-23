@@ -68,25 +68,38 @@ class OrderManager:
         logger.info(f"✅ OrderManager initialisé pour {len(self.symbols)} symboles: {', '.join(self.symbols)}")
     
     def _process_signal(self, channel: str, data: Dict[str, Any]) -> None:
-        """
-        Callback pour traiter les signaux reçus de Redis.
-        Ajoute les signaux à la file d'attente pour traitement.
-        
-        Args:
-            channel: Canal Redis d'où provient le signal
-            data: Données du signal
-        """
         try:
+            # Vérifier que data est un dictionnaire
+            if not isinstance(data, dict):
+                logger.error(f"❌ Données reçues invalides: {type(data)}")
+                return
+            
+            # S'assurer que les champs obligatoires sont présents
+            required_fields = ["strategy", "symbol", "side", "timestamp", "price"]
+            missing_fields = [field for field in required_fields if field not in data]
+            if missing_fields:
+                logger.error(f"❌ Champs obligatoires manquants dans le signal: {missing_fields}")
+                return
+            
+            # Convertir la chaîne ISO en objet datetime
+            if "timestamp" in data and isinstance(data["timestamp"], str):
+                try:
+                    data["timestamp"] = datetime.fromisoformat(data["timestamp"])
+                except ValueError:
+                    logger.error(f"❌ Format de timestamp invalide: {data['timestamp']}")
+                    return
+
             # Valider le signal avec Pydantic
             signal = StrategySignal(**data)
-            
+        
             # Ajouter à la file d'attente pour traitement
             self.signal_queue.put(signal)
-            
-            logger.info(f"📨 Signal reçu: {signal.side} {signal.symbol} @ {signal.price} ({signal.strategy})")
         
+            logger.info(f"📨 Signal reçu: {signal.side} {signal.symbol} @ {signal.price} ({signal.strategy})")
+    
         except Exception as e:
             logger.error(f"❌ Erreur lors du traitement du signal: {str(e)}")
+            logger.error(f"Données reçues: {data}")
     
     def _process_price_update(self, channel: str, data: Dict[str, Any]) -> None:
         """

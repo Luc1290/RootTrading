@@ -2,6 +2,7 @@
 Module de gestion des abonnements Redis pour l'analyzer.
 S'abonne aux canaux Redis pour recevoir les données de marché et publier les signaux.
 """
+import datetime
 import json
 import logging
 import threading
@@ -121,20 +122,25 @@ class RedisSubscriber:
                 time.sleep(1)  # Pause pour éviter une boucle d'erreur infinie
     
     def publish_signal(self, signal: StrategySignal) -> None:
-        """
-        Publie un signal de trading sur le canal Redis approprié.
-        
-        Args:
-            signal: Signal de trading à publier
-        """
         try:
             # Convertir le signal en dictionnaire
             signal_dict = signal.dict()
-            
+        
+            # S'assurer que timestamp est converti en chaîne ISO
+            if "timestamp" in signal_dict and isinstance(signal_dict["timestamp"], datetime):
+                signal_dict["timestamp"] = signal_dict["timestamp"].isoformat()
+        
+            # S'assurer que les énums sont convertis en chaînes
+            if "side" in signal_dict and not isinstance(signal_dict["side"], str):
+                signal_dict["side"] = signal_dict["side"].value
+        
+            if "strength" in signal_dict and not isinstance(signal_dict["strength"], str):
+                signal_dict["strength"] = signal_dict["strength"].value
+        
             # Publier sur le canal des signaux
             self.redis_client.publish(self.signal_channel, signal_dict)
             logger.info(f"✅ Signal publié sur {self.signal_channel}: {signal.side} pour {signal.symbol} @ {signal.price}")
-            
+        
         except Exception as e:
             logger.error(f"❌ Erreur lors de la publication du signal: {str(e)}")
     
