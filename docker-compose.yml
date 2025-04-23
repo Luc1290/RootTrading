@@ -9,9 +9,10 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
+      interval: 5s
+      timeout: 3s
       retries: 3
+      start_period: 10s
 
   kafka:
     image: bitnami/kafka:3.4
@@ -34,9 +35,9 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
-      interval: 30s
+      interval: 20s
       timeout: 10s
-      retries: 3
+      retries: 5
       start_period: 30s
 
   kafka-init:
@@ -75,11 +76,12 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-postgres}"]
-      interval: 10s
-      timeout: 5s
+      interval: 5s
+      timeout: 3s
       retries: 3
+      start_period: 15s
 
-  # Services RootTrading
+  # Services RootTrading avec ordre de démarrage amélioré
   gateway:
     build:
       context: .
@@ -89,38 +91,12 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     env_file: .env
     restart: unless-stopped
     ports:
       - "${GATEWAY_PORT:-5000}:5000"
-
-  analyzer:
-    build:
-      context: .
-      dockerfile: ./analyzer/Dockerfile
-    depends_on:
-      redis:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-    env_file: .env
-    restart: unless-stopped
-    ports:
-      - "${ANALYZER_PORT:-5001}:5001"
-
-  trader:
-    build:
-      context: .
-      dockerfile: ./trader/Dockerfile
-    depends_on:
-      redis:
-        condition: service_healthy
-      db:
-        condition: service_healthy
-    env_file: .env
-    restart: unless-stopped
-    ports:
-      - "${TRADER_PORT:-5002}:5002"
 
   portfolio:
     build:
@@ -131,21 +107,44 @@ services:
         condition: service_healthy
       db:
         condition: service_healthy
+      gateway:
+        condition: service_started
     env_file: .env
     restart: unless-stopped
     ports:
       - "${PORTFOLIO_PORT:-8000}:8000"
 
-  frontend:
+  trader:
     build:
       context: .
-      dockerfile: frontend/Dockerfile
-    ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      dockerfile: ./trader/Dockerfile
     depends_on:
-      - portfolio
-      - trader
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      gateway:
+        condition: service_started
+    env_file: .env
     restart: unless-stopped
+    ports:
+      - "${TRADER_PORT:-5002}:5002"
+
+  analyzer:
+    build:
+      context: .
+      dockerfile: ./analyzer/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      gateway:
+        condition: service_started
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      - "${ANALYZER_PORT:-5001}:5001"
 
   coordinator:
     build:
@@ -172,6 +171,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      gateway:
+        condition: service_started
     env_file: .env
     restart: unless-stopped
     ports:
@@ -200,8 +201,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      trader:
+        condition: service_started
     env_file: .env
-    restart: unless-stopped
+    restart: on-failure
     ports:
       - "${PNL_TRACKER_PORT:-5006}:5006"
 
@@ -228,10 +231,25 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      portfolio:
+        condition: service_started
     env_file: .env
     restart: unless-stopped
     ports:
       - "${SCHEDULER_PORT:-5008}:5008"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      portfolio:
+        condition: service_started
+      trader:
+        condition: service_started
+    restart: unless-stopped
 
 volumes:
   redis_data:

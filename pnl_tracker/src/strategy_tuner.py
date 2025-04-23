@@ -258,7 +258,7 @@ class StrategyTuner:
                     market_data
                 WHERE 
                     symbol = %s
-                    AND time >= NOW() - INTERVAL %s DAY
+                    AND time >= NOW() - INTERVAL '%s days'
                 ORDER BY 
                     time
                 """

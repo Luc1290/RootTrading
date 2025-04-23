@@ -171,17 +171,23 @@ async def update_pocket_allocation(
     """
     Met à jour l'allocation des poches en fonction de la valeur totale.
     """
-    # Modification ici: utiliser une valeur minimale si total_value est 0
-    if total_value <= 0:
-        logger.info(f"Valeur totale reçue: {total_value}, utilisation d'une valeur minimale de 100.0")
-        total_value = 100.0  # Valeur par défaut pour l'initialisation
-    
-    success = pocket_manager.update_pockets_allocation(total_value)
-    
-    if not success:
-        raise HTTPException(status_code=500, detail="Échec de la mise à jour de l'allocation")
-    
-    return {"status": "success", "message": "Allocation mise à jour avec succès"}
+    try:
+        # Modification ici: utiliser une valeur minimale si total_value est 0
+        if total_value <= 0:
+            logger.info(f"Valeur totale reçue: {total_value}, utilisation d'une valeur minimale de 100.0")
+            total_value = 100.0  # Valeur par défaut pour l'initialisation
+        
+        success = pocket_manager.update_pockets_allocation(total_value)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Échec de la mise à jour de l'allocation")
+        
+        return {"status": "success", "message": "Allocation mise à jour avec succès"}
+    except Exception as e:
+        logger.error(f"Erreur dans update_pocket_allocation: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Erreur interne: {str(e)}")
 
 @app.post("/pockets/{pocket_type}/reserve")
 async def reserve_funds(
@@ -380,6 +386,28 @@ async def update_balance_manually(
         raise HTTPException(status_code=500, detail="Échec de la mise à jour des soldes")
     
     return {"status": "success", "message": f"{len(balances)} soldes mis à jour"}
+
+@app.get("/_debug/db_test")
+async def test_db_connection():
+    """
+    Endpoint de diagnostic pour tester la connexion à la base de données.
+    """
+    try:
+        db = DBManager()
+        result = db.execute_query("SELECT 1 as test", fetch_one=True)
+        db.close()
+        
+        if result and result.get('test') == 1:
+            return {"status": "ok", "message": "Connexion à la base de données réussie"}
+        else:
+            return {"status": "error", "message": "Problème de connexion à la base de données"}
+    except Exception as e:
+        import traceback
+        return {
+            "status": "error", 
+            "message": f"Exception: {str(e)}", 
+            "traceback": traceback.format_exc()
+        }
 
 # Point d'entrée principal
 if __name__ == "__main__":

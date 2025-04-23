@@ -4,3 +4,7 @@ pandas==2.1.0
 numpy==1.24.4
 matplotlib==3.7.2
 psycopg2-binary==2.9.7
+openpyxl==3.1.2  # Ajout pour la prise en charge Excel
+xlsxwriter==3.1.0  # Ajout d'un autre moteur d'export Excel
+scipy==1.11.3  # Pour l'optimisation
+joblib==1.3.2  # Pour le parallélisme

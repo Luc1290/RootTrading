@@ -191,57 +191,56 @@ class PocketManager:
                 logger.warning("⚠️ Aucune poche trouvée")
                 return False
         
-            # Calculer les nouvelles valeurs
-            updates = []
-        
+            success = True
+            
+            # Pour chaque poche, mettre à jour individuellement
             for pocket in pockets:
                 # Récupérer l'allocation configurée
                 allocation = self.pocket_config.get(pocket.pocket_type, 0.0)
                 logger.info(f"Poche {pocket.pocket_type}: allocation={allocation}")
-            
+                
                 # Calculer la nouvelle valeur
                 new_current_value = total_value * allocation
-            
+                
                 # La valeur utilisée reste inchangée
                 used_value = pocket.used_value
-            
+                
                 # Calculer la nouvelle valeur disponible
                 new_available_value = max(0, new_current_value - used_value)
-            
-                update = {
-                    'pocket_type': pocket.pocket_type,
-                    'allocation_percent': allocation * 100,
-                    'current_value': new_current_value,
-                    'used_value': used_value,
-                    'available_value': new_available_value
-                }
-                logger.info(f"Mise à jour prévue pour {pocket.pocket_type}: {update}")
-                updates.append(update)
-        
-            # Mettre à jour les poches
-            query = """
-            UPDATE capital_pockets
-            SET 
-                allocation_percent = %(allocation_percent)s,
-                current_value = %(current_value)s,
-                available_value = %(available_value)s,
-                updated_at = NOW()
-            WHERE 
-            pocket_type = %(pocket_type)s
-            """ 
-        
-            success = True
-            for update in updates:
-                result = self.db.execute_query(query, update, commit=True)
+                
+                # Mettre à jour la poche avec des paramètres de position plutôt que nommés
+                query = """
+                UPDATE capital_pockets
+                SET 
+                    allocation_percent = %s,
+                    current_value = %s,
+                    available_value = %s,
+                    updated_at = NOW()
+                WHERE 
+                    pocket_type = %s
+                """
+                
+                # Utiliser des paramètres par position
+                params = (
+                    allocation * 100,
+                    new_current_value,
+                    new_available_value,
+                    pocket.pocket_type
+                )
+                
+                result = self.db.execute_query(query, params, commit=True)
+                
                 if result is None:
-                    logger.error(f"❌ Échec de la mise à jour pour la poche {update['pocket_type']}")
+                    logger.error(f"❌ Échec de la mise à jour pour la poche {pocket.pocket_type}")
                     success = False
                 else:
-                    logger.info(f"✅ Mise à jour réussie pour la poche {update['pocket_type']}")
-        
-            if success:
+                    logger.info(f"✅ Mise à jour réussie pour la poche {pocket.pocket_type}")
+            
+            if not success:
+                logger.warning("⚠️ Certaines mises à jour de poches ont échoué")
+            else:
                 logger.info(f"✅ Allocation des poches mise à jour (total: {total_value:.2f})")
-        
+            
             return success
         
         except Exception as e:

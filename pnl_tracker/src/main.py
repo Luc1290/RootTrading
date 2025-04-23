@@ -138,22 +138,55 @@ def main():
     
     logger.info("🚀 Démarrage du service PnL Tracker RootTrading...")
     
+    # Créer les répertoires s'ils n'existent pas
+    os.makedirs(args.export_dir, exist_ok=True)
+    os.makedirs(args.results_dir, exist_ok=True)
+    
     try:
         # Initialiser le logger PnL
         pnl_logger = PnLLogger(export_dir=args.export_dir)
         
+        # Gérer les erreurs potentielles lors du premier calcul
+        try:
+            pnl_logger.update_stats()
+            logger.info("✅ Statistiques initiales calculées")
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur lors du calcul des statistiques initiales: {str(e)}")
+            logger.info("Continuons avec des statistiques vides")
+        
         # Démarrer le thread de mise à jour des statistiques
-        pnl_logger.start_update_thread(interval=args.update_interval)
+        try:
+            pnl_logger.start_update_thread(interval=args.update_interval)
+            logger.info(f"✅ Thread de mise à jour démarré (intervalle: {args.update_interval}s)")
+        except Exception as e:
+            logger.error(f"❌ Erreur lors du démarrage du thread de mise à jour: {str(e)}")
         
         # Initialiser le tuner de stratégies si activé
         if not args.no_tuning:
-            strategy_tuner = StrategyTuner(results_dir=args.results_dir)
-            
-            # Planifier une optimisation toutes les 24 heures
-            last_optimization_time = 0
-            optimization_interval = 24 * 3600  # 24 heures
+            try:
+                strategy_tuner = StrategyTuner(results_dir=args.results_dir)
+                logger.info("✅ Strategy Tuner initialisé")
+                
+                # Planifier une optimisation toutes les 24 heures
+                last_optimization_time = 0
+                optimization_interval = 24 * 3600  # 24 heures
+            except Exception as e:
+                logger.error(f"❌ Erreur lors de l'initialisation du Strategy Tuner: {str(e)}")
+                strategy_tuner = None
+        else:
+            logger.info("Optimisation des stratégies désactivée")
         
         logger.info("✅ Service PnL Tracker démarré")
+        
+        # Tenter d'exporter des statistiques pour tester la fonctionnalité
+        try:
+            export_path = pnl_logger.export_stats_to_csv()
+            if export_path:
+                logger.info(f"Test d'exportation réussi: {export_path}")
+            else:
+                logger.warning("⚠️ Test d'exportation: aucun fichier généré")
+        except Exception as e:
+            logger.error(f"❌ Erreur lors du test d'exportation: {str(e)}")
         
         # Boucle principale pour garder le service actif
         while running:
@@ -168,16 +201,21 @@ def main():
                 try:
                     # Exporter les statistiques
                     export_path = pnl_logger.export_stats_to_csv()
-                    logger.info(f"Statistiques PnL exportées vers: {export_path}")
+                    if export_path:
+                        logger.info(f"Statistiques PnL exportées vers: {export_path}")
                     
                     # Exporter l'historique des trades
-                    history_path = pnl_logger.export_trade_history(days=90)
-                    logger.info(f"Historique des trades exporté vers: {history_path}")
+                    try:
+                        history_path = pnl_logger.export_trade_history(days=90)
+                        if history_path:
+                            logger.info(f"Historique des trades exporté vers: {history_path}")
+                    except Exception as inner_e:
+                        logger.error(f"❌ Erreur lors de l'exportation de l'historique: {str(inner_e)}")
                 except Exception as e:
                     logger.error(f"❌ Erreur lors de l'exportation périodique: {str(e)}")
             
             # Exécuter l'optimisation des stratégies périodiquement
-            if not args.no_tuning and strategy_tuner and current_time - last_optimization_time > optimization_interval:
+            if strategy_tuner and not args.no_tuning and current_time - last_optimization_time > optimization_interval:
                 try:
                     # Lancer l'optimisation dans un thread séparé
                     optimization_thread = threading.Thread(
@@ -196,11 +234,17 @@ def main():
         logger.info("Programme interrompu par l'utilisateur")
     except Exception as e:
         logger.error(f"❌ Erreur critique dans le service PnL Tracker: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
     finally:
         # Arrêter le logger PnL
         if pnl_logger:
-            pnl_logger.stop_update_thread()
-            pnl_logger.close()
+            try:
+                pnl_logger.stop_update_thread()
+                pnl_logger.close()
+                logger.info("Service PnL Tracker arrêté proprement")
+            except Exception as e:
+                logger.error(f"❌ Erreur lors de l'arrêt du PnL Logger: {str(e)}")
         
         logger.info("Service PnL Tracker terminé")
 

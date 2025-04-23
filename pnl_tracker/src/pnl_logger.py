@@ -173,8 +173,17 @@ class PnLLogger:
                 cursor.execute(query_pf)
                 pf_result = cursor.fetchone()
                 
-                if pf_result and pf_result["gross_loss"] is not None and pf_result["gross_loss"] > 0:
-                    stats["profit_factor"] = pf_result["gross_profit"] / pf_result["gross_loss"]
+                if pf_result and pf_result["gross_loss"] is not None and pf_result["gross_profit"] is not None:
+                    gross_loss = float(pf_result["gross_loss"] or 0)
+                    gross_profit = float(pf_result["gross_profit"] or 0)
+    
+                    # Éviter la division par zéro
+                    if gross_loss > 0:
+                        stats["profit_factor"] = gross_profit / gross_loss
+                    elif gross_profit > 0:  # Gross loss est 0 mais il y a du profit
+                        stats["profit_factor"] = float('inf')  # profit factor infini
+                    else:
+                        stats["profit_factor"] = 0  # Pas de profit ni de perte
                 else:
                     stats["profit_factor"] = 0
                 
@@ -614,58 +623,67 @@ class PnLLogger:
     
     def export_stats_to_csv(self, filename: str = None) -> str:
         """
-        Exporte les statistiques actuelles vers un fichier CSV.
-        
+        Exporte les statistiques actuelles vers un fichier Excel.
+    
         Args:
             filename: Nom du fichier (optionnel)
-            
+        
         Returns:
             Chemin vers le fichier exporté
         """
         if not self.stats_cache["global"]:
             self.update_stats()
-        
+    
         # Générer un nom de fichier si non fourni
         if not filename:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"pnl_stats_{timestamp}.csv"
-        
+            filename = f"pnl_stats_{timestamp}.xlsx"  # Utiliser .xlsx au lieu de .csv
+    
         filepath = os.path.join(self.export_dir, filename)
-        
+    
         try:
             # Préparer les données pour l'export
             # Pour les statistiques par stratégie
             strategy_df = pd.DataFrame.from_dict(self.stats_cache["by_strategy"], orient='index')
-            strategy_df.index.name = 'strategy'
-            strategy_df.reset_index(inplace=True)
-            
+            if not strategy_df.empty:
+                strategy_df.index.name = 'strategy'
+                strategy_df.reset_index(inplace=True)
+            else:
+                strategy_df = pd.DataFrame(columns=['strategy'])
+        
             # Pour les statistiques par symbole
             symbol_df = pd.DataFrame.from_dict(self.stats_cache["by_symbol"], orient='index')
-            symbol_df.index.name = 'symbol'
-            symbol_df.reset_index(inplace=True)
-            
-            # Exporter vers CSV
-            with pd.ExcelWriter(filepath) as writer:
-                # Feuille pour les statistiques globales
-                pd.DataFrame([self.stats_cache["global"]]).to_excel(writer, sheet_name='Global', index=False)
-                
-                # Feuille pour les statistiques par stratégie
-                strategy_df.to_excel(writer, sheet_name='By Strategy', index=False)
-                
-                # Feuille pour les statistiques par symbole
-                symbol_df.to_excel(writer, sheet_name='By Symbol', index=False)
-                
-                # Feuille pour les statistiques quotidiennes
-                daily_df = pd.DataFrame.from_dict(self.stats_cache["daily"], orient='index')
+            if not symbol_df.empty:
+                symbol_df.index.name = 'symbol'
+                symbol_df.reset_index(inplace=True)
+            else:
+                symbol_df = pd.DataFrame(columns=['symbol'])
+        
+            # Pour les statistiques quotidiennes
+            daily_df = pd.DataFrame.from_dict(self.stats_cache["daily"], orient='index')
+            if not daily_df.empty:
                 daily_df.index.name = 'date'
                 daily_df.reset_index(inplace=True)
+            else:
+                daily_df = pd.DataFrame(columns=['date'])
+        
+            # Statistiques globales
+            global_df = pd.DataFrame([self.stats_cache["global"]])
+        
+            # Exporter vers Excel
+            with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
+                global_df.to_excel(writer, sheet_name='Global', index=False)
+                strategy_df.to_excel(writer, sheet_name='By Strategy', index=False)
+                symbol_df.to_excel(writer, sheet_name='By Symbol', index=False)
                 daily_df.to_excel(writer, sheet_name='Daily', index=False)
-            
+        
             logger.info(f"✅ Statistiques exportées vers {filepath}")
             return filepath
-        
+    
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'exportation des statistiques: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return ""
     
     def export_trade_history(self, days: int = 90, filename: str = None) -> str:

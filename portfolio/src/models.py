@@ -93,7 +93,7 @@ class DBManager:
             commit: Si True, valide la transaction
             
         Returns:
-            Résultat de la requête ou None en cas d'erreur
+            Résultat de la requête ou True pour les mises à jour réussies, None en cas d'erreur
         """
         if not self._ensure_connection():
             logger.error("❌ Pas de connexion à la base de données")
@@ -111,7 +111,8 @@ class DBManager:
                 elif fetch_all:
                     result = cursor.fetchall()
                 else:
-                    result = None
+                    # Pour les requêtes UPDATE/INSERT/DELETE, retourner True au lieu de None
+                    result = True
                 
                 if commit:
                     self.conn.commit()
