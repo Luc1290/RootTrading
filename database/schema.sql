@@ -417,6 +417,11 @@ BEFORE UPDATE ON risk_rules
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp();
 
+CREATE TRIGGER update_capital_pockets_timestamp
+BEFORE UPDATE ON capital_pockets
+FOR EACH ROW
+EXECUTE FUNCTION update_timestamp();
+
 -- Fonctions pour la gestion des cycles
 
 -- Fonction pour obtenir le nombre de cycles actifs par poche
@@ -543,23 +548,21 @@ GROUP BY
     strategy
 ORDER BY 
     total_profit_loss DESC;
-
 -- Vue des performances par symbole
--- Vue des performances par symbole
-CREATE OR REPLACE VIEW symbol_performance AS
+CREATE OR REPLACE VIEW strategy_performance AS
 SELECT 
-    symbol,
+    strategy,
     COUNT(*) as total_cycles,
     SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_cycles,
     SUM(CASE WHEN profit_loss > 0 AND status = 'completed' THEN 1 ELSE 0 END) as winning_trades,
-    SUM(CASE WHEN profit_loss < 0 AND status = 'completed' THEN 1 ELSE 0 END) as losing_trades, 
+    SUM(CASE WHEN profit_loss < 0 AND status = 'completed' THEN 1 ELSE 0 END) as losing_trades,
     SUM(CASE WHEN profit_loss = 0 AND status = 'completed' THEN 1 ELSE 0 END) as break_even_trades,
     SUM(profit_loss) as total_profit_loss,
     AVG(CASE WHEN status = 'completed' THEN profit_loss_percent ELSE NULL END) as avg_profit_loss_percent,
-    COUNT(DISTINCT strategy) as strategy_count
+    COUNT(DISTINCT symbol) as symbol_count
 FROM 
     trade_cycles
 GROUP BY 
-    symbol
+    strategy
 ORDER BY 
     total_profit_loss DESC;

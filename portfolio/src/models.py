@@ -100,6 +100,9 @@ class DBManager:
             return None
         
         try:
+            logger.debug(f"Exécution de la requête: {query}")
+            logger.debug(f"Paramètres: {params}")
+
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cursor.execute(query, params)
                 
@@ -117,6 +120,10 @@ class DBManager:
         
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'exécution de la requête: {str(e)}")
+            logger.error(f"Query: {query}")
+            logger.error(f"Params: {params}")
+            import traceback
+            logger.error(traceback.format_exc())
             try:
                 self.conn.rollback()
             except:

@@ -92,28 +92,44 @@ class StrategyLoader:
     
     def process_market_data(self, data: Dict[str, Any]) -> List[StrategySignal]:
         signals = []
-    
+
         symbol = data.get('symbol')
         if not symbol:
+            logger.warning(f"Données reçues sans symbole: {data}")
             return []
-    
+
         # Obtenir les stratégies pour ce symbole
-        strategies = self.strategies.get(symbol, [])
-    
-        for strategy in strategies:
+        strategies = self.strategies.get(symbol, {})
+        if not strategies:
+            logger.debug(f"Aucune stratégie trouvée pour le symbole {symbol}")
+            return []
+
+        for strategy_name, strategy in strategies.items():
             try:
                 # Ajouter les données
                 strategy.add_market_data(data)
-            
+        
                 # Générer un signal si possible
                 signal = strategy.analyze()
-            
+        
                 # Vérifier que le signal est complet avec tous les champs requis
                 if signal:
-                    signals.append(signal)
+                    # Vérifier les champs obligatoires
+                    required_fields = ['symbol', 'strategy', 'side', 'timestamp', 'price']
+                    missing_fields = [field for field in required_fields 
+                                      if not hasattr(signal, field) or getattr(signal, field) is None]
+                
+                    if missing_fields:
+                        logger.warning(f"❌ Signal incomplet généré par {strategy_name}, " 
+                                      f"champs manquants: {missing_fields}")
+                    else:
+                        # Le signal est valide, l'ajouter à la liste
+                        signals.append(signal)
+                        logger.debug(f"✅ Signal valide ajouté: {signal.side} pour {signal.symbol} @ {signal.price}")
+                    
             except Exception as e:
-                logger.error(f"❌ Erreur lors du traitement de la stratégie {strategy.name}: {str(e)}")
-    
+                logger.error(f"❌ Erreur lors du traitement de la stratégie {strategy_name}: {str(e)}")
+
         return signals
     
     def get_strategy_list(self) -> Dict[str, List[str]]:

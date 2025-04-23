@@ -170,15 +170,11 @@ async def update_pocket_allocation(
 ):
     """
     Met à jour l'allocation des poches en fonction de la valeur totale.
-    
-    Args:
-        total_value: Valeur totale du portefeuille
-    
-    Returns:
-        Statut de la mise à jour
     """
+    # Modification ici: utiliser une valeur minimale si total_value est 0
     if total_value <= 0:
-        raise HTTPException(status_code=400, detail="Valeur totale invalide")
+        logger.info(f"Valeur totale reçue: {total_value}, utilisation d'une valeur minimale de 100.0")
+        total_value = 100.0  # Valeur par défaut pour l'initialisation
     
     success = pocket_manager.update_pockets_allocation(total_value)
     

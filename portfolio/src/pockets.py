@@ -173,69 +173,82 @@ class PocketManager:
     def update_pockets_allocation(self, total_value: float) -> bool:
         """
         Met à jour la répartition des poches en fonction de la valeur totale du portefeuille.
-        
-        Args:
-            total_value: Valeur totale du portefeuille
-            
-        Returns:
-            True si la mise à jour a réussi, False sinon
         """
-        if total_value <= 0:
-            logger.warning("⚠️ Valeur totale du portefeuille invalide")
-            return False
+        try:
+            logger.info(f"Début update_pockets_allocation avec total_value={total_value}")
         
-        # Récupérer l'état actuel des poches
-        pockets = self.get_pockets()
+            if total_value <= 0:
+                logger.warning(f"⚠️ Valeur totale du portefeuille invalide ({total_value}), utilisation d'une valeur minimale")
+                total_value = 100.0  # Valeur par défaut
+                logger.info(f"Nouvelle valeur après correction: {total_value}")
         
-        if not pockets:
-            logger.warning("⚠️ Aucune poche trouvée")
-            return False
+            # Récupérer l'état actuel des poches
+            pockets = self.get_pockets()
         
-        # Calculer les nouvelles valeurs
-        updates = []
+            logger.info(f"Poches récupérées: {len(pockets)} poches")
         
-        for pocket in pockets:
-            # Récupérer l'allocation configurée
-            allocation = self.pocket_config.get(pocket.pocket_type, 0.0)
+            if not pockets:
+                logger.warning("⚠️ Aucune poche trouvée")
+                return False
+        
+            # Calculer les nouvelles valeurs
+            updates = []
+        
+            for pocket in pockets:
+                # Récupérer l'allocation configurée
+                allocation = self.pocket_config.get(pocket.pocket_type, 0.0)
+                logger.info(f"Poche {pocket.pocket_type}: allocation={allocation}")
             
-            # Calculer la nouvelle valeur
-            new_current_value = total_value * allocation
+                # Calculer la nouvelle valeur
+                new_current_value = total_value * allocation
             
-            # La valeur utilisée reste inchangée
-            used_value = pocket.used_value
+                # La valeur utilisée reste inchangée
+                used_value = pocket.used_value
             
-            # Calculer la nouvelle valeur disponible
-            new_available_value = max(0, new_current_value - used_value)
+                # Calculer la nouvelle valeur disponible
+                new_available_value = max(0, new_current_value - used_value)
             
-            updates.append({
-                'pocket_type': pocket.pocket_type,
-                'allocation_percent': allocation * 100,
-                'current_value': new_current_value,
-                'used_value': used_value,
-                'available_value': new_available_value
-            })
+                update = {
+                    'pocket_type': pocket.pocket_type,
+                    'allocation_percent': allocation * 100,
+                    'current_value': new_current_value,
+                    'used_value': used_value,
+                    'available_value': new_available_value
+                }
+                logger.info(f"Mise à jour prévue pour {pocket.pocket_type}: {update}")
+                updates.append(update)
         
-        # Mettre à jour les poches
-        query = """
-        UPDATE capital_pockets
-        SET 
-            allocation_percent = %(allocation_percent)s,
-            current_value = %(current_value)s,
-            available_value = %(available_value)s,
-            updated_at = NOW()
-        WHERE 
+            # Mettre à jour les poches
+            query = """
+            UPDATE capital_pockets
+            SET 
+                allocation_percent = %(allocation_percent)s,
+                current_value = %(current_value)s,
+                available_value = %(available_value)s,
+                updated_at = NOW()
+            WHERE 
             pocket_type = %(pocket_type)s
-        """
+            """ 
         
-        success = all(
-            self.db.execute_query(query, update, commit=True) is not None
-            for update in updates
-        )
+            success = True
+            for update in updates:
+                result = self.db.execute_query(query, update, commit=True)
+                if result is None:
+                    logger.error(f"❌ Échec de la mise à jour pour la poche {update['pocket_type']}")
+                    success = False
+                else:
+                    logger.info(f"✅ Mise à jour réussie pour la poche {update['pocket_type']}")
         
-        if success:
-            logger.info(f"✅ Allocation des poches mise à jour (total: {total_value:.2f})")
+            if success:
+                logger.info(f"✅ Allocation des poches mise à jour (total: {total_value:.2f})")
         
-        return success
+            return success
+        
+        except Exception as e:
+            import traceback
+            logger.error(f"❌ Exception dans update_pockets_allocation: {str(e)}")
+            logger.error(traceback.format_exc())
+            return False
     
     def reserve_funds(self, pocket_type: str, amount: float, cycle_id: str) -> bool:
         """

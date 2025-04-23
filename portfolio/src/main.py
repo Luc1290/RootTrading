@@ -262,6 +262,43 @@ def main():
     redis_client = subscribe_to_redis_channels()
     
     # Démarrer la tâche de synchronisation si activée
+    try:
+        logger.info("Vérification des balances existantes...")
+        db = DBManager()
+        portfolio = PortfolioModel(db_manager=db)
+        
+        # Vérifier si des balances existent
+        balances = portfolio.get_latest_balances()
+        
+        # Si aucune balance n'existe, créer des valeurs par défaut
+        if not balances:
+            logger.info("Aucune balance trouvée, initialisation avec des valeurs par défaut...")
+            from shared.src.schemas import AssetBalance
+            default_balance = [
+                AssetBalance(
+                    asset="USDC",
+                    free=100.0,
+                    locked=0.0,
+                    total=100.0,
+                    value_usdc=100.0
+                )
+            ]
+            portfolio.update_balances(default_balance)
+            
+            # Initialiser les poches avec cette valeur
+            pocket_manager = PocketManager(db_manager=db)
+            pocket_manager.update_pockets_allocation(100.0)
+            pocket_manager.close()
+            
+            logger.info("✅ Balances et poches initialisées avec des valeurs par défaut")
+        else:
+            logger.info(f"✅ {len(balances)} balances existantes trouvées")
+        
+        portfolio.close()
+    except Exception as e:
+        logger.error(f"Erreur lors de l'initialisation des balances: {str(e)}")
+    
+    # Démarrer la tâche de synchronisation si activée
     sync_thread = None
     if not args.no_sync:
         sync_thread = threading.Thread(
