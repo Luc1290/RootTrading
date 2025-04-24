@@ -44,7 +44,7 @@ class KafkaProducer:
             key: Clé à utiliser pour le partitionnement (généralement le symbole)
         """
         if not data or 'symbol' not in data:
-            logger.warning("❌ Données de marché invalides, impossible de publier")
+            logger.error("❌ Données de marché invalides, impossible de publier")
             return
         
         symbol = data['symbol'].lower()
@@ -59,8 +59,10 @@ class KafkaProducer:
             
             # Log pour le débogage (uniquement pour les chandeliers fermés)
             if data.get('is_closed', False):
-                logger.debug(f"📊 Publié sur {topic}: {data['close']} "
-                             f"[O:{data['open']} H:{data['high']} L:{data['low']}]")
+                logger.info(f"📊 Publié sur {topic}: {data['close']} [O:{data['open']} H:{data['high']} L:{data['low']}]")
+            else:
+                # Ajouter un nouveau log pour les mises à jour en cours
+                logger.info(f"🔄 Mis à jour sur {topic}: prix actuel {data['close']}")
         except Exception as e:
             logger.error(f"❌ Erreur lors de la publication sur Kafka: {str(e)}")
     
@@ -76,7 +78,7 @@ class KafkaProducer:
         
         try:
             self.client.produce(topic=topic, message=data)
-            logger.debug(f"💰 Publié données de compte sur {topic}")
+            logger.info(f"💰 Publié données de compte sur {topic}")
         except Exception as e:
             logger.error(f"❌ Erreur lors de la publication des données de compte: {str(e)}")
     
@@ -85,7 +87,7 @@ class KafkaProducer:
         Force l'envoi de tous les messages en attente.
         """
         self.client.flush()
-        logger.debug("🔄 Producteur Kafka vidé")
+        logger.info("🔄 Producteur Kafka vidé")
     
     def close(self) -> None:
         """

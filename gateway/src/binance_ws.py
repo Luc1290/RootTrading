@@ -190,9 +190,10 @@ class BinanceWebSocket:
                         # Traiter les données de chandelier
                         if event_type == 'kline':
                             processed_data = self._process_kline_message(data)
-                            
+                                                       
                             # Produire le message Kafka
                             symbol = processed_data['symbol']
+                            logger.info(f"📊 Message reçu de Binance: {symbol} @ {self.interval} - prix actuel: {processed_data['close']}")
                             self.kafka_client.produce(
                                 topic=f"{KAFKA_TOPIC_MARKET_DATA}.{symbol.lower()}",
                                 message=processed_data,
@@ -201,10 +202,10 @@ class BinanceWebSocket:
                             
                             # Log pour le débogage (seulement si le chandelier est fermé)
                             if processed_data['is_closed']:
-                                logger.debug(f"📊 {symbol} @ {self.interval}: {processed_data['close']} "
+                                logger.info(f"📊 {symbol} @ {self.interval}: {processed_data['close']} "
                                             f"[O:{processed_data['open']} H:{processed_data['high']} L:{processed_data['low']}]")
                 except json.JSONDecodeError:
-                    logger.warning(f"Message non-JSON reçu: {message[:100]}...")
+                    logger.error(f"Message non-JSON reçu: {message[:100]}...")
                 except Exception as e:
                     logger.error(f"Erreur lors du traitement du message: {str(e)}")
                 

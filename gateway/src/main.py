@@ -13,7 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 
 from binance_ws import BinanceWebSocket
 from kafka_producer import get_producer
-from shared.src.config import SYMBOLS, INTERVAL
+from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY, SYMBOLS, INTERVAL
 
 # Configuration du logging
 logging.basicConfig(
@@ -26,8 +26,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger("gateway")
 
-# Variables pour le contrôle du service
-ws_client = None
+
+if not BINANCE_API_KEY or not BINANCE_SECRET_KEY:
+    logger.warning("⚠️ Clés API Binance non configurées ou incomplètes!")
+
+# Créer le client WebSocket Binance
+ws_client = BinanceWebSocket(symbols=SYMBOLS, interval=INTERVAL)
 running = True
 
 async def shutdown(signal_type, loop):
