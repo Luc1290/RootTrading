@@ -275,7 +275,7 @@ class DBExporter:
                     logger.info(f"✅ Rotation: {count} logs plus anciens que {self.retention_days} jours supprimés")
                 else:
                     self.stats["last_rotation"] = datetime.now()
-                    logger.debug("Aucun log à supprimer lors de la rotation")
+                    logger.info("Aucun log à supprimer lors de la rotation")
         
         except Exception as e:
             logger.error(f"❌ Erreur lors de la rotation des logs: {str(e)}")

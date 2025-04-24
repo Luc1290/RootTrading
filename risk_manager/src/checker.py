@@ -546,7 +546,7 @@ class RuleChecker:
                 if triggered:
                     logger.warning(f"⚠️ {len(triggered)} règles déclenchées")
                 else:
-                    logger.debug("✅ Aucune règle déclenchée")
+                    logger.info("✅ Aucune règle déclenchée")
                 
                 # Attendre jusqu'à la prochaine vérification
                 for _ in range(self.check_interval):

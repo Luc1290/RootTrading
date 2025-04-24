@@ -1,0 +1,17 @@
+{
+  "ExpandedNodes": [
+    "",
+    "\\analyzer",
+    "\\analyzer\\src",
+    "\\gateway",
+    "\\gateway\\src",
+    "\\risk_manager",
+    "\\risk_manager\\src",
+    "\\shared",
+    "\\shared\\src",
+    "\\trader",
+    "\\trader\\src"
+  ],
+  "SelectedNode": "\\analyzer\\src\\redis_subscriber.py",
+  "PreviewInSolutionExplorer": false
+}

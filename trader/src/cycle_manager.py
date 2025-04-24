@@ -226,7 +226,7 @@ class CycleManager:
                 cursor.execute(query, params)
                 self.conn.commit()
         
-            logger.debug(f"✅ Exécution {execution.order_id} enregistrée en base de données")
+            logger.info(f"✅ Exécution {execution.order_id} enregistrée en base de données")
             return True
     
         except Exception as e:
@@ -825,7 +825,7 @@ class CycleManager:
                 cursor.execute(query, params)
                 self.conn.commit()
         
-            logger.debug(f"✅ Cycle {cycle.id} enregistré en base de données")
+            logger.info(f"✅ Cycle {cycle.id} enregistré en base de données")
             return True
     
         except Exception as e:

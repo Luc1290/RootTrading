@@ -158,7 +158,7 @@ class RSIStrategy(BaseStrategy):
         current_price = df['close'].iloc[-1]
         
         # Loguer les valeurs actuelles
-        logger.debug(f"[RSI] {self.symbol}: RSI={current_rsi:.2f}, Price={current_price:.2f}")
+        logger.info(f"[RSI] {self.symbol}: RSI={current_rsi:.2f}, Price={current_price:.2f}")
         
         # Vérifier les conditions pour générer un signal
         signal = None

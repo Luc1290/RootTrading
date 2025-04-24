@@ -101,7 +101,7 @@ class StrategyLoader:
         # Obtenir les stratégies pour ce symbole
         strategies = self.strategies.get(symbol, {})
         if not strategies:
-            logger.debug(f"Aucune stratégie trouvée pour le symbole {symbol}")
+            logger.info(f"Aucune stratégie trouvée pour le symbole {symbol}")
             return []
 
         for strategy_name, strategy in strategies.items():
@@ -125,7 +125,7 @@ class StrategyLoader:
                     else:
                         # Le signal est valide, l'ajouter à la liste
                         signals.append(signal)
-                        logger.debug(f"✅ Signal valide ajouté: {signal.side} pour {signal.symbol} @ {signal.price}")
+                        logger.info(f"✅ Signal valide ajouté: {signal.side} pour {signal.symbol} @ {signal.price}")
                     
             except Exception as e:
                 logger.error(f"❌ Erreur lors du traitement de la stratégie {strategy_name}: {str(e)}")

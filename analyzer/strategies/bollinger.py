@@ -156,7 +156,7 @@ class BollingerStrategy(BaseStrategy):
         prev_lower = lower[-2] if len(lower) > 1 else None
         
         # Loguer les valeurs actuelles
-        logger.debug(f"[Bollinger] {self.symbol}: Price={current_price:.2f}, "
+        logger.info(f"[Bollinger] {self.symbol}: Price={current_price:.2f}, "
                     f"Upper={current_upper:.2f}, Lower={current_lower:.2f}")
         
         # Vérifier les conditions pour générer un signal

@@ -72,7 +72,7 @@ class BaseStrategy(ABC):
             self.data_buffer.append(data)
         
             # Déboguer les données
-            logger.debug(f"[{self.name}] Données ajoutées pour {self.symbol}: "
+            logger.info(f"[{self.name}] Données ajoutées pour {self.symbol}: "
                         f"close={data['close']}, time={datetime.fromtimestamp(data['start_time']/1000)}")
     
     def get_data_as_dataframe(self) -> Optional[pd.DataFrame]:
@@ -130,7 +130,7 @@ class BaseStrategy(ABC):
         """
         # Vérifier s'il y a assez de données
         if len(self.data_buffer) < self.get_min_data_points():
-            logger.debug(f"[{self.name}] Pas assez de données pour générer un signal ({len(self.data_buffer)}/{self.get_min_data_points()})")
+            logger.info(f"[{self.name}] Pas assez de données pour générer un signal ({len(self.data_buffer)}/{self.get_min_data_points()})")
             return None
         
         # Vérifier le cooldown des signaux

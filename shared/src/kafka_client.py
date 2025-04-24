@@ -177,7 +177,7 @@ class KafkaClient:
             topic = msg.topic()
             partition = msg.partition()
             offset = msg.offset()
-            logger.debug(f"✅ Message livré au topic {topic} [{partition}] @ offset {offset}")
+            logger.info(f"✅ Message livré au topic {topic} [{partition}] @ offset {offset}")
     
     def produce(self, topic: str, message: Union[Dict[str, Any], str], key: Optional[str] = None) -> None:
         """
@@ -241,7 +241,7 @@ class KafkaClient:
         """Force l'envoi de tous les messages en attente."""
         if self.producer:
             self.producer.flush()
-            logger.debug("Producteur Kafka vidé")
+            logger.info("Producteur Kafka vidé")
     
     def consume(self, topics: List[str], callback: Callable[[str, Dict[str, Any]], None], 
                batch_size: int = 100, poll_timeout: float = 1.0) -> None:

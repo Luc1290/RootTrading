@@ -154,7 +154,7 @@ class EMACrossStrategy(BaseStrategy):
         prev_long_ema = long_ema[-2] if len(long_ema) > 1 else None
         
         # Loguer les valeurs actuelles
-        logger.debug(f"[EMA Cross] {self.symbol}: Price={current_price:.2f}, "
+        logger.info(f"[EMA Cross] {self.symbol}: Price={current_price:.2f}, "
                     f"Short EMA={current_short_ema:.2f}, Long EMA={current_long_ema:.2f}")
         
         # Vérifier les conditions pour générer un signal

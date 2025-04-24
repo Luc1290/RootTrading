@@ -45,6 +45,7 @@ class OrderManager:
         self.symbols = symbols or SYMBOLS
         self.redis_client = redis_client or RedisClient()
         self.cycle_manager = cycle_manager or CycleManager()
+        self.binance_executor = BinanceExecutor()
         
         # Configuration du canal Redis pour les signaux
         self.signal_channel = "roottrading:analyze:signal"
@@ -69,6 +70,11 @@ class OrderManager:
     
     def _process_signal(self, channel: str, data: Dict[str, Any]) -> None:
         try:
+
+            # Vérifier que data n'est pas None ou vide
+            if data is None or data == "":
+                return
+        
             # Vérifier que data est un dictionnaire
             if not isinstance(data, dict):
                 logger.error(f"❌ Données reçues invalides: {type(data)}")
@@ -127,7 +133,7 @@ class OrderManager:
             # Traiter la mise à jour de prix dans le gestionnaire de cycles
             self.cycle_manager.process_price_update(symbol, price)
             
-            logger.debug(f"💰 Prix mis à jour: {symbol} @ {price}")
+            logger.info(f"💰 Prix mis à jour: {symbol} @ {price}")
         
         except Exception as e:
             logger.error(f"❌ Erreur lors du traitement de la mise à jour de prix: {str(e)}")

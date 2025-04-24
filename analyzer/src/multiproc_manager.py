@@ -7,6 +7,7 @@ import multiprocessing as mp
 import os
 import sys
 import time
+import datetime
 import signal
 import threading
 from typing import Dict, List, Any, Optional, Callable
@@ -54,7 +55,7 @@ class AnalyzerManager:
         self.symbols = [s.strip() for s in (symbols or SYMBOLS) if s and s.strip()]
     
         # Log pour déboguer
-        logger.debug(f"Symboles après filtrage: {self.symbols}")
+        logger.info(f"Symboles après filtrage: {self.symbols}")
 
         if max_workers is None:
             max_workers = max(1, int(mp.cpu_count() * 0.75))
@@ -193,7 +194,7 @@ class AnalyzerManager:
                                             if not hasattr(signal, field) or getattr(signal, field) is None]
                         
                             if missing_fields:
-                                logger.error(f"❌ Signal incomplet, ne sera pas publié. Champs manquants: {missing_fields}")
+                                logger.info(f"❌ Signal incomplet, ne sera pas publié. Champs manquants: {missing_fields}")
                                 continue
                         
                             # Publier le signal si valide
@@ -201,13 +202,13 @@ class AnalyzerManager:
                             logger.info(f"✅ Signal publié: {signal.side} pour {signal.symbol} @ {signal.price}")
                     
                         except Exception as e:
-                            logger.error(f"❌ Erreur lors du traitement du signal: {str(e)}", exc_info=True)
+                            logger.info(f"❌ Erreur lors du traitement du signal: {str(e)}", exc_info=True)
             
                 # Marquer comme traité
                 self.signal_queue.task_done()
         
             except Exception as e:
-                logger.error(f"❌ Erreur dans le processeur de file d'attente des signaux: {str(e)}")
+                logger.info(f"❌ Erreur dans le processeur de file d'attente des signaux: {str(e)}")
                 time.sleep(0.1)
 
         logger.info("Processeur de file d'attente des signaux arrêté")
@@ -247,6 +248,9 @@ class AnalyzerManager:
                 # Ne traiter que les chandeliers fermés
                 if not data.get('is_closed', False):
                     continue
+
+                # Ajouter ces logs pour déboguer
+                logger.info(f"Données reçues pour {data.get('symbol')}: is_closed={data.get('is_closed', False)}, close={data.get('close')}")
             
                 # Extraire uniquement les données nécessaires
                 analysis_data = {
@@ -278,11 +282,11 @@ class AnalyzerManager:
                         signal_dicts = []
                         for signal in signals:
                             try:
-                                # Convertir les attributs problématiques
+                                # Assurez-vous que tous les champs requis sont présents et correctement formatés
                                 side_value = signal.side.value if hasattr(signal.side, 'value') else str(signal.side)
-                                strength_value = signal.strength.value if hasattr(signal.strength, 'value') else str(signal.strength)
-                                timestamp_value = signal.timestamp.isoformat() if hasattr(signal.timestamp, 'isoformat') else str(signal.timestamp)
-                            
+                                strength_value = signal.strength.value if hasattr(signal.strength, 'value') else "MODERATE"
+                                timestamp_value = signal.timestamp.isoformat() if hasattr(signal.timestamp, 'isoformat') else datetime.now().isoformat()
+            
                                 # Créer un dictionnaire avec les données du signal
                                 signal_dict = {
                                     'symbol': signal.symbol,
@@ -292,19 +296,28 @@ class AnalyzerManager:
                                     'price': float(signal.price),
                                     'confidence': float(signal.confidence) if hasattr(signal, 'confidence') else 0.5,
                                     'strength': strength_value,
-                                    'metadata': dict(signal.metadata) if hasattr(signal, 'metadata') else {}
+                                    'metadata': dict(signal.metadata) if hasattr(signal, 'metadata') and signal.metadata else {}
                                 }
+            
+                                # Vérifier explicitement que tous les champs requis sont présents
+                                required_fields = ['symbol', 'strategy', 'side', 'timestamp', 'price']
+                                missing_fields = [field for field in required_fields if field not in signal_dict or signal_dict[field] is None]
+            
+                                if missing_fields:
+                                    logger.warning(f"Signal incomplet, ne sera pas ajouté. Champs manquants: {missing_fields}")
+                                    continue
+                
                                 signal_dicts.append(signal_dict)
                             except Exception as e:
                                 logger.error(f"Erreur lors de la conversion du signal: {str(e)}")
                     
-                        # Mettre les dictionnaires sur la file d'attente
-                        if signal_dicts:
-                            self.signal_queue.put(signal_dicts)
-                            logger.debug(f"Mis {len(signal_dicts)} signaux sur la file d'attente")
+                            # Mettre les dictionnaires sur la file d'attente
+                            if signal_dicts:
+                                self.signal_queue.put(signal_dicts)
+                            logger.info(f"Mis {len(signal_dicts)} signaux sur la file d'attente")
             
                 except Exception as e:
-                    logger.error(f"❌ Erreur lors de l'analyse des données: {str(e)}")
+                    logger.info(f"❌ Erreur lors de l'analyse des données: {str(e)}")
         
             except Exception as e:
                 logger.error(f"❌ Erreur dans le processeur de file d'attente: {str(e)}")

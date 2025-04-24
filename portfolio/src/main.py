@@ -86,7 +86,7 @@ def handle_market_data(channel: str, data: dict):
     if not symbol or price is None:
         return
     
-    logger.debug(f"Mise à jour du prix: {symbol} @ {price}")
+    logger.info(f"Mise à jour du prix: {symbol} @ {price}")
     
     # Mettre à jour le prix dans la base de données (si nécessaire)
     try:

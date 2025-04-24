@@ -33,8 +33,11 @@ class RedisClient:
         self.pubsub = None
         self.subscription_thread = None
         self.stop_event = threading.Event()
+        
+        # Stocker les canaux d'origine pour la reconnexion
+        self._original_channels = []
+        self._callback = None
     
-    # Dans shared/src/redis_client.py
     def _create_redis_connection(self) -> Redis:
         """Crée et retourne une connexion Redis."""
         try:
@@ -108,6 +111,9 @@ class RedisClient:
             self.reconnect()
             # Réessayer après reconnexion
             return self.redis.publish(channel, message)
+        except Exception as e:
+            logger.error(f"Erreur lors de la publication du message: {str(e)}")
+            return 0
     
     def subscribe(self, channels: Union[str, List[str]], callback: Callable[[str, Any], None]) -> None:
         """
@@ -119,6 +125,10 @@ class RedisClient:
         """
         if isinstance(channels, str):
             channels = [channels]
+        
+        # Stocker les canaux et le callback pour la reconnexion
+        self._original_channels = channels
+        self._callback = callback
             
         # Créer un objet PubSub
         self.pubsub = self.redis.pubsub(ignore_subscribe_messages=True)
@@ -144,6 +154,10 @@ class RedisClient:
         Écoute les messages sur les canaux souscrits et appelle le callback.
         Cette méthode s'exécute dans un thread séparé.
         """
+        retry_count = 0
+        max_reconnect_retries = 10
+        reconnect_delay = 1  # secondes
+        
         while not self.stop_event.is_set():
             try:
                 # Récupérer le prochain message avec timeout
@@ -155,28 +169,45 @@ class RedisClient:
                     
                     # Essayer de parser le message JSON
                     try:
-                        data = json.loads(data)
+                        if isinstance(data, str) and (data.startswith('{') or data.startswith('[')):
+                            data = json.loads(data)
                     except json.JSONDecodeError:
                         # Si ce n'est pas du JSON, garder la chaîne
                         pass
                     
                     # Appeler le callback avec le canal et les données
-                    callback(channel, data)
+                    try:
+                        callback(channel, data)
+                    except Exception as e:
+                        logger.error(f"Erreur dans le callback pour le canal {channel}: {str(e)}")
+                
+                # Réinitialiser le compteur de tentatives après un message réussi
+                retry_count = 0
                     
             except (ConnectionError, TimeoutError):
                 logger.warning("Perte de connexion Redis pendant l'écoute, tentative de reconnexion...")
                 try:
+                    # Incrémenter le compteur de tentatives
+                    retry_count += 1
+                    if retry_count > max_reconnect_retries:
+                        logger.error(f"Abandonnement après {max_reconnect_retries} tentatives de reconnexion")
+                        self.stop_event.set()
+                        break
+                        
+                    # Attendre un peu avec backoff exponentiel
+                    time.sleep(reconnect_delay)
+                    reconnect_delay = min(30, reconnect_delay * 1.5)  # Maximum 30 secondes
+                    
+                    # Reconnecter à Redis
                     self.reconnect()
                     
-                    # Recréer l'objet PubSub
-                    current_channels = [sub[0].decode() for sub in self.pubsub.channels.items()]
-                    self.pubsub = self.redis.pubsub(ignore_subscribe_messages=True)
-                    if current_channels:
-                        self.pubsub.subscribe(*current_channels)
-                        logger.info(f"Réabonnement aux canaux: {', '.join(current_channels)}")
+                    # Recréer l'objet PubSub et se réabonner aux canaux d'origine
+                    if self._original_channels:
+                        self.pubsub = self.redis.pubsub(ignore_subscribe_messages=True)
+                        self.pubsub.subscribe(*self._original_channels)
+                        logger.info(f"Réabonnement aux canaux: {', '.join(self._original_channels)}")
                 except Exception as e:
                     logger.error(f"Échec de reconnexion lors de l'écoute: {str(e)}")
-                    time.sleep(5)  # Attendre avant de réessayer
             
             except Exception as e:
                 logger.error(f"Erreur durant l'écoute Redis: {str(e)}")
@@ -188,9 +219,12 @@ class RedisClient:
             # Signaler au thread de s'arrêter
             self.stop_event.set()
             
-            # Désabonner de tous les canaux
-            self.pubsub.unsubscribe()
-            self.pubsub.close()
+            try:
+                # Désabonner de tous les canaux
+                self.pubsub.unsubscribe()
+                self.pubsub.close()
+            except Exception as e:
+                logger.warning(f"Erreur lors du désabonnement: {str(e)}")
             
             # Attendre que le thread se termine proprement
             if self.subscription_thread and self.subscription_thread.is_alive():
@@ -202,7 +236,7 @@ class RedisClient:
         """Récupère une valeur depuis Redis."""
         try:
             value = self.redis.get(key)
-            if value and value.startswith('{') and value.endswith('}'):
+            if value and isinstance(value, str) and value.startswith('{') and value.endswith('}'):
                 try:
                     return json.loads(value)
                 except json.JSONDecodeError:
@@ -212,6 +246,9 @@ class RedisClient:
             logger.warning("Perte de connexion Redis pendant get(), tentative de reconnexion...")
             self.reconnect()
             return self.redis.get(key)
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération de la clé {key}: {str(e)}")
+            return None
     
     def set(self, key: str, value: Any, expiration: Optional[int] = None) -> bool:
         """
@@ -242,6 +279,9 @@ class RedisClient:
                 return self.redis.setex(key, expiration, value)
             else:
                 return self.redis.set(key, value)
+        except Exception as e:
+            logger.error(f"Erreur lors de la définition de la clé {key}: {str(e)}")
+            return False
     
     def delete(self, key: str) -> int:
         """Supprime une clé de Redis."""
@@ -251,10 +291,16 @@ class RedisClient:
             logger.warning("Perte de connexion Redis pendant delete(), tentative de reconnexion...")
             self.reconnect()
             return self.redis.delete(key)
+        except Exception as e:
+            logger.error(f"Erreur lors de la suppression de la clé {key}: {str(e)}")
+            return 0
     
     def close(self) -> None:
         """Ferme la connexion Redis et nettoie les ressources."""
-        self.unsubscribe()
-        if self.redis:
-            self.redis.close()
-            logger.info("Connexion Redis fermée")
+        try:
+            self.unsubscribe()
+            if self.redis:
+                self.redis.close()
+                logger.info("Connexion Redis fermée")
+        except Exception as e:
+            logger.error(f"Erreur lors de la fermeture de la connexion Redis: {str(e)}")

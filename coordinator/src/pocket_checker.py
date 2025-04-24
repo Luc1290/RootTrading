@@ -67,7 +67,7 @@ class PocketChecker:
                 self.pocket_cache = {pocket["pocket_type"]: pocket for pocket in pockets}
                 self.last_cache_update = now
                 
-                logger.debug(f"Cache des poches mis à jour: {len(pockets)} poches")
+                logger.info(f"Cache des poches mis à jour: {len(pockets)} poches")
                 
             except requests.RequestException as e:
                 logger.error(f"Erreur lors de la récupération des poches: {str(e)}")

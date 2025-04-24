@@ -128,7 +128,7 @@ class MessageRouter:
             self.stats["messages_routed"] += 1
             
             # Log détaillé si nécessaire
-            logger.debug(f"Message routé: {topic} -> {channel}")
+            logger.info(f"Message routé: {topic} -> {channel}")
             
             return True
             

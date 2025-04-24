@@ -54,7 +54,7 @@ def handle_kafka_message(topic: str, message: Dict[str, Any]) -> None:
         success = router.route_message(topic, message)
         
         if success:
-            logger.debug(f"Message routé depuis {topic}")
+            logger.info(f"Message routé depuis {topic}")
         else:
             logger.warning(f"Échec du routage pour le message de {topic}")
     

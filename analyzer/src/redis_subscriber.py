@@ -65,7 +65,7 @@ class RedisSubscriber:
             # Déboguer uniquement si le chandelier est fermé
             if data.get('is_closed', False):
                 symbol = data.get('symbol', 'UNKNOWN')
-                logger.debug(f"📊 {symbol} @ {channel}: Reçu données de marché, close={data.get('close')}")
+                logger.info(f"📊 {symbol} @ {channel}: Reçu données de marché, close={data.get('close')}")
         except Exception as e:
             logger.error(f"❌ Erreur lors du traitement des données de marché: {str(e)}")
     
@@ -123,11 +123,19 @@ class RedisSubscriber:
     
     def publish_signal(self, signal: StrategySignal) -> None:
         try:
+            # Vérifier que tous les champs requis sont présents
+            required_fields = ['symbol', 'strategy', 'side', 'timestamp', 'price']
+            missing_fields = [field for field in required_fields if not hasattr(signal, field) or getattr(signal, field) is None]
+        
+            if missing_fields:
+                logger.error(f"❌ Signal incomplet, ne sera pas publié. Champs manquants: {missing_fields}")
+                return
+            
             # Convertir le signal en dictionnaire
             signal_dict = signal.dict()
         
             # S'assurer que timestamp est converti en chaîne ISO
-            if "timestamp" in signal_dict and isinstance(signal_dict["timestamp"], datetime):
+            if "timestamp" in signal_dict and isinstance(signal_dict["timestamp"], datetime.datetime):
                 signal_dict["timestamp"] = signal_dict["timestamp"].isoformat()
         
             # S'assurer que les énums sont convertis en chaînes
@@ -137,10 +145,16 @@ class RedisSubscriber:
             if "strength" in signal_dict and not isinstance(signal_dict["strength"], str):
                 signal_dict["strength"] = signal_dict["strength"].value
         
+            # Vérification finale avant publication
+            for field in required_fields:
+                if field not in signal_dict or signal_dict[field] is None:
+                    logger.error(f"❌ Champ {field} manquant ou nul après conversion")
+                    return
+        
             # Publier sur le canal des signaux
             self.redis_client.publish(self.signal_channel, signal_dict)
             logger.info(f"✅ Signal publié sur {self.signal_channel}: {signal.side} pour {signal.symbol} @ {signal.price}")
-        
+    
         except Exception as e:
             logger.error(f"❌ Erreur lors de la publication du signal: {str(e)}")
     

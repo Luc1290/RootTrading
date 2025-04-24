@@ -100,8 +100,8 @@ class DBManager:
             return None
         
         try:
-            logger.debug(f"Exécution de la requête: {query}")
-            logger.debug(f"Paramètres: {params}")
+            logger.info(f"Exécution de la requête: {query}")
+            logger.info(f"Paramètres: {params}")
 
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cursor.execute(query, params)
