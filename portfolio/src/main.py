@@ -274,6 +274,8 @@ def update_balances_from_binance():
             logger.warning("Clés API Binance non configurées, impossible de récupérer les balances")
             return False
         
+        logger.info(f"Clés API Binance disponibles: API_KEY={BINANCE_API_KEY[:3]}...")
+
         # Créer le gestionnaire Binance
         account_manager = BinanceAccountManager(
             api_key=BINANCE_API_KEY,
@@ -281,12 +283,16 @@ def update_balances_from_binance():
         )
         
         # Récupérer les balances
+        logger.info("Tentative de récupération des balances Binance...")
         binance_balances = account_manager.get_balances()
         
         if not binance_balances:
             logger.warning("Aucune balance récupérée depuis Binance")
             return False
         
+        logger.info(f"SUCCESS: {len(binance_balances)} balances récupérées depuis Binance")
+        logger.info(f"Exemple de balance: {binance_balances[0] if binance_balances else 'aucune'}")
+                
         # Convertir en AssetBalance
         from shared.src.schemas import AssetBalance
         asset_balances = []

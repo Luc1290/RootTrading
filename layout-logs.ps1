@@ -1,103 +1,33 @@
-# Add necessary assemblies
-Add-Type -AssemblyName System.Windows.Forms
+# layout-logs.ps1
 
-# List of services
+# Liste des services
 $services = @(
     "gateway",
     "analyzer",
     "trader",
     "portfolio",
     "coordinator",
-    "dispatcher"
+    "dispatcher",
     "redis",
+    "kafka",
+    "kafka-init",
     "db",
-    "risk_manager"
+    "frontend",
+    "logger",
+    "pnl_tracker",
+    "risk_manager",
+    "scheduler"
 )
 
-# Get screen dimensions
-$screenWidth = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Width
-$screenHeight = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Height
+# Dossier où est ton docker-compose.yml
+$basePath = "E:\RootTrading\RootTrading"  # <-- ADAPTE CETTE LIGNE
 
-# Define grid layout
-$columns = 2
-$rows = [Math]::Ceiling($services.Count / $columns)
+# Début de la commande Windows Terminal
+$wtCommand = ""
 
-$windowWidth = [Math]::Floor($screenWidth / $columns)
-$windowHeight = [Math]::Floor($screenHeight / $rows)
-
-Write-Host "Screen dimensions: $screenWidth x $screenHeight"
-Write-Host "Grid layout: $columns x $rows"
-Write-Host "Window size: $windowWidth x $windowHeight"
-
-# Function to generate script content
-function Get-LogScript {
-    param (
-        [string]$Service,
-        [int]$PosX,
-        [int]$PosY,
-        [int]$Width,
-        [int]$Height
-    )
-    
-    return @"
-# Window setup
-try {
-    # Import Windows API functions
-    Add-Type @'
-    using System;
-    using System.Runtime.InteropServices;
-    
-    public class WinPos {
-        [DllImport("user32.dll", SetLastError = true)]
-        public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
-        
-        [DllImport("kernel32.dll")]
-        public static extern IntPtr GetConsoleWindow();
-    }
-'@ -ErrorAction SilentlyContinue
-
-    # Get console window handle
-    `$handle = [WinPos]::GetConsoleWindow()
-    
-    # Position and resize window
-    [void][WinPos]::MoveWindow(`$handle, $PosX, $PosY, $Width, $Height, `$true)
-    
-    # Set window title
-    `$host.UI.RawUI.WindowTitle = "Docker Logs: $Service"
-} catch {
-    Write-Host "Error positioning window: `$_" -ForegroundColor Red
+foreach ($service in $services) {
+    $wtCommand += "new-tab --title $service -d `"$basePath`" powershell.exe -NoExit -Command `"docker compose logs -f $service`"; "
 }
 
-# Display logs
-Write-Host "Logs for service: $Service" -ForegroundColor Cyan
-Write-Host "--------------------" -ForegroundColor Cyan
-docker-compose logs -f $Service
-"@
-}
-
-# Open a window for each service
-for ($i = 0; $i -lt $services.Count; $i++) {
-    $service = $services[$i]
-    
-    # Calculate position
-    $col = $i % $columns
-    $row = [Math]::Floor($i / $columns)
-    
-    $posX = $col * $windowWidth
-    $posY = $row * $windowHeight
-    
-    Write-Host "Setting up window $($i+1) for $service at position ($posX, $posY)"
-    
-    # Generate script for this service
-    $scriptContent = Get-LogScript -Service $service -PosX $posX -PosY $posY -Width $windowWidth -Height $windowHeight
-    $tempScriptPath = [System.IO.Path]::GetTempFileName() + ".ps1"
-    $scriptContent | Out-File -FilePath $tempScriptPath -Encoding utf8
-    
-    # Launch PowerShell window with this script
-    Start-Process powershell.exe -ArgumentList "-NoExit", "-File", $tempScriptPath
-    
-    # Pause to avoid timing issues
-    Start-Sleep -Milliseconds 500
-}
-
-Write-Host "All log windows have been launched and should be positioned." -ForegroundColor Green
+# Exécuter le tout
+Invoke-Expression "wt.exe $wtCommand"
