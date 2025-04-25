@@ -9,12 +9,14 @@ import sys
 import os
 import time
 from aiohttp import web
+import argparse
 
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
 from binance_ws import BinanceWebSocket
 from kafka_producer import get_producer
+from historical_data_fetcher import HistoricalDataFetcher
 from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY, SYMBOLS, INTERVAL
 
 # Configuration du logging
@@ -128,11 +130,30 @@ async def shutdown(signal_type, loop):
     
     logger.info("Service Gateway arrêté proprement")
 
+def parse_arguments():
+    """Parse les arguments de ligne de commande."""
+    parser = argparse.ArgumentParser(description='Gateway RootTrading')
+    parser.add_argument(
+        '--history-days', 
+        type=int, 
+        default=3, 
+        help='Nombre de jours d\'historique à récupérer au démarrage'
+    )
+    parser.add_argument(
+        '--skip-history', 
+        action='store_true', 
+        help='Ignorer le chargement de l\'historique'
+    )
+    return parser.parse_args()
+
 async def main():
     """
     Fonction principale qui démarre le Gateway.
     """
     global ws_client
+    
+    # Parser les arguments
+    args = parse_arguments()
     
     logger.info("🚀 Démarrage du service Gateway RootTrading...")
     logger.info(f"Configuration: {', '.join(SYMBOLS)} @ {INTERVAL}")
@@ -140,10 +161,33 @@ async def main():
     # Démarrer le serveur HTTP
     http_runner = await start_http_server()
     
-    # Créer le client WebSocket Binance
-    ws_client = BinanceWebSocket(symbols=SYMBOLS, interval=INTERVAL)
+    # Obtenir le producteur Kafka
+    producer = get_producer()
     
     try:
+        # Charger les données historiques au démarrage si demandé
+        if not args.skip_history:
+            history_days = args.history_days
+            logger.info(f"🕒 Chargement de l'historique des {history_days} derniers jours...")
+            
+            # Créer et exécuter le récupérateur de données historiques
+            data_fetcher = HistoricalDataFetcher(kafka_producer=producer)
+            klines_count = await data_fetcher.fetch_and_publish_history(
+                symbols=SYMBOLS,
+                interval=INTERVAL,
+                days_back=history_days
+            )
+            
+            if klines_count > 0:
+                logger.info(f"✅ {klines_count} chandeliers historiques chargés avec succès")
+            else:
+                logger.warning("⚠️ Aucun chandelier historique n'a pu être chargé")
+        else:
+            logger.info("⏩ Chargement de l'historique ignoré")
+        
+        # Créer le client WebSocket Binance
+        ws_client = BinanceWebSocket(symbols=SYMBOLS, interval=INTERVAL)
+        
         # Démarrer le client WebSocket
         await ws_client.start()
     except Exception as e:

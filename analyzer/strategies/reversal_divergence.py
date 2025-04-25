@@ -62,7 +62,7 @@ class ReversalDivergenceStrategy(BaseStrategy):
         Returns:
             Nombre minimum de données requises
         """
-        return max(self.lookback * 2, 15)  # Besoin de suffisamment de données pour détecter des patterns
+        return max(self.lookback * 2, 50)  # Besoin de suffisamment de données pour détecter des patterns
     
     def _calculate_rsi(self, prices: np.ndarray) -> np.ndarray:
         """

@@ -75,7 +75,7 @@ class RideOrReactStrategy(BaseStrategy):
             Nombre minimum de données requises
         """
         # Besoin d'au moins 24h de données (en fonction de l'intervalle)
-        return 15 // self.get_interval_minutes()
+        return 1440 // self.get_interval_minutes()
     
     def get_interval_minutes(self) -> int:
         """

@@ -10,7 +10,9 @@ import time
 import os
 import threading
 from datetime import datetime, timedelta
-import asyncio
+import traceback
+import requests
+from typing import Dict, List, Optional
 
 import uvicorn
 from fastapi import FastAPI
@@ -18,12 +20,13 @@ from fastapi import FastAPI
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
-from shared.src.config import SYMBOLS, LOG_LEVEL
+from shared.src.config import SYMBOLS, LOG_LEVEL, BINANCE_API_KEY, BINANCE_SECRET_KEY
 from shared.src.redis_client import RedisClient
 
 from portfolio.src.api import app
 from portfolio.src.models import PortfolioModel, DBManager
 from portfolio.src.pockets import PocketManager
+from portfolio.src.binance_account_manager import BinanceAccountManager
 
 # Configuration du logging
 log_level = getattr(logging, LOG_LEVEL.upper(), logging.INFO)
@@ -39,6 +42,8 @@ logger = logging.getLogger("portfolio")
 
 # Événement d'arrêt global
 stop_event = threading.Event()
+# Cache global des prix actuels
+current_prices = {}
 
 def parse_arguments():
     """Parse les arguments de ligne de commande."""
@@ -61,10 +66,16 @@ def parse_arguments():
         help='Désactive la synchronisation automatique'
     )
     parser.add_argument(
-        '--sync-interval', 
+        '--binance-sync-interval', 
         type=int, 
         default=300,  # 5 minutes
-        help='Intervalle de synchronisation en secondes'
+        help='Intervalle de synchronisation Binance en secondes'
+    )
+    parser.add_argument(
+        '--db-sync-interval', 
+        type=int, 
+        default=300,  # 5 minutes
+        help='Intervalle de synchronisation DB en secondes'
     )
     return parser.parse_args()
 
@@ -77,8 +88,7 @@ def handle_market_data(channel: str, data: dict):
         channel: Canal Redis d'où proviennent les données
         data: Données de marché
     """
-    if not data.get('is_closed', False):
-        return  # Ne traiter que les chandeliers fermés
+    global current_prices
     
     symbol = data.get('symbol')
     price = data.get('close')
@@ -86,9 +96,17 @@ def handle_market_data(channel: str, data: dict):
     if not symbol or price is None:
         return
     
+    # Mettre à jour le cache de prix
+    if symbol:
+        current_prices[symbol] = price
+    
+    # Ne traiter que les chandeliers fermés pour la mise à jour de la base de données
+    if not data.get('is_closed', False):
+        return
+    
     logger.info(f"Mise à jour du prix: {symbol} @ {price}")
     
-    # Mettre à jour le prix dans la base de données (si nécessaire)
+    # Mettre à jour le prix dans la base de données
     try:
         db = DBManager()
         
@@ -104,8 +122,10 @@ def handle_market_data(channel: str, data: dict):
             volume = EXCLUDED.volume
         """
         
+        timestamp = datetime.fromtimestamp(data['start_time'] / 1000)
+        
         params = (
-            datetime.fromtimestamp(data['start_time'] / 1000),
+            timestamp,
             symbol,
             data['open'],
             data['high'],
@@ -119,6 +139,7 @@ def handle_market_data(channel: str, data: dict):
     
     except Exception as e:
         logger.error(f"Erreur lors de la mise à jour du prix: {str(e)}")
+        logger.error(traceback.format_exc())
 
 def handle_balance_update(channel: str, data: dict):
     """
@@ -142,16 +163,35 @@ def handle_balance_update(channel: str, data: dict):
             if not isinstance(balance_data, dict):
                 continue
             
+            # Adapter le format en fonction de la source des données
+            # Format Binance: {"asset": "BTC", "free": "0.1", "locked": "0.0"}
+            # Format interne: {"asset": "BTC", "disponible": "0.1", "en_ordre": "0.0", "total": "0.1", "eur_value": "4000.0"}
+            
+            asset = balance_data.get('asset')
+            
+            # Vérifier si c'est le format Binance ou le format interne
+            if 'free' in balance_data:
+                free = float(balance_data.get('free', 0))
+                locked = float(balance_data.get('locked', 0))
+                total = free + locked
+                value_usdc = balance_data.get('value_usdc')
+            else:
+                free = float(balance_data.get('disponible', 0))
+                locked = float(balance_data.get('en_ordre', 0))
+                total = float(balance_data.get('total', 0))
+                value_usdc = float(balance_data.get('eur_value', 0))  # Utiliser le champ eur_value comme value_usdc
+                
             balance = AssetBalance(
-                asset=balance_data.get('asset'),
-                free=float(balance_data.get('disponible', 0)),
-                locked=float(balance_data.get('en_ordre', 0)),
-                total=float(balance_data.get('total', 0)),
-                value_usdc=float(balance_data.get('eur_value', 0))  # Utiliser le champ eur_value comme value_usdc
+                asset=asset,
+                free=free,
+                locked=locked,
+                total=total,
+                value_usdc=value_usdc
             )
             balances.append(balance)
         
         if not balances:
+            logger.warning("Aucune balance à mettre à jour reçue")
             return
         
         # Mettre à jour les soldes
@@ -171,15 +211,159 @@ def handle_balance_update(channel: str, data: dict):
     
     except Exception as e:
         logger.error(f"Erreur lors de la mise à jour des soldes: {str(e)}")
+        logger.error(traceback.format_exc())
 
-def sync_task(interval: int):
+def get_current_prices() -> Dict[str, float]:
     """
-    Tâche périodique pour synchroniser les poches avec les trades actifs.
+    Récupère les prix actuels des actifs.
+    Utilise d'abord le cache, puis tente de récupérer depuis la base de données.
+    
+    Returns:
+        Dictionnaire {symbole: prix}
+    """
+    global current_prices
+    
+    # Si cache vide, essayer de remplir depuis la base de données
+    if not current_prices:
+        try:
+            db = DBManager()
+            # Récupérer les derniers prix pour chaque symbole
+            query = """
+            WITH latest_data AS (
+                SELECT 
+                    symbol, 
+                    MAX(time) as latest_time
+                FROM 
+                    market_data
+                GROUP BY 
+                    symbol
+            )
+            SELECT 
+                m.symbol, 
+                m.close
+            FROM 
+                market_data m
+            JOIN 
+                latest_data l ON m.symbol = l.symbol AND m.time = l.latest_time
+            """
+            
+            result = db.execute_query(query, fetch_all=True)
+            db.close()
+            
+            if result:
+                # Mettre à jour le cache
+                for row in result:
+                    symbol = row['symbol']
+                    price = float(row['close'])
+                    current_prices[symbol] = price
+        
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération des prix actuels: {str(e)}")
+    
+    return current_prices
+
+def update_balances_from_binance():
+    """
+    Récupère et met à jour les balances depuis Binance.
+    """
+    logger.info("Mise à jour des balances depuis Binance...")
+    
+    try:
+        # Vérifier si les clés API sont configurées
+        if not BINANCE_API_KEY or not BINANCE_SECRET_KEY:
+            logger.warning("Clés API Binance non configurées, impossible de récupérer les balances")
+            return False
+        
+        # Créer le gestionnaire Binance
+        account_manager = BinanceAccountManager(
+            api_key=BINANCE_API_KEY,
+            api_secret=BINANCE_SECRET_KEY
+        )
+        
+        # Récupérer les balances
+        binance_balances = account_manager.get_balances()
+        
+        if not binance_balances:
+            logger.warning("Aucune balance récupérée depuis Binance")
+            return False
+        
+        # Convertir en AssetBalance
+        from shared.src.schemas import AssetBalance
+        asset_balances = []
+        
+        # Prix actuel des actifs pour l'évaluation en USDC
+        prices = get_current_prices()
+        
+        # Si on n'a pas les prix, essayer de les récupérer via l'API Binance
+        if not prices:
+            try:
+                prices = account_manager.get_ticker_prices()
+                # Mettre à jour le cache global
+                for symbol, price in prices.items():
+                    if symbol.endswith('USDC'):
+                        base_asset = symbol[:-4]  # Enlever 'USDC'
+                        current_prices[symbol] = price
+            except Exception as e:
+                logger.error(f"Erreur lors de la récupération des prix Binance: {str(e)}")
+        
+        for balance in binance_balances:
+            asset = balance["asset"]
+            
+            # Calculer la valeur en USDC
+            value_usdc = None
+            if asset == "USDC":
+                value_usdc = balance["total"]
+            elif f"{asset}USDC" in prices:
+                value_usdc = balance["total"] * prices[f"{asset}USDC"]
+            
+            asset_balance = AssetBalance(
+                asset=asset,
+                free=balance["free"],
+                locked=balance["locked"],
+                total=balance["total"],
+                value_usdc=value_usdc
+            )
+            asset_balances.append(asset_balance)
+        
+        # Mettre à jour les balances dans la base de données
+        portfolio = PortfolioModel()
+        success = portfolio.update_balances(asset_balances)
+        portfolio.close()
+        
+        if not success:
+            logger.error("Échec de la mise à jour des balances dans la base de données")
+            return False
+        
+        # Publier sur Redis pour informer les autres services
+        try:
+            redis_client = RedisClient()
+            redis_client.publish("roottrading:account:balances", asset_balances)
+            redis_client.close()
+        except Exception as e:
+            logger.error(f"Erreur lors de la publication des balances sur Redis: {str(e)}")
+        
+        logger.info(f"✅ {len(asset_balances)} balances mises à jour depuis Binance")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la mise à jour des balances depuis Binance: {str(e)}")
+        logger.error(traceback.format_exc())
+        return False
+
+def binance_sync_task(interval: int):
+    """
+    Tâche périodique pour synchroniser les balances avec Binance.
     
     Args:
         interval: Intervalle entre les synchronisations en secondes
     """
-    logger.info(f"Démarrage de la tâche de synchronisation (intervalle: {interval}s)")
+    logger.info(f"Démarrage de la tâche de synchronisation Binance (intervalle: {interval}s)")
+    
+    # Première synchronisation au démarrage
+    try:
+        update_balances_from_binance()
+    except Exception as e:
+        logger.error(f"Erreur lors de la synchronisation initiale avec Binance: {str(e)}")
     
     while not stop_event.is_set():
         try:
@@ -187,7 +371,32 @@ def sync_task(interval: int):
             if stop_event.wait(timeout=interval):
                 break
             
-            # Synchroniser les poches
+            # Mettre à jour les balances
+            update_balances_from_binance()
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la synchronisation avec Binance: {str(e)}")
+            logger.error(traceback.format_exc())
+            time.sleep(60)  # Pause plus longue en cas d'erreur
+    
+    logger.info("Tâche de synchronisation Binance arrêtée")
+
+def db_sync_task(interval: int):
+    """
+    Tâche périodique pour synchroniser les poches avec les trades actifs dans la base de données.
+    
+    Args:
+        interval: Intervalle entre les synchronisations en secondes
+    """
+    logger.info(f"Démarrage de la tâche de synchronisation DB (intervalle: {interval}s)")
+    
+    while not stop_event.is_set():
+        try:
+            # Attendre l'intervalle ou l'événement d'arrêt
+            if stop_event.wait(timeout=interval):
+                break
+            
+            # Synchroniser les poches avec les trades actifs
             logger.info("Synchronisation des poches...")
             pocket_manager = PocketManager()
             pocket_manager.sync_with_trades()
@@ -203,13 +412,91 @@ def sync_task(interval: int):
             )
             db.close()
             
-            logger.info("Synchronisation terminée")
+            logger.info("Synchronisation DB terminée")
         
         except Exception as e:
-            logger.error(f"Erreur lors de la synchronisation: {str(e)}")
-            time.sleep(10)  # Pause en cas d'erreur
+            logger.error(f"Erreur lors de la synchronisation DB: {str(e)}")
+            logger.error(traceback.format_exc())
+            time.sleep(60)  # Pause plus longue en cas d'erreur
     
-    logger.info("Tâche de synchronisation arrêtée")
+    logger.info("Tâche de synchronisation DB arrêtée")
+
+def create_tables_if_needed():
+    """
+    Vérifie et crée les tables nécessaires si elles n'existent pas déjà.
+    """
+    try:
+        db = DBManager()
+        
+        # Vérifier si la table portfolio_balances existe
+        check_query = """
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_name = 'portfolio_balances'
+        );
+        """
+        
+        result = db.execute_query(check_query, fetch_one=True)
+        
+        if not result or not result.get('exists', False):
+            logger.warning("Table portfolio_balances non trouvée, création en cours...")
+            
+            # Créer la table
+            create_query = """
+            CREATE TABLE IF NOT EXISTS portfolio_balances (
+                id SERIAL PRIMARY KEY,
+                asset VARCHAR(10) NOT NULL,
+                free NUMERIC(24, 8) NOT NULL,
+                locked NUMERIC(24, 8) NOT NULL,
+                total NUMERIC(24, 8) NOT NULL,
+                value_usdc NUMERIC(24, 8),
+                timestamp TIMESTAMP NOT NULL DEFAULT NOW()
+            );
+            
+            CREATE INDEX IF NOT EXISTS portfolio_balances_asset_idx ON portfolio_balances(asset);
+            CREATE INDEX IF NOT EXISTS portfolio_balances_timestamp_idx ON portfolio_balances(timestamp);
+            """
+            
+            db.execute_query(create_query, commit=True)
+            logger.info("Table portfolio_balances créée avec succès")
+        
+        # Vérifier si la table capital_pockets existe
+        check_query = """
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_name = 'capital_pockets'
+        );
+        """
+        
+        result = db.execute_query(check_query, fetch_one=True)
+        
+        if not result or not result.get('exists', False):
+            logger.warning("Table capital_pockets non trouvée, création en cours...")
+            
+            # Créer la table
+            create_query = """
+            CREATE TABLE IF NOT EXISTS capital_pockets (
+                id SERIAL PRIMARY KEY,
+                pocket_type VARCHAR(20) NOT NULL CHECK (pocket_type IN ('active', 'buffer', 'safety')),
+                allocation_percent NUMERIC(5, 2) NOT NULL,
+                current_value NUMERIC(24, 8) NOT NULL,
+                used_value NUMERIC(24, 8) NOT NULL,
+                available_value NUMERIC(24, 8) NOT NULL,
+                active_cycles INTEGER NOT NULL DEFAULT 0,
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+            );
+            """
+            
+            db.execute_query(create_query, commit=True)
+            logger.info("Table capital_pockets créée avec succès")
+        
+        db.close()
+        return True
+    
+    except Exception as e:
+        logger.error(f"Erreur lors de la vérification/création des tables: {str(e)}")
+        logger.error(traceback.format_exc())
+        return False
 
 def subscribe_to_redis_channels():
     """
@@ -232,38 +519,14 @@ def subscribe_to_redis_channels():
     
     except Exception as e:
         logger.error(f"Erreur lors de l'abonnement aux canaux Redis: {str(e)}")
+        logger.error(traceback.format_exc())
         return None
 
-def shutdown_handler(signum, frame):
+def initialize_default_balances():
     """
-    Gestionnaire de signal pour l'arrêt propre.
-    
-    Args:
-        signum: Numéro du signal
-        frame: Frame actuelle
+    Initialise les balances avec des valeurs par défaut si aucune balance n'existe.
     """
-    logger.info(f"Signal {signum} reçu, arrêt en cours...")
-    stop_event.set()
-
-def main():
-    """
-    Fonction principale qui démarre le service Portfolio.
-    """
-    # Parser les arguments
-    args = parse_arguments()
-    
-    # Configurer les gestionnaires de signaux
-    signal.signal(signal.SIGINT, shutdown_handler)
-    signal.signal(signal.SIGTERM, shutdown_handler)
-    
-    logger.info("🚀 Démarrage du service Portfolio RootTrading...")
-    
-    # S'abonner aux canaux Redis
-    redis_client = subscribe_to_redis_channels()
-    
-    # Démarrer la tâche de synchronisation si activée
     try:
-        logger.info("Vérification des balances existantes...")
         db = DBManager()
         portfolio = PortfolioModel(db_manager=db)
         
@@ -295,18 +558,71 @@ def main():
             logger.info(f"✅ {len(balances)} balances existantes trouvées")
         
         portfolio.close()
+        return True
+    
     except Exception as e:
         logger.error(f"Erreur lors de l'initialisation des balances: {str(e)}")
+        logger.error(traceback.format_exc())
+        return False
+
+def shutdown_handler(signum, frame):
+    """
+    Gestionnaire de signal pour l'arrêt propre.
     
-    # Démarrer la tâche de synchronisation si activée
-    sync_thread = None
+    Args:
+        signum: Numéro du signal
+        frame: Frame actuelle
+    """
+    logger.info(f"Signal {signum} reçu, arrêt en cours...")
+    stop_event.set()
+
+def main():
+    """
+    Fonction principale qui démarre le service Portfolio.
+    """
+    # Parser les arguments
+    args = parse_arguments()
+    
+    # Configurer les gestionnaires de signaux
+    signal.signal(signal.SIGINT, shutdown_handler)
+    signal.signal(signal.SIGTERM, shutdown_handler)
+    
+    logger.info("🚀 Démarrage du service Portfolio RootTrading...")
+    
+    # Vérifier et créer les tables si nécessaire
+    if not create_tables_if_needed():
+        logger.error("❌ Impossible de créer les tables nécessaires, arrêt du service")
+        return
+    
+    # Initialiser les balances par défaut si nécessaire
+    if not initialize_default_balances():
+        logger.warning("⚠️ Initialisation des balances par défaut échouée, poursuite avec prudence")
+    
+    # S'abonner aux canaux Redis
+    redis_client = subscribe_to_redis_channels()
+    
+    threads = []
+    
+    # Démarrer la tâche de synchronisation Binance
     if not args.no_sync:
-        sync_thread = threading.Thread(
-            target=sync_task,
-            args=(args.sync_interval,),
-            daemon=True
+        binance_thread = threading.Thread(
+            target=binance_sync_task,
+            args=(args.binance_sync_interval,),
+            daemon=True,
+            name="binance-sync"
         )
-        sync_thread.start()
+        binance_thread.start()
+        threads.append(binance_thread)
+        
+        # Démarrer la tâche de synchronisation DB
+        db_thread = threading.Thread(
+            target=db_sync_task,
+            args=(args.db_sync_interval,),
+            daemon=True,
+            name="db-sync"
+        )
+        db_thread.start()
+        threads.append(db_thread)
     
     try:
         # Démarrer l'API FastAPI
@@ -317,14 +633,19 @@ def main():
         logger.info("Interruption clavier détectée")
     except Exception as e:
         logger.error(f"Erreur critique: {str(e)}")
+        logger.error(traceback.format_exc())
     finally:
         # Arrêter proprement
         logger.info("Arrêt du service Portfolio...")
         stop_event.set()
         
-        # Attendre l'arrêt de la tâche de synchronisation
-        if sync_thread and sync_thread.is_alive():
-            sync_thread.join(timeout=5.0)
+        # Attendre l'arrêt des threads de synchronisation
+        for thread in threads:
+            if thread.is_alive():
+                logger.info(f"Attente de l'arrêt du thread {thread.name}...")
+                thread.join(timeout=5.0)
+                if thread.is_alive():
+                    logger.warning(f"Le thread {thread.name} ne s'est pas arrêté proprement")
         
         # Fermer la connexion Redis
         if redis_client:

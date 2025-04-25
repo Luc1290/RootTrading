@@ -68,7 +68,7 @@ class EMACrossStrategy(BaseStrategy):
             Nombre minimum de données requises
         """
         # Besoin d'au moins 3 * la fenêtre longue pour avoir un calcul fiable
-        return max(self.long_window * 3, 15)
+        return max(self.long_window * 3, 30)
     
     def calculate_emas(self, prices: np.ndarray) -> tuple:
         """

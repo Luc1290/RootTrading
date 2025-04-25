@@ -9,16 +9,9 @@ $services = @(
     "portfolio",
     "coordinator",
     "dispatcher"
-    "analyze",
     "redis",
-    "kafka",
-    "kafka-init",
     "db",
-    "frontend",
-    "logger",
-    "pnl_tracker",
-    "risk_manager",
-    "scheduler"
+    "risk_manager"
 )
 
 # Get screen dimensions
