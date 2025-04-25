@@ -92,6 +92,18 @@ class ServiceMonitor:
                     "restart_command": "docker-compose restart portfolio",
                     "critical": True
                 },
+                "coordinator": {
+                    "url": "http://coordinator:5003/health",
+                    "timeout": 5,
+                    "restart_command": "docker-compose restart coordinator",
+                    "critical": False
+                },
+                "dispatcher": {
+                    "url": "http://dispatcher:5004/health",
+                    "timeout": 5,
+                    "restart_command": "docker-compose restart dispatcher",
+                    "critical": False
+                },
                 "frontend": {
                     "url": "http://frontend:3000/health",
                     "timeout": 5,
@@ -330,6 +342,10 @@ class ServiceMonitor:
         while not self.stop_event.is_set():
             for service_name, service_config in self.services.items():
                 try:
+                    # Ajouter un délai entre chaque service pour éviter des rafales de requêtes
+                    if self.stop_event.is_set():
+                        break
+                    
                     # Vérifier l'état du service
                     status = self.check_service(service_name, service_config)
                     
@@ -357,6 +373,9 @@ class ServiceMonitor:
                             f"Service {service_name} en erreur: {status['message']}",
                             "critical" if service_config.get("critical", False) else "warning"
                         )
+                    
+                    # Temporisation entre les services
+                    time.sleep(1)
                     
                 except Exception as e:
                     logger.error(f"❌ Erreur lors de la vérification du service {service_name}: {str(e)}")

@@ -136,6 +136,7 @@ rules:
     type: "strategy_performance"
     scope: "strategy"
     strategy: "RSI_Strategy"
+    symbol: "BTCUSDC"
     condition: "strategy_consecutive_losses > {max_losses}"
     parameters:
       max_losses: 3

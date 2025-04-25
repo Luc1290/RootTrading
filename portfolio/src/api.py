@@ -3,10 +3,11 @@ API REST pour le service Portfolio.
 Expose les endpoints pour accéder aux données du portefeuille et des poches.
 """
 import logging
+import threading
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 import json
-
+import time
 from fastapi import FastAPI, Query, Path, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -20,6 +21,10 @@ from shared.src.schemas import AssetBalance, PortfolioSummary, PocketSummary
 
 from portfolio.src.models import PortfolioModel, DBManager
 from portfolio.src.pockets import PocketManager
+import psutil
+process = psutil.Process(os.getpid())
+start_time = time.time()
+
 
 # Configuration du logging
 logging.basicConfig(
@@ -102,6 +107,68 @@ async def health_check():
         "timestamp": datetime.now().isoformat(),
         "uptime": "unknown"  # TODO: Ajouter l'uptime réel
     }
+
+@app.get("/diagnostic")
+async def diagnostic():
+    """
+    Endpoint de diagnostic fournissant des informations complètes sur l'état du service.
+    """
+    try:
+        # Obtenir les stats DB
+        db_stats = {}
+        try:
+            db = DBManager()
+            result = db.execute_query("SELECT COUNT(*) as count FROM portfolio_balances", fetch_one=True)
+            db_stats["balance_count"] = result["count"] if result else 0
+            
+            result = db.execute_query("SELECT COUNT(*) as count FROM capital_pockets", fetch_one=True)
+            db_stats["pocket_count"] = result["count"] if result else 0
+            
+            result = db.execute_query("SELECT COUNT(*) as count FROM trade_cycles", fetch_one=True)
+            db_stats["cycle_count"] = result["count"] if result else 0
+            
+            db.close()
+        except Exception as e:
+            db_stats["error"] = str(e)
+        
+        # Obtenir les info des poches
+        pockets_info = {}
+        try:
+            pocket_manager = PocketManager()
+            pockets = pocket_manager.get_pockets()
+            for pocket in pockets:
+                pockets_info[pocket.pocket_type] = {
+                    "current_value": float(pocket.current_value),
+                    "used_value": float(pocket.used_value),
+                    "available_value": float(pocket.available_value),
+                    "active_cycles": pocket.active_cycles
+                }
+            pocket_manager.close()
+        except Exception as e:
+            pockets_info["error"] = str(e)
+        
+        # Construire la réponse
+        diagnostic_info = {
+            "status": "operational",
+            "timestamp": datetime.now().isoformat(),
+            "uptime": time.time() - start_time,
+            "version": "1.0.0",
+            "database": db_stats,
+            "pockets": pockets_info,
+            "memory_usage_mb": round(process.memory_info().rss / (1024 * 1024), 2),
+            "cpu_percent": process.cpu_percent(interval=0.1),
+            "thread_count": threading.active_count()
+        }
+        
+        return diagnostic_info
+        
+    except Exception as e:
+        import traceback
+        return {
+            "status": "error",
+            "message": f"Erreur lors du diagnostic: {str(e)}",
+            "traceback": traceback.format_exc()
+        }
 
 @app.get("/summary", response_model=PortfolioSummary)
 async def get_portfolio_summary(portfolio: PortfolioModel = Depends(get_portfolio_model)):

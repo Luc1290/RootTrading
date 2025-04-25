@@ -7,6 +7,8 @@ import logging
 import signal
 import sys
 import os
+import time
+from aiohttp import web
 
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
@@ -33,6 +35,72 @@ if not BINANCE_API_KEY or not BINANCE_SECRET_KEY:
 # Créer le client WebSocket Binance
 ws_client = BinanceWebSocket(symbols=SYMBOLS, interval=INTERVAL)
 running = True
+start_time = time.time()
+
+# Routes pour le serveur HTTP
+routes = web.RouteTableDef()
+
+@routes.get('/health')
+async def health_check(request):
+    """
+    Point de terminaison pour vérifier l'état du service.
+    """
+    uptime = time.time() - start_time
+    return web.json_response({
+        "status": "ok",
+        "timestamp": time.time(),
+        "uptime": uptime,
+        "mode": "active" if running else "stopping",
+        "symbols": SYMBOLS,
+        "interval": INTERVAL
+    })
+
+@routes.get('/diagnostic')
+async def diagnostic(request):
+    """
+    Point de terminaison pour le diagnostic du service.
+    """
+    global ws_client
+    
+    # Récupérer l'état du client WebSocket
+    ws_status = {
+        "connected": ws_client.ws is not None,
+        "running": ws_client.running,
+        "reconnect_delay": ws_client.reconnect_delay,
+        "last_message_time": ws_client.last_message_time,
+        "stream_paths": ws_client.stream_paths,
+    }
+    
+    # Construire la réponse
+    diagnostic_info = {
+        "status": "operational" if ws_client.running else "stopped",
+        "timestamp": time.time(),
+        "uptime": time.time() - start_time,
+        "websocket": ws_status,
+        "symbols": SYMBOLS,
+        "interval": INTERVAL,
+        "kafka_connected": True,  # Simplification, à améliorer avec un vrai check
+    }
+    
+    return web.json_response(diagnostic_info)
+
+async def start_http_server():
+    """
+    Démarre le serveur HTTP pour les endpoints de santé.
+    """
+    app = web.Application()
+    app.add_routes(routes)
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    
+    # Utiliser le port 5000 pour l'API REST
+    site = web.TCPSite(runner, '0.0.0.0', 5000)
+    await site.start()
+    
+    logger.info("✅ Serveur HTTP démarré sur le port 5000")
+    
+    return runner
 
 async def shutdown(signal_type, loop):
     """
@@ -69,6 +137,9 @@ async def main():
     logger.info("🚀 Démarrage du service Gateway RootTrading...")
     logger.info(f"Configuration: {', '.join(SYMBOLS)} @ {INTERVAL}")
     
+    # Démarrer le serveur HTTP
+    http_runner = await start_http_server()
+    
     # Créer le client WebSocket Binance
     ws_client = BinanceWebSocket(symbols=SYMBOLS, interval=INTERVAL)
     
@@ -80,6 +151,9 @@ async def main():
     finally:
         if ws_client:
             await ws_client.stop()
+        
+        # Arrêter le serveur HTTP
+        await http_runner.cleanup()
         
         logger.info("Service Gateway terminé")
 

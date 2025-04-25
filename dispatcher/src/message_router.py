@@ -76,24 +76,53 @@ class MessageRouter:
     
     def _transform_message(self, topic: str, message: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Transforme le message si nécessaire.
-        
+        Transforme le message si nécessaire et assure que tous les champs essentiels sont présents.
+    
         Args:
             topic: Topic Kafka source
             message: Message original
-            
+        
         Returns:
             Message transformé
         """
-        # Par défaut, pas de transformation
-        transformed = message.copy()
+        # Créer une copie pour éviter de modifier l'original
+        transformed = message.copy() if message else {}
+    
+        # S'assurer que le message est complet pour les données de marché
+        if topic.startswith("market.data"):
+            # S'assurer que tous les champs essentiels sont présents
+            if 'symbol' not in transformed:
+                # Extraire le symbole du topic (market.data.btcusdc -> BTCUSDC)
+                parts = topic.split('.')
+                if len(parts) >= 3:
+                    transformed['symbol'] = parts[2].upper()
         
+            # S'assurer que is_closed est présent et de type booléen
+            if 'is_closed' not in transformed:
+                transformed['is_closed'] = False
+        
+            # S'assurer que les champs numériques sont bien des nombres
+            for field in ['open', 'high', 'low', 'close', 'volume']:
+                if field in transformed and not isinstance(transformed[field], (int, float)):
+                    try:
+                        transformed[field] = float(transformed[field])
+                    except (ValueError, TypeError):
+                        transformed[field] = 0.0
+    
         # Ajouter des métadonnées de routage
         transformed["_routing"] = {
             "source_topic": topic,
-            "timestamp": time.time()
+            "timestamp": time.time(),
+            "sequence": getattr(self, 'message_sequence', 0) + 1
         }
-        
+    
+        # Incrémenter la séquence pour le prochain message
+        self.message_sequence = transformed["_routing"]["sequence"]
+    
+        # Ajouter plus de logs pour le débogage
+        if transformed.get('is_closed', False):
+            logger.info(f"Message transformé: {topic} -> {transformed.get('symbol')} @ {transformed.get('close')}")
+    
         return transformed
     
     def route_message(self, topic: str, message: Dict[str, Any]) -> bool:

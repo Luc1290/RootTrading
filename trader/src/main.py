@@ -12,6 +12,7 @@ import json
 import threading
 from typing import Dict, Any, Optional
 from flask import Flask, request, jsonify, Response
+import psutil
 
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
@@ -20,6 +21,7 @@ from shared.src.config import SYMBOLS, LOG_LEVEL, TRADING_MODE
 from shared.src.enums import OrderSide
 
 from trader.src.order_manager import OrderManager
+process = psutil.Process(os.getpid())
 
 # Configuration du logging
 log_level = getattr(logging, LOG_LEVEL.upper(), logging.INFO)
@@ -56,6 +58,66 @@ def health_check():
         "mode": TRADING_MODE,
         "symbols": SYMBOLS
     })
+
+@app.route('/diagnostic', methods=['GET'])
+def diagnostic():
+    """
+    Point de terminaison pour le diagnostic du service.
+    Fournit des informations complètes sur l'état du système.
+    """
+    global order_manager
+    
+    if not order_manager:
+        return jsonify({"error": "OrderManager non initialisé"}), 500
+    
+    # Récupérer les cycles actifs
+    active_cycles = order_manager.get_active_cycles()
+    
+    # Collecter les informations sur les derniers prix
+    last_prices = order_manager.last_prices.copy()
+    
+    # Vérifier l'état des connexions
+    redis_status = "connected" if hasattr(order_manager.redis_client, 'connection') else "disconnected"
+    
+    # Vérifier l'état d'exécution des threads
+    thread_alive = order_manager.processing_thread and order_manager.processing_thread.is_alive()
+    
+    # Construire la réponse
+    diagnostic_info = {
+        "status": "operational",
+        "timestamp": time.time(),
+        "mode": TRADING_MODE,
+        "symbols": SYMBOLS,
+        "cycles": {
+            "active_count": len(active_cycles),
+            "cycles": [
+                {
+                    "id": cycle.id,
+                    "symbol": cycle.symbol,
+                    "strategy": cycle.strategy,
+                    "status": cycle.status.value,
+                    "entry_price": cycle.entry_price,
+                    "current_price": last_prices.get(cycle.symbol),
+                    "quantity": cycle.quantity,
+                    "pl_percent": cycle.profit_loss_percent if hasattr(cycle, 'profit_loss_percent') else None,
+                    "created_at": cycle.created_at.isoformat() if cycle.created_at else None
+                } for cycle in active_cycles
+            ]
+        },
+        "market_data": {
+            "prices": {symbol: price for symbol, price in last_prices.items()},
+            "update_time": order_manager.last_price_update if hasattr(order_manager, 'last_price_update') else None
+        },
+        "connections": {
+            "redis": redis_status,
+            "processing_thread": "running" if thread_alive else "stopped",
+            "binance": order_manager.binance_executor.demo_mode and "demo" or "live"
+        },
+        "queue_size": order_manager.signal_queue.qsize() if hasattr(order_manager, 'signal_queue') else None,
+        "memory_usage_mb": round(process.memory_info().rss / (1024 * 1024), 2) if 'process' in globals() else None
+    }
+    
+    return jsonify(diagnostic_info)
 
 @app.route('/orders', methods=['GET'])
 def get_orders():
@@ -168,7 +230,7 @@ def parse_arguments():
     parser.add_argument(
         '--port', 
         type=int, 
-        default=5000, 
+        default=5002, 
         help='Port pour l\'API REST'
     )
     parser.add_argument(

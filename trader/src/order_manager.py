@@ -67,22 +67,58 @@ class OrderManager:
         self.price_thread = None
         
         logger.info(f"✅ OrderManager initialisé pour {len(self.symbols)} symboles: {', '.join(self.symbols)}")
+
+    def log_system_status(self) -> None:
+        """
+        Journalise l'état du système pour diagnostiquer les problèmes.
+        Cette méthode peut être appelée périodiquement ou lors des événements importants.
+        """
+        try:
+            # Récupérer et loguer les cycles actifs
+            active_cycles = self.get_active_cycles()
+            logger.info(f"État du système - Cycles actifs: {len(active_cycles)}")
+        
+            for cycle in active_cycles:
+                logger.info(f"Cycle {cycle.id}: {cycle.symbol} {cycle.status.value}, "
+                       f"entrée à {cycle.entry_price}, quantité: {cycle.quantity}")
+        
+            # Loguer les derniers prix connus
+            logger.info(f"Derniers prix connus: {len(self.last_prices)} symboles")
+            for symbol, price in self.last_prices.items():
+                logger.info(f"Prix de {symbol}: {price}")
+        
+            # Vérifier l'état des abonnements Redis
+            if hasattr(self.redis_client, 'pubsub') and self.redis_client.pubsub:
+                channels = self.redis_client.pubsub.channels.keys()
+                logger.info(f"Abonnements Redis actifs: {len(channels)} canaux")
+                for channel in channels:
+                    logger.info(f"Abonné à: {channel}")
+    
+        except Exception as e:
+            logger.error(f"Erreur lors de la journalisation de l'état du système: {str(e)}")
     
     def _process_signal(self, channel: str, data: Dict[str, Any]) -> None:
+        """
+        Callback pour traiter les signaux reçus de Redis.
+        Valide et ajoute les signaux à la file d'attente pour traitement.
+    
+        Args:
+            channel: Canal Redis d'où provient le signal
+            data: Données du signal
+        """
         try:
-
-            # Vérifier que data n'est pas None ou vide
-            if data is None or data == "":
+            # Logging pour debug - afficher les données brutes reçues
+            logger.debug(f"Signal brut reçu: {json.dumps(data)}")
+        
+            # Vérifier que data est un dictionnaire non vide
+            if not data or not isinstance(data, dict):
+                logger.warning(f"❌ Signal reçu invalide, format attendu: dictionnaire, reçu: {type(data)}")
                 return
         
-            # Vérifier que data est un dictionnaire
-            if not isinstance(data, dict):
-                logger.error(f"❌ Données reçues invalides: {type(data)}")
-                return
-            
-            # S'assurer que les champs obligatoires sont présents
+            # Vérifier les champs obligatoires
             required_fields = ["strategy", "symbol", "side", "timestamp", "price"]
             missing_fields = [field for field in required_fields if field not in data]
+            
             if missing_fields:
                 logger.error(f"❌ Champs obligatoires manquants dans le signal: {missing_fields}")
                 return
@@ -158,6 +194,12 @@ class OrderManager:
                 
                 # Marquer la tâche comme terminée
                 self.signal_queue.task_done()
+
+                # Loguer l'état du système toutes les 5 minutes (300 secondes)
+                current_time = time.time()
+                if not hasattr(self, 'last_status_log') or current_time - self.last_status_log > 10:
+                    self.log_system_status()
+                    self.last_status_log = current_time
                 
             except Exception as e:
                 logger.error(f"❌ Erreur dans la boucle de traitement des signaux: {str(e)}")
