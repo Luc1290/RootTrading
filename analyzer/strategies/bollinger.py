@@ -64,7 +64,7 @@ class BollingerStrategy(BaseStrategy):
             Nombre minimum de données requises
         """
         # Besoin d'au moins 2 * la fenêtre Bollinger pour avoir un calcul fiable
-        return max(self.window * 2, 30)
+        return max(self.window * 2, 15)
     
     def calculate_bollinger_bands(self, prices: np.ndarray) -> tuple:
         """

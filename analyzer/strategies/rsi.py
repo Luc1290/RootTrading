@@ -65,7 +65,7 @@ class RSIStrategy(BaseStrategy):
             Nombre minimum de données requises
         """
         # Besoin d'au moins 2 * la fenêtre RSI pour avoir un calcul fiable
-        return max(self.rsi_window * 2, 30)
+        return max(self.rsi_window * 2, 15)
     
     def calculate_rsi(self, prices: np.ndarray) -> np.ndarray:
         """

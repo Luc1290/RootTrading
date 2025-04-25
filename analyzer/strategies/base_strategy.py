@@ -158,7 +158,7 @@ class BaseStrategy(ABC):
             Nombre minimum de points de données
         """
         # Par défaut, utiliser la taille du buffer ou une valeur minimale
-        return min(self.buffer_size, 20)
+        return min(self.buffer_size, 15)
     
     def create_signal(self, side: OrderSide, price: float, confidence: float = 0.7, 
                     metadata: Dict[str, Any] = None) -> StrategySignal:
