@@ -67,6 +67,10 @@ class RuleChecker:
         # Intervalle de vérification (en secondes)
         self.check_interval = 60
         
+        # Compteur de tentatives de connexion
+        self.connection_failures = 0
+        self.max_connection_failures = 10
+        
         logger.info(f"✅ RuleChecker initialisé avec {len(self.rules)} règles")
     
     def _load_rules(self) -> List[Dict[str, Any]]:
@@ -220,12 +224,12 @@ class RuleChecker:
             self.rules = new_rules
             logger.info(f"🔄 Règles rechargées: {old_count} -> {len(self.rules)} règles")
     
-    def _get_system_state(self) -> Dict[str, Any]:
+    def _initialize_default_state(self) -> Dict[str, Any]:
         """
-        Récupère l'état actuel du système.
+        Initialise un état par défaut avec des valeurs sécuritaires.
         
         Returns:
-            État du système
+            État par défaut
         """
         state = {
             "timestamp": datetime.now().isoformat(),
@@ -233,16 +237,51 @@ class RuleChecker:
             "daily_pnl": 0.0,
             "daily_pnl_percent": 0.0,
             "daily_trades": 0,
-            "symbols": {}
+            "total_value": 1000.0,  # Valeur initiale par défaut (1000 USDC)
+            "symbols": {},
+            "strategy_consecutive_losses": 0  # Valeur par défaut
         }
+        
+        # Ajouter des valeurs par défaut pour chaque symbole
+        for symbol in SYMBOLS:
+            state["symbols"][symbol] = {
+                "active_trades": 0,
+                "exposure": 0.0,
+                "exposure_percent": 0.0,
+                "volatility_1h": 1.0,  # Valeur par défaut pour la volatilité
+                "volatility_24h": 2.0,
+                "price_change_1h": 0.0,
+                "price_change_24h": 0.0
+            }
+            
+            # Définir des alias pour simplifier l'évaluation des règles
+            state[f"{symbol}_exposure"] = 0.0
+            state[f"{symbol}_exposure_percent"] = 0.0
+            state[f"{symbol}_volatility_1h"] = 1.0
+            state[f"{symbol}_volatility_24h"] = 2.0
+            state[f"{symbol}_active_trades"] = 0
+            state[f"{symbol}_price_change_1h"] = 0.0
+            state[f"{symbol}_price_change_24h"] = 0.0
+        
+        return state
+    
+    def _get_system_state(self) -> Dict[str, Any]:
+        """
+        Récupère l'état actuel du système.
+        
+        Returns:
+            État du système
+        """
+        # Initialiser avec des valeurs par défaut
+        state = self._initialize_default_state()
         
         try:
             # Récupérer les données du portfolio
             portfolio_response = requests.get(f"{self.portfolio_api_url}/summary", timeout=5)
             if portfolio_response.status_code == 200:
                 portfolio_data = portfolio_response.json()
-                state["total_value"] = portfolio_data.get("total_value", 0.0)
-                state["active_trades"] = portfolio_data.get("active_trades", 0)
+                state["total_value"] = portfolio_data.get("total_value", state["total_value"])
+                state["active_trades"] = portfolio_data.get("active_trades", state["active_trades"])
                 state["performance_24h"] = portfolio_data.get("performance_24h", 0.0)
                 
                 # Calculer le PnL quotidien
@@ -253,6 +292,9 @@ class RuleChecker:
                 # Récupérer les balances
                 balances = portfolio_data.get("balances", [])
                 state["balances"] = {b["asset"]: b for b in balances}
+                
+                # Réinitialiser le compteur d'échecs de connexion
+                self.connection_failures = 0
             
             # Récupérer les données des trades actifs
             trades_response = requests.get(f"{self.trader_api_url}/orders", timeout=5)
@@ -269,17 +311,17 @@ class RuleChecker:
                 
                 # Calculer l'exposition par symbole
                 for symbol, trades in symbol_trades.items():
-                    exposure = sum(float(t.get("quantity", 0)) * float(t.get("entry_price", 0)) for t in trades)
-                    state["symbols"][symbol] = {
-                        "active_trades": len(trades),
-                        "exposure": exposure
-                    }
-                    
-                    # Calculer le pourcentage d'exposition
-                    if state["total_value"] > 0:
-                        state["symbols"][symbol]["exposure_percent"] = (exposure / state["total_value"]) * 100
-                    else:
-                        state["symbols"][symbol]["exposure_percent"] = 0.0
+                    if symbol in state["symbols"]:
+                        exposure = sum(float(t.get("quantity", 0)) * float(t.get("entry_price", 0)) for t in trades)
+                        state["symbols"][symbol]["active_trades"] = len(trades)
+                        state["symbols"][symbol]["exposure"] = exposure
+                        
+                        # Calculer le pourcentage d'exposition
+                        if state["total_value"] > 0:
+                            state["symbols"][symbol]["exposure_percent"] = (exposure / state["total_value"]) * 100
+                
+                # Réinitialiser le compteur d'échecs de connexion
+                self.connection_failures = 0
             
             # Récupérer les statistiques de trading quotidiennes
             stats_response = requests.get(f"{self.portfolio_api_url}/performance/daily?limit=1", timeout=5)
@@ -287,24 +329,41 @@ class RuleChecker:
                 stats_data = stats_response.json()
                 if "data" in stats_data and len(stats_data["data"]) > 0:
                     daily_stats = stats_data["data"][0]
-                    state["daily_trades"] = daily_stats.get("total_trades", 0)
+                    state["daily_trades"] = daily_stats.get("total_trades", state["daily_trades"])
                     
                     # Si le PnL n'a pas été calculé plus haut, l'extraire des stats
                     if state["daily_pnl"] == 0:
-                        state["daily_pnl"] = daily_stats.get("daily_profit_loss", 0.0)
+                        state["daily_pnl"] = daily_stats.get("daily_profit_loss", state["daily_pnl"])
+                
+                # Réinitialiser le compteur d'échecs de connexion
+                self.connection_failures = 0
             
-            # Pour chaque symbole configuré, s'assurer qu'il existe dans l'état
+            # Pour chaque symbole configuré, s'assurer que les variables sont définies
             for symbol in SYMBOLS:
                 if symbol not in state["symbols"]:
                     state["symbols"][symbol] = {
                         "active_trades": 0,
                         "exposure": 0.0,
-                        "exposure_percent": 0.0
+                        "exposure_percent": 0.0,
+                        "volatility_1h": 1.0,
+                        "volatility_24h": 2.0,
+                        "price_change_1h": 0.0,
+                        "price_change_24h": 0.0
                     }
+                else:
+                    # S'assurer que toutes les clés sont présentes
+                    default_keys = ["active_trades", "exposure", "exposure_percent", 
+                                   "volatility_1h", "volatility_24h", "price_change_1h", "price_change_24h"]
+                    for key in default_keys:
+                        if key not in state["symbols"][symbol]:
+                            state["symbols"][symbol][key] = 0.0 if "percent" in key or "price" in key or "exposure" in key else 0
                 
-                # Ajouter la volatilité (à calculer ou récupérer)
-                state["symbols"][symbol]["volatility_1h"] = self._calculate_volatility(symbol, "1h")
-                state["symbols"][symbol]["volatility_24h"] = self._calculate_volatility(symbol, "24h")
+                # Mettre à jour la volatilité (à calculer ou récupérer)
+                if "volatility_1h" not in state["symbols"][symbol]:
+                    state["symbols"][symbol]["volatility_1h"] = self._calculate_volatility(symbol, "1h")
+                
+                if "volatility_24h" not in state["symbols"][symbol]:
+                    state["symbols"][symbol]["volatility_24h"] = self._calculate_volatility(symbol, "24h")
                 
                 # Définir des alias pour simplifier l'évaluation des règles
                 state[f"{symbol}_exposure"] = state["symbols"][symbol]["exposure"]
@@ -312,9 +371,16 @@ class RuleChecker:
                 state[f"{symbol}_volatility_1h"] = state["symbols"][symbol]["volatility_1h"]
                 state[f"{symbol}_volatility_24h"] = state["symbols"][symbol]["volatility_24h"]
                 state[f"{symbol}_active_trades"] = state["symbols"][symbol]["active_trades"]
+                state[f"{symbol}_price_change_1h"] = state["symbols"][symbol].get("price_change_1h", 0.0)
+                state[f"{symbol}_price_change_24h"] = state["symbols"][symbol].get("price_change_24h", 0.0)
         
         except Exception as e:
             logger.error(f"❌ Erreur lors de la récupération de l'état du système: {str(e)}")
+            self.connection_failures += 1
+            
+            # Si trop d'échecs consécutifs, mettre une alerte dans les logs
+            if self.connection_failures >= self.max_connection_failures:
+                logger.warning(f"⚠️ {self.connection_failures} échecs de connexion consécutifs. Utilisation de valeurs par défaut.")
         
         return state
     
@@ -339,8 +405,17 @@ class RuleChecker:
             return 0.0
     
     def _evaluate_condition(self, condition: str, parameters: Dict[str, Any], state: Dict[str, Any]) -> bool:
-    
-        """Évalue une condition de règle de manière sécurisée."""
+        """
+        Évalue une condition de règle de manière sécurisée.
+        
+        Args:
+            condition: Condition à évaluer
+            parameters: Paramètres de la condition
+            state: État du système
+            
+        Returns:
+            True si la condition est remplie, False sinon
+        """
         try:
             # Remplacer les placeholders par les valeurs de paramètres
             formatted_condition = condition
@@ -410,7 +485,10 @@ class RuleChecker:
                     notification["symbol_state"] = state["symbols"][symbol]
             
             # Publier la notification
-            self.redis_client.publish("roottrading:alerts", notification)
+            try:
+                self.redis_client.publish("roottrading:alerts", notification)
+            except Exception as e:
+                logger.error(f"❌ Erreur lors de la publication de la notification: {str(e)}")
             
             # Ajouter aux règles déclenchées
             self.triggered_rules.add(rule_name)
@@ -420,14 +498,42 @@ class RuleChecker:
                 # Rien à faire de plus, juste l'alerte
                 return True
             
-            elif action == "pause_new_trades":
-                # Appeler l'API pour mettre en pause les nouveaux trades
-                if rule["scope"] == "global":
-                    # Pause globale
-                    response = requests.post(f"{self.trader_api_url}/config/pause", timeout=5)
+            # Pour les autres actions, essayez de les exécuter mais ne bloquez pas le fonctionnement
+            # en cas d'échec (pour augmenter la résilience)
+            try:
+                if action == "pause_new_trades":
+                    # Appeler l'API pour mettre en pause les nouveaux trades
+                    if rule["scope"] == "global":
+                        # Pause globale
+                        response = requests.post(f"{self.trader_api_url}/config/pause", timeout=5)
+                        return response.status_code == 200
+                    
+                    elif rule["scope"] == "symbol" and "symbol" in rule:
+                        # Pause spécifique à un symbole
+                        symbol = rule["symbol"]
+                        response = requests.post(
+                            f"{self.trader_api_url}/config/pause",
+                            json={"symbol": symbol},
+                            timeout=5
+                        )
+                        return response.status_code == 200
+                    
+                    elif rule["scope"] == "strategy" and "strategy" in rule:
+                        # Pause spécifique à une stratégie
+                        strategy = rule["strategy"]
+                        response = requests.post(
+                            f"{self.trader_api_url}/config/pause",
+                            json={"strategy": strategy},
+                            timeout=5
+                        )
+                        return response.status_code == 200
+                
+                elif action == "disable_trading":
+                    # Appeler l'API pour désactiver le trading
+                    response = requests.post(f"{self.trader_api_url}/config/disable", timeout=5)
                     return response.status_code == 200
                 
-                elif rule["scope"] == "symbol" and "symbol" in rule:
+                elif action == "pause_symbol" and rule["scope"] == "symbol" and "symbol" in rule:
                     # Pause spécifique à un symbole
                     symbol = rule["symbol"]
                     response = requests.post(
@@ -437,40 +543,18 @@ class RuleChecker:
                     )
                     return response.status_code == 200
                 
-                elif rule["scope"] == "strategy" and "strategy" in rule:
-                    # Pause spécifique à une stratégie
-                    strategy = rule["strategy"]
+                elif action == "close_symbol_positions" and rule["scope"] == "symbol" and "symbol" in rule:
+                    # Fermer toutes les positions d'un symbole
+                    symbol = rule["symbol"]
                     response = requests.post(
-                        f"{self.trader_api_url}/config/pause",
-                        json={"strategy": strategy},
+                        f"{self.trader_api_url}/close_all",
+                        json={"symbol": symbol},
                         timeout=5
                     )
                     return response.status_code == 200
-            
-            elif action == "disable_trading":
-                # Appeler l'API pour désactiver le trading
-                response = requests.post(f"{self.trader_api_url}/config/disable", timeout=5)
-                return response.status_code == 200
-            
-            elif action == "pause_symbol" and rule["scope"] == "symbol" and "symbol" in rule:
-                # Pause spécifique à un symbole
-                symbol = rule["symbol"]
-                response = requests.post(
-                    f"{self.trader_api_url}/config/pause",
-                    json={"symbol": symbol},
-                    timeout=5
-                )
-                return response.status_code == 200
-            
-            elif action == "close_symbol_positions" and rule["scope"] == "symbol" and "symbol" in rule:
-                # Fermer toutes les positions d'un symbole
-                symbol = rule["symbol"]
-                response = requests.post(
-                    f"{self.trader_api_url}/close_all",
-                    json={"symbol": symbol},
-                    timeout=5
-                )
-                return response.status_code == 200
+            except Exception as e:
+                logger.error(f"❌ Erreur lors de l'exécution de l'action '{action}': {str(e)}")
+                return False
                 
             # Action non reconnue ou non implémentée
             logger.warning(f"⚠️ Action '{action}' non implémentée")
@@ -504,31 +588,34 @@ class RuleChecker:
                 continue
             
             # Vérifier si la condition est remplie
-            condition = rule["condition"]
-            parameters = rule.get("parameters", {})
-            
-            if self._evaluate_condition(condition, parameters, state):
-                # Condition remplie, exécuter l'action
-                action = rule["action"]
-                success = self._execute_action(action, rule, state)
+            try:
+                condition = rule["condition"]
+                parameters = rule.get("parameters", {})
                 
-                # Stocker les informations sur la règle déclenchée
-                triggered = {
-                    "name": rule["name"],
-                    "type": rule["type"],
-                    "scope": rule["scope"],
-                    "action": action,
-                    "success": success,
-                    "timestamp": datetime.now().isoformat()
-                }
-                
-                if rule["scope"] == "symbol" and "symbol" in rule:
-                    triggered["symbol"] = rule["symbol"]
-                
-                if rule["scope"] == "strategy" and "strategy" in rule:
-                    triggered["strategy"] = rule["strategy"]
-                
-                triggered_rules_now.append(triggered)
+                if self._evaluate_condition(condition, parameters, state):
+                    # Condition remplie, exécuter l'action
+                    action = rule["action"]
+                    success = self._execute_action(action, rule, state)
+                    
+                    # Stocker les informations sur la règle déclenchée
+                    triggered = {
+                        "name": rule["name"],
+                        "type": rule["type"],
+                        "scope": rule["scope"],
+                        "action": action,
+                        "success": success,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    
+                    if rule["scope"] == "symbol" and "symbol" in rule:
+                        triggered["symbol"] = rule["symbol"]
+                    
+                    if rule["scope"] == "strategy" and "strategy" in rule:
+                        triggered["strategy"] = rule["strategy"]
+                    
+                    triggered_rules_now.append(triggered)
+            except Exception as e:
+                logger.error(f"❌ Erreur lors de la vérification de la règle {rule['name']}: {str(e)}")
         
         return triggered_rules_now
     
@@ -626,6 +713,32 @@ class RuleChecker:
             if rule["name"] == rule_name:
                 return rule
         return None
+    
+    def get_status_summary(self) -> Dict[str, Any]:
+        """
+        Récupère un résumé de l'état du RuleChecker.
+        
+        Returns:
+            Résumé de l'état
+        """
+        return {
+            "active_rules": len([r for r in self.rules if r.get("enabled", True)]),
+            "total_rules": len(self.rules),
+            "triggered_rules": len(self.triggered_rules),
+            "connection_failures": self.connection_failures,
+            "system_state": {
+                "active_trades": self.system_state.get("active_trades", 0),
+                "total_value": self.system_state.get("total_value", 0),
+                "daily_pnl_percent": self.system_state.get("daily_pnl_percent", 0),
+                "symbols": {
+                    symbol: {
+                        "active_trades": self.system_state.get("symbols", {}).get(symbol, {}).get("active_trades", 0),
+                        "exposure_percent": self.system_state.get("symbols", {}).get(symbol, {}).get("exposure_percent", 0)
+                    } for symbol in SYMBOLS
+                }
+            },
+            "last_check": datetime.now().isoformat()
+        }
 
 # Point d'entrée pour les tests
 if __name__ == "__main__":
