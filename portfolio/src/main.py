@@ -20,6 +20,8 @@ from fastapi import FastAPI
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
+from portfolio.src import binance_account_manager
+from shared.src import redis_client
 from shared.src.config import SYMBOLS, LOG_LEVEL, BINANCE_API_KEY, BINANCE_SECRET_KEY
 from shared.src.redis_client import RedisClient
 
@@ -262,7 +264,7 @@ def get_current_prices() -> Dict[str, float]:
     
     return current_prices
 
-def update_balances_from_binance():
+async def update_balances_from_binance():
     """
     Récupère et met à jour les balances depuis Binance.
     """
@@ -341,21 +343,29 @@ def update_balances_from_binance():
             return False
         
         # Publier sur Redis pour informer les autres services
+        
+        asset_balances = await account_manager.get_all_balances()
+        db = DBManager()
+        db.update_balances(asset_balances)
+        db.close()
+
+        # ✅ Ici on publie sur Redis en live (pubsub)
+        redis_client.publish("roottrading:account:balances", asset_balances)
+
+        # ✅ Ici on écrit durablement dans Redis
         try:
-            redis_client = RedisClient()
-            redis_client.publish("roottrading:account:balances", asset_balances)
-            redis_client.close()
+            redis_client.hset('account:balances', mapping={b.asset: b.total for b in asset_balances})
+            total_balance = sum(b.value_usdc or 0 for b in asset_balances)
+            redis_client.set('account:total_balance', total_balance)
+            logger.info(f"✅ Balances enregistrées durablement dans Redis. Total estimé: {total_balance:.2f} USDC")
         except Exception as e:
-            logger.error(f"Erreur lors de la publication des balances sur Redis: {str(e)}")
-        
-        logger.info(f"✅ {len(asset_balances)} balances mises à jour depuis Binance")
-        return True
-        
+            logger.error(f"❌ Erreur lors de l'enregistrement durable dans Redis: {str(e)}")
+
     except Exception as e:
-        logger.error(f"❌ Erreur lors de la mise à jour des balances depuis Binance: {str(e)}")
+        logger.error(f"❌ Erreur lors de la mise à jour des balances: {str(e)}")
         logger.error(traceback.format_exc())
         return False
-
+        
 def binance_sync_task(interval: int):
     """
     Tâche périodique pour synchroniser les balances avec Binance.

@@ -44,6 +44,7 @@ class OrderManager:
         """
         self.symbols = symbols or SYMBOLS
         self.redis_client = redis_client or RedisClient()
+        self.redis_price_client = RedisClient() 
         self.cycle_manager = cycle_manager or CycleManager()
         self.binance_executor = BinanceExecutor()
         
@@ -109,6 +110,11 @@ class OrderManager:
         try:
             # Logging pour debug - afficher les données brutes reçues
             logger.debug(f"Signal brut reçu: {json.dumps(data)}")
+
+            # 🚨 Filtres de protection : ignorer les données de prix
+            if "strategy" not in data or "side" not in data or "timestamp" not in data or "price" not in data:
+                logger.debug(f"⏭️ Ignoré (pas un vrai signal): {data}")
+                return
         
             # Vérifier que data est un dictionnaire non vide
             if not data or not isinstance(data, dict):
@@ -328,11 +334,11 @@ class OrderManager:
         self.stop_event.clear()
         
         # S'abonner au canal des signaux
-        self.redis_client.subscribe(self.signal_channel, self._process_signal)
+        self.redis_signal_client.subscribe(self.signal_channel, self._process_signal)
         logger.info(f"✅ Abonné au canal Redis des signaux: {self.signal_channel}")
         
         # S'abonner aux canaux des mises à jour de prix
-        self.redis_client.subscribe(self.price_channels, self._process_price_update)
+        self.redis_price_client.subscribe(self.price_channels, self._process_price_update)
         logger.info(f"✅ Abonné aux canaux Redis des prix: {len(self.price_channels)} canaux")
         
         # Démarrer le thread de traitement des signaux
@@ -359,10 +365,11 @@ class OrderManager:
             logger.info("Thread de traitement des signaux arrêté")
         
         # Se désabonner des canaux Redis
-        self.redis_client.unsubscribe()
-        
-        # Fermer le client Redis
-        self.redis_client.close()
+        self.redis_signal_client.unsubscribe()
+        self.redis_signal_client.close()
+
+        self.redis_price_client.unsubscribe()
+        self.redis_price_client.close()
         
         # Fermer le gestionnaire de cycles
         self.cycle_manager.close()

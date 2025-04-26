@@ -231,8 +231,10 @@ class SignalHandler:
                 "symbol": signal.symbol,
                 "side": signal.side.value,
                 "quantity": quantity,
-                "price": signal.price
-            }
+                "price": signal.price,
+                "strategy": signal.strategy,
+                "timestamp": int(time.time() * 1000)  # Un timestamp actuel en millisecondes
+}
         
             # Réserver les fonds dans la poche
             temp_cycle_id = f"temp_{int(time.time())}"
