@@ -83,30 +83,48 @@ class SignalHandler:
         """
         Callback pour traiter les signaux reçus de Redis.
         Ajoute les signaux à la file d'attente pour traitement.
-        
+    
         Args:
             channel: Canal Redis d'où provient le signal
             data: Données du signal
         """
         try:
+            # Convertir les chaînes de caractères en énumérations avant de créer le signal
+            if 'side' in data and isinstance(data['side'], str):
+                try:
+                    data['side'] = OrderSide(data['side'])
+                except ValueError:
+                    logger.error(f"Valeur d'énumération invalide pour side: {data['side']}")
+                    return
+                
+            if 'strength' in data and isinstance(data['strength'], str):
+                try:
+                    data['strength'] = SignalStrength(data['strength'])
+                except ValueError:
+                    logger.error(f"Valeur d'énumération invalide pour strength: {data['strength']}")
+                    # Utiliser une valeur par défaut au lieu d'abandonner
+                    data['strength'] = SignalStrength.MODERATE
+        
             # Valider le signal
             signal = StrategySignal(**data)
-            
+        
             # Traiter les signaux de filtrage séparément
             if signal.strategy in self.filter_strategies:
                 self._update_market_filters(signal)
                 return
-            
+        
             # Ajouter à la file d'attente pour traitement
             self.signal_queue.put(signal)
-            
+        
             # Mettre à jour le cache des prix
             self.price_cache[signal.symbol] = signal.price
-            
-            logger.info(f"📨 Signal reçu: {signal.side} {signal.symbol} @ {signal.price} ({signal.strategy})")
         
+            logger.info(f"📨 Signal reçu: {signal.side} {signal.symbol} @ {signal.price} ({signal.strategy})")
+    
         except Exception as e:
             logger.error(f"❌ Erreur lors du traitement du signal: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
     
     def _update_market_filters(self, signal: StrategySignal) -> None:
         """
@@ -229,12 +247,12 @@ class SignalHandler:
             # Préparer la requête pour le Trader
             order_data = {
                 "symbol": signal.symbol,
-                "side": signal.side.value,
+                "side": signal.side,
                 "quantity": quantity,
                 "price": signal.price,
                 "strategy": signal.strategy,
                 "timestamp": int(time.time() * 1000)  # Un timestamp actuel en millisecondes
-}
+            }
         
             # Réserver les fonds dans la poche
             temp_cycle_id = f"temp_{int(time.time())}"

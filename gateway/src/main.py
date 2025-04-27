@@ -136,7 +136,7 @@ def parse_arguments():
     parser.add_argument(
         '--history-days', 
         type=int, 
-        default=3, 
+        default=5, 
         help='Nombre de jours d\'historique à récupérer au démarrage'
     )
     parser.add_argument(

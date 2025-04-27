@@ -97,7 +97,7 @@ services:
     restart: unless-stopped
     ports:
       - "${GATEWAY_PORT:-5000}:5000"
-    command: ["python", "gateway/src/main.py", "--history-days", "60"]
+    command: ["python", "gateway/src/main.py", "--history-days", "5"]
 
   portfolio:
     build:

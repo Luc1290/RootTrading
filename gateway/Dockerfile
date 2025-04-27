@@ -30,4 +30,4 @@ COPY gateway /app/gateway
 EXPOSE 5000
 
 # Commande de démarrage avec chargement de l'historique
-CMD ["python", "gateway/src/main.py", "--history-days", "60"]
+CMD ["python", "gateway/src/main.py", "--history-days", "5"]

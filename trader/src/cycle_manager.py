@@ -183,16 +183,22 @@ class CycleManager:
                     demo = %s
                 WHERE order_id = %s
                 """
+                
+                # Convertir les objets enum en chaînes
+                side = execution.side.value if hasattr(execution.side, 'value') else str(execution.side)
+                status = execution.status.value if hasattr(execution.status, 'value') else str(execution.status)
+                role = execution.role.value if execution.role and hasattr(execution.role, 'value') else None
+                
                 params = (
                     execution.symbol,
-                    execution.side.value,
-                    execution.status.value,
+                    side,
+                    status,
                     execution.price,
                     execution.quantity,
                     execution.quote_quantity,
                     execution.fee,
                     execution.fee_asset,
-                    execution.role.value if execution.role else None,
+                    role,
                     execution.timestamp,
                     cycle_id,
                     execution.demo,
@@ -205,17 +211,23 @@ class CycleManager:
                 fee, fee_asset, role, timestamp, cycle_id, demo)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
+                
+                # Convertir les objets enum en chaînes
+                side = execution.side.value if hasattr(execution.side, 'value') else str(execution.side)
+                status = execution.status.value if hasattr(execution.status, 'value') else str(execution.status)
+                role = execution.role.value if execution.role and hasattr(execution.role, 'value') else None
+                
                 params = (
                     execution.order_id,
                     execution.symbol,
-                    execution.side.value,
-                    execution.status.value,
+                    side,
+                    status,
                     execution.price,
                     execution.quantity,
                     execution.quote_quantity,
                     execution.fee,
                     execution.fee_asset,
-                    execution.role.value if execution.role else None,
+                    role,
                     execution.timestamp,
                     cycle_id,
                     execution.demo
@@ -293,10 +305,10 @@ class CycleManager:
             # Tenter une reconnexion en cas d'erreur de connexion
             self._reconnect_db()
     
-    def create_cycle(self, symbol: str, strategy: str, side: OrderSide, 
-                    price: float, quantity: float, pocket: Optional[str] = None,
-                    target_price: Optional[float] = None, stop_price: Optional[float] = None,
-                    trailing_delta: Optional[float] = None) -> Optional[TradeCycle]:
+    def create_cycle(self, symbol: str, strategy: str, side: Union[OrderSide, str], 
+                price: float, quantity: float, pocket: Optional[str] = None,
+                target_price: Optional[float] = None, stop_price: Optional[float] = None,
+                trailing_delta: Optional[float] = None) -> Optional[TradeCycle]:
         """
         Crée un nouveau cycle de trading et exécute l'ordre d'entrée.
         
@@ -315,6 +327,10 @@ class CycleManager:
             Cycle créé ou None en cas d'erreur
         """
         try:
+
+            if isinstance(side, str):
+                side = OrderSide(side)
+
             # Générer un ID unique pour le cycle
             cycle_id = f"cycle_{uuid.uuid4().hex[:16]}"
             now = datetime.now()
@@ -368,7 +384,7 @@ class CycleManager:
             self._save_execution_to_db(execution, cycle_id)
             self._save_cycle_to_db(cycle)
             
-            logger.info(f"✅ Cycle {cycle_id} créé avec succès: {side.value} {quantity} {symbol} @ {execution.price}")
+            logger.info(f"✅ Cycle {cycle_id} créé avec succès: {side.value if hasattr(side, 'value') else side} {quantity} {symbol} @ {execution.price}")
             return cycle
         
         except Exception as e:
@@ -768,10 +784,14 @@ class CycleManager:
                     demo = %s
                 WHERE id = %s
                 """
+                
+                # Convertir l'enum en chaîne
+                status = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
+                
                 params = (
                     cycle.symbol,
                     cycle.strategy,
-                    cycle.status.value,
+                    status,
                     cycle.entry_order_id,
                     cycle.exit_order_id,
                     cycle.entry_price,
@@ -798,11 +818,15 @@ class CycleManager:
                 updated_at, completed_at, pocket, demo)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
+                
+                # Convertir l'enum en chaîne
+                status = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
+                
                 params = (
                     cycle.id,
                     cycle.symbol,
                     cycle.strategy,
-                    cycle.status.value,
+                    status,
                     cycle.entry_order_id,
                     cycle.exit_order_id,
                     cycle.entry_price,

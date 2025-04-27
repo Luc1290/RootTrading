@@ -344,9 +344,11 @@ async def update_balances_from_binance():
         
         # Publier sur Redis pour informer les autres services
         
-        asset_balances = await account_manager.get_all_balances()
+        calculated_balances = account_manager.calculate_asset_values()
         db = DBManager()
-        db.update_balances(asset_balances)
+        portfolio = PortfolioModel(db_manager=db)
+        portfolio.update_balances(calculated_balances)
+        portfolio.close()
         db.close()
 
         # ✅ Ici on publie sur Redis en live (pubsub)

@@ -286,6 +286,8 @@ class RuleChecker:
                 
                 # Calculer le PnL quotidien
                 state["daily_pnl_percent"] = state["performance_24h"]
+                if state["daily_pnl_percent"] is None:
+                    state["daily_pnl_percent"] = 0.0
                 if state["total_value"] > 0:
                     state["daily_pnl"] = state["total_value"] * state["daily_pnl_percent"] / 100
                 

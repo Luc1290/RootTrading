@@ -17,7 +17,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 
 from shared.src.config import SYMBOLS, TRADE_QUANTITY
 from shared.src.redis_client import RedisClient
-from shared.src.enums import OrderSide, SignalStrength, CycleStatus  # Ajout de CycleStatus
+from shared.src.enums import OrderSide, SignalStrength, CycleStatus
 from shared.src.schemas import StrategySignal, TradeOrder
 
 from trader.src.cycle_manager import CycleManager
@@ -43,7 +43,7 @@ class OrderManager:
             cycle_manager: Gestionnaire de cycles préexistant (optionnel)
         """
         self.symbols = symbols or SYMBOLS
-        self.redis_client = redis_client or RedisClient()
+        self.redis_signal_client = redis_client or RedisClient()
         self.redis_price_client = RedisClient() 
         self.cycle_manager = cycle_manager or CycleManager()
         self.binance_executor = BinanceExecutor()
@@ -59,24 +59,21 @@ class OrderManager:
         
         # Dictionnaire pour stocker les derniers prix par symbole
         self.last_prices: Dict[str, float] = {}
+        self.last_price_update = time.time()
         
         # Thread pour le traitement des signaux
         self.processing_thread = None
         self.stop_event = threading.Event()
-        
-        # Thread pour le traitement des mises à jour de prix
-        self.price_thread = None
         
         logger.info(f"✅ OrderManager initialisé pour {len(self.symbols)} symboles: {', '.join(self.symbols)}")
 
     def log_system_status(self) -> None:
         """
         Journalise l'état du système pour diagnostiquer les problèmes.
-        Cette méthode peut être appelée périodiquement ou lors des événements importants.
         """
         try:
             # Récupérer et loguer les cycles actifs
-            active_cycles = self.get_active_cycles()
+            active_cycles = self.cycle_manager.get_active_cycles()
             logger.info(f"État du système - Cycles actifs: {len(active_cycles)}")
         
             for cycle in active_cycles:
@@ -89,8 +86,8 @@ class OrderManager:
                 logger.info(f"Prix de {symbol}: {price}")
         
             # Vérifier l'état des abonnements Redis
-            if hasattr(self.redis_client, 'pubsub') and self.redis_client.pubsub:
-                channels = self.redis_client.pubsub.channels.keys()
+            if hasattr(self.redis_signal_client, 'pubsub') and self.redis_signal_client.pubsub:
+                channels = self.redis_signal_client.pubsub.channels.keys() if hasattr(self.redis_signal_client.pubsub, 'channels') else []
                 logger.info(f"Abonnements Redis actifs: {len(channels)} canaux")
                 for channel in channels:
                     logger.info(f"Abonné à: {channel}")
@@ -171,6 +168,7 @@ class OrderManager:
             
             # Mettre à jour le dernier prix
             self.last_prices[symbol] = price
+            self.last_price_update = time.time()
             
             # Traiter la mise à jour de prix dans le gestionnaire de cycles
             self.cycle_manager.process_price_update(symbol, price)
@@ -186,6 +184,8 @@ class OrderManager:
         Cette méthode s'exécute dans un thread séparé.
         """
         logger.info("Démarrage de la boucle de traitement des signaux")
+        
+        self.last_status_log = time.time()
         
         while not self.stop_event.is_set():
             try:
@@ -203,7 +203,7 @@ class OrderManager:
 
                 # Loguer l'état du système toutes les 5 minutes (300 secondes)
                 current_time = time.time()
-                if not hasattr(self, 'last_status_log') or current_time - self.last_status_log > 10:
+                if current_time - self.last_status_log > 300:
                     self.log_system_status()
                     self.last_status_log = current_time
                 
@@ -436,7 +436,7 @@ class OrderManager:
                 "id": cycle.id,
                 "symbol": cycle.symbol,
                 "strategy": cycle.strategy,
-                "status": cycle.status.value,
+                "status": cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status),
                 "side": "BUY" if cycle.status in [CycleStatus.ACTIVE_BUY, CycleStatus.WAITING_BUY] else "SELL",
                 "entry_price": cycle.entry_price,
                 "current_price": self.last_prices.get(cycle.symbol),
