@@ -1,0 +1,567 @@
+portfolio-1  | INFO:     172.21.0.15:37124 - "PUT /pockets/allocation?total_value=974.15931844 HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-28 18:27:07,583 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-28 18:27:07,584 - portfolio.src.pockets - INFO - ✅ PocketManager initialisé
+portfolio-1  | INFO:     172.21.0.15:37132 - "GET /pockets HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-28 18:27:17,533 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | INFO:     172.21.0.15:59206 - "GET /health HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-28 18:27:17,540 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-28 18:27:17,540 - portfolio.src.models - INFO - ✅ PortfolioModel initialisé
+portfolio-1  | INFO:     172.21.0.15:59214 - "GET /summary HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-28 18:27:17,546 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-28 18:27:17,547 - portfolio.src.pockets - INFO - ✅ PocketManager initialisé
+portfolio-1  | 2025-04-28 18:27:17,547 - portfolio.src.pockets - INFO - Début update_pockets_allocation avec total_value=974.15931844
+portfolio-1  | 2025-04-28 18:27:17,548 - portfolio.src.pockets - INFO - Poches récupérées: 3 poches
+portfolio-1  | 2025-04-28 18:27:17,548 - portfolio.src.pockets - INFO - Poche active: allocation=0.6
+portfolio-1  | 2025-04-28 18:27:17,548 - portfolio.src.pockets - INFO - Poche buffer: allocation=0.3
+portfolio-1  | 2025-04-28 18:27:17,548 - portfolio.src.pockets - INFO - Poche safety: allocation=0.1
+portfolio-1  | 2025-04-28 18:27:17,553 - portfolio.src.pockets - INFO - ✅ Allocation des poches mise à jour (total: 974.16)
+portfolio-1  | INFO:     172.21.0.15:59226 - "PUT /pockets/allocation?total_value=974.15931844 HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-28 18:27:17,557 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-28 18:27:17,559 - portfolio.src.pockets - INFO - ✅ PocketManager initialisé
+portfolio-1  | INFO:     172.21.0.15:59234 - "GET /pockets HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-28 18:27:22,550 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-28 18:27:22,550 - portfolio.src.models - INFO - ✅ PortfolioModel initialisé
+portfolio-1  | INFO:     172.21.0.13:39836 - "GET /summary HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-28 18:27:22,559 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-28 18:27:22,559 - portfolio.src.models - INFO - ✅ PortfolioModel initialisé
+portfolio-1  | INFO:     172.21.0.13:39838 - "GET /performance/daily?limit=1 HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-28 18:27:29,176 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-28 18:27:29,178 - portfolio.src.pockets - INFO - ✅ PocketManager initialisé
+portfolio-1  | 2025-04-28 18:27:29,181 - portfolio.src.models - ERROR - ❌ Erreur lors de l'exécution de la requête: relation "pocket_transactions" does not exist
+portfolio-1  | LINE 2:             INSERT INTO pocket_transactions
+portfolio-1  |                                 ^
+portfolio-1  |
+portfolio-1  | 2025-04-28 18:27:29,181 - portfolio.src.models - ERROR - Query:
+portfolio-1  |             INSERT INTO pocket_transactions
+portfolio-1  |             (pocket_type, transaction_type, amount, cycle_id, created_at)
+portfolio-1  |             VALUES (%s, %s, %s, %s, NOW())
+portfolio-1  |             ON CONFLICT DO NOTHING
+portfolio-1  |    ...
+portfolio-1  | 2025-04-28 18:27:29,181 - portfolio.src.models - ERROR - Params: ('buffer', 'reserve', 80.0, 'temp_1745864849')
+portfolio-1  | 2025-04-28 18:27:29,182 - portfolio.src.models - ERROR - Traceback (most recent call last):
+portfolio-1  |   File "/app/portfolio/src/models.py", line 190, in execute_query
+portfolio-1  |     cursor.execute(query, params)
+portfolio-1  |   File "/usr/local/lib/python3.10/site-packages/psycopg2/extras.py", line 236, in execute
+portfolio-1  |     return super().execute(query, vars)
+portfolio-1  | psycopg2.errors.UndefinedTable: relation "pocket_transactions" does not exist
+portfolio-1  | LINE 2:             INSERT INTO pocket_transactions
+portfolio-1  |                                 ^
+portfolio-1  |
+portfolio-1  |
+portfolio-1  | INFO:     172.21.0.15:46270 - "POST /pockets/buffer/reserve?amount=80.0&cycle_id=temp_1745864849 HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-28 18:27:29,183 - portfolio.src.pockets - INFO - ✅ 80.00 réservés dans la poche buffer pour le cycle temp_1745864849
+portfolio-1  | 2025-04-28 18:27:29,454 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-28 18:27:29,455 - portfolio.src.pockets - INFO - ✅ PocketManager initialisé
+portfolio-1  | 2025-04-28 18:27:29,456 - portfolio.src.pockets - WARNING - ⚠️ Tentative de libérer plus que ce qui est utilisé: 80.0 > 0.0
+portfolio-1  | 2025-04-28 18:27:29,458 - portfolio.src.models - ERROR - ❌ Erreur lors de l'exécution de la requête: relation "pocket_transactions" does not exist
+portfolio-1  | LINE 2:             INSERT INTO pocket_transactions
+portfolio-1  |                                 ^
+portfolio-1  |
+portfolio-1  | 2025-04-28 18:27:29,458 - portfolio.src.models - ERROR - Query:
+portfolio-1  |             INSERT INTO pocket_transactions
+portfolio-1  |             (pocket_type, transaction_type, amount, cycle_id, created_at)
+portfolio-1  |             VALUES (%s, %s, %s, %s, NOW())
+portfolio-1  |             ON CONFLICT DO NOTHING
+portfolio-1  |    ...
+portfolio-1  | 2025-04-28 18:27:29,458 - portfolio.src.models - ERROR - Params: ('buffer', 'release', 0.0, 'temp_1745864849')
+portfolio-1  | 2025-04-28 18:27:29,459 - portfolio.src.models - ERROR - Traceback (most recent call last):
+portfolio-1  |   File "/app/portfolio/src/models.py", line 190, in execute_query
+portfolio-1  |     cursor.execute(query, params)
+portfolio-1  |   File "/usr/local/lib/python3.10/site-packages/psycopg2/extras.py", line 236, in execute
+portfolio-1  |     return super().execute(query, vars)
+portfolio-1  | psycopg2.errors.UndefinedTable: relation "pocket_transactions" does not exist
+portfolio-1  | LINE 2:             INSERT INTO pocket_transactions
+portfolio-1  |                                 ^
+portfolio-1  |
+portfolio-1  |
+portfolio-1  | 2025-04-28 18:27:29,459 - portfolio.src.pockets - INFO - ✅ 0.00 libérés dans la poche buffer pour le cycle temp_1745864849
+portfolio-1  | INFO:     172.21.0.15:46272 - "POST /pockets/buffer/release?amount=80.0&cycle_id=temp_1745864849 HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-28 18:27:29,464 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-28 18:27:29,465 - portfolio.src.pockets - INFO - ✅ PocketManager initialisé
+portfolio-1  | INFO:     172.21.0.15:46278 - "GET /pockets HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-28 18:27:29,472 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-28 18:27:29,473 - portfolio.src.pockets - INFO - ✅ PocketManager initialisé
+portfolio-1  | 2025-04-28 18:27:29,476 - portfolio.src.models - ERROR - ❌ Erreur lors de l'exécution de la requête: relation "pocket_transactions" does not exist
+portfolio-1  | LINE 2:             INSERT INTO pocket_transactions
+portfolio-1  |                                 ^
+portfolio-1  |
+portfolio-1  | 2025-04-28 18:27:29,476 - portfolio.src.models - ERROR - Query:
+portfolio-1  |             INSERT INTO pocket_transactions
+portfolio-1  |             (pocket_type, transaction_type, amount, cycle_id, created_at)
+portfolio-1  |             VALUES (%s, %s, %s, %s, NOW())
+portfolio-1  |             ON CONFLICT DO NOTHING
+portfolio-1  |    ...
+portfolio-1  | 2025-04-28 18:27:29,476 - portfolio.src.models - ERROR - Params: ('buffer', 'reserve', 80.0, 'cycle_511110bf71394d70')
+portfolio-1  | 2025-04-28 18:27:29,476 - portfolio.src.models - ERROR - Traceback (most recent call last):
+portfolio-1  |   File "/app/portfolio/src/models.py", line 190, in execute_query
+portfolio-1  |     cursor.execute(query, params)
+portfolio-1  |   File "/usr/local/lib/python3.10/site-packages/psycopg2/extras.py", line 236, in execute
+portfolio-1  |     return super().execute(query, vars)
+portfolio-1  | psycopg2.errors.UndefinedTable: relation "pocket_transactions" does not exist
+portfolio-1  | LINE 2:             INSERT INTO pocket_transactions
+portfolio-1  |                                 ^
+portfolio-1  |
+portfolio-1  |
+portfolio-1  | 2025-04-28 18:27:29,477 - portfolio.src.pockets - INFO - ✅ 80.00 réservés dans la poche buffer pour le cycle cycle_511110bf71394d70
+portfolio-1  | INFO:     172.21.0.15:46288 - "POST /pockets/buffer/reserve?amount=80.0&cycle_id=cycle_511110bf71394d70 HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-28 18:28:10,348 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | INFO:     172.21.0.12:37528 - "GET /health HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-28 18:28:17,632 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | INFO:     172.21.0.15:33502 - "GET /health HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-28 18:28:17,637 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-28 18:28:17,638 - portfolio.src.pockets - INFO - ✅ PocketManager initialisé
+portfolio-1  | INFO:     172.21.0.15:33512 - "GET /pockets HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-28 18:28:22,665 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-28 18:28:22,665 - portfolio.src.models - INFO - ✅ PortfolioModel initialisé
+portfolio-1  | INFO:     172.21.0.13:40020 - "GET /summary HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-28 18:28:22,675 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-28 18:28:22,675 - portfolio.src.models - INFO - ✅ PortfolioModel initialisé
+portfolio-1  | INFO:     172.21.0.13:40028 - "GET /performance/daily?limit=1 HTTP/1.1" 200 OK
+
+
+
+coordinator-1  | 2025-04-28 18:27:07,587 - coordinator.src.pocket_checker - INFO - ✅ Réallocation des poches effectuée (valeur totale: 974.16 USDC)
+coordinator-1  | 2025-04-28 18:27:17,531 - coordinator - INFO - Vérification de santé du portfolio...
+coordinator-1  | 2025-04-28 18:27:17,537 - coordinator - INFO - ✅ Service Portfolio en bonne santé
+coordinator-1  | 2025-04-28 18:27:17,537 - coordinator - INFO - Réallocation périodique des fonds...
+coordinator-1  | 2025-04-28 18:27:17,561 - coordinator.src.pocket_checker - INFO - Cache des poches mis à jour: 3 poches
+coordinator-1  | 2025-04-28 18:27:17,562 - coordinator.src.pocket_checker - INFO - ✅ Réallocation des poches effectuée (valeur totale: 974.16 USDC)
+coordinator-1  | 2025-04-28 18:27:29,167 - coordinator.src.signal_handler - INFO - 📨 Signal reçu: BUY ETHUSDC @ 1786.69 (EMA_Cross_Strategy)
+coordinator-1  | 2025-04-28 18:27:29,167 - coordinator.src.pocket_checker - INFO - Fonds disponibles dans la poche active: 0.00 USDC (depuis cache)
+coordinator-1  | 2025-04-28 18:27:29,169 - coordinator.src.pocket_checker - INFO - Vérification de disponibilité: 80.80 USDC requis, 0.00 USDC disponibles dans la poche active
+coordinator-1  | 2025-04-28 18:27:29,169 - coordinator.src.pocket_checker - INFO - Fonds disponibles dans la poche buffer: 292.25 USDC (depuis cache)
+coordinator-1  | 2025-04-28 18:27:29,169 - coordinator.src.pocket_checker - INFO - Vérification de disponibilité: 80.80 USDC requis, 292.25 USDC disponibles dans la poche buffer
+coordinator-1  | 2025-04-28 18:27:29,169 - coordinator.src.pocket_checker - INFO - Utilisation de la poche tampon pour 80.00 USDC (poche active insuffisante)
+coordinator-1  | 2025-04-28 18:27:29,169 - coordinator.src.pocket_checker - INFO - Fonds disponibles dans la poche buffer: 292.25 USDC (depuis cache)
+coordinator-1  | 2025-04-28 18:27:29,169 - coordinator.src.pocket_checker - INFO - Vérification de disponibilité: 80.80 USDC requis, 292.25 USDC disponibles dans la poche buffer
+coordinator-1  | 2025-04-28 18:27:29,185 - coordinator.src.pocket_checker - INFO - ✅ 80.00 USDC réservés dans la poche buffer pour le cycle temp_1745864849
+coordinator-1  | 2025-04-28 18:27:29,186 - coordinator.src.signal_handler - INFO - Envoi de la requête au Trader: {'symbol': 'ETHUSDC', 'side': 'BUY', 'quantity': 0.044775534647868404, 'price': 1786.69, 'strategy': 'EMA_Cross_Strategy', 'timestamp': 1745864849169}
+coordinator-1  | 2025-04-28 18:27:29,461 - coordinator.src.pocket_checker - INFO - ✅ 80.00 USDC libérés dans la poche buffer pour le cycle temp_1745864849
+coordinator-1  | 2025-04-28 18:27:29,468 - coordinator.src.pocket_checker - INFO - Cache des poches mis à jour: 3 poches
+coordinator-1  | 2025-04-28 18:27:29,469 - coordinator.src.pocket_checker - INFO - Fonds disponibles dans la poche buffer: 292.25 USDC (depuis cache)
+coordinator-1  | 2025-04-28 18:27:29,469 - coordinator.src.pocket_checker - INFO - Vérification de disponibilité: 80.80 USDC requis, 292.25 USDC disponibles dans la poche buffer
+coordinator-1  | 2025-04-28 18:27:29,479 - coordinator.src.pocket_checker - INFO - ✅ 80.00 USDC réservés dans la poche buffer pour le cycle cycle_511110bf71394d70
+coordinator-1  | 2025-04-28 18:27:29,479 - coordinator.src.signal_handler - INFO - ✅ Cycle de trading créé: cycle_511110bf71394d70 (BUY ETHUSDC)
+coordinator-1  | 2025-04-28 18:27:29,479 - coordinator.src.signal_handler - INFO - ✅ Trade exécuté pour le signal EMA_Cross_Strategy sur ETHUSDC
+coordinator-1  | 2025-04-28 18:28:11,354 - werkzeug - INFO - 172.21.0.12 - - [28/Apr/2025 18:28:11] "GET /health HTTP/1.1" 200 -
+coordinator-1  | 2025-04-28 18:28:17,630 - coordinator - INFO - Vérification de santé du portfolio...
+coordinator-1  | 2025-04-28 18:28:17,635 - coordinator - INFO - ✅ Service Portfolio en bonne santé
+coordinator-1  | 2025-04-28 18:28:17,635 - coordinator - INFO - Vérification de la synchronisation des poches...
+coordinator-1  | 2025-04-28 18:28:17,647 - coordinator.src.pocket_checker - INFO - ✅ Poches correctement synchronisées
+coordinator-1  | 2025-04-28 18:29:17,715 - coordinator - INFO - Vérification de santé du portfolio...
+coordinator-1  | 2025-04-28 18:29:17,721 - coordinator - INFO - ✅ Service Portfolio en bonne santé
+coordinator-1  | 2025-04-28 18:29:17,721 - coordinator - INFO - Réallocation périodique des fonds...
+coordinator-1  | 2025-04-28 18:29:17,745 - coordinator.src.pocket_checker - INFO - Cache des poches mis à jour: 3 poches
+coordinator-1  | 2025-04-28 18:29:17,746 - coordinator.src.pocket_checker - INFO - ✅ Réallocation des poches effectuée (valeur totale: 974.16 USDC)
+coordinator-1  | 2025-04-28 18:29:18,453 - werkzeug - INFO - 172.21.0.12 - - [28/Apr/2025 18:29:18] "GET /health HTTP/1.1" 200 -
+coordinator-1  | 2025-04-28 18:41:17,945 - coordinator.src.pocket_checker - INFO - Cache des poches mis à jour: 3 poches
+coordinator-1  | 2025-04-28 18:41:17,945 - coordinator.src.pocket_checker - INFO - ✅ Réallocation des poches effectuée (valeur totale: 974.16 USDC)
+coordinator-1  | 2025-04-28 18:41:36,664 - werkzeug - INFO - 172.21.0.12 - - [28/Apr/2025 18:41:36] "GET /health HTTP/1.1" 200 -
+coordinator-1  | 2025-04-28 18:42:17,026 - coordinator - INFO - Vérification de santé du portfolio...
+coordinator-1  | 2025-04-28 18:42:17,034 - coordinator - INFO - ✅ Service Portfolio en bonne santé
+coordinator-1  | 2025-04-28 18:42:43,787 - werkzeug - INFO - 172.21.0.12 - - [28/Apr/2025 18:42:43] "GET /health HTTP/1.1" 200 -
+coordinator-1  | 2025-04-28 18:43:17,111 - coordinator - INFO - Vérification de santé du portfolio...
+coordinator-1  | 2025-04-28 18:43:17,119 - coordinator - INFO - ✅ Service Portfolio en bonne santé
+coordinator-1  | 2025-04-28 18:43:17,119 - coordinator - INFO - Réallocation périodique des fonds...
+coordinator-1  | 2025-04-28 18:43:17,142 - coordinator.src.pocket_checker - INFO - Cache des poches mis à jour: 3 poches
+coordinator-1  | 2025-04-28 18:43:17,142 - coordinator.src.pocket_checker - INFO - ✅ Réallocation des poches effectuée (valeur totale: 974.16 USDC)
+coordinator-1  | 2025-04-28 18:43:17,142 - coordinator - INFO - Vérification de la synchronisation des poches...
+coordinator-1  | 2025-04-28 18:43:17,151 - coordinator.src.pocket_checker - INFO - ✅ Poches correctement synchronisées
+coordinator-1  | 2025-04-28 18:43:50,897 - werkzeug - INFO - 172.21.0.12 - - [28/Apr/2025 18:43:50] "GET /health HTTP/1.1" 200 -
+coordinator-1  | 2025-04-28 18:44:17,223 - coordinator - INFO - Vérification de santé du portfolio...
+coordinator-1  | 2025-04-28 18:44:17,232 - coordinator - INFO - ✅ Service Portfolio en bonne santé
+coordinator-1  | 2025-04-28 18:44:58,011 - werkzeug - INFO - 172.21.0.12 - - [28/Apr/2025 18:44:58] "GET /health HTTP/1.1" 200 -
+coordinator-1  | 2025-04-28 18:45:17,313 - coordinator - INFO - Vérification de santé du portfolio...
+coordinator-1  | 2025-04-28 18:45:17,321 - coordinator - INFO - ✅ Service Portfolio en bonne santé
+coordinator-1  | 2025-04-28 18:45:17,321 - coordinator - INFO - Réallocation périodique des fonds...
+coordinator-1  | 2025-04-28 18:45:17,345 - coordinator.src.pocket_checker - INFO - Cache des poches mis à jour: 3 poches
+coordinator-1  | 2025-04-28 18:45:17,346 - coordinator.src.pocket_checker - INFO - ✅ Réallocation des poches effectuée (valeur totale: 974.16 USDC)
+coordinator-1  | 2025-04-28 18:46:05,121 - werkzeug - INFO - 172.21.0.12 - - [28/Apr/2025 18:46:05] "GET /health HTTP/1.1" 200 -
+coordinator-1  | 2025-04-28 18:46:17,423 - coordinator - INFO - Vérification de santé du portfolio...
+coordinator-1  | 2025-04-28 18:46:17,433 - coordinator - INFO - ✅ Service Portfolio en bonne santé
+coordinator-1  | 2025-04-28 18:47:12,242 - werkzeug - INFO - 172.21.0.12 - - [28/Apr/2025 18:47:12] "GET /health HTTP/1.1" 200 -
+coordinator-1  | 2025-04-28 18:47:17,512 - coordinator - INFO - Vérification de santé du portfolio...
+coordinator-1  | 2025-04-28 18:47:17,521 - coordinator - INFO - ✅ Service Portfolio en bonne santé
+coordinator-1  | 2025-04-28 18:47:17,521 - coordinator - INFO - Réallocation périodique des fonds...
+coordinator-1  | 2025-04-28 18:47:17,550 - coordinator.src.pocket_checker - INFO - Cache des poches mis à jour: 3 poches
+coordinator-1  | 2025-04-28 18:47:17,550 - coordinator.src.pocket_checker - INFO - ✅ Réallocation des poches effectuée (valeur totale: 974.16 USDC)
+coordinator-1  | 2025-04-28 18:48:17,629 - coordinator - INFO - Vérification de santé du portfolio...
+coordinator-1  | 2025-04-28 18:48:17,639 - coordinator - INFO - ✅ Service Portfolio en bonne santé
+coordinator-1  | 2025-04-28 18:48:17,641 - coordinator - INFO - Vérification de la synchronisation des poches...
+coordinator-1  | 2025-04-28 18:48:17,656 - coordinator.src.pocket_checker - INFO - ✅ Poches correctement synchronisées
+coordinator-1  | 2025-04-28 18:48:19,349 - werkzeug - INFO - 172.21.0.12 - - [28/Apr/2025 18:48:19] "GET /health HTTP/1.1" 200 -
+coordinator-1  | 2025-04-28 18:49:17,728 - coordinator - INFO - Vérification de santé du portfolio...
+coordinator-1  | 2025-04-28 18:49:17,735 - coordinator - INFO - ✅ Service Portfolio en bonne santé
+coordinator-1  | 2025-04-28 18:49:17,735 - coordinator - INFO - Réallocation périodique des fonds...
+coordinator-1  | 2025-04-28 18:49:17,761 - coordinator.src.pocket_checker - INFO - Cache des poches mis à jour: 3 poches
+coordinator-1  | 2025-04-28 18:49:17,761 - coordinator.src.pocket_checker - INFO - ✅ Réallocation des poches effectuée (valeur totale: 974.16 USDC)
+
+
+trader-1  | 2025-04-28 18:25:12,581 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: ETHUSDC @ 1768.17
+trader-1  | 2025-04-28 18:25:12,582 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: ETHUSDC @ 1768.23
+trader-1  | 2025-04-28 18:25:12,583 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: ETHUSDC @ 1768.4
+trader-1  | 2025-04-28 18:25:12,583 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: ETHUSDC @ 1768.47
+trader-1  | 2025-04-28 18:25:12,584 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: ETHUSDC @ 1770.46
+trader-1  | 2025-04-28 18:25:13,585 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: ETHUSDC @ 1770.42
+trader-1  | 2025-04-28 18:25:13,595 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: BTCUSDC @ 93964.01
+trader-1  | 2025-04-28 18:25:13,596 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: ETHUSDC @ 1770.14
+trader-1  | 2025-04-28 18:25:22,329 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:25:22] "GET /orders HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:25:22,337 - trader.src.order_manager - INFO - Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:25:22,338 - trader - INFO - ⏸️ Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:25:22,338 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:25:22] "POST /config/pause HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:25:22,341 - trader.src.order_manager - INFO - Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:25:22,342 - trader - INFO - ⏸️ Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:25:22,342 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:25:22] "POST /config/pause HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:25:45,131 - werkzeug - INFO - 172.21.0.12 - - [28/Apr/2025 18:25:45] "GET /health HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:26:00,630 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: BTCUSDC @ 93954.44
+trader-1  | 2025-04-28 18:26:00,631 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: ETHUSDC @ 1769.45
+trader-1  | 2025-04-28 18:26:22,441 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:26:22] "GET /orders HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:26:22,452 - trader.src.order_manager - INFO - Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:26:22,452 - trader - INFO - ⏸️ Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:26:22,453 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:26:22] "POST /config/pause HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:26:22,457 - trader.src.order_manager - INFO - Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:26:22,457 - trader - INFO - ⏸️ Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:26:22,457 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:26:22] "POST /config/pause HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:26:57,235 - werkzeug - INFO - 172.21.0.12 - - [28/Apr/2025 18:26:57] "GET /health HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:27:00,667 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: BTCUSDC @ 93960.75
+trader-1  | 2025-04-28 18:27:00,667 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: ETHUSDC @ 1769.76
+trader-1  | 2025-04-28 18:27:06,903 - trader.src.order_manager - DEBUG - Signal brut reçu: {"strategy": "Ride_or_React_Strategy", "symbol": "ETHUSDC", "side": "BUY", "timestamp": "2025-04-28T18:27:06.901090", "price": 1799.45, "confidence": 0.8, "strength": "moderate", "metadata": {"atr_percent": 0.0, "1h_change": 0.0, "1h_base_threshold": 0.8, "1h_adjusted_threshold": 0.0, "1h_exceeded": true, "3h_change": 0.0, "3h_base_threshold": 2.5, "3h_adjusted_threshold": 0.0, "3h_exceeded": true, "6h_change": 0.0, "6h_base_threshold": 3.6, "6h_adjusted_threshold": 0.0, "6h_exceeded": true, "12h_change": 0.0, "12h_base_threshold": 5.1, "12h_adjusted_threshold": 0.0, "12h_exceeded": true, "24h_change": 0.0, "24h_base_threshold": 7.8, "24h_adjusted_threshold": 0.0, "24h_exceeded": true, "mode": "ride", "action": "wait_for_reversal", "current_price": 1799.45, "market_volatility": "low"}}
+trader-1  | 2025-04-28 18:27:06,903 - trader.src.order_manager - INFO - 📨 Signal reçu: BUY ETHUSDC @ 1799.45 (Ride_or_React_Strategy)
+trader-1  | 2025-04-28 18:27:06,904 - trader.src.binance_executor - DEBUG - Génération de signature pour: symbol=ETHUSDC&timestamp=1745864826904
+trader-1  | 2025-04-28 18:27:06,905 - trader.src.binance_executor - DEBUG - Signature générée: 6594b4116b579dfe74fe5ae36b2d5954ba1814b82872c556af42919263093d66
+trader-1  | 2025-04-28 18:27:07,177 - urllib3.connectionpool - DEBUG - https://api.binance.com:443 "GET /sapi/v1/asset/tradeFee?symbol=ETHUSDC&timestamp=1745864826904&signature=6594b4116b579dfe74fe5ae36b2d5954ba1814b82872c556af42919263093d66 HTTP/1.1" 200 76
+trader-1  | 2025-04-28 18:27:07,180 - trader.src.cycle_manager - DEBUG - ✅ Cycle cycle_6c9b63ee6dc140dc enregistré en base de données
+trader-1  | 2025-04-28 18:27:07,181 - trader.src.cycle_manager - INFO - 🔄 Exécution de l'ordre d'entrée pour le cycle cycle_6c9b63ee6dc140dc
+trader-1  | 2025-04-28 18:27:07,181 - trader.src.binance_executor - INFO - Paramètres de l'ordre: {'symbol': 'ETHUSDC', 'side': 'BUY', 'type': 'LIMIT', 'quantity': '0.0300', 'newClientOrderId': 'entry_cycle_6c9b63ee6dc140dc', 'timestamp': 1745864827181, 'price': '1769.76', 'timeInForce': 'GTC'}
+trader-1  | 2025-04-28 18:27:07,181 - trader.src.binance_executor - DEBUG - Génération de signature pour: newClientOrderId=entry_cycle_6c9b63ee6dc140dc&price=1769.76&quantity=0.0300&side=BUY&symbol=ETHUSDC&timeInForce=GTC&timestamp=1745864827181&type=LIMIT
+trader-1  | 2025-04-28 18:27:07,181 - trader.src.binance_executor - DEBUG - Signature générée: ff6c5109f870d96b28f8f1cba29aab73028c02598d01f9567279b1e039baca3e
+trader-1  | 2025-04-28 18:27:07,418 - urllib3.connectionpool - DEBUG - https://api.binance.com:443 "POST /api/v3/order?symbol=ETHUSDC&side=BUY&type=LIMIT&quantity=0.0300&newClientOrderId=entry_cycle_6c9b63ee6dc140dc&timestamp=1745864827181&price=1769.76&timeInForce=GTC&signature=ff6c5109f870d96b28f8f1cba29aab73028c02598d01f9567279b1e039baca3e HTTP/1.1" 400 63
+trader-1  | 2025-04-28 18:27:07,419 - trader.src.binance_executor - ERROR - Erreur Binance 400: Signature for this request is not valid.
+trader-1  | 2025-04-28 18:27:07,420 - shared.src.redis_client - INFO - ✅ Connexion Redis établie à redis:6379 (DB: 0)
+trader-1  | 2025-04-28 18:27:07,420 - trader.src.binance_executor - INFO - ✅ Notification d'échec d'ordre envoyée pour entry_cycle_6c9b63ee6dc140dc
+trader-1  | 2025-04-28 18:27:07,421 - trader.src.binance_executor - INFO - Passage en mode simulation suite à l'erreur
+trader-1  | 2025-04-28 18:27:07,421 - trader.src.binance_executor - INFO - ✅ [DÉMO] Ordre simulé: BUY 0.03 ETHUSDC @ 1769.76
+trader-1  | 2025-04-28 18:27:07,424 - trader.src.cycle_manager - DEBUG - ✅ Exécution 10000004 enregistrée en base de données
+trader-1  | 2025-04-28 18:27:07,427 - trader.src.cycle_manager - DEBUG - ✅ Cycle cycle_6c9b63ee6dc140dc enregistré en base de données
+trader-1  | 2025-04-28 18:27:07,427 - trader.src.cycle_manager - INFO - ✅ Cycle cycle_6c9b63ee6dc140dc créé avec succès: BUY 0.03 ETHUSDC @ 1769.76
+trader-1  | 2025-04-28 18:27:07,427 - trader.src.order_manager - INFO - ✅ Cycle créé pour le signal: cycle_6c9b63ee6dc140dc
+trader-1  | 2025-04-28 18:27:07,511 - trader.src.order_manager - DEBUG - Signal brut reçu: {"strategy": "Breakout_Strategy", "symbol": "ETHUSDC", "side": "SELL", "timestamp": "2025-04-28T18:27:07.502586", "price": 1793.04, "confidence": 0.95, "strength": "moderate", "metadata": {"type": "bearish", "support": 1802.1, "resistance": 1805.87, "range_duration": 40, "target_price": 1789.27, "stop_price": 1820.1209999999999}}
+trader-1  | 2025-04-28 18:27:07,512 - trader.src.order_manager - INFO - 📨 Signal reçu: SELL ETHUSDC @ 1793.04 (Breakout_Strategy)
+trader-1  | 2025-04-28 18:27:07,514 - trader.src.binance_executor - DEBUG - Génération de signature pour: symbol=ETHUSDC&timestamp=1745864827514
+trader-1  | 2025-04-28 18:27:07,515 - trader.src.binance_executor - DEBUG - Signature générée: 23a2c9c4ba9120fa81cc4c268e64314d3ac83ad9166544fff052bca5719996e2
+trader-1  | 2025-04-28 18:27:07,518 - trader.src.order_manager - DEBUG - Signal brut reçu: {"strategy": "Bollinger_Strategy", "symbol": "ETHUSDC", "side": "BUY", "timestamp": "2025-04-28T18:27:07.509040", "price": 1793.53, "confidence": 0.5, "strength": "moderate", "metadata": {"bb_upper": 1801.1184861680567, "bb_middle": 1797.1784999999995, "bb_lower": 1793.2385138319423, "target_price": 1797.1784999999995, "stop_price": 1775.306128693623}}
+trader-1  | 2025-04-28 18:27:07,518 - trader.src.order_manager - INFO - 📨 Signal reçu: BUY ETHUSDC @ 1793.53 (Bollinger_Strategy)
+trader-1  | 2025-04-28 18:27:07,559 - trader.src.order_manager - DEBUG - Signal brut reçu: {"strategy": "RSI_Strategy", "symbol": "ETHUSDC", "side": "BUY", "timestamp": "2025-04-28T18:27:07.556278", "price": 1788.08, "confidence": 0.5, "strength": "moderate", "metadata": {"rsi": 30.814745619810797, "rsi_threshold": 30, "previous_rsi": 25.945887763577634}}
+trader-1  | 2025-04-28 18:27:07,559 - trader.src.order_manager - INFO - 📨 Signal reçu: BUY ETHUSDC @ 1788.08 (RSI_Strategy)
+trader-1  | 2025-04-28 18:27:07,783 - urllib3.connectionpool - DEBUG - https://api.binance.com:443 "GET /sapi/v1/asset/tradeFee?symbol=ETHUSDC&timestamp=1745864827514&signature=23a2c9c4ba9120fa81cc4c268e64314d3ac83ad9166544fff052bca5719996e2 HTTP/1.1" 200 76
+trader-1  | 2025-04-28 18:27:07,789 - trader.src.cycle_manager - DEBUG - ✅ Cycle cycle_b6b8acfde81a4fc5 enregistré en base de données
+trader-1  | 2025-04-28 18:27:07,790 - trader.src.cycle_manager - INFO - 🔄 Exécution de l'ordre d'entrée pour le cycle cycle_b6b8acfde81a4fc5
+trader-1  | 2025-04-28 18:27:07,790 - trader.src.binance_executor - INFO - Paramètres de l'ordre: {'symbol': 'ETHUSDC', 'side': 'SELL', 'type': 'LIMIT', 'quantity': '0.0300', 'newClientOrderId': 'entry_cycle_b6b8acfde81a4fc5', 'timestamp': 1745864827790, 'price': '1769.76', 'timeInForce': 'GTC'}
+trader-1  | 2025-04-28 18:27:07,790 - trader.src.binance_executor - DEBUG - Génération de signature pour: newClientOrderId=entry_cycle_b6b8acfde81a4fc5&price=1769.76&quantity=0.0300&side=SELL&symbol=ETHUSDC&timeInForce=GTC&timestamp=1745864827790&type=LIMIT
+trader-1  | 2025-04-28 18:27:07,790 - trader.src.binance_executor - DEBUG - Signature générée: 452450288f483cb7abe121feb539c9a5748477c924ddbb9bf472ac4b3bfec9f8
+trader-1  | 2025-04-28 18:27:08,027 - urllib3.connectionpool - DEBUG - https://api.binance.com:443 "POST /api/v3/order?symbol=ETHUSDC&side=SELL&type=LIMIT&quantity=0.0300&newClientOrderId=entry_cycle_b6b8acfde81a4fc5&timestamp=1745864827790&price=1769.76&timeInForce=GTC&signature=452450288f483cb7abe121feb539c9a5748477c924ddbb9bf472ac4b3bfec9f8 HTTP/1.1" 400 63
+trader-1  | 2025-04-28 18:27:08,027 - trader.src.binance_executor - ERROR - Erreur Binance 400: Signature for this request is not valid.
+trader-1  | 2025-04-28 18:27:08,028 - shared.src.redis_client - INFO - ✅ Connexion Redis établie à redis:6379 (DB: 0)
+trader-1  | 2025-04-28 18:27:08,029 - trader.src.binance_executor - INFO - ✅ Notification d'échec d'ordre envoyée pour entry_cycle_b6b8acfde81a4fc5
+trader-1  | 2025-04-28 18:27:08,029 - trader.src.binance_executor - INFO - Passage en mode simulation suite à l'erreur
+trader-1  | 2025-04-28 18:27:08,029 - trader.src.binance_executor - INFO - ✅ [DÉMO] Ordre simulé: SELL 0.03 ETHUSDC @ 1769.76
+trader-1  | 2025-04-28 18:27:08,035 - trader.src.cycle_manager - DEBUG - ✅ Exécution 10000005 enregistrée en base de données
+trader-1  | 2025-04-28 18:27:08,037 - trader.src.cycle_manager - DEBUG - ✅ Cycle cycle_b6b8acfde81a4fc5 enregistré en base de données
+trader-1  | 2025-04-28 18:27:08,037 - trader.src.cycle_manager - INFO - ✅ Cycle cycle_b6b8acfde81a4fc5 créé avec succès: SELL 0.03 ETHUSDC @ 1769.76
+trader-1  | 2025-04-28 18:27:08,038 - trader.src.order_manager - INFO - ✅ Cycle créé pour le signal: cycle_b6b8acfde81a4fc5
+trader-1  | 2025-04-28 18:27:08,038 - trader.src.binance_executor - DEBUG - Génération de signature pour: symbol=ETHUSDC&timestamp=1745864828038
+trader-1  | 2025-04-28 18:27:08,038 - trader.src.binance_executor - DEBUG - Signature générée: 9ec97ce458b6a9743f83cd7e4b48499cf7906f2f986a181769db3f9ec3e8c85d
+trader-1  | 2025-04-28 18:27:08,296 - urllib3.connectionpool - DEBUG - https://api.binance.com:443 "GET /sapi/v1/asset/tradeFee?symbol=ETHUSDC&timestamp=1745864828038&signature=9ec97ce458b6a9743f83cd7e4b48499cf7906f2f986a181769db3f9ec3e8c85d HTTP/1.1" 200 76
+trader-1  | 2025-04-28 18:27:08,303 - trader.src.cycle_manager - DEBUG - ✅ Cycle cycle_76d7d3e7afb04a3e enregistré en base de données
+trader-1  | 2025-04-28 18:27:08,303 - trader.src.cycle_manager - INFO - 🔄 Exécution de l'ordre d'entrée pour le cycle cycle_76d7d3e7afb04a3e
+trader-1  | 2025-04-28 18:27:08,303 - trader.src.binance_executor - INFO - Paramètres de l'ordre: {'symbol': 'ETHUSDC', 'side': 'BUY', 'type': 'LIMIT', 'quantity': '0.0300', 'newClientOrderId': 'entry_cycle_76d7d3e7afb04a3e', 'timestamp': 1745864828303, 'price': '1769.76', 'timeInForce': 'GTC'}
+trader-1  | 2025-04-28 18:27:08,303 - trader.src.binance_executor - DEBUG - Génération de signature pour: newClientOrderId=entry_cycle_76d7d3e7afb04a3e&price=1769.76&quantity=0.0300&side=BUY&symbol=ETHUSDC&timeInForce=GTC&timestamp=1745864828303&type=LIMIT
+trader-1  | 2025-04-28 18:27:08,303 - trader.src.binance_executor - DEBUG - Signature générée: 327f6ed5e5cf46da3aca1933be85e7f27b52b6bea1d9a2844fc666519f0e6e0f
+trader-1  | 2025-04-28 18:27:08,543 - urllib3.connectionpool - DEBUG - https://api.binance.com:443 "POST /api/v3/order?symbol=ETHUSDC&side=BUY&type=LIMIT&quantity=0.0300&newClientOrderId=entry_cycle_76d7d3e7afb04a3e&timestamp=1745864828303&price=1769.76&timeInForce=GTC&signature=327f6ed5e5cf46da3aca1933be85e7f27b52b6bea1d9a2844fc666519f0e6e0f HTTP/1.1" 400 63
+trader-1  | 2025-04-28 18:27:08,543 - trader.src.binance_executor - ERROR - Erreur Binance 400: Signature for this request is not valid.
+trader-1  | 2025-04-28 18:27:08,544 - shared.src.redis_client - INFO - ✅ Connexion Redis établie à redis:6379 (DB: 0)
+trader-1  | 2025-04-28 18:27:08,545 - trader.src.binance_executor - INFO - ✅ Notification d'échec d'ordre envoyée pour entry_cycle_76d7d3e7afb04a3e
+trader-1  | 2025-04-28 18:27:08,545 - trader.src.binance_executor - INFO - Passage en mode simulation suite à l'erreur
+trader-1  | 2025-04-28 18:27:08,545 - trader.src.binance_executor - INFO - ✅ [DÉMO] Ordre simulé: BUY 0.03 ETHUSDC @ 1769.76
+trader-1  | 2025-04-28 18:27:08,552 - trader.src.cycle_manager - DEBUG - ✅ Exécution 10000006 enregistrée en base de données
+trader-1  | 2025-04-28 18:27:08,555 - trader.src.cycle_manager - DEBUG - ✅ Cycle cycle_76d7d3e7afb04a3e enregistré en base de données
+trader-1  | 2025-04-28 18:27:08,555 - trader.src.cycle_manager - INFO - ✅ Cycle cycle_76d7d3e7afb04a3e créé avec succès: BUY 0.03 ETHUSDC @ 1769.76
+trader-1  | 2025-04-28 18:27:08,555 - trader.src.order_manager - INFO - ✅ Cycle créé pour le signal: cycle_76d7d3e7afb04a3e
+trader-1  | 2025-04-28 18:27:08,555 - trader.src.binance_executor - DEBUG - Génération de signature pour: symbol=ETHUSDC&timestamp=1745864828555
+trader-1  | 2025-04-28 18:27:08,555 - trader.src.binance_executor - DEBUG - Signature générée: b07308f5cb66068b5dd57e62a2ddd3de9d9fae1f28b06c31a3a413b0cac29a99
+trader-1  | 2025-04-28 18:27:08,818 - urllib3.connectionpool - DEBUG - https://api.binance.com:443 "GET /sapi/v1/asset/tradeFee?symbol=ETHUSDC&timestamp=1745864828555&signature=b07308f5cb66068b5dd57e62a2ddd3de9d9fae1f28b06c31a3a413b0cac29a99 HTTP/1.1" 200 76
+trader-1  | 2025-04-28 18:27:08,822 - trader.src.cycle_manager - DEBUG - ✅ Cycle cycle_8813946fdfe14493 enregistré en base de données
+trader-1  | 2025-04-28 18:27:08,823 - trader.src.cycle_manager - INFO - 🔄 Exécution de l'ordre d'entrée pour le cycle cycle_8813946fdfe14493
+trader-1  | 2025-04-28 18:27:08,823 - trader.src.binance_executor - INFO - Paramètres de l'ordre: {'symbol': 'ETHUSDC', 'side': 'BUY', 'type': 'LIMIT', 'quantity': '0.0300', 'newClientOrderId': 'entry_cycle_8813946fdfe14493', 'timestamp': 1745864828823, 'price': '1769.76', 'timeInForce': 'GTC'}
+trader-1  | 2025-04-28 18:27:08,823 - trader.src.binance_executor - DEBUG - Génération de signature pour: newClientOrderId=entry_cycle_8813946fdfe14493&price=1769.76&quantity=0.0300&side=BUY&symbol=ETHUSDC&timeInForce=GTC&timestamp=1745864828823&type=LIMIT
+trader-1  | 2025-04-28 18:27:08,823 - trader.src.binance_executor - DEBUG - Signature générée: 96cd291587a52401d05e5d1bbff13c5fc86f293a7cefa2a1912d531289a9a01a
+trader-1  | 2025-04-28 18:27:09,060 - urllib3.connectionpool - DEBUG - https://api.binance.com:443 "POST /api/v3/order?symbol=ETHUSDC&side=BUY&type=LIMIT&quantity=0.0300&newClientOrderId=entry_cycle_8813946fdfe14493&timestamp=1745864828823&price=1769.76&timeInForce=GTC&signature=96cd291587a52401d05e5d1bbff13c5fc86f293a7cefa2a1912d531289a9a01a HTTP/1.1" 400 63
+trader-1  | 2025-04-28 18:27:09,061 - trader.src.binance_executor - ERROR - Erreur Binance 400: Signature for this request is not valid.
+trader-1  | 2025-04-28 18:27:09,062 - shared.src.redis_client - INFO - ✅ Connexion Redis établie à redis:6379 (DB: 0)
+trader-1  | 2025-04-28 18:27:09,062 - trader.src.binance_executor - INFO - ✅ Notification d'échec d'ordre envoyée pour entry_cycle_8813946fdfe14493
+trader-1  | 2025-04-28 18:27:09,062 - trader.src.binance_executor - INFO - Passage en mode simulation suite à l'erreur
+trader-1  | 2025-04-28 18:27:09,062 - trader.src.binance_executor - INFO - ✅ [DÉMO] Ordre simulé: BUY 0.03 ETHUSDC @ 1769.76
+trader-1  | 2025-04-28 18:27:09,067 - trader.src.cycle_manager - DEBUG - ✅ Exécution 10000007 enregistrée en base de données
+trader-1  | 2025-04-28 18:27:09,069 - trader.src.cycle_manager - DEBUG - ✅ Cycle cycle_8813946fdfe14493 enregistré en base de données
+trader-1  | 2025-04-28 18:27:09,069 - trader.src.cycle_manager - INFO - ✅ Cycle cycle_8813946fdfe14493 créé avec succès: BUY 0.03 ETHUSDC @ 1769.76
+trader-1  | 2025-04-28 18:27:09,069 - trader.src.order_manager - INFO - ✅ Cycle créé pour le signal: cycle_8813946fdfe14493
+trader-1  | 2025-04-28 18:27:22,556 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:27:22] "GET /orders HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:27:22,565 - trader.src.order_manager - INFO - Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:27:22,565 - trader - INFO - ⏸️ Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:27:22,566 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:27:22] "POST /config/pause HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:27:22,569 - trader.src.order_manager - INFO - Trading en pause pour le symbole ETHUSDC
+trader-1  | 2025-04-28 18:27:22,569 - trader - INFO - ⏸️ Trading en pause pour le symbole ETHUSDC
+trader-1  | 2025-04-28 18:27:22,570 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:27:22] "POST /config/pause HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:27:22,573 - trader.src.order_manager - INFO - Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:27:22,573 - trader - INFO - ⏸️ Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:27:22,573 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:27:22] "POST /config/pause HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:27:29,166 - trader.src.order_manager - DEBUG - Signal brut reçu: {"strategy": "EMA_Cross_Strategy", "symbol": "ETHUSDC", "side": "BUY", "timestamp": "2025-04-28T18:27:29.165917", "price": 1786.69, "confidence": 0.5048862694123839, "strength": "moderate", "metadata": {"short_ema": 1784.116434590974, "long_ema": 1783.2450929957051, "ema_distance": 0.0004886269412383898, "target_price": 1858.1576, "stop_price": 1750.9562}}
+trader-1  | 2025-04-28 18:27:29,167 - trader.src.order_manager - INFO - ⏸️ Signal ignoré: trading en pause pour ETHUSDC/EMA_Cross_Strategy
+trader-1  | 2025-04-28 18:27:29,193 - trader.src.cycle_manager - DEBUG - ✅ Cycle cycle_511110bf71394d70 enregistré en base de données
+trader-1  | 2025-04-28 18:27:29,193 - trader.src.cycle_manager - INFO - 🔄 Exécution de l'ordre d'entrée pour le cycle cycle_511110bf71394d70
+trader-1  | 2025-04-28 18:27:29,193 - trader.src.binance_executor - INFO - Paramètres de l'ordre: {'symbol': 'ETHUSDC', 'side': 'BUY', 'type': 'LIMIT', 'quantity': '0.0447', 'newClientOrderId': 'entry_cycle_511110bf71394d70', 'timestamp': 1745864849193, 'price': '1786.69', 'timeInForce': 'GTC'}
+trader-1  | 2025-04-28 18:27:29,194 - trader.src.binance_executor - DEBUG - Génération de signature pour: newClientOrderId=entry_cycle_511110bf71394d70&price=1786.69&quantity=0.0447&side=BUY&symbol=ETHUSDC&timeInForce=GTC&timestamp=1745864849193&type=LIMIT
+trader-1  | 2025-04-28 18:27:29,195 - trader.src.binance_executor - DEBUG - Signature générée: 6ca2578436450cbc9bf4ad5a180e4d4cddd915d55f006b9a8764b37abd9973bd
+trader-1  | 2025-04-28 18:27:29,436 - urllib3.connectionpool - DEBUG - https://api.binance.com:443 "POST /api/v3/order?symbol=ETHUSDC&side=BUY&type=LIMIT&quantity=0.0447&newClientOrderId=entry_cycle_511110bf71394d70&timestamp=1745864849193&price=1786.69&timeInForce=GTC&signature=6ca2578436450cbc9bf4ad5a180e4d4cddd915d55f006b9a8764b37abd9973bd HTTP/1.1" 400 63
+trader-1  | 2025-04-28 18:27:29,437 - trader.src.binance_executor - ERROR - Erreur Binance 400: Signature for this request is not valid.
+trader-1  | 2025-04-28 18:27:29,439 - shared.src.redis_client - INFO - ✅ Connexion Redis établie à redis:6379 (DB: 0)
+trader-1  | 2025-04-28 18:27:29,440 - trader.src.binance_executor - INFO - ✅ Notification d'échec d'ordre envoyée pour entry_cycle_511110bf71394d70
+trader-1  | 2025-04-28 18:27:29,440 - trader.src.binance_executor - INFO - Passage en mode simulation suite à l'erreur
+trader-1  | 2025-04-28 18:27:29,440 - trader.src.binance_executor - INFO - ✅ [DÉMO] Ordre simulé: BUY 0.044775534647868404 ETHUSDC @ 1786.69
+trader-1  | 2025-04-28 18:27:29,445 - trader.src.cycle_manager - DEBUG - ✅ Exécution 10000008 enregistrée en base de données
+trader-1  | 2025-04-28 18:27:29,448 - trader.src.cycle_manager - DEBUG - ✅ Cycle cycle_511110bf71394d70 enregistré en base de données
+trader-1  | 2025-04-28 18:27:29,448 - trader.src.cycle_manager - INFO - ✅ Cycle cycle_511110bf71394d70 créé avec succès: BUY 0.044775534647868404 ETHUSDC @ 1786.69
+trader-1  | 2025-04-28 18:27:29,450 - werkzeug - INFO - 172.21.0.15 - - [28/Apr/2025 18:27:29] "POST /order HTTP/1.1" 201 -
+trader-1  | 2025-04-28 18:28:00,708 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: BTCUSDC @ 93967.64
+trader-1  | 2025-04-28 18:28:00,708 - trader.src.cycle_manager - INFO - 🔴 Stop-loss déclenché pour le cycle cycle_76d7d3e7afb04a3e au prix 1770.33
+trader-1  | 2025-04-28 18:28:00,709 - trader.src.cycle_manager - INFO - 🔄 Exécution de l'ordre de sortie pour le cycle cycle_76d7d3e7afb04a3e
+trader-1  | 2025-04-28 18:28:00,955 - urllib3.connectionpool - DEBUG - https://api.binance.com:443 "GET /api/v3/ticker/price?symbol=ETHUSDC HTTP/1.1" 200 44
+trader-1  | 2025-04-28 18:28:00,956 - trader.src.binance_executor - INFO - Paramètres de l'ordre: {'symbol': 'ETHUSDC', 'side': 'SELL', 'type': 'MARKET', 'quantity': '0.0300', 'newClientOrderId': 'exit_cycle_76d7d3e7afb04a3e', 'timestamp': 1745864880956}
+trader-1  | 2025-04-28 18:28:00,956 - trader.src.binance_executor - DEBUG - Génération de signature pour: newClientOrderId=exit_cycle_76d7d3e7afb04a3e&quantity=0.0300&side=SELL&symbol=ETHUSDC&timestamp=1745864880956&type=MARKET
+trader-1  | 2025-04-28 18:28:00,956 - trader.src.binance_executor - DEBUG - Signature générée: 4d7c6a7a607980d4391ea8fea6a00edd5e51765dcba20b5ca3841bae76f59cf6
+trader-1  | 2025-04-28 18:28:01,198 - urllib3.connectionpool - DEBUG - https://api.binance.com:443 "POST /api/v3/order?symbol=ETHUSDC&side=SELL&type=MARKET&quantity=0.0300&newClientOrderId=exit_cycle_76d7d3e7afb04a3e&timestamp=1745864880956&signature=4d7c6a7a607980d4391ea8fea6a00edd5e51765dcba20b5ca3841bae76f59cf6 HTTP/1.1" 400 63
+trader-1  | 2025-04-28 18:28:01,199 - trader.src.binance_executor - ERROR - Erreur Binance 400: Signature for this request is not valid.
+trader-1  | 2025-04-28 18:28:01,201 - shared.src.redis_client - INFO - ✅ Connexion Redis établie à redis:6379 (DB: 0)
+trader-1  | 2025-04-28 18:28:01,201 - trader.src.binance_executor - INFO - ✅ Notification d'échec d'ordre envoyée pour exit_cycle_76d7d3e7afb04a3e
+trader-1  | 2025-04-28 18:28:01,202 - trader.src.binance_executor - INFO - Passage en mode simulation suite à l'erreur
+trader-1  | 2025-04-28 18:28:01,446 - urllib3.connectionpool - DEBUG - https://api.binance.com:443 "GET /api/v3/ticker/price?symbol=ETHUSDC HTTP/1.1" 200 44
+trader-1  | 2025-04-28 18:28:01,446 - trader.src.binance_executor - INFO - ✅ [DÉMO] Ordre simulé: SELL 0.03 ETHUSDC @ 1770.11
+trader-1  | 2025-04-28 18:28:01,452 - trader.src.cycle_manager - DEBUG - ✅ Exécution 10000009 enregistrée en base de données
+trader-1  | 2025-04-28 18:28:01,454 - trader.src.cycle_manager - DEBUG - ✅ Cycle cycle_76d7d3e7afb04a3e enregistré en base de données
+trader-1  | 2025-04-28 18:28:01,454 - trader.src.cycle_manager - INFO - ✅ Cycle cycle_76d7d3e7afb04a3e fermé avec succès: P&L = 0.01 (0.02%)
+trader-1  | 2025-04-28 18:28:01,454 - trader.src.cycle_manager - INFO - 🎯 Prix cible atteint pour le cycle cycle_b6b8acfde81a4fc5 au prix 1770.33
+trader-1  | 2025-04-28 18:28:01,454 - trader.src.cycle_manager - INFO - 🔄 Exécution de l'ordre de sortie pour le cycle cycle_b6b8acfde81a4fc5
+trader-1  | 2025-04-28 18:28:01,693 - urllib3.connectionpool - DEBUG - https://api.binance.com:443 "GET /api/v3/ticker/price?symbol=ETHUSDC HTTP/1.1" 200 44
+trader-1  | 2025-04-28 18:28:01,694 - trader.src.binance_executor - INFO - Paramètres de l'ordre: {'symbol': 'ETHUSDC', 'side': 'BUY', 'type': 'MARKET', 'quantity': '0.0300', 'newClientOrderId': 'exit_cycle_b6b8acfde81a4fc5', 'timestamp': 1745864881694}
+trader-1  | 2025-04-28 18:28:01,694 - trader.src.binance_executor - DEBUG - Génération de signature pour: newClientOrderId=exit_cycle_b6b8acfde81a4fc5&quantity=0.0300&side=BUY&symbol=ETHUSDC&timestamp=1745864881694&type=MARKET
+trader-1  | 2025-04-28 18:28:01,694 - trader.src.binance_executor - DEBUG - Signature générée: 169204079ca264fee93882cab1a12f2a1ec4a59029476d269b8ef7ae3bbfcd9d
+trader-1  | 2025-04-28 18:28:01,936 - urllib3.connectionpool - DEBUG - https://api.binance.com:443 "POST /api/v3/order?symbol=ETHUSDC&side=BUY&type=MARKET&quantity=0.0300&newClientOrderId=exit_cycle_b6b8acfde81a4fc5&timestamp=1745864881694&signature=169204079ca264fee93882cab1a12f2a1ec4a59029476d269b8ef7ae3bbfcd9d HTTP/1.1" 400 63
+trader-1  | 2025-04-28 18:28:01,937 - trader.src.binance_executor - ERROR - Erreur Binance 400: Signature for this request is not valid.
+trader-1  | 2025-04-28 18:28:01,938 - shared.src.redis_client - INFO - ✅ Connexion Redis établie à redis:6379 (DB: 0)
+trader-1  | 2025-04-28 18:28:01,938 - trader.src.binance_executor - INFO - ✅ Notification d'échec d'ordre envoyée pour exit_cycle_b6b8acfde81a4fc5
+trader-1  | 2025-04-28 18:28:01,938 - trader.src.binance_executor - INFO - Passage en mode simulation suite à l'erreur
+trader-1  | 2025-04-28 18:28:02,176 - urllib3.connectionpool - DEBUG - https://api.binance.com:443 "GET /api/v3/ticker/price?symbol=ETHUSDC HTTP/1.1" 200 44
+trader-1  | 2025-04-28 18:28:02,176 - trader.src.binance_executor - INFO - ✅ [DÉMO] Ordre simulé: BUY 0.03 ETHUSDC @ 1770.1
+trader-1  | 2025-04-28 18:28:02,179 - trader.src.cycle_manager - DEBUG - ✅ Exécution 10000010 enregistrée en base de données
+trader-1  | 2025-04-28 18:28:02,182 - trader.src.cycle_manager - DEBUG - ✅ Cycle cycle_b6b8acfde81a4fc5 enregistré en base de données
+trader-1  | 2025-04-28 18:28:02,182 - trader.src.cycle_manager - INFO - ✅ Cycle cycle_b6b8acfde81a4fc5 fermé avec succès: P&L = -0.01 (-0.02%)
+trader-1  | 2025-04-28 18:28:02,182 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: ETHUSDC @ 1770.33
+trader-1  | 2025-04-28 18:28:09,336 - werkzeug - INFO - 172.21.0.12 - - [28/Apr/2025 18:28:09] "GET /health HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:28:17,644 - werkzeug - INFO - 172.21.0.15 - - [28/Apr/2025 18:28:17] "GET /orders?status=active HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:28:22,671 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:28:22] "GET /orders HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:28:22,682 - trader.src.order_manager - INFO - Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:28:22,683 - trader - INFO - ⏸️ Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:28:22,683 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:28:22] "POST /config/pause HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:28:22,688 - trader.src.order_manager - INFO - Trading en pause pour le symbole ETHUSDC
+trader-1  | 2025-04-28 18:28:22,688 - trader - INFO - ⏸️ Trading en pause pour le symbole ETHUSDC
+trader-1  | 2025-04-28 18:28:22,688 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:28:22] "POST /config/pause HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:28:22,692 - trader.src.order_manager - INFO - Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:28:22,692 - trader - INFO - ⏸️ Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:28:22,692 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:28:22] "POST /config/pause HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:29:00,748 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: BTCUSDC @ 93940.0
+trader-1  | 2025-04-28 18:29:00,750 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: ETHUSDC @ 1769.0
+trader-1  | 2025-04-28 18:29:16,442 - werkzeug - INFO - 172.21.0.12 - - [28/Apr/2025 18:29:16] "GET /health HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:29:22,779 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:29:22] "GET /orders HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:29:22,788 - trader.src.order_manager - INFO - Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:29:22,788 - trader - INFO - ⏸️ Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:29:22,788 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:29:22] "POST /config/pause HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:29:22,791 - trader.src.order_manager - INFO - Trading en pause pour le symbole ETHUSDC
+trader-1  | 2025-04-28 18:29:22,792 - trader - INFO - ⏸️ Trading en pause pour le symbole ETHUSDC
+trader-1  | 2025-04-28 18:29:22,792 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:29:22] "POST /config/pause HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:29:22,795 - trader.src.order_manager - INFO - Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:29:22,795 - trader - INFO - ⏸️ Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:29:22,795 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:29:22] "POST /config/pause HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:30:00,793 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: BTCUSDC @ 93920.79
+trader-1  | 2025-04-28 18:30:00,793 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: ETHUSDC @ 1767.72
+trader-1  | 2025-04-28 18:30:22,896 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:30:22] "GET /orders HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:30:22,905 - trader.src.order_manager - INFO - Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:30:22,905 - trader - INFO - ⏸️ Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:30:22,906 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:30:22] "POST /config/pause HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:30:22,909 - trader.src.order_manager - INFO - Trading en pause pour le symbole ETHUSDC
+trader-1  | 2025-04-28 18:30:22,909 - trader - INFO - ⏸️ Trading en pause pour le symbole ETHUSDC
+trader-1  | 2025-04-28 18:30:22,909 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:30:22] "POST /config/pause HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:30:22,912 - trader.src.order_manager - INFO - Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:30:22,913 - trader - INFO - ⏸️ Trading en pause pour le symbole BTCUSDC
+trader-1  | 2025-04-28 18:30:22,913 - werkzeug - INFO - 172.21.0.13 - - [28/Apr/2025 18:30:22] "POST /config/pause HTTP/1.1" 200 -
+trader-1  | 2025-04-28 18:30:23,548 - werkzeug - INFO - 172.21.0.12 - - [28/Apr/2025 18:30:23] "GET /health HTTP/1.1" 200 -
+
+risk_manager-1  | 2025-04-28 18:47:24,950 - __main__ - INFO - ✅ 14 règles chargées depuis /app/risk_manager/src/rules.yaml
+risk_manager-1  | 2025-04-28 18:47:24,968 - __main__ - WARNING - ⚠️ Règle déclenchée: max_symbol_exposure_btc -> pause_symbol
+risk_manager-1  | 2025-04-28 18:47:24,971 - __main__ - WARNING - ⚠️ Règle déclenchée: max_symbol_exposure_eth -> pause_symbol
+risk_manager-1  | 2025-04-28 18:47:24,975 - __main__ - WARNING - ⚠️ Règle déclenchée: max_btc_active_trades -> pause_symbol
+risk_manager-1  | 2025-04-28 18:47:24,979 - __main__ - WARNING - ⚠️ 3 règles déclenchées
+risk_manager-1  | 2025-04-28 18:48:25,074 - __main__ - INFO - ✅ 14 règles chargées depuis /app/risk_manager/src/rules.yaml
+risk_manager-1  | 2025-04-28 18:48:25,092 - __main__ - WARNING - ⚠️ Règle déclenchée: max_symbol_exposure_btc -> pause_symbol
+risk_manager-1  | 2025-04-28 18:48:25,097 - __main__ - WARNING - ⚠️ Règle déclenchée: max_symbol_exposure_eth -> pause_symbol
+risk_manager-1  | 2025-04-28 18:48:25,102 - __main__ - WARNING - ⚠️ Règle déclenchée: max_btc_active_trades -> pause_symbol
+risk_manager-1  | 2025-04-28 18:48:25,106 - __main__ - WARNING - ⚠️ 3 règles déclenchées
+
+db-1  |
+db-1  | PostgreSQL Database directory appears to contain a database; Skipping initialization
+db-1  |
+db-1  | 2025-04-28 18:08:04.535 UTC [1] LOG:  starting PostgreSQL 14.17 on x86_64-pc-linux-musl, compiled by gcc (Alpine 13.2.1_git20240309) 13.2.1 20240309, 64-bit
+db-1  | 2025-04-28 18:08:04.535 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+db-1  | 2025-04-28 18:08:04.535 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+db-1  | 2025-04-28 18:08:04.564 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+db-1  | 2025-04-28 18:08:04.570 UTC [27] LOG:  database system was shut down at 2025-04-28 18:06:09 UTC
+db-1  | 2025-04-28 18:08:04.577 UTC [1] LOG:  database system is ready to accept connections
+db-1  | 2025-04-28 18:08:04.580 UTC [33] LOG:  TimescaleDB background worker launcher connected to shared catalogs
+db-1  | 2025-04-28 18:08:38.355 UTC [85] WARNING:  there is already a transaction in progress
+db-1  | 2025-04-28 18:08:38.358 UTC [85] ERROR:  relation "pocket_transactions" does not exist at character 26
+db-1  | 2025-04-28 18:08:38.358 UTC [85] STATEMENT:
+db-1  |                     INSERT INTO pocket_transactions
+db-1  |                     (pocket_type, transaction_type, amount, cycle_id, created_at)
+db-1  |                     VALUES ('active', 'reserve', 80.0, 'temp_1745863718', NOW())
+db-1  |                     ON CONFLICT DO NOTHING
+db-1  |
+db-1  | 2025-04-28 18:08:38.734 UTC [85] ERROR:  relation "pocket_transactions" does not exist at character 26
+db-1  | 2025-04-28 18:08:38.734 UTC [85] STATEMENT:
+db-1  |                     INSERT INTO pocket_transactions
+db-1  |                     (pocket_type, transaction_type, amount, cycle_id, created_at)
+db-1  |                     VALUES ('active', 'release', 80.0, 'temp_1745863718', NOW())
+db-1  |                     ON CONFLICT DO NOTHING
+db-1  |
+db-1  | 2025-04-28 18:08:38.761 UTC [85] ERROR:  relation "pocket_transactions" does not exist at character 26
+db-1  | 2025-04-28 18:08:38.761 UTC [85] STATEMENT:
+db-1  |                     INSERT INTO pocket_transactions
+db-1  |                     (pocket_type, transaction_type, amount, cycle_id, created_at)
+db-1  |                     VALUES ('active', 'reserve', 80.0, 'cycle_d9a12fab30414972', NOW())
+db-1  |                     ON CONFLICT DO NOTHING
+db-1  |
+db-1  | 2025-04-28 18:10:35.308 UTC [85] WARNING:  there is no transaction in progress
+db-1  | 2025-04-28 18:12:30.172 UTC [85] WARNING:  there is already a transaction in progress
+db-1  | 2025-04-28 18:12:30.174 UTC [85] ERROR:  relation "pocket_transactions" does not exist at character 26
+db-1  | 2025-04-28 18:12:30.174 UTC [85] STATEMENT:
+db-1  |                     INSERT INTO pocket_transactions
+db-1  |                     (pocket_type, transaction_type, amount, cycle_id, created_at)
+db-1  |                     VALUES ('active', 'reserve', 80.0, 'temp_1745863950', NOW())
+db-1  |                     ON CONFLICT DO NOTHING
+db-1  |
+db-1  | 2025-04-28 18:12:30.445 UTC [85] ERROR:  relation "pocket_transactions" does not exist at character 26
+db-1  | 2025-04-28 18:12:30.445 UTC [85] STATEMENT:
+db-1  |                     INSERT INTO pocket_transactions
+db-1  |                     (pocket_type, transaction_type, amount, cycle_id, created_at)
+db-1  |                     VALUES ('active', 'release', 80.0, 'temp_1745863950', NOW())
+db-1  |                     ON CONFLICT DO NOTHING
+db-1  |
+db-1  | 2025-04-28 18:12:30.462 UTC [85] ERROR:  relation "pocket_transactions" does not exist at character 26
+db-1  | 2025-04-28 18:12:30.462 UTC [85] STATEMENT:
+db-1  |                     INSERT INTO pocket_transactions
+db-1  |                     (pocket_type, transaction_type, amount, cycle_id, created_at)
+db-1  |                     VALUES ('active', 'reserve', 80.0, 'cycle_64c30acbf05d4c10', NOW())
+db-1  |                     ON CONFLICT DO NOTHING
+db-1  |
+db-1  | 2025-04-28 18:12:35.492 UTC [85] WARNING:  there is no transaction in progress
+db-1  | 2025-04-28 18:13:35.588 UTC [85] WARNING:  there is already a transaction in progress
+db-1  | 2025-04-28 18:13:35.597 UTC [85] WARNING:  there is no transaction in progress
+db-1  | 2025-04-28 18:23:10.464 UTC [1] LOG:  received fast shutdown request
+db-1  | 2025-04-28 18:23:10.467 UTC [1] LOG:  aborting any active transactions
+db-1  | 2025-04-28 18:23:10.467 UTC [89] FATAL:  terminating connection due to administrator command
+db-1  | 2025-04-28 18:23:10.467 UTC [85] FATAL:  terminating connection due to administrator command
+db-1  | 2025-04-28 18:23:10.467 UTC [87] FATAL:  terminating connection due to administrator command
+db-1  | 2025-04-28 18:23:10.467 UTC [33] FATAL:  terminating background worker "TimescaleDB Background Worker Launcher" due to administrator command
+db-1  | 2025-04-28 18:23:10.468 UTC [36] FATAL:  terminating background worker "TimescaleDB Background Worker Scheduler" due to administrator command
+db-1  | 2025-04-28 18:23:10.469 UTC [88] FATAL:  terminating connection due to administrator command
+db-1  | 2025-04-28 18:23:10.469 UTC [45] FATAL:  terminating connection due to administrator command
+db-1  | 2025-04-28 18:23:10.470 UTC [35] FATAL:  terminating background worker "TimescaleDB Background Worker Scheduler" due to administrator command
+db-1  | 2025-04-28 18:23:10.470 UTC [84] FATAL:  terminating connection due to administrator command
+db-1  | 2025-04-28 18:23:10.471 UTC [82] FATAL:  terminating connection due to administrator command
+db-1  | 2025-04-28 18:23:10.471 UTC [83] FATAL:  terminating connection due to administrator command
+db-1  | 2025-04-28 18:23:10.474 UTC [81] FATAL:  terminating connection due to administrator command
+db-1  | 2025-04-28 18:23:10.484 UTC [1] LOG:  background worker "TimescaleDB Background Worker Launcher" (PID 33) exited with exit code 1
+db-1  | 2025-04-28 18:23:10.487 UTC [1] LOG:  background worker "TimescaleDB Background Worker Scheduler" (PID 35) exited with exit code 1
+db-1  | 2025-04-28 18:23:10.487 UTC [1] LOG:  background worker "TimescaleDB Background Worker Scheduler" (PID 36) exited with exit code 1
+db-1  | 2025-04-28 18:23:10.511 UTC [1] LOG:  background worker "logical replication launcher" (PID 34) exited with exit code 1
+db-1  | 2025-04-28 18:23:10.512 UTC [28] LOG:  shutting down
+db-1  | 2025-04-28 18:23:10.572 UTC [1] LOG:  database system is shut down
+db-1 exited with code 0
+db-1  |
+db-1  | PostgreSQL Database directory appears to contain a database; Skipping initialization
+db-1  |
+db-1  | 2025-04-28 18:23:12.561 UTC [1] LOG:  starting PostgreSQL 14.17 on x86_64-pc-linux-musl, compiled by gcc (Alpine 13.2.1_git20240309) 13.2.1 20240309, 64-bit
+db-1  | 2025-04-28 18:23:12.562 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+db-1  | 2025-04-28 18:23:12.562 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+db-1  | 2025-04-28 18:23:12.566 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+db-1  | 2025-04-28 18:23:12.572 UTC [28] LOG:  database system was shut down at 2025-04-28 18:23:10 UTC
+db-1  | 2025-04-28 18:23:12.578 UTC [34] LOG:  TimescaleDB background worker launcher connected to shared catalogs
+db-1  | 2025-04-28 18:23:12.580 UTC [1] LOG:  database system is ready to accept connections
+db-1  | 2025-04-28 18:27:29.179 UTC [42] WARNING:  there is already a transaction in progress
+db-1  | 2025-04-28 18:27:29.181 UTC [42] ERROR:  relation "pocket_transactions" does not exist at character 26
+db-1  | 2025-04-28 18:27:29.181 UTC [42] STATEMENT:
+db-1  |                     INSERT INTO pocket_transactions
+db-1  |                     (pocket_type, transaction_type, amount, cycle_id, created_at)
+db-1  |                     VALUES ('buffer', 'reserve', 80.0, 'temp_1745864849', NOW())
+db-1  |                     ON CONFLICT DO NOTHING
+db-1  |
+db-1  | 2025-04-28 18:27:29.457 UTC [42] ERROR:  relation "pocket_transactions" does not exist at character 26
+db-1  | 2025-04-28 18:27:29.457 UTC [42] STATEMENT:
+db-1  |                     INSERT INTO pocket_transactions
+db-1  |                     (pocket_type, transaction_type, amount, cycle_id, created_at)
+db-1  |                     VALUES ('buffer', 'release', 0.0, 'temp_1745864849', NOW())
+db-1  |                     ON CONFLICT DO NOTHING
+db-1  |
+db-1  | 2025-04-28 18:27:29.475 UTC [42] ERROR:  relation "pocket_transactions" does not exist at character 26
+db-1  | 2025-04-28 18:27:29.475 UTC [42] STATEMENT:
+db-1  |                     INSERT INTO pocket_transactions
+db-1  |                     (pocket_type, transaction_type, amount, cycle_id, created_at)
+db-1  |                     VALUES ('buffer', 'reserve', 80.0, 'cycle_511110bf71394d70', NOW())
+db-1  |                     ON CONFLICT DO NOTHING
+db-1  |
+db-1  | 2025-04-28 18:29:17.737 UTC [42] WARNING:  there is no transaction in progress
+
+
+
+bash: root@6f57bad75d52:/app#: No such file or directory
+root@c7b83d7a817c:/app# python -c "
+import asyncio
+import sys
+sys.path.append('/app')
+from portfolio.src.main import update_balances_from_binance
+asyncio.run(update_balances_from_binance())
+"
+2025-04-28 18:52:08,107 - portfolio - INFO - Mise à jour des balances depuis Binance...
+2025-04-28 18:52:08,108 - portfolio - INFO - Clés API Binance disponibles: API_KEY=F79...
+2025-04-28 18:52:08,108 - portfolio.src.binance_account_manager - INFO - BinanceAccountManager initialisé pour https://api.binance.com
+2025-04-28 18:52:08,484 - portfolio.src.binance_account_manager - INFO - Récupéré 5 balances non nulles depuis Binance
+2025-04-28 18:52:08,484 - portfolio - INFO - ✅ 5 balances récupérées depuis Binance
+2025-04-28 18:52:08,504 - portfolio.src.models - INFO - ✅ Pool de connexions DB initialisé
+2025-04-28 18:52:08,504 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+2025-04-28 18:52:08,826 - portfolio.src.binance_account_manager - INFO - Récupéré les prix pour 3083 symboles depuis Binance
+2025-04-28 18:52:09,145 - portfolio.src.binance_account_manager - INFO - Récupéré 5 balances non nulles depuis Binance
+2025-04-28 18:52:09,145 - portfolio.src.binance_account_manager - INFO - ✅ Valeurs en USDC calculées pour 5/5 actifs
+2025-04-28 18:52:09,145 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+2025-04-28 18:52:09,146 - portfolio.src.models - INFO - ✅ PortfolioModel initialisé
+2025-04-28 18:52:09,150 - portfolio.src.models - INFO - ✅ Soldes mis à jour pour 5 actifs
+2025-04-28 18:52:09,153 - portfolio.src.pockets - INFO - ✅ PocketManager initialisé
+2025-04-28 18:52:09,153 - portfolio.src.pockets - INFO - Début update_pockets_allocation avec total_value=976.90643208
+2025-04-28 18:52:09,154 - portfolio.src.pockets - INFO - Poches récupérées: 3 poches
+2025-04-28 18:52:09,154 - portfolio.src.pockets - INFO - Poche active: allocation=0.6
+2025-04-28 18:52:09,154 - portfolio.src.pockets - INFO - Poche buffer: allocation=0.3
+2025-04-28 18:52:09,154 - portfolio.src.pockets - INFO - Poche safety: allocation=0.1
+2025-04-28 18:52:09,157 - portfolio.src.pockets - INFO - ✅ Allocation des poches mise à jour (total: 976.91)
+2025-04-28 18:52:09,158 - shared.src.redis_client - INFO - ✅ Connexion Redis établie à redis:6379 (DB: 0)
+2025-04-28 18:52:09,158 - shared.src.redis_client - ERROR - Erreur lors de la publication du message: Invalid input of type: 'list'. Convert to a bytes, string, int or float first.
+2025-04-28 18:52:09,160 - portfolio - INFO - ✅ Balances enregistrées durablement dans Redis. Total estimé: 976.91 USDC
+2025-04-28 18:52:09,161 - shared.src.redis_client - INFO - ✅ Connexion Redis établie à redis:6379 (DB: 0)
+2025-04-28 18:52:09,161 - portfolio - INFO - ✅ Notification de mise à jour des balances envoyée via Redis
+2025-04-28 18:52:09,161 - shared.src.redis_client - INFO - Connexion Redis fermée

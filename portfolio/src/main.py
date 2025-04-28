@@ -445,7 +445,21 @@ async def update_balances_from_binance():
             redis.publish("roottrading:account:balances", asset_balances)
 
             # ✅ Ici on écrit durablement dans Redis
-            redis.hset('account:balances', mapping={b.asset: b.total for b in asset_balances})
+            balance_map = {b.asset: b.total for b in asset_balances}
+            for asset, total in balance_map.items():
+                redis.set(f'account:balances:{asset}', total)
+
+            # Ajouter aussi la version JSON
+            balances_json = json.dumps([{
+                "asset": b.asset,
+                "free": b.free,
+                "locked": b.locked,
+                "total": b.total,
+                "value_usdc": b.value_usdc
+            } for b in asset_balances])
+            redis.set('account:balances_raw', balances_json)
+
+            # Conserver la partie suivante qui était déjà compatible
             total_balance = sum(b.value_usdc or 0 for b in asset_balances)
             redis.set('account:total_balance', total_balance)
             logger.info(f"✅ Balances enregistrées durablement dans Redis. Total estimé: {total_balance:.2f} USDC")

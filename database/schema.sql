@@ -694,5 +694,44 @@ BEGIN
 END;
 $$;
 
+-- Table des transactions des poches de capital
+CREATE TABLE IF NOT EXISTS pocket_transactions (
+    id SERIAL PRIMARY KEY,
+    pocket_type VARCHAR(20) NOT NULL CHECK (pocket_type IN ('active', 'buffer', 'safety')),
+    transaction_type VARCHAR(20) NOT NULL CHECK (transaction_type IN ('reserve', 'release')),
+    amount NUMERIC(24, 8) NOT NULL,
+    cycle_id VARCHAR(50),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Index pour les transactions
+CREATE INDEX IF NOT EXISTS pocket_transactions_pocket_type_idx ON pocket_transactions(pocket_type);
+CREATE INDEX IF NOT EXISTS pocket_transactions_cycle_id_idx ON pocket_transactions(cycle_id);
+CREATE INDEX IF NOT EXISTS pocket_transactions_created_at_idx ON pocket_transactions(created_at);
+
+CREATE OR REPLACE PROCEDURE reset_capital_pockets()
+LANGUAGE plpgsql AS $$
+BEGIN
+  -- Obtenir la valeur totale du portefeuille
+  WITH portfolio_value AS (
+    SELECT SUM(value_usdc) AS total FROM portfolio_balances WHERE timestamp = (SELECT MAX(timestamp) FROM portfolio_balances)
+  )
+  -- Réinitialiser les poches
+  DELETE FROM capital_pockets;
+  
+  -- Recréer les poches standard
+  INSERT INTO capital_pockets (pocket_type, allocation_percent, current_value, used_value, available_value, active_cycles)
+  VALUES 
+    ('active', 60, (SELECT total * 0.6 FROM portfolio_value), 0, (SELECT total * 0.6 FROM portfolio_value), 0),
+    ('buffer', 30, (SELECT total * 0.3 FROM portfolio_value), 0, (SELECT total * 0.3 FROM portfolio_value), 0),
+    ('safety', 10, (SELECT total * 0.1 FROM portfolio_value), 0, (SELECT total * 0.1 FROM portfolio_value), 0);
+  
+  -- Vider la table des transactions
+  TRUNCATE pocket_transactions;
+END; $$;
+
+-- Appeler la procédure de réinitialisation
+CALL reset_capital_pockets();
+
 -- Exécuter ANALYZE pour mettre à jour les statistiques
 ANALYZE;

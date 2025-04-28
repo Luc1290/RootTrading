@@ -87,21 +87,24 @@ class RedisClient:
                 time.sleep(retry_delay)
                 retry_delay *= 2  # Backoff exponentiel
     
-    def publish(self, channel: str, message: Union[Dict[str, Any], str]) -> int:
+    def publish(self, channel: str, message: Any) -> int:
         """
         Publie un message sur un canal Redis.
         
         Args:
             channel: Le canal sur lequel publier
-            message: Le message à publier (dictionnaire ou chaîne)
+            message: Le message à publier (dictionnaire, liste, chaîne, nombre, etc.)
             
         Returns:
             Nombre de clients qui ont reçu le message
         """
         try:
-            # Si le message est un dictionnaire, le convertir en JSON
-            if isinstance(message, dict):
+            # Convertir le message en format approprié pour Redis
+            if isinstance(message, (dict, list)):
                 message = json.dumps(message)
+            elif not isinstance(message, (str, int, float, bool)):
+                # Pour les autres types (objets personnalisés, etc.)
+                message = str(message)
                 
             result = self.redis.publish(channel, message)
             return result
@@ -213,6 +216,68 @@ class RedisClient:
                 logger.error(f"Erreur durant l'écoute Redis: {str(e)}")
                 time.sleep(1)  # Pause pour éviter de consommer trop de CPU
     
+    def hset(self, name: str, key: str, value: Any) -> int:
+        """
+        Stocke une valeur dans un champ d'une table de hachage Redis.
+    
+        Args:
+            name: Nom de la table de hachage
+            key: Champ de la table
+            value: Valeur à stocker
+        
+        Returns:
+            1 si nouveau champ, 0 si mise à jour
+        """
+        try:
+            # Convertir le message en format approprié pour Redis
+            if isinstance(value, (dict, list)):
+                value = json.dumps(value)
+            elif not isinstance(value, (str, int, float, bool)):
+                # Pour les autres types (objets personnalisés, etc.)
+                value = str(value)
+                
+            return self.redis.hset(name, key, value)
+        except (ConnectionError, TimeoutError):
+            logger.warning("Perte de connexion Redis pendant hset(), tentative de reconnexion...")
+            self.reconnect()
+            # Réessayer après reconnexion
+            return self.redis.hset(name, key, value)
+        except Exception as e:
+            logger.error(f"Erreur lors du stockage dans la table de hachage {name}: {str(e)}")
+            return 0
+    
+    def hmset(self, key: str, mapping: Dict[str, Any]) -> bool:
+        """
+        Stocke plusieurs champs dans une table de hachage Redis.
+    
+        Args:
+            key: Clé Redis (nom de la table)
+            mapping: Dictionnaire {champ: valeur}
+        
+        Returns:
+            True si réussi
+        """
+        try:
+            # Convertir les valeurs au format approprié
+            formatted_mapping = {}
+            for field, value in mapping.items():
+                if isinstance(value, (dict, list)):
+                    formatted_mapping[field] = json.dumps(value)
+                elif not isinstance(value, (str, int, float, bool)):
+                    formatted_mapping[field] = str(value)
+                else:
+                    formatted_mapping[field] = value
+                    
+            return self.redis.hset(key, mapping=formatted_mapping)
+        except (ConnectionError, TimeoutError):
+            logger.warning("Perte de connexion Redis pendant hmset(), tentative de reconnexion...")
+            self.reconnect()
+            # Réessayer après reconnexion
+            return self.redis.hset(key, mapping=formatted_mapping)
+        except Exception as e:
+            logger.error(f"Erreur lors du stockage dans la table de hachage {key}: {str(e)}")
+            return False
+
     def unsubscribe(self) -> None:
         """Désabonne de tous les canaux et arrête le thread d'écoute."""
         if self.pubsub:
@@ -256,15 +321,18 @@ class RedisClient:
         
         Args:
             key: Clé Redis
-            value: Valeur à stocker (sera convertie en JSON si c'est un dictionnaire)
+            value: Valeur à stocker (sera convertie en JSON si c'est un dictionnaire ou une liste)
             expiration: Temps d'expiration en secondes (optionnel)
             
         Returns:
             True si réussi
         """
         try:
-            if isinstance(value, dict):
+            # Convertir la valeur au format approprié
+            if isinstance(value, (dict, list)):
                 value = json.dumps(value)
+            elif not isinstance(value, (str, int, float, bool)):
+                value = str(value)
                 
             if expiration:
                 return self.redis.setex(key, expiration, value)
@@ -294,6 +362,68 @@ class RedisClient:
         except Exception as e:
             logger.error(f"Erreur lors de la suppression de la clé {key}: {str(e)}")
             return 0
+    
+    def hget(self, name: str, key: str) -> Any:
+        """
+        Récupère un champ d'une table de hachage Redis.
+        
+        Args:
+            name: Nom de la table de hachage
+            key: Champ à récupérer
+            
+        Returns:
+            Valeur du champ ou None si non trouvé
+        """
+        try:
+            value = self.redis.hget(name, key)
+            
+            # Tenter de parser le JSON si c'est une chaîne
+            if value and isinstance(value, str) and (value.startswith('{') or value.startswith('[')):
+                try:
+                    return json.loads(value)
+                except json.JSONDecodeError:
+                    return value
+            return value
+        except (ConnectionError, TimeoutError):
+            logger.warning("Perte de connexion Redis pendant hget(), tentative de reconnexion...")
+            self.reconnect()
+            return self.redis.hget(name, key)
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération du champ {key} de {name}: {str(e)}")
+            return None
+    
+    def hgetall(self, name: str) -> Dict[str, Any]:
+        """
+        Récupère tous les champs d'une table de hachage Redis.
+        
+        Args:
+            name: Nom de la table de hachage
+            
+        Returns:
+            Dictionnaire {champ: valeur} ou dictionnaire vide si non trouvé
+        """
+        try:
+            result = self.redis.hgetall(name)
+            
+            # Tenter de parser chaque valeur JSON
+            parsed_result = {}
+            for key, value in result.items():
+                if isinstance(value, str) and (value.startswith('{') or value.startswith('[')):
+                    try:
+                        parsed_result[key] = json.loads(value)
+                    except json.JSONDecodeError:
+                        parsed_result[key] = value
+                else:
+                    parsed_result[key] = value
+                    
+            return parsed_result
+        except (ConnectionError, TimeoutError):
+            logger.warning("Perte de connexion Redis pendant hgetall(), tentative de reconnexion...")
+            self.reconnect()
+            return self.redis.hgetall(name)
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération de la table {name}: {str(e)}")
+            return {}
     
     def close(self) -> None:
         """Ferme la connexion Redis et nettoie les ressources."""
