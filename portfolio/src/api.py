@@ -198,6 +198,20 @@ async def health_check():
         "memory_mb": round(process.memory_info().rss / (1024 * 1024), 2)
     }
 
+@app.get("/healthcheck/binance")
+async def binance_healthcheck():
+    """Health check simple de Binance"""
+    from portfolio.src.binance_account_manager import BinanceAccountManager
+    from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY
+
+    try:
+        account = BinanceAccountManager(BINANCE_API_KEY, BINANCE_SECRET_KEY)
+        info = account.get_account_info()
+        return {"binance_status": "online", "balances": len(info.get('balances', []))}
+    except Exception as e:
+        return {"binance_status": "offline", "error": str(e)}
+
+
 @app.get("/diagnostic")
 async def diagnostic():
     """

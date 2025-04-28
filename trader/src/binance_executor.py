@@ -120,35 +120,26 @@ class BinanceExecutor:
             raise BinanceAPIError(f"Impossible de se connecter à Binance: {str(e)}")
     
     def _generate_signature(self, params: Dict[str, Any]) -> str:
-        """
-        Génère une signature HMAC SHA256 pour l'authentification Binance.
-        
-        Args:
-            params: Paramètres de la requête
-            
-        Returns:
-            Signature générée
-        """
-        # Trier les paramètres et les formater en chaîne de requête
-        query_string = "&".join([f"{key}={params[key]}" for key in sorted(params.keys())])
-        
-        # Ajout de debug logs pour comprendre le problème
+        # Convertir d'abord tous les paramètres en strings et encoder correctement
+        query_params = []
+        for key in sorted(params.keys()):
+            value = params[key]
+            if isinstance(value, float):
+                # Gérer les valeurs flottantes sans notation scientifique
+                value = f"{value:.8f}".rstrip('0').rstrip('.') if '.' in f"{value:.8f}" else f"{value}"
+            query_params.append(f"{key}={value}")
+    
+        query_string = "&".join(query_params)
+    
         logger.debug(f"Génération de signature pour: {query_string}")
-        
-        # S'assurer que le secret est valide
-        if not self.api_secret:
-            logger.error("API Secret est vide ou invalide")
-            raise ValueError("API Secret invalide")
-        
+    
         # Générer la signature
         signature = hmac.new(
             self.api_secret.encode('utf-8'),
             query_string.encode('utf-8'),
             hashlib.sha256
         ).hexdigest()
-        
-        logger.debug(f"Signature générée: {signature}")
-        
+    
         return signature
     
     def _notify_order_failure(self, error, order_params, client_order_id=None):
@@ -325,105 +316,77 @@ class BinanceExecutor:
     def execute_order(self, order: TradeOrder) -> TradeExecution:
         """
         Exécute un ordre sur Binance ou le simule en mode démo.
-        
+    
         Args:
             order: Ordre à exécuter
-            
+        
         Returns:
             Exécution de l'ordre
         """
         # S'assurer que order.side est bien un enum OrderSide
         if isinstance(order.side, str):
             order.side = OrderSide(order.side)
-        
+
         # En mode démo, simuler l'ordre
         if self.demo_mode:
             return self._simulate_order(order)
-        
-        # Récupérer les limites minimales pour ce symbole
-        min_qty = self._get_min_quantity(order.symbol)
-        min_notional = self._get_min_notional(order.symbol)
-        
-        # Vérifier et ajuster la quantité minimale
-        original_quantity = order.quantity
-        if order.quantity < min_qty:
-            logger.warning(f"⚠️ Quantité {order.quantity} inférieure au minimum {min_qty} pour {order.symbol}")
-            # Passer automatiquement en mode simulation pour cet ordre
-            logger.info(f"Passage en mode simulation pour quantité insuffisante")
-            return self._simulate_order(order)
-        
-        # Vérifier la valeur minimale de l'ordre
-        current_price = order.price or self._get_current_price(order.symbol)
-        notional_value = order.quantity * current_price
-        
-        if notional_value < min_notional:
-            logger.warning(f"⚠️ Valeur de l'ordre {notional_value:.2f} inférieure au minimum {min_notional}")
-            # Passer automatiquement en mode simulation pour cet ordre
-            logger.info(f"Passage en mode simulation pour valeur insuffisante")
-            return self._simulate_order(order)
-        
-        # Appliquer l'arrondi de quantité et prix selon les règles Binance
-        quantity = self._round_quantity(order.symbol, order.quantity)
-        price = None
-        if order.price:
-            price = self._round_price(order.symbol, order.price)
-        
-        # En mode réel, envoyer l'ordre à Binance
+
         try:
+            # Préparer l'URL et le timestamp
             order_url = f"{self.BASE_URL}{self.API_V3}/order"
             timestamp = int(time.time() * 1000)
-            
+
             # Générer un client_order_id unique si non fourni
             client_order_id = order.client_order_id or f"root_{uuid.uuid4().hex[:16]}"
-            
-            # Formater la quantité correctement
+
+            # Arrondir la quantité et le prix
             step_size = self.symbol_info.get(order.symbol, {}).get("step_size", 0.0001)
-            precision = abs(int(round(-math.log10(step_size))))
-            quantity_str = f"{quantity:.{precision}f}"
-            
-            # Préparer les paramètres de l'ordre
-            params = {
+            quantity_precision = abs(int(round(-math.log10(step_size))))
+            quantity_str = f"{order.quantity:.{quantity_precision}f}"
+
+            tick_size = self.symbol_info.get(order.symbol, {}).get("tick_size", 0.01)
+            price_precision = abs(int(round(-math.log10(tick_size)))) if tick_size else 2
+            price_str = f"{order.price:.{price_precision}f}" if order.price else None
+
+            # Construire les paramètres à signer
+            params_to_sign = {
                 "symbol": order.symbol,
-                "side": order.side.value if hasattr(order.side, 'value') else str(order.side),
-                "type": "LIMIT" if price else "MARKET",
+                "side": order.side.value,
+                "type": "LIMIT" if price_str else "MARKET",
                 "quantity": quantity_str,
                 "newClientOrderId": client_order_id,
                 "timestamp": timestamp
             }
-            
-            # Ajouter le prix pour les ordres limites
-            if price:
-                tick_size = self.symbol_info.get(order.symbol, {}).get("tick_size", 0.01)
-                price_precision = abs(int(round(-math.log10(tick_size))))
-                params["price"] = f"{price:.{price_precision}f}"
-                params["timeInForce"] = "GTC"  # Good Till Cancelled
-            
-            # Log des paramètres pour débogage
-            logger.info(f"Paramètres de l'ordre: {params}")
-            
+
+            if price_str:
+                params_to_sign["price"] = price_str
+                params_to_sign["timeInForce"] = "GTC"
+
             # Générer la signature
-            params["signature"] = self._generate_signature(params)
-            
-            # Envoyer l'ordre
-            response = self.session.post(order_url, params=params)
-            
-            # Si erreur 400, capturer et utiliser la simulation
-            if response.status_code == 400:
+            signature = self._generate_signature(params_to_sign)
+
+            # Construire les paramètres finaux envoyés
+            params_with_signature = params_to_sign.copy()
+            params_with_signature["signature"] = signature
+
+            # Log pour debug
+            logger.info(f"📦 Paramètres POST vers Binance: {params_with_signature}")
+
+            # Envoyer la requête POST
+            response = self.session.post(order_url, params=params_with_signature)
+
+            if response.status_code != 200:
                 error_msg = response.json().get("msg", "Unknown error")
-                logger.error(f"Erreur Binance 400: {error_msg}")
-                
-                # Notifier l'échec d'ordre
-                self._notify_order_failure(error_msg, params, client_order_id)
-                
+                logger.error(f"Erreur Binance {response.status_code}: {error_msg}")
+                self._notify_order_failure(error_msg, params_with_signature, client_order_id)
                 logger.info(f"Passage en mode simulation suite à l'erreur")
                 return self._simulate_order(order)
-                
+
             response.raise_for_status()
-            
-            # Traiter la réponse
+
+            # Traiter la réponse de Binance
             order_response = response.json()
-            
-            # Préparer l'objet d'exécution
+
             execution = TradeExecution(
                 order_id=str(order_response['orderId']),
                 symbol=order_response['symbol'],
@@ -432,27 +395,24 @@ class BinanceExecutor:
                 price=float(order_response['price']) if float(order_response['price']) > 0 else float(order_response['cummulativeQuoteQty']) / float(order_response['executedQty']),
                 quantity=float(order_response['executedQty']),
                 quote_quantity=float(order_response['cummulativeQuoteQty']),
-                fee=None,  # Les frais ne sont pas inclus dans la réponse de l'ordre
+                fee=None,
                 fee_asset=None,
-                role=None,  # Le rôle n'est pas inclus dans la réponse
+                role=None,
                 timestamp=datetime.fromtimestamp(order_response['transactTime'] / 1000),
                 demo=False
             )
-            
-            logger.info(f"✅ Ordre exécuté sur Binance: {order.side.value if hasattr(order.side, 'value') else order.side} {quantity} {order.symbol} @ {execution.price}")
+
+            logger.info(f"✅ Ordre exécuté sur Binance: {order.side.value} {execution.quantity} {execution.symbol} @ {execution.price}")
             return execution
-        
+
         except requests.exceptions.RequestException as e:
             logger.error(f"❌ Erreur lors de l'exécution de l'ordre: {str(e)}")
             if e.response:
                 logger.error(f"Réponse: {e.response.text}")
-            
-            # Notifier l'échec d'ordre
-            self._notify_order_failure(e, params, client_order_id)
-            
-            # En cas d'erreur, passer en mode simulation pour cet ordre
+            self._notify_order_failure(e, {}, order.client_order_id)
             logger.info(f"Passage en mode simulation suite à l'erreur")
             return self._simulate_order(order)
+
     
     def get_order_status(self, symbol: str, order_id: str) -> Optional[TradeExecution]:
         """

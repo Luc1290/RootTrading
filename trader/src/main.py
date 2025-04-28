@@ -14,11 +14,14 @@ from typing import Dict, Any, Optional
 from flask import Flask, request, jsonify, Response
 import psutil
 import requests
+import hmac
+import hashlib
 
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
-from shared.src.config import SYMBOLS, LOG_LEVEL, TRADING_MODE
+# Maintenant que le chemin est configuré, importer les modules nécessaires
+from shared.src.config import BINANCE_SECRET_KEY, SYMBOLS, LOG_LEVEL, TRADING_MODE
 from shared.src.enums import OrderSide
 
 from trader.src.order_manager import OrderManager
@@ -34,7 +37,6 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("trader")
-
 
 class TraderService:
     """
@@ -74,6 +76,7 @@ class TraderService:
         self.app.route('/config/pause', methods=['POST'])(self.pause_trading)
         self.app.route('/config/resume', methods=['POST'])(self.resume_trading)
         self.app.route('/diag/binance', methods=['GET'])(self.diagnostic_binance)
+        self.app.route('/api/diagnostic/signature', methods=['GET'])(self.diagnostic_binance_signature)
     
     def health_check(self):
         """
@@ -143,6 +146,34 @@ class TraderService:
         }
         
         return jsonify(diagnostic_info)
+    
+    def diagnostic_binance_signature(self):
+        """
+        Endpoint Flask de diagnostic pour tester la génération de signature Binance.
+        """
+        timestamp = int(time.time() * 1000)
+        test_params = {
+            "symbol": "BTCUSDC",
+            "side": "BUY",
+            "type": "LIMIT",
+            "quantity": "0.00100",
+            "price": "30000.00",
+            "timeInForce": "GTC",
+            "timestamp": timestamp
+        }
+        query_string = "&".join([f"{key}={test_params[key]}" for key in sorted(test_params.keys())])
+        signature = hmac.new(
+            BINANCE_SECRET_KEY.encode('utf-8'),
+            query_string.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+    
+        return jsonify({
+            "query_string": query_string,
+            "signature": signature,
+            "timestamp": timestamp,
+            "message": "Signature générée localement (Flask version)"
+        })
     
     def get_orders(self):
         """
