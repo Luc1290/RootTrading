@@ -1,3 +1,4 @@
 # Requirements pour le service Coordinator
 -r ../requirements-shared.txt
 requests==2.31.0
+flask==2.3.3

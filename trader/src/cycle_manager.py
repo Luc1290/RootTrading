@@ -10,9 +10,7 @@ import uuid
 from typing import Dict, List, Any, Optional, Union
 from datetime import datetime
 import threading
-import asyncio
-import psycopg2
-from psycopg2.extras import RealDictCursor
+from threading import RLock
 
 # Importer les modules partagés
 import sys
@@ -22,6 +20,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 from shared.src.config import get_db_url, TRADING_MODE
 from shared.src.enums import OrderSide, OrderStatus, CycleStatus
 from shared.src.schemas import TradeOrder, TradeExecution, TradeCycle
+from shared.src.db_pool import DBContextManager, DBConnectionPool
 
 from trader.src.binance_executor import BinanceExecutor
 
@@ -50,25 +49,25 @@ class CycleManager:
         self.active_cycles: Dict[str, TradeCycle] = {}
         
         # Mutex pour l'accès concurrent aux cycles
-        self.cycles_lock = threading.RLock()
+        self.cycles_lock = RLock()
         
-        # Connexion à la base de données
-        self._init_db_connection()
+        # Initialiser le pool de connexions DB
+        try:
+            self.db_pool = DBConnectionPool.get_instance()
+            self._init_db_schema()
+            self._load_active_cycles_from_db()
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de l'initialisation de la base de données: {str(e)}")
         
         logger.info(f"✅ CycleManager initialisé en mode {'DÉMO' if self.demo_mode else 'RÉEL'}")
     
-    def _init_db_connection(self) -> None:
+    def _init_db_schema(self) -> None:
         """
-        Initialise la connexion à la base de données.
+        Initialise le schéma de la base de données.
         Crée les tables nécessaires si elles n'existent pas.
         """
         try:
-            # Établir la connexion
-            self.conn = psycopg2.connect(self.db_url)
-            self.conn.autocommit = False  # Utiliser des transactions explicites
-            
-            # Créer les tables nécessaires
-            with self.conn.cursor() as cursor:
+            with DBContextManager() as cursor:
                 # Table des ordres/exécutions
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS trade_executions (
@@ -113,33 +112,21 @@ class CycleManager:
                 );
                 """)
                 
-                # Valider les modifications
-                self.conn.commit()
+                # Créer un index sur status pour des requêtes plus rapides
+                cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_trade_cycles_status ON trade_cycles (status);
+                """)
+                
+                # Créer un index sur le timestamp pour des requêtes chronologiques
+                cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_trade_executions_timestamp ON trade_executions (timestamp);
+                """)
             
-            logger.info("✅ Connexion à la base de données établie, tables vérifiées")
+            logger.info("✅ Schéma de base de données initialisé")
         
         except Exception as e:
-            logger.error(f"❌ Erreur lors de l'initialisation de la base de données: {str(e)}")
-            if hasattr(self, 'conn') and self.conn:
-                self.conn.close()
-                self.conn = None
-    
-    def _reconnect_db(self) -> None:
-        """
-        Tente de reconnecter à la base de données en cas de perte de connexion.
-        """
-        try:
-            if hasattr(self, 'conn') and self.conn:
-                self.conn.close()
-            
-            # Réétablir la connexion
-            self.conn = psycopg2.connect(self.db_url)
-            self.conn.autocommit = False
-            logger.info("✅ Reconnexion à la base de données réussie")
-        
-        except Exception as e:
-            logger.error(f"❌ Échec de reconnexion à la base de données: {str(e)}")
-            self.conn = None
+            logger.error(f"❌ Erreur lors de l'initialisation du schéma de base de données: {str(e)}")
+            raise
     
     def _save_execution_to_db(self, execution: TradeExecution, cycle_id: Optional[str] = None) -> bool:
         """
@@ -152,13 +139,10 @@ class CycleManager:
         Returns:
             True si l'enregistrement a réussi, False sinon
         """
-        if not hasattr(self, 'conn') or not self.conn:
-            logger.error("Pas de connexion à la base de données disponible")
-            return False
-    
         try:
             # Vérifier si l'exécution existe déjà
-            with self.conn.cursor() as cursor:
+            exists = False
+            with DBContextManager() as cursor:
                 cursor.execute(
                     "SELECT order_id FROM trade_executions WHERE order_id = %s",
                     (execution.order_id,)
@@ -234,45 +218,39 @@ class CycleManager:
                 )
         
             # Exécuter la requête
-            with self.conn.cursor() as cursor:
+            with DBContextManager() as cursor:
                 cursor.execute(query, params)
-                self.conn.commit()
         
-            logger.info(f"✅ Exécution {execution.order_id} enregistrée en base de données")
+            logger.debug(f"✅ Exécution {execution.order_id} enregistrée en base de données")
             return True
     
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'enregistrement de l'exécution en base de données: {str(e)}")
-            try:
-                self.conn.rollback()
-            except:
-                pass
-        
-            # Tenter une reconnexion en cas d'erreur de connexion
-            self._reconnect_db()
             return False
     
     def _load_active_cycles_from_db(self) -> None:
         """
         Charge les cycles actifs depuis la base de données.
         """
-        if not hasattr(self, 'conn') or not self.conn:
-            logger.error("Pas de connexion à la base de données disponible")
-            return
-        
         try:
-            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            with DBContextManager() as cursor:
                 cursor.execute("""
                 SELECT * FROM trade_cycles
                 WHERE status NOT IN ('completed', 'canceled', 'failed')
                 ORDER BY created_at DESC
                 """)
                 
-                cycles = cursor.fetchall()
+                cycle_records = cursor.fetchall()
+                
+                # Obtenir les noms des colonnes
+                column_names = [desc[0] for desc in cursor.description]
                 
                 with self.cycles_lock:
                     self.active_cycles = {}
-                    for cycle_data in cycles:
+                    for record in cycle_records:
+                        # Convertir le tuple en dictionnaire
+                        cycle_data = dict(zip(column_names, record))
+                        
                         # Convertir les données SQL en objet TradeCycle
                         cycle = TradeCycle(
                             id=cycle_data['id'],
@@ -302,8 +280,6 @@ class CycleManager:
         
         except Exception as e:
             logger.error(f"❌ Erreur lors du chargement des cycles actifs: {str(e)}")
-            # Tenter une reconnexion en cas d'erreur de connexion
-            self._reconnect_db()
     
     def create_cycle(self, symbol: str, strategy: str, side: Union[OrderSide, str], 
                 price: float, quantity: float, pocket: Optional[str] = None,
@@ -659,6 +635,9 @@ class CycleManager:
                             cycle.stop_price = new_stop
                             cycle.updated_at = datetime.now()
                             logger.info(f"🔄 Trailing stop mis à jour pour le cycle {cycle_id}: {new_stop}")
+                            
+                            # Enregistrer la mise à jour en DB
+                            self._save_cycle_to_db(cycle)
                 
                 # Pour les cycles de vente
                 elif cycle.status in [CycleStatus.ACTIVE_SELL, CycleStatus.WAITING_BUY]:
@@ -675,6 +654,9 @@ class CycleManager:
                             cycle.stop_price = new_stop
                             cycle.updated_at = datetime.now()
                             logger.info(f"🔄 Trailing stop mis à jour pour le cycle {cycle_id}: {new_stop}")
+                            
+                            # Enregistrer la mise à jour en DB
+                            self._save_cycle_to_db(cycle)
     
     def check_target_prices(self, symbol: str, current_price: float) -> None:
         """
@@ -729,13 +711,8 @@ class CycleManager:
         """
         logger.info("Fermeture du gestionnaire de cycles...")
         
-        # Fermer la connexion à la base de données
-        if hasattr(self, 'conn') and self.conn:
-            self.conn.close()
-            logger.info("Connexion à la base de données fermée")
-        
+        # Rien de spécial à fermer, le pool de connexions est géré globalement
         logger.info("✅ Gestionnaire de cycles fermé")
-
             
     def _save_cycle_to_db(self, cycle: TradeCycle) -> bool:
         """
@@ -747,13 +724,10 @@ class CycleManager:
         Returns:
             True si l'enregistrement a réussi, False sinon
         """
-        if not hasattr(self, 'conn') or not self.conn:
-            logger.error("Pas de connexion à la base de données disponible")
-            return False
-    
         try:
             # Vérifier si le cycle existe déjà
-            with self.conn.cursor() as cursor:
+            exists = False
+            with DBContextManager() as cursor:
                 cursor.execute(
                     "SELECT id FROM trade_cycles WHERE id = %s",
                     (cycle.id,)
@@ -845,20 +819,12 @@ class CycleManager:
                 )
         
             # Exécuter la requête
-            with self.conn.cursor() as cursor:
+            with DBContextManager() as cursor:
                 cursor.execute(query, params)
-                self.conn.commit()
         
-            logger.info(f"✅ Cycle {cycle.id} enregistré en base de données")
+            logger.debug(f"✅ Cycle {cycle.id} enregistré en base de données")
             return True
     
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'enregistrement du cycle en base de données: {str(e)}")
-            try:
-                self.conn.rollback()
-            except:
-                pass
-        
-            # Tenter une reconnexion en cas d'erreur de connexion
-            self._reconnect_db()
             return False

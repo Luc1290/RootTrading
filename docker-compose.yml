@@ -6,6 +6,7 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+      - /etc/localtime:/etc/localtime:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -32,6 +33,7 @@ services:
       - ALLOW_PLAINTEXT_LISTENER=yes
     volumes:
       - kafka_data:/bitnami/kafka
+      - /etc/localtime:/etc/localtime:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
@@ -61,6 +63,8 @@ services:
       kafka-topics.sh --create --if-not-exists --bootstrap-server kafka:9092 --topic orders --partitions 1 --replication-factor 1 &&
       echo 'Topics Kafka créés avec succès'
       "
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
 
   db:
     image: timescale/timescaledb:latest-pg14
@@ -73,13 +77,14 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - /etc/localtime:/etc/localtime:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-postgres}"]
       interval: 5s
       timeout: 3s
       retries: 3
-      start_period: 15s
+      start_period: 15s    
 
   # Services RootTrading avec ordre de démarrage amélioré
   gateway:
@@ -98,6 +103,8 @@ services:
     ports:
       - "${GATEWAY_PORT:-5000}:5000"
     command: ["python", "gateway/src/main.py", "--history-days", "5"]
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
 
   portfolio:
     build:
@@ -114,6 +121,8 @@ services:
     restart: unless-stopped
     ports:
       - "${PORTFOLIO_PORT:-8000}:8000"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
 
   trader:
     build:
@@ -130,6 +139,8 @@ services:
     restart: unless-stopped
     ports:
       - "${TRADER_PORT:-5002}:5002"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
 
   analyzer:
     build:
@@ -146,6 +157,8 @@ services:
     restart: unless-stopped
     ports:
       - "${ANALYZER_PORT:-5001}:5001"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
 
   coordinator:
     build:
@@ -162,6 +175,8 @@ services:
     restart: unless-stopped
     ports:
       - "${COORDINATOR_PORT:-5003}:5003"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
 
   dispatcher:
     build:
@@ -178,6 +193,8 @@ services:
     restart: unless-stopped
     ports:
       - "${DISPATCHER_PORT:-5004}:5004"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
 
   logger:
     build:
@@ -194,6 +211,8 @@ services:
     restart: unless-stopped
     ports:
       - "${LOGGER_PORT:-5005}:5005"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
 
   pnl_tracker:
     build:
@@ -208,6 +227,8 @@ services:
     restart: on-failure
     ports:
       - "${PNL_TRACKER_PORT:-5006}:5006"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
 
   risk_manager:
     build:
@@ -224,6 +245,8 @@ services:
     restart: unless-stopped
     ports:
       - "${RISK_MANAGER_PORT:-5007}:5007"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
 
   scheduler:
     build:
@@ -238,6 +261,8 @@ services:
     restart: unless-stopped
     ports:
       - "${SCHEDULER_PORT:-5008}:5008"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
 
   frontend:
     build:
@@ -251,6 +276,8 @@ services:
       trader:
         condition: service_started
     restart: unless-stopped
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
 
 volumes:
   redis_data:

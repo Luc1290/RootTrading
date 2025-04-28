@@ -132,6 +132,14 @@ class BinanceExecutor:
         # Trier les paramètres et les formater en chaîne de requête
         query_string = "&".join([f"{key}={params[key]}" for key in sorted(params.keys())])
         
+        # Ajout de debug logs pour comprendre le problème
+        logger.debug(f"Génération de signature pour: {query_string}")
+        
+        # S'assurer que le secret est valide
+        if not self.api_secret:
+            logger.error("API Secret est vide ou invalide")
+            raise ValueError("API Secret invalide")
+        
         # Générer la signature
         signature = hmac.new(
             self.api_secret.encode('utf-8'),
@@ -139,7 +147,53 @@ class BinanceExecutor:
             hashlib.sha256
         ).hexdigest()
         
+        logger.debug(f"Signature générée: {signature}")
+        
         return signature
+    
+    def _notify_order_failure(self, error, order_params, client_order_id=None):
+        """
+        Notifie les autres services d'un échec d'ordre via Redis.
+        
+        Args:
+            error: Erreur Binance
+            order_params: Paramètres de l'ordre
+            client_order_id: ID du cycle ou de l'ordre client (optionnel)
+        """
+        try:
+            # Préparer les données de notification
+            notification = {
+                "type": "order_failed",
+                "cycle_id": client_order_id or order_params.get("newClientOrderId", "unknown"),
+                "symbol": order_params.get("symbol"),
+                "side": order_params.get("side"),
+                "quantity": order_params.get("quantity"),
+                "price": order_params.get("price"),
+                "reason": f"Erreur Binance: {str(error)}",
+                "timestamp": int(time.time() * 1000)
+            }
+            
+            # Calculer le montant en USDC si possible
+            try:
+                price = float(order_params.get("price", 0))
+                quantity = float(order_params.get("quantity", 0))
+                amount = price * quantity
+                notification["amount"] = amount
+            except:
+                # Si conversion impossible, ne pas inclure le montant
+                pass
+            
+            # Importer redis_client depuis le module partagé s'il existe
+            try:
+                from shared.src.redis_client import RedisClient
+                redis_client = RedisClient()
+                redis_client.publish("roottrading:order:failed", notification)
+                logger.info(f"✅ Notification d'échec d'ordre envoyée pour {client_order_id}")
+            except Exception as e:
+                logger.warning(f"⚠️ Impossible d'envoyer la notification Redis: {str(e)}")
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la notification d'échec d'ordre: {str(e)}")
     
     def _generate_order_id(self) -> str:
         """
@@ -357,6 +411,10 @@ class BinanceExecutor:
             if response.status_code == 400:
                 error_msg = response.json().get("msg", "Unknown error")
                 logger.error(f"Erreur Binance 400: {error_msg}")
+                
+                # Notifier l'échec d'ordre
+                self._notify_order_failure(error_msg, params, client_order_id)
+                
                 logger.info(f"Passage en mode simulation suite à l'erreur")
                 return self._simulate_order(order)
                 
@@ -388,6 +446,9 @@ class BinanceExecutor:
             logger.error(f"❌ Erreur lors de l'exécution de l'ordre: {str(e)}")
             if e.response:
                 logger.error(f"Réponse: {e.response.text}")
+            
+            # Notifier l'échec d'ordre
+            self._notify_order_failure(e, params, client_order_id)
             
             # En cas d'erreur, passer en mode simulation pour cet ordre
             logger.info(f"Passage en mode simulation suite à l'erreur")
@@ -492,6 +553,18 @@ class BinanceExecutor:
             
             # Envoyer la requête d'annulation
             response = self.session.delete(cancel_url, params=params)
+            
+            # Gérer les erreurs d'annulation
+            if response.status_code != 200:
+                error_msg = response.json().get("msg", "Unknown error")
+                logger.error(f"Erreur Binance lors de l'annulation: {error_msg}")
+                
+                # Notifier de l'échec si ce n'est pas une erreur "ordre déjà rempli"
+                if "FILLED" not in error_msg:
+                    self._notify_order_failure(error_msg, params, order_id)
+                
+                return False
+            
             response.raise_for_status()
             
             logger.info(f"✅ Ordre annulé sur Binance: {order_id}")
@@ -501,6 +574,10 @@ class BinanceExecutor:
             logger.error(f"❌ Erreur lors de l'annulation de l'ordre: {str(e)}")
             if e.response:
                 logger.error(f"Réponse: {e.response.text}")
+            
+            # Notifier l'échec d'annulation
+            self._notify_order_failure(e, params, order_id)
+            
             return False
     
     def get_account_balances(self) -> Dict[str, Dict[str, float]]:

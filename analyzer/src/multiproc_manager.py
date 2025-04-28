@@ -14,13 +14,14 @@ from typing import Dict, List, Any, Optional, Callable
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 import queue
 from functools import partial
-from multiprocessing import Manager
+from multiprocessing import Manager as MPManager
 
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
 from shared.src.config import SYMBOLS
 from shared.src.schemas import StrategySignal
+from shared.src.enums import OrderSide, SignalStrength
 
 from analyzer.src.strategy_loader import StrategyLoader, get_strategy_loader
 from analyzer.src.redis_subscriber import RedisSubscriber
@@ -57,6 +58,7 @@ class AnalyzerManager:
         # Log pour déboguer
         logger.info(f"Symboles après filtrage: {self.symbols}")
 
+        # Calculer le nombre optimal de workers
         if max_workers is None:
             max_workers = max(1, int(mp.cpu_count() * 0.75))
         self.max_workers = max_workers
@@ -69,9 +71,9 @@ class AnalyzerManager:
             for i in range(0, len(self.symbols), symbols_per_worker)
         ]
 
-        # Créer un Manager pour partager les files d'attente entre processus
+        # Créer les files d'attente appropriées
         if not use_threads:
-            self.mp_manager = Manager()
+            self.mp_manager = MPManager()
             self.data_queue = self.mp_manager.Queue()
             self.signal_queue = self.mp_manager.Queue()
         else:
@@ -87,82 +89,43 @@ class AnalyzerManager:
         # Événement d'arrêt
         self.stop_event = mp.Event() if not use_threads else threading.Event()
         
+        # Threads/processus pour le traitement des données
+        self.queue_processor = None
+        self.signal_processor = None
+        
         # Subscriber Redis
         self.redis_subscriber = RedisSubscriber(symbols=self.symbols)
-        
-        # Pool de workers
-        self.executor = None
         
         logger.info(f"✅ AnalyzerManager initialisé avec {self.max_workers} workers "
                    f"({'threads' if use_threads else 'processus'}) pour {len(self.symbols)} symboles")
     
-    def _worker_analyze(self, data: Dict[str, Any]) -> List[StrategySignal]:
-        """
-        Fonction de worker qui analyse les données de marché.
-        
-        Args:
-            data: Données de marché à analyser
-            
-        Returns:
-            Liste des signaux générés
-        """
-        try:
-            # Récupérer le chargeur de stratégies (local à chaque processus)
-            strategy_loader = get_strategy_loader()
-            
-            # Traiter les données avec toutes les stratégies
-            signals = strategy_loader.process_market_data(data)
-            
-            return signals
-        
-        except Exception as e:
-            logger.error(f"❌ Erreur dans le worker d'analyse: {str(e)}")
-            return []
-    
-    def _handle_market_data(self, data: Dict[str, Any]) -> None:
-        """
-        Callback appelé pour chaque donnée de marché reçue.
-        Ajoute les données à la file d'attente pour analyse.
-        
-        Args:
-            data: Données de marché
-        """
-        # Ajouter à la file d'attente d'analyse
-        self.data_queue.put(data)
-    
-    def _handle_future_result(self, future_result):
-        """
-        Méthode statique pour traiter les résultats futurs sans capturer self
-        """
-        # Extraire les signaux du résultat
-        signals = future_result
-    
-        # Au lieu de publier directement, mettre dans une file d'attente que le processus principal va gérer
-        self.signal_queue.put(signals)
-
     def _process_signal_queue(self):
         """
         Processus/thread qui traite la file d'attente des signaux
         """
         logger.info("Démarrage du processeur de file d'attente des signaux")
     
-        # Importer localement pour éviter les problèmes de pickling
-        from shared.src.schemas import StrategySignal
-        from shared.src.enums import OrderSide, SignalStrength
-        from datetime import datetime
+        try:
+            # Importer localement pour éviter les problèmes de pickling
+            from shared.src.schemas import StrategySignal
+            from shared.src.enums import OrderSide, SignalStrength
+            from datetime import datetime
 
-        while not self.stop_event.is_set():
-            try:
-                # Récupérer les signaux avec timeout
+            while not self.stop_event.is_set():
                 try:
-                    signal_dicts = self.signal_queue.get(timeout=0.1)
-                except (queue.Empty, mp.queues.Empty):
-                    continue
-        
-                if signal_dicts:
-                    logger.info(f"Traitement de {len(signal_dicts)} signal(s) reçus")
+                    # Récupérer les signaux avec timeout
+                    try:
+                        signal_dicts = self.signal_queue.get(timeout=0.1)
+                    except (queue.Empty, EOFError):
+                        continue
+            
+                    if not signal_dicts:
+                        continue
+                    
+                    logger.debug(f"Traitement de {len(signal_dicts)} signal(s) reçus")
                 
                     # Traiter chaque dictionnaire de signal
+                    valid_signals = 0
                     for signal_dict in signal_dicts:
                         try:
                             # Convertir les chaînes en objets enum
@@ -185,145 +148,160 @@ class AnalyzerManager:
                                 except (ValueError, TypeError):
                                     signal_dict['timestamp'] = datetime.now()
                         
-                            # Recréer l'objet StrategySignal
-                            signal = StrategySignal(**signal_dict)
-                        
                             # Vérifier les champs obligatoires
                             required_fields = ['symbol', 'strategy', 'side', 'timestamp', 'price']
                             missing_fields = [field for field in required_fields 
-                                            if not hasattr(signal, field) or getattr(signal, field) is None]
+                                            if field not in signal_dict or signal_dict[field] is None]
                         
                             if missing_fields:
-                                logger.info(f"❌ Signal incomplet, ne sera pas publié. Champs manquants: {missing_fields}")
+                                logger.warning(f"❌ Signal incomplet, ne sera pas publié. Champs manquants: {missing_fields}")
                                 continue
+                            
+                            # Recréer l'objet StrategySignal
+                            signal = StrategySignal(**signal_dict)
                         
                             # Publier le signal si valide
                             self.redis_subscriber.publish_signal(signal)
                             logger.info(f"✅ Signal publié: {signal.side} pour {signal.symbol} @ {signal.price}")
+                            valid_signals += 1
                     
                         except Exception as e:
-                            logger.info(f"❌ Erreur lors du traitement du signal: {str(e)}", exc_info=True)
+                            logger.error(f"❌ Erreur lors du traitement du signal: {str(e)}", exc_info=True)
+                            
+                    if valid_signals > 0:
+                        logger.info(f"Publié {valid_signals} signaux valides sur {len(signal_dicts)} reçus")
+                
+                    # Marquer comme traité si la méthode existe
+                    if hasattr(self.signal_queue, 'task_done'):
+                        self.signal_queue.task_done()
             
-                # Marquer comme traité
-                self.signal_queue.task_done()
+                except Exception as e:
+                    logger.error(f"❌ Erreur dans le processeur de file d'attente des signaux: {str(e)}")
+                    time.sleep(0.5)  # Pause plus longue en cas d'erreur
+        except Exception as e:
+            logger.critical(f"Erreur critique dans le processeur de signaux: {str(e)}")
         
-            except Exception as e:
-                logger.info(f"❌ Erreur dans le processeur de file d'attente des signaux: {str(e)}")
-                time.sleep(0.1)
-
         logger.info("Processeur de file d'attente des signaux arrêté")
 
-    def _publish_signals(self, signals: List[StrategySignal]) -> None:
-        """
-        Publie les signaux générés sur Redis.
-        
-        Args:
-            signals: Liste des signaux à publier
-        """
-        if not signals:
-            return
-        
-        for signal in signals:
-            self.redis_subscriber.publish_signal(signal)
-    
     def _process_data_queue(self) -> None:
         """
         Processus/thread qui traite la file d'attente de données.
-        Cette version n'utilise pas de pool d'executors pour éviter les problèmes de pickling.
         """
         logger.info("Démarrage du processeur de file d'attente de données")
     
         # Créer un loader de stratégies local à ce processus
         local_strategy_loader = None
     
-        while not self.stop_event.is_set():
-            try:
-                # Ne pas bloquer indéfiniment pour pouvoir vérifier stop_event
+        try:
+            while not self.stop_event.is_set():
                 try:
-                    # Récupérer les données avec timeout
-                    data = self.data_queue.get(timeout=0.1)
-                except (queue.Empty, mp.queues.Empty):
-                    continue
-            
-                # Ne traiter que les chandeliers fermés
-                if not data.get('is_closed', False):
-                    continue
+                    # Ne pas bloquer indéfiniment pour pouvoir vérifier stop_event
+                    try:
+                        # Récupérer les données avec timeout
+                        data = self.data_queue.get(timeout=0.1)
+                    except (queue.Empty, EOFError):
+                        continue
+                
+                    # Ne traiter que les chandeliers fermés
+                    if not data.get('is_closed', False):
+                        # Marquer la tâche comme terminée si la méthode existe
+                        if hasattr(self.data_queue, 'task_done'):
+                            self.data_queue.task_done()
+                        continue
 
-                # Ajouter ces logs pour déboguer
-                logger.info(f"Données reçues pour {data.get('symbol')}: is_closed={data.get('is_closed', False)}, close={data.get('close')}")
-            
-                # Extraire uniquement les données nécessaires
-                analysis_data = {
-                    'symbol': data.get('symbol', ''),
-                    'open': data.get('open', 0.0),
-                    'high': data.get('high', 0.0),
-                    'low': data.get('low', 0.0),
-                    'close': data.get('close', 0.0),
-                    'volume': data.get('volume', 0.0),
-                    'timestamp': data.get('timestamp', ''),
-                    'start_time': data.get('start_time', 0),
-                    'interval': data.get('interval', ''),
-                    'is_closed': data.get('is_closed', True)
-                }
-            
-                # Initialiser le strategy loader au besoin (seulement au premier appel)
-                if local_strategy_loader is None:
-                    from analyzer.src.strategy_loader import get_strategy_loader
-                    local_strategy_loader = get_strategy_loader()
-                    logger.info("Loader de stratégies local créé dans le processus d'analyse")
-            
-                # Analyser les données directement dans ce processus
-                try:
-                    signals = local_strategy_loader.process_market_data(analysis_data)
+                    # Ajouter cet affichage uniquement en mode debug
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(f"Données reçues pour {data.get('symbol')}: is_closed={data.get('is_closed', False)}, close={data.get('close')}")
                 
-                    # Si des signaux sont générés, les convertir en dictionnaires et les envoyer
-                    if signals:
-                        # Convertir les signaux en dictionnaires pour éviter les problèmes de pickling
-                        signal_dicts = []
-                        for signal in signals:
-                            try:
-                                # Assurez-vous que tous les champs requis sont présents et correctement formatés
-                                side_value = signal.side.value if hasattr(signal.side, 'value') else str(signal.side)
-                                strength_value = signal.strength.value if hasattr(signal.strength, 'value') else "MODERATE"
-                                timestamp_value = signal.timestamp.isoformat() if hasattr(signal.timestamp, 'isoformat') else datetime.now().isoformat()
-            
-                                # Créer un dictionnaire avec les données du signal
-                                signal_dict = {
-                                    'symbol': signal.symbol,
-                                    'strategy': signal.strategy,
-                                    'side': side_value,
-                                    'timestamp': timestamp_value,
-                                    'price': float(signal.price),
-                                    'confidence': float(signal.confidence) if hasattr(signal, 'confidence') else 0.5,
-                                    'strength': strength_value,
-                                    'metadata': dict(signal.metadata) if hasattr(signal, 'metadata') and signal.metadata else {}
-                                }
-            
-                                # Vérifier explicitement que tous les champs requis sont présents
-                                required_fields = ['symbol', 'strategy', 'side', 'timestamp', 'price']
-                                missing_fields = [field for field in required_fields if field not in signal_dict or signal_dict[field] is None]
-            
-                                if missing_fields:
-                                    logger.warning(f"Signal incomplet, ne sera pas ajouté. Champs manquants: {missing_fields}")
-                                    continue
+                    # Extraire uniquement les données nécessaires
+                    analysis_data = {
+                        'symbol': data.get('symbol', ''),
+                        'open': data.get('open', 0.0),
+                        'high': data.get('high', 0.0),
+                        'low': data.get('low', 0.0),
+                        'close': data.get('close', 0.0),
+                        'volume': data.get('volume', 0.0),
+                        'timestamp': data.get('timestamp', ''),
+                        'start_time': data.get('start_time', 0),
+                        'interval': data.get('interval', ''),
+                        'is_closed': data.get('is_closed', True)
+                    }
                 
-                                signal_dicts.append(signal_dict)
-                            except Exception as e:
-                                logger.error(f"Erreur lors de la conversion du signal: {str(e)}")
+                    # Initialiser le strategy loader au besoin (seulement au premier appel)
+                    if local_strategy_loader is None:
+                        from analyzer.src.strategy_loader import get_strategy_loader
+                        local_strategy_loader = get_strategy_loader()
+                        logger.info("Loader de stratégies local créé dans le processus d'analyse")
+                
+                    # Analyser les données directement dans ce processus
+                    try:
+                        signals = local_strategy_loader.process_market_data(analysis_data)
                     
-                            # Mettre les dictionnaires sur la file d'attente
-                            if signal_dicts:
-                                self.signal_queue.put(signal_dicts)
-                            logger.info(f"Mis {len(signal_dicts)} signaux sur la file d'attente")
+                        # Si des signaux sont générés, les convertir en dictionnaires et les envoyer
+                        if signals:
+                            # Convertir les signaux en dictionnaires pour éviter les problèmes de pickling
+                            signal_dicts = []
+                            for signal in signals:
+                                try:
+                                    # Assurer que tous les champs requis sont présents et correctement formatés
+                                    side_value = signal.side.value if hasattr(signal.side, 'value') else str(signal.side)
+                                    strength_value = signal.strength.value if hasattr(signal.strength, 'value') else "MODERATE"
+                                    timestamp_value = signal.timestamp.isoformat() if hasattr(signal.timestamp, 'isoformat') else datetime.datetime.now().isoformat()
+                
+                                    # Créer un dictionnaire avec les données du signal
+                                    signal_dict = {
+                                        'symbol': signal.symbol,
+                                        'strategy': signal.strategy,
+                                        'side': side_value,
+                                        'timestamp': timestamp_value,
+                                        'price': float(signal.price),
+                                        'confidence': float(signal.confidence) if hasattr(signal, 'confidence') else 0.5,
+                                        'strength': strength_value,
+                                        'metadata': dict(signal.metadata) if hasattr(signal, 'metadata') and signal.metadata else {}
+                                    }
+                
+                                    # Vérifier que tous les champs requis sont présents
+                                    required_fields = ['symbol', 'strategy', 'side', 'timestamp', 'price']
+                                    missing_fields = [field for field in required_fields if field not in signal_dict or signal_dict[field] is None]
+                
+                                    if missing_fields:
+                                        logger.warning(f"Signal incomplet, ne sera pas ajouté. Champs manquants: {missing_fields}")
+                                        continue
+                    
+                                    signal_dicts.append(signal_dict)
+                                except Exception as e:
+                                    logger.error(f"Erreur lors de la conversion du signal: {str(e)}")
+                        
+                                # Mettre les dictionnaires sur la file d'attente
+                                if signal_dicts:
+                                    self.signal_queue.put(signal_dicts)
+                                    logger.info(f"Mis {len(signal_dicts)} signaux sur la file d'attente")
+                
+                    except Exception as e:
+                        logger.error(f"❌ Erreur lors de l'analyse des données: {str(e)}")
+                    
+                    # Marquer la tâche comme terminée si la méthode existe
+                    if hasattr(self.data_queue, 'task_done'):
+                        self.data_queue.task_done()
             
                 except Exception as e:
-                    logger.info(f"❌ Erreur lors de l'analyse des données: {str(e)}")
-        
-            except Exception as e:
-                logger.error(f"❌ Erreur dans le processeur de file d'attente: {str(e)}")
-                time.sleep(0.1)  # Pause pour éviter une boucle d'erreur infinie
+                    logger.error(f"❌ Erreur dans le processeur de file d'attente: {str(e)}")
+                    time.sleep(0.5)  # Pause plus longue en cas d'erreur
+        except Exception as e:
+            logger.critical(f"Erreur critique dans le processeur de données: {str(e)}")
     
         logger.info("Processeur de file d'attente de données arrêté")
+        
+    def _handle_market_data(self, data: Dict[str, Any]) -> None:
+        """
+        Callback appelé pour chaque donnée de marché reçue.
+        Ajoute les données à la file d'attente pour analyse.
+        
+        Args:
+            data: Données de marché
+        """
+        # Ajouter à la file d'attente d'analyse
+        self.data_queue.put(data)
       
     def start(self):
         """
@@ -341,24 +319,29 @@ class AnalyzerManager:
         if self.use_threads:
             self.queue_processor = threading.Thread(
                 target=self._process_data_queue,
-                daemon=True
+                daemon=True,
+                name="DataQueueProcessor"
             )
         
             # Ajouter le processeur de signaux
             self.signal_processor = threading.Thread(
                 target=self._process_signal_queue,
-                daemon=True
+                daemon=True,
+                name="SignalQueueProcessor"
             )
         else:
             self.queue_processor = mp.Process(
                 target=self._process_data_queue,
-                daemon=False
+                daemon=True,
+                name="DataQueueProcessor"
             )
         
-            # Ajouter le processeur de signaux
-            self.signal_processor = threading.Thread(  # Utiliser un thread même en mode processus
+            # Ajouter le processeur de signaux - utiliser un thread même en mode processus
+            # pour éviter les problèmes de publication Redis depuis un processus enfant
+            self.signal_processor = threading.Thread(
                 target=self._process_signal_queue,
-                daemon=True
+                daemon=True,
+                name="SignalQueueProcessor"
             )
     
         self.queue_processor.start()
@@ -375,38 +358,57 @@ class AnalyzerManager:
         self.stop_event.set()
     
         # Attendre que les processeurs se terminent
-        if self.queue_processor.is_alive():
+        if self.queue_processor and self.queue_processor.is_alive():
             if self.use_threads:
                 self.queue_processor.join(timeout=5.0)
             else:
                 self.queue_processor.join(timeout=5.0)
                 if self.queue_processor.is_alive():
+                    logger.warning("Forçage de la terminaison du processeur de données...")
                     self.queue_processor.terminate()
         
             logger.info("Processeur de file d'attente de données arrêté")
     
         # Attendre que le processeur de signaux se termine
-        if self.signal_processor.is_alive():
+        if self.signal_processor and self.signal_processor.is_alive():
             self.signal_processor.join(timeout=5.0)
-            logger.info("Processeur de file d'attente arrêté")
+            logger.info("Processeur de file d'attente de signaux arrêté")
     
         # Arrêter le subscriber Redis
-        self.redis_subscriber.stop()
+        if self.redis_subscriber:
+            self.redis_subscriber.stop()
     
         # Vider les files d'attente
-        while not self.data_queue.empty():
-            try:
-                self.data_queue.get_nowait()
-            except (queue.Empty, mp.queues.Empty):
-                break
-    
-        while not self.signal_queue.empty():
-            try:
-                self.signal_queue.get_nowait()
-            except (queue.Empty, mp.queues.Empty):
-                break
-    
+        self._clear_queue(self.data_queue, "data")
+        self._clear_queue(self.signal_queue, "signal")
+        
         logger.info("✅ Gestionnaire d'analyse arrêté")
+    
+    def _clear_queue(self, queue_obj, queue_name):
+        """Vide une file d'attente de manière sécurisée"""
+        if not queue_obj:
+            return
+            
+        try:
+            # Tenter de vider la file d'attente
+            count = 0
+            while True:
+                try:
+                    queue_obj.get_nowait()
+                    count += 1
+                    # Si la file a une méthode task_done, l'appeler
+                    if hasattr(queue_obj, 'task_done'):
+                        queue_obj.task_done()
+                except (queue.Empty, EOFError):
+                    break
+                except Exception as e:
+                    logger.warning(f"Erreur lors du vidage de la file d'attente {queue_name}: {str(e)}")
+                    break
+                    
+            if count > 0:
+                logger.info(f"Vidé {count} éléments de la file d'attente {queue_name}")
+        except Exception as e:
+            logger.error(f"Erreur lors du nettoyage de la file d'attente {queue_name}: {str(e)}")
 
 # Point d'entrée pour exécution directe
 if __name__ == "__main__":

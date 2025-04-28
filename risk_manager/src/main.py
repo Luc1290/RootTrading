@@ -11,6 +11,7 @@ import threading
 import psutil
 from typing import Dict, Any
 from flask import Flask, jsonify
+import requests
 
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
@@ -148,6 +149,37 @@ def signal_handler(signum, frame):
     logger.info(f"Signal {signum} reçu, arrêt en cours...")
     running = False
 
+def reconcile_pockets_task(portfolio_api_url: str, interval: int = 1800):
+    """
+    Tâche périodique pour réconcilier les poches avec les trades actifs.
+    
+    Args:
+        portfolio_api_url: URL de l'API du service Portfolio
+        interval: Intervalle entre les réconciliations en secondes (défaut: 30 minutes)
+    """
+    logger.info(f"Démarrage de la tâche de réconciliation des poches (intervalle: {interval}s)")
+    
+    while running:
+        try:
+            # Attendre l'intervalle
+            time.sleep(interval)
+            
+            # Demander la réconciliation des poches
+            logger.info("Réconciliation des poches...")
+            response = requests.post(f"{portfolio_api_url}/pockets/reconcile")
+            
+            if response.status_code == 200:
+                result = response.json()
+                logger.info(f"✅ Réconciliation des poches réussie (valeur totale: {result.get('total_value', 0):.2f} USDC)")
+            else:
+                logger.warning(f"⚠️ Échec de la réconciliation des poches: {response.text}")
+        
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la réconciliation des poches: {str(e)}")
+            # Continuer malgré l'erreur
+    
+    logger.info("Tâche de réconciliation des poches arrêtée")
+
 def main():
     """
     Fonction principale du service RiskManager.
@@ -165,6 +197,15 @@ def main():
     
     # Configurer le port API
     api_port = int(os.getenv("RISK_API_PORT", "5007"))
+
+    # Démarrer la tâche de réconciliation des poches
+    reconcile_thread = threading.Thread(
+        target=reconcile_pockets_task,
+        args=(portfolio_api_url, 1800),  # 30 minutes
+        daemon=True
+    )
+    reconcile_thread.start()
+    logger.info("✅ Tâche de réconciliation des poches démarrée")
     
     logger.info("🚀 Démarrage du service Risk Manager RootTrading...")
     

@@ -92,12 +92,17 @@ class BinanceWebSocket:
             await self._handle_reconnect()
     
     async def _handle_reconnect(self) -> None:
+        """
+        Gère la reconnexion en cas de perte de connexion.
+        Utilise un backoff exponentiel pour éviter de surcharger le serveur.
+        """
+        # Vérifier si le service est encore en cours d'exécution
+        if not self.running:
+            return
+    
         # Limiter le nombre de tentatives
         max_retries = 20
         retry_count = 0
-    
-        while not self.running:
-            return
     
         while self.running and retry_count < max_retries:
             logger.warning(f"Tentative de reconnexion {retry_count+1}/{max_retries} dans {self.reconnect_delay} secondes...")
@@ -107,6 +112,14 @@ class BinanceWebSocket:
             self.reconnect_delay = min(300, self.reconnect_delay * 2)  # 5 minutes max
         
             try:
+                # Fermer proprement la connexion existante si elle existe
+                if self.ws:
+                    try:
+                        await self.ws.close()
+                    except Exception as e:
+                        logger.warning(f"Erreur lors de la fermeture de la connexion existante: {str(e)}")
+                
+                # Établir une nouvelle connexion
                 await self._connect()
                 return  # Reconnexion réussie
             except Exception as e:
@@ -131,7 +144,10 @@ class BinanceWebSocket:
                 
                 # Fermer la connexion existante
                 if self.ws:
-                    await self.ws.close()
+                    try:
+                        await self.ws.close()
+                    except Exception as e:
+                        logger.warning(f"Erreur lors de la fermeture de la connexion: {str(e)}")
                 
                 # Reconnecter
                 await self._connect()
@@ -193,7 +209,7 @@ class BinanceWebSocket:
                                                        
                             # Produire le message Kafka
                             symbol = processed_data['symbol']
-                            logger.info(f"📊 Message reçu de Binance: {symbol} @ {self.interval} - prix actuel: {processed_data['close']}")
+                            logger.debug(f"📊 Message reçu de Binance: {symbol} @ {self.interval} - prix actuel: {processed_data['close']}")
                             self.kafka_client.produce(
                                 topic=f"{KAFKA_TOPIC_MARKET_DATA}.{symbol.lower()}",
                                 message=processed_data,
@@ -252,14 +268,14 @@ class BinanceWebSocket:
         self.running = False
         
         if self.ws:
-            # Désabonnement des streams
-            unsubscribe_msg = {
-                "method": "UNSUBSCRIBE",
-                "params": self.stream_paths,
-                "id": int(time.time() * 1000)
-            }
-            
             try:
+                # Désabonnement des streams
+                unsubscribe_msg = {
+                    "method": "UNSUBSCRIBE",
+                    "params": self.stream_paths,
+                    "id": int(time.time() * 1000)
+                }
+                
                 await self.ws.send(json.dumps(unsubscribe_msg))
                 logger.info("Message de désabonnement envoyé")
                 
@@ -271,9 +287,10 @@ class BinanceWebSocket:
                 logger.error(f"Erreur lors de la fermeture du WebSocket: {str(e)}")
         
         # Fermer le client Kafka
-        self.kafka_client.flush()
-        self.kafka_client.close()
-        logger.info("Client Kafka fermé")
+        if self.kafka_client:
+            self.kafka_client.flush()
+            self.kafka_client.close()
+            logger.info("Client Kafka fermé")
 
 # Fonction principale pour exécuter le WebSocket de manière asynchrone
 async def run_binance_websocket():

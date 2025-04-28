@@ -46,7 +46,7 @@ class OrderManager:
         self.redis_signal_client = redis_client or RedisClient()
         self.redis_price_client = RedisClient() 
         self.cycle_manager = cycle_manager or CycleManager()
-        self.binance_executor = BinanceExecutor()
+        self.binance_executor = self.cycle_manager.binance_executor
         
         # Configuration du canal Redis pour les signaux
         self.signal_channel = "roottrading:analyze:signal"
@@ -65,8 +65,127 @@ class OrderManager:
         self.processing_thread = None
         self.stop_event = threading.Event()
         
+        # Configuration pour les pauses de trading
+        self.paused_symbols = set()
+        self.paused_strategies = set()
+        self.pause_until = 0  # Timestamp pour la reprise automatique
+        self.paused_all = False
+        
         logger.info(f"✅ OrderManager initialisé pour {len(self.symbols)} symboles: {', '.join(self.symbols)}")
 
+    def is_trading_paused(self, symbol: str, strategy: str) -> bool:
+        """
+        Vérifie si le trading est en pause pour un symbole ou une stratégie donnée.
+        
+        Args:
+            symbol: Symbole à vérifier
+            strategy: Stratégie à vérifier
+            
+        Returns:
+            True si le trading est en pause, False sinon
+        """
+        # Vérifier si la pause globale est active
+        if self.paused_all:
+            # Vérifier si la pause a une durée et si elle est expirée
+            if self.pause_until > 0 and time.time() > self.pause_until:
+                self.resume_all()
+                return False
+            return True
+        
+        # Vérifier si le symbole est en pause
+        if symbol in self.paused_symbols:
+            return True
+        
+        # Vérifier si la stratégie est en pause
+        if strategy in self.paused_strategies:
+            return True
+        
+        return False
+    
+    def pause_symbol(self, symbol: str, duration: int = 0) -> None:
+        """
+        Met en pause le trading pour un symbole spécifique.
+        
+        Args:
+            symbol: Symbole à mettre en pause
+            duration: Durée de la pause en secondes (0 = indéfini)
+        """
+        self.paused_symbols.add(symbol)
+        
+        if duration > 0:
+            # Planifier une reprise automatique
+            resume_time = time.time() + duration
+            threading.Timer(duration, self.resume_symbol, args=[symbol]).start()
+        
+        logger.info(f"Trading en pause pour le symbole {symbol}" + 
+                   (f" pendant {duration}s" if duration > 0 else ""))
+    
+    def pause_strategy(self, strategy: str, duration: int = 0) -> None:
+        """
+        Met en pause le trading pour une stratégie spécifique.
+        
+        Args:
+            strategy: Stratégie à mettre en pause
+            duration: Durée de la pause en secondes (0 = indéfini)
+        """
+        self.paused_strategies.add(strategy)
+        
+        if duration > 0:
+            # Planifier une reprise automatique
+            threading.Timer(duration, self.resume_strategy, args=[strategy]).start()
+        
+        logger.info(f"Trading en pause pour la stratégie {strategy}" + 
+                   (f" pendant {duration}s" if duration > 0 else ""))
+    
+    def pause_all(self, duration: int = 0) -> None:
+        """
+        Met en pause le trading pour tous les symboles et stratégies.
+        
+        Args:
+            duration: Durée de la pause en secondes (0 = indéfini)
+        """
+        self.paused_all = True
+        
+        if duration > 0:
+            self.pause_until = time.time() + duration
+            # Planifier une reprise automatique
+            threading.Timer(duration, self.resume_all).start()
+        
+        logger.info(f"Trading en pause pour tous les symboles et stratégies" + 
+                  (f" pendant {duration}s" if duration > 0 else ""))
+    
+    def resume_symbol(self, symbol: str) -> None:
+        """
+        Reprend le trading pour un symbole spécifique.
+        
+        Args:
+            symbol: Symbole à reprendre
+        """
+        if symbol in self.paused_symbols:
+            self.paused_symbols.remove(symbol)
+            logger.info(f"Trading repris pour le symbole {symbol}")
+    
+    def resume_strategy(self, strategy: str) -> None:
+        """
+        Reprend le trading pour une stratégie spécifique.
+        
+        Args:
+            strategy: Stratégie à reprendre
+        """
+        if strategy in self.paused_strategies:
+            self.paused_strategies.remove(strategy)
+            logger.info(f"Trading repris pour la stratégie {strategy}")
+    
+    def resume_all(self) -> None:
+        """
+        Reprend le trading pour tous les symboles et stratégies.
+        """
+        self.paused_all = False
+        self.paused_symbols.clear()
+        self.paused_strategies.clear()
+        self.pause_until = 0
+        logger.info("Trading repris pour tous les symboles et stratégies")
+    
     def log_system_status(self) -> None:
         """
         Journalise l'état du système pour diagnostiquer les problèmes.
@@ -83,14 +202,14 @@ class OrderManager:
             # Loguer les derniers prix connus
             logger.info(f"Derniers prix connus: {len(self.last_prices)} symboles")
             for symbol, price in self.last_prices.items():
-                logger.info(f"Prix de {symbol}: {price}")
+                logger.debug(f"Prix de {symbol}: {price}")
         
             # Vérifier l'état des abonnements Redis
             if hasattr(self.redis_signal_client, 'pubsub') and self.redis_signal_client.pubsub:
                 channels = self.redis_signal_client.pubsub.channels.keys() if hasattr(self.redis_signal_client.pubsub, 'channels') else []
                 logger.info(f"Abonnements Redis actifs: {len(channels)} canaux")
                 for channel in channels:
-                    logger.info(f"Abonné à: {channel}")
+                    logger.debug(f"Abonné à: {channel}")
     
         except Exception as e:
             logger.error(f"Erreur lors de la journalisation de l'état du système: {str(e)}")
@@ -105,17 +224,12 @@ class OrderManager:
             data: Données du signal
         """
         try:
-            # Logging pour debug - afficher les données brutes reçues
+            # Logging pour debug - afficher les données brutes reçues en mode debug uniquement
             logger.debug(f"Signal brut reçu: {json.dumps(data)}")
 
-            # 🚨 Filtres de protection : ignorer les données de prix
-            if "strategy" not in data or "side" not in data or "timestamp" not in data or "price" not in data:
-                logger.debug(f"⏭️ Ignoré (pas un vrai signal): {data}")
-                return
-        
-            # Vérifier que data est un dictionnaire non vide
-            if not data or not isinstance(data, dict):
-                logger.warning(f"❌ Signal reçu invalide, format attendu: dictionnaire, reçu: {type(data)}")
+            # 🚨 Filtres de protection : ignorer les données de prix ou autres messages non pertinents
+            if not isinstance(data, dict) or "strategy" not in data or "side" not in data or "timestamp" not in data or "price" not in data:
+                logger.debug(f"⏭️ Message ignoré: n'est pas un signal valide")
                 return
         
             # Vérifier les champs obligatoires
@@ -123,7 +237,7 @@ class OrderManager:
             missing_fields = [field for field in required_fields if field not in data]
             
             if missing_fields:
-                logger.error(f"❌ Champs obligatoires manquants dans le signal: {missing_fields}")
+                logger.warning(f"❌ Champs obligatoires manquants dans le signal: {missing_fields}")
                 return
             
             # Convertir la chaîne ISO en objet datetime
@@ -136,6 +250,11 @@ class OrderManager:
 
             # Valider le signal avec Pydantic
             signal = StrategySignal(**data)
+            
+            # Vérifier si le trading est en pause pour ce signal
+            if self.is_trading_paused(signal.symbol, signal.strategy):
+                logger.info(f"⏸️ Signal ignoré: trading en pause pour {signal.symbol}/{signal.strategy}")
+                return
         
             # Ajouter à la file d'attente pour traitement
             self.signal_queue.put(signal)
@@ -144,7 +263,7 @@ class OrderManager:
     
         except Exception as e:
             logger.error(f"❌ Erreur lors du traitement du signal: {str(e)}")
-            logger.error(f"Données reçues: {data}")
+            logger.error(f"Données reçues problématiques: {data}")
     
     def _process_price_update(self, channel: str, data: Dict[str, Any]) -> None:
         """
@@ -173,7 +292,7 @@ class OrderManager:
             # Traiter la mise à jour de prix dans le gestionnaire de cycles
             self.cycle_manager.process_price_update(symbol, price)
             
-            logger.info(f"💰 Prix mis à jour: {symbol} @ {price}")
+            logger.debug(f"💰 Prix mis à jour: {symbol} @ {price}")
         
         except Exception as e:
             logger.error(f"❌ Erreur lors du traitement de la mise à jour de prix: {str(e)}")
@@ -193,6 +312,12 @@ class OrderManager:
                 try:
                     signal = self.signal_queue.get(timeout=1.0)
                 except queue.Empty:
+                    continue
+                
+                # Vérifier à nouveau si le trading est en pause (pourrait avoir changé)
+                if self.is_trading_paused(signal.symbol, signal.strategy):
+                    logger.info(f"⏸️ Signal ignoré dans la boucle: trading en pause pour {signal.symbol}/{signal.strategy}")
+                    self.signal_queue.task_done()
                     continue
                 
                 # Traiter le signal
@@ -276,7 +401,7 @@ class OrderManager:
             if 'target_price' in metadata:
                 target_price = float(metadata['target_price'])
             if 'stop_price' in metadata:
-             stop_price = float(metadata['stop_price'])
+                stop_price = float(metadata['stop_price'])
             if 'trailing_delta' in metadata:
                 trailing_delta = float(metadata['trailing_delta'])
         
@@ -328,7 +453,7 @@ class OrderManager:
             logger.error(f"❌ Erreur lors du traitement du signal: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
-    
+            
     def start(self) -> None:
         """
         Démarre le gestionnaire d'ordres.
@@ -350,7 +475,8 @@ class OrderManager:
         # Démarrer le thread de traitement des signaux
         self.processing_thread = threading.Thread(
             target=self._signal_processing_loop,
-            daemon=True
+            daemon=True,
+            name="SignalProcessor"
         )
         self.processing_thread.start()
         

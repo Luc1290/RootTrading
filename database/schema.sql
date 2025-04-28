@@ -59,6 +59,14 @@ CREATE INDEX IF NOT EXISTS trade_cycles_strategy_idx ON trade_cycles(strategy);
 CREATE INDEX IF NOT EXISTS trade_cycles_status_idx ON trade_cycles(status);
 CREATE INDEX IF NOT EXISTS trade_cycles_created_at_idx ON trade_cycles(created_at);
 CREATE INDEX IF NOT EXISTS trade_cycles_completed_at_idx ON trade_cycles(completed_at);
+-- Index pour les requêtes fréquentes
+CREATE INDEX IF NOT EXISTS trade_cycles_symbol_created_idx ON trade_cycles(symbol, created_at DESC);
+CREATE INDEX IF NOT EXISTS trade_cycles_strategy_created_idx ON trade_cycles(strategy, created_at DESC);
+-- Index GIN pour les recherches dans les métadonnées JSON
+CREATE INDEX IF NOT EXISTS trade_cycles_metadata_idx ON trade_cycles USING GIN (metadata);
+-- Index pour les calculs de performance
+CREATE INDEX IF NOT EXISTS trade_cycles_profit_status_idx ON trade_cycles(profit_loss_percent, status) 
+WHERE status = 'completed';
 
 -- Table des signaux de trading
 CREATE TABLE IF NOT EXISTS trading_signals (
@@ -79,6 +87,8 @@ CREATE TABLE IF NOT EXISTS trading_signals (
 CREATE INDEX IF NOT EXISTS trading_signals_symbol_idx ON trading_signals(symbol);
 CREATE INDEX IF NOT EXISTS trading_signals_strategy_idx ON trading_signals(strategy);
 CREATE INDEX IF NOT EXISTS trading_signals_timestamp_idx ON trading_signals(timestamp);
+-- Index GIN pour les recherches dans les métadonnées JSON
+CREATE INDEX IF NOT EXISTS trading_signals_metadata_idx ON trading_signals USING GIN (metadata);
 
 -- Table des données de marché (séries temporelles)
 CREATE TABLE IF NOT EXISTS market_data (
@@ -95,8 +105,18 @@ CREATE TABLE IF NOT EXISTS market_data (
 -- Convertir market_data en table hypertable (TimescaleDB)
 SELECT create_hypertable('market_data', 'time', if_not_exists => TRUE);
 
+-- Optimisation de TimescaleDB pour market_data
+SELECT set_chunk_time_interval('market_data', INTERVAL '1 day');
+ALTER TABLE market_data SET (
+    timescaledb.compress = true,
+    timescaledb.compress_segmentby = 'symbol'
+);
+SELECT add_compression_policy('market_data', INTERVAL '7 days');
+
 -- Index pour les données de marché
 CREATE INDEX IF NOT EXISTS market_data_symbol_idx ON market_data(symbol, time DESC);
+-- Index BRIN plus efficace pour les grandes tables temporelles
+CREATE INDEX IF NOT EXISTS market_data_time_brin_idx ON market_data USING BRIN (time) WITH (pages_per_range = 128);
 
 -- Table des soldes de portefeuille
 CREATE TABLE IF NOT EXISTS portfolio_balances (
@@ -112,6 +132,7 @@ CREATE TABLE IF NOT EXISTS portfolio_balances (
 -- Index pour les soldes
 CREATE INDEX IF NOT EXISTS portfolio_balances_asset_idx ON portfolio_balances(asset);
 CREATE INDEX IF NOT EXISTS portfolio_balances_timestamp_idx ON portfolio_balances(timestamp);
+CREATE INDEX IF NOT EXISTS portfolio_balances_asset_timestamp_idx ON portfolio_balances(asset, timestamp DESC);
 
 -- Table des poches de capital
 CREATE TABLE IF NOT EXISTS capital_pockets (
@@ -140,6 +161,9 @@ CREATE TABLE IF NOT EXISTS strategy_configs (
 
 -- Index pour les stratégies
 CREATE INDEX IF NOT EXISTS strategy_configs_name_idx ON strategy_configs(name);
+-- Index GIN pour les recherches dans les tableaux de symboles
+CREATE INDEX IF NOT EXISTS strategy_configs_symbols_idx ON strategy_configs USING GIN (symbols);
+CREATE INDEX IF NOT EXISTS strategy_configs_params_idx ON strategy_configs USING GIN (params);
 
 -- Table des journaux d'événements
 CREATE TABLE IF NOT EXISTS event_logs (
@@ -228,6 +252,25 @@ SELECT
     SUM(CASE WHEN profit_loss = 0 AND status = 'completed' THEN 1 ELSE 0 END) as break_even_trades,
     SUM(profit_loss) as total_profit_loss,
     AVG(CASE WHEN status = 'completed' THEN profit_loss_percent ELSE NULL END) as avg_profit_loss_percent,
+    COUNT(DISTINCT symbol) as symbol_count
+FROM 
+    trade_cycles
+GROUP BY 
+    strategy
+ORDER BY 
+    total_profit_loss DESC;
+
+-- Vue des performances par symbole
+CREATE OR REPLACE VIEW symbol_performance AS
+SELECT 
+    symbol,
+    COUNT(*) as total_cycles,
+    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_cycles,
+    SUM(CASE WHEN profit_loss > 0 AND status = 'completed' THEN 1 ELSE 0 END) as winning_trades,
+    SUM(CASE WHEN profit_loss < 0 AND status = 'completed' THEN 1 ELSE 0 END) as losing_trades,
+    SUM(CASE WHEN profit_loss = 0 AND status = 'completed' THEN 1 ELSE 0 END) as break_even_trades,
+    SUM(profit_loss) as total_profit_loss,
+    AVG(CASE WHEN status = 'completed' THEN profit_loss_percent ELSE NULL END) as avg_profit_loss_percent,
     COUNT(DISTINCT strategy) as strategy_count
 FROM 
     trade_cycles
@@ -236,32 +279,44 @@ GROUP BY
 ORDER BY 
     total_profit_loss DESC;
 
--- Vue des cycles actifs
+-- Vue des cycles actifs optimisée
 CREATE OR REPLACE VIEW active_cycles AS
+WITH latest_prices AS (
+    SELECT 
+        symbol, 
+        close AS price,
+        MAX(time) as latest_time
+    FROM 
+        market_data
+    GROUP BY 
+        symbol, close
+)
 SELECT 
-    id, 
-    symbol, 
-    strategy, 
-    status, 
-    entry_price, 
-    quantity, 
-    target_price, 
-    stop_price,
-    (SELECT close FROM market_data WHERE symbol = tc.symbol ORDER BY time DESC LIMIT 1) as current_price,
+    tc.id, 
+    tc.symbol, 
+    tc.strategy, 
+    tc.status, 
+    tc.entry_price, 
+    tc.quantity, 
+    tc.target_price, 
+    tc.stop_price,
+    lp.price as current_price,
     CASE 
-        WHEN status = 'active_buy' AND (SELECT close FROM market_data WHERE symbol = tc.symbol ORDER BY time DESC LIMIT 1) IS NOT NULL THEN 
-            ((SELECT close FROM market_data WHERE symbol = tc.symbol ORDER BY time DESC LIMIT 1) - entry_price) / entry_price * 100
-        WHEN status = 'active_sell' AND (SELECT close FROM market_data WHERE symbol = tc.symbol ORDER BY time DESC LIMIT 1) IS NOT NULL THEN 
-            (entry_price - (SELECT close FROM market_data WHERE symbol = tc.symbol ORDER BY time DESC LIMIT 1)) / entry_price * 100
+        WHEN tc.status = 'active_buy' AND lp.price IS NOT NULL THEN 
+            (lp.price - tc.entry_price) / tc.entry_price * 100
+        WHEN tc.status = 'active_sell' AND lp.price IS NOT NULL THEN 
+            (tc.entry_price - lp.price) / tc.entry_price * 100
         ELSE NULL
     END as unrealized_pl_percent,
-    created_at,
-    updated_at,
-    pocket
+    tc.created_at,
+    tc.updated_at,
+    tc.pocket
 FROM 
     trade_cycles tc
+LEFT JOIN 
+    latest_prices lp ON tc.symbol = lp.symbol
 WHERE 
-    status NOT IN ('completed', 'canceled', 'failed');
+    tc.status NOT IN ('completed', 'canceled', 'failed');
 
 -- Vue des performances quotidiennes
 CREATE OR REPLACE VIEW daily_performance AS
@@ -298,7 +353,7 @@ RETURNS TABLE (
     win_rate NUMERIC,
     total_profit_loss NUMERIC,
     avg_profit_loss_percent NUMERIC
-) AS $
+) AS $$
 BEGIN
     RETURN QUERY
     SELECT 
@@ -320,18 +375,74 @@ BEGIN
         AND (p_symbol IS NULL OR symbol = p_symbol)
         AND (p_strategy IS NULL OR strategy = p_strategy);
 END;
-$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;
 
--- Procédure pour calculer et stocker les statistiques quotidiennes
+-- Procédure optimisée pour calculer et stocker les statistiques quotidiennes
 CREATE OR REPLACE PROCEDURE update_daily_stats(p_date DATE DEFAULT CURRENT_DATE)
 LANGUAGE plpgsql
-AS $
+AS $$
+DECLARE
+    v_start_timestamp TIMESTAMP;
+    v_end_timestamp TIMESTAMP;
 BEGIN
-    -- Supprimer les statistiques existantes pour la date
+    v_start_timestamp := p_date::TIMESTAMP;
+    v_end_timestamp := (p_date + INTERVAL '1 day')::TIMESTAMP;
+    
+    -- Utilisation de CTE pour optimisation
+    WITH completed_cycles AS (
+        SELECT 
+            symbol,
+            strategy,
+            profit_loss,
+            profit_loss_percent,
+            completed_at,
+            created_at
+        FROM 
+            trade_cycles
+        WHERE 
+            status = 'completed'
+            AND completed_at >= v_start_timestamp
+            AND completed_at < v_end_timestamp
+    ),
+    stats_by_strategy AS (
+        SELECT 
+            symbol,
+            strategy,
+            COUNT(*) as total_trades,
+            SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as winning_trades,
+            SUM(CASE WHEN profit_loss < 0 THEN 1 ELSE 0 END) as losing_trades,
+            SUM(CASE WHEN profit_loss = 0 THEN 1 ELSE 0 END) as break_even_trades,
+            SUM(profit_loss) as profit_loss,
+            AVG(profit_loss_percent) as profit_loss_percent,
+            AVG(completed_at - created_at) as average_holding_time
+        FROM 
+            completed_cycles
+        GROUP BY 
+            symbol, strategy
+    ),
+    stats_global AS (
+        SELECT 
+            'ALL' as symbol,
+            'ALL' as strategy,
+            COUNT(*) as total_trades,
+            SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as winning_trades,
+            SUM(CASE WHEN profit_loss < 0 THEN 1 ELSE 0 END) as losing_trades,
+            SUM(CASE WHEN profit_loss = 0 THEN 1 ELSE 0 END) as break_even_trades,
+            SUM(profit_loss) as profit_loss,
+            AVG(profit_loss_percent) as profit_loss_percent,
+            AVG(completed_at - created_at) as average_holding_time
+        FROM 
+            completed_cycles
+    ),
+    all_stats AS (
+        SELECT * FROM stats_by_strategy
+        UNION ALL
+        SELECT * FROM stats_global
+    )
+    -- Supprimer et insérer en une seule transaction
     DELETE FROM performance_stats 
     WHERE period = 'daily' AND start_date = p_date;
     
-    -- Insérer les nouvelles statistiques par stratégie
     INSERT INTO performance_stats (
         symbol, strategy, period, start_date, end_date,
         total_trades, winning_trades, losing_trades, break_even_trades,
@@ -340,61 +451,30 @@ BEGIN
     SELECT 
         symbol,
         strategy,
-        'daily' as period,
-        p_date as start_date,
-        p_date as end_date,
-        COUNT(*) as total_trades,
-        SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as winning_trades,
-        SUM(CASE WHEN profit_loss < 0 THEN 1 ELSE 0 END) as losing_trades,
-        SUM(CASE WHEN profit_loss = 0 THEN 1 ELSE 0 END) as break_even_trades,
-        SUM(profit_loss) as profit_loss,
-        AVG(profit_loss_percent) as profit_loss_percent,
-        NULL as max_drawdown,  -- À calculer séparément
-        AVG(completed_at - created_at) as average_holding_time
+        'daily',
+        p_date,
+        p_date,
+        total_trades,
+        winning_trades,
+        losing_trades,
+        break_even_trades,
+        profit_loss,
+        profit_loss_percent,
+        NULL, -- max_drawdown calculé séparément
+        average_holding_time
     FROM 
-        trade_cycles
-    WHERE 
-        status = 'completed'
-        AND DATE(completed_at) = p_date
-    GROUP BY 
-        symbol, strategy;
-    
-    -- Insérer les statistiques globales pour la journée
-    INSERT INTO performance_stats (
-        symbol, strategy, period, start_date, end_date,
-        total_trades, winning_trades, losing_trades, break_even_trades,
-        profit_loss, profit_loss_percent, max_drawdown, average_holding_time
-    )
-    SELECT 
-        'ALL' as symbol,
-        'ALL' as strategy,
-        'daily' as period,
-        p_date as start_date,
-        p_date as end_date,
-        COUNT(*) as total_trades,
-        SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as winning_trades,
-        SUM(CASE WHEN profit_loss < 0 THEN 1 ELSE 0 END) as losing_trades,
-        SUM(CASE WHEN profit_loss = 0 THEN 1 ELSE 0 END) as break_even_trades,
-        SUM(profit_loss) as profit_loss,
-        AVG(profit_loss_percent) as profit_loss_percent,
-        NULL as max_drawdown,
-        AVG(completed_at - created_at) as average_holding_time
-    FROM 
-        trade_cycles
-    WHERE 
-        status = 'completed'
-        AND DATE(completed_at) = p_date;
+        all_stats;
 END;
-$;
+$$;
 
 -- Trigger pour mettre à jour les timestamps automatiquement
 CREATE OR REPLACE FUNCTION update_timestamp()
-RETURNS TRIGGER AS $
+RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = NOW();
     RETURN NEW;
 END;
-$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;
 
 -- Créer les triggers pour les tables principales
 CREATE TRIGGER update_trade_executions_timestamp
@@ -430,7 +510,7 @@ RETURNS TABLE (
     pocket VARCHAR,
     active_count BIGINT,
     total_value NUMERIC
-) AS $
+) AS $$
 BEGIN
     RETURN QUERY
     SELECT 
@@ -444,7 +524,7 @@ BEGIN
     GROUP BY 
         tc.pocket;
 END;
-$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;
 
 -- Fonction pour obtenir les statistiques de performance par stratégie
 CREATE OR REPLACE FUNCTION get_strategy_stats(
@@ -458,7 +538,7 @@ RETURNS TABLE (
     sharpe_ratio NUMERIC,
     total_trades BIGINT,
     active_trades BIGINT
-) AS $
+) AS $$
 BEGIN
     RETURN QUERY
     WITH completed_trades AS (
@@ -536,33 +616,83 @@ BEGIN
     ORDER BY 
         s.avg_profit DESC;
 END;
-$ LANGUAGE plpgsql;,
-    SUM(CASE WHEN profit_loss < 0 AND status = 'completed' THEN 1 ELSE 0 END) as losing_trades,
-    SUM(CASE WHEN profit_loss = 0 AND status = 'completed' THEN 1 ELSE 0 END) as break_even_trades,
-    SUM(profit_loss) as total_profit_loss,
-    AVG(CASE WHEN status = 'completed' THEN profit_loss_percent ELSE NULL END) as avg_profit_loss_percent,
-    COUNT(DISTINCT symbol) as symbol_count
-FROM 
-    trade_cycles
-GROUP BY 
-    strategy
-ORDER BY 
-    total_profit_loss DESC;
--- Vue des performances par symbole
-CREATE OR REPLACE VIEW strategy_performance AS
-SELECT 
-    strategy,
-    COUNT(*) as total_cycles,
-    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_cycles,
-    SUM(CASE WHEN profit_loss > 0 AND status = 'completed' THEN 1 ELSE 0 END) as winning_trades,
-    SUM(CASE WHEN profit_loss < 0 AND status = 'completed' THEN 1 ELSE 0 END) as losing_trades,
-    SUM(CASE WHEN profit_loss = 0 AND status = 'completed' THEN 1 ELSE 0 END) as break_even_trades,
-    SUM(profit_loss) as total_profit_loss,
-    AVG(CASE WHEN status = 'completed' THEN profit_loss_percent ELSE NULL END) as avg_profit_loss_percent,
-    COUNT(DISTINCT symbol) as symbol_count
-FROM 
-    trade_cycles
-GROUP BY 
-    strategy
-ORDER BY 
-    total_profit_loss DESC;
+$$ LANGUAGE plpgsql;
+
+-- Fonction de nettoyage périodique
+CREATE OR REPLACE PROCEDURE maintenance_cleanup(older_than_days INT DEFAULT 90)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Nettoyer les anciennes données de trading_signals
+    DELETE FROM trading_signals
+    WHERE created_at < NOW() - (older_than_days || ' days')::INTERVAL;
+    
+    -- Nettoyer les vieux logs d'événements (garder uniquement les erreurs pour les périodes plus anciennes)
+    DELETE FROM event_logs
+    WHERE timestamp < NOW() - (older_than_days || ' days')::INTERVAL
+    AND level NOT IN ('ERROR', 'CRITICAL');
+    
+    -- Nettoyer les alertes lues anciennes
+    DELETE FROM alerts
+    WHERE is_read = TRUE 
+    AND created_at < NOW() - (older_than_days || ' days')::INTERVAL;
+    
+    -- VACUUM ANALYZE pour optimiser les performances après suppression
+    ANALYZE trading_signals;
+    ANALYZE event_logs;
+    ANALYZE alerts;
+    
+    RAISE NOTICE 'Maintenance terminée. Données nettoyées plus anciennes que % jours', older_than_days;
+END;
+$$;
+
+-- Fonction pour analyser la santé de la base de données
+CREATE OR REPLACE FUNCTION db_health_check() 
+RETURNS TABLE (
+    table_name TEXT,
+    row_count BIGINT,
+    table_size TEXT,
+    index_size TEXT,
+    bloat_pct NUMERIC,
+    last_vacuum TIMESTAMP,
+    last_analyze TIMESTAMP
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    WITH table_stats AS (
+        SELECT
+            schemaname || '.' || relname AS full_table_name,
+            n_live_tup AS row_estimate,
+            pg_size_pretty(pg_total_relation_size('"' || schemaname || '"."' || relname || '"')) AS total_size,
+            pg_size_pretty(pg_indexes_size('"' || schemaname || '"."' || relname || '"')) AS index_size,
+            CASE WHEN n_dead_tup > 0 THEN
+                round(n_dead_tup * 100.0 / (n_live_tup + n_dead_tup), 1)
+            ELSE 0 END AS bloat_pct,
+            last_vacuum,
+            last_autovacuum,
+            last_analyze,
+            last_autoanalyze
+        FROM
+            pg_stat_user_tables
+        WHERE
+            schemaname = 'public'
+    )
+    SELECT
+        split_part(ts.full_table_name, '.', 2) AS table_name,
+        ts.row_estimate,
+        ts.total_size,
+        ts.index_size,
+        ts.bloat_pct,
+        COALESCE(ts.last_vacuum, ts.last_autovacuum) AS last_vacuum,
+        COALESCE(ts.last_analyze, ts.last_autoanalyze) AS last_analyze
+    FROM
+        table_stats ts
+    ORDER BY
+        row_estimate DESC;
+END;
+$$;
+
+-- Exécuter ANALYZE pour mettre à jour les statistiques
+ANALYZE;

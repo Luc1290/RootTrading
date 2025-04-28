@@ -49,6 +49,7 @@ class SignalHandler:
         
         # Client Redis pour les communications
         self.redis_client = RedisClient()
+        self.redis_client.subscribe("roottrading:order:failed", self.handle_order_failed)
         
         # Canal Redis pour les signaux
         self.signal_channel = "roottrading:analyze:signal"
@@ -77,7 +78,36 @@ class SignalHandler:
         self.trader_circuit = CircuitBreaker()
         self.portfolio_circuit = CircuitBreaker()
         
+        # S'abonner aux notifications de mise à jour du portfolio (nouvelle fonctionnalité)
+        self.redis_client.subscribe(
+            "roottrading:notification:balance_updated", 
+            self._handle_portfolio_update
+        )
+        
         logger.info(f"✅ SignalHandler initialisé en mode {'DÉMO' if self.demo_mode else 'RÉEL'}")
+    
+    def _handle_portfolio_update(self, channel: str, data: Dict[str, Any]) -> None:
+        """
+        Gère les notifications de mise à jour du portfolio.
+        Déclenche une mise à jour du cache et une réallocation.
+        
+        Args:
+            channel: Canal Redis
+            data: Données de notification
+        """
+        try:
+            logger.info(f"📢 Notification de mise à jour du portfolio reçue: {data}")
+            
+            # Invalider le cache des poches
+            if hasattr(self, 'pocket_checker') and self.pocket_checker:
+                self.pocket_checker.last_cache_update = 0
+                
+                # Déclencher une réallocation des fonds
+                logger.info("Réallocation des fonds suite à notification...")
+                self.pocket_checker.reallocate_funds()
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur lors du traitement de la notification: {str(e)}")
     
     def _process_signal(self, channel: str, data: Dict[str, Any]) -> None:
         """
@@ -204,6 +234,48 @@ class SignalHandler:
         
         return amount
     
+    def _make_request_with_retry(self, url, method="GET", json_data=None, params=None, max_retries=3, timeout=5.0):
+        """
+        Effectue une requête HTTP avec mécanisme de retry.
+        
+        Args:
+            url: URL de la requête
+            method: Méthode HTTP (GET, POST, DELETE)
+            json_data: Données JSON pour POST
+            params: Paramètres de requête
+            max_retries: Nombre maximum de tentatives
+            timeout: Timeout en secondes
+            
+        Returns:
+            Réponse JSON ou None en cas d'échec
+        """
+        retry_count = 0
+        last_exception = None
+        
+        while retry_count < max_retries:
+            try:
+                if method == "GET":
+                    response = requests.get(url, params=params, timeout=timeout)
+                elif method == "POST":
+                    response = requests.post(url, json=json_data, params=params, timeout=timeout)
+                elif method == "DELETE":
+                    response = requests.delete(url, params=params, timeout=timeout)
+                else:
+                    raise ValueError(f"Méthode non supportée: {method}")
+                    
+                response.raise_for_status()
+                return response.json()
+                
+            except requests.RequestException as e:
+                last_exception = e
+                retry_count += 1
+                wait_time = 0.5 * (2 ** retry_count)  # Backoff exponentiel
+                logger.warning(f"Tentative {retry_count}/{max_retries} échouée: {str(e)}. Nouvelle tentative dans {wait_time}s")
+                time.sleep(wait_time)
+        
+        logger.error(f"Échec après {max_retries} tentatives: {str(last_exception)}")
+        return None
+    
     def _create_trade_cycle(self, signal: StrategySignal) -> Optional[str]:
         """
         Crée un cycle de trading à partir d'un signal.
@@ -276,13 +348,22 @@ class SignalHandler:
                 self.pocket_checker.release_funds(trade_amount, temp_cycle_id, pocket_type)
                 return None
     
-            # Créer le cycle via l'API du Trader
+            # Créer le cycle via l'API du Trader avec retry
             try:
                 logger.info(f"Envoi de la requête au Trader: {order_data}")
-                response = requests.post(f"{self.trader_api_url}/order", json=order_data)
-                response.raise_for_status()
-        
-                result = response.json()
+                result = self._make_request_with_retry(
+                    f"{self.trader_api_url}/order",
+                    method="POST",
+                    json_data=order_data,
+                    timeout=10.0  # Timeout plus long pour la création de l'ordre
+                )
+                
+                if not result:
+                    logger.error("❌ Échec de la création du cycle: aucune réponse du Trader")
+                    # Libérer les fonds réservés
+                    self.pocket_checker.release_funds(trade_amount, temp_cycle_id, pocket_type)
+                    return None
+                
                 cycle_id = result.get('order_id')
         
                 # Appel au trader réussi
@@ -304,7 +385,10 @@ class SignalHandler:
                     logger.error(f"❌ Erreur lors de la mise à jour de la réservation: {str(e)}")
                     # Tenter d'annuler le cycle créé
                     try:
-                        requests.delete(f"{self.trader_api_url}/order/{cycle_id}")
+                        self._make_request_with_retry(
+                            f"{self.trader_api_url}/order/{cycle_id}",
+                            method="DELETE"
+                        )
                     except:
                         pass
                     return None
@@ -402,6 +486,46 @@ class SignalHandler:
         self.redis_client.unsubscribe()
         
         logger.info("✅ Gestionnaire de signaux arrêté")
+
+    def handle_order_failed(self, channel: str, data: Dict[str, Any]) -> None:
+        """
+        Traite les notifications d'échec d'ordre.
+    
+        Args:
+            channel: Canal Redis d'où provient la notification
+            data: Données de la notification
+        """
+        try:
+            cycle_id = data.get("cycle_id")
+            symbol = data.get("symbol")
+            reason = data.get("reason", "Raison inconnue")
+        
+            if not cycle_id:
+                logger.warning("❌ Message d'échec d'ordre reçu sans cycle_id")
+                return
+            
+            logger.info(f"⚠️ Ordre échoué pour le cycle {cycle_id}: {reason}")
+        
+            # Déterminer si c'est un cycle temporaire ou confirmé
+            if cycle_id.startswith("temp_"):
+                # Cycle temporaire, libérer les fonds
+                amount = data.get("amount", 0)
+                if amount > 0:
+                    self.pocket_checker.release_funds(amount, cycle_id, "active")
+                    logger.info(f"✅ {amount} USDC libérés pour le cycle temporaire {cycle_id} après échec")
+            else:
+                # Cycle confirmé, annuler le cycle via l'API Trader
+                try:
+                    self._make_request_with_retry(
+                        f"{self.trader_api_url}/order/{cycle_id}",
+                        method="DELETE"
+                    )
+                    logger.info(f"✅ Cycle {cycle_id} annulé après échec d'ordre")
+                except Exception as e:
+                    logger.error(f"❌ Erreur lors de l'annulation du cycle {cycle_id}: {str(e)}")
+        
+        except Exception as e:
+            logger.error(f"❌ Erreur lors du traitement de l'échec d'ordre: {str(e)}")
 
 class CircuitBreaker:
     """Circuit breaker pour éviter les appels répétés à des services en échec."""

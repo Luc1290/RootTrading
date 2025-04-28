@@ -5,8 +5,11 @@ Transforme et route les messages vers les canaux appropriés.
 import logging
 import json
 import time
-from typing import Dict, Any, List, Optional
+import threading
+from collections import deque
+from typing import Dict, Any, List, Optional, Tuple
 
+from shared.src.config import SYMBOLS
 from shared.src.redis_client import RedisClient
 
 # Configuration du logging
@@ -38,15 +41,75 @@ class MessageRouter:
             "orders": "trade:order"
         }
         
+        # Précalculer les mappings pour les topics de données de marché
+        self.market_data_channel_cache = {}
+        for symbol in SYMBOLS:
+            topic = f"market.data.{symbol.lower()}"
+            self.market_data_channel_cache[topic] = f"{self.redis_prefix}:{self.topic_to_channel['market.data']}:{symbol.lower()}"
+        
+        # File d'attente pour les messages en cas de panne Redis
+        self.message_queue = deque(maxlen=10000)  # Limiter à 10 000 messages
+        self.queue_lock = threading.Lock()
+        self.queue_processor_running = True
+        
+        # Démarrer le thread de traitement de la file d'attente
+        self.queue_processor_thread = threading.Thread(
+            target=self._process_queue, 
+            daemon=True,
+            name="MessageQueueProcessor"
+        )
+        self.queue_processor_thread.start()
+        
         # Compteurs de statistiques
         self.stats = {
             "messages_received": 0,
             "messages_routed": 0,
+            "messages_queued": 0,
+            "queue_processed": 0,
             "errors": 0,
             "last_reset": time.time()
         }
         
+        # Initialiser le compteur de séquence des messages
+        self.message_sequence = 0
+        
         logger.info("✅ MessageRouter initialisé")
+    
+    def _process_queue(self) -> None:
+        """
+        Traite les messages dans la file d'attente en cas de panne Redis.
+        Fonctionne dans un thread séparé.
+        """
+        while self.queue_processor_running:
+            try:
+                # Traiter la file d'attente si elle n'est pas vide
+                with self.queue_lock:
+                    queue_size = len(self.message_queue)
+                    if queue_size > 0:
+                        # Récupérer le message le plus ancien
+                        channel, message = self.message_queue.popleft()
+                        
+                        try:
+                            # Tenter de publier sur Redis
+                            self.redis_client.publish(channel, message)
+                            
+                            # Incrémenter le compteur de messages traités
+                            self.stats["queue_processed"] += 1
+                            
+                            if queue_size > 1:
+                                logger.info(f"Message envoyé depuis la file d'attente. Restants: {queue_size - 1}")
+                        except Exception as e:
+                            # En cas d'échec, remettre le message dans la file d'attente
+                            self.message_queue.append((channel, message))
+                            logger.warning(f"Échec de publication depuis la file d'attente: {str(e)}")
+                            
+                            # Pause plus longue en cas d'erreur
+                            time.sleep(1.0)
+            except Exception as e:
+                logger.error(f"❌ Erreur dans le traitement de la file d'attente: {str(e)}")
+            
+            # Courte pause pour éviter de consommer trop de CPU
+            time.sleep(0.1)
     
     def _get_redis_channel(self, topic: str) -> Optional[str]:
         """
@@ -58,6 +121,10 @@ class MessageRouter:
         Returns:
             Canal Redis ou None si non mappé
         """
+        # Vérifier d'abord dans le cache précalculé
+        if topic in self.market_data_channel_cache:
+            return self.market_data_channel_cache[topic]
+        
         # Chercher le type de topic (avant le premier point)
         parts = topic.split('.')
         topic_type = parts[0]
@@ -65,7 +132,11 @@ class MessageRouter:
         # Cas spécial pour les données de marché (inclut le symbole)
         if topic_type == "market" and len(parts) >= 3:
             symbol = parts[2]
-            return f"{self.redis_prefix}:{self.topic_to_channel['market.data']}:{symbol}"
+            channel = f"{self.redis_prefix}:{self.topic_to_channel['market.data']}:{symbol}"
+            
+            # Ajouter au cache pour les futures requêtes
+            self.market_data_channel_cache[topic] = channel
+            return channel
         
         # Autres types de topics
         for key, channel in self.topic_to_channel.items():
@@ -113,14 +184,14 @@ class MessageRouter:
         transformed["_routing"] = {
             "source_topic": topic,
             "timestamp": time.time(),
-            "sequence": getattr(self, 'message_sequence', 0) + 1
+            "sequence": self.message_sequence + 1
         }
     
         # Incrémenter la séquence pour le prochain message
-        self.message_sequence = transformed["_routing"]["sequence"]
+        self.message_sequence += 1
     
-        # Ajouter plus de logs pour le débogage
-        if transformed.get('is_closed', False):
+        # Ajouter plus de logs pour le débogage (uniquement pour les chandeliers fermés)
+        if topic.startswith("market.data") and transformed.get('is_closed', False):
             logger.info(f"Message transformé: {topic} -> {transformed.get('symbol')} @ {transformed.get('close')}")
     
         return transformed
@@ -150,23 +221,33 @@ class MessageRouter:
             # Transformer le message si nécessaire
             transformed_message = self._transform_message(topic, message)
             
-            # Publier sur Redis
-            self.redis_client.publish(channel, transformed_message)
-            
-            # Incrémenter le compteur de messages routés
-            self.stats["messages_routed"] += 1
-            
-            # Log détaillé si nécessaire
-            logger.info(f"Message routé: {topic} -> {channel}")
-            
-            return True
+            # Tentative de publication directe
+            try:
+                # Publier sur Redis
+                self.redis_client.publish(channel, transformed_message)
+                
+                # Incrémenter le compteur de messages routés
+                self.stats["messages_routed"] += 1
+                
+                # Log détaillé en niveau debug
+                logger.debug(f"Message routé: {topic} -> {channel}")
+                
+                return True
+            except Exception as e:
+                # En cas d'échec, mettre le message en file d'attente
+                with self.queue_lock:
+                    self.message_queue.append((channel, transformed_message))
+                    self.stats["messages_queued"] += 1
+                
+                logger.warning(f"❗ Publication Redis échouée, message mis en file d'attente: {str(e)}")
+                return False
             
         except Exception as e:
             logger.error(f"❌ Erreur lors du routage du message: {str(e)}")
             self.stats["errors"] += 1
             return False
     
-    def batch_route_messages(self, messages: List[Dict[str, Any]]) -> int:
+    def batch_route_messages(self, messages: List[Tuple[str, Dict[str, Any]]]) -> int:
         """
         Route un lot de messages.
         
@@ -197,6 +278,7 @@ class MessageRouter:
         
         stats = self.stats.copy()
         stats["uptime"] = elapsed
+        stats["queue_size"] = len(self.message_queue)
         
         if elapsed > 0:
             stats["messages_per_second"] = stats["messages_routed"] / elapsed
@@ -216,6 +298,8 @@ class MessageRouter:
         self.stats = {
             "messages_received": 0,
             "messages_routed": 0,
+            "messages_queued": 0,
+            "queue_processed": 0,
             "errors": 0,
             "last_reset": time.time()
         }
@@ -226,6 +310,25 @@ class MessageRouter:
         """
         Ferme proprement les ressources du router.
         """
+        logger.info("Arrêt du MessageRouter...")
+        
+        # Arrêter le thread de traitement de la file d'attente
+        self.queue_processor_running = False
+        
+        # Attendre la fin du thread (avec un timeout)
+        if self.queue_processor_thread and self.queue_processor_thread.is_alive():
+            self.queue_processor_thread.join(timeout=2.0)
+        
+        # Vider la file d'attente si possible
+        try:
+            with self.queue_lock:
+                queue_size = len(self.message_queue)
+                if queue_size > 0:
+                    logger.warning(f"⚠️ {queue_size} messages restent dans la file d'attente lors de la fermeture")
+        except:
+            pass
+        
+        # Fermer le client Redis
         if self.redis_client:
             self.redis_client.close()
             logger.info("Client Redis fermé")
