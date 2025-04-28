@@ -218,11 +218,11 @@ class SignalHandler:
         if not self.portfolio_circuit.can_execute():
             logger.warning(f"Circuit ouvert pour le service Portfolio, signal ignoré")
             return None
-    
+
         try:
             # Calculer le montant à trader
             trade_amount = self._calculate_trade_amount(signal)
-        
+    
             # Déterminer la poche à utiliser
             try:
                 pocket_type = self.pocket_checker.determine_best_pocket(trade_amount)
@@ -232,28 +232,29 @@ class SignalHandler:
                 self.portfolio_circuit.record_failure()
                 logger.error(f"❌ Erreur lors de l'interaction avec Portfolio: {str(e)}")
                 return None
-        
+    
             if not pocket_type:
                 logger.warning(f"❌ Aucune poche disponible pour un trade de {trade_amount:.2f} USDC")
                 return None
-        
+    
             # Convertir le montant en quantité
             quantity = trade_amount / signal.price
-        
+    
             # Calculer le stop-loss et take-profit
             stop_price = signal.metadata.get('stop_price')
             target_price = signal.metadata.get('target_price')
-        
+    
             # Préparer la requête pour le Trader
+            # Important: Convertir les enums en chaînes explicitement
             order_data = {
                 "symbol": signal.symbol,
-                "side": signal.side,
+                "side": signal.side.value if hasattr(signal.side, 'value') else str(signal.side),
                 "quantity": quantity,
                 "price": signal.price,
                 "strategy": signal.strategy,
                 "timestamp": int(time.time() * 1000)  # Un timestamp actuel en millisecondes
             }
-        
+    
             # Réserver les fonds dans la poche
             temp_cycle_id = f"temp_{int(time.time())}"
             try:
@@ -264,34 +265,35 @@ class SignalHandler:
                 self.portfolio_circuit.record_failure()
                 logger.error(f"❌ Erreur lors de la réservation des fonds: {str(e)}")
                 return None
-        
+    
             if not reserved:
                 logger.error(f"❌ Échec de réservation des fonds pour le trade")
                 return None
-        
+    
             # Vérifier le circuit breaker pour le Trader
             if not self.trader_circuit.can_execute():
                 logger.warning(f"Circuit ouvert pour le service Trader, libération des fonds réservés")
                 self.pocket_checker.release_funds(trade_amount, temp_cycle_id, pocket_type)
                 return None
-        
+    
             # Créer le cycle via l'API du Trader
             try:
+                logger.info(f"Envoi de la requête au Trader: {order_data}")
                 response = requests.post(f"{self.trader_api_url}/order", json=order_data)
                 response.raise_for_status()
-            
+        
                 result = response.json()
                 cycle_id = result.get('order_id')
-            
+        
                 # Appel au trader réussi
                 self.trader_circuit.record_success()
-            
+        
                 if not cycle_id:
                     logger.error("❌ Réponse invalide du Trader: pas d'ID de cycle")
                     # Libérer les fonds réservés
                     self.pocket_checker.release_funds(trade_amount, temp_cycle_id, pocket_type)
                     return None
-            
+        
                 # Mettre à jour la réservation avec l'ID réel du cycle
                 try:
                     self.pocket_checker.release_funds(trade_amount, temp_cycle_id, pocket_type)
@@ -306,17 +308,17 @@ class SignalHandler:
                     except:
                         pass
                     return None
-            
+        
                 logger.info(f"✅ Cycle de trading créé: {cycle_id} ({signal.side} {signal.symbol})")
                 return cycle_id
-                
+            
             except requests.RequestException as e:
                 self.trader_circuit.record_failure()
                 logger.error(f"❌ Erreur lors de la création du cycle: {str(e)}")
                 # Libérer les fonds réservés
                 self.pocket_checker.release_funds(trade_amount, temp_cycle_id, pocket_type)
                 return None
-        
+    
         except Exception as e:
             logger.error(f"❌ Erreur lors de la création du cycle de trading: {str(e)}")
             return None

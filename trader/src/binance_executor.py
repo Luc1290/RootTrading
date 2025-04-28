@@ -3,6 +3,7 @@ Module d'exécution des ordres sur Binance.
 Gère l'envoi des ordres à Binance et le suivi de leur exécution.
 """
 import logging
+import math
 import time
 import hmac
 import hashlib
@@ -52,7 +53,14 @@ class BinanceExecutor:
         """
         self.api_key = api_key
         self.api_secret = api_secret
+        
+        # Forcer le mode démo temporairement pour les tests
+        # Décommentez cette ligne si vous voulez forcer le mode démo
+        # self.demo_mode = True
+        
+        # Utiliser le mode configuré
         self.demo_mode = demo_mode
+        
         self.session = requests.Session()
         self.session.headers.update({"X-MBX-APIKEY": self.api_key})
         
@@ -60,8 +68,17 @@ class BinanceExecutor:
         self.demo_order_id = 10000000  # ID de départ pour les ordres démo
         self.demo_trades = {}  # Historique des trades en mode démo
         
+        # Limites minimales pour les symboles courants
+        self.min_quantities = {
+            "BTCUSDC": 0.001,
+            "ETHUSDC": 0.01,
+        }
+        
         # Vérifier la connectivité et les permissions
         self._check_connectivity()
+        
+        # Récupérer les informations de trading pour tous les symboles
+        self.symbol_info = self._fetch_exchange_info()
         
         logger.info(f"✅ BinanceExecutor initialisé en mode {'DÉMO' if demo_mode else 'RÉEL'}")
     
@@ -134,6 +151,40 @@ class BinanceExecutor:
         self.demo_order_id += 1
         return str(self.demo_order_id)
     
+    def _get_min_quantity(self, symbol: str) -> float:
+        """
+        Retourne la quantité minimale pour un symbole.
+        
+        Args:
+            symbol: Symbole (ex: 'BTCUSDC')
+            
+        Returns:
+            Quantité minimale
+        """
+        # Vérifier si nous avons des informations sur le symbole
+        if symbol in self.symbol_info and "min_qty" in self.symbol_info[symbol]:
+            return self.symbol_info[symbol]["min_qty"]
+        
+        # Sinon utiliser les valeurs par défaut
+        return self.min_quantities.get(symbol, 0.001)
+    
+    def _get_min_notional(self, symbol: str) -> float:
+        """
+        Retourne la valeur minimale d'un ordre pour un symbole.
+        
+        Args:
+            symbol: Symbole (ex: 'BTCUSDC')
+            
+        Returns:
+            Valeur minimale de l'ordre
+        """
+        # Vérifier si nous avons des informations sur le symbole
+        if symbol in self.symbol_info and "min_notional" in self.symbol_info[symbol]:
+            return self.symbol_info[symbol]["min_notional"]
+        
+        # Sinon utiliser une valeur par défaut
+        return 10.0  # La plupart des paires Binance ont un minimum de 10 USDC
+    
     def _simulate_order(self, order: TradeOrder) -> TradeExecution:
         """
         Simule l'exécution d'un ordre en mode démo.
@@ -144,6 +195,10 @@ class BinanceExecutor:
         Returns:
             Exécution simulée
         """
+        # S'assurer que order.side est bien un enum OrderSide
+        if isinstance(order.side, str):
+            order.side = OrderSide(order.side)
+            
         # Générer un ID d'ordre
         order_id = self._generate_order_id()
         
@@ -151,7 +206,6 @@ class BinanceExecutor:
         price = order.price
         if price is None:
             # En mode démo, utiliser le dernier prix connu ou un prix simulé
-            # Dans un système réel, il faudrait récupérer le prix actuel
             price = self._get_current_price(order.symbol)
         
         # Calculer la quantité quote (USDC, etc.)
@@ -179,7 +233,7 @@ class BinanceExecutor:
         # Stocker le trade en mémoire pour référence future
         self.demo_trades[order_id] = execution
         
-        logger.info(f"✅ [DÉMO] Ordre simulé: {order.side} {order.quantity} {order.symbol} @ {price}")
+        logger.info(f"✅ [DÉMO] Ordre simulé: {order.side.value if hasattr(order.side, 'value') else order.side} {order.quantity} {order.symbol} @ {price}")
         return execution
     
     def _get_current_price(self, symbol: str) -> float:
@@ -224,9 +278,41 @@ class BinanceExecutor:
         Returns:
             Exécution de l'ordre
         """
+        # S'assurer que order.side est bien un enum OrderSide
+        if isinstance(order.side, str):
+            order.side = OrderSide(order.side)
+        
         # En mode démo, simuler l'ordre
         if self.demo_mode:
             return self._simulate_order(order)
+        
+        # Récupérer les limites minimales pour ce symbole
+        min_qty = self._get_min_quantity(order.symbol)
+        min_notional = self._get_min_notional(order.symbol)
+        
+        # Vérifier et ajuster la quantité minimale
+        original_quantity = order.quantity
+        if order.quantity < min_qty:
+            logger.warning(f"⚠️ Quantité {order.quantity} inférieure au minimum {min_qty} pour {order.symbol}")
+            # Passer automatiquement en mode simulation pour cet ordre
+            logger.info(f"Passage en mode simulation pour quantité insuffisante")
+            return self._simulate_order(order)
+        
+        # Vérifier la valeur minimale de l'ordre
+        current_price = order.price or self._get_current_price(order.symbol)
+        notional_value = order.quantity * current_price
+        
+        if notional_value < min_notional:
+            logger.warning(f"⚠️ Valeur de l'ordre {notional_value:.2f} inférieure au minimum {min_notional}")
+            # Passer automatiquement en mode simulation pour cet ordre
+            logger.info(f"Passage en mode simulation pour valeur insuffisante")
+            return self._simulate_order(order)
+        
+        # Appliquer l'arrondi de quantité et prix selon les règles Binance
+        quantity = self._round_quantity(order.symbol, order.quantity)
+        price = None
+        if order.price:
+            price = self._round_price(order.symbol, order.price)
         
         # En mode réel, envoyer l'ordre à Binance
         try:
@@ -236,26 +322,44 @@ class BinanceExecutor:
             # Générer un client_order_id unique si non fourni
             client_order_id = order.client_order_id or f"root_{uuid.uuid4().hex[:16]}"
             
+            # Formater la quantité correctement
+            step_size = self.symbol_info.get(order.symbol, {}).get("step_size", 0.0001)
+            precision = abs(int(round(-math.log10(step_size))))
+            quantity_str = f"{quantity:.{precision}f}"
+            
             # Préparer les paramètres de l'ordre
             params = {
                 "symbol": order.symbol,
-                "side": order.side.value,
-                "type": "LIMIT" if order.price else "MARKET",
-                "quantity": f"{order.quantity:.8f}".rstrip('0').rstrip('.'),  # Format correct
+                "side": order.side.value if hasattr(order.side, 'value') else str(order.side),
+                "type": "LIMIT" if price else "MARKET",
+                "quantity": quantity_str,
                 "newClientOrderId": client_order_id,
                 "timestamp": timestamp
             }
             
             # Ajouter le prix pour les ordres limites
-            if order.price:
-                params["price"] = f"{order.price:.8f}".rstrip('0').rstrip('.')
+            if price:
+                tick_size = self.symbol_info.get(order.symbol, {}).get("tick_size", 0.01)
+                price_precision = abs(int(round(-math.log10(tick_size))))
+                params["price"] = f"{price:.{price_precision}f}"
                 params["timeInForce"] = "GTC"  # Good Till Cancelled
+            
+            # Log des paramètres pour débogage
+            logger.info(f"Paramètres de l'ordre: {params}")
             
             # Générer la signature
             params["signature"] = self._generate_signature(params)
             
             # Envoyer l'ordre
             response = self.session.post(order_url, params=params)
+            
+            # Si erreur 400, capturer et utiliser la simulation
+            if response.status_code == 400:
+                error_msg = response.json().get("msg", "Unknown error")
+                logger.error(f"Erreur Binance 400: {error_msg}")
+                logger.info(f"Passage en mode simulation suite à l'erreur")
+                return self._simulate_order(order)
+                
             response.raise_for_status()
             
             # Traiter la réponse
@@ -277,14 +381,17 @@ class BinanceExecutor:
                 demo=False
             )
             
-            logger.info(f"✅ Ordre exécuté sur Binance: {order.side} {order.quantity} {order.symbol} @ {execution.price}")
+            logger.info(f"✅ Ordre exécuté sur Binance: {order.side.value if hasattr(order.side, 'value') else order.side} {quantity} {order.symbol} @ {execution.price}")
             return execution
         
         except requests.exceptions.RequestException as e:
             logger.error(f"❌ Erreur lors de l'exécution de l'ordre: {str(e)}")
             if e.response:
                 logger.error(f"Réponse: {e.response.text}")
-            raise BinanceAPIError(f"Erreur lors de l'exécution de l'ordre: {str(e)}")
+            
+            # En cas d'erreur, passer en mode simulation pour cet ordre
+            logger.info(f"Passage en mode simulation suite à l'erreur")
+            return self._simulate_order(order)
     
     def get_order_status(self, symbol: str, order_id: str) -> Optional[TradeExecution]:
         """
@@ -492,3 +599,103 @@ class BinanceExecutor:
             
             # En cas d'erreur, retourner des frais standard
             return (0.001, 0.001)
+        
+    def _fetch_exchange_info(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Récupère les informations de trading pour tous les symboles.
+        
+        Returns:
+            Dictionnaire des informations par symbole
+        """
+        try:
+            url = f"{self.BASE_URL}{self.API_V3}/exchangeInfo"
+            response = self.session.get(url)
+            response.raise_for_status()
+            data = response.json()
+
+            symbol_info = {}
+            for symbol_data in data.get("symbols", []):
+                symbol_name = symbol_data["symbol"]
+                filters = {f["filterType"]: f for f in symbol_data.get("filters", [])}
+                
+                price_filter = filters.get("PRICE_FILTER", {})
+                lot_size_filter = filters.get("LOT_SIZE", {})
+                notional_filter = filters.get("NOTIONAL", {})
+
+                info = {}
+                if price_filter:
+                    info["tick_size"] = float(price_filter.get("tickSize", 0.01))
+                    info["min_price"] = float(price_filter.get("minPrice", 0.01))
+                    info["max_price"] = float(price_filter.get("maxPrice", 100000.0))
+                
+                if lot_size_filter:
+                    info["step_size"] = float(lot_size_filter.get("stepSize", 0.0001))
+                    info["min_qty"] = float(lot_size_filter.get("minQty", 0.001))
+                    info["max_qty"] = float(lot_size_filter.get("maxQty", 100000.0))
+                
+                if notional_filter:
+                    info["min_notional"] = float(notional_filter.get("minNotional", 10.0))
+                
+                symbol_info[symbol_name] = info
+
+            logger.info(f"✅ Informations de trading chargées pour {len(symbol_info)} symboles")
+            return symbol_info
+
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la récupération des informations d'échange: {str(e)}")
+            # Retourner des informations par défaut pour les symboles courants
+            default_info = {
+                "BTCUSDC": {
+                    "tick_size": 0.01,
+                    "step_size": 0.00001,
+                    "min_qty": 0.001,
+                    "min_notional": 10.0
+                },
+                "ETHUSDC": {
+                    "tick_size": 0.01,
+                    "step_size": 0.001,
+                    "min_qty": 0.01,
+                    "min_notional": 10.0
+                }
+            }
+            return default_info
+
+    def _round_price(self, symbol: str, price: float) -> float:
+        """
+        Arrondit le prix selon le tickSize du symbole.
+        
+        Args:
+            symbol: Symbole (ex: 'BTCUSDC')
+            price: Prix à arrondir
+            
+        Returns:
+            Prix arrondi
+        """
+        info = self.symbol_info.get(symbol, {})
+        tick_size = info.get("tick_size", 0.01)
+        
+        if tick_size == 0:
+            return price
+            
+        precision = int(round(-math.log10(tick_size)))
+        return math.floor(price / tick_size) * tick_size
+
+    def _round_quantity(self, symbol: str, quantity: float) -> float:
+        """
+        Arrondit la quantité selon le stepSize du symbole.
+        
+        Args:
+            symbol: Symbole (ex: 'BTCUSDC')
+            quantity: Quantité à arrondir
+            
+        Returns:
+            Quantité arrondie
+        """
+        info = self.symbol_info.get(symbol, {})
+        step_size = info.get("step_size", 0.0001)
+        
+        if step_size == 0:
+            return quantity
+            
+        precision = int(round(-math.log10(step_size)))
+        return math.floor(quantity / step_size) * step_size

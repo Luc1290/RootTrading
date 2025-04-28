@@ -311,7 +311,7 @@ class CycleManager:
                 trailing_delta: Optional[float] = None) -> Optional[TradeCycle]:
         """
         Crée un nouveau cycle de trading et exécute l'ordre d'entrée.
-        
+    
         Args:
             symbol: Symbole (ex: 'BTCUSDC')
             strategy: Nom de la stratégie
@@ -322,19 +322,19 @@ class CycleManager:
             target_price: Prix cible pour la sortie
             stop_price: Prix de stop-loss
             trailing_delta: Delta pour le trailing stop
-            
+        
         Returns:
             Cycle créé ou None en cas d'erreur
         """
         try:
-
+            # Convertir side en OrderSide s'il s'agit d'une chaîne
             if isinstance(side, str):
                 side = OrderSide(side)
 
             # Générer un ID unique pour le cycle
             cycle_id = f"cycle_{uuid.uuid4().hex[:16]}"
             now = datetime.now()
-            
+        
             # Créer l'objet cycle
             cycle = TradeCycle(
                 id=cycle_id,
@@ -351,10 +351,10 @@ class CycleManager:
                 pocket=pocket,
                 demo=self.demo_mode
             )
-            
+        
             # Enregistrer le cycle en base de données
             self._save_cycle_to_db(cycle)
-            
+        
             # Créer l'ordre d'entrée
             entry_order = TradeOrder(
                 symbol=symbol,
@@ -365,28 +365,28 @@ class CycleManager:
                 strategy=strategy,
                 demo=self.demo_mode
             )
-            
+        
             # Exécuter l'ordre d'entrée
             logger.info(f"🔄 Exécution de l'ordre d'entrée pour le cycle {cycle_id}")
             execution = self.binance_executor.execute_order(entry_order)
-            
+        
             # Mettre à jour le cycle avec les informations de l'ordre
             with self.cycles_lock:
                 cycle.entry_order_id = execution.order_id
                 cycle.entry_price = execution.price
                 cycle.status = CycleStatus.ACTIVE_BUY if side == OrderSide.BUY else CycleStatus.ACTIVE_SELL
                 cycle.updated_at = datetime.now()
-                
+            
                 # Stocker le cycle dans la mémoire
                 self.active_cycles[cycle_id] = cycle
-            
+        
             # Enregistrer l'exécution et le cycle mis à jour en base de données
             self._save_execution_to_db(execution, cycle_id)
             self._save_cycle_to_db(cycle)
-            
+        
             logger.info(f"✅ Cycle {cycle_id} créé avec succès: {side.value if hasattr(side, 'value') else side} {quantity} {symbol} @ {execution.price}")
             return cycle
-        
+    
         except Exception as e:
             logger.error(f"❌ Erreur lors de la création du cycle: {str(e)}")
             return None

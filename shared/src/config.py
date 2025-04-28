@@ -39,7 +39,13 @@ DEFAULT_SYMBOL = os.getenv("SYMBOL", "BTCUSDC")
 SYMBOLS = os.getenv("SYMBOLS", "BTCUSDC,ETHUSDC").split(",")
 INTERVAL = os.getenv("INTERVAL", "1m")
 TRADING_MODE = os.getenv("TRADING_MODE", "demo")  # 'demo' ou 'live'
-TRADE_QUANTITY = float(os.getenv("TRADE_QUANTITY", 0.00017))
+TRADE_QUANTITY_BTC = float(os.getenv("TRADE_QUANTITY_BTC", 0.001))
+TRADE_QUANTITY_ETH = float(os.getenv("TRADE_QUANTITY_ETH", 0.03))
+TRADE_QUANTITIES = {
+    "BTCUSDC": TRADE_QUANTITY_BTC,
+    "ETHUSDC": TRADE_QUANTITY_ETH
+}
+TRADE_QUANTITY = TRADE_QUANTITY_BTC  # pour compatibilité avec le code existant
 
 # Paramètres des stratégies
 STRATEGY_PARAMS = {
