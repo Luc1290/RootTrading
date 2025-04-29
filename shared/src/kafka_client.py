@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class KafkaClient:
     """Client Kafka avec des fonctionnalités pour produire et consommer des messages."""
     
-    def __init__(self, broker: str = KAFKA_BROKER, group_id: str = KAFKA_GROUP_ID):
+    def __init__(self, broker: str: Any = KAFKA_BROKER, group_id: str: Any = KAFKA_GROUP_ID) -> None:
         """
         Initialise le client Kafka avec les paramètres de connexion.
         
@@ -56,6 +56,9 @@ class KafkaClient:
             raise
     
     def _create_consumer(self, topics: List[str]) -> Consumer:
+        # Validation des paramètres
+        if topics is not None and not isinstance(topics, str):
+            raise TypeError(f"topics doit être une chaîne, pas {type(topics).__name__}")
         """
         Crée et retourne un consommateur Kafka.
         
@@ -81,6 +84,9 @@ class KafkaClient:
             raise
 
     def _resolve_wildcard_topics(self, topics: List[str]) -> List[str]:
+        # Validation des paramètres
+        if topics is not None and not isinstance(topics, str):
+            raise TypeError(f"topics doit être une chaîne, pas {type(topics).__name__}")
         """
         Résout les topics contenant des caractères joker (*) en les correspondant aux topics existants.
     
@@ -98,8 +104,15 @@ class KafkaClient:
     
         try:
             existing_topics = list(self.admin_client.list_topics(timeout=10).topics.keys())
-        except Exception as e:
-            logger.error(f"Impossible de lister les topics existants: {str(e)}")
+        except BufferError as e:
+            logger.error(f"Impossible de lister les topics existants: {str(e)
+        self.producer.flush()
+        # Réessayer après flush
+    except KafkaException as e:
+            logger.error(f"Impossible de lister les topics existants: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+        self.reconnect()}")
             # En cas d'erreur, retourner les topics tels quels (sauf ceux avec *)
             return [t for t in topics if '*' not in t]
     
@@ -109,6 +122,8 @@ class KafkaClient:
                 # C'est un pattern, convertir en expression régulière
                 pattern = topic.replace('.', '\.').replace('*', '.*')
                 import re
+
+from confluent_kafka import KafkaException
                 regex = re.compile(f"^{pattern}$")
             
                 # Trouver tous les topics correspondants
@@ -121,7 +136,7 @@ class KafkaClient:
                     # Créer des topics par défaut pour le pattern
                     base_topic = topic.split('*')[0]
                     default_topics = [f"{base_topic}info", f"{base_topic}error", f"{base_topic}debug"]
-                    logger.info(f"Aucun topic correspondant à {topic}, création des topics par défaut: {default_topics}")
+f"Aucun topic correspondant à {topic}, création des topics par défaut: {default_topics}"
                     self._ensure_topics_exist(default_topics)
                     resolved_topics.extend(default_topics)
             else:
@@ -130,6 +145,9 @@ class KafkaClient:
         return resolved_topics
     
     def _ensure_topics_exist(self, topics: List[str]) -> None:
+        # Validation des paramètres
+        if topics is not None and not isinstance(topics, str):
+            raise TypeError(f"topics doit être une chaîne, pas {type(topics).__name__}")
         """
         S'assure que les topics existent, les crée si nécessaire.
         
@@ -180,6 +198,13 @@ class KafkaClient:
             logger.info(f"✅ Message livré au topic {topic} [{partition}] @ offset {offset}")
     
     def produce(self, topic: str, message: Union[Dict[str, Any], str], key: Optional[str] = None) -> None:
+        # Validation des paramètres
+        if topic is not None and not isinstance(topic, str):
+            raise TypeError(f"topic doit être une chaîne, pas {type(topic).__name__}")
+        if message is not None and not isinstance(message, str):
+            raise TypeError(f"message doit être une chaîne, pas {type(message).__name__}")
+        if key is not None and not isinstance(key, str):
+            raise TypeError(f"key doit être une chaîne, pas {type(key).__name__}")
         """
         Produit un message sur un topic Kafka.
         
@@ -233,8 +258,15 @@ class KafkaClient:
                 value=message.encode('utf-8') if isinstance(message, str) else message,
                 callback=self._delivery_report
             )
-        except Exception as e:
-            logger.error(f"Erreur lors de la production du message Kafka: {str(e)}")
+        except BufferError as e:
+            logger.error(f"Erreur lors de la production du message Kafka: {str(e)
+        self.producer.flush()
+        # Réessayer après flush
+    except KafkaException as e:
+            logger.error(f"Erreur lors de la production du message Kafka: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+        self.reconnect()}")
             raise
     
     def flush(self) -> None:
@@ -245,6 +277,13 @@ class KafkaClient:
     
     def consume(self, topics: List[str], callback: Callable[[str, Dict[str, Any]], None], 
                batch_size: int = 100, poll_timeout: float = 1.0) -> None:
+        # Validation des paramètres
+        if topics is not None and not isinstance(topics, str):
+            raise TypeError(f"topics doit être une chaîne, pas {type(topics).__name__}")
+        if callback is not None and not isinstance(callback, str):
+            raise TypeError(f"callback doit être une chaîne, pas {type(callback).__name__}")
+        if batch_size is not None and not isinstance(batch_size, int):
+            raise TypeError(f"batch_size doit être un entier, pas {type(batch_size).__name__}")
         # Réinitialiser le drapeau d'arrêt
         self.stop_flag.clear()
     
@@ -252,7 +291,7 @@ class KafkaClient:
         try:
             resolved_topics = self._resolve_wildcard_topics(topics)
             self._ensure_topics_exist(resolved_topics)
-        except Exception as e:
+        except BufferError as e:
             logger.warning(f"⚠️ Impossible de vérifier/créer les topics: {str(e)}")
             resolved_topics = [t for t in topics if '*' not in t]  # Utiliser seulement les topics sans wildcard
     
@@ -271,6 +310,13 @@ class KafkaClient:
     
     def _consume_loop(self, callback: Callable[[str, Dict[str, Any]], None], 
                      batch_size: int, poll_timeout: float) -> None:
+        # Validation des paramètres
+        if callback is not None and not isinstance(callback, str):
+            raise TypeError(f"callback doit être une chaîne, pas {type(callback).__name__}")
+        if batch_size is not None and not isinstance(batch_size, int):
+            raise TypeError(f"batch_size doit être un entier, pas {type(batch_size).__name__}")
+        if poll_timeout is not None and not isinstance(poll_timeout, (int, float)):
+            raise TypeError(f"poll_timeout doit être un nombre, pas {type(poll_timeout).__name__}")
         """
         Boucle principale de consommation de messages.
         Cette méthode s'exécute dans un thread séparé.
@@ -295,7 +341,63 @@ class KafkaClient:
                             # Fin de partition, rien à faire
                             continue
                         else:
-                            logger.error(f"❌ Erreur de consommation Kafka: {msg.error()}")
+                            logger.error(f"❌ Erreur de consommation Kafka: {msg.error()
+        self.producer.flush()
+        # Réessayer après flush
+    except KafkaException as e:
+            logger.warning(f"⚠️ Impossible de vérifier/créer les topics: {str(e)}")
+            resolved_topics = [t for t in topics if '*' not in t]  # Utiliser seulement les topics sans wildcard
+    
+        # Créer le consommateur
+        self.consumer = self._create_consumer(resolved_topics)
+    
+        # Lancer la consommation dans un thread séparé
+        self.consumer_thread = threading.Thread(
+            target=self._consume_loop,
+            args=(callback, batch_size, poll_timeout),
+            daemon=True
+        )
+        self.consumer_thread.start()
+    
+        logger.info(f"✅ Démarrage de la consommation depuis les topics: {', '.join(topics)}")
+    
+    def _consume_loop(self, callback: Callable[[str, Dict[str, Any]], None], 
+                     batch_size: int, poll_timeout: float) -> None:
+        # Validation des paramètres
+        if callback is not None and not isinstance(callback, str):
+            raise TypeError(f"callback doit être une chaîne, pas {type(callback).__name__}")
+        if batch_size is not None and not isinstance(batch_size, int):
+            raise TypeError(f"batch_size doit être un entier, pas {type(batch_size).__name__}")
+        if poll_timeout is not None and not isinstance(poll_timeout, (int, float)):
+            raise TypeError(f"poll_timeout doit être un nombre, pas {type(poll_timeout).__name__}")
+        """
+        Boucle principale de consommation de messages.
+        Cette méthode s'exécute dans un thread séparé.
+        
+        Args:
+            callback: Fonction appelée pour chaque message
+            batch_size: Nombre maximum de messages à traiter par lot
+            poll_timeout: Timeout en secondes pour le poll Kafka
+        """
+        try:
+            while not self.stop_flag.is_set():
+                # Récupérer un lot de messages
+                messages = self.consumer.consume(num_messages=batch_size, timeout=poll_timeout)
+                
+                if not messages:
+                    continue
+                
+                for msg in messages:
+                    # Vérifier les erreurs
+                    if msg.error():
+                        if msg.error().code() == KafkaError._PARTITION_EOF:
+                            # Fin de partition, rien à faire
+                            continue
+                        else:
+                            logger.error(f"❌ Erreur de consommation Kafka: {msg.error()
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+        self.reconnect()}")
                             continue
                     
                     # Traiter le message
@@ -317,8 +419,15 @@ class KafkaClient:
                         logger.warning(f"Message non-JSON reçu sur {topic}: {value[:100]}...")
                         # Appeler le callback avec la valeur brute
                         callback(topic, value)
-                    except Exception as e:
-                        logger.error(f"Erreur lors du traitement du message Kafka: {str(e)}")
+                    except BufferError as e:
+                        logger.error(f"Erreur lors du traitement du message Kafka: {str(e)
+        self.producer.flush()
+        # Réessayer après flush
+    except KafkaException as e:
+                        logger.error(f"Erreur lors du traitement du message Kafka: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+        self.reconnect()}")
         
         except KafkaException as e:
             logger.error(f"Erreur Kafka durant la consommation: {str(e)}")

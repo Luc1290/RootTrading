@@ -14,14 +14,21 @@ from redis.exceptions import ConnectionError, TimeoutError
 
 from .config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB
 
+from redis.exceptions import RedisError
+
 # Configuration du logging
 logger = logging.getLogger(__name__)
 
 class RedisClient:
     """Client Redis avec des fonctionnalités pour publier et s'abonner aux messages."""
     
-    def __init__(self, host: str = REDIS_HOST, port: int = REDIS_PORT, 
-                 password: str = REDIS_PASSWORD, db: int = REDIS_DB):
+    def __init__(
+        self,
+        host: str: Any = REDIS_HOST,
+        port: int: Any = REDIS_PORT,
+        password: str: Any = REDIS_PASSWORD,
+        db: int: Any = REDIS_DB
+    ) -> None:
         """Initialise le client Redis avec les paramètres de connexion."""
         self.host = host
         self.port = port
@@ -88,6 +95,9 @@ class RedisClient:
                 retry_delay *= 2  # Backoff exponentiel
     
     def publish(self, channel: str, message: Any) -> int:
+        # Validation des paramètres
+        if channel is not None and not isinstance(channel, str):
+            raise TypeError(f"channel doit être une chaîne, pas {type(channel).__name__}")
         """
         Publie un message sur un canal Redis.
         
@@ -114,11 +124,19 @@ class RedisClient:
             self.reconnect()
             # Réessayer après reconnexion
             return self.redis.publish(channel, message)
-        except Exception as e:
+        except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Perte de connexion Redis: {str(e)}")
+        self.reconnect()
+    except RedisError as e:
             logger.error(f"Erreur lors de la publication du message: {str(e)}")
             return 0
     
     def subscribe(self, channels: Union[str, List[str]], callback: Callable[[str, Any], None]) -> None:
+        # Validation des paramètres
+        if channels is not None and not isinstance(channels, str):
+            raise TypeError(f"channels doit être une chaîne, pas {type(channels).__name__}")
+        if callback is not None and not isinstance(callback, str):
+            raise TypeError(f"callback doit être une chaîne, pas {type(callback).__name__}")
         """
         S'abonne à un ou plusieurs canaux Redis et traite les messages via un callback.
         
@@ -153,6 +171,9 @@ class RedisClient:
         logger.info(f"✅ Abonné aux canaux Redis: {', '.join(channels)}")
     
     def _listen_for_messages(self, callback: Callable[[str, Any], None]) -> None:
+        # Validation des paramètres
+        if callback is not None and not isinstance(callback, str):
+            raise TypeError(f"callback doit être une chaîne, pas {type(callback).__name__}")
         """
         Écoute les messages sur les canaux souscrits et appelle le callback.
         Cette méthode s'exécute dans un thread séparé.
@@ -181,7 +202,10 @@ class RedisClient:
                     # Appeler le callback avec le canal et les données
                     try:
                         callback(channel, data)
-                    except Exception as e:
+                    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Perte de connexion Redis: {str(e)}")
+        self.reconnect()
+    except RedisError as e:
                         logger.error(f"Erreur dans le callback pour le canal {channel}: {str(e)}")
                 
                 # Réinitialiser le compteur de tentatives après un message réussi
@@ -209,7 +233,10 @@ class RedisClient:
                         self.pubsub = self.redis.pubsub(ignore_subscribe_messages=True)
                         self.pubsub.subscribe(*self._original_channels)
                         logger.info(f"Réabonnement aux canaux: {', '.join(self._original_channels)}")
-                except Exception as e:
+                except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Perte de connexion Redis: {str(e)}")
+        self.reconnect()
+    except RedisError as e:
                     logger.error(f"Échec de reconnexion lors de l'écoute: {str(e)}")
             
             except Exception as e:
@@ -217,6 +244,11 @@ class RedisClient:
                 time.sleep(1)  # Pause pour éviter de consommer trop de CPU
     
     def hset(self, name: str, key: str, value: Any) -> int:
+        # Validation des paramètres
+        if name is not None and not isinstance(name, str):
+            raise TypeError(f"name doit être une chaîne, pas {type(name).__name__}")
+        if key is not None and not isinstance(key, str):
+            raise TypeError(f"key doit être une chaîne, pas {type(key).__name__}")
         """
         Stocke une valeur dans un champ d'une table de hachage Redis.
     
@@ -242,11 +274,19 @@ class RedisClient:
             self.reconnect()
             # Réessayer après reconnexion
             return self.redis.hset(name, key, value)
-        except Exception as e:
+        except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Perte de connexion Redis: {str(e)}")
+        self.reconnect()
+    except RedisError as e:
             logger.error(f"Erreur lors du stockage dans la table de hachage {name}: {str(e)}")
             return 0
     
     def hmset(self, key: str, mapping: Dict[str, Any]) -> bool:
+        # Validation des paramètres
+        if key is not None and not isinstance(key, str):
+            raise TypeError(f"key doit être une chaîne, pas {type(key).__name__}")
+        if mapping is not None and not isinstance(mapping, str):
+            raise TypeError(f"mapping doit être une chaîne, pas {type(mapping).__name__}")
         """
         Stocke plusieurs champs dans une table de hachage Redis.
     
@@ -274,7 +314,10 @@ class RedisClient:
             self.reconnect()
             # Réessayer après reconnexion
             return self.redis.hset(key, mapping=formatted_mapping)
-        except Exception as e:
+        except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Perte de connexion Redis: {str(e)}")
+        self.reconnect()
+    except RedisError as e:
             logger.error(f"Erreur lors du stockage dans la table de hachage {key}: {str(e)}")
             return False
 
@@ -288,7 +331,10 @@ class RedisClient:
                 # Désabonner de tous les canaux
                 self.pubsub.unsubscribe()
                 self.pubsub.close()
-            except Exception as e:
+            except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Perte de connexion Redis: {str(e)}")
+        self.reconnect()
+    except RedisError as e:
                 logger.warning(f"Erreur lors du désabonnement: {str(e)}")
             
             # Attendre que le thread se termine proprement
@@ -298,6 +344,9 @@ class RedisClient:
             logger.info("Désabonnement de tous les canaux Redis")
     
     def get(self, key: str) -> Any:
+        # Validation des paramètres
+        if key is not None and not isinstance(key, str):
+            raise TypeError(f"key doit être une chaîne, pas {type(key).__name__}")
         """Récupère une valeur depuis Redis."""
         try:
             value = self.redis.get(key)
@@ -316,6 +365,11 @@ class RedisClient:
             return None
     
     def set(self, key: str, value: Any, expiration: Optional[int] = None) -> bool:
+        # Validation des paramètres
+        if key is not None and not isinstance(key, str):
+            raise TypeError(f"key doit être une chaîne, pas {type(key).__name__}")
+        if expiration is not None and not isinstance(expiration, int):
+            raise TypeError(f"expiration doit être un entier, pas {type(expiration).__name__}")
         """
         Stocke une valeur dans Redis.
         
@@ -347,11 +401,17 @@ class RedisClient:
                 return self.redis.setex(key, expiration, value)
             else:
                 return self.redis.set(key, value)
-        except Exception as e:
+        except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Perte de connexion Redis: {str(e)}")
+        self.reconnect()
+    except RedisError as e:
             logger.error(f"Erreur lors de la définition de la clé {key}: {str(e)}")
             return False
     
     def delete(self, key: str) -> int:
+        # Validation des paramètres
+        if key is not None and not isinstance(key, str):
+            raise TypeError(f"key doit être une chaîne, pas {type(key).__name__}")
         """Supprime une clé de Redis."""
         try:
             return self.redis.delete(key)
@@ -359,11 +419,19 @@ class RedisClient:
             logger.warning("Perte de connexion Redis pendant delete(), tentative de reconnexion...")
             self.reconnect()
             return self.redis.delete(key)
-        except Exception as e:
+        except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Perte de connexion Redis: {str(e)}")
+        self.reconnect()
+    except RedisError as e:
             logger.error(f"Erreur lors de la suppression de la clé {key}: {str(e)}")
             return 0
     
     def hget(self, name: str, key: str) -> Any:
+        # Validation des paramètres
+        if name is not None and not isinstance(name, str):
+            raise TypeError(f"name doit être une chaîne, pas {type(name).__name__}")
+        if key is not None and not isinstance(key, str):
+            raise TypeError(f"key doit être une chaîne, pas {type(key).__name__}")
         """
         Récupère un champ d'une table de hachage Redis.
         
@@ -388,11 +456,17 @@ class RedisClient:
             logger.warning("Perte de connexion Redis pendant hget(), tentative de reconnexion...")
             self.reconnect()
             return self.redis.hget(name, key)
-        except Exception as e:
+        except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Perte de connexion Redis: {str(e)}")
+        self.reconnect()
+    except RedisError as e:
             logger.error(f"Erreur lors de la récupération du champ {key} de {name}: {str(e)}")
             return None
     
     def hgetall(self, name: str) -> Dict[str, Any]:
+        # Validation des paramètres
+        if name is not None and not isinstance(name, str):
+            raise TypeError(f"name doit être une chaîne, pas {type(name).__name__}")
         """
         Récupère tous les champs d'une table de hachage Redis.
         
@@ -421,7 +495,10 @@ class RedisClient:
             logger.warning("Perte de connexion Redis pendant hgetall(), tentative de reconnexion...")
             self.reconnect()
             return self.redis.hgetall(name)
-        except Exception as e:
+        except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Perte de connexion Redis: {str(e)}")
+        self.reconnect()
+    except RedisError as e:
             logger.error(f"Erreur lors de la récupération de la table {name}: {str(e)}")
             return {}
     
@@ -432,5 +509,8 @@ class RedisClient:
             if self.redis:
                 self.redis.close()
                 logger.info("Connexion Redis fermée")
-        except Exception as e:
+        except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Perte de connexion Redis: {str(e)}")
+        self.reconnect()
+    except RedisError as e:
             logger.error(f"Erreur lors de la fermeture de la connexion Redis: {str(e)}")

@@ -99,17 +99,34 @@ def get_db_url() -> str:
     return f"postgresql://{PGUSER}:{PGPASSWORD}@{PGHOST}:{PGPORT}/{PGDATABASE}"
 
 def get_strategy_param(strategy_name: str, param_name: str, default: Any = None) -> Any:
-    """Obtient un paramètre de stratégie spécifique."""
-    strategy_config = STRATEGY_PARAMS.get(strategy_name, {})
-    return strategy_config.get(param_name, default)
+        # Validation des paramètres
+        if strategy_name is not None and not isinstance(strategy_name, str):
+            raise TypeError(f"strategy_name doit être une chaîne, pas {type(strategy_name).__name__}")
+        if param_name is not None and not isinstance(param_name, str):
+            raise TypeError(f"param_name doit être une chaîne, pas {type(param_name).__name__}")
+        """Obtient un paramètre de stratégie spécifique."""
+        strategy_config = STRATEGY_PARAMS.get(strategy_name, {})
+        return strategy_config.get(param_name, default)
 
 def is_live_mode() -> bool:
     """Vérifie si le bot est en mode réel (live) ou démo."""
     return TRADING_MODE.lower() == 'live'
 
 def get_redis_channel(channel_type: str, symbol: Optional[str] = None) -> str:
-    """Génère un nom de canal Redis basé sur le type et le symbole."""
-    base_channel = f"{CHANNEL_PREFIX}:{channel_type}"
-    if symbol:
-        return f"{base_channel}:{symbol}"
-    return base_channel
+        # Validation des paramètres
+        if channel_type is not None and not isinstance(channel_type, str):
+            raise TypeError(f"channel_type doit être une chaîne, pas {type(channel_type).__name__}")
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        """Génère un nom de canal Redis basé sur le type et le symbole."""
+        base_channel = f"{CHANNEL_PREFIX}:{channel_type}"
+        if symbol:
+            return f"{base_channel}:{symbol}"
+        return base_channel
+
+# Vérifier et ajuster les allocations
+pocket_sum = sum(POCKET_CONFIG.values())
+if abs(pocket_sum - 1.0) > 0.0001:  # Tolérance pour les erreurs d'arrondi
+    print(f"Attention: La somme des allocations de poches est {pocket_sum*100}%, ajustement...")
+    # Ajuster la dernière poche pour obtenir exactement 100%
+    POCKET_CONFIG["safety"] = 1.0 - (POCKET_CONFIG["active"] + POCKET_CONFIG["buffer"])

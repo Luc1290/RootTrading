@@ -21,9 +21,24 @@ class MarketData(BaseModel):
     close: float
     volume: float
     timestamp: Optional[datetime] = None
+
+    @validator('open', 'high', 'low', 'close', 'volume')
+    def check_positive_values(cls: List[Any], v: Any) -> Any:
+        # Validation des paramètres
+        if cls is not None and not isinstance(cls, list):
+            raise TypeError(f"cls doit être une liste, pas {type(cls).__name__}")
+        """Vérifier que les valeurs sont positives."""
+        if v < 0:
+            raise ValueError("Les valeurs de prix et volume doivent être positives")
+        return v
     
     @validator('timestamp', pre=True, always=True)
-    def set_timestamp(cls, v, values):
+    def set_timestamp(cls: List[Any], v: Any, values: List[Any]) -> Any:
+        # Validation des paramètres
+        if cls is not None and not isinstance(cls, list):
+            raise TypeError(f"cls doit être une liste, pas {type(cls).__name__}")
+        if values is not None and not isinstance(values, list):
+            raise TypeError(f"values doit être une liste, pas {type(values).__name__}")
         """Si timestamp n'est pas fourni, le calculer à partir de start_time."""
         if v is None and 'start_time' in values:
             return datetime.fromtimestamp(values['start_time'] / 1000)

@@ -32,8 +32,12 @@ class OrderManager:
     Reçoit les signaux de trading, les valide, et crée des cycles de trading.
     """
     
-    def __init__(self, symbols: List[str] = None, redis_client: RedisClient = None, 
-                 cycle_manager: CycleManager = None):
+    def __init__(
+        self,
+        symbols: List[str]: Optional[Any] = None,
+        redis_client: RedisClient: Optional[Any] = None,
+        cycle_manager: CycleManager: Optional[Any] = None
+    ) -> None:
         """
         Initialise le gestionnaire d'ordres.
         
@@ -74,6 +78,31 @@ class OrderManager:
         logger.info(f"✅ OrderManager initialisé pour {len(self.symbols)} symboles: {', '.join(self.symbols)}")
 
     def is_trading_paused(self, symbol: str, strategy: str) -> bool:
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if strategy is not None and not isinstance(strategy, str):
+            raise TypeError(f"strategy doit être une chaîne, pas {type(strategy).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if strategy is not None and not isinstance(strategy, str):
+            raise TypeError(f"strategy doit être une chaîne, pas {type(strategy).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if strategy is not None and not isinstance(strategy, str):
+            raise TypeError(f"strategy doit être une chaîne, pas {type(strategy).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if strategy is not None and not isinstance(strategy, str):
+            raise TypeError(f"strategy doit être une chaîne, pas {type(strategy).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if strategy is not None and not isinstance(strategy, str):
+            raise TypeError(f"strategy doit être une chaîne, pas {type(strategy).__name__}")
         """
         Vérifie si le trading est en pause pour un symbole ou une stratégie donnée.
         
@@ -103,6 +132,31 @@ class OrderManager:
         return False
     
     def pause_symbol(self, symbol: str, duration: int = 0) -> None:
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if duration is not None and not isinstance(duration, int):
+            raise TypeError(f"duration doit être un entier, pas {type(duration).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if duration is not None and not isinstance(duration, int):
+            raise TypeError(f"duration doit être un entier, pas {type(duration).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if duration is not None and not isinstance(duration, int):
+            raise TypeError(f"duration doit être un entier, pas {type(duration).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if duration is not None and not isinstance(duration, int):
+            raise TypeError(f"duration doit être un entier, pas {type(duration).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if duration is not None and not isinstance(duration, int):
+            raise TypeError(f"duration doit être un entier, pas {type(duration).__name__}")
         """
         Met en pause le trading pour un symbole spécifique.
         
@@ -121,6 +175,31 @@ class OrderManager:
                    (f" pendant {duration}s" if duration > 0 else ""))
     
     def pause_strategy(self, strategy: str, duration: int = 0) -> None:
+        # Validation des paramètres
+        if strategy is not None and not isinstance(strategy, str):
+            raise TypeError(f"strategy doit être une chaîne, pas {type(strategy).__name__}")
+        if duration is not None and not isinstance(duration, int):
+            raise TypeError(f"duration doit être un entier, pas {type(duration).__name__}")
+        # Validation des paramètres
+        if strategy is not None and not isinstance(strategy, str):
+            raise TypeError(f"strategy doit être une chaîne, pas {type(strategy).__name__}")
+        if duration is not None and not isinstance(duration, int):
+            raise TypeError(f"duration doit être un entier, pas {type(duration).__name__}")
+        # Validation des paramètres
+        if strategy is not None and not isinstance(strategy, str):
+            raise TypeError(f"strategy doit être une chaîne, pas {type(strategy).__name__}")
+        if duration is not None and not isinstance(duration, int):
+            raise TypeError(f"duration doit être un entier, pas {type(duration).__name__}")
+        # Validation des paramètres
+        if strategy is not None and not isinstance(strategy, str):
+            raise TypeError(f"strategy doit être une chaîne, pas {type(strategy).__name__}")
+        if duration is not None and not isinstance(duration, int):
+            raise TypeError(f"duration doit être un entier, pas {type(duration).__name__}")
+        # Validation des paramètres
+        if strategy is not None and not isinstance(strategy, str):
+            raise TypeError(f"strategy doit être une chaîne, pas {type(strategy).__name__}")
+        if duration is not None and not isinstance(duration, int):
+            raise TypeError(f"duration doit être un entier, pas {type(duration).__name__}")
         """
         Met en pause le trading pour une stratégie spécifique.
         
@@ -138,6 +217,21 @@ class OrderManager:
                    (f" pendant {duration}s" if duration > 0 else ""))
     
     def pause_all(self, duration: int = 0) -> None:
+        # Validation des paramètres
+        if duration is not None and not isinstance(duration, int):
+            raise TypeError(f"duration doit être un entier, pas {type(duration).__name__}")
+        # Validation des paramètres
+        if duration is not None and not isinstance(duration, int):
+            raise TypeError(f"duration doit être un entier, pas {type(duration).__name__}")
+        # Validation des paramètres
+        if duration is not None and not isinstance(duration, int):
+            raise TypeError(f"duration doit être un entier, pas {type(duration).__name__}")
+        # Validation des paramètres
+        if duration is not None and not isinstance(duration, int):
+            raise TypeError(f"duration doit être un entier, pas {type(duration).__name__}")
+        # Validation des paramètres
+        if duration is not None and not isinstance(duration, int):
+            raise TypeError(f"duration doit être un entier, pas {type(duration).__name__}")
         """
         Met en pause le trading pour tous les symboles et stratégies.
         
@@ -155,6 +249,21 @@ class OrderManager:
                   (f" pendant {duration}s" if duration > 0 else ""))
     
     def resume_symbol(self, symbol: str) -> None:
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
         """
         Reprend le trading pour un symbole spécifique.
         
@@ -166,6 +275,21 @@ class OrderManager:
             logger.info(f"Trading repris pour le symbole {symbol}")
     
     def resume_strategy(self, strategy: str) -> None:
+        # Validation des paramètres
+        if strategy is not None and not isinstance(strategy, str):
+            raise TypeError(f"strategy doit être une chaîne, pas {type(strategy).__name__}")
+        # Validation des paramètres
+        if strategy is not None and not isinstance(strategy, str):
+            raise TypeError(f"strategy doit être une chaîne, pas {type(strategy).__name__}")
+        # Validation des paramètres
+        if strategy is not None and not isinstance(strategy, str):
+            raise TypeError(f"strategy doit être une chaîne, pas {type(strategy).__name__}")
+        # Validation des paramètres
+        if strategy is not None and not isinstance(strategy, str):
+            raise TypeError(f"strategy doit être une chaîne, pas {type(strategy).__name__}")
+        # Validation des paramètres
+        if strategy is not None and not isinstance(strategy, str):
+            raise TypeError(f"strategy doit être une chaîne, pas {type(strategy).__name__}")
         """
         Reprend le trading pour une stratégie spécifique.
         
@@ -206,15 +330,48 @@ class OrderManager:
         
             # Vérifier l'état des abonnements Redis
             if hasattr(self.redis_signal_client, 'pubsub') and self.redis_signal_client.pubsub:
-                channels = self.redis_signal_client.pubsub.channels.keys() if hasattr(self.redis_signal_client.pubsub, 'channels') else []
+                channels = self.redis_signal_client.pubsub.channels.keys(
+                    ) if hasattr(self.redis_signal_client.pubsub,
+                    'channels'
+                ) else []
                 logger.info(f"Abonnements Redis actifs: {len(channels)} canaux")
                 for channel in channels:
                     logger.debug(f"Abonné à: {channel}")
     
-        except Exception as e:
-            logger.error(f"Erreur lors de la journalisation de l'état du système: {str(e)}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"Erreur lors de la journalisation de l'état du système: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise}")
     
     def _process_signal(self, channel: str, data: Dict[str, Any]) -> None:
+        # Validation des paramètres
+        if channel is not None and not isinstance(channel, str):
+            raise TypeError(f"channel doit être une chaîne, pas {type(channel).__name__}")
+        if data is not None and not isinstance(data, str):
+            raise TypeError(f"data doit être une chaîne, pas {type(data).__name__}")
+        # Validation des paramètres
+        if channel is not None and not isinstance(channel, str):
+            raise TypeError(f"channel doit être une chaîne, pas {type(channel).__name__}")
+        if data is not None and not isinstance(data, str):
+            raise TypeError(f"data doit être une chaîne, pas {type(data).__name__}")
+        # Validation des paramètres
+        if channel is not None and not isinstance(channel, str):
+            raise TypeError(f"channel doit être une chaîne, pas {type(channel).__name__}")
+        if data is not None and not isinstance(data, str):
+            raise TypeError(f"data doit être une chaîne, pas {type(data).__name__}")
+        # Validation des paramètres
+        if channel is not None and not isinstance(channel, str):
+            raise TypeError(f"channel doit être une chaîne, pas {type(channel).__name__}")
+        if data is not None and not isinstance(data, str):
+            raise TypeError(f"data doit être une chaîne, pas {type(data).__name__}")
+        # Validation des paramètres
+        if channel is not None and not isinstance(channel, str):
+            raise TypeError(f"channel doit être une chaîne, pas {type(channel).__name__}")
+        if data is not None and not isinstance(data, str):
+            raise TypeError(f"data doit être une chaîne, pas {type(data).__name__}")
         """
         Callback pour traiter les signaux reçus de Redis.
         Valide et ajoute les signaux à la file d'attente pour traitement.
@@ -228,7 +385,10 @@ class OrderManager:
             logger.debug(f"Signal brut reçu: {json.dumps(data)}")
 
             # 🚨 Filtres de protection : ignorer les données de prix ou autres messages non pertinents
-            if not isinstance(data, dict) or "strategy" not in data or "side" not in data or "timestamp" not in data or "price" not in data:
+            if not isinstance(
+                data,
+                dict
+            ) or "strategy" not in data or "side" not in data or "timestamp" not in data or "price" not in data:
                 logger.debug(f"⏭️ Message ignoré: n'est pas un signal valide")
                 return
         
@@ -246,6 +406,11 @@ class OrderManager:
                     data["timestamp"] = datetime.fromisoformat(data["timestamp"])
                 except ValueError:
                     logger.error(f"❌ Format de timestamp invalide: {data['timestamp']}")
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
                     return
 
             # Valider le signal avec Pydantic
@@ -261,11 +426,56 @@ class OrderManager:
         
             logger.info(f"📨 Signal reçu: {signal.side} {signal.symbol} @ {signal.price} ({signal.strategy})")
     
-        except Exception as e:
-            logger.error(f"❌ Erreur lors du traitement du signal: {str(e)}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"❌ Erreur lors du traitement du signal: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise}")
             logger.error(f"Données reçues problématiques: {data}")
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except Exception as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except Exception as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
     
     def _process_price_update(self, channel: str, data: Dict[str, Any]) -> None:
+        # Validation des paramètres
+        if channel is not None and not isinstance(channel, str):
+            raise TypeError(f"channel doit être une chaîne, pas {type(channel).__name__}")
+        if data is not None and not isinstance(data, str):
+            raise TypeError(f"data doit être une chaîne, pas {type(data).__name__}")
+        # Validation des paramètres
+        if channel is not None and not isinstance(channel, str):
+            raise TypeError(f"channel doit être une chaîne, pas {type(channel).__name__}")
+        if data is not None and not isinstance(data, str):
+            raise TypeError(f"data doit être une chaîne, pas {type(data).__name__}")
+        # Validation des paramètres
+        if channel is not None and not isinstance(channel, str):
+            raise TypeError(f"channel doit être une chaîne, pas {type(channel).__name__}")
+        if data is not None and not isinstance(data, str):
+            raise TypeError(f"data doit être une chaîne, pas {type(data).__name__}")
+        # Validation des paramètres
+        if channel is not None and not isinstance(channel, str):
+            raise TypeError(f"channel doit être une chaîne, pas {type(channel).__name__}")
+        if data is not None and not isinstance(data, str):
+            raise TypeError(f"data doit être une chaîne, pas {type(data).__name__}")
+        # Validation des paramètres
+        if channel is not None and not isinstance(channel, str):
+            raise TypeError(f"channel doit être une chaîne, pas {type(channel).__name__}")
+        if data is not None and not isinstance(data, str):
+            raise TypeError(f"data doit être une chaîne, pas {type(data).__name__}")
         """
         Callback pour traiter les mises à jour de prix reçues de Redis.
         Met à jour les derniers prix et vérifie les stop-loss/take-profit.
@@ -294,8 +504,13 @@ class OrderManager:
             
             logger.debug(f"💰 Prix mis à jour: {symbol} @ {price}")
         
-        except Exception as e:
-            logger.error(f"❌ Erreur lors du traitement de la mise à jour de prix: {str(e)}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"❌ Erreur lors du traitement de la mise à jour de prix: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise}")
     
     def _signal_processing_loop(self) -> None:
         """
@@ -316,7 +531,7 @@ class OrderManager:
                 
                 # Vérifier à nouveau si le trading est en pause (pourrait avoir changé)
                 if self.is_trading_paused(signal.symbol, signal.strategy):
-                    logger.info(f"⏸️ Signal ignoré dans la boucle: trading en pause pour {signal.symbol}/{signal.strategy}")
+f"⏸️ Signal ignoré dans la boucle: trading en pause pour {signal.symbol}/{signal.strategy}"
                     self.signal_queue.task_done()
                     continue
                 
@@ -332,14 +547,39 @@ class OrderManager:
                     self.log_system_status()
                     self.last_status_log = current_time
                 
-            except Exception as e:
-                logger.error(f"❌ Erreur dans la boucle de traitement des signaux: {str(e)}")
+            except (ValueError, TypeError) as e:
+                logger.error(f"❌ Erreur dans la boucle de traitement des signaux: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise}")
                 time.sleep(1)  # Pause pour éviter une boucle d'erreur infinie
         
         logger.info("Boucle de traitement des signaux arrêtée")
 
     # Calculer le pourcentage minimal de changement de prix nécessaire pour être rentable
     def calculate_min_profitable_change(self, symbol: str) -> float:
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
         """
         Calcule le pourcentage minimal de changement de prix nécessaire pour être rentable,
         en tenant compte des frais d'achat et de vente.
@@ -425,7 +665,7 @@ class OrderManager:
             target_price_percent = abs((target_price - current_price) / current_price * 100)
     
             if target_price_percent < min_change:
-                logger.info(f"⚠️ Signal ignoré: gain potentiel {target_price_percent:.2f}% inférieur au seuil minimal {min_change:.2f}%")
+f"⚠️ Signal ignoré: gain potentiel {target_price_percent:.2f}% inférieur au seuil minimal {min_change:.2f}%"
                 return
         
             # Déterminer la poche à utiliser (par défaut: active)
@@ -448,11 +688,36 @@ class OrderManager:
                 logger.info(f"✅ Cycle créé pour le signal: {cycle.id}")
             else:
                 logger.error("❌ Échec de création du cycle pour le signal")
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except Exception as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
     
-        except Exception as e:
-            logger.error(f"❌ Erreur lors du traitement du signal: {str(e)}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"❌ Erreur lors du traitement du signal: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except Exception as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise}")
             import traceback
-            logger.error(traceback.format_exc())
+            logger.error(traceback.format_exc()
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except Exception as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise)
             
     def start(self) -> None:
         """
@@ -510,6 +775,41 @@ class OrderManager:
     
     def create_manual_order(self, symbol: str, side: OrderSide, quantity: float, 
                            price: Optional[float] = None) -> str:
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if quantity is not None and not isinstance(quantity, (int, float)):
+            raise TypeError(f"quantity doit être un nombre, pas {type(quantity).__name__}")
+        if price is not None and not isinstance(price, (int, float)):
+            raise TypeError(f"price doit être un nombre, pas {type(price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if quantity is not None and not isinstance(quantity, (int, float)):
+            raise TypeError(f"quantity doit être un nombre, pas {type(quantity).__name__}")
+        if price is not None and not isinstance(price, (int, float)):
+            raise TypeError(f"price doit être un nombre, pas {type(price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if quantity is not None and not isinstance(quantity, (int, float)):
+            raise TypeError(f"quantity doit être un nombre, pas {type(quantity).__name__}")
+        if price is not None and not isinstance(price, (int, float)):
+            raise TypeError(f"price doit être un nombre, pas {type(price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if quantity is not None and not isinstance(quantity, (int, float)):
+            raise TypeError(f"quantity doit être un nombre, pas {type(quantity).__name__}")
+        if price is not None and not isinstance(price, (int, float)):
+            raise TypeError(f"price doit être un nombre, pas {type(price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if quantity is not None and not isinstance(quantity, (int, float)):
+            raise TypeError(f"quantity doit être un nombre, pas {type(quantity).__name__}")
+        if price is not None and not isinstance(price, (int, float)):
+            raise TypeError(f"price doit être un nombre, pas {type(price).__name__}")
         """
         Crée un ordre manuel (hors signal).
         
@@ -548,8 +848,13 @@ class OrderManager:
             else:
                 return "Échec de création du cycle"
         
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la création de l'ordre manuel: {str(e)}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"❌ Erreur lors de la création de l'ordre manuel: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except Exception as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise}")
             return f"Erreur: {str(e)}"
     
     def get_active_orders(self) -> List[Dict[str, Any]]:

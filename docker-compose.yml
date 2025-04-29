@@ -113,6 +113,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      kafka:
+        condition: service_healthy
       db:
         condition: service_healthy
       gateway:
@@ -130,6 +132,8 @@ services:
       dockerfile: ./trader/Dockerfile
     depends_on:
       redis:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
       db:
         condition: service_healthy
@@ -166,6 +170,8 @@ services:
       dockerfile: ./coordinator/Dockerfile
     depends_on:
       redis:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
       portfolio:
         condition: service_started
@@ -219,6 +225,10 @@ services:
       context: .
       dockerfile: ./pnl_tracker/Dockerfile
     depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
       db:
         condition: service_healthy
       trader:
@@ -235,6 +245,8 @@ services:
       context: .
       dockerfile: ./risk_manager/Dockerfile
     depends_on:
+      kafka:
+        condition: service_healthy
       redis:
         condition: service_healthy
       trader:
@@ -253,6 +265,10 @@ services:
       context: .
       dockerfile: ./scheduler/Dockerfile
     depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
       db:
         condition: service_healthy
       portfolio:
@@ -271,6 +287,10 @@ services:
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
       portfolio:
         condition: service_started
       trader:
@@ -278,6 +298,20 @@ services:
     restart: unless-stopped
     volumes:
       - /etc/localtime:/etc/localtime:ro
+  tester:
+    image: python:3.10-slim
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    working_dir: /app
+    entrypoint: ["/bin/bash", "-c"]
+    command: ["pip install -r requirements-shared.txt && tail -f /dev/null"]
 
 volumes:
   redis_data:

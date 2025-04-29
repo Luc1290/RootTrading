@@ -120,6 +120,21 @@ class BinanceExecutor:
             raise BinanceAPIError(f"Impossible de se connecter à Binance: {str(e)}")
     
     def _generate_signature(self, params: Dict[str, Any]) -> str:
+        # Validation des paramètres
+        if params is not None and not isinstance(params, str):
+            raise TypeError(f"params doit être une chaîne, pas {type(params).__name__}")
+        # Validation des paramètres
+        if params is not None and not isinstance(params, str):
+            raise TypeError(f"params doit être une chaîne, pas {type(params).__name__}")
+        # Validation des paramètres
+        if params is not None and not isinstance(params, str):
+            raise TypeError(f"params doit être une chaîne, pas {type(params).__name__}")
+        # Validation des paramètres
+        if params is not None and not isinstance(params, str):
+            raise TypeError(f"params doit être une chaîne, pas {type(params).__name__}")
+        # Validation des paramètres
+        if params is not None and not isinstance(params, str):
+            raise TypeError(f"params doit être une chaîne, pas {type(params).__name__}")
         # Convertir d'abord tous les paramètres en strings et encoder correctement
         query_params = []
         for key in sorted(params.keys()):
@@ -142,7 +157,22 @@ class BinanceExecutor:
     
         return signature
     
-    def _notify_order_failure(self, error, order_params, client_order_id=None):
+    def _notify_order_failure(self, error: Any, order_params: List[Any], client_order_id: Optional[Any] = None) -> Any:
+        # Validation des paramètres
+        if order_params is not None and not isinstance(order_params, list):
+            raise TypeError(f"order_params doit être une liste, pas {type(order_params).__name__}")
+        # Validation des paramètres
+        if order_params is not None and not isinstance(order_params, list):
+            raise TypeError(f"order_params doit être une liste, pas {type(order_params).__name__}")
+        # Validation des paramètres
+        if order_params is not None and not isinstance(order_params, list):
+            raise TypeError(f"order_params doit être une liste, pas {type(order_params).__name__}")
+        # Validation des paramètres
+        if order_params is not None and not isinstance(order_params, list):
+            raise TypeError(f"order_params doit être une liste, pas {type(order_params).__name__}")
+        # Validation des paramètres
+        if order_params is not None and not isinstance(order_params, list):
+            raise TypeError(f"order_params doit être une liste, pas {type(order_params).__name__}")
         """
         Notifie les autres services d'un échec d'ordre via Redis.
         
@@ -180,11 +210,21 @@ class BinanceExecutor:
                 redis_client = RedisClient()
                 redis_client.publish("roottrading:order:failed", notification)
                 logger.info(f"✅ Notification d'échec d'ordre envoyée pour {client_order_id}")
-            except Exception as e:
+            except (ValueError, TypeError) as e:
                 logger.warning(f"⚠️ Impossible d'envoyer la notification Redis: {str(e)}")
             
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la notification d'échec d'ordre: {str(e)}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"❌ Erreur lors de la notification d'échec d'ordre: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise}")
     
     def _generate_order_id(self) -> str:
         """
@@ -197,6 +237,21 @@ class BinanceExecutor:
         return str(self.demo_order_id)
     
     def _get_min_quantity(self, symbol: str) -> float:
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
         """
         Retourne la quantité minimale pour un symbole.
         
@@ -214,6 +269,21 @@ class BinanceExecutor:
         return self.min_quantities.get(symbol, 0.001)
     
     def _get_min_notional(self, symbol: str) -> float:
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
         """
         Retourne la valeur minimale d'un ordre pour un symbole.
         
@@ -278,10 +348,26 @@ class BinanceExecutor:
         # Stocker le trade en mémoire pour référence future
         self.demo_trades[order_id] = execution
         
-        logger.info(f"✅ [DÉMO] Ordre simulé: {order.side.value if hasattr(order.side, 'value') else order.side} {order.quantity} {order.symbol} @ {price}")
+f"✅ [DÉMO] Ordre simulé: {order.side.value if hasattr(order.side, 'value') else order.side} {order.quantity} "
+f"{order.symbol} @ {price}"
         return execution
     
     def _get_current_price(self, symbol: str) -> float:
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
         """
         Récupère le prix actuel d'un symbole sur Binance.
         
@@ -301,9 +387,24 @@ class BinanceExecutor:
             return float(data['price'])
         
         except requests.exceptions.RequestException as e:
-            logger.error(f"❌ Erreur lors de la récupération du prix pour {symbol}: {str(e)}")
+            logger.error(f"❌ Erreur lors de la récupération du prix pour {symbol}: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except Exception as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise}")
             if e.response:
                 logger.error(f"Réponse: {e.response.text}")
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except Exception as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
             
             # En cas d'erreur, utiliser un prix de secours (pourrait être amélioré)
             if symbol.startswith("BTC"):
@@ -402,7 +503,7 @@ class BinanceExecutor:
                 demo=False
             )
 
-            logger.info(f"✅ Ordre exécuté sur Binance: {order.side.value} {execution.quantity} {execution.symbol} @ {execution.price}")
+f"✅ Ordre exécuté sur Binance: {order.side.value} {execution.quantity} {execution.symbol} @ {execution.price}"
             return execution
 
         except requests.exceptions.RequestException as e:
@@ -415,6 +516,31 @@ class BinanceExecutor:
 
     
     def get_order_status(self, symbol: str, order_id: str) -> Optional[TradeExecution]:
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if order_id is not None and not isinstance(order_id, str):
+            raise TypeError(f"order_id doit être une chaîne, pas {type(order_id).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if order_id is not None and not isinstance(order_id, str):
+            raise TypeError(f"order_id doit être une chaîne, pas {type(order_id).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if order_id is not None and not isinstance(order_id, str):
+            raise TypeError(f"order_id doit être une chaîne, pas {type(order_id).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if order_id is not None and not isinstance(order_id, str):
+            raise TypeError(f"order_id doit être une chaîne, pas {type(order_id).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if order_id is not None and not isinstance(order_id, str):
+            raise TypeError(f"order_id doit être une chaîne, pas {type(order_id).__name__}")
         """
         Récupère le statut d'un ordre sur Binance.
         
@@ -458,7 +584,10 @@ class BinanceExecutor:
                 symbol=order_response['symbol'],
                 side=OrderSide(order_response['side']),
                 status=OrderStatus(order_response['status']),
-                price=float(order_response['price']) if float(order_response['price']) > 0 else float(order_response['cummulativeQuoteQty']) / max(float(order_response['executedQty']), 1e-8),
+                price=float(
+                    order_response['price']) if float(order_response['price']) > 0 else float(order_response['cummulativeQuoteQty']) / max(float(order_response['executedQty']),
+                    1e-8
+                ),
                 quantity=float(order_response['executedQty']),
                 quote_quantity=float(order_response['cummulativeQuoteQty']),
                 fee=None,
@@ -477,6 +606,31 @@ class BinanceExecutor:
             return None
     
     def cancel_order(self, symbol: str, order_id: str) -> bool:
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if order_id is not None and not isinstance(order_id, str):
+            raise TypeError(f"order_id doit être une chaîne, pas {type(order_id).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if order_id is not None and not isinstance(order_id, str):
+            raise TypeError(f"order_id doit être une chaîne, pas {type(order_id).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if order_id is not None and not isinstance(order_id, str):
+            raise TypeError(f"order_id doit être une chaîne, pas {type(order_id).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if order_id is not None and not isinstance(order_id, str):
+            raise TypeError(f"order_id doit être une chaîne, pas {type(order_id).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if order_id is not None and not isinstance(order_id, str):
+            raise TypeError(f"order_id doit être une chaîne, pas {type(order_id).__name__}")
         """
         Annule un ordre sur Binance.
         
@@ -592,6 +746,21 @@ class BinanceExecutor:
             return {}
     
     def get_trade_fee(self, symbol: str) -> Tuple[float, float]:
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
         """
         Récupère les frais de trading pour un symbole.
         
@@ -678,8 +847,13 @@ class BinanceExecutor:
             logger.info(f"✅ Informations de trading chargées pour {len(symbol_info)} symboles")
             return symbol_info
 
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la récupération des informations d'échange: {str(e)}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"❌ Erreur lors de la récupération des informations d'échange: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except Exception as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise}")
             # Retourner des informations par défaut pour les symboles courants
             default_info = {
                 "BTCUSDC": {
@@ -698,6 +872,31 @@ class BinanceExecutor:
             return default_info
 
     def _round_price(self, symbol: str, price: float) -> float:
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if price is not None and not isinstance(price, (int, float)):
+            raise TypeError(f"price doit être un nombre, pas {type(price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if price is not None and not isinstance(price, (int, float)):
+            raise TypeError(f"price doit être un nombre, pas {type(price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if price is not None and not isinstance(price, (int, float)):
+            raise TypeError(f"price doit être un nombre, pas {type(price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if price is not None and not isinstance(price, (int, float)):
+            raise TypeError(f"price doit être un nombre, pas {type(price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if price is not None and not isinstance(price, (int, float)):
+            raise TypeError(f"price doit être un nombre, pas {type(price).__name__}")
         """
         Arrondit le prix selon le tickSize du symbole.
         
@@ -718,6 +917,31 @@ class BinanceExecutor:
         return math.floor(price / tick_size) * tick_size
 
     def _round_quantity(self, symbol: str, quantity: float) -> float:
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if quantity is not None and not isinstance(quantity, (int, float)):
+            raise TypeError(f"quantity doit être un nombre, pas {type(quantity).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if quantity is not None and not isinstance(quantity, (int, float)):
+            raise TypeError(f"quantity doit être un nombre, pas {type(quantity).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if quantity is not None and not isinstance(quantity, (int, float)):
+            raise TypeError(f"quantity doit être un nombre, pas {type(quantity).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if quantity is not None and not isinstance(quantity, (int, float)):
+            raise TypeError(f"quantity doit être un nombre, pas {type(quantity).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if quantity is not None and not isinstance(quantity, (int, float)):
+            raise TypeError(f"quantity doit être un nombre, pas {type(quantity).__name__}")
         """
         Arrondit la quantité selon le stepSize du symbole.
         

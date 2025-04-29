@@ -1,0 +1,10 @@
+=== RAPPORT D'ANALYSE STATIQUE ===
+
+Total des problèmes flake8: 7651
+Approximation des problèmes pylint: 0
+Total des erreurs mypy: 0
+
+=== PROBLÈMES PAR MODULE ===
+
+Module          Flake8     Pylint     MyPy       Total     
+-------------------------------------------------------

@@ -33,7 +33,11 @@ class CycleManager:
     Crée, met à jour et suit l'état des cycles de trading.
     """
     
-    def __init__(self, db_url: str = None, binance_executor: BinanceExecutor = None):
+    def __init__(
+        self,
+        db_url: str: Optional[Any] = None,
+        binance_executor: BinanceExecutor: Optional[Any] = None
+    ) -> None:
         """
         Initialise le gestionnaire de cycles.
         
@@ -56,8 +60,13 @@ class CycleManager:
             self.db_pool = DBConnectionPool.get_instance()
             self._init_db_schema()
             self._load_active_cycles_from_db()
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de l'initialisation de la base de données: {str(e)}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"❌ Erreur lors de l'initialisation de la base de données: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise}")
         
         logger.info(f"✅ CycleManager initialisé en mode {'DÉMO' if self.demo_mode else 'RÉEL'}")
     
@@ -124,11 +133,36 @@ class CycleManager:
             
             logger.info("✅ Schéma de base de données initialisé")
         
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de l'initialisation du schéma de base de données: {str(e)}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"❌ Erreur lors de l'initialisation du schéma de base de données: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise}")
             raise
     
     def _save_execution_to_db(self, execution: TradeExecution, cycle_id: Optional[str] = None) -> bool:
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
         """
         Enregistre une exécution d'ordre dans la base de données.
     
@@ -224,8 +258,23 @@ class CycleManager:
             logger.debug(f"✅ Exécution {execution.order_id} enregistrée en base de données")
             return True
     
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de l'enregistrement de l'exécution en base de données: {str(e)}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"❌ Erreur lors de l'enregistrement de l'exécution en base de données: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except Exception as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise}")
             return False
     
     def _load_active_cycles_from_db(self) -> None:
@@ -278,13 +327,73 @@ class CycleManager:
                 
                 logger.info(f"✅ {len(self.active_cycles)} cycles actifs chargés depuis la base de données")
         
-        except Exception as e:
-            logger.error(f"❌ Erreur lors du chargement des cycles actifs: {str(e)}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"❌ Erreur lors du chargement des cycles actifs: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except Exception as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise}")
     
     def create_cycle(self, symbol: str, strategy: str, side: Union[OrderSide, str], 
                 price: float, quantity: float, pocket: Optional[str] = None,
                 target_price: Optional[float] = None, stop_price: Optional[float] = None,
                 trailing_delta: Optional[float] = None) -> Optional[TradeCycle]:
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if strategy is not None and not isinstance(strategy, str):
+            raise TypeError(f"strategy doit être une chaîne, pas {type(strategy).__name__}")
+        if price is not None and not isinstance(price, (int, float)):
+            raise TypeError(f"price doit être un nombre, pas {type(price).__name__}")
+        if quantity is not None and not isinstance(quantity, (int, float)):
+            raise TypeError(f"quantity doit être un nombre, pas {type(quantity).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if strategy is not None and not isinstance(strategy, str):
+            raise TypeError(f"strategy doit être une chaîne, pas {type(strategy).__name__}")
+        if price is not None and not isinstance(price, (int, float)):
+            raise TypeError(f"price doit être un nombre, pas {type(price).__name__}")
+        if quantity is not None and not isinstance(quantity, (int, float)):
+            raise TypeError(f"quantity doit être un nombre, pas {type(quantity).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if strategy is not None and not isinstance(strategy, str):
+            raise TypeError(f"strategy doit être une chaîne, pas {type(strategy).__name__}")
+        if price is not None and not isinstance(price, (int, float)):
+            raise TypeError(f"price doit être un nombre, pas {type(price).__name__}")
+        if quantity is not None and not isinstance(quantity, (int, float)):
+            raise TypeError(f"quantity doit être un nombre, pas {type(quantity).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if strategy is not None and not isinstance(strategy, str):
+            raise TypeError(f"strategy doit être une chaîne, pas {type(strategy).__name__}")
+        if price is not None and not isinstance(price, (int, float)):
+            raise TypeError(f"price doit être un nombre, pas {type(price).__name__}")
+        if quantity is not None and not isinstance(quantity, (int, float)):
+            raise TypeError(f"quantity doit être un nombre, pas {type(quantity).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if strategy is not None and not isinstance(strategy, str):
+            raise TypeError(f"strategy doit être une chaîne, pas {type(strategy).__name__}")
+        if price is not None and not isinstance(price, (int, float)):
+            raise TypeError(f"price doit être un nombre, pas {type(price).__name__}")
+        if quantity is not None and not isinstance(quantity, (int, float)):
+            raise TypeError(f"quantity doit être un nombre, pas {type(quantity).__name__}")
         """
         Crée un nouveau cycle de trading et exécute l'ordre d'entrée.
     
@@ -360,14 +469,55 @@ class CycleManager:
             self._save_execution_to_db(execution, cycle_id)
             self._save_cycle_to_db(cycle)
         
-            logger.info(f"✅ Cycle {cycle_id} créé avec succès: {side.value if hasattr(side, 'value') else side} {quantity} {symbol} @ {execution.price}")
+f"✅ Cycle {cycle_id} créé avec succès: {side.value if hasattr(side, 'value') else side} {quantity} {symbol} @ "
+f"{execution.price}"
             return cycle
     
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la création du cycle: {str(e)}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"❌ Erreur lors de la création du cycle: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except Exception as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise}")
             return None
     
     def close_cycle(self, cycle_id: str, exit_price: Optional[float] = None) -> bool:
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        if exit_price is not None and not isinstance(exit_price, (int, float)):
+            raise TypeError(f"exit_price doit être un nombre, pas {type(exit_price).__name__}")
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        if exit_price is not None and not isinstance(exit_price, (int, float)):
+            raise TypeError(f"exit_price doit être un nombre, pas {type(exit_price).__name__}")
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        if exit_price is not None and not isinstance(exit_price, (int, float)):
+            raise TypeError(f"exit_price doit être un nombre, pas {type(exit_price).__name__}")
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        if exit_price is not None and not isinstance(exit_price, (int, float)):
+            raise TypeError(f"exit_price doit être un nombre, pas {type(exit_price).__name__}")
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        if exit_price is not None and not isinstance(exit_price, (int, float)):
+            raise TypeError(f"exit_price doit être un nombre, pas {type(exit_price).__name__}")
         """
         Ferme un cycle de trading en exécutant l'ordre de sortie.
         
@@ -449,11 +599,51 @@ class CycleManager:
             logger.info(f"✅ Cycle {cycle_id} fermé avec succès: P&L = {profit_loss:.2f} ({profit_loss_percent:.2f}%)")
             return True
         
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la fermeture du cycle {cycle_id}: {str(e)}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"❌ Erreur lors de la fermeture du cycle {cycle_id}: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except Exception as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise}")
             return False
     
     def cancel_cycle(self, cycle_id: str, reason: str = "Annulation manuelle") -> bool:
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        if reason is not None and not isinstance(reason, str):
+            raise TypeError(f"reason doit être une chaîne, pas {type(reason).__name__}")
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        if reason is not None and not isinstance(reason, str):
+            raise TypeError(f"reason doit être une chaîne, pas {type(reason).__name__}")
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        if reason is not None and not isinstance(reason, str):
+            raise TypeError(f"reason doit être une chaîne, pas {type(reason).__name__}")
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        if reason is not None and not isinstance(reason, str):
+            raise TypeError(f"reason doit être une chaîne, pas {type(reason).__name__}")
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        if reason is not None and not isinstance(reason, str):
+            raise TypeError(f"reason doit être une chaîne, pas {type(reason).__name__}")
         """
         Annule un cycle de trading.
         Si un ordre est actif, il est annulé sur Binance.
@@ -503,11 +693,51 @@ class CycleManager:
             logger.info(f"✅ Cycle {cycle_id} annulé: {reason}")
             return True
         
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de l'annulation du cycle {cycle_id}: {str(e)}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"❌ Erreur lors de l'annulation du cycle {cycle_id}: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except Exception as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise}")
             return False
     
     def update_stop_loss(self, cycle_id: str, new_stop_price: float) -> bool:
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        if new_stop_price is not None and not isinstance(new_stop_price, (int, float)):
+            raise TypeError(f"new_stop_price doit être un nombre, pas {type(new_stop_price).__name__}")
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        if new_stop_price is not None and not isinstance(new_stop_price, (int, float)):
+            raise TypeError(f"new_stop_price doit être un nombre, pas {type(new_stop_price).__name__}")
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        if new_stop_price is not None and not isinstance(new_stop_price, (int, float)):
+            raise TypeError(f"new_stop_price doit être un nombre, pas {type(new_stop_price).__name__}")
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        if new_stop_price is not None and not isinstance(new_stop_price, (int, float)):
+            raise TypeError(f"new_stop_price doit être un nombre, pas {type(new_stop_price).__name__}")
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        if new_stop_price is not None and not isinstance(new_stop_price, (int, float)):
+            raise TypeError(f"new_stop_price doit être un nombre, pas {type(new_stop_price).__name__}")
         """
         Met à jour le stop-loss d'un cycle.
         
@@ -537,11 +767,41 @@ class CycleManager:
             logger.info(f"✅ Stop-loss mis à jour pour le cycle {cycle_id}: {new_stop_price}")
             return True
         
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la mise à jour du stop-loss pour le cycle {cycle_id}: {str(e)}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"❌ Erreur lors de la mise à jour du stop-loss pour le cycle {cycle_id}: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except Exception as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except (ValueError, TypeError) as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise}")
             return False
     
     def get_cycle(self, cycle_id: str) -> Optional[TradeCycle]:
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
+        # Validation des paramètres
+        if cycle_id is not None and not isinstance(cycle_id, str):
+            raise TypeError(f"cycle_id doit être une chaîne, pas {type(cycle_id).__name__}")
         """
         Récupère un cycle par son ID.
         
@@ -579,6 +839,31 @@ class CycleManager:
         return cycles
     
     def check_stop_losses(self, symbol: str, current_price: float) -> None:
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if current_price is not None and not isinstance(current_price, (int, float)):
+            raise TypeError(f"current_price doit être un nombre, pas {type(current_price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if current_price is not None and not isinstance(current_price, (int, float)):
+            raise TypeError(f"current_price doit être un nombre, pas {type(current_price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if current_price is not None and not isinstance(current_price, (int, float)):
+            raise TypeError(f"current_price doit être un nombre, pas {type(current_price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if current_price is not None and not isinstance(current_price, (int, float)):
+            raise TypeError(f"current_price doit être un nombre, pas {type(current_price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if current_price is not None and not isinstance(current_price, (int, float)):
+            raise TypeError(f"current_price doit être un nombre, pas {type(current_price).__name__}")
         """
         Vérifie les stop-loss pour un symbole donné et ferme les cycles si nécessaire.
         
@@ -608,6 +893,31 @@ class CycleManager:
             self.close_cycle(cycle_id)
     
     def update_trailing_stops(self, symbol: str, current_price: float) -> None:
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if current_price is not None and not isinstance(current_price, (int, float)):
+            raise TypeError(f"current_price doit être un nombre, pas {type(current_price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if current_price is not None and not isinstance(current_price, (int, float)):
+            raise TypeError(f"current_price doit être un nombre, pas {type(current_price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if current_price is not None and not isinstance(current_price, (int, float)):
+            raise TypeError(f"current_price doit être un nombre, pas {type(current_price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if current_price is not None and not isinstance(current_price, (int, float)):
+            raise TypeError(f"current_price doit être un nombre, pas {type(current_price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if current_price is not None and not isinstance(current_price, (int, float)):
+            raise TypeError(f"current_price doit être un nombre, pas {type(current_price).__name__}")
         """
         Met à jour les stops trailing pour un symbole donné.
         
@@ -659,6 +969,31 @@ class CycleManager:
                             self._save_cycle_to_db(cycle)
     
     def check_target_prices(self, symbol: str, current_price: float) -> None:
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if current_price is not None and not isinstance(current_price, (int, float)):
+            raise TypeError(f"current_price doit être un nombre, pas {type(current_price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if current_price is not None and not isinstance(current_price, (int, float)):
+            raise TypeError(f"current_price doit être un nombre, pas {type(current_price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if current_price is not None and not isinstance(current_price, (int, float)):
+            raise TypeError(f"current_price doit être un nombre, pas {type(current_price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if current_price is not None and not isinstance(current_price, (int, float)):
+            raise TypeError(f"current_price doit être un nombre, pas {type(current_price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if current_price is not None and not isinstance(current_price, (int, float)):
+            raise TypeError(f"current_price doit être un nombre, pas {type(current_price).__name__}")
         """
         Vérifie les prix cibles pour un symbole donné et ferme les cycles si nécessaire.
         
@@ -688,6 +1023,31 @@ class CycleManager:
             self.close_cycle(cycle_id)
     
     def process_price_update(self, symbol: str, price: float) -> None:
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if price is not None and not isinstance(price, (int, float)):
+            raise TypeError(f"price doit être un nombre, pas {type(price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if price is not None and not isinstance(price, (int, float)):
+            raise TypeError(f"price doit être un nombre, pas {type(price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if price is not None and not isinstance(price, (int, float)):
+            raise TypeError(f"price doit être un nombre, pas {type(price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if price is not None and not isinstance(price, (int, float)):
+            raise TypeError(f"price doit être un nombre, pas {type(price).__name__}")
+        # Validation des paramètres
+        if symbol is not None and not isinstance(symbol, str):
+            raise TypeError(f"symbol doit être une chaîne, pas {type(symbol).__name__}")
+        if price is not None and not isinstance(price, (int, float)):
+            raise TypeError(f"price doit être un nombre, pas {type(price).__name__}")
         """
         Traite une mise à jour de prix pour un symbole.
         Vérifie les stops, targets et met à jour les trailing stops.
@@ -825,6 +1185,21 @@ class CycleManager:
             logger.debug(f"✅ Cycle {cycle.id} enregistré en base de données")
             return True
     
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de l'enregistrement du cycle en base de données: {str(e)}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"❌ Erreur lors de l'enregistrement du cycle en base de données: {str(e)
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except Exception as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except Exception as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise
+    except (ConnectionError, TimeoutError) as e:
+        logger.warning(f"Problème de connexion: {str(e)}")
+    except Exception as e:
+        logger.critical(f"Erreur inattendue: {str(e)}")
+        raise}")
             return False
