@@ -22,7 +22,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
 from shared.src.schemas import AssetBalance, PortfolioSummary, PocketSummary
-
+from portfolio.src.startup import on_startup
 from portfolio.src.models import PortfolioModel, DBManager, SharedCache
 from portfolio.src.pockets import PocketManager
 from portfolio.src.binance_account_manager import BinanceAccountManager
@@ -45,18 +45,14 @@ logger = logging.getLogger("portfolio_api")
 # Gestionnaire de contexte pour les événements de démarrage/arrêt
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Code exécuté au démarrage
     logger.info("🚀 API Portfolio en démarrage...")
     
-    # Fournir un événement global
     app.state.shutdown_event = threading.Event()
-    
-    # Vérifier l'état de la base de données
+
     try:
         db = DBManager()
         result = db.execute_query("SELECT 1 as test", fetch_one=True)
         db.close()
-        
         if result and result.get('test') == 1:
             logger.info("✅ Connexion à la base de données vérifiée")
         else:
@@ -64,11 +60,26 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"❌ Erreur de connexion à la base de données: {str(e)}")
     
+    # ✅ Appelle la synchronisation Binance ici
+    try:
+        from portfolio.src.startup import initial_sync_binance
+        await initial_sync_binance()
+    except Exception as e:
+        logger.error(f"❌ Erreur pendant initial_sync_binance depuis lifespan: {e}")
+
+    # ✅ Lance les autres tâches ici aussi
+    try:
+        from portfolio.src.startup import start_sync_tasks, start_redis_subscriptions
+        start_sync_tasks()
+        start_redis_subscriptions()
+    except Exception as e:
+        logger.error(f"❌ Erreur lancement des tâches asynchrones: {e}")
+
     yield
-    
-    # Code exécuté à l'arrêt
+
     logger.info("🛑 API Portfolio en arrêt...")
     app.state.shutdown_event.set()
+
 
 # Créer l'application FastAPI
 app = FastAPI(

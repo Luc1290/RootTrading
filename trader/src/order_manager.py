@@ -321,7 +321,12 @@ class OrderManager:
                     continue
                 
                 # Traiter le signal
-                self._handle_signal(signal)
+                # Traiter le signal en toute sécurité
+                try:
+                    self.safe_handle_signal(signal)
+                except Exception as e:
+                    logger.error(f"❌ Erreur inattendue lors du traitement du signal sécurisé: {str(e)}")
+
                 
                 # Marquer la tâche comme terminée
                 self.signal_queue.task_done()
@@ -361,77 +366,37 @@ class OrderManager:
     
         return min_profitable_change
     
-    def _handle_signal(self, signal: StrategySignal) -> None:
+    def safe_handle_signal(self, signal: StrategySignal) -> None:
         """
-        Traite un signal de trading et crée un cycle si nécessaire.
-    
-        Args:
-            signal: Signal de trading à traiter
+        Version sécurisée du traitement de signal : ignore tout échec de création de cycle.
         """
         try:
-            # Vérifier si le symbole est supporté
             if signal.symbol not in self.symbols:
                 logger.warning(f"⚠️ Signal ignoré: symbole non supporté {signal.symbol}")
                 return
-        
-            # Vérifier si le signal est assez fort
+
             if signal.strength in [SignalStrength.WEAK]:
                 logger.info(f"⚠️ Signal ignoré: force insuffisante ({signal.strength})")
                 return
-        
-            # S'assurer que le side est bien un objet OrderSide
+
             if isinstance(signal.side, str):
                 signal.side = OrderSide(signal.side)
-        
-            # Récupérer le dernier prix du symbole (utiliser le prix du signal si non disponible)
-            current_price = self.last_prices.get(signal.symbol, signal.price)
-        
-            # Calculer la quantité à trader (utiliser la configuration par défaut)
-            quantity = TRADE_QUANTITIES.get(signal.symbol, TRADE_QUANTITY)
-        
-            # Calculer les prix cibles et stop-loss
-            target_price = None
-            stop_price = None
-            trailing_delta = None
-        
-            # Si le signal contient des métadonnées spécifiques
-            metadata = signal.metadata or {}
-        
-            # Récupérer target/stop des métadonnées si présents
-            if 'target_price' in metadata:
-                target_price = float(metadata['target_price'])
-            if 'stop_price' in metadata:
-                stop_price = float(metadata['stop_price'])
-            if 'trailing_delta' in metadata:
-                trailing_delta = float(metadata['trailing_delta'])
-        
-            # Sinon, calculer des valeurs par défaut
-            if target_price is None and signal.side == OrderSide.BUY:
-                # Pour un achat, cible = prix + 3%
-                target_price = current_price * 1.03
-            elif target_price is None and signal.side == OrderSide.SELL:
-                # Pour une vente, cible = prix - 3%
-                target_price = current_price * 0.97
-        
-            if stop_price is None and signal.side == OrderSide.BUY:
-                # Pour un achat, stop = prix - 2%
-                stop_price = current_price * 0.98
-            elif stop_price is None and signal.side == OrderSide.SELL:
-                # Pour une vente, stop = prix + 2%
-                stop_price = current_price * 1.02
 
-            # Vérifier que le gain potentiel est supérieur au seuil minimal
+            current_price = self.last_prices.get(signal.symbol, signal.price)
+            quantity = TRADE_QUANTITIES.get(signal.symbol, TRADE_QUANTITY)
+
+            metadata = signal.metadata or {}
+            target_price = float(metadata.get('target_price', current_price * 1.03 if signal.side == OrderSide.BUY else current_price * 0.97))
+            stop_price = float(metadata.get('stop_price', current_price * 0.98 if signal.side == OrderSide.BUY else current_price * 1.02))
+            trailing_delta = float(metadata['trailing_delta']) if 'trailing_delta' in metadata else None
+
             min_change = self.calculate_min_profitable_change(signal.symbol)
             target_price_percent = abs((target_price - current_price) / current_price * 100)
-    
             if target_price_percent < min_change:
                 logger.info(f"⚠️ Signal ignoré: gain potentiel {target_price_percent:.2f}% inférieur au seuil minimal {min_change:.2f}%")
                 return
-        
-            # Déterminer la poche à utiliser (par défaut: active)
+
             pocket = metadata.get('pocket', 'active')
-        
-            # Créer un nouveau cycle de trading
             cycle = self.cycle_manager.create_cycle(
                 symbol=signal.symbol,
                 strategy=signal.strategy,
@@ -443,14 +408,15 @@ class OrderManager:
                 stop_price=stop_price,
                 trailing_delta=trailing_delta
             )
-        
-            if cycle:
-                logger.info(f"✅ Cycle créé pour le signal: {cycle.id}")
-            else:
-                logger.error("❌ Échec de création du cycle pour le signal")
-    
+
+            if cycle is None:
+                logger.warning(f"❌ Aucun cycle créé pour le signal {signal.symbol} ({signal.strategy})")
+                return
+
+            logger.info(f"✅ Nouveau cycle actif créé: {cycle.id}")
+
         except Exception as e:
-            logger.error(f"❌ Erreur lors du traitement du signal: {str(e)}")
+            logger.error(f"❌ Erreur dans safe_handle_signal: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
             

@@ -97,6 +97,7 @@ class TradeCycle(BaseModel):
     created_at: datetime
     updated_at: datetime
     completed_at: Optional[datetime] = None
+    confirmed: bool = False
     pocket: Optional[str] = None
     demo: bool = False
     

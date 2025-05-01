@@ -1,0 +1,258 @@
+portfolio-1  | INFO:     172.22.0.14:58686 - "GET /health HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-30 22:26:08,101 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-30 22:26:08,102 - portfolio.src.models - INFO - ✅ PortfolioModel initialisé
+portfolio-1  | INFO:     172.22.0.13:57652 - "GET /summary HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-30 22:26:08,113 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-30 22:26:08,113 - portfolio.src.models - INFO - ✅ PortfolioModel initialisé
+portfolio-1  | INFO:     172.22.0.13:57654 - "GET /performance/daily?limit=1 HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-30 22:27:06,427 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | INFO:     172.22.0.14:57546 - "GET /health HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-30 22:27:06,436 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-30 22:27:06,436 - portfolio.src.models - INFO - ✅ PortfolioModel initialisé
+portfolio-1  | INFO:     172.22.0.14:57558 - "GET /summary HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-30 22:27:06,445 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-30 22:27:06,446 - portfolio.src.pockets - INFO - ✅ PocketManager initialisé
+portfolio-1  | 2025-04-30 22:27:06,446 - portfolio.src.pockets - INFO - Début update_pockets_allocation avec total_value=978.5956998600002
+portfolio-1  | 2025-04-30 22:27:06,447 - portfolio.src.pockets - INFO - Poches récupérées: 3 poches
+portfolio-1  | 2025-04-30 22:27:06,448 - portfolio.src.pockets - INFO - Poche active: allocation=0.6
+portfolio-1  | 2025-04-30 22:27:06,448 - portfolio.src.pockets - INFO - Poche buffer: allocation=0.3
+portfolio-1  | 2025-04-30 22:27:06,448 - portfolio.src.pockets - INFO - Poche safety: allocation=0.1
+portfolio-1  | 2025-04-30 22:27:06,450 - portfolio.src.pockets - INFO - ✅ Allocation des poches mise à jour (total: 978.60)
+portfolio-1  | INFO:     172.22.0.14:57566 - "PUT /pockets/allocation?total_value=978.5956998600002 HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-30 22:27:06,455 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-30 22:27:06,456 - portfolio.src.pockets - INFO - ✅ PocketManager initialisé
+portfolio-1  | INFO:     172.22.0.14:57574 - "GET /pockets HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-30 22:27:06,463 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-30 22:27:06,465 - portfolio.src.pockets - INFO - ✅ PocketManager initialisé
+portfolio-1  | INFO:     172.22.0.14:57576 - "GET /pockets HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-30 22:27:08,198 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-30 22:27:08,198 - portfolio.src.models - INFO - ✅ PortfolioModel initialisé
+portfolio-1  | INFO:     172.22.0.13:60044 - "GET /summary HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-30 22:27:08,207 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-30 22:27:08,207 - portfolio.src.models - INFO - ✅ PortfolioModel initialisé
+portfolio-1  | INFO:     172.22.0.13:60060 - "GET /performance/daily?limit=1 HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-30 22:27:08,592 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | INFO:     172.22.0.12:37748 - "GET /health HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-30 22:27:43,719 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-30 22:27:43,721 - portfolio.src.pockets - INFO - ✅ PocketManager initialisé
+portfolio-1  | 2025-04-30 22:27:43,736 - portfolio.src.pockets - INFO - ✅ Nombre de cycles actifs recalculé pour toutes les poches
+portfolio-1  | 2025-04-30 22:27:43,736 - portfolio.src.pockets - INFO - ✅ Poches synchronisées avec les trades actifs
+portfolio-1  | 2025-04-30 22:27:43,736 - portfolio.src.sync - INFO - 🔄 Synchronisation des poches DB
+portfolio-1  | 2025-04-30 22:27:46,438 - portfolio.src.binance_account_manager - INFO - BinanceAccountManager initialisé pour https://api.binance.com
+portfolio-1  | 2025-04-30 22:27:46,828 - portfolio.src.binance_account_manager - INFO - Récupéré 5 balances non nulles depuis Binance
+portfolio-1  | 2025-04-30 22:27:47,166 - portfolio.src.binance_account_manager - INFO - Récupéré les prix pour 3083 symboles depuis Binance
+portfolio-1  | 2025-04-30 22:27:47,166 - portfolio.src.binance_account_manager - INFO - ✅ Valeurs en USDC calculées pour 5/5 actifs
+portfolio-1  | 2025-04-30 22:27:47,166 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-30 22:27:47,166 - portfolio.src.models - INFO - ✅ PortfolioModel initialisé
+portfolio-1  | 2025-04-30 22:27:47,171 - portfolio.src.models - INFO - ✅ Soldes mis à jour pour 5 actifs
+portfolio-1  | 2025-04-30 22:27:47,171 - portfolio.src.sync - INFO - ✅ 5 balances sauvegardées et cache invalidé.
+portfolio-1  | 2025-04-30 22:27:47,171 - portfolio.src.sync - INFO - 🔄 Balances Binance synchronisées (5 actifs)
+portfolio-1  | 2025-04-30 22:28:06,537 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | INFO:     172.22.0.14:55670 - "GET /health HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-30 22:28:08,289 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-30 22:28:08,289 - portfolio.src.models - INFO - ✅ PortfolioModel initialisé
+portfolio-1  | INFO:     172.22.0.13:39638 - "GET /summary HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-30 22:28:08,300 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-30 22:28:08,300 - portfolio.src.models - INFO - ✅ PortfolioModel initialisé
+portfolio-1  | INFO:     172.22.0.13:39650 - "GET /performance/daily?limit=1 HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-30 22:28:15,677 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | INFO:     172.22.0.12:48152 - "GET /health HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-30 22:29:06,599 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | INFO:     172.22.0.14:54500 - "GET /health HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-30 22:29:06,609 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-30 22:29:06,609 - portfolio.src.models - INFO - ✅ PortfolioModel initialisé
+portfolio-1  | INFO:     172.22.0.14:54516 - "GET /summary HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-30 22:29:06,620 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-30 22:29:06,621 - portfolio.src.pockets - INFO - ✅ PocketManager initialisé
+portfolio-1  | 2025-04-30 22:29:06,622 - portfolio.src.pockets - INFO - Début update_pockets_allocation avec total_value=977.96057363
+portfolio-1  | 2025-04-30 22:29:06,622 - portfolio.src.pockets - INFO - Poches récupérées: 3 poches
+portfolio-1  | 2025-04-30 22:29:06,623 - portfolio.src.pockets - INFO - Poche active: allocation=0.6
+portfolio-1  | 2025-04-30 22:29:06,623 - portfolio.src.pockets - INFO - Poche buffer: allocation=0.3
+portfolio-1  | 2025-04-30 22:29:06,623 - portfolio.src.pockets - INFO - Poche safety: allocation=0.1
+portfolio-1  | 2025-04-30 22:29:06,628 - portfolio.src.pockets - INFO - ✅ Allocation des poches mise à jour (total: 977.96)
+portfolio-1  | INFO:     172.22.0.14:54532 - "PUT /pockets/allocation?total_value=977.96057363 HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-30 22:29:06,632 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-30 22:29:06,634 - portfolio.src.pockets - INFO - ✅ PocketManager initialisé
+portfolio-1  | INFO:     172.22.0.14:54538 - "GET /pockets HTTP/1.1" 200 OK
+portfolio-1  | 2025-04-30 22:29:08,376 - portfolio.src.models - INFO - ✅ Connexion obtenue depuis le pool DB
+portfolio-1  | 2025-04-30 22:29:08,376 - portfolio.src.models - INFO - ✅ PortfolioModel initialisé
+portfolio-1  | INFO:     172.22.0.13:56520 - "GET /summary HTTP/1.1" 200 OK
+
+
+
+trader-1  | 2025-04-30 22:25:00,396 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: ETHUSDC @ 1794.28
+trader-1  | 2025-04-30 22:25:08,020 - werkzeug - INFO - 172.22.0.13 - - [30/Apr/2025 22:25:08] "GET /orders HTTP/1.1" 200 -
+trader-1  | 2025-04-30 22:26:00,461 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: BTCUSDC @ 94531.99
+trader-1  | 2025-04-30 22:26:00,462 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: ETHUSDC @ 1795.03
+trader-1  | 2025-04-30 22:26:00,493 - werkzeug - INFO - 172.22.0.12 - - [30/Apr/2025 22:26:00] "GET /health HTTP/1.1" 200 -
+trader-1  | 2025-04-30 22:26:08,109 - werkzeug - INFO - 172.22.0.13 - - [30/Apr/2025 22:26:08] "GET /orders HTTP/1.1" 200 -
+trader-1  | 2025-04-30 22:27:00,527 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: BTCUSDC @ 94525.99
+trader-1  | 2025-04-30 22:27:00,528 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: ETHUSDC @ 1795.18
+trader-1  | 2025-04-30 22:27:06,471 - werkzeug - INFO - 172.22.0.14 - - [30/Apr/2025 22:27:06] "GET /orders?status=active HTTP/1.1" 200 -
+trader-1  | 2025-04-30 22:27:07,587 - werkzeug - INFO - 172.22.0.12 - - [30/Apr/2025 22:27:07] "GET /health HTTP/1.1" 200 -
+trader-1  | 2025-04-30 22:27:08,203 - werkzeug - INFO - 172.22.0.13 - - [30/Apr/2025 22:27:08] "GET /orders HTTP/1.1" 200 -
+trader-1  | 2025-04-30 22:28:00,590 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: BTCUSDC @ 94484.02
+trader-1  | 2025-04-30 22:28:00,592 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: ETHUSDC @ 1793.9
+trader-1  | 2025-04-30 22:28:08,296 - werkzeug - INFO - 172.22.0.13 - - [30/Apr/2025 22:28:08] "GET /orders HTTP/1.1" 200 -
+trader-1  | 2025-04-30 22:28:14,672 - werkzeug - INFO - 172.22.0.12 - - [30/Apr/2025 22:28:14] "GET /health HTTP/1.1" 200 -
+trader-1  | 2025-04-30 22:29:00,648 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: BTCUSDC @ 94462.01
+trader-1  | 2025-04-30 22:29:00,649 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: ETHUSDC @ 1793.45
+trader-1  | 2025-04-30 22:29:08,381 - werkzeug - INFO - 172.22.0.13 - - [30/Apr/2025 22:29:08] "GET /orders HTTP/1.1" 200 -
+trader-1  | 2025-04-30 22:29:21,769 - werkzeug - INFO - 172.22.0.12 - - [30/Apr/2025 22:29:21] "GET /health HTTP/1.1" 200 -
+trader-1  | 2025-04-30 22:30:00,715 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: BTCUSDC @ 94384.39
+trader-1  | 2025-04-30 22:30:00,716 - trader.src.order_manager - DEBUG - 💰 Prix mis à jour: ETHUSDC @ 1792.89
+trader-1  | 2025-04-30 22:30:08,477 - werkzeug - INFO - 172.22.0.13 - - [30/Apr/2025 22:30:08] "GET /orders HTTP/1.1" 200 -
+trader-1  | 2025-04-30 22:30:28,868 - werkzeug - INFO - 172.22.0.12 - - [30/Apr/2025 22:30:28] "GET /health HTTP/1.1" 200 -
+
+
+
+coordinator-1  | 2025-04-30 22:24:55,414 - werkzeug - INFO - 172.22.0.12 - - [30/Apr/2025 22:24:55] "GET /health HTTP/1.1" 200 -
+coordinator-1  | 2025-04-30 22:25:06,259 - coordinator - INFO - Vérification de santé du portfolio...
+coordinator-1  | 2025-04-30 22:25:06,266 - coordinator - INFO - ✅ Service Portfolio en bonne santé
+coordinator-1  | 2025-04-30 22:25:06,267 - coordinator - INFO - Réallocation périodique des fonds...
+coordinator-1  | 2025-04-30 22:25:06,289 - coordinator.src.pocket_checker - INFO - Cache des poches mis à jour: 3 poches
+coordinator-1  | 2025-04-30 22:25:06,289 - coordinator.src.pocket_checker - INFO - ✅ Réallocation des poches effectuée (valeur totale: 978.60 USDC)
+coordinator-1  | 2025-04-30 22:26:02,513 - werkzeug - INFO - 172.22.0.12 - - [30/Apr/2025 22:26:02] "GET /health HTTP/1.1" 200 -
+coordinator-1  | 2025-04-30 22:26:06,349 - coordinator - INFO - Vérification de santé du portfolio...
+coordinator-1  | 2025-04-30 22:26:06,357 - coordinator - INFO - ✅ Service Portfolio en bonne santé
+coordinator-1  | 2025-04-30 22:27:06,423 - coordinator - INFO - Vérification de santé du portfolio...
+coordinator-1  | 2025-04-30 22:27:06,431 - coordinator - INFO - ✅ Service Portfolio en bonne santé
+coordinator-1  | 2025-04-30 22:27:06,432 - coordinator - INFO - Réallocation périodique des fonds...
+coordinator-1  | 2025-04-30 22:27:06,460 - coordinator.src.pocket_checker - INFO - Cache des poches mis à jour: 3 poches
+coordinator-1  | 2025-04-30 22:27:06,460 - coordinator.src.pocket_checker - INFO - ✅ Réallocation des poches effectuée (valeur totale: 978.60 USDC)
+coordinator-1  | 2025-04-30 22:27:06,460 - coordinator - INFO - Vérification de la synchronisation des poches...
+coordinator-1  | 2025-04-30 22:27:06,472 - coordinator.src.pocket_checker - INFO - ✅ Poches correctement synchronisées
+coordinator-1  | 2025-04-30 22:27:09,599 - werkzeug - INFO - 172.22.0.12 - - [30/Apr/2025 22:27:09] "GET /health HTTP/1.1" 200 -
+coordinator-1  | 2025-04-30 22:28:06,532 - coordinator - INFO - Vérification de santé du portfolio...
+coordinator-1  | 2025-04-30 22:28:06,543 - coordinator - INFO - ✅ Service Portfolio en bonne santé
+coordinator-1  | 2025-04-30 22:28:16,687 - werkzeug - INFO - 172.22.0.12 - - [30/Apr/2025 22:28:16] "GET /health HTTP/1.1" 200 -
+coordinator-1  | 2025-04-30 22:29:06,594 - coordinator - INFO - Vérification de santé du portfolio...
+coordinator-1  | 2025-04-30 22:29:06,604 - coordinator - INFO - ✅ Service Portfolio en bonne santé
+coordinator-1  | 2025-04-30 22:29:06,604 - coordinator - INFO - Réallocation périodique des fonds...
+coordinator-1  | 2025-04-30 22:29:06,636 - coordinator.src.pocket_checker - INFO - Cache des poches mis à jour: 3 poches
+coordinator-1  | 2025-04-30 22:29:06,636 - coordinator.src.pocket_checker - INFO - ✅ Réallocation des poches effectuée (valeur totale: 977.96 USDC)
+coordinator-1  | 2025-04-30 22:29:23,783 - werkzeug - INFO - 172.22.0.12 - - [30/Apr/2025 22:29:23] "GET /health HTTP/1.1" 200 -
+coordinator-1  | 2025-04-30 22:30:06,693 - coordinator - INFO - Vérification de santé du portfolio...
+coordinator-1  | 2025-04-30 22:30:06,701 - coordinator - INFO - ✅ Service Portfolio en bonne santé
+coordinator-1  | 2025-04-30 22:30:30,883 - werkzeug - INFO - 172.22.0.12 - - [30/Apr/2025 22:30:30] "GET /health HTTP/1.1" 200 -
+coordinator-1  | 2025-04-30 22:31:06,758 - coordinator - INFO - Vérification de santé du portfolio...
+coordinator-1  | 2025-04-30 22:31:06,766 - coordinator - INFO - ✅ Service Portfolio en bonne santé
+coordinator-1  | 2025-04-30 22:31:06,766 - coordinator - INFO - Réallocation périodique des fonds...
+coordinator-1  | 2025-04-30 22:31:06,797 - coordinator.src.pocket_checker - INFO - Cache des poches mis à jour: 3 poches
+coordinator-1  | 2025-04-30 22:31:06,797 - coordinator.src.pocket_checker - INFO - ✅ Réallocation des poches effectuée (valeur totale: 977.96 USDC)
+
+
+
+analyzer-1  | 2025-04-30 22:29:20,764 - werkzeug - INFO - 172.22.0.12 - - [30/Apr/2025 22:29:20] "GET /health HTTP/1.1" 200 -
+analyzer-1  | 2025-04-30 22:30:00,713 - analyzer.src.redis_subscriber - INFO - 📊 BTCUSDC @ roottrading:market:data:btcusdc: Reçu données de marché, close=94384.39
+analyzer-1  | 2025-04-30 22:30:00,714 - analyzer.src.redis_subscriber - INFO - 📊 ETHUSDC @ roottrading:market:data:ethusdc: Reçu données de marché, close=1792.89
+analyzer-1  | 2025-04-30 22:30:00,715 - analyzer.strategies.base_strategy - INFO - [Divergence_Strategy] Données ajoutées pour BTCUSDC: close=94384.39, time=2025-04-30 22:29:00
+analyzer-1  | 2025-04-30 22:30:00,719 - analyzer.strategies.base_strategy - INFO - [Breakout_Strategy] Données ajoutées pour BTCUSDC: close=94384.39, time=2025-04-30 22:29:00
+analyzer-1  | 2025-04-30 22:30:00,720 - analyzer.strategies.base_strategy - INFO - [Bollinger_Strategy] Données ajoutées pour BTCUSDC: close=94384.39, time=2025-04-30 22:29:00
+analyzer-1  | 2025-04-30 22:30:00,720 - analyzer.strategies.base_strategy - INFO - [RSI_Strategy] Données ajoutées pour BTCUSDC: close=94384.39, time=2025-04-30 22:29:00
+analyzer-1  | 2025-04-30 22:30:00,720 - analyzer.strategies.base_strategy - INFO - [Ride_or_React_Strategy] Données ajoutées pour BTCUSDC: close=94384.39, time=2025-04-30 22:29:00
+analyzer-1  | 2025-04-30 22:30:00,722 - analyzer.strategies.base_strategy - INFO - [EMA_Cross_Strategy] Données ajoutées pour BTCUSDC: close=94384.39, time=2025-04-30 22:29:00
+analyzer-1  | 2025-04-30 22:30:00,723 - analyzer.strategies.base_strategy - INFO - [Divergence_Strategy] Données ajoutées pour ETHUSDC: close=1792.89, time=2025-04-30 22:29:00
+analyzer-1  | 2025-04-30 22:30:00,726 - analyzer.strategies.base_strategy - INFO - [Breakout_Strategy] Données ajoutées pour ETHUSDC: close=1792.89, time=2025-04-30 22:29:00
+analyzer-1  | 2025-04-30 22:30:00,726 - analyzer.strategies.base_strategy - INFO - [Bollinger_Strategy] Données ajoutées pour ETHUSDC: close=1792.89, time=2025-04-30 22:29:00
+analyzer-1  | 2025-04-30 22:30:00,726 - analyzer.strategies.base_strategy - INFO - [RSI_Strategy] Données ajoutées pour ETHUSDC: close=1792.89, time=2025-04-30 22:29:00
+analyzer-1  | 2025-04-30 22:30:00,726 - analyzer.strategies.base_strategy - INFO - [Ride_or_React_Strategy] Données ajoutées pour ETHUSDC: close=1792.89, time=2025-04-30 22:29:00
+analyzer-1  | 2025-04-30 22:30:00,729 - analyzer.strategies.base_strategy - INFO - [EMA_Cross_Strategy] Données ajoutées pour ETHUSDC: close=1792.89, time=2025-04-30 22:29:00
+analyzer-1  | 2025-04-30 22:30:27,861 - werkzeug - INFO - 172.22.0.12 - - [30/Apr/2025 22:30:27] "GET /health HTTP/1.1" 200 -
+analyzer-1  | 2025-04-30 22:31:00,776 - analyzer.src.redis_subscriber - INFO - 📊 BTCUSDC @ roottrading:market:data:btcusdc: Reçu données de marché, close=94408.0
+analyzer-1  | 2025-04-30 22:31:00,777 - analyzer.src.redis_subscriber - INFO - 📊 ETHUSDC @ roottrading:market:data:ethusdc: Reçu données de marché, close=1794.87
+analyzer-1  | 2025-04-30 22:31:00,778 - analyzer.strategies.base_strategy - INFO - [Divergence_Strategy] Données ajoutées pour BTCUSDC: close=94408.0, time=2025-04-30 22:30:00
+analyzer-1  | 2025-04-30 22:31:00,781 - analyzer.strategies.base_strategy - INFO - [Breakout_Strategy] Données ajoutées pour BTCUSDC: close=94408.0, time=2025-04-30 22:30:00
+analyzer-1  | 2025-04-30 22:31:00,781 - analyzer.strategies.base_strategy - INFO - [Bollinger_Strategy] Données ajoutées pour BTCUSDC: close=94408.0, time=2025-04-30 22:30:00
+analyzer-1  | 2025-04-30 22:31:00,781 - analyzer.strategies.base_strategy - INFO - [RSI_Strategy] Données ajoutées pour BTCUSDC: close=94408.0, time=2025-04-30 22:30:00
+analyzer-1  | 2025-04-30 22:31:00,781 - analyzer.strategies.base_strategy - INFO - [Ride_or_React_Strategy] Données ajoutées pour BTCUSDC: close=94408.0, time=2025-04-30 22:30:00
+analyzer-1  | 2025-04-30 22:31:00,784 - analyzer.strategies.base_strategy - INFO - [EMA_Cross_Strategy] Données ajoutées pour BTCUSDC: close=94408.0, time=2025-04-30 22:30:00
+analyzer-1  | 2025-04-30 22:31:00,784 - analyzer.strategies.base_strategy - INFO - [Divergence_Strategy] Données ajoutées pour ETHUSDC: close=1794.87, time=2025-04-30 22:30:00
+analyzer-1  | 2025-04-30 22:31:00,786 - analyzer.strategies.base_strategy - INFO - [Breakout_Strategy] Données ajoutées pour ETHUSDC: close=1794.87, time=2025-04-30 22:30:00
+analyzer-1  | 2025-04-30 22:31:00,786 - analyzer.strategies.base_strategy - INFO - [Bollinger_Strategy] Données ajoutées pour ETHUSDC: close=1794.87, time=2025-04-30 22:30:00
+analyzer-1  | 2025-04-30 22:31:00,786 - analyzer.strategies.base_strategy - INFO - [RSI_Strategy] Données ajoutées pour ETHUSDC: close=1794.87, time=2025-04-30 22:30:00
+analyzer-1  | 2025-04-30 22:31:00,786 - analyzer.strategies.base_strategy - INFO - [Ride_or_React_Strategy] Données ajoutées pour ETHUSDC: close=1794.87, time=2025-04-30 22:30:00
+analyzer-1  | 2025-04-30 22:31:00,788 - analyzer.strategies.base_strategy - INFO - [EMA_Cross_Strategy] Données ajoutées pour ETHUSDC: close=1794.87, time=2025-04-30 22:30:00
+analyzer-1  | 2025-04-30 22:31:34,956 - werkzeug - INFO - 172.22.0.12 - - [30/Apr/2025 22:31:34] "GET /health HTTP/1.1" 200 -
+analyzer-1  | 2025-04-30 22:32:00,839 - analyzer.src.redis_subscriber - INFO - 📊 BTCUSDC @ roottrading:market:data:btcusdc: Reçu données de marché, close=94334.01
+analyzer-1  | 2025-04-30 22:32:00,840 - analyzer.src.redis_subscriber - INFO - 📊 ETHUSDC @ roottrading:market:data:ethusdc: Reçu données de marché, close=1793.9
+analyzer-1  | 2025-04-30 22:32:00,842 - analyzer.strategies.base_strategy - INFO - [Divergence_Strategy] Données ajoutées pour BTCUSDC: close=94334.01, time=2025-04-30 22:31:00
+analyzer-1  | 2025-04-30 22:32:00,846 - analyzer.strategies.base_strategy - INFO - [Breakout_Strategy] Données ajoutées pour BTCUSDC: close=94334.01, time=2025-04-30 22:31:00
+analyzer-1  | 2025-04-30 22:32:00,846 - analyzer.strategies.base_strategy - INFO - [Bollinger_Strategy] Données ajoutées pour BTCUSDC: close=94334.01, time=2025-04-30 22:31:00
+analyzer-1  | 2025-04-30 22:32:00,846 - analyzer.strategies.base_strategy - INFO - [RSI_Strategy] Données ajoutées pour BTCUSDC: close=94334.01, time=2025-04-30 22:31:00
+analyzer-1  | 2025-04-30 22:32:00,846 - analyzer.strategies.base_strategy - INFO - [Ride_or_React_Strategy] Données ajoutées pour BTCUSDC: close=94334.01, time=2025-04-30 22:31:00
+analyzer-1  | 2025-04-30 22:32:00,850 - analyzer.strategies.base_strategy - INFO - [EMA_Cross_Strategy] Données ajoutées pour BTCUSDC: close=94334.01, time=2025-04-30 22:31:00
+analyzer-1  | 2025-04-30 22:32:00,851 - analyzer.strategies.base_strategy - INFO - [Divergence_Strategy] Données ajoutées pour ETHUSDC: close=1793.9, time=2025-04-30 22:31:00
+analyzer-1  | 2025-04-30 22:32:00,853 - analyzer.strategies.base_strategy - INFO - [Breakout_Strategy] Données ajoutées pour ETHUSDC: close=1793.9, time=2025-04-30 22:31:00
+analyzer-1  | 2025-04-30 22:32:00,854 - analyzer.strategies.base_strategy - INFO - [Bollinger_Strategy] Données ajoutées pour ETHUSDC: close=1793.9, time=2025-04-30 22:31:00
+analyzer-1  | 2025-04-30 22:32:00,854 - analyzer.strategies.base_strategy - INFO - [RSI_Strategy] Données ajoutées pour ETHUSDC: close=1793.9, time=2025-04-30 22:31:00
+analyzer-1  | 2025-04-30 22:32:00,854 - analyzer.strategies.base_strategy - INFO - [Ride_or_React_Strategy] Données ajoutées pour ETHUSDC: close=1793.9, time=2025-04-30 22:31:00
+analyzer-1  | 2025-04-30 22:32:00,856 - analyzer.strategies.base_strategy - INFO - [EMA_Cross_Strategy] Données ajoutées pour ETHUSDC: close=1793.9, time=2025-04-30 22:31:00
+
+
+
+dispatcher-1  | 2025-04-30 22:31:54,832 - dispatcher.src.message_router - DEBUG - Message routé: market.data.ethusdc -> roottrading:market:data:ethusdc
+dispatcher-1  | 2025-04-30 22:31:54,832 - dispatcher - DEBUG - Message routé depuis market.data.ethusdc
+dispatcher-1  | 2025-04-30 22:31:56,833 - dispatcher.src.message_router - DEBUG - Message routé: market.data.ethusdc -> roottrading:market:data:ethusdc
+dispatcher-1  | 2025-04-30 22:31:56,834 - dispatcher - DEBUG - Message routé depuis market.data.ethusdc
+dispatcher-1  | 2025-04-30 22:31:58,835 - dispatcher.src.message_router - DEBUG - Message routé: market.data.btcusdc -> roottrading:market:data:btcusdc
+dispatcher-1  | 2025-04-30 22:31:58,835 - dispatcher - DEBUG - Message routé depuis market.data.btcusdc
+dispatcher-1  | 2025-04-30 22:31:58,836 - dispatcher.src.message_router - DEBUG - Message routé: market.data.ethusdc -> roottrading:market:data:ethusdc
+dispatcher-1  | 2025-04-30 22:31:58,837 - dispatcher - DEBUG - Message routé depuis market.data.ethusdc
+dispatcher-1  | 2025-04-30 22:32:00,838 - dispatcher.src.message_router - INFO - Message transformé: market.data.btcusdc -> BTCUSDC @ 94334.01
+dispatcher-1  | 2025-04-30 22:32:00,838 - dispatcher.src.message_router - DEBUG - Message routé: market.data.btcusdc -> roottrading:market:data:btcusdc
+dispatcher-1  | 2025-04-30 22:32:00,838 - dispatcher - DEBUG - Message routé depuis market.data.btcusdc
+dispatcher-1  | 2025-04-30 22:32:00,839 - dispatcher.src.message_router - INFO - Message transformé: market.data.ethusdc -> ETHUSDC @ 1793.9
+dispatcher-1  | 2025-04-30 22:32:00,839 - dispatcher.src.message_router - DEBUG - Message routé: market.data.ethusdc -> roottrading:market:data:ethusdc
+dispatcher-1  | 2025-04-30 22:32:00,839 - dispatcher - DEBUG - Message routé depuis market.data.ethusdc
+dispatcher-1  | 2025-04-30 22:32:00,841 - dispatcher.src.message_router - DEBUG - Message routé: market.data.btcusdc -> roottrading:market:data:btcusdc
+dispatcher-1  | 2025-04-30 22:32:00,841 - dispatcher - DEBUG - Message routé depuis market.data.btcusdc
+dispatcher-1  | 2025-04-30 22:32:00,843 - dispatcher.src.message_router - DEBUG - Message routé: market.data.ethusdc -> roottrading:market:data:ethusdc
+dispatcher-1  | 2025-04-30 22:32:00,843 - dispatcher - DEBUG - Message routé depuis market.data.ethusdc
+dispatcher-1  | 2025-04-30 22:32:02,844 - dispatcher.src.message_router - DEBUG - Message routé: market.data.btcusdc -> roottrading:market:data:btcusdc
+dispatcher-1  | 2025-04-30 22:32:02,844 - dispatcher - DEBUG - Message routé depuis market.data.btcusdc
+dispatcher-1  | 2025-04-30 22:32:02,845 - dispatcher.src.message_router - DEBUG - Message routé: market.data.ethusdc -> roottrading:market:data:ethusdc
+dispatcher-1  | 2025-04-30 22:32:02,846 - dispatcher - DEBUG - Message routé depuis market.data.ethusdc
+dispatcher-1  | 2025-04-30 22:32:04,847 - dispatcher.src.message_router - DEBUG - Message routé: market.data.ethusdc -> roottrading:market:data:ethusdc
+dispatcher-1  | 2025-04-30 22:32:04,847 - dispatcher - DEBUG - Message routé depuis market.data.ethusdc
+dispatcher-1  | 2025-04-30 22:32:06,848 - dispatcher.src.message_router - DEBUG - Message routé: market.data.ethusdc -> roottrading:market:data:ethusdc
+dispatcher-1  | 2025-04-30 22:32:06,849 - dispatcher - DEBUG - Message routé depuis market.data.ethusdc
+dispatcher-1  | 2025-04-30 22:32:08,850 - dispatcher.src.message_router - DEBUG - Message routé: market.data.ethusdc -> roottrading:market:data:ethusdc
+dispatcher-1  | 2025-04-30 22:32:08,850 - dispatcher - DEBUG - Message routé depuis market.data.ethusdc
+dispatcher-1  | 2025-04-30 22:32:10,854 - dispatcher.src.message_router - DEBUG - Message routé: market.data.ethusdc -> roottrading:market:data:ethusdc
+dispatcher-1  | 2025-04-30 22:32:10,855 - dispatcher - DEBUG - Message routé depuis market.data.ethusdc
+dispatcher-1  | 2025-04-30 22:32:12,856 - dispatcher.src.message_router - DEBUG - Message routé: market.data.
+
+
+gateway-1  | 2025-04-30 22:31:56,551 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.ethusdc [0] @ offset 22797
+gateway-1  | 2025-04-30 22:31:58,585 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.ethusdc [0] @ offset 22798
+gateway-1  | 2025-04-30 22:32:00,161 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.btcusdc [0] @ offset 22484
+gateway-1  | 2025-04-30 22:32:00,161 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.ethusdc [0] @ offset 22799
+gateway-1  | 2025-04-30 22:32:00,161 - binance_ws - INFO - 📊 BTCUSDC @ 1m: 94334.01 [O:94408.0 H:94427.99 L:94334.0]
+gateway-1  | 2025-04-30 22:32:00,164 - binance_ws - INFO - 📊 ETHUSDC @ 1m: 1793.9 [O:1794.96 H:1795.52 L:1793.87]
+gateway-1  | 2025-04-30 22:32:00,550 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.btcusdc [0] @ offset 22485
+gateway-1  | 2025-04-30 22:32:00,550 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.ethusdc [0] @ offset 22800
+gateway-1  | 2025-04-30 22:32:02,555 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.btcusdc [0] @ offset 22486
+gateway-1  | 2025-04-30 22:32:02,555 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.ethusdc [0] @ offset 22801
+gateway-1  | 2025-04-30 22:32:04,556 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.btcusdc [0] @ offset 22487
+gateway-1  | 2025-04-30 22:32:04,556 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.ethusdc [0] @ offset 22802
+gateway-1  | 2025-04-30 22:32:06,616 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.ethusdc [0] @ offset 22803
+gateway-1  | 2025-04-30 22:32:08,563 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.ethusdc [0] @ offset 22804
+gateway-1  | 2025-04-30 22:32:10,559 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.ethusdc [0] @ offset 22805
+gateway-1  | 2025-04-30 22:32:12,554 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.ethusdc [0] @ offset 22806
+gateway-1  | 2025-04-30 22:32:14,552 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.btcusdc [0] @ offset 22488
+gateway-1  | 2025-04-30 22:32:14,552 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.ethusdc [0] @ offset 22807
+gateway-1  | 2025-04-30 22:32:16,576 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.btcusdc [0] @ offset 22489
+gateway-1  | 2025-04-30 22:32:16,576 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.ethusdc [0] @ offset 22808
+gateway-1  | 2025-04-30 22:32:18,551 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.btcusdc [0] @ offset 22490
+gateway-1  | 2025-04-30 22:32:18,551 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.ethusdc [0] @ offset 22809
+gateway-1  | 2025-04-30 22:32:20,554 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.ethusdc [0] @ offset 22810
+gateway-1  | 2025-04-30 22:32:22,553 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.ethusdc [0] @ offset 22811
+gateway-1  | 2025-04-30 22:32:24,550 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.btcusdc [0] @ offset 22491
+gateway-1  | 2025-04-30 22:32:24,550 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.ethusdc [0] @ offset 22812
+gateway-1  | 2025-04-30 22:32:26,553 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.ethusdc [0] @ offset 22813
+gateway-1  | 2025-04-30 22:32:28,577 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.ethusdc [0] @ offset 22814
+gateway-1  | 2025-04-30 22:32:30,556 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.ethusdc [0] @ offset 22815
+gateway-1  | 2025-04-30 22:32:32,589 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.btcusdc [0] @ offset 22492
+gateway-1  | 2025-04-30 22:32:32,589 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.ethusdc [0] @ offset 22816
+gateway-1  | 2025-04-30 22:32:34,594 - shared.src.kafka_client - INFO - ✅ Message livré au topic market.data.btcusdc [0] @ offset 22493

@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS trade_cycles (
     pocket VARCHAR(20),
     metadata JSONB,
     demo BOOLEAN NOT NULL DEFAULT FALSE
+    confirmed BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 -- Index pour les cycles

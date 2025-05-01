@@ -1,5 +1,5 @@
 services:
-  # Services d'infrastructure
+  # Services d'infrastructure (inchangés)
   redis:
     image: redis:7.0-alpine
     ports:
@@ -105,79 +105,14 @@ services:
     command: ["python", "gateway/src/main.py", "--history-days", "5"]
     volumes:
       - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
-  portfolio:
-    build:
-      context: .
-      dockerfile: ./portfolio/Dockerfile
-    depends_on:
-      redis:
-        condition: service_healthy
-      db:
-        condition: service_healthy
-      gateway:
-        condition: service_started
-    env_file: .env
-    restart: unless-stopped
-    ports:
-      - "${PORTFOLIO_PORT:-8000}:8000"
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-
-  trader:
-    build:
-      context: .
-      dockerfile: ./trader/Dockerfile
-    depends_on:
-      redis:
-        condition: service_healthy
-      db:
-        condition: service_healthy
-      gateway:
-        condition: service_started
-    env_file: .env
-    restart: unless-stopped
-    ports:
-      - "${TRADER_PORT:-5002}:5002"
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-
-  analyzer:
-    build:
-      context: .
-      dockerfile: ./analyzer/Dockerfile
-    depends_on:
-      redis:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-      gateway:
-        condition: service_started
-    env_file: .env
-    restart: unless-stopped
-    ports:
-      - "${ANALYZER_PORT:-5001}:5001"
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-
-  coordinator:
-    build:
-      context: .
-      dockerfile: ./coordinator/Dockerfile
-    depends_on:
-      redis:
-        condition: service_healthy
-      portfolio:
-        condition: service_started
-      trader:
-        condition: service_started
-    env_file: .env
-    restart: unless-stopped
-    ports:
-      - "${COORDINATOR_PORT:-5003}:5003"
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-
+  # Composant clé: dispatcher
   dispatcher:
     build:
       context: .
@@ -188,14 +123,148 @@ services:
       kafka:
         condition: service_healthy
       gateway:
-        condition: service_started
+        condition: service_healthy
     env_file: .env
     restart: unless-stopped
     ports:
       - "${DISPATCHER_PORT:-5004}:5004"
     volumes:
       - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5004/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
+  # Service analytique
+  analyzer:
+    build:
+      context: .
+      dockerfile: ./analyzer/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      dispatcher:
+        condition: service_healthy
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      - "${ANALYZER_PORT:-5001}:5001"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Service de trading
+  trader:
+    build:
+      context: .
+      dockerfile: ./trader/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      analyzer:
+        condition: service_healthy
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      - "${TRADER_PORT:-5002}:5002"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Gestion du portefeuille
+  portfolio:
+    build:
+      context: .
+      dockerfile: ./portfolio/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      trader:
+        condition: service_healthy
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      - "${PORTFOLIO_PORT:-8000}:8000"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Gestion des risques
+  risk_manager:
+    build:
+      context: .
+      dockerfile: ./risk_manager/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      trader:
+        condition: service_healthy
+      portfolio:
+        condition: service_healthy
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      - "${RISK_MANAGER_PORT:-5007}:5007"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5007/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Coordination des services
+  coordinator:
+    build:
+      context: .
+      dockerfile: ./coordinator/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      portfolio:
+        condition: service_healthy
+      trader:
+        condition: service_healthy
+      risk_manager:
+        condition: service_healthy
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      - "${COORDINATOR_PORT:-5003}:5003"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5003/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Services auxiliaires
   logger:
     build:
       context: .
@@ -213,6 +282,12 @@ services:
       - "${LOGGER_PORT:-5005}:5005"
     volumes:
       - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5005/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   pnl_tracker:
     build:
@@ -222,31 +297,21 @@ services:
       db:
         condition: service_healthy
       trader:
-        condition: service_started
+        condition: service_healthy
+      portfolio:
+        condition: service_healthy
     env_file: .env
     restart: on-failure
     ports:
       - "${PNL_TRACKER_PORT:-5006}:5006"
     volumes:
       - /etc/localtime:/etc/localtime:ro
-
-  risk_manager:
-    build:
-      context: .
-      dockerfile: ./risk_manager/Dockerfile
-    depends_on:
-      redis:
-        condition: service_healthy
-      trader:
-        condition: service_started
-      portfolio:
-        condition: service_started
-    env_file: .env
-    restart: unless-stopped
-    ports:
-      - "${RISK_MANAGER_PORT:-5007}:5007"
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5006/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   scheduler:
     build:
@@ -256,13 +321,21 @@ services:
       db:
         condition: service_healthy
       portfolio:
-        condition: service_started
+        condition: service_healthy
+      coordinator:
+        condition: service_healthy
     env_file: .env
     restart: unless-stopped
     ports:
       - "${SCHEDULER_PORT:-5008}:5008"
     volumes:
       - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5008/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   frontend:
     build:
@@ -272,12 +345,18 @@ services:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
       portfolio:
-        condition: service_started
+        condition: service_healthy
       trader:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
     volumes:
       - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
 volumes:
   redis_data:

@@ -10,6 +10,7 @@ import time
 # Importer les modules partagés
 import sys
 import os
+from urllib.parse import urljoin
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
 from shared.src.config import POCKET_CONFIG
@@ -203,6 +204,77 @@ class PocketManager:
         SharedCache.set('pockets', pockets)
         
         return pockets
+    def check_pocket_synchronization(self) -> bool:
+        """
+        Vérifie si les poches sont synchronisées avec les cycles **réellement confirmés**.
+
+        Returns:
+            True si la synchronisation est correcte, False sinon
+        """
+        try:
+            # Récupérer les poches
+            pockets_data = self._make_request_with_retry(
+                urljoin(self.portfolio_api_url, "/pockets")
+            )
+
+            if not pockets_data:
+                logger.error("Impossible de récupérer les données des poches")
+                return False
+
+            # Récupérer les cycles actifs
+            trader_api_url = os.getenv("TRADER_API_URL", "http://trader:5002")
+            active_cycles_data = self._make_request_with_retry(
+                urljoin(trader_api_url, "/orders?status=active")
+            )
+
+            if not active_cycles_data:
+                logger.error("Impossible de récupérer les cycles actifs")
+                return False
+
+            # ✅ Ne garder que les cycles confirmés (si le champ existe)
+            confirmed_cycles = [c for c in active_cycles_data if c.get("confirmed") is True]
+
+            active_cycle_count = len(confirmed_cycles)
+            pocket_cycle_count = sum(p.get("active_cycles", 0) for p in pockets_data)
+
+            trade_used_value = sum(
+                float(c.get("quantity", 0)) * float(c.get("entry_price", 0))
+                for c in confirmed_cycles
+            )
+
+            pocket_used_value = sum(float(p.get("used_value", 0)) for p in pockets_data)
+
+            cycles_synced = abs(active_cycle_count - pocket_cycle_count) <= 1
+            amount_diff_percent = abs(trade_used_value - pocket_used_value) / trade_used_value * 100 if trade_used_value > 0 else 0
+            amounts_synced = amount_diff_percent <= 5.0
+
+            if not cycles_synced or not amounts_synced:
+                logger.warning(
+                    f"⚠️ Désynchronisation détectée: {active_cycle_count} cycles confirmés vs {pocket_cycle_count} dans les poches. "
+                    f"Montant utilisé: {trade_used_value:.2f} vs {pocket_used_value:.2f} (diff: {amount_diff_percent:.2f}%)"
+                )
+
+                reconcile_result = self._make_request_with_retry(
+                    urljoin(self.portfolio_api_url, "/pockets/reconcile"),
+                    method="POST"
+                )
+
+                if reconcile_result:
+                    logger.info("✅ Réconciliation des poches demandée")
+                    self.last_cache_update = 0
+                    self._refresh_cache()
+                    return False
+                else:
+                    logger.error("❌ Échec de la demande de réconciliation")
+                    return False
+
+            logger.info("✅ Poches correctement synchronisées (cycles confirmés seulement)")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la vérification de synchronisation: {str(e)}")
+            return False
+
     
     def update_pockets_allocation(self, total_value: float) -> bool:
         """
@@ -639,26 +711,28 @@ class PocketManager:
     
     def sync_with_trades(self) -> bool:
         """
-        Synchronise les poches avec les trades actifs.
+        Synchronise les poches avec les trades actifs **réellement exécutés** (ordres FILLED).
         Recalcule les valeurs utilisées et disponibles.
-        
+
         Returns:
             True si la synchronisation a réussi, False sinon
         """
         try:
-            # Obtenir la valeur totale utilisée par poche avec une seule requête
             query = """
             WITH trade_values AS (
                 SELECT 
-                    pocket,
-                    SUM(quantity * entry_price) as used_value
+                    tc.pocket,
+                    SUM(te.price * te.quantity) as used_value
                 FROM 
-                    trade_cycles
+                    trade_cycles tc
+                JOIN 
+                    trade_executions te ON tc.entry_order_id = te.order_id
                 WHERE 
-                    status NOT IN ('completed', 'canceled', 'failed')
-                    AND pocket IS NOT NULL
+                    tc.status NOT IN ('completed', 'canceled', 'failed')
+                    AND te.status = 'FILLED'
+                    AND tc.pocket IS NOT NULL
                 GROUP BY 
-                    pocket
+                    tc.pocket
             )
             SELECT 
                 cp.pocket_type,
@@ -669,24 +743,22 @@ class PocketManager:
             LEFT JOIN 
                 trade_values tv ON cp.pocket_type = tv.pocket
             """
-            
+
             result = self.db.execute_query(query, fetch_all=True)
-            
+
             if not result:
                 logger.warning("⚠️ Aucune poche trouvée pour la synchronisation")
                 return False
-            
-            # Utiliser une seule transaction pour toutes les mises à jour
+
             self.db.execute_query("BEGIN")
             success = True
-            
-            # Mettre à jour les valeurs utilisées et disponibles
+
             for row in result:
                 pocket_type = row['pocket_type']
                 current_value = float(row['current_value'])
                 used_value = float(row['calculated_used_value'])
                 available_value = max(0, current_value - used_value)
-                
+
                 update_query = """
                 UPDATE capital_pockets
                 SET 
@@ -696,47 +768,39 @@ class PocketManager:
                 WHERE 
                     pocket_type = %s
                 """
-                
+
                 update_result = self.db.execute_query(
                     update_query, 
                     (used_value, available_value, pocket_type), 
                     commit=False
                 )
-                
+
                 if update_result is None:
                     logger.error(f"❌ Échec de la mise à jour de la poche {pocket_type}")
                     success = False
                     break
-            
+
             if success:
-                # Valider les mises à jour
                 self.db.execute_query("COMMIT")
-                
-                # Mettre à jour le nombre de cycles actifs
                 self.recalculate_active_cycles()
-                
-                # Invalider le cache
                 SharedCache.clear('pockets')
-                
-                logger.info("✅ Poches synchronisées avec les trades actifs")
+                logger.info("✅ Poches synchronisées avec les trades actifs exécutés")
             else:
-                # Annuler les mises à jour
                 self.db.execute_query("ROLLBACK")
                 logger.warning("⚠️ Synchronisation annulée en raison d'erreurs")
-            
+
             return success
-            
+
         except Exception as e:
-            # Annuler la transaction en cas d'erreur
             try:
                 self.db.execute_query("ROLLBACK")
             except:
                 pass
-                
             logger.error(f"❌ Erreur lors de la synchronisation avec les trades: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
             return False
+
     
     def close(self) -> None:
         """

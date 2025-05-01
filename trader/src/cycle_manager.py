@@ -281,43 +281,30 @@ class CycleManager:
         except Exception as e:
             logger.error(f"❌ Erreur lors du chargement des cycles actifs: {str(e)}")
     
+    ...
     def create_cycle(self, symbol: str, strategy: str, side: Union[OrderSide, str], 
-                price: float, quantity: float, pocket: Optional[str] = None,
-                target_price: Optional[float] = None, stop_price: Optional[float] = None,
-                trailing_delta: Optional[float] = None) -> Optional[TradeCycle]:
+                    price: float, quantity: float, pocket: Optional[str] = None,
+                    target_price: Optional[float] = None, stop_price: Optional[float] = None,
+                    trailing_delta: Optional[float] = None) -> Optional[TradeCycle]:
         """
-        Crée un nouveau cycle de trading et exécute l'ordre d'entrée.
-    
-        Args:
-            symbol: Symbole (ex: 'BTCUSDC')
-            strategy: Nom de la stratégie
-            side: Côté de l'ordre d'entrée (BUY ou SELL)
-            price: Prix d'entrée
-            quantity: Quantité à trader
-            pocket: Nom de la poche de capital
-            target_price: Prix cible pour la sortie
-            stop_price: Prix de stop-loss
-            trailing_delta: Delta pour le trailing stop
+        Crée un nouveau cycle de trading et exécute l'ordre d'entrée **seulement si l'exécution réussit**.
         
         Returns:
-            Cycle créé ou None en cas d'erreur
+            Cycle créé ou None si l'ordre Binance échoue.
         """
         try:
-            # Convertir side en OrderSide s'il s'agit d'une chaîne
             if isinstance(side, str):
                 side = OrderSide(side)
 
-            # Générer un ID unique pour le cycle
             cycle_id = f"cycle_{uuid.uuid4().hex[:16]}"
             now = datetime.now()
-        
-            # Créer l'objet cycle
+
             cycle = TradeCycle(
                 id=cycle_id,
                 symbol=symbol,
                 strategy=strategy,
                 status=CycleStatus.INITIATING,
-                entry_price=None,  # Sera mis à jour après l'exécution
+                entry_price=None,
                 quantity=quantity,
                 target_price=target_price,
                 stop_price=stop_price,
@@ -327,11 +314,8 @@ class CycleManager:
                 pocket=pocket,
                 demo=self.demo_mode
             )
-        
-            # Enregistrer le cycle en base de données
-            self._save_cycle_to_db(cycle)
-        
-            # Créer l'ordre d'entrée
+
+            # Créer l'ordre
             entry_order = TradeOrder(
                 symbol=symbol,
                 side=side,
@@ -341,31 +325,33 @@ class CycleManager:
                 strategy=strategy,
                 demo=self.demo_mode
             )
-        
-            # Exécuter l'ordre d'entrée
-            logger.info(f"🔄 Exécution de l'ordre d'entrée pour le cycle {cycle_id}")
+
+            logger.info(f"🔄 Envoi de l'ordre d'entrée pour le cycle {cycle_id}")
             execution = self.binance_executor.execute_order(entry_order)
-        
-            # Mettre à jour le cycle avec les informations de l'ordre
+
+            if not execution or not execution.order_id or execution.status != OrderStatus.FILLED:
+                logger.error(f"❌ L'ordre d'entrée pour le cycle {cycle_id} a échoué ou n'est pas FILLED")
+                return None
+
+            # Mise à jour du cycle avec données exécutées
             with self.cycles_lock:
                 cycle.entry_order_id = execution.order_id
                 cycle.entry_price = execution.price
                 cycle.status = CycleStatus.ACTIVE_BUY if side == OrderSide.BUY else CycleStatus.ACTIVE_SELL
+                cycle.confirmed = True
                 cycle.updated_at = datetime.now()
-            
-                # Stocker le cycle dans la mémoire
                 self.active_cycles[cycle_id] = cycle
-        
-            # Enregistrer l'exécution et le cycle mis à jour en base de données
+
             self._save_execution_to_db(execution, cycle_id)
             self._save_cycle_to_db(cycle)
-        
-            logger.info(f"✅ Cycle {cycle_id} créé avec succès: {side.value if hasattr(side, 'value') else side} {quantity} {symbol} @ {execution.price}")
+
+            logger.info(f"✅ Cycle {cycle_id} créé avec succès: {side.value} {quantity} {symbol} @ {execution.price}")
             return cycle
-    
+
         except Exception as e:
             logger.error(f"❌ Erreur lors de la création du cycle: {str(e)}")
             return None
+
     
     def close_cycle(self, cycle_id: str, exit_price: Optional[float] = None) -> bool:
         """
@@ -754,6 +740,7 @@ class CycleManager:
                     created_at = %s,
                     updated_at = %s,
                     completed_at = %s,
+                    confirmed = %s,
                     pocket = %s,
                     demo = %s
                 WHERE id = %s
@@ -779,6 +766,7 @@ class CycleManager:
                     cycle.created_at,
                     cycle.updated_at,
                     cycle.completed_at,
+                    cycle.confirmed,
                     cycle.pocket,
                     cycle.demo,
                     cycle.id
@@ -789,7 +777,7 @@ class CycleManager:
                 (id, symbol, strategy, status, entry_order_id, exit_order_id,
                 entry_price, exit_price, quantity, target_price, stop_price,
                 trailing_delta, profit_loss, profit_loss_percent, created_at,
-                updated_at, completed_at, pocket, demo)
+                updated_at, completed_at, confirmed, pocket, demo)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 
@@ -814,6 +802,7 @@ class CycleManager:
                     cycle.created_at,
                     cycle.updated_at,
                     cycle.completed_at,
+                    cycle.confirmed,
                     cycle.pocket,
                     cycle.demo
                 )
