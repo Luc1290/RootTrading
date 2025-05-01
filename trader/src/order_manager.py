@@ -331,9 +331,9 @@ class OrderManager:
                 # Marquer la tâche comme terminée
                 self.signal_queue.task_done()
 
-                # Loguer l'état du système toutes les 5 minutes (300 secondes)
+                # Loguer l'état du système toutes les 2 minutes (120 secondes)
                 current_time = time.time()
-                if current_time - self.last_status_log > 300:
+                if current_time - self.last_status_log > 120:
                     self.log_system_status()
                     self.last_status_log = current_time
                 

@@ -596,7 +596,7 @@ async def get_trade_history(
     
     # Configurer les entêtes de cache si les données sont historiques
     if response and (not start_date_obj or start_date_obj < datetime.now() - timedelta(days=1)):
-        response.headers["Cache-Control"] = "public, max-age=300"  # 5 minutes
+        response.headers["Cache-Control"] = "public, max-age=60"  # 5 minutes
     
     return TradeHistoryResponse(
         trades=trades,
@@ -629,7 +629,7 @@ async def get_performance(
     
     # Les données de performance peuvent être mises en cache plus longtemps
     if response:
-        response.headers["Cache-Control"] = "public, max-age=300"  # 5 minutes
+        response.headers["Cache-Control"] = "public, max-age=60"  # 5 minutes
     
     return PerformanceResponse(data=stats, period=period)
 
@@ -648,7 +648,7 @@ async def get_strategy_performance(
     
     # Les données de performance peuvent être mises en cache plus longtemps
     if response:
-        response.headers["Cache-Control"] = "public, max-age=300"  # 5 minutes
+        response.headers["Cache-Control"] = "public, max-age=60"  # 5 minutes
     
     return {"data": performance}
 
@@ -667,7 +667,7 @@ async def get_symbol_performance(
     
     # Les données de performance peuvent être mises en cache plus longtemps
     if response:
-        response.headers["Cache-Control"] = "public, max-age=300"  # 5 minutes
+        response.headers["Cache-Control"] = "public, max-age=60"  # 5 minutes
     
     return {"data": performance}
 

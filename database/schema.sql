@@ -48,10 +48,10 @@ CREATE TABLE IF NOT EXISTS trade_cycles (
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL,
     completed_at TIMESTAMP,
+    confirmed BOOLEAN NOT NULL DEFAULT FALSE,
     pocket VARCHAR(20),
     metadata JSONB,
-    demo BOOLEAN NOT NULL DEFAULT FALSE
-    confirmed BOOLEAN NOT NULL DEFAULT FALSE
+    demo BOOLEAN NOT NULL DEFAULT FALSE    
 );
 
 -- Index pour les cycles

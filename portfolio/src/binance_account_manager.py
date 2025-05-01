@@ -288,7 +288,7 @@ class BinanceAccountManager:
             logger.error(f"❌ Erreur lors de la récupération des prix: {str(e)}")
             
             # Si le cache existe et n'est pas trop vieux (moins de 5 minutes), l'utiliser malgré l'erreur
-            if self._prices_cache and (current_time - self._prices_cache_time < 300):
+            if self._prices_cache and (current_time - self._prices_cache_time < 60):
                 logger.warning(f"⚠️ Utilisation du cache des prix après échec de la requête ({len(self._prices_cache)} symboles)")
                 return self._prices_cache
             
@@ -298,7 +298,7 @@ class BinanceAccountManager:
             logger.error(traceback.format_exc())
             
             # Si le cache existe et n'est pas trop vieux (moins de 5 minutes), l'utiliser malgré l'erreur
-            if self._prices_cache and (current_time - self._prices_cache_time < 300):
+            if self._prices_cache and (current_time - self._prices_cache_time < 60):
                 logger.warning(f"⚠️ Utilisation du cache des prix après erreur inattendue ({len(self._prices_cache)} symboles)")
                 return self._prices_cache
             

@@ -38,7 +38,7 @@ async def sync_binance_forever():
             logger.info(f"🔄 Balances Binance synchronisées ({len(balances)} actifs)")
         except Exception as e:
             logger.error(f"❌ Erreur sync Binance: {e}")
-        await asyncio.sleep(300)
+        await asyncio.sleep(60)
 
 def database_sync_task():
     """Synchronisation poches et DB"""
@@ -57,4 +57,4 @@ async def sync_db_forever():
             logger.info("🔄 Synchronisation des poches DB")
         except Exception as e:
             logger.error(f"❌ Erreur sync DB: {e}")
-        await asyncio.sleep(300)
+        await asyncio.sleep(60)
