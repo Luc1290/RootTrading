@@ -143,46 +143,51 @@ class BinanceExecutor:
         return signature
     
     def _notify_order_failure(self, error, order_params, client_order_id=None):
-        """
-        Notifie les autres services d'un échec d'ordre via Redis.
-        
-        Args:
-            error: Erreur Binance
-            order_params: Paramètres de l'ordre
-            client_order_id: ID du cycle ou de l'ordre client (optionnel)
-        """
         try:
-            # Préparer les données de notification
+            # Extraire le cycle_id de manière plus fiable
+            cycle_id = None
+        
+            # Si le client_order_id est fourni et commence par "entry_", extraire le cycle_id
+            if client_order_id and client_order_id.startswith("entry_"):
+                cycle_id = client_order_id.replace("entry_", "")
+            # Sinon, essayer d'obtenir le newClientOrderId des paramètres
+            elif order_params and "newClientOrderId" in order_params:
+                client_id = order_params.get("newClientOrderId")
+                if client_id and client_id.startswith("entry_"):
+                    cycle_id = client_id.replace("entry_", "")
+        
+            # Si aucun cycle_id n'a été trouvé, générer un ID temporaire
+            if not cycle_id:
+                cycle_id = f"temp_{int(time.time() * 1000)}"
+
             notification = {
                 "type": "order_failed",
-                "cycle_id": client_order_id or order_params.get("newClientOrderId", "unknown"),
-                "symbol": order_params.get("symbol"),
-                "side": order_params.get("side"),
-                "quantity": order_params.get("quantity"),
-                "price": order_params.get("price"),
+                "cycle_id": cycle_id,
+                "symbol": order_params.get("symbol") if order_params else None,
+                "side": order_params.get("side") if order_params else None,
+                "quantity": order_params.get("quantity") if order_params else None,
+                "price": order_params.get("price") if order_params else None,
                 "reason": f"Erreur Binance: {str(error)}",
                 "timestamp": int(time.time() * 1000)
             }
-            
-            # Calculer le montant en USDC si possible
+
             try:
-                price = float(order_params.get("price", 0))
-                quantity = float(order_params.get("quantity", 0))
-                amount = price * quantity
-                notification["amount"] = amount
-            except:
-                # Si conversion impossible, ne pas inclure le montant
+                if order_params:
+                    price = float(order_params.get("price", 0))
+                    quantity = float(order_params.get("quantity", 0))
+                    if price > 0 and quantity > 0:
+                        notification["amount"] = price * quantity
+            except (ValueError, TypeError):
                 pass
-            
-            # Importer redis_client depuis le module partagé s'il existe
+
             try:
                 from shared.src.redis_client import RedisClient
                 redis_client = RedisClient()
                 redis_client.publish("roottrading:order:failed", notification)
-                logger.info(f"✅ Notification d'échec d'ordre envoyée pour {client_order_id}")
+                logger.info(f"✅ Notification d'échec d'ordre envoyée pour {cycle_id}")
             except Exception as e:
                 logger.warning(f"⚠️ Impossible d'envoyer la notification Redis: {str(e)}")
-            
+
         except Exception as e:
             logger.error(f"❌ Erreur lors de la notification d'échec d'ordre: {str(e)}")
     
@@ -316,10 +321,10 @@ class BinanceExecutor:
     def execute_order(self, order: TradeOrder) -> TradeExecution:
         """
         Exécute un ordre sur Binance ou le simule en mode démo.
-    
+
         Args:
             order: Ordre à exécuter
-        
+    
         Returns:
             Exécution de l'ordre
         """
@@ -332,9 +337,8 @@ class BinanceExecutor:
             return self._simulate_order(order)
 
         try:
-            # Préparer l'URL et le timestamp
+            # Préparer l'URL
             order_url = f"{self.BASE_URL}{self.API_V3}/order"
-            timestamp = int(time.time() * 1000)
 
             # Générer un client_order_id unique si non fourni
             client_order_id = order.client_order_id or f"root_{uuid.uuid4().hex[:16]}"
@@ -349,40 +353,37 @@ class BinanceExecutor:
             price_str = f"{order.price:.{price_precision}f}" if order.price else None
 
             # Construire les paramètres à signer
-            params_to_sign = {
+            params = {
                 "symbol": order.symbol,
                 "side": order.side.value,
                 "type": "LIMIT" if price_str else "MARKET",
                 "quantity": quantity_str,
                 "newClientOrderId": client_order_id,
-                "timestamp": timestamp
             }
 
             if price_str:
-                params_to_sign["price"] = price_str
-                params_to_sign["timeInForce"] = "GTC"
+                params["price"] = price_str
+                params["timeInForce"] = "GTC"
 
-            # Générer la signature
-            signature = self._generate_signature(params_to_sign)
+            # IMPORTANT: Générer le timestamp et l'ajouter aux paramètres
+            timestamp = int(time.time() * 1000)
+            params["timestamp"] = timestamp
 
-            # Construire les paramètres finaux envoyés
-            params_with_signature = params_to_sign.copy()
-            params_with_signature["signature"] = signature
+            # Générer la signature APRÈS avoir ajouté tous les paramètres
+            signature = self._generate_signature(params)
+            params["signature"] = signature
 
-            # Log pour debug
-            logger.info(f"📦 Paramètres POST vers Binance: {params_with_signature}")
+            logger.info(f"📦 Paramètres POST vers Binance: {params}")
 
-            # Envoyer la requête POST
-            response = self.session.post(order_url, params=params_with_signature)
+            # IMPORTANT: Utiliser data= (et non params=) pour un POST signé
+            response = self.session.post(order_url, data=params)
 
             if response.status_code != 200:
                 error_msg = response.json().get("msg", "Unknown error")
                 logger.error(f"Erreur Binance {response.status_code}: {error_msg}")
-                self._notify_order_failure(error_msg, params_with_signature, client_order_id)
+                self._notify_order_failure(error_msg, params, client_order_id)
                 logger.info(f"Passage en mode simulation suite à l'erreur")
                 return self._simulate_order(order)
-
-            response.raise_for_status()
 
             # Traiter la réponse de Binance
             order_response = response.json()
@@ -434,7 +435,7 @@ class BinanceExecutor:
         # En mode réel, interroger Binance
         try:
             order_url = f"{self.BASE_URL}{self.API_V3}/order"
-            timestamp = int(time.time() * 1000)
+            timestamp = int(time.time() * 1000)            
             
             params = {
                 "symbol": symbol,

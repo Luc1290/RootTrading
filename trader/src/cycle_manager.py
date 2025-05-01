@@ -188,6 +188,8 @@ class CycleManager:
                     execution.demo,
                     execution.order_id
                 )
+                logger.debug(f"Enregistrement DB avec params: {params}")
+                logger.debug(f"Types: {[type(p) for p in params]}")
             else:
                 query = """
                 INSERT INTO trade_executions
@@ -216,7 +218,9 @@ class CycleManager:
                     cycle_id,
                     execution.demo
                 )
-        
+                logger.debug(f"Enregistrement DB avec params: {params}")
+                logger.debug(f"Types: {[type(p) for p in params]}")
+                
             # Exécuter la requête
             with DBContextManager() as cursor:
                 cursor.execute(query, params)
@@ -225,8 +229,10 @@ class CycleManager:
             return True
     
         except Exception as e:
-            logger.error(f"❌ Erreur lors de l'enregistrement de l'exécution en base de données: {str(e)}")
+            logger.error("❌ Erreur lors de l'enregistrement de l'exécution en base de données")
+            logger.exception(e)  # Ajoute la trace complète de l'exception
             return False
+
     
     def _load_active_cycles_from_db(self) -> None:
         """
@@ -344,6 +350,22 @@ class CycleManager:
 
             self._save_execution_to_db(execution, cycle_id)
             self._save_cycle_to_db(cycle)
+
+            try:
+                from shared.src.redis_client import RedisClient
+                redis = RedisClient()
+                redis.publish("roottrading:cycle:created", {
+                    "cycle_id": cycle.id,
+                    "symbol": cycle.symbol,
+                    "strategy": cycle.strategy,
+                    "quantity": cycle.quantity,
+                    "entry_price": cycle.entry_price,
+                    "timestamp": int(cycle.created_at.timestamp() * 1000),
+                    "pocket": cycle.pocket
+                })
+                logger.info(f"📢 Cycle publié sur Redis: {cycle.id}")
+            except Exception as e:
+                logger.warning(f"⚠️ Impossible de publier le cycle sur Redis: {str(e)}")
 
             logger.info(f"✅ Cycle {cycle_id} créé avec succès: {side.value} {quantity} {symbol} @ {execution.price}")
             return cycle

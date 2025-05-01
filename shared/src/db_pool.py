@@ -55,14 +55,50 @@ class DBContextManager:
         self.cursor = self.conn.cursor()
         return self.cursor
     
+    def commit(self):
+        """Valide la transaction en cours"""
+        if hasattr(self, 'conn') and self.conn:
+            self.conn.commit()
+
+    def rollback(self):
+        """Annule la transaction en cours"""
+        if hasattr(self, 'conn') and self.conn:
+            self.conn.rollback()
+    
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.cursor:
-            self.cursor.close()
+        try:
+            if self.cursor:
+                self.cursor.close()
         
-        if self.conn:
-            if exc_type is not None:
-                self.conn.rollback()
-            else:
-                self.conn.commit()
+            if self.conn:
+                if exc_type is not None:
+                    self.conn.rollback()
+                    logger.debug("Transaction automatiquement annulée en raison d'une exception")
+                else:
+                    # Vérifier si une transaction est en cours
+                    in_transaction = False
+                    try:
+                        # PostgreSQL-specific: vérifier si une transaction est en cours
+                        self.cursor = self.conn.cursor()
+                        self.cursor.execute("SELECT pg_current_xact_id() IS NOT NULL")
+                        in_transaction = self.cursor.fetchone()[0]
+                        self.cursor.close()
+                    except:
+                        # En cas d'erreur, supposer qu'une transaction est en cours
+                        in_transaction = True
+                
+                    if not in_transaction:
+                        self.conn.commit()
+                        logger.debug("Transaction automatiquement validée")
+                    else:
+                        logger.debug("Transaction existante détectée, pas de commit automatique")
             
-            self.pool.release_connection(self.conn)
+                self.pool.release_connection(self.conn)
+        except Exception as e:
+            logger.error(f"Erreur dans __exit__ de DBContextManager: {str(e)}")
+            # Tenter de libérer la connexion même en cas d'erreur
+            try:
+                if hasattr(self, 'conn') and self.conn:
+                    self.pool.release_connection(self.conn)
+            except:
+                pass

@@ -90,25 +90,28 @@ class RedisClient:
     def publish(self, channel: str, message: Any) -> int:
         """
         Publie un message sur un canal Redis.
-        
-        Args:
-            channel: Le canal sur lequel publier
-            message: Le message à publier (dictionnaire, liste, chaîne, nombre, etc.)
-            
-        Returns:
-            Nombre de clients qui ont reçu le message
         """
         try:
             # Convertir le message en format approprié pour Redis
             if isinstance(message, (dict, list)):
+                # Correction ici : convertit les types non natifs (numpy)
+                def normalize_types(obj):
+                    if isinstance(obj, dict):
+                        return {k: normalize_types(v) for k, v in obj.items()}
+                    elif isinstance(obj, list):
+                        return [normalize_types(v) for v in obj]
+                    elif str(type(obj)).endswith("bool_"):
+                        return bool(obj)
+                    # Ajouter d'autres types NumPy si nécessaire
+                    return obj
+                message = normalize_types(message)
                 message = json.dumps(message)
             elif not isinstance(message, (str, int, float, bool)):
                 # Pour les autres types (objets personnalisés, etc.)
                 message = str(message)
-                
-            result = self.redis.publish(channel, message)
-            return result
             
+            return self.redis.publish(channel, message)
+        
         except (ConnectionError, TimeoutError):
             logger.warning("Perte de connexion Redis pendant la publication, tentative de reconnexion...")
             self.reconnect()
@@ -116,8 +119,8 @@ class RedisClient:
             return self.redis.publish(channel, message)
         except Exception as e:
             logger.error(f"Erreur lors de la publication du message: {str(e)}")
-            return 0
-    
+            return 0     
+        
     def subscribe(self, channels: Union[str, List[str]], callback: Callable[[str, Any], None]) -> None:
         """
         S'abonne à un ou plusieurs canaux Redis et traite les messages via un callback.
@@ -424,7 +427,62 @@ class RedisClient:
         except Exception as e:
             logger.error(f"Erreur lors de la récupération de la table {name}: {str(e)}")
             return {}
+
+    def decrbyfloat(self, key: str, amount: float) -> float:
+        """
+        Décrémente une clé numérique float de Redis.
     
+        Args:
+            key: Clé Redis à décrémenter
+            amount: Valeur à soustraire
+    
+        Returns:
+            Nouvelle valeur
+        """
+        try:
+            pipe = self.redis.pipeline()
+            pipe.watch(key)
+            current = self.redis.get(key)
+            value = float(current) if current else 0.0
+            value -= float(amount)
+            pipe.multi()
+            pipe.set(key, value)
+            pipe.execute()
+            return value
+        except Exception as e:
+            pipe.reset()
+            logger.error(f"Erreur dans decrbyfloat pour {key}: {str(e)}")
+            raise
+
+    def sadd(self, key: str, value: Any) -> int:
+        """
+        Ajoute un élément à un set Redis.
+    
+        Args:
+            key: Clé Redis du set
+            value: Valeur à ajouter
+        
+        Returns:
+            Nombre d'éléments ajoutés (1 si nouveau, 0 si déjà présent)
+        """
+        try:
+            # Convertir la valeur au format approprié pour Redis si nécessaire
+            if isinstance(value, (dict, list)):
+                value = json.dumps(value)
+            elif not isinstance(value, (str, int, float, bool)):
+                value = str(value)
+            
+            return self.redis.sadd(key, value)
+        
+        except (ConnectionError, TimeoutError):
+            logger.warning("Perte de connexion Redis pendant sadd(), tentative de reconnexion...")
+            self.reconnect()
+            # Réessayer après reconnexion
+            return self.redis.sadd(key, value)
+        except Exception as e:
+            logger.error(f"Erreur lors du SADD sur {key}: {str(e)}")
+            return 0    
+
     def close(self) -> None:
         """Ferme la connexion Redis et nettoie les ressources."""
         try:

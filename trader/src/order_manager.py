@@ -395,6 +395,18 @@ class OrderManager:
             if target_price_percent < min_change:
                 logger.info(f"⚠️ Signal ignoré: gain potentiel {target_price_percent:.2f}% inférieur au seuil minimal {min_change:.2f}%")
                 return
+            
+            # Protection anti-doublon via Redis
+            signal_fingerprint = f"{signal.symbol}:{signal.strategy}:{signal.side.value}:{int(signal.price)}"
+            lock_key = f"roottrading:signal_lock:{signal_fingerprint}"
+            lock_ttl = 30  # secondes
+
+            if self.redis_signal_client.get(lock_key):
+                logger.warning(f"⛔ Signal ignoré (doublon): {signal_fingerprint}")
+                return
+
+            # Poser un verrou pour éviter les doublons
+            self.redis_signal_client.set(lock_key, "1", ex=lock_ttl)
 
             pocket = metadata.get('pocket', 'active')
             cycle = self.cycle_manager.create_cycle(
