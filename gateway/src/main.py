@@ -96,11 +96,11 @@ async def start_http_server():
     runner = web.AppRunner(app)
     await runner.setup()
     
-    # Utiliser le port 5000 pour l'API REST
-    site = web.TCPSite(runner, '0.0.0.0', 5000)
+    # Utiliser le port 5010 pour l'API REST
+    site = web.TCPSite(runner, '0.0.0.0', 5010)
     await site.start()
     
-    logger.info("✅ Serveur HTTP démarré sur le port 5000")
+    logger.info("✅ Serveur HTTP démarré sur le port 5010")
     
     return runner
 

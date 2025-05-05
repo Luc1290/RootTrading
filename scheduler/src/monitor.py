@@ -69,7 +69,7 @@ class ServiceMonitor:
         default_config = {
             "services": {
                 "gateway": {
-                    "url": "http://gateway:5000/health",
+                    "url": "http://gateway:5010/health",
                     "timeout": 5,
                     "restart_command": "docker-compose restart gateway",
                     "critical": True
