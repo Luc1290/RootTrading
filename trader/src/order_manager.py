@@ -406,7 +406,8 @@ class OrderManager:
                 return
 
             # Poser un verrou pour éviter les doublons
-            self.redis_signal_client.set(lock_key, "1", ex=lock_ttl)
+            self.redis_signal_client.set(lock_key, "1", expiration=lock_ttl)
+
 
             pocket = metadata.get('pocket', 'active')
             cycle = self.cycle_manager.create_cycle(

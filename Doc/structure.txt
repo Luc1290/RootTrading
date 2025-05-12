@@ -1,8 +1,6 @@
 📄 .env
-📄 .gitignore
-📄 docker-compose.yml
-📄 requirements-shared.txt
 📁 .git/
+📄 .gitignore
 📁 analyzer/
 │   📄 Dockerfile
 │   📄 requirements.txt
@@ -35,14 +33,25 @@
 │   │   📄 main.py
 │   │   📄 message_router.py
 📁 doc/
+│   📄 Architecture technique parfaite.txt
+│   📄 Commande Debug.txt
+│   📄 ROOTBot_Resume_Spot_Intelligent.txt
 │   📄 Readme.md
+│   📄 RootTrading.odt
+│   📄 check_public_ip.py
+│   📄 explication.txt
 │   📄 log boucle complete.txt
 │   📄 log.bat
 │   📄 logdb.csv
 │   📄 monitor-ressource.ps1
 │   📄 monitor.ps1
 │   📄 restart.ps1
+│   📄 signature.py
 │   📄 start.bat
+│   📄 structure.txt
+│   📄 time.py
+│   📄 trader_log.txt
+📄 docker-compose.yml
 📁 frontend/
 │   📄 Dockerfile
 │   📄 index.html
@@ -98,6 +107,7 @@
 │   │   📄 redis_subscriber.py
 │   │   📄 startup.py
 │   │   📄 sync.py
+📄 requirements-shared.txt
 📁 risk_manager/
 │   📄 Dockerfile
 │   📄 requirements.txt
