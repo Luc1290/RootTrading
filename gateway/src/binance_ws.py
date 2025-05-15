@@ -17,6 +17,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 
 from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY, SYMBOLS, INTERVAL, KAFKA_TOPIC_MARKET_DATA
 from shared.src.kafka_client import KafkaClient
+from gateway.src.kafka_producer import get_producer   # NEW
+
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -39,7 +41,7 @@ class BinanceWebSocket:
         """
         self.symbols = symbols or SYMBOLS
         self.interval = interval
-        self.kafka_client = kafka_client or KafkaClient()
+        self.kafka_client = kafka_client or get_producer()   # utilise le producteur singleton
         self.ws = None
         self.running = False
         self.reconnect_delay = 1  # Secondes, pour backoff exponentiel
@@ -206,16 +208,19 @@ class BinanceWebSocket:
                         # Traiter les données de chandelier
                         if event_type == 'kline':
                             processed_data = self._process_kline_message(data)
-                                                       
-                            # Produire le message Kafka
+
+                            # 👉 on ignore les bougies encore ouvertes
+                            if not processed_data['is_closed']:
+                                continue
+
                             symbol = processed_data['symbol']
-                            logger.debug(f"📊 Message reçu de Binance: {symbol} @ {self.interval} - prix actuel: {processed_data['close']}")
-                            self.kafka_client.produce(
-                                topic=f"{KAFKA_TOPIC_MARKET_DATA}.{symbol.lower()}",
-                                message=processed_data,
-                                key=symbol
+                            key = f"{symbol}:{processed_data['start_time']}"        # clé idempotente
+
+                            self.kafka_client.publish_market_data(                  # on passe par le wrapper
+                                data=processed_data,
+                                key=key
                             )
-                            
+        
                             # Log pour le débogage (seulement si le chandelier est fermé)
                             if processed_data['is_closed']:
                                 logger.info(f"📊 {symbol} @ {self.interval}: {processed_data['close']} "

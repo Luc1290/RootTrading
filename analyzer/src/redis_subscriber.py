@@ -18,6 +18,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB, CHANNEL_PREFIX, SYMBOLS
 from shared.src.redis_client import RedisClient
 from shared.src.schemas import StrategySignal
+from analyzer.src.bar_aggregator import BarAggregator
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
@@ -38,6 +39,8 @@ class RedisSubscriber:
         self.symbols = symbols or SYMBOLS
         self.redis_client = RedisClient()
         self.market_data_channels = [f"{CHANNEL_PREFIX}:market:data:{symbol.lower()}" for symbol in self.symbols]
+        # Agrégateurs par symbole
+        self.aggregators = {sym: BarAggregator() for sym in self.symbols}
         self.signal_channel = f"{CHANNEL_PREFIX}:analyze:signal"
         
         # File d'attente thread-safe pour les données de marché
@@ -59,13 +62,21 @@ class RedisSubscriber:
             data: Données de marché
         """
         try:
-            # Ajouter à la file d'attente pour traitement
-            self.market_data_queue.put((channel, data))
-            
-            # Déboguer uniquement si le chandelier est fermé
-            if data.get('is_closed', False):
-                symbol = data.get('symbol', 'UNKNOWN')
-                logger.info(f"📊 {symbol} @ {channel}: Reçu données de marché, close={data.get('close')}")
+            # Agrégation : ne pousser que les bougies fermées
+            symbol = data.get("symbol")
+            if symbol not in self.aggregators:
+                return
+
+            bar = self.aggregators[symbol].add(data)
+            if bar is None:
+                return          # bougie pas encore fermée
+
+            self.market_data_queue.put((channel, bar))
+
+            # Log uniquement sur bougie fermée
+            if bar.get("is_closed", False):
+                logger.info(f"📊 {symbol} : bougie 1 min close={bar['close']}")
+
         except Exception as e:
             logger.error(f"❌ Erreur lors du traitement des données de marché: {str(e)}")
     

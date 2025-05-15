@@ -35,17 +35,37 @@ DB_MIN_CONNECTIONS = int(os.getenv("DB_MIN_CONNECTIONS", "1"))
 DB_MAX_CONNECTIONS = int(os.getenv("DB_MAX_CONNECTIONS", "10"))
 
 # Paramètres de trading
+# Paramètres de trading
 DEFAULT_SYMBOL = os.getenv("SYMBOL", "BTCUSDC")
 SYMBOLS = os.getenv("SYMBOLS", "BTCUSDC,ETHUSDC").split(",")
 INTERVAL = os.getenv("INTERVAL", "1m")
 TRADING_MODE = os.getenv("TRADING_MODE", "demo")  # 'demo' ou 'live'
-TRADE_QUANTITY_BTC = float(os.getenv("TRADE_QUANTITY_BTC", 0.0003))
-TRADE_QUANTITY_ETH = float(os.getenv("TRADE_QUANTITY_ETH", 0.009))
+
+# Quantités individuelles par symbole (doivent correspondre aux SYMBOLS)
+TRADE_QUANTITY_BTCUSDC = float(os.getenv("TRADE_QUANTITY_BTC", 0.0005))
+TRADE_QUANTITY_ETHUSDC = float(os.getenv("TRADE_QUANTITY_ETH", 0.0095))
+TRADE_QUANTITY_ETHBTC  = float(os.getenv("TRADE_QUANTITY_ETH", 0.0095))
+TRADE_QUANTITY_SUIBTC  = float(os.getenv("TRADE_QUANTITY_SUI", 9))
+TRADE_QUANTITY_SUIUSDC = float(os.getenv("TRADE_QUANTITY_SUI", 9))
+TRADE_QUANTITY_BNBUSDC = float(os.getenv("TRADE_QUANTITY_BNB", 0.023))
+TRADE_QUANTITY_BNBETH  = float(os.getenv("TRADE_QUANTITY_BNB", 0.023))
+TRADE_QUANTITY_SUIBNB  = float(os.getenv("TRADE_QUANTITY_SUI", 9))
+
+# Dictionnaire centralisé
 TRADE_QUANTITIES = {
-    "BTCUSDC": TRADE_QUANTITY_BTC,
-    "ETHUSDC": TRADE_QUANTITY_ETH
+    "BTCUSDC": TRADE_QUANTITY_BTCUSDC,
+    "ETHUSDC": TRADE_QUANTITY_ETHUSDC,
+    "ETHBTC":  TRADE_QUANTITY_ETHBTC,
+    "SUIBTC":  TRADE_QUANTITY_SUIBTC,
+    "SUIUSDC": TRADE_QUANTITY_SUIUSDC,
+    "BNBUSDC": TRADE_QUANTITY_BNBUSDC,
+    "BNBETH":  TRADE_QUANTITY_BNBETH,
+    "SUIBNB":  TRADE_QUANTITY_SUIBNB,
 }
-TRADE_QUANTITY = TRADE_QUANTITY_BTC  # pour compatibilité avec le code existant
+
+# Valeur par défaut utilisée par compatibilité
+TRADE_QUANTITY = TRADE_QUANTITIES.get(DEFAULT_SYMBOL, TRADE_QUANTITY_BTCUSDC)
+
 
 # Paramètres des stratégies
 STRATEGY_PARAMS = {

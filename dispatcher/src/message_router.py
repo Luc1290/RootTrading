@@ -72,6 +72,10 @@ class MessageRouter:
         
         # Initialiser le compteur de séquence des messages
         self.message_sequence = 0
+                # --- Déduplication courte (1 s) --------------------
+        self._dedup_cache = {}       # {clé: timestamp}
+        self._dedup_ttl   = 1.0      # secondes
+
         
         logger.info("✅ MessageRouter initialisé")
     
@@ -210,6 +214,20 @@ class MessageRouter:
         try:
             # Incrémenter le compteur de messages reçus
             self.stats["messages_received"] += 1
+            # ----- Déduplication ---------------------------------
+            now = time.time()
+            # Nettoyage des clés expirées
+            self._dedup_cache = {k: t for k, t in self._dedup_cache.items() if now - t < self._dedup_ttl}
+
+            # Clé = topic + timestamp + close (si présent)
+            dedup_key = f"{topic}:{message.get('close_time') or message.get('start_time')}:{message.get('close')}"
+            if dedup_key in self._dedup_cache:
+                logger.debug(f"Message ignoré (doublon) : {dedup_key}")
+                return False
+
+            # Marquer comme vu
+            self._dedup_cache[dedup_key] = now
+            # ----------------------------------------------------
             
             # Déterminer le canal Redis
             channel = self._get_redis_channel(topic)

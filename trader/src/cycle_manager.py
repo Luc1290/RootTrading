@@ -20,7 +20,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 from shared.src.config import get_db_url, TRADING_MODE
 from shared.src.enums import OrderSide, OrderStatus, CycleStatus
 from shared.src.schemas import TradeOrder, TradeExecution, TradeCycle
-from shared.src.db_pool import DBContextManager, DBConnectionPool
+from shared.src.db_pool import DBContextManager, DBConnectionPool, transaction
 
 from trader.src.binance_executor import BinanceExecutor
 
@@ -56,6 +56,8 @@ class CycleManager:
             self.db_pool = DBConnectionPool.get_instance()
             self._init_db_schema()
             self._load_active_cycles_from_db()
+            # Démarrer le thread de nettoyage périodique
+            self._start_cleanup_thread()
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'initialisation de la base de données: {str(e)}")
         
@@ -67,7 +69,7 @@ class CycleManager:
         Crée les tables nécessaires si elles n'existent pas.
         """
         try:
-            with DBContextManager() as cursor:
+            with transaction() as cursor:
                 # Table des ordres/exécutions
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS trade_executions (
@@ -127,6 +129,41 @@ class CycleManager:
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'initialisation du schéma de base de données: {str(e)}")
             raise
+
+    def _start_cleanup_thread(self):
+        """Démarre un thread de nettoyage périodique des cycles inactifs."""
+        def cleanup_routine():
+            while True:
+                try:
+                    # Nettoyer les cycles inactifs toutes les heures
+                    time.sleep(3600)
+                    self._cleanup_inactive_cycles()
+                except Exception as e:
+                    logger.error(f"❌ Erreur dans le thread de nettoyage: {str(e)}")
+        
+        cleanup_thread = threading.Thread(target=cleanup_routine, daemon=True)
+        cleanup_thread.start()
+        logger.info("Thread de nettoyage des cycles démarré")
+
+    def _cleanup_inactive_cycles(self):
+        """Nettoie les cycles inactifs qui sont restés en mémoire trop longtemps."""
+        now = datetime.now()
+        cycles_to_remove = []
+        
+        with self.cycles_lock:
+            for cycle_id, cycle in self.active_cycles.items():
+                # Si le cycle est en état terminal depuis plus de 24h, le supprimer de la mémoire
+                if (cycle.status in [CycleStatus.COMPLETED, CycleStatus.CANCELED, CycleStatus.FAILED] and
+                    (now - cycle.updated_at).total_seconds() > 24 * 3600):
+                    cycles_to_remove.append(cycle_id)
+        
+        # Supprimer les cycles identifiés
+        if cycles_to_remove:
+            with self.cycles_lock:
+                for cycle_id in cycles_to_remove:
+                    self.active_cycles.pop(cycle_id, None)
+            
+            logger.info(f"🧹 {len(cycles_to_remove)} cycles inactifs nettoyés de la mémoire")
     
     def _save_execution_to_db(self, execution: TradeExecution, cycle_id: Optional[str] = None) -> bool:
         """
@@ -149,6 +186,11 @@ class CycleManager:
                 )
                 exists = cursor.fetchone() is not None
         
+            # Convertir les objets enum en chaînes
+            side = execution.side.value if hasattr(execution.side, 'value') else str(execution.side)
+            status = execution.status.value if hasattr(execution.status, 'value') else str(execution.status)
+            role = execution.role.value if execution.role and hasattr(execution.role, 'value') else None
+            
             # Définir la requête SQL
             if exists:
                 query = """
@@ -168,11 +210,6 @@ class CycleManager:
                 WHERE order_id = %s
                 """
                 
-                # Convertir les objets enum en chaînes
-                side = execution.side.value if hasattr(execution.side, 'value') else str(execution.side)
-                status = execution.status.value if hasattr(execution.status, 'value') else str(execution.status)
-                role = execution.role.value if execution.role and hasattr(execution.role, 'value') else None
-                
                 params = (
                     execution.symbol,
                     side,
@@ -188,8 +225,6 @@ class CycleManager:
                     execution.demo,
                     execution.order_id
                 )
-                logger.debug(f"Enregistrement DB avec params: {params}")
-                logger.debug(f"Types: {[type(p) for p in params]}")
             else:
                 query = """
                 INSERT INTO trade_executions
@@ -197,11 +232,6 @@ class CycleManager:
                 fee, fee_asset, role, timestamp, cycle_id, demo)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
-                
-                # Convertir les objets enum en chaînes
-                side = execution.side.value if hasattr(execution.side, 'value') else str(execution.side)
-                status = execution.status.value if hasattr(execution.status, 'value') else str(execution.status)
-                role = execution.role.value if execution.role and hasattr(execution.role, 'value') else None
                 
                 params = (
                     execution.order_id,
@@ -218,11 +248,9 @@ class CycleManager:
                     cycle_id,
                     execution.demo
                 )
-                logger.debug(f"Enregistrement DB avec params: {params}")
-                logger.debug(f"Types: {[type(p) for p in params]}")
                 
-            # Exécuter la requête
-            with DBContextManager() as cursor:
+            # Exécuter la requête avec transaction explicite
+            with transaction() as cursor:
                 cursor.execute(query, params)
         
             logger.debug(f"✅ Exécution {execution.order_id} enregistrée en base de données")
@@ -232,7 +260,6 @@ class CycleManager:
             logger.error("❌ Erreur lors de l'enregistrement de l'exécution en base de données")
             logger.exception(e)  # Ajoute la trace complète de l'exception
             return False
-
     
     def _load_active_cycles_from_db(self) -> None:
         """
@@ -287,7 +314,6 @@ class CycleManager:
         except Exception as e:
             logger.error(f"❌ Erreur lors du chargement des cycles actifs: {str(e)}")
     
-    ...
     def create_cycle(self, symbol: str, strategy: str, side: Union[OrderSide, str], 
                     price: float, quantity: float, pocket: Optional[str] = None,
                     target_price: Optional[float] = None, stop_price: Optional[float] = None,
@@ -301,6 +327,11 @@ class CycleManager:
         try:
             if isinstance(side, str):
                 side = OrderSide(side)
+
+            # Valider la quantité avant d'aller plus loin
+            if quantity <= 0:
+                logger.error(f"❌ Quantité invalide pour création de cycle: {quantity}")
+                return None
 
             cycle_id = f"cycle_{uuid.uuid4().hex[:16]}"
             now = datetime.now()
@@ -348,21 +379,24 @@ class CycleManager:
                 cycle.updated_at = datetime.now()
                 self.active_cycles[cycle_id] = cycle
 
+            # Enregistrer l'exécution et le cycle avec transactions explicites
             self._save_execution_to_db(execution, cycle_id)
             self._save_cycle_to_db(cycle)
 
             try:
                 from shared.src.redis_client import RedisClient
                 redis = RedisClient()
-                redis.publish("roottrading:cycle:created", {
+                # Convertir les valeurs NumPy ou Decimal si présentes
+                cycle_data = {
                     "cycle_id": cycle.id,
                     "symbol": cycle.symbol,
                     "strategy": cycle.strategy,
-                    "quantity": cycle.quantity,
-                    "entry_price": cycle.entry_price,
+                    "quantity": float(cycle.quantity) if hasattr(cycle.quantity, 'dtype') else cycle.quantity,
+                    "entry_price": float(cycle.entry_price) if hasattr(cycle.entry_price, 'dtype') else cycle.entry_price,
                     "timestamp": int(cycle.created_at.timestamp() * 1000),
                     "pocket": cycle.pocket
-                })
+                }
+                redis.publish("roottrading:cycle:created", cycle_data)
                 logger.info(f"📢 Cycle publié sur Redis: {cycle.id}")
             except Exception as e:
                 logger.warning(f"⚠️ Impossible de publier le cycle sur Redis: {str(e)}")
@@ -373,7 +407,6 @@ class CycleManager:
         except Exception as e:
             logger.error(f"❌ Erreur lors de la création du cycle: {str(e)}")
             return None
-
     
     def close_cycle(self, cycle_id: str, exit_price: Optional[float] = None) -> bool:
         """
@@ -586,9 +619,137 @@ class CycleManager:
         
         return cycles
     
+    def process_price_update(self, symbol: str, price: float) -> None:
+        """
+        Traite une mise à jour de prix pour un symbole.
+        Vérifie les stops, targets et met à jour les trailing stops.
+        
+        Args:
+            symbol: Symbole mis à jour
+            price: Nouveau prix
+        """
+        # Récupérer les cycles pertinents une seule fois pour minimiser le temps de verrou
+        relevant_cycles = []
+        with self.cycles_lock:
+            for cycle_id, cycle in self.active_cycles.items():
+                if cycle.symbol == symbol:
+                    # Copier les informations nécessaires pour l'analyse
+                    relevant_cycles.append({
+                        'id': cycle.id,
+                        'status': cycle.status,
+                        'stop_price': cycle.stop_price,
+                        'target_price': cycle.target_price,
+                        'trailing_delta': cycle.trailing_delta,
+                        'max_price': getattr(cycle, 'max_price', None),
+                        'min_price': getattr(cycle, 'min_price', None)
+                    })
+        
+        # Analyser les cycles sans verrou
+        stops_to_trigger = []
+        targets_to_trigger = []
+        trailing_updates = []
+        
+        for cycle_info in relevant_cycles:
+            # Vérifier les stop-loss
+            if cycle_info['stop_price'] is not None:
+                if ((cycle_info['status'] in [CycleStatus.ACTIVE_BUY, CycleStatus.WAITING_SELL] and 
+                    price <= cycle_info['stop_price']) or
+                    (cycle_info['status'] in [CycleStatus.ACTIVE_SELL, CycleStatus.WAITING_BUY] and 
+                    price >= cycle_info['stop_price'])):
+                    stops_to_trigger.append(cycle_info['id'])
+            
+            # Vérifier les target-price
+            if cycle_info['target_price'] is not None:
+                if ((cycle_info['status'] in [CycleStatus.ACTIVE_BUY, CycleStatus.WAITING_SELL] and 
+                    price >= cycle_info['target_price']) or
+                    (cycle_info['status'] in [CycleStatus.ACTIVE_SELL, CycleStatus.WAITING_BUY] and 
+                    price <= cycle_info['target_price'])):
+                    targets_to_trigger.append(cycle_info['id'])
+            
+            # Préparer les updates de trailing stop
+            if cycle_info['trailing_delta'] is not None:
+                if (cycle_info['status'] in [CycleStatus.ACTIVE_BUY, CycleStatus.WAITING_SELL] and
+                    (cycle_info['max_price'] is None or price > cycle_info['max_price'])):
+                    trailing_updates.append({
+                        'id': cycle_info['id'],
+                        'type': 'max',
+                        'value': price
+                    })
+                elif (cycle_info['status'] in [CycleStatus.ACTIVE_SELL, CycleStatus.WAITING_BUY] and
+                      (cycle_info['min_price'] is None or price < cycle_info['min_price'])):
+                    trailing_updates.append({
+                        'id': cycle_info['id'],
+                        'type': 'min',
+                        'value': price
+                    })
+        
+        # Appliquer les trailing updates (nécessite moins de verrous que fermer des cycles)
+        for update in trailing_updates:
+            self._update_trailing_stop(update['id'], update['type'], update['value'])
+        
+        # Déclencher les stops et targets
+        for cycle_id in stops_to_trigger:
+            logger.info(f"🔴 Stop-loss déclenché pour le cycle {cycle_id} au prix {price}")
+            self.close_cycle(cycle_id)
+        
+        for cycle_id in targets_to_trigger:
+            logger.info(f"🎯 Prix cible atteint pour le cycle {cycle_id} au prix {price}")
+            self.close_cycle(cycle_id)
+
+    def _update_trailing_stop(self, cycle_id: str, update_type: str, price_value: float) -> None:
+        """
+        Met à jour un trailing stop pour un cycle spécifique.
+        
+        Args:
+            cycle_id: ID du cycle
+            update_type: Type de mise à jour ('max' ou 'min')
+            price_value: Nouvelle valeur de prix
+        """
+        with self.cycles_lock:
+            if cycle_id not in self.active_cycles:
+                return
+            
+            cycle = self.active_cycles[cycle_id]
+            
+            if cycle.trailing_delta is None:
+                return
+            
+            if update_type == 'max':
+                # Mise à jour du prix maximum
+                cycle.max_price = price_value
+                
+                # Calcul du nouveau stop-loss trailing
+                new_stop = price_value * (1 - cycle.trailing_delta / 100)
+                
+                # Mise à jour du stop-loss si plus haut que l'ancien
+                if cycle.stop_price is None or new_stop > cycle.stop_price:
+                    cycle.stop_price = new_stop
+                    cycle.updated_at = datetime.now()
+                    logger.info(f"🔄 Trailing stop mis à jour pour le cycle {cycle_id}: {new_stop}")
+                    
+                    # Enregistrer la mise à jour en DB
+                    self._save_cycle_to_db(cycle)
+            
+            elif update_type == 'min':
+                # Mise à jour du prix minimum
+                cycle.min_price = price_value
+                
+                # Calcul du nouveau stop-loss trailing
+                new_stop = price_value * (1 + cycle.trailing_delta / 100)
+                
+                # Mise à jour du stop-loss si plus bas que l'ancien
+                if cycle.stop_price is None or new_stop < cycle.stop_price:
+                    cycle.stop_price = new_stop
+                    cycle.updated_at = datetime.now()
+                    logger.info(f"🔄 Trailing stop mis à jour pour le cycle {cycle_id}: {new_stop}")
+                    
+                    # Enregistrer la mise à jour en DB
+                    self._save_cycle_to_db(cycle)
+    
     def check_stop_losses(self, symbol: str, current_price: float) -> None:
         """
         Vérifie les stop-loss pour un symbole donné et ferme les cycles si nécessaire.
+        Cette méthode est conservée pour compatibilité mais process_price_update est préférable.
         
         Args:
             symbol: Symbole à vérifier
@@ -618,6 +779,7 @@ class CycleManager:
     def update_trailing_stops(self, symbol: str, current_price: float) -> None:
         """
         Met à jour les stops trailing pour un symbole donné.
+        Cette méthode est conservée pour compatibilité mais process_price_update est préférable.
         
         Args:
             symbol: Symbole à mettre à jour
@@ -669,6 +831,7 @@ class CycleManager:
     def check_target_prices(self, symbol: str, current_price: float) -> None:
         """
         Vérifie les prix cibles pour un symbole donné et ferme les cycles si nécessaire.
+        Cette méthode est conservée pour compatibilité mais process_price_update est préférable.
         
         Args:
             symbol: Symbole à vérifier
@@ -695,33 +858,6 @@ class CycleManager:
             logger.info(f"🎯 Prix cible atteint pour le cycle {cycle_id} au prix {current_price}")
             self.close_cycle(cycle_id)
     
-    def process_price_update(self, symbol: str, price: float) -> None:
-        """
-        Traite une mise à jour de prix pour un symbole.
-        Vérifie les stops, targets et met à jour les trailing stops.
-        
-        Args:
-            symbol: Symbole mis à jour
-            price: Nouveau prix
-        """
-        # Vérifier les stop-loss
-        self.check_stop_losses(symbol, price)
-        
-        # Mettre à jour les trailing stops
-        self.update_trailing_stops(symbol, price)
-        
-        # Vérifier les prix cibles
-        self.check_target_prices(symbol, price)
-    
-    def close(self) -> None:
-        """
-        Ferme proprement le gestionnaire de cycles.
-        """
-        logger.info("Fermeture du gestionnaire de cycles...")
-        
-        # Rien de spécial à fermer, le pool de connexions est géré globalement
-        logger.info("✅ Gestionnaire de cycles fermé")
-            
     def _save_cycle_to_db(self, cycle: TradeCycle) -> bool:
         """
         Enregistre un cycle de trading dans la base de données.
@@ -742,6 +878,12 @@ class CycleManager:
                 )
                 exists = cursor.fetchone() is not None
         
+            # Convertir l'enum en chaîne
+            status = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
+            
+            # Vérifier l'existence de l'attribut 'confirmed'
+            confirmed = getattr(cycle, 'confirmed', False)
+            
             # Définir la requête SQL
             if exists:
                 query = """
@@ -762,14 +904,10 @@ class CycleManager:
                     created_at = %s,
                     updated_at = %s,
                     completed_at = %s,
-                    confirmed = %s,
                     pocket = %s,
                     demo = %s
                 WHERE id = %s
                 """
-                
-                # Convertir l'enum en chaîne
-                status = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
                 
                 params = (
                     cycle.symbol,
@@ -788,7 +926,6 @@ class CycleManager:
                     cycle.created_at,
                     cycle.updated_at,
                     cycle.completed_at,
-                    cycle.confirmed,
                     cycle.pocket,
                     cycle.demo,
                     cycle.id
@@ -799,12 +936,9 @@ class CycleManager:
                 (id, symbol, strategy, status, entry_order_id, exit_order_id,
                 entry_price, exit_price, quantity, target_price, stop_price,
                 trailing_delta, profit_loss, profit_loss_percent, created_at,
-                updated_at, completed_at, confirmed, pocket, demo)
+                updated_at, completed_at, pocket, demo)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
-                
-                # Convertir l'enum en chaîne
-                status = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
                 
                 params = (
                     cycle.id,
@@ -824,13 +958,12 @@ class CycleManager:
                     cycle.created_at,
                     cycle.updated_at,
                     cycle.completed_at,
-                    cycle.confirmed,
                     cycle.pocket,
                     cycle.demo
                 )
         
-            # Exécuter la requête
-            with DBContextManager() as cursor:
+            # Exécuter la requête avec transaction explicite
+            with transaction() as cursor:
                 cursor.execute(query, params)
         
             logger.debug(f"✅ Cycle {cycle.id} enregistré en base de données")
@@ -839,3 +972,12 @@ class CycleManager:
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'enregistrement du cycle en base de données: {str(e)}")
             return False
+    
+    def close(self) -> None:
+        """
+        Ferme proprement le gestionnaire de cycles.
+        """
+        logger.info("Fermeture du gestionnaire de cycles...")
+        
+        # Rien de spécial à fermer, le pool de connexions est géré globalement
+        logger.info("✅ Gestionnaire de cycles fermé")

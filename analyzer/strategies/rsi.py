@@ -41,8 +41,8 @@ class RSIStrategy(BaseStrategy):
         
         # Paramètres RSI
         self.rsi_window = self.params.get('window', get_strategy_param('rsi', 'window', 14))
-        self.overbought_threshold = self.params.get('overbought', get_strategy_param('rsi', 'overbought', 70))
-        self.oversold_threshold = self.params.get('oversold', get_strategy_param('rsi', 'oversold', 30))
+        self.overbought_threshold = self.params.get('overbought', get_strategy_param('rsi', 'overbought', 80))
+        self.oversold_threshold = self.params.get('oversold', get_strategy_param('rsi', 'oversold', 20))
         
         # Variables pour suivre les tendances
         self.prev_rsi = None

@@ -99,6 +99,10 @@ services:
       kafka-init:
         condition: service_completed_successfully
     env_file: .env
+    environment:
+      # Idempotence Kafka : un seul envoi / clé (empêche les doublons)
+      KAFKA_PRODUCER_ENABLE_IDEMPOTENCE: "true"
+      KAFKA_PRODUCER_ACKS: "all"
     restart: unless-stopped
     ports:
       - "${GATEWAY_PORT:-5010}:5010"

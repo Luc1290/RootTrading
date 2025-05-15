@@ -114,14 +114,22 @@ class StrategyLoader:
         
                 # Vérifier que le signal est complet avec tous les champs requis
                 if signal:
+                    # Convertir les types NumPy dans les métadonnées du signal
+                    if hasattr(signal, 'metadata') and signal.metadata:
+                        signal.metadata = self._convert_numpy_types(signal.metadata)
+                    
+                    # Vérifier également les autres champs qui pourraient contenir des types NumPy
+                    if hasattr(signal, 'confidence') and hasattr(signal.confidence, 'dtype'):
+                        signal.confidence = float(signal.confidence)
+                    
                     # Vérifier les champs obligatoires
                     required_fields = ['symbol', 'strategy', 'side', 'timestamp', 'price']
                     missing_fields = [field for field in required_fields 
-                                      if not hasattr(signal, field) or getattr(signal, field) is None]
+                                    if not hasattr(signal, field) or getattr(signal, field) is None]
                 
                     if missing_fields:
                         logger.warning(f"❌ Signal incomplet généré par {strategy_name}, " 
-                                      f"champs manquants: {missing_fields}")
+                                    f"champs manquants: {missing_fields}")
                     else:
                         # Le signal est valide, l'ajouter à la liste
                         signals.append(signal)
@@ -129,6 +137,9 @@ class StrategyLoader:
                     
             except Exception as e:
                 logger.error(f"❌ Erreur lors du traitement de la stratégie {strategy_name}: {str(e)}")
+                # Ajouter plus de détails pour faciliter le débogage
+                import traceback
+                logger.error(traceback.format_exc())
 
         return signals
     
@@ -152,6 +163,33 @@ class StrategyLoader:
             Nombre de stratégies
         """
         return sum(len(strategies) for strategies in self.strategies.values())
+    
+    def _convert_numpy_types(self, obj):
+        """
+        Convertit récursivement les types NumPy en types Python natifs.
+        
+        Args:
+            obj: Objet à convertir
+            
+        Returns:
+            Objet avec types NumPy convertis
+        """
+        import numpy as np
+        
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        elif isinstance(obj, dict):
+            return {key: self._convert_numpy_types(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [self._convert_numpy_types(item) for item in obj]
+        else:
+            return obj
 
 # Fonction utilitaire pour créer une instance singleton du chargeur de stratégies
 _strategy_loader_instance = None

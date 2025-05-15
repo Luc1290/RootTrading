@@ -13,6 +13,27 @@ from redis import Redis
 from redis.exceptions import ConnectionError, TimeoutError
 
 from .config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB
+import numpy as np
+from decimal import Decimal
+
+class NumpyEncoder(json.JSONEncoder):
+    """
+    Convertit automatiquement les types NumPy et Decimal
+    pour qu’ils soient sérialisables en JSON.
+    """
+    def default(self, obj):
+        if isinstance(obj, (np.integer,)):
+            return int(obj)
+        if isinstance(obj, (np.floating,)):
+            return float(obj)
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super().default(obj)
+
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
@@ -94,24 +115,12 @@ class RedisClient:
         try:
             # Convertir le message en format approprié pour Redis
             if isinstance(message, (dict, list)):
-                # Correction ici : convertit les types non natifs (numpy)
-                def normalize_types(obj):
-                    if isinstance(obj, dict):
-                        return {k: normalize_types(v) for k, v in obj.items()}
-                    elif isinstance(obj, list):
-                        return [normalize_types(v) for v in obj]
-                    elif str(type(obj)).endswith("bool_"):
-                        return bool(obj)
-                    # Ajouter d'autres types NumPy si nécessaire
-                    return obj
-                message = normalize_types(message)
-                message = json.dumps(message)
+                message = json.dumps(message, cls=NumpyEncoder)
             elif not isinstance(message, (str, int, float, bool)):
-                # Pour les autres types (objets personnalisés, etc.)
                 message = str(message)
-            
+
             return self.redis.publish(channel, message)
-        
+
         except (ConnectionError, TimeoutError):
             logger.warning("Perte de connexion Redis pendant la publication, tentative de reconnexion...")
             self.reconnect()
@@ -234,7 +243,7 @@ class RedisClient:
         try:
             # Convertir le message en format approprié pour Redis
             if isinstance(value, (dict, list)):
-                value = json.dumps(value)
+                value = json.dumps(value, cls=NumpyEncoder)
             elif not isinstance(value, (str, int, float, bool)):
                 # Pour les autres types (objets personnalisés, etc.)
                 value = str(value)
@@ -265,7 +274,7 @@ class RedisClient:
             formatted_mapping = {}
             for field, value in mapping.items():
                 if isinstance(value, (dict, list)):
-                    formatted_mapping[field] = json.dumps(value)
+                    formatted_mapping[field] = json.dumps(value, cls=NumpyEncoder)
                 elif not isinstance(value, (str, int, float, bool)):
                     formatted_mapping[field] = str(value)
                 else:
@@ -333,7 +342,7 @@ class RedisClient:
         try:
             # Convertir la valeur au format approprié
             if isinstance(value, (dict, list)):
-                value = json.dumps(value)
+                value = json.dumps(value, cls=NumpyEncoder)
             elif not isinstance(value, (str, int, float, bool)):
                 value = str(value)
                 
@@ -468,7 +477,7 @@ class RedisClient:
         try:
             # Convertir la valeur au format approprié pour Redis si nécessaire
             if isinstance(value, (dict, list)):
-                value = json.dumps(value)
+                value = json.dumps(value, cls=NumpyEncoder)
             elif not isinstance(value, (str, int, float, bool)):
                 value = str(value)
             

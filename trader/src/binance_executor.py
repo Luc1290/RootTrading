@@ -9,12 +9,18 @@ import hmac
 import hashlib
 import json
 import uuid
+from decimal import Decimal, getcontext, ROUND_DOWN   # NEW
+getcontext().prec = 28                                # NEW – 28 chiffres significatifs suffisent largement
+
 from enum import Enum
 from typing import Dict, Any, Optional, List, Tuple, Union
 import requests
 from datetime import datetime
 import asyncio
 from urllib.parse import urlencode
+from shared.src.binance_constraints import BinanceSymbolConstraints
+
+
 
 # Importer les modules partagés
 import sys
@@ -80,6 +86,14 @@ class BinanceExecutor:
         
         # Récupérer les informations de trading pour tous les symboles
         self.symbol_info = self._fetch_exchange_info()
+        
+        # Initialisation des contraintes de Binance
+        try:
+            self.symbol_constraints = BinanceSymbolConstraints()
+            logger.info(f"✅ Contraintes Binance chargées pour les symboles")
+        except Exception as e:
+            logger.error(f"❌ Erreur lors du chargement des contraintes Binance: {str(e)}")
+            self.symbol_constraints = None
         
         logger.info(f"✅ BinanceExecutor initialisé en mode {'DÉMO' if demo_mode else 'RÉEL'}")
         
@@ -255,7 +269,14 @@ class BinanceExecutor:
         Returns:
             Quantité minimale
         """
-        # Vérifier si nous avons des informations sur le symbole
+        # D'abord essayer avec symbol_constraints
+        if self.symbol_constraints:
+            try:
+                return self.symbol_constraints.get_min_qty(symbol)
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur lors de la récupération de la quantité minimale depuis symbol_constraints: {str(e)}")
+        
+        # Si ça échoue, utiliser symbol_info
         if symbol in self.symbol_info and "min_qty" in self.symbol_info[symbol]:
             return self.symbol_info[symbol]["min_qty"]
         
@@ -272,12 +293,124 @@ class BinanceExecutor:
         Returns:
             Valeur minimale de l'ordre
         """
-        # Vérifier si nous avons des informations sur le symbole
+        # D'abord essayer avec symbol_constraints
+        if self.symbol_constraints:
+            try:
+                return self.symbol_constraints.get_min_notional(symbol)
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur lors de la récupération du notional minimal depuis symbol_constraints: {str(e)}")
+        
+        # Si ça échoue, utiliser symbol_info
         if symbol in self.symbol_info and "min_notional" in self.symbol_info[symbol]:
             return self.symbol_info[symbol]["min_notional"]
         
         # Sinon utiliser une valeur par défaut
         return 10.0  # La plupart des paires Binance ont un minimum de 10 USDC
+    
+    def _get_step_size(self, symbol: str) -> float:
+        """
+        Retourne le pas de quantité pour un symbole.
+        
+        Args:
+            symbol: Symbole (ex: 'BTCUSDC')
+            
+        Returns:
+            Pas de quantité
+        """
+        # D'abord essayer avec symbol_constraints
+        if self.symbol_constraints:
+            try:
+                return self.symbol_constraints.get_step_size(symbol)
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur lors de la récupération du step size depuis symbol_constraints: {str(e)}")
+        
+        # Si ça échoue, utiliser symbol_info
+        if symbol in self.symbol_info and "step_size" in self.symbol_info[symbol]:
+            return self.symbol_info[symbol]["step_size"]
+        
+        # Sinon utiliser une valeur par défaut
+        return 0.0001  # Valeur par défaut pour la plupart des paires
+    
+    def _truncate_quantity(self, symbol: str, quantity: float) -> float:  # NEW
+        """
+        Tronque la quantité au pas (stepSize) Binance, sans erreur binaire,
+        puis garantit qu’elle respecte la quantité minimum.
+        """
+        if quantity <= 0:
+            logger.warning(f"⚠️ Quantité négative ou nulle : {quantity}")
+            return self._get_min_quantity(symbol)
+
+        step_size = self._get_step_size(symbol)          # ex. 0.000001
+        step_dec  = Decimal(str(step_size))
+        qty_dec   = Decimal(str(quantity))
+
+        # Arrondi « floor » au multiple de stepSize
+        truncated = (qty_dec // step_dec) * step_dec
+        truncated = truncated.quantize(step_dec, rounding=ROUND_DOWN)
+
+        # Sécurité : si on tombe à 0, on repasse à la quantité mini
+        if truncated <= 0:
+            logger.warning(f"⚠️ Quantité nulle après troncature : {quantity} → {truncated}")
+            truncated = Decimal(str(self._get_min_quantity(symbol)))
+
+        return float(truncated)
+
+    
+    def _is_quantity_valid(self, symbol: str, quantity: float) -> bool:
+        """
+        Vérifie si la quantité est valide selon les règles de Binance.
+        
+        Args:
+            symbol: Symbole (ex: 'BTCUSDC')
+            quantity: Quantité à vérifier
+            
+        Returns:
+            True si la quantité est valide, False sinon
+        """
+        # Vérifier que la quantité n'est pas négative ou nulle
+        if quantity <= 0:
+            return False
+        
+        # Utiliser symbol_constraints si disponible
+        if self.symbol_constraints:
+            try:
+                return self.symbol_constraints.is_quantity_valid(symbol, quantity)
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur lors de la validation de quantité avec symbol_constraints: {str(e)}")
+        
+        # Sinon vérifier avec les valeurs minimales locales
+        min_qty = self._get_min_quantity(symbol)
+        return quantity >= min_qty
+    
+    def _is_notional_valid(self, symbol: str, quantity: float, price: float) -> bool:
+        """
+        Vérifie si la valeur totale (quantité * prix) est valide selon les règles de Binance.
+        
+        Args:
+            symbol: Symbole (ex: 'BTCUSDC')
+            quantity: Quantité
+            price: Prix
+            
+        Returns:
+            True si la valeur est valide, False sinon
+        """
+        # Vérifier que la quantité et le prix ne sont pas nuls
+        if quantity <= 0 or price <= 0:
+            return False
+        
+        # Calculer la valeur totale
+        notional = quantity * price
+        
+        # Utiliser symbol_constraints si disponible
+        if self.symbol_constraints:
+            try:
+                return self.symbol_constraints.is_notional_valid(symbol, quantity, price)
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur lors de la validation de notional avec symbol_constraints: {str(e)}")
+        
+        # Sinon vérifier avec les valeurs minimales locales
+        min_notional = self._get_min_notional(symbol)
+        return notional >= min_notional
     
     def _simulate_order(self, order: TradeOrder) -> TradeExecution:
         """
@@ -365,10 +498,10 @@ class BinanceExecutor:
     def execute_order(self, order: TradeOrder) -> TradeExecution:
         """
         Exécute un ordre sur Binance ou le simule en mode démo.
-        
+
         Args:
             order: Ordre à exécuter
-            
+        
         Returns:
             Exécution de l'ordre
         """
@@ -381,11 +514,51 @@ class BinanceExecutor:
         try:
             # Préparer les paramètres de l'ordre
             client_order_id = order.client_order_id or f"root_{uuid.uuid4().hex[:16]}"
+        
+            # Vérifier que la quantité n'est pas nulle
+            if order.quantity <= 0:
+                logger.error(f"❌ Quantité invalide (zéro ou négative): {order.quantity}")
+                raise BinanceAPIError(f"Quantité invalide (zéro ou négative): {order.quantity}")
+        
+            # Récupérer les infos sur le symbole
+            symbol_info = self.symbol_info.get(order.symbol, {})
             
-            # Arrondir la quantité et le prix selon les règles du symbole
-            quantity = self._round_quantity(order.symbol, order.quantity)
-            quantity_str = f"{quantity:.8f}".rstrip("0").rstrip(".")
+            # Troncature via notre méthode locale
+            original_quantity = order.quantity
+            quantity = self._truncate_quantity(order.symbol, order.quantity)
             
+            # Log pour débogage si la quantité a changé significativement
+            if abs(original_quantity - quantity) / original_quantity > 0.01:  # Changement de plus de 1%
+                logger.warning(f"⚠️ Ajustement significatif de quantité: {original_quantity} → {quantity} pour {order.symbol}")
+    
+            # Validation de quantité minimale
+            min_qty = self._get_min_quantity(order.symbol)
+            if quantity < min_qty:
+                logger.error(f"❌ Quantité {quantity} trop faible pour {order.symbol} (min: {min_qty})")
+                raise BinanceAPIError(f"Quantité {quantity} trop faible pour {order.symbol} (min: {min_qty})")
+    
+            # Validation de notional (quantité * prix marché)
+            market_price = order.price or self._get_current_price(order.symbol)
+            min_notional = self._get_min_notional(order.symbol)
+            notional = quantity * market_price
+            
+            if notional < min_notional:
+                logger.error(f"❌ Notional {notional:.8f} trop faible pour {order.symbol} (min: {min_notional})")
+                raise BinanceAPIError(f"Notional trop faible pour {order.symbol}: {notional:.8f} (min: {min_notional})")
+    
+            # Mise à jour de la quantité
+            order.quantity = quantity
+            
+            # Formatage précis de la quantité selon le step_size
+            step_size = self._get_step_size(order.symbol)
+            precision = abs(Decimal(str(step_size)).as_tuple().exponent)
+            quantity_str = f"{quantity:.{precision}f}".rstrip("0").rstrip(".")
+            
+            # Vérification supplémentaire que la quantité n'est pas vide ou '0'
+            if not quantity_str or quantity_str == '0' or float(quantity_str) <= 0:
+                logger.error(f"❌ Quantité formatée invalide après traitement: '{quantity_str}'")
+                raise BinanceAPIError(f"Quantité formatée invalide: '{quantity_str}'")        
+
             price_str = None
             if order.price:
                 price = self._round_price(order.symbol, order.price)
@@ -419,11 +592,14 @@ class BinanceExecutor:
             # Vérifier si la requête a réussi
             if response.status_code != 200:
                 try:
-                    error_msg = response.json().get("msg", "Unknown error")
+                    error_data = response.json()
+                    error_msg = error_data.get("msg", "Unknown error")
+                    error_code = error_data.get("code", 0)
+                    logger.error(f"Erreur Binance {response.status_code}: {error_code} - {error_msg}")
                 except:
                     error_msg = f"HTTP {response.status_code}"
+                    logger.error(f"Erreur Binance {response.status_code}: {error_msg}")
                 
-                logger.error(f"Erreur Binance {response.status_code}: {error_msg}")
                 self._notify_order_failure(error_msg, params, client_order_id)
                 
                 # Si c'est une erreur de signature, passer en mode simulation
@@ -465,6 +641,13 @@ class BinanceExecutor:
             params = {"symbol": order.symbol, "side": order.side.value, "quantity": order.quantity, "price": order.price}
             self._notify_order_failure(e, params, order.client_order_id)
             logger.info("Passage en mode simulation suite à l'erreur")
+            
+            return self._simulate_order(order)
+        except BinanceAPIError as e:
+            # Notifier l'échec et passer en mode simulation
+            params = {"symbol": order.symbol, "side": order.side.value, "quantity": order.quantity, "price": order.price}
+            self._notify_order_failure(e, params, order.client_order_id)
+            logger.info("Passage en mode simulation suite à l'erreur de validation")
             
             return self._simulate_order(order)
         except Exception as e:
@@ -782,23 +965,3 @@ class BinanceExecutor:
             
         precision = int(round(-math.log10(tick_size)))
         return math.floor(price / tick_size) * tick_size
-
-    def _round_quantity(self, symbol: str, quantity: float) -> float:
-        """
-        Arrondit la quantité selon le stepSize du symbole.
-        
-        Args:
-            symbol: Symbole (ex: 'BTCUSDC')
-            quantity: Quantité à arrondir
-            
-        Returns:
-            Quantité arrondie
-        """
-        info = self.symbol_info.get(symbol, {})
-        step_size = info.get("step_size", 0.0001)
-        
-        if step_size == 0:
-            return quantity
-            
-        precision = int(round(-math.log10(step_size)))
-        return math.floor(quantity / step_size) * step_size

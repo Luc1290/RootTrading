@@ -10,6 +10,8 @@ import time
 # Importer les modules partagés
 import sys
 import os
+import json                                     # NEW
+from shared.src.redis_client import RedisClient # NEW
 from urllib.parse import urljoin
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
@@ -275,7 +277,26 @@ class PocketManager:
             logger.error(f"❌ Erreur lors de la vérification de synchronisation: {str(e)}")
             return False
 
-    
+        # --- Redis cache --------------------------------------------------
+    def _publish_pockets_state(self) -> None:
+        """
+        Sauvegarde l'état complet des poches dans Redis et notifie les abonnés.
+        """
+        pockets = self.get_pockets()                 # List[ PocketSummary ]
+        redis   = RedisClient()
+
+        snapshot_key = "roottrading:pockets:snapshot"
+        channel      = "roottrading:pockets.update"
+
+        # Sérialiser les poches (dict) et stocker 30 s
+        redis.set(snapshot_key,
+                  json.dumps([p.dict() for p in pockets]),
+                  ex=30)
+
+        # Notifier les consommateurs (Coordinator) qu’un nouvel état est dispo
+        redis.publish(channel, json.dumps({"ts": int(time.time())}))
+        logger.debug("📡 Snapshot poches publié dans Redis")
+
     def update_pockets_allocation(self, total_value: float) -> bool:
         """
         Met à jour la répartition des poches en fonction de la valeur totale du portefeuille.

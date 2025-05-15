@@ -3,9 +3,12 @@ Module de vérification et de gestion des poches de capital.
 Vérifie la disponibilité des fonds dans les poches avant d'autoriser les trades.
 """
 import logging
+import threading
 import requests
 import json
 import time
+from shared.src.redis_client import RedisClient   # NEW
+import json                                       # NEW
 from typing import Dict, Any, Optional
 from urllib.parse import urljoin
 
@@ -48,6 +51,15 @@ class PocketChecker:
         self.pocket_cache = {}
         self.cache_expiry = 30  # Réduit de 60 à 30 secondes pour plus de réactivité
         self.last_cache_update = 0
+                # --- Cache Redis ------------------------------------------------
+        self.redis      = RedisClient()
+        self._redis_key = "roottrading:pockets:snapshot"
+        # Thread d’abonnement : invalide le cache local à chaque update
+        threading.Thread(
+            target=self._subscribe_updates,
+            daemon=True
+        ).start()
+
         
         logger.info(f"✅ PocketChecker initialisé - API Portfolio: {portfolio_api_url}")
 
@@ -91,6 +103,35 @@ class PocketChecker:
         
         logger.error(f"Échec après {max_retries} tentatives: {str(last_exception)}")
         return None
+        # -------------------------------------------------------------------
+    def _subscribe_updates(self) -> None:
+        """Écoute le canal Redis pour invalider le cache local."""
+        def _handler(channel, data):
+            self.last_cache_update = 0   # force refresh au prochain call
+            logger.debug("♻️ Cache local invalidé par message Redis")
+
+        self.redis.subscribe("roottrading:pockets.update", _handler)
+
+    def _load_from_redis(self) -> bool:
+        """
+        Tente de charger les poches depuis Redis.
+        Retourne True si succès, False sinon.
+        """
+        raw = self.redis.get(self._redis_key)
+        if not raw:
+            return False
+
+        try:
+            pockets = json.loads(raw)
+            # Transformer en dict {pocket_type: data}
+            self.pocket_cache = {p["pocket_type"]: p for p in pockets}
+            self.last_cache_update = time.time()
+            logger.debug("✅ Poches chargées depuis Redis")
+            return True
+        except Exception as e:
+            logger.warning(f"Impossible de décoder le snapshot Redis : {e}")
+            return False
+
     
     def _refresh_cache(self) -> Optional[bool]:
         """
@@ -100,6 +141,9 @@ class PocketChecker:
             True si mise à jour réussie, None en cas d'erreur critique, False si pas nécessaire
         """
         now = time.time()
+        # 1) Essayer Redis d’abord
+        if self._load_from_redis():
+            return True            # cache rempli → terminé
         
         # Si le cache n'a pas expiré, ne rien faire
         if now - self.last_cache_update <= self.cache_expiry:
