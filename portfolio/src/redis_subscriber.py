@@ -39,7 +39,9 @@ def _handle_cycle_created(channel, data):
         cycles_key = f"roottrading:pocket:{pocket}:cycles"
 
         redis = RedisClient()
-        redis.decrbyfloat(pocket_key, quantity)  # méthode personnalisée à ajouter si absente
+        
+        # Utiliser INCRBYFLOAT au lieu de DECRBYFLOAT (qui n'existe pas)
+        redis.incrbyfloat(pocket_key, -quantity)  # Utilise incrbyfloat avec valeur négative
         redis.sadd(cycles_key, cycle_id)
 
         logger.info(f"📦 Cycle {cycle_id} ajouté à la poche '{pocket}' ({quantity} décrémentés)")

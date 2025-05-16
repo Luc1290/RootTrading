@@ -159,24 +159,64 @@ class SignalHandler:
     def _update_market_filters(self, signal: StrategySignal) -> None:
         """
         Met à jour les filtres de marché basés sur des stratégies spéciales comme Ride or React.
+        Version améliorée avec meilleure gestion de l'obsolescence.
         
         Args:
             signal: Signal de la stratégie de filtrage
         """
-        if signal.strategy == 'Ride_or_React_Strategy':
+        if signal.strategy in self.filter_strategies:
+            # Vérifier que les métadonnées sont présentes
+            if not signal.metadata:
+                logger.warning(f"Signal de filtrage sans métadonnées reçu pour {signal.symbol}, ignoré")
+                return
+            
             # Stocker les informations de mode dans le dictionnaire de filtres
+            mode = signal.metadata.get('mode', 'react')
+            action = signal.metadata.get('action', 'normal_trading')
+            
+            # Vérifier si les données sont cohérentes
+            if mode not in ['ride', 'react', 'neutral']:
+                logger.warning(f"Mode de filtrage inconnu: {mode}, utilisation de 'react' par défaut")
+                mode = 'react'
+            
+            if action not in ['normal_trading', 'no_trading', 'buy_only', 'sell_only']:
+                logger.warning(f"Action de filtrage inconnue: {action}, utilisation de 'normal_trading' par défaut")
+                action = 'normal_trading'
+            
+            # Mise à jour du filtre avec les nouvelles données
             self.market_filters[signal.symbol] = {
-                'mode': signal.metadata.get('mode', 'react'),
-                'action': signal.metadata.get('action', 'normal_trading'),
-                'updated_at': time.time()
+                'mode': mode,
+                'action': action,
+                'updated_at': time.time(),
+                'is_obsolete': False,
+                'source': signal.strategy
             }
             
+            # Si des infos supplémentaires sont disponibles, les stocker aussi
+            if 'trend_strength' in signal.metadata:
+                self.market_filters[signal.symbol]['strength'] = float(signal.metadata['trend_strength'])
+            
             logger.info(f"🔍 Filtre de marché mis à jour pour {signal.symbol}: "
-                       f"mode={signal.metadata.get('mode', 'react')}")
+                    f"mode={mode}, action={action}")
+            
+            # Publier la mise à jour sur Redis pour informer les autres composants
+            try:
+                from shared.src.redis_client import RedisClient
+                redis_client = RedisClient()
+                redis_client.publish("roottrading:market:filters", {
+                    "symbol": signal.symbol,
+                    "mode": mode,
+                    "action": action,
+                    "updated_at": time.time(),
+                    "source": signal.strategy
+                })
+            except Exception as e:
+                logger.warning(f"⚠️ Impossible de publier la mise à jour de filtre sur Redis: {str(e)}")
     
     def _should_filter_signal(self, signal: StrategySignal) -> bool:
         """
         Détermine si un signal doit être filtré en fonction des conditions de marché.
+        Version améliorée avec gestion de l'obsolescence des filtres.
         
         Args:
             signal: Signal à évaluer
@@ -186,23 +226,110 @@ class SignalHandler:
         """
         # Vérifier si nous avons des informations de filtrage pour ce symbole
         if signal.symbol not in self.market_filters:
-            return False
+            # Aucune information de filtrage, essayer de récupérer des données récentes
+            self._refresh_market_filter(signal.symbol)
+            return False  # Ne pas filtrer si pas de données
         
         filter_info = self.market_filters[signal.symbol]
         
-        # Vérifier si les informations de filtrage sont récentes (moins de 30 minutes)
-        if time.time() - filter_info.get('updated_at', 0) > 1800:
-            logger.warning(f"Informations de filtrage obsolètes pour {signal.symbol}, ignorées")
-            return False
+        # Vérifier si les informations de filtrage sont récentes
+        # Réduire à 15 minutes (900 secondes) au lieu de 30 minutes
+        max_age = 900  # 15 minutes
+        if time.time() - filter_info.get('updated_at', 0) > max_age:
+            logger.warning(f"Informations de filtrage obsolètes pour {signal.symbol}, tentative de rafraîchissement")
+            
+            # Essayer de rafraîchir les données de filtrage
+            refreshed = self._refresh_market_filter(signal.symbol)
+            
+            if not refreshed:
+                # Si le rafraîchissement échoue, utiliser un mode de fallback basé sur la force du signal
+                logger.warning(f"Impossible de rafraîchir les informations de filtrage pour {signal.symbol}, utilisation du mode de secours")
+                
+                # En mode de secours, n'ignorer que les signaux très faibles
+                if signal.strength == SignalStrength.WEAK:
+                    logger.info(f"Signal {signal.side} ignoré en mode de secours (force insuffisante)")
+                    return True
+                
+                # Laisser passer les autres signaux
+                return False
+            
+            # Récupérer les informations rafraîchies
+            filter_info = self.market_filters[signal.symbol]
         
-        # En mode "ride", filtrer certains signaux
+        # En mode "ride", filtrer certains signaux contre-tendance
         if filter_info.get('mode') == 'ride':
             # Si dans une tendance haussière forte, filtrer les signaux SELL (sauf très forts)
             if signal.side == OrderSide.SELL and signal.strength != SignalStrength.VERY_STRONG:
                 logger.info(f"🔍 Signal {signal.side} filtré: marché en mode RIDE pour {signal.symbol}")
                 return True
+        # En mode "react", aucun filtrage supplémentaire n'est nécessaire
         
+        # Si une action spécifique est recommandée
+        if 'action' in filter_info:
+            action = filter_info.get('action')
+            
+            # Si l'action est "no_trading", filtrer tous les signaux
+            if action == 'no_trading':
+                logger.info(f"🔍 Signal {signal.side} filtré: action 'no_trading' active pour {signal.symbol}")
+                return True
+            
+            # Si l'action est "buy_only", filtrer les signaux de vente
+            elif action == 'buy_only' and signal.side == OrderSide.SELL:
+                logger.info(f"🔍 Signal {signal.side} filtré: seuls les achats sont autorisés pour {signal.symbol}")
+                return True
+            
+            # Si l'action est "sell_only", filtrer les signaux d'achat
+            elif action == 'sell_only' and signal.side == OrderSide.BUY:
+                logger.info(f"🔍 Signal {signal.side} filtré: seules les ventes sont autorisées pour {signal.symbol}")
+                return True
+        
+        # Si aucune condition de filtrage n'a été rencontrée
         return False
+    
+    def _refresh_market_filter(self, symbol: str) -> bool:
+        """
+        Tente de rafraîchir les informations de filtrage pour un symbole.
+        
+        Args:
+            symbol: Symbole pour lequel rafraîchir les données
+            
+        Returns:
+            True si le rafraîchissement a réussi, False sinon
+        """
+        try:
+            # Vérifier si le circuit breaker est ouvert
+            if not self.trader_circuit.can_execute():
+                logger.warning(f"Circuit breaker actif, impossible de rafraîchir les filtres")
+                return False
+            
+            # Récupérer les dernières données de marché
+            url = f"{self.trader_api_url}/market/filter/{symbol}"
+            filter_data = self._make_request_with_retry(url, timeout=2.0)
+            
+            if not filter_data:
+                logger.warning(f"Aucune donnée de filtrage disponible pour {symbol}")
+                return False
+            
+            # Mettre à jour le filtre avec les nouvelles données
+            self.market_filters[symbol] = {
+                'mode': filter_data.get('mode', 'react'),  # Mode par défaut: react
+                'action': filter_data.get('action', 'normal_trading'),
+                'strength': filter_data.get('trend_strength', 0.0),
+                'updated_at': time.time()  # Mettre à jour le timestamp
+            }
+            
+            logger.info(f"✅ Informations de filtrage rafraîchies pour {symbol}: mode={self.market_filters[symbol]['mode']}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur lors du rafraîchissement des filtres pour {symbol}: {str(e)}")
+            
+            # En cas d'échec, marquer le filtre comme obsolète mais ne pas le supprimer complètement
+            if symbol in self.market_filters:
+                # Conserver les anciennes données mais les marquer comme explicitement obsolètes
+                self.market_filters[symbol]['is_obsolete'] = True
+            
+            return False
     
     def _calculate_trade_amount(self, signal: StrategySignal) -> float:
         """

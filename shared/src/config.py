@@ -32,7 +32,7 @@ PGPORT = int(os.getenv("PGPORT", 5432))
 
 # Ajouter des paramètres pour le pool de connexions
 DB_MIN_CONNECTIONS = int(os.getenv("DB_MIN_CONNECTIONS", "1"))
-DB_MAX_CONNECTIONS = int(os.getenv("DB_MAX_CONNECTIONS", "10"))
+DB_MAX_CONNECTIONS = int(os.getenv("DB_MAX_CONNECTIONS", "50"))
 
 # Paramètres de trading
 # Paramètres de trading

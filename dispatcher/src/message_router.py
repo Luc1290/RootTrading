@@ -30,6 +30,9 @@ class MessageRouter:
         """
         self.redis_client = redis_client or RedisClient()
         
+        # Client Redis dédié pour les messages haute priorité
+        self.high_priority_redis = RedisClient()
+        
         # Préfixe pour les canaux Redis
         self.redis_prefix = "roottrading"
         
@@ -47,6 +50,9 @@ class MessageRouter:
             topic = f"market.data.{symbol.lower()}"
             self.market_data_channel_cache[topic] = f"{self.redis_prefix}:{self.topic_to_channel['market.data']}:{symbol.lower()}"
         
+        # File d'attente séparée pour les messages haute priorité
+        self.high_priority_queue = deque(maxlen=5000)
+        
         # File d'attente pour les messages en cas de panne Redis
         self.message_queue = deque(maxlen=10000)  # Limiter à 10 000 messages
         self.queue_lock = threading.Lock()
@@ -60,10 +66,19 @@ class MessageRouter:
         )
         self.queue_processor_thread.start()
         
+        # Démarrer le thread de traitement prioritaire
+        self.high_priority_processor_thread = threading.Thread(
+            target=self._process_high_priority_queue, 
+            daemon=True,
+            name="HighPriorityProcessor"
+        )
+        self.high_priority_processor_thread.start()
+        
         # Compteurs de statistiques
         self.stats = {
             "messages_received": 0,
             "messages_routed": 0,
+            "high_priority_routed": 0,
             "messages_queued": 0,
             "queue_processed": 0,
             "errors": 0,
@@ -72,12 +87,68 @@ class MessageRouter:
         
         # Initialiser le compteur de séquence des messages
         self.message_sequence = 0
-                # --- Déduplication courte (1 s) --------------------
+        
+        # --- Déduplication courte (1 s) --------------------
         self._dedup_cache = {}       # {clé: timestamp}
         self._dedup_ttl   = 1.0      # secondes
-
         
-        logger.info("✅ MessageRouter initialisé")
+        logger.info("✅ MessageRouter initialisé avec support priorité")
+
+    def _publish_high_priority(self, channel: str, message: Dict[str, Any]) -> None:
+        """
+        Publie un message haute priorité sur Redis.
+        Utilise une connexion dédiée pour les messages critiques.
+        
+        Args:
+            channel: Canal Redis
+            message: Message à publier
+        """
+        try:
+            # Utiliser le client Redis dédié haute priorité
+            self.high_priority_redis.publish(channel, message)
+            self.stats["high_priority_routed"] += 1
+        except Exception as e:
+            # En cas d'échec, mettre en file d'attente prioritaire
+            with self.queue_lock:
+                self.high_priority_queue.append((channel, message))
+            logger.warning(f"❗ Publication haute priorité échouée, message mis en file d'attente: {str(e)}")
+            raise
+
+    def _process_high_priority_queue(self) -> None:
+        """
+        Traite les messages haute priorité en file d'attente.
+        Fonctionne dans un thread séparé avec traitement plus fréquent.
+        """
+        while self.queue_processor_running:
+            try:
+                # Traiter la file d'attente prioritaire si elle n'est pas vide
+                with self.queue_lock:
+                    queue_size = len(self.high_priority_queue)
+                    if queue_size > 0:
+                        # Récupérer le message le plus ancien
+                        channel, message = self.high_priority_queue.popleft()
+                        
+                        try:
+                            # Tenter de publier sur Redis
+                            self.high_priority_redis.publish(channel, message)
+                            
+                            # Incrémenter le compteur de messages haute priorité traités
+                            self.stats["high_priority_routed"] += 1
+                            
+                            if queue_size > 1:
+                                logger.debug(f"Message haute priorité envoyé depuis la file d'attente. Restants: {queue_size - 1}")
+                        except Exception as e:
+                            # En cas d'échec, remettre le message dans la file d'attente
+                            self.high_priority_queue.append((channel, message))
+                            logger.warning(f"Échec de publication haute priorité depuis la file d'attente: {str(e)}")
+                            
+                            # Pause plus courte en cas d'erreur pour les messages haute priorité
+                            time.sleep(0.2)
+            except Exception as e:
+                logger.error(f"❌ Erreur dans le traitement de la file d'attente haute priorité: {str(e)}")
+            
+            # Pause très courte pour les messages haute priorité
+            time.sleep(0.01)  # 10 ms
     
     def _process_queue(self) -> None:
         """
@@ -91,11 +162,18 @@ class MessageRouter:
                     queue_size = len(self.message_queue)
                     if queue_size > 0:
                         # Récupérer le message le plus ancien
-                        channel, message = self.message_queue.popleft()
+                        if len(self.message_queue[0]) == 3:  # Nouveau format avec priorité
+                            channel, message, priority = self.message_queue.popleft()
+                        else:  # Ancien format pour rétrocompatibilité
+                            channel, message = self.message_queue.popleft()
+                            priority = 'normal'
                         
                         try:
                             # Tenter de publier sur Redis
-                            self.redis_client.publish(channel, message)
+                            if priority == 'high':
+                                self._publish_high_priority(channel, message)
+                            else:
+                                self.redis_client.publish(channel, message)
                             
                             # Incrémenter le compteur de messages traités
                             self.stats["queue_processed"] += 1
@@ -104,14 +182,14 @@ class MessageRouter:
                                 logger.info(f"Message envoyé depuis la file d'attente. Restants: {queue_size - 1}")
                         except Exception as e:
                             # En cas d'échec, remettre le message dans la file d'attente
-                            self.message_queue.append((channel, message))
+                            self.message_queue.append((channel, message, priority))
                             logger.warning(f"Échec de publication depuis la file d'attente: {str(e)}")
                             
                             # Pause plus longue en cas d'erreur
                             time.sleep(1.0)
             except Exception as e:
                 logger.error(f"❌ Erreur dans le traitement de la file d'attente: {str(e)}")
-            
+                
             # Courte pause pour éviter de consommer trop de CPU
             time.sleep(0.1)
     
@@ -152,7 +230,8 @@ class MessageRouter:
     def _transform_message(self, topic: str, message: Dict[str, Any]) -> Dict[str, Any]:
         """
         Transforme le message si nécessaire et assure que tous les champs essentiels sont présents.
-    
+        Optimisé pour réduire la latence pour les messages importants.
+
         Args:
             topic: Topic Kafka source
             message: Message original
@@ -160,53 +239,67 @@ class MessageRouter:
         Returns:
             Message transformé
         """
+        # Cas spécial pour les données de marché en temps réel (optimisation)
+        is_market_data = topic.startswith("market.data")
+        is_closed_candle = is_market_data and message.get('is_closed', False)
+        
         # Créer une copie pour éviter de modifier l'original
         transformed = message.copy() if message else {}
-    
+        
         # S'assurer que le message est complet pour les données de marché
-        if topic.startswith("market.data"):
+        if is_market_data:
             # S'assurer que tous les champs essentiels sont présents
             if 'symbol' not in transformed:
                 # Extraire le symbole du topic (market.data.btcusdc -> BTCUSDC)
                 parts = topic.split('.')
                 if len(parts) >= 3:
                     transformed['symbol'] = parts[2].upper()
-        
+            
             # S'assurer que is_closed est présent et de type booléen
             if 'is_closed' not in transformed:
                 transformed['is_closed'] = False
-        
-            # S'assurer que les champs numériques sont bien des nombres
-            for field in ['open', 'high', 'low', 'close', 'volume']:
-                if field in transformed and not isinstance(transformed[field], (int, float)):
+            
+            # Si c'est un chandelier fermé (haute priorité), optimiser le traitement
+            if is_closed_candle:
+                # Vérification minimale des champs numériques essentiels
+                if 'close' in transformed and not isinstance(transformed['close'], (int, float)):
                     try:
-                        transformed[field] = float(transformed[field])
+                        transformed['close'] = float(transformed['close'])
                     except (ValueError, TypeError):
-                        transformed[field] = 0.0
-    
+                        transformed['close'] = 0.0
+            else:
+                # Traitement complet pour les autres messages de marché
+                for field in ['open', 'high', 'low', 'close', 'volume']:
+                    if field in transformed and not isinstance(transformed[field], (int, float)):
+                        try:
+                            transformed[field] = float(transformed[field])
+                        except (ValueError, TypeError):
+                            transformed[field] = 0.0
+        
         # Ajouter des métadonnées de routage
         transformed["_routing"] = {
             "source_topic": topic,
             "timestamp": time.time(),
             "sequence": self.message_sequence + 1
         }
-    
+        
         # Incrémenter la séquence pour le prochain message
         self.message_sequence += 1
-    
+        
         # Ajouter plus de logs pour le débogage (uniquement pour les chandeliers fermés)
-        if topic.startswith("market.data") and transformed.get('is_closed', False):
+        if is_closed_candle:
             logger.info(f"Message transformé: {topic} -> {transformed.get('symbol')} @ {transformed.get('close')}")
-    
+        
         return transformed
     
-    def route_message(self, topic: str, message: Dict[str, Any]) -> bool:
+    def route_message(self, topic: str, message: Dict[str, Any], priority: str = None) -> bool:
         """
-        Route un message Kafka vers le canal Redis approprié.
+        Route un message Kafka vers le canal Redis approprié avec gestion de priorité.
         
         Args:
             topic: Topic Kafka source
             message: Message à router
+            priority: Priorité du message ('high', 'normal', ou None pour auto-détection)
             
         Returns:
             True si le routage a réussi, False sinon
@@ -214,6 +307,7 @@ class MessageRouter:
         try:
             # Incrémenter le compteur de messages reçus
             self.stats["messages_received"] += 1
+            
             # ----- Déduplication ---------------------------------
             now = time.time()
             # Nettoyage des clés expirées
@@ -229,6 +323,17 @@ class MessageRouter:
             self._dedup_cache[dedup_key] = now
             # ----------------------------------------------------
             
+            # Déterminer la priorité si non spécifiée
+            if priority is None:
+                # Données de marché en temps réel = haute priorité
+                if topic.startswith("market.data") and message.get('is_closed', False):
+                    priority = 'high'
+                # Signaux = haute priorité
+                elif topic.startswith("signals"):
+                    priority = 'high'
+                else:
+                    priority = 'normal'
+            
             # Déterminer le canal Redis
             channel = self._get_redis_channel(topic)
             
@@ -239,22 +344,31 @@ class MessageRouter:
             # Transformer le message si nécessaire
             transformed_message = self._transform_message(topic, message)
             
+            # Ajouter l'information de priorité
+            transformed_message["_routing"]["priority"] = priority
+            
             # Tentative de publication directe
             try:
-                # Publier sur Redis
-                self.redis_client.publish(channel, transformed_message)
+                # Publier sur Redis avec priorité
+                if priority == 'high':
+                    # Pour les messages haute priorité, utiliser une connexion dédiée
+                    self._publish_high_priority(channel, transformed_message)
+                else:
+                    # Publication normale
+                    self.redis_client.publish(channel, transformed_message)
                 
                 # Incrémenter le compteur de messages routés
                 self.stats["messages_routed"] += 1
                 
                 # Log détaillé en niveau debug
-                logger.debug(f"Message routé: {topic} -> {channel}")
+                logger.debug(f"Message routé ({priority}): {topic} -> {channel}")
                 
                 return True
             except Exception as e:
                 # En cas d'échec, mettre le message en file d'attente
                 with self.queue_lock:
-                    self.message_queue.append((channel, transformed_message))
+                    # Ajouter la priorité dans le tuple
+                    self.message_queue.append((channel, transformed_message, priority))
                     self.stats["messages_queued"] += 1
                 
                 logger.warning(f"❗ Publication Redis échouée, message mis en file d'attente: {str(e)}")
@@ -285,7 +399,7 @@ class MessageRouter:
     
     def get_stats(self) -> Dict[str, Any]:
         """
-        Récupère les statistiques du router.
+        Récupère les statistiques du router avec informations de priorité.
         
         Returns:
             Dictionnaire de statistiques
@@ -297,11 +411,14 @@ class MessageRouter:
         stats = self.stats.copy()
         stats["uptime"] = elapsed
         stats["queue_size"] = len(self.message_queue)
+        stats["high_priority_queue_size"] = len(self.high_priority_queue)
         
         if elapsed > 0:
             stats["messages_per_second"] = stats["messages_routed"] / elapsed
+            stats["high_priority_per_second"] = stats["high_priority_routed"] / elapsed
         else:
             stats["messages_per_second"] = 0
+            stats["high_priority_per_second"] = 0
         
         stats["success_rate"] = (
             stats["messages_routed"] / max(stats["messages_received"], 1) * 100
@@ -333,20 +450,28 @@ class MessageRouter:
         # Arrêter le thread de traitement de la file d'attente
         self.queue_processor_running = False
         
-        # Attendre la fin du thread (avec un timeout)
+        # Attendre la fin des threads (avec un timeout)
         if self.queue_processor_thread and self.queue_processor_thread.is_alive():
             self.queue_processor_thread.join(timeout=2.0)
+        
+        if self.high_priority_processor_thread and self.high_priority_processor_thread.is_alive():
+            self.high_priority_processor_thread.join(timeout=2.0)
         
         # Vider la file d'attente si possible
         try:
             with self.queue_lock:
                 queue_size = len(self.message_queue)
-                if queue_size > 0:
-                    logger.warning(f"⚠️ {queue_size} messages restent dans la file d'attente lors de la fermeture")
+                high_priority_size = len(self.high_priority_queue)
+                if queue_size > 0 or high_priority_size > 0:
+                    logger.warning(f"⚠️ Messages non traités lors de la fermeture: {queue_size} normaux, {high_priority_size} haute priorité")
         except:
             pass
         
-        # Fermer le client Redis
+        # Fermer les clients Redis
         if self.redis_client:
             self.redis_client.close()
-            logger.info("Client Redis fermé")
+        
+        if self.high_priority_redis:
+            self.high_priority_redis.close()
+        
+        logger.info("Clients Redis fermés")

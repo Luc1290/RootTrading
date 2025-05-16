@@ -68,6 +68,38 @@ class CoordinatorService:
         self.app.route('/diagnostic', methods=['GET'])(self.diagnostic)
         self.app.route('/force-reallocation', methods=['POST'])(self.force_reallocation)
         self.app.route('/status', methods=['GET'])(self.get_status)
+        self.app.route('/force-reconcile', methods=['POST'])(self.force_reconciliation)
+
+    def force_reconciliation(self):
+        """
+        Force une réconciliation complète des poches avec les cycles actifs.
+        """
+        if not self.running or not self.pocket_checker:
+            return jsonify({
+                "status": "error",
+                "message": "Service not running"
+            }), 503
+        
+        try:
+            success = self.pocket_checker.reconcile_pockets(force=True)
+            
+            if success:
+                return jsonify({
+                    "status": "success",
+                    "message": "Forced reconciliation completed successfully"
+                })
+            else:
+                return jsonify({
+                    "status": "error",
+                    "message": "Forced reconciliation failed"
+                }), 500
+        
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la réconciliation forcée: {str(e)}")
+            return jsonify({
+                "status": "error",
+                "message": f"Exception: {str(e)}"
+            }), 500
     
     def health_check(self):
         """

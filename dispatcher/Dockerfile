@@ -16,7 +16,6 @@ COPY requirements-shared.txt /app/
 COPY dispatcher/requirements.txt /app/
 
 # Installer les dépendances
-# Remplacer la référence relative par le chemin absolu
 RUN sed -i 's|-r ../requirements-shared.txt|-r /app/requirements-shared.txt|g' /app/requirements.txt && \
     pip install --no-cache-dir -r /app/requirements.txt
 

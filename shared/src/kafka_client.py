@@ -1,12 +1,13 @@
 """
-Client Kafka partagé pour la communication entre services.
-Fournit des fonctions pour produire et consommer des messages Kafka.
+Client Kafka optimisé avec meilleure gestion des erreurs et performances accrues.
 """
 import json
 import logging
 import threading
 import time
-from typing import Dict, Any, Callable, List, Optional, Union
+import random
+from typing import Dict, Any, Callable, List, Optional, Union, Set
+from queue import Queue, Empty
 
 from confluent_kafka import Producer, Consumer, KafkaError, KafkaException
 from confluent_kafka.admin import AdminClient, NewTopic
@@ -16,35 +17,187 @@ from .config import KAFKA_BROKER, KAFKA_GROUP_ID
 # Configuration du logging
 logger = logging.getLogger(__name__)
 
-class KafkaClient:
-    """Client Kafka avec des fonctionnalités pour produire et consommer des messages."""
+class KafkaMetrics:
+    """
+    Collecte des métriques sur l'utilisation du client Kafka.
+    """
+    def __init__(self):
+        self.produced_messages = 0
+        self.successful_deliveries = 0
+        self.failed_deliveries = 0
+        self.consumed_messages = 0
+        self.processing_errors = 0
+        self.reconnections = 0
+        self.lock = threading.RLock()
+    
+    def record_produce(self):
+        with self.lock:
+            self.produced_messages += 1
+    
+    def record_delivery_success(self):
+        with self.lock:
+            self.successful_deliveries += 1
+    
+    def record_delivery_failure(self):
+        with self.lock:
+            self.failed_deliveries += 1
+    
+    def record_consume(self):
+        with self.lock:
+            self.consumed_messages += 1
+    
+    def record_processing_error(self):
+        with self.lock:
+            self.processing_errors += 1
+    
+    def record_reconnection(self):
+        with self.lock:
+            self.reconnections += 1
+    
+    def get_stats(self) -> Dict[str, Any]:
+        with self.lock:
+            stats = {
+                "produced_messages": self.produced_messages,
+                "successful_deliveries": self.successful_deliveries,
+                "failed_deliveries": self.failed_deliveries,
+                "consumed_messages": self.consumed_messages,
+                "processing_errors": self.processing_errors,
+                "reconnections": self.reconnections,
+                "delivery_success_rate": (self.successful_deliveries / max(1, self.produced_messages)) * 100,
+            }
+            return stats
+    
+    def reset(self):
+        with self.lock:
+            self.produced_messages = 0
+            self.successful_deliveries = 0
+            self.failed_deliveries = 0
+            self.consumed_messages = 0
+            self.processing_errors = 0
+            self.reconnections = 0
+
+class KafkaClientPool:
+    """
+    Client Kafka optimisé avec gestion améliorée des erreurs et performances accrues.
+    Implémente un pattern singleton pour un accès global.
+    """
+    _instance = None
+    
+    @classmethod
+    def get_instance(cls, broker: str = KAFKA_BROKER, group_id: str = KAFKA_GROUP_ID):
+        """
+        Obtient l'instance unique du client Kafka.
+        
+        Args:
+            broker: Adresse du broker Kafka
+            group_id: ID du groupe de consommateurs
+            
+        Returns:
+            Instance KafkaClientPool
+        """
+        if cls._instance is None:
+            cls._instance = KafkaClientPool(broker, group_id)
+        return cls._instance
     
     def __init__(self, broker: str = KAFKA_BROKER, group_id: str = KAFKA_GROUP_ID):
         """
-        Initialise le client Kafka avec les paramètres de connexion.
+        Initialise le client Kafka.
         
         Args:
-            broker: Adresse du broker Kafka (host:port)
+            broker: Adresse du broker Kafka
             group_id: ID du groupe de consommateurs
         """
         self.broker = broker
         self.group_id = group_id
-        self.producer = None
-        self.consumer = None
-        self.admin_client = None
-        self.stop_flag = threading.Event()
-        self.consumer_thread = None
+        
+        # Producteurs/consommateurs lazily initialized
+        self._producer = None
+        self._admin_client = None
+        
+        # Dictionnaires pour suivre les consommateurs
+        self.consumers = {}
+        self.consumer_threads = {}
+        self.processor_threads = {}
+        self.message_queues = {}
+        self.stop_events = {}
+        self.topic_maps = {}
+        
+        # Métriques
+        self.metrics = KafkaMetrics()
+        
+        # Cache des topics existants
+        self._existing_topics_cache = set()
+        self._topics_cache_time = 0
+        self._topics_cache_lock = threading.RLock()
+        
+        # Thread de statistiques périodiques
+        self._start_stats_thread()
+        
+        logger.info(f"✅ Client Kafka initialisé pour {broker}")
+    
+    def _start_stats_thread(self):
+        """Démarre un thread pour enregistrer périodiquement les statistiques."""
+        def stats_reporter():
+            while True:
+                try:
+                    time.sleep(300)  # Toutes les 5 minutes
+                    stats = self.metrics.get_stats()
+                    logger.info(f"📊 Statistiques Kafka: {stats}")
+                    
+                    # Réinitialiser les métriques
+                    self.metrics.reset()
+                except Exception as e:
+                    logger.error(f"Erreur dans le thread de statistiques Kafka: {str(e)}")
+        
+        thread = threading.Thread(target=stats_reporter, daemon=True)
+        thread.start()
+    
+    @property
+    def producer(self) -> Producer:
+        """
+        Obtient le producteur Kafka, en l'initialisant si nécessaire.
+        
+        Returns:
+            Instance Producer Kafka
+        """
+        if self._producer is None:
+            self._producer = self._create_producer()
+        return self._producer
+    
+    @property
+    def admin_client(self) -> AdminClient:
+        """
+        Obtient le client d'administration Kafka, en l'initialisant si nécessaire.
+        
+        Returns:
+            Instance AdminClient Kafka
+        """
+        if self._admin_client is None:
+            self._admin_client = AdminClient({'bootstrap.servers': self.broker})
+        return self._admin_client
     
     def _create_producer(self) -> Producer:
-        """Crée et retourne un producteur Kafka."""
+        """
+        Crée et configure un producteur Kafka.
+        
+        Returns:
+            Instance Producer Kafka
+        """
         conf = {
             'bootstrap.servers': self.broker,
             'client.id': f'roottrading-producer-{time.time()}',
-            'queue.buffering.max.messages': 10000,
-            'queue.buffering.max.ms': 100,
-            'batch.num.messages': 100,
-            'message.max.bytes': 1000000,  # ~1MB max message size
-            'default.topic.config': {'acks': 'all'}
+            'queue.buffering.max.messages': 100000,
+            'queue.buffering.max.ms': 50,
+            'batch.num.messages': 1000,
+            'linger.ms': 5,
+            'compression.type': 'snappy',
+            'message.max.bytes': 2000000,  # 2MB
+            'acks': 'all',
+            # Configuration de fiabilité
+            'retries': 5,
+            'retry.backoff.ms': 200,
+            'max.in.flight.requests.per.connection': 5,
+            'enable.idempotence': True,
         }
         
         try:
@@ -55,20 +208,34 @@ class KafkaClient:
             logger.error(f"❌ Erreur lors de la création du producteur Kafka: {str(e)}")
             raise
     
-    def _create_consumer(self, topics: List[str]) -> Consumer:
+    def _create_consumer(self, topics: List[str], group_id: Optional[str] = None) -> Consumer:
         """
-        Crée et retourne un consommateur Kafka.
+        Crée et configure un consommateur Kafka.
         
         Args:
-            topics: Liste des topics à suivre
+            topics: Liste des topics à consommer
+            group_id: ID du groupe de consommateurs
+            
+        Returns:
+            Instance Consumer Kafka
         """
+        effective_group_id = group_id or f"{self.group_id}-{time.time()}"
+        
         conf = {
             'bootstrap.servers': self.broker,
-            'group.id': self.group_id,
-            'auto.offset.reset': 'latest',  # 'earliest' pour traiter tous les messages depuis le début
+            'group.id': effective_group_id,
+            'auto.offset.reset': 'latest',
             'enable.auto.commit': True,
+            'auto.commit.interval.ms': 5000,
             'max.poll.interval.ms': 300000,  # 5 minutes
-            'session.timeout.ms': 30000,  # 30 secondes
+            'session.timeout.ms': 30000,  # 30 seconds
+            'heartbeat.interval.ms': 10000,  # 10 seconds
+            'fetch.min.bytes': 1,
+            'fetch.max.bytes': 52428800,  # 50MB
+             #'fetch.max.wait.ms': 500,
+            'fetch.message.max.bytes': 1048576,  # 1MB
+            'max.partition.fetch.bytes': 1048576,  # 1MB
+            'socket.timeout.ms': 60000,  # 60 seconds
         }
         
         try:
@@ -79,274 +246,510 @@ class KafkaClient:
         except KafkaException as e:
             logger.error(f"❌ Erreur lors de la création du consommateur Kafka: {str(e)}")
             raise
-
-    def _resolve_wildcard_topics(self, topics: List[str]) -> List[str]:
-        """
-        Résout les topics contenant des caractères joker (*) en les correspondant aux topics existants.
     
-        Args:
-            topics: Liste des topics, certains pouvant contenir des caractères joker
+    def get_existing_topics(self, force_refresh: bool = False) -> Set[str]:
+        """
+        Récupère la liste des topics existants sur Kafka avec mise en cache.
         
+        Args:
+            force_refresh: Force la mise à jour du cache
+            
         Returns:
-            Liste de topics résolus sans caractères joker
+            Ensemble des topics existants
+        """
+        current_time = time.time()
+        
+        with self._topics_cache_lock:
+            # Utiliser le cache s'il est récent (moins de 5 minutes)
+            if not force_refresh and self._existing_topics_cache and (current_time - self._topics_cache_time) < 300:
+                return self._existing_topics_cache
+        
+            try:
+                topics = self.admin_client.list_topics(timeout=10).topics.keys()
+                self._existing_topics_cache = set(topics)
+                self._topics_cache_time = current_time
+                return self._existing_topics_cache
+            except Exception as e:
+                logger.error(f"❌ Erreur lors de la récupération des topics: {str(e)}")
+                # Retourner le cache même s'il est périmé en cas d'erreur
+                return self._existing_topics_cache if self._existing_topics_cache else set()
+    
+    def _resolve_wildcards(self, patterns: List[str]) -> List[str]:
+        """
+        Résout les patterns de topics contenant des wildcards.
+        
+        Args:
+            patterns: Liste des patterns de topics
+            
+        Returns:
+            Liste des topics résolus
         """
         resolved_topics = []
-    
-        # Récupérer tous les topics existants
-        if not self.admin_client:
-            self.admin_client = AdminClient({'bootstrap.servers': self.broker})
-    
-        try:
-            existing_topics = list(self.admin_client.list_topics(timeout=10).topics.keys())
-        except Exception as e:
-            logger.error(f"Impossible de lister les topics existants: {str(e)}")
-            # En cas d'erreur, retourner les topics tels quels (sauf ceux avec *)
-            return [t for t in topics if '*' not in t]
-    
-        # Résoudre chaque topic
-        for topic in topics:
-            if '*' in topic:
-                # C'est un pattern, convertir en expression régulière
-                pattern = topic.replace('.', '\.').replace('*', '.*')
-                import re
-                regex = re.compile(f"^{pattern}$")
-            
-                # Trouver tous les topics correspondants
-                matches = [t for t in existing_topics if regex.match(t)]
-            
-                if matches:
-                    resolved_topics.extend(matches)
-                    logger.info(f"Pattern {topic} résolu en {len(matches)} topics: {', '.join(matches[:3])}...")
-                else:
-                    # Créer des topics par défaut pour le pattern
-                    base_topic = topic.split('*')[0]
-                    default_topics = [f"{base_topic}info", f"{base_topic}error", f"{base_topic}debug"]
-                    logger.info(f"Aucun topic correspondant à {topic}, création des topics par défaut: {default_topics}")
-                    self._ensure_topics_exist(default_topics)
-                    resolved_topics.extend(default_topics)
+        wildcard_patterns = []
+        
+        # Séparer les patterns contenant des wildcards
+        for pattern in patterns:
+            if '*' in pattern:
+                wildcard_patterns.append(pattern)
             else:
-                resolved_topics.append(topic)
-    
+                resolved_topics.append(pattern)
+        
+        if not wildcard_patterns:
+            return resolved_topics
+        
+        # Récupérer tous les topics existants
+        existing_topics = self.get_existing_topics()
+        
+        # Résoudre chaque pattern
+        for pattern in wildcard_patterns:
+            # Convertir le pattern en regex
+            import re
+            regex_pattern = pattern.replace('.', r'\.').replace('*', '.*')
+            regex = re.compile(f"^{regex_pattern}$")
+            
+            # Trouver les correspondances
+            matches = [t for t in existing_topics if regex.match(t)]
+            
+            if matches:
+                resolved_topics.extend(matches)
+                logger.info(f"Pattern '{pattern}' résolu en {len(matches)} topics")
+            else:
+                logger.warning(f"Aucun topic correspondant au pattern '{pattern}'")
+        
         return resolved_topics
     
-    def _ensure_topics_exist(self, topics: List[str]) -> None:
+    def ensure_topics_exist(self, topics: List[str], 
+                          num_partitions: int = 3, 
+                          replication_factor: int = 1) -> None:
         """
         S'assure que les topics existent, les crée si nécessaire.
         
         Args:
             topics: Liste des topics à vérifier/créer
+            num_partitions: Nombre de partitions pour les nouveaux topics
+            replication_factor: Facteur de réplication pour les nouveaux topics
         """
-        if not self.admin_client:
-            self.admin_client = AdminClient({'bootstrap.servers': self.broker})
+        # Exclure les patterns avec wildcards
+        topics_to_check = [t for t in topics if '*' not in t]
+        
+        if not topics_to_check:
+            return
         
         # Récupérer les topics existants
-        existing_topics = self.admin_client.list_topics(timeout=10).topics
+        existing_topics = self.get_existing_topics()
         
+        # Identifier les topics à créer
         topics_to_create = []
-        for topic in topics:
+        for topic in topics_to_check:
             if topic not in existing_topics:
-                logger.info(f"Le topic {topic} n'existe pas, création en cours...")
                 topics_to_create.append(NewTopic(
                     topic,
-                    num_partitions=3,  # Nombre de partitions
-                    replication_factor=1  # Facteur de réplication (1 pour dev)
+                    num_partitions=num_partitions,
+                    replication_factor=replication_factor
                 ))
         
-        if topics_to_create:
-            try:
-                futures = self.admin_client.create_topics(topics_to_create)
-                
-                # Attendre la création des topics
-                for topic, future in futures.items():
-                    future.result()  # Bloque jusqu'à ce que le topic soit créé
-                    logger.info(f"Topic {topic} créé avec succès")
-            except KafkaException as e:
-                logger.error(f"Erreur lors de la création des topics: {str(e)}")
+        if not topics_to_create:
+            return
+        
+        # Créer les topics
+        logger.info(f"Création de {len(topics_to_create)} topics Kafka: {[t.topic for t in topics_to_create]}")
+        
+        try:
+            futures = self.admin_client.create_topics(topics_to_create)
+            
+            # Attendre et vérifier les résultats
+            for topic, future in futures.items():
+                try:
+                    future.result(timeout=30)  # 30s timeout
+                    logger.info(f"✅ Topic '{topic}' créé avec succès")
+                    
+                    # Ajouter au cache
+                    with self._topics_cache_lock:
+                        self._existing_topics_cache.add(topic)
+                except Exception as e:
+                    logger.error(f"❌ Échec de création du topic '{topic}': {str(e)}")
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la création des topics: {str(e)}")
     
-    def _delivery_report(self, err, msg) -> None:
+    def _delivery_callback(self, err, msg):
         """
-        Callback appelé pour chaque message produit pour indiquer le succès ou l'échec.
+        Callback pour les confirmations de livraison des messages.
         
         Args:
-            err: Erreur de livraison (None si succès)
-            msg: L'objet message produit
+            err: Erreur éventuelle
+            msg: Message produit
         """
-        if err is not None:
-            logger.error(f"❌ Échec de la livraison du message: {str(err)}")
+        if err:
+            logger.error(f"❌ Échec de livraison du message vers {msg.topic()}: {str(err)}")
+            self.metrics.record_delivery_failure()
         else:
-            topic = msg.topic()
-            partition = msg.partition()
-            offset = msg.offset()
-            logger.info(f"✅ Message livré au topic {topic} [{partition}] @ offset {offset}")
+            self.metrics.record_delivery_success()
+            logger.debug(f"✓ Message livré à {msg.topic()} [{msg.partition()}] @ {msg.offset()}")
     
-    def produce(self, topic: str, message: Union[Dict[str, Any], str], key: Optional[str] = None) -> None:
+    def produce(self, topic: str, message: Union[Dict[str, Any], str], 
+               key: Optional[str] = None, 
+               headers: Optional[List[tuple]] = None) -> None:
         """
         Produit un message sur un topic Kafka.
         
         Args:
             topic: Topic sur lequel publier
             message: Message à publier (dictionnaire ou chaîne)
-            key: Clé optionnelle pour le message (pour le partitionnement)
+            key: Clé du message (pour le partitionnement)
+            headers: En-têtes du message (liste de tuples (nom, valeur))
         """
-        # Créer le producteur si nécessaire
-        if not self.producer:
-            conf = {
-                'bootstrap.servers': self.broker,
-                'client.id': f'roottrading-producer-{time.time()}',
-                'queue.buffering.max.messages': 100000,  # Augmenté à 100k
-                'queue.buffering.max.ms': 50,  # Réduit à 50ms pour un équilibre latence/débit
-                'batch.num.messages': 1000,  # Augmenté à 1000
-                'linger.ms': 5,  # Attendre 5ms pour collecter plus de messages
-                'compression.type': 'snappy',  # Ajouter la compression
-                'message.max.bytes': 2000000,  # 2MB
-                'default.topic.config': {'acks': 'all'}
-            }
-            self.producer = Producer(conf)
-        
         # S'assurer que le topic existe
-        self._ensure_topics_exist([topic])
+        self.ensure_topics_exist([topic])
         
         # Convertir le dictionnaire en JSON si nécessaire
         if isinstance(message, dict):
             message = json.dumps(message)
         
+        # Sérialiser la clé et la valeur
+        serialized_key = key.encode('utf-8') if key else None
+        serialized_value = message.encode('utf-8') if isinstance(message, str) else message
+        
+        # Enregistrer la métrique
+        self.metrics.record_produce()
+        
         try:
-            # Produire le message avec callback
+            # Produire le message
             self.producer.produce(
                 topic=topic,
-                key=key.encode('utf-8') if key else None,
-                value=message.encode('utf-8') if isinstance(message, str) else message,
-                callback=self._delivery_report
+                key=serialized_key,
+                value=serialized_value,
+                headers=headers,
+                callback=self._delivery_callback
             )
             
             # Appeler poll pour traiter les événements de livraison
             self.producer.poll(0)
             
         except BufferError:
-            logger.warning("File d'attente du producteur Kafka pleine, vidage en cours...")
-            self.producer.flush()
+            logger.warning("⚠️ File d'attente du producteur pleine, vidage...")
+            self.producer.flush(timeout=10.0)
             
-            # Réessayer après le flush
+            # Réessayer
             self.producer.produce(
                 topic=topic,
-                key=key.encode('utf-8') if key else None,
-                value=message.encode('utf-8') if isinstance(message, str) else message,
-                callback=self._delivery_report
+                key=serialized_key,
+                value=serialized_value,
+                headers=headers,
+                callback=self._delivery_callback
             )
+        
         except Exception as e:
-            logger.error(f"Erreur lors de la production du message Kafka: {str(e)}")
+            logger.error(f"❌ Erreur lors de la production du message: {str(e)}")
+            self.metrics.record_delivery_failure()
             raise
     
-    def flush(self) -> None:
-        """Force l'envoi de tous les messages en attente."""
-        if self.producer:
-            self.producer.flush()
-            logger.info("Producteur Kafka vidé")
-    
-    def consume(self, topics: List[str], callback: Callable[[str, Dict[str, Any]], None], 
-               batch_size: int = 100, poll_timeout: float = 1.0) -> None:
-        # Réinitialiser le drapeau d'arrêt
-        self.stop_flag.clear()
-    
-        # S'assurer que les topics existent
-        try:
-            resolved_topics = self._resolve_wildcard_topics(topics)
-            self._ensure_topics_exist(resolved_topics)
-        except Exception as e:
-            logger.warning(f"⚠️ Impossible de vérifier/créer les topics: {str(e)}")
-            resolved_topics = [t for t in topics if '*' not in t]  # Utiliser seulement les topics sans wildcard
-    
-        # Créer le consommateur
-        self.consumer = self._create_consumer(resolved_topics)
-    
-        # Lancer la consommation dans un thread séparé
-        self.consumer_thread = threading.Thread(
-            target=self._consume_loop,
-            args=(callback, batch_size, poll_timeout),
-            daemon=True
-        )
-        self.consumer_thread.start()
-    
-        logger.info(f"✅ Démarrage de la consommation depuis les topics: {', '.join(topics)}")
-    
-    def _consume_loop(self, callback: Callable[[str, Dict[str, Any]], None], 
-                     batch_size: int, poll_timeout: float) -> None:
+    def flush(self, timeout: float = 30.0) -> None:
         """
-        Boucle principale de consommation de messages.
-        Cette méthode s'exécute dans un thread séparé.
+        Force l'envoi de tous les messages en attente.
         
         Args:
-            callback: Fonction appelée pour chaque message
-            batch_size: Nombre maximum de messages à traiter par lot
-            poll_timeout: Timeout en secondes pour le poll Kafka
+            timeout: Timeout en secondes
         """
-        try:
-            while not self.stop_flag.is_set():
+        if self._producer:
+            remaining = self.producer.flush(timeout=timeout)
+            if remaining > 0:
+                logger.warning(f"⚠️ {remaining} messages non envoyés après timeout de {timeout}s")
+            else:
+                logger.info("✅ Tous les messages ont été envoyés")
+    
+    def consume(self, topics: List[str], 
+               callback: Callable[[str, Dict[str, Any]], None],
+               group_id: Optional[str] = None,
+               batch_size: int = 100,
+               poll_timeout: float = 1.0) -> str:
+        """
+        Consomme des messages depuis des topics Kafka.
+        
+        Args:
+            topics: Liste des topics à consommer
+            callback: Fonction à appeler pour chaque message
+            group_id: ID du groupe de consommateurs
+            batch_size: Nombre de messages à traiter par lot
+            poll_timeout: Timeout pour le poll en secondes
+            
+        Returns:
+            ID du consommateur (à utiliser pour arrêter la consommation)
+        """
+        # Générer un ID unique pour ce consommateur
+        consumer_id = f"consumer-{int(time.time())}-{random.randint(1000, 9999)}"
+        
+        # Résoudre les wildcards et s'assurer que les topics existent
+        resolved_topics = self._resolve_wildcards(topics)
+        self.ensure_topics_exist(resolved_topics)
+        
+        # Stocker la correspondance entre les patterns et les topics résolus
+        self.topic_maps[consumer_id] = {
+            'patterns': topics,
+            'resolved': resolved_topics
+        }
+        
+        # Créer une file d'attente pour les messages
+        message_queue = Queue(maxsize=batch_size * 10)
+        self.message_queues[consumer_id] = message_queue
+        
+        # Créer un event pour signaler l'arrêt
+        stop_event = threading.Event()
+        self.stop_events[consumer_id] = stop_event
+        
+        # Créer le consommateur
+        consumer = self._create_consumer(resolved_topics, group_id)
+        self.consumers[consumer_id] = consumer
+        
+        # Démarrer le thread de consommation
+        consumer_thread = threading.Thread(
+            target=self._consume_messages,
+            args=(consumer_id, consumer, message_queue, stop_event, batch_size, poll_timeout),
+            daemon=True
+        )
+        self.consumer_threads[consumer_id] = consumer_thread
+        consumer_thread.start()
+        
+        # Démarrer le thread de traitement
+        processor_thread = threading.Thread(
+            target=self._process_messages,
+            args=(consumer_id, message_queue, callback, stop_event),
+            daemon=True
+        )
+        self.processor_threads[consumer_id] = processor_thread
+        processor_thread.start()
+        
+        logger.info(f"✅ Démarrage de la consommation depuis {len(resolved_topics)} topics (ID: {consumer_id})")
+        return consumer_id
+    
+    def _consume_messages(self, consumer_id: str, consumer: Consumer, 
+                         message_queue: Queue, stop_event: threading.Event,
+                         batch_size: int, poll_timeout: float):
+        """
+        Thread de consommation de messages Kafka.
+        
+        Args:
+            consumer_id: ID du consommateur
+            consumer: Instance Consumer Kafka
+            message_queue: Queue pour les messages
+            stop_event: Event pour signaler l'arrêt
+            batch_size: Nombre de messages à traiter par lot
+            poll_timeout: Timeout pour le poll en secondes
+        """
+        retry_count = 0
+        max_retries = 10
+        retry_delay = 1.0
+        
+        while not stop_event.is_set():
+            try:
                 # Récupérer un lot de messages
-                messages = self.consumer.consume(num_messages=batch_size, timeout=poll_timeout)
+                messages = consumer.consume(num_messages=batch_size, timeout=poll_timeout)
                 
                 if not messages:
+                    # Pas de messages, continuer la boucle
+                    time.sleep(0.01)  # Courte pause pour éviter de surcharger CPU
                     continue
                 
+                # Réinitialiser le compteur de tentatives après un poll réussi
+                retry_count = 0
+                retry_delay = 1.0
+                
+                # Traiter les messages
                 for msg in messages:
+                    if stop_event.is_set():
+                        break
+                        
                     # Vérifier les erreurs
                     if msg.error():
                         if msg.error().code() == KafkaError._PARTITION_EOF:
                             # Fin de partition, rien à faire
                             continue
                         else:
-                            logger.error(f"❌ Erreur de consommation Kafka: {msg.error()}")
+                            logger.error(f"❌ Erreur de consommation: {msg.error()}")
                             continue
                     
-                    # Traiter le message
+                    # Mettre le message dans la queue
                     topic = msg.topic()
                     value = msg.value()
+                    key = msg.key()
+                    headers = msg.headers()
+                    timestamp = msg.timestamp()
+                    partition = msg.partition()
+                    offset = msg.offset()
                     
-                    # Essayer de parser le JSON
+                    # Créer un dictionnaire avec toutes les métadonnées utiles
+                    message_data = {
+                        'topic': topic,
+                        'raw_value': value,
+                        'key': key.decode('utf-8') if key else None,
+                        'headers': dict(headers) if headers else {},
+                        'timestamp': timestamp,
+                        'partition': partition,
+                        'offset': offset
+                    }
+                    
+                    # Essayer de décoder le message
                     try:
                         if isinstance(value, bytes):
-                            value = value.decode('utf-8')
-                        
-                        if isinstance(value, str) and (value.startswith('{') or value.startswith('[')):
-                            value = json.loads(value)
-                        
-                        # Appeler le callback avec le topic et la valeur
-                        callback(topic, value)
-                        
-                    except json.JSONDecodeError:
-                        logger.warning(f"Message non-JSON reçu sur {topic}: {value[:100]}...")
-                        # Appeler le callback avec la valeur brute
-                        callback(topic, value)
+                            decoded_value = value.decode('utf-8')
+                            
+                            # Essayer de parser le JSON
+                            if decoded_value and (decoded_value.startswith('{') or decoded_value.startswith('[')):
+                                message_data['value'] = json.loads(decoded_value)
+                            else:
+                                message_data['value'] = decoded_value
+                        else:
+                            message_data['value'] = value
                     except Exception as e:
-                        logger.error(f"Erreur lors du traitement du message Kafka: {str(e)}")
-        
-        except KafkaException as e:
-            logger.error(f"Erreur Kafka durant la consommation: {str(e)}")
-        except Exception as e:
-            logger.error(f"Erreur générale dans la boucle de consommation: {str(e)}")
-        finally:
-            logger.info("Arrêt de la boucle de consommation Kafka")
+                        logger.warning(f"⚠️ Impossible de décoder le message: {str(e)}")
+                        message_data['value'] = None
+                    
+                    # Mettre le message dans la queue avec timeout
+                    try:
+                        message_queue.put(message_data, timeout=1.0)
+                        self.metrics.record_consume()
+                    except Exception as e:
+                        logger.error(f"❌ Impossible d'ajouter le message à la queue: {str(e)}")
+            
+            except (KafkaException, RuntimeError) as e:
+                retry_count += 1
+                logger.error(f"❌ Erreur Kafka dans le thread de consommation {consumer_id}: {str(e)}")
+                
+                if retry_count > max_retries:
+                    logger.critical(f"🔥 Trop d'erreurs dans le thread de consommation {consumer_id}, arrêt")
+                    stop_event.set()
+                    break
+                
+                # Pause exponentielle avant de réessayer
+                wait_time = retry_delay * (1 + random.random())
+                logger.info(f"⏳ Pause de {wait_time:.2f}s avant nouvelle tentative ({retry_count}/{max_retries})")
+                time.sleep(wait_time)
+                retry_delay = min(retry_delay * 2, 30.0)  # Max 30s
+                
+                # Essayer de recréer le consommateur
+                try:
+                    consumer.close()
+                    resolved_topics = self.topic_maps[consumer_id]['resolved']
+                    new_consumer = self._create_consumer(resolved_topics)
+                    self.consumers[consumer_id] = new_consumer
+                    consumer = new_consumer
+                    self.metrics.record_reconnection()
+                    logger.info(f"✅ Consommateur {consumer_id} reconnecté")
+                except Exception as reconnect_error:
+                    logger.error(f"❌ Échec de reconnexion du consommateur {consumer_id}: {str(reconnect_error)}")
+            
+            except Exception as e:
+                logger.error(f"❌ Erreur inattendue dans le thread de consommation {consumer_id}: {str(e)}")
+                time.sleep(1.0)  # Pause pour éviter une boucle d'erreurs trop rapide
     
-    def stop_consuming(self) -> None:
-        """Arrête la consommation de messages Kafka."""
-        if self.consumer_thread and self.consumer_thread.is_alive():
-            logger.info("Arrêt du consommateur Kafka...")
-            self.stop_flag.set()
-            
-            # Attendre que le thread se termine proprement
-            self.consumer_thread.join(timeout=10.0)
-            
-            if self.consumer:
-                self.consumer.close()
-                self.consumer = None
-            
-            logger.info("Consommateur Kafka arrêté")
+    def _process_messages(self, consumer_id: str, message_queue: Queue, 
+                         callback: Callable, stop_event: threading.Event):
+        """
+        Thread de traitement des messages.
+        
+        Args:
+            consumer_id: ID du consommateur
+            message_queue: Queue contenant les messages
+            callback: Fonction à appeler pour chaque message
+            stop_event: Event pour signaler l'arrêt
+        """
+        while not stop_event.is_set():
+            try:
+                # Récupérer un message de la queue avec timeout
+                try:
+                    message_data = message_queue.get(timeout=0.5)
+                except Empty:
+                    continue
+                
+                # Extraire le topic et la valeur
+                topic = message_data['topic']
+                value = message_data.get('value', message_data.get('raw_value'))
+                
+                # Appeler le callback
+                try:
+                    callback(topic, value)
+                except Exception as e:
+                    self.metrics.record_processing_error()
+                    logger.error(f"❌ Erreur dans le callback pour {topic}: {str(e)}")
+                finally:
+                    # Marquer le message comme traité
+                    message_queue.task_done()
+                
+            except Exception as e:
+                logger.error(f"❌ Erreur dans le thread de traitement {consumer_id}: {str(e)}")
+                time.sleep(0.1)  # Pause pour éviter de surcharger le CPU
+    
+    def stop_consuming(self, consumer_id: str) -> None:
+        """
+        Arrête la consommation pour un consommateur spécifique.
+        
+        Args:
+            consumer_id: ID du consommateur à arrêter
+        """
+        logger.info(f"Arrêt du consommateur {consumer_id}...")
+        
+        # Signaler l'arrêt
+        if consumer_id in self.stop_events:
+            self.stop_events[consumer_id].set()
+        
+        # Attendre la fin des threads
+        for thread_dict, thread_name in [(self.consumer_threads, "consommation"), 
+                                       (self.processor_threads, "traitement")]:
+            if consumer_id in thread_dict:
+                thread = thread_dict[consumer_id]
+                if thread and thread.is_alive():
+                    logger.info(f"Attente de la fin du thread de {thread_name} {consumer_id}...")
+                    thread.join(timeout=5.0)
+                    if thread.is_alive():
+                        logger.warning(f"⚠️ Le thread de {thread_name} {consumer_id} ne s'est pas terminé proprement")
+        
+        # Fermer le consommateur
+        if consumer_id in self.consumers:
+            try:
+                self.consumers[consumer_id].close()
+                logger.info(f"✅ Consommateur {consumer_id} fermé")
+            except Exception as e:
+                logger.error(f"❌ Erreur lors de la fermeture du consommateur {consumer_id}: {str(e)}")
+        
+        # Nettoyer les ressources
+        for container in [self.consumers, self.consumer_threads, self.processor_threads, 
+                        self.message_queues, self.stop_events, self.topic_maps]:
+            if consumer_id in container:
+                del container[consumer_id]
     
     def close(self) -> None:
-        """Ferme les connexions Kafka et nettoie les ressources."""
-        self.stop_consuming()
+        """Ferme toutes les ressources Kafka."""
+        # Arrêter tous les consommateurs
+        for consumer_id in list(self.consumers.keys()):
+            self.stop_consuming(consumer_id)
         
-        if self.producer:
-            self.producer.flush()
-            logger.info("Producteur Kafka fermé")
-            self.producer = None
+        # Vider le producteur
+        if self._producer:
+            logger.info("Vidage du producteur Kafka...")
+            self.producer.flush(timeout=5.0)
+            logger.info("✅ Producteur Kafka vidé")
+            self._producer = None
+        
+        # Réinitialiser les caches
+        with self._topics_cache_lock:
+            self._existing_topics_cache = set()
+            self._topics_cache_time = 0
+        
+        logger.info("✅ Client Kafka fermé")
+    
+    def get_metrics(self) -> Dict[str, Any]:
+        """
+        Récupère les métriques d'utilisation Kafka.
+        
+        Returns:
+            Dictionnaire des métriques
+        """
+        metrics = self.metrics.get_stats()
+        
+        # Ajouter des informations sur les consommateurs actifs
+        metrics['active_consumers'] = len(self.consumers)
+        metrics['subscribed_topics'] = sum(len(data['resolved']) for data in self.topic_maps.values())
+        
+        return metrics
+
+# Alias pour compatibilité
+KafkaClient = KafkaClientPool

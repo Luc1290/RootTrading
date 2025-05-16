@@ -7,8 +7,8 @@ import threading
 import requests
 import json
 import time
-from shared.src.redis_client import RedisClient   # NEW
-import json                                       # NEW
+from shared.src.redis_client import RedisClient
+import json
 from typing import Dict, Any, Optional
 from urllib.parse import urljoin
 
@@ -51,10 +51,10 @@ class PocketChecker:
         self.pocket_cache = {}
         self.cache_expiry = 30  # Réduit de 60 à 30 secondes pour plus de réactivité
         self.last_cache_update = 0
-                # --- Cache Redis ------------------------------------------------
-        self.redis      = RedisClient()
+        # --- Cache Redis ------------------------------------------------
+        self.redis = RedisClient()
         self._redis_key = "roottrading:pockets:snapshot"
-        # Thread d’abonnement : invalide le cache local à chaque update
+        # Thread d'abonnement : invalide le cache local à chaque update
         threading.Thread(
             target=self._subscribe_updates,
             daemon=True
@@ -63,13 +63,14 @@ class PocketChecker:
         
         logger.info(f"✅ PocketChecker initialisé - API Portfolio: {portfolio_api_url}")
 
-    def _make_request_with_retry(self, url, method="GET", params=None, max_retries=3, timeout=5.0):
+    def _make_request_with_retry(self, url, method="GET", json_data=None, params=None, max_retries=3, timeout=5.0):
         """
         Effectue une requête HTTP avec mécanisme de retry.
         
         Args:
             url: URL de la requête
             method: Méthode HTTP (GET, POST, PUT)
+            json_data: Données JSON pour la requête
             params: Paramètres de la requête
             max_retries: Nombre maximum de tentatives
             timeout: Timeout en secondes
@@ -85,9 +86,9 @@ class PocketChecker:
                 if method == "GET":
                     response = requests.get(url, params=params, timeout=timeout)
                 elif method == "POST":
-                    response = requests.post(url, params=params, timeout=timeout)
+                    response = requests.post(url, json=json_data, params=params, timeout=timeout)
                 elif method == "PUT":
-                    response = requests.put(url, params=params, timeout=timeout)
+                    response = requests.put(url, json=json_data, params=params, timeout=timeout)
                 else:
                     raise ValueError(f"Méthode non supportée: {method}")
                     
@@ -103,7 +104,7 @@ class PocketChecker:
         
         logger.error(f"Échec après {max_retries} tentatives: {str(last_exception)}")
         return None
-        # -------------------------------------------------------------------
+        
     def _subscribe_updates(self) -> None:
         """Écoute le canal Redis pour invalider le cache local."""
         def _handler(channel, data):
@@ -141,7 +142,7 @@ class PocketChecker:
             True si mise à jour réussie, None en cas d'erreur critique, False si pas nécessaire
         """
         now = time.time()
-        # 1) Essayer Redis d’abord
+        # 1) Essayer Redis d'abord
         if self._load_from_redis():
             return True            # cache rempli → terminé
         
@@ -390,12 +391,153 @@ class PocketChecker:
         except Exception as e:
             logger.error(f"❌ Erreur lors de la réallocation des fonds: {str(e)}")
             return False
+    
+    def reconcile_pockets(self, force=False) -> bool:
+        """
+        Réconcilie les poches avec les cycles actifs en base de données.
+        Correction manuelle de la désynchronisation entre cycles et poches.
+        
+        Args:
+            force: Si True, force la réconciliation même si les différences sont minimes
+        
+        Returns:
+            True si la réconciliation a réussi, False sinon
+        """
+        try:
+            # Récupérer les poches avec retry
+            pockets_data = self._make_request_with_retry(
+                urljoin(self.portfolio_api_url, "/pockets")
+            )
+            
+            if not pockets_data:
+                logger.error("Impossible de récupérer les données des poches")
+                return False
+                
+            pockets = pockets_data
+        
+            # Récupérer les cycles actifs depuis le trader avec retry
+            trader_api_url = os.getenv("TRADER_API_URL", "http://trader:5002")
+            active_cycles_data = self._make_request_with_retry(
+                urljoin(trader_api_url, "/orders")
+            )
+            
+            if not active_cycles_data:
+                logger.error("Impossible de récupérer les cycles actifs")
+                return False
+            
+            # Vérifier si les données des cycles sont valides
+            if not isinstance(active_cycles_data, list):
+                logger.error(f"Format des cycles actifs invalide: {type(active_cycles_data)}")
+                active_cycles = []
+            else:    
+                active_cycles = active_cycles_data
+        
+            # Calculer le nombre total de cycles actifs
+            active_cycle_count = len(active_cycles)
+        
+            # Calculer le nombre total de cycles dans les poches
+            pocket_cycle_count = sum(p.get("active_cycles", 0) for p in pockets)
+            
+            # Calculer le montant total utilisé dans les trades
+            trade_used_value = 0
+            try:
+                trade_used_value = sum(
+                    float(cycle.get("quantity", 0)) * float(cycle.get("entry_price", 0))
+                    for cycle in active_cycles
+                    if "quantity" in cycle and "entry_price" in cycle
+                )
+            except Exception as e:
+                logger.warning(f"Impossible de calculer le montant total des trades: {str(e)}")
+            
+            # Calculer le montant total utilisé dans les poches
+            pocket_used_value = sum(float(p.get("used_value", 0)) for p in pockets)
+            
+            # Vérifier si une réconciliation est nécessaire
+            cycles_synced = abs(active_cycle_count - pocket_cycle_count) <= 1
+            
+            # Vérifier la synchronisation des montants (avec une tolérance de 5%)
+            amount_diff_percent = 0
+            if trade_used_value > 0 and pocket_used_value > 0:
+                amount_diff_percent = abs(trade_used_value - pocket_used_value) / max(trade_used_value, pocket_used_value) * 100
+            elif trade_used_value > 0 and pocket_used_value == 0:
+                amount_diff_percent = 100  # 100% de différence si une valeur est nulle
+            elif pocket_used_value > 0 and trade_used_value == 0:
+                amount_diff_percent = 100
+            
+            amounts_synced = amount_diff_percent <= 5.0
+            
+            # Si tout est synchronisé et que force est False, ne rien faire
+            if cycles_synced and amounts_synced and not force:
+                logger.info("✅ Poches déjà synchronisées, pas besoin de réconciliation")
+                return True
+            
+            # Construire un dictionnaire des cycles par poche pour la réconciliation
+            # Format: {pocket_type: [cycle_ids]}
+            cycles_by_pocket = {"active": [], "buffer": [], "safety": []}
+            
+            # Assigner chaque cycle à sa poche
+            for cycle in active_cycles:
+                pocket = cycle.get("pocket", "active")  # Par défaut, utiliser la poche active
+                if pocket not in cycles_by_pocket:
+                    cycles_by_pocket[pocket] = []
+                cycles_by_pocket[pocket].append(cycle.get("id"))
+            
+            # Calculer les montants par poche
+            amounts_by_pocket = {"active": 0.0, "buffer": 0.0, "safety": 0.0}
+            
+            for cycle in active_cycles:
+                pocket = cycle.get("pocket", "active")
+                try:
+                    amount = float(cycle.get("quantity", 0)) * float(cycle.get("entry_price", 0))
+                    if pocket in amounts_by_pocket:
+                        amounts_by_pocket[pocket] += amount
+                except (ValueError, TypeError):
+                    continue
+            
+            # Préparer les données pour la réconciliation
+            reconcile_data = {
+                "cycles": cycles_by_pocket,
+                "amounts": amounts_by_pocket,
+                "force": force
+            }
+            
+            logger.info(f"Demande de réconciliation avec données: {json.dumps(reconcile_data)}")
+            
+            # Envoyer la requête de réconciliation avec retry
+            reconcile_result = self._make_request_with_retry(
+                urljoin(self.portfolio_api_url, "/pockets/reconcile"),
+                method="POST",
+                json_data=reconcile_data,
+                timeout=30.0  # Timeout plus long pour cette opération importante
+            )
+            
+            if not reconcile_result:
+                logger.error("❌ Échec de la réconciliation des poches")
+                return False
+                
+            # Loguer les résultats de la réconciliation
+            logger.info(f"✅ Réconciliation des poches réussie: {active_cycle_count} cycles, "
+                    f"{trade_used_value:.2f} USDC")
+            
+            # Invalider le cache immédiatement
+            self.last_cache_update = 0
+            
+            # Recharger le cache après réconciliation
+            self._refresh_cache()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la réconciliation des poches: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
         
     def check_pocket_synchronization(self) -> bool:
         """
         Vérifie si les poches sont synchronisées avec les trades actifs.
-        Version améliorée avec vérification des montants.
-    
+        Version améliorée qui déclenche une réconciliation avancée si nécessaire.
+        
         Returns:
             True si la synchronisation est correcte, False sinon
         """
@@ -414,7 +556,7 @@ class PocketChecker:
             # Récupérer les cycles actifs depuis le trader avec retry
             trader_api_url = os.getenv("TRADER_API_URL", "http://trader:5002")
             active_cycles_data = self._make_request_with_retry(
-                urljoin(trader_api_url, "/orders?status=active")
+                urljoin(trader_api_url, "/orders")
             )
             
             if not active_cycles_data:
@@ -429,7 +571,7 @@ class PocketChecker:
             # Calculer le nombre total de cycles dans les poches
             pocket_cycle_count = sum(p.get("active_cycles", 0) for p in pockets)
             
-            # Calculer le montant total utilisé dans les trades (si les données sont disponibles)
+            # Calculer le montant total utilisé dans les trades
             trade_used_value = 0
             try:
                 trade_used_value = sum(
@@ -448,36 +590,31 @@ class PocketChecker:
             
             # Vérifier la synchronisation des montants (avec une tolérance de 5%)
             amount_diff_percent = 0
-            if trade_used_value > 0:
-                amount_diff_percent = abs(trade_used_value - pocket_used_value) / trade_used_value * 100
+            if trade_used_value > 0 and pocket_used_value > 0:
+                amount_diff_percent = abs(trade_used_value - pocket_used_value) / max(trade_used_value, pocket_used_value) * 100
+            elif trade_used_value > 0 and pocket_used_value == 0:
+                amount_diff_percent = 100  # 100% de différence si une valeur est nulle
+            elif pocket_used_value > 0 and trade_used_value == 0:
+                amount_diff_percent = 100
             
             amounts_synced = amount_diff_percent <= 5.0
         
-            if not cycles_synced or (trade_used_value > 0 and not amounts_synced):
+            if not cycles_synced or not amounts_synced:
                 logger.warning(
                     f"⚠️ Désynchronisation détectée: "
                     f"{active_cycle_count} cycles actifs vs {pocket_cycle_count} dans les poches. "
                     f"Montant utilisé: {trade_used_value:.2f} vs {pocket_used_value:.2f} (diff: {amount_diff_percent:.2f}%)"
                 )
             
-                # Demander une réconciliation avec retry
-                reconcile_result = self._make_request_with_retry(
-                    urljoin(self.portfolio_api_url, "/pockets/reconcile"),
-                    method="POST"
-                )
+                # Utiliser notre nouvelle méthode de réconciliation avancée
+                reconciliation_success = self.reconcile_pockets()
                 
-                if reconcile_result:
-                    logger.info("✅ Réconciliation des poches demandée")
-                    
-                    # Invalider le cache immédiatement
-                    self.last_cache_update = 0
-                    # Recharger le cache après réconciliation
-                    self._refresh_cache()
-                    
-                    return False
+                if reconciliation_success:
+                    logger.info("✅ Réconciliation avancée des poches réussie")
                 else:
-                    logger.error("❌ Échec de la demande de réconciliation")
-                    return False
+                    logger.error("❌ Échec de la réconciliation avancée des poches")
+                
+                return reconciliation_success
         
             logger.info("✅ Poches correctement synchronisées")
             return True
