@@ -15,6 +15,7 @@ from trader.src.trading.cycle_manager import CycleManager
 from trader.src.exchange.binance_executor import BinanceExecutor
 from trader.src.trading.signal_processor import SignalProcessor
 from trader.src.trading.price_monitor import PriceMonitor
+from trader.src.trading.reconciliation import ExchangeReconciliation
 from trader.src.utils.safety import safe_execute, notify_error
 from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY
 
@@ -63,6 +64,13 @@ class OrderManager:
         # Pour accéder facilement aux derniers prix
         self.last_prices = {}
         self.last_price_update = time.time()
+        
+        # Initialiser le service de réconciliation
+        self.reconciliation_service = ExchangeReconciliation(
+            cycle_repository=self.cycle_manager.repository,
+            binance_executor=self.binance_executor,
+            reconciliation_interval=600  # Réconciliation toutes les 10 minutes
+        )
         
         logger.info(f"✅ OrderManager initialisé pour {len(self.symbols)} symboles: {', '.join(self.symbols)}")
     
@@ -211,8 +219,19 @@ class OrderManager:
             logger.info(f"⚠️ Signal ignoré: gain potentiel {target_price_percent:.2f}% inférieur au seuil minimal {min_change:.2f}%")
             return
         
-        # Récupérer la quantité à trader
-        quantity = TRADE_QUANTITIES.get(signal.symbol, TRADE_QUANTITY)
+        # Récupérer la quantité à trader de la configuration
+        base_quantity = TRADE_QUANTITIES.get(signal.symbol, TRADE_QUANTITY)
+        
+        # Vérifier les contraintes de l'exchange et ajuster si nécessaire
+        constraints = self.binance_executor.symbol_constraints
+        min_quantity = constraints.calculate_min_quantity(signal.symbol, current_price)
+        
+        # Utiliser la plus grande des deux valeurs
+        quantity = max(base_quantity, min_quantity)
+        
+        # Log si la quantité a été ajustée
+        if quantity > base_quantity:
+            logger.info(f"Quantité ajustée pour {signal.symbol}: {base_quantity} → {quantity} (minimum requis)")
         
         # Récupérer la poche (par défaut 'active')
         pocket = metadata.get('pocket', 'active')
@@ -297,13 +316,24 @@ class OrderManager:
                 if price is None:
                     return "Prix non spécifié et aucun prix récent disponible"
             
+            # Vérifier et ajuster la quantité selon les contraintes de l'exchange
+            constraints = self.binance_executor.symbol_constraints
+            min_quantity = constraints.calculate_min_quantity(symbol, price)
+            
+            # Utiliser la plus grande des deux valeurs
+            adjusted_quantity = max(quantity, min_quantity)
+            
+            # Log si la quantité a été ajustée
+            if adjusted_quantity > quantity:
+                logger.info(f"Quantité ajustée pour {symbol}: {quantity} → {adjusted_quantity} (minimum requis)")
+                
             # Créer un cycle avec la stratégie "Manual"
             cycle = self.cycle_manager.create_cycle(
                 symbol=symbol,
                 strategy="Manual",
                 side=side,
                 price=price,
-                quantity=quantity,
+                quantity=adjusted_quantity,
                 pocket="active"  # Utiliser la poche active par défaut
             )
             
@@ -346,7 +376,11 @@ class OrderManager:
                 "symbol": cycle.symbol,
                 "strategy": cycle.strategy,
                 "status": cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status),
-                "side": "BUY" if cycle.status in [CycleStatus.ACTIVE_BUY, CycleStatus.WAITING_BUY] else "SELL",
+                # Vérification robuste du statut pour déterminer côté (insensible à la casse)
+                "side": "BUY" if (
+                    hasattr(cycle.status, 'value') and cycle.status.value.lower() in ['active_buy', 'waiting_buy'] or
+                    isinstance(cycle.status, str) and cycle.status.lower() in ['active_buy', 'waiting_buy']
+                ) else "SELL",
                 "entry_price": cycle.entry_price,
                 "current_price": self.last_prices.get(cycle.symbol),
                 "quantity": cycle.quantity,
@@ -369,6 +403,12 @@ class OrderManager:
         # Démarrer le processeur de signaux
         self.signal_processor.start()
         
+        # Démarrer le service de réconciliation
+        self.reconciliation_service.start()
+        
+        # Force une réconciliation initiale pour nettoyer les cycles fantômes
+        self.reconciliation_service.force_reconciliation()
+        
         logger.info("✅ Gestionnaire d'ordres démarré")
     
     def stop(self) -> None:
@@ -382,6 +422,9 @@ class OrderManager:
         
         # Arrêter le moniteur de prix
         self.price_monitor.stop()
+        
+        # Arrêter le service de réconciliation
+        self.reconciliation_service.stop()
         
         # Fermer le gestionnaire de cycles
         self.cycle_manager.close()

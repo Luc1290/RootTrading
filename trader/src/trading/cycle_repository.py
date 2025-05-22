@@ -8,6 +8,19 @@ from typing import Dict, List, Any, Optional, Union
 from datetime import datetime
 
 from shared.src.enums import OrderSide, OrderStatus, CycleStatus
+
+# Helper pour la conversion robuste des statuts de cycle
+def parse_cycle_status(status_str):
+    """Convertit une chaîne de statut de cycle en énumération CycleStatus de manière robuste."""
+    if isinstance(status_str, str):
+        # Tenter de convertir directement via l'énumération
+        try:
+            return CycleStatus(status_str)
+        except (KeyError, ValueError):
+            # Mapping de fallback pour gérer les différences de casse
+            mapping = {s.value.lower(): s for s in CycleStatus}
+            return mapping.get(status_str.lower(), CycleStatus.FAILED)
+    return status_str  # Si c'est déjà une énumération
 from shared.src.schemas import TradeOrder, TradeExecution, TradeCycle
 from shared.src.db_pool import DBContextManager, transaction
 
@@ -354,8 +367,9 @@ class CycleRepository:
             Liste des cycles actifs filtrés
         """
         try:
-            # Préparer la clause WHERE
-            where_clauses = ["status NOT IN ('completed', 'canceled', 'failed')"]
+            # Méthode plus simple : utiliser le statut comme une chaîne de caractères brute
+            # Ne pas tenter de l'interpréter comme une énumération lors du filtrage
+            where_clauses = ["status NOT IN ('completed', 'canceled', 'failed', 'COMPLETED', 'CANCELED', 'FAILED')"]
             params = []
             
             if symbol:
@@ -410,11 +424,17 @@ class CycleRepository:
         Returns:
             Objet TradeCycle
         """
+        # Utiliser la fonction helper pour convertir de manière robuste
+        status_value = cycle_data['status']
+        status = parse_cycle_status(status_value)
+        if status_value != status.value:
+            logger.info(f"Statut normalisé: '{status_value}' -> '{status.value}'")
+            
         return TradeCycle(
             id=cycle_data['id'],
             symbol=cycle_data['symbol'],
             strategy=cycle_data['strategy'],
-            status=CycleStatus(cycle_data['status']),
+            status=status,
             entry_order_id=cycle_data['entry_order_id'],
             exit_order_id=cycle_data['exit_order_id'],
             entry_price=float(cycle_data['entry_price']) if cycle_data['entry_price'] else None,

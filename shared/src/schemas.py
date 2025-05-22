@@ -100,6 +100,7 @@ class TradeCycle(BaseModel):
     confirmed: bool = False
     pocket: Optional[str] = None
     demo: bool = False
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
     
     class Config:
         use_enum_values = True

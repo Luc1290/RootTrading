@@ -42,13 +42,13 @@ INTERVAL = os.getenv("INTERVAL", "1m")
 TRADING_MODE = os.getenv("TRADING_MODE", "demo")  # 'demo' ou 'live'
 
 # Quantités individuelles par symbole (doivent correspondre aux SYMBOLS)
-TRADE_QUANTITY_BTCUSDC = float(os.getenv("TRADE_QUANTITY_BTC", 0.0005))
-TRADE_QUANTITY_ETHUSDC = float(os.getenv("TRADE_QUANTITY_ETH", 0.0095))
-TRADE_QUANTITY_ETHBTC  = float(os.getenv("TRADE_QUANTITY_ETH", 0.0095))
+TRADE_QUANTITY_BTCUSDC = float(os.getenv("TRADE_QUANTITY_BTC", 0.001))  # Min: 0.001
+TRADE_QUANTITY_ETHUSDC = float(os.getenv("TRADE_QUANTITY_ETH", 0.01))   # Min: 0.01
+TRADE_QUANTITY_ETHBTC  = float(os.getenv("TRADE_QUANTITY_ETHBTC", 0.01))   # Min: 0.001 ETH, min notional: 0.0001 BTC
 TRADE_QUANTITY_SUIBTC  = float(os.getenv("TRADE_QUANTITY_SUI", 9))
 TRADE_QUANTITY_SUIUSDC = float(os.getenv("TRADE_QUANTITY_SUI", 9))
-TRADE_QUANTITY_BNBUSDC = float(os.getenv("TRADE_QUANTITY_BNB", 0.023))
-TRADE_QUANTITY_BNBETH  = float(os.getenv("TRADE_QUANTITY_BNB", 0.023))
+TRADE_QUANTITY_BNBUSDC = float(os.getenv("TRADE_QUANTITY_BNB", 0.05))   # Min: ~0.05
+TRADE_QUANTITY_BNBETH  = float(os.getenv("TRADE_QUANTITY_BNB", 0.05))   # Min: ~0.05
 TRADE_QUANTITY_SUIBNB  = float(os.getenv("TRADE_QUANTITY_SUI", 9))
 
 # Dictionnaire centralisé

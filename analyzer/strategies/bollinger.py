@@ -156,8 +156,10 @@ class BollingerStrategy(BaseStrategy):
         prev_lower = lower[-2] if len(lower) > 1 else None
         
         # Loguer les valeurs actuelles
-        logger.info(f"[Bollinger] {self.symbol}: Price={current_price:.2f}, "
-                    f"Upper={current_upper:.2f}, Lower={current_lower:.2f}")
+        # Utiliser plus de précision pour les paires BTC
+        precision = 5 if 'BTC' in self.symbol else 2
+        logger.info(f"[Bollinger] {self.symbol}: Price={current_price:.{precision}f}, "
+                    f"Upper={current_upper:.{precision}f}, Lower={current_lower:.{precision}f}")
         
         # Vérifier les conditions pour générer un signal
         signal = None

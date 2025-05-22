@@ -131,8 +131,8 @@ class PriceMonitor:
         # Démarrer la surveillance
         self.running = True
         
-        # S'abonner aux canaux Redis
-        self.redis_client.subscribe(self.price_channels, self._process_price_update)
+        # S'abonner aux canaux Redis et sauvegarder le client_id
+        self.client_id = self.redis_client.subscribe(self.price_channels, self._process_price_update)
         logger.info(f"✅ Abonné aux canaux de prix: {', '.join(self.price_channels)}")
         
         # Démarrer le thread de vérification des timeouts
@@ -156,7 +156,8 @@ class PriceMonitor:
         self.running = False
         
         # Se désabonner des canaux Redis
-        self.redis_client.unsubscribe()
+        if hasattr(self, 'client_id') and self.client_id:
+            self.redis_client.unsubscribe(self.client_id)
         self.redis_client.close()
         
         # Attendre la fin du thread de vérification

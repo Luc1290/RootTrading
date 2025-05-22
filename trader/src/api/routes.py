@@ -104,6 +104,11 @@ def diagnostic():
     # AJOUT DES MÉTRIQUES DE BASE DE DONNÉES
     try:        
         diagnostic_info["database"] = get_db_metrics()
+        
+        # Ajouter les informations de réconciliation
+        if hasattr(order_manager, 'reconciliation_service'):
+            diagnostic_info["reconciliation"] = order_manager.reconciliation_service.get_stats()
+            
     except Exception as e:
         logger.warning(f"Impossible de récupérer les métriques de base de données: {str(e)}")
         diagnostic_info["database"] = {"status": "unavailable", "error": str(e)}
@@ -326,6 +331,84 @@ def resume_trading():
         return jsonify({"error": str(e)}), 500
 
 # ============================================================================
+# Routes de réconciliation
+# ============================================================================
+
+@routes_bp.route('/reconcile', methods=['POST'])
+def reconcile_cycles():
+    """
+    Force une réconciliation des cycles avec l'état sur Binance.
+    
+    Exemple de requête:
+    {
+        "force": true  # optionnel, défaut: true
+    }
+    
+    Returns:
+        Résultat de la réconciliation au format JSON
+    """
+    order_manager = current_app.config['ORDER_MANAGER']
+    
+    if not order_manager:
+        return jsonify({"error": "OrderManager non initialisé"}), 500
+    
+    try:
+        # Récupérer les options de la requête
+        data = request.json or {}
+        force = data.get('force', True)
+        
+        # Forcer une réconciliation
+        logger.info(f"Réconciliation manuelle déclenchée (force={force})")
+        
+        # Appeler le service de réconciliation
+        order_manager.reconciliation_service.reconcile_all_cycles(force=force)
+        
+        # Récupérer les statistiques après la réconciliation
+        stats = order_manager.reconciliation_service.get_stats()
+        
+        return jsonify({
+            "success": True,
+            "message": f"Réconciliation effectuée: {stats['cycles_reconciled']}/{stats['cycles_checked']} cycles mis à jour",
+            "stats": stats
+        })
+    
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la réconciliation manuelle: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": f"Erreur: {str(e)}"
+        }), 500
+
+@routes_bp.route('/reconcile/status', methods=['GET'])
+def get_reconciliation_status():
+    """
+    Récupère l'état de la dernière réconciliation.
+    
+    Returns:
+        Statistiques de réconciliation au format JSON
+    """
+    order_manager = current_app.config['ORDER_MANAGER']
+    
+    if not order_manager:
+        return jsonify({"error": "OrderManager non initialisé"}), 500
+    
+    try:
+        # Récupérer les statistiques
+        stats = order_manager.reconciliation_service.get_stats()
+        
+        return jsonify({
+            "success": True,
+            "stats": stats
+        })
+    
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la récupération du statut de réconciliation: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": f"Erreur: {str(e)}"
+        }), 500
+
+# ============================================================================
 # Routes de diagnostic
 # ============================================================================
 
@@ -426,6 +509,121 @@ def diagnostic_binance_signature():
         "timestamp": timestamp,
         "message": "Signature générée localement (Flask version)"
     })
+
+# ============================================================================
+# Routes de contraintes et symboles
+# ============================================================================
+
+@routes_bp.route('/constraints/<symbol>', methods=['GET'])
+def get_symbol_constraints(symbol):
+    """
+    Récupère les contraintes de trading pour un symbole donné.
+    """
+    try:
+        order_manager = current_app.config.get('ORDER_MANAGER')
+        if not order_manager:
+            return jsonify({"error": "OrderManager non initialisé"}), 500
+        
+        constraints = order_manager.binance_executor.symbol_constraints
+        
+        # Récupérer les contraintes
+        constraints_data = {
+            "symbol": symbol,
+            "min_qty": constraints.get_min_qty(symbol),
+            "step_size": constraints.get_step_size(symbol),
+            "min_notional": constraints.get_min_notional(symbol),
+            "price_precision": constraints.get_price_precision(symbol),
+            "has_real_time_data": symbol in constraints.symbol_info
+        }
+        
+        # Ajouter les données en temps réel si disponibles
+        if symbol in constraints.symbol_info:
+            constraints_data["real_time_data"] = constraints.symbol_info[symbol]
+        
+        return jsonify(constraints_data)
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la récupération des contraintes pour {symbol}: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+# ============================================================================
+# Routes de filtrage de marché
+# ============================================================================
+
+@routes_bp.route('/test', methods=['GET'])
+def test_route():
+    """Route de test simple pour vérifier l'enregistrement."""
+    return {"status": "ok", "message": "Route de test fonctionne"}
+
+@routes_bp.route('/market/filter/<symbol>', methods=['GET'])
+def get_market_filter(symbol):
+    """
+    Récupère les informations de filtrage de marché pour un symbole donné.
+    Utilisé par le coordinator pour adapter les stratégies de trading.
+    
+    Args:
+        symbol: Symbole de trading (ex: ETHBTC, BTCUSDC)
+        
+    Returns:
+        JSON avec les informations de filtrage:
+        - mode: Mode de trading ('ride' ou 'react')
+        - action: Action recommandée ('normal_trading', 'reduced_trading', 'no_trading')
+        - trend_strength: Force de la tendance (0.0 à 1.0)
+    """
+    order_manager = current_app.config['ORDER_MANAGER']
+    
+    if not order_manager:
+        return jsonify({"error": "OrderManager non initialisé"}), 500
+    
+    try:
+        # Valider le symbole
+        symbol = symbol.upper()
+        if symbol not in order_manager.symbols:
+            return jsonify({
+                "error": f"Symbole {symbol} non supporté",
+                "supported_symbols": order_manager.symbols
+            }), 400
+        
+        # Récupérer le prix actuel
+        current_price = order_manager.last_prices.get(symbol, 0)
+        
+        # Calculer des métriques de base pour le filtrage
+        # Pour l'instant, logique simple - peut être étendue avec des indicateurs plus complexes
+        mode = 'react'  # Mode par défaut
+        action = 'normal_trading'  # Action par défaut
+        trend_strength = 0.0  # Force de tendance neutre par défaut
+        
+        # Logique de base basée sur les cycles actifs pour ce symbole
+        active_cycles = [cycle for cycle in order_manager.get_active_cycles() if cycle.symbol == symbol]
+        active_count = len(active_cycles)
+        
+        # Ajuster l'action selon le nombre de cycles actifs
+        if active_count >= 3:
+            action = 'reduced_trading'  # Réduire le trading si trop de cycles actifs
+        elif active_count >= 5:
+            action = 'no_trading'  # Arrêter le trading si trop de cycles
+        
+        # Ajuster le mode selon la volatilité récente (placeholder pour logique future)
+        if current_price > 0:
+            # Pour l'instant, mode 'react' par défaut
+            # Peut être étendu avec des calculs de volatilité, RSI, etc.
+            mode = 'react'
+        
+        return jsonify({
+            "symbol": symbol,
+            "mode": mode,
+            "action": action,
+            "trend_strength": trend_strength,
+            "current_price": current_price,
+            "active_cycles_count": active_count,
+            "timestamp": time.time()
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la récupération du filtrage pour {symbol}: {str(e)}")
+        return jsonify({
+            "error": f"Erreur: {str(e)}"
+        }), 500
 
 def register_routes(app, order_manager):
     """

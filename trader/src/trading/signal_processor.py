@@ -175,8 +175,13 @@ class SignalProcessor:
                 return
             
             # Vérifier la force du signal
-            if signal.strength.value < self.min_signal_strength.value:
-                logger.debug(f"⏭️ Signal ignoré: force insuffisante ({signal.strength.name})")
+            # S'assurer que strength est bien un objet enum et pas une chaîne
+            signal_strength = signal.strength
+            if isinstance(signal_strength, str):
+                signal_strength = parse_signal_strength(signal_strength)
+                
+            if signal_strength.value < self.min_signal_strength.value:
+                logger.debug(f"⏭️ Signal ignoré: force insuffisante ({signal_strength.name})")
                 with self.signal_lock:
                     self.stats["signals_rejected"] += 1
                 return
@@ -233,8 +238,8 @@ class SignalProcessor:
         
         self.running = True
         
-        # S'abonner au canal des signaux
-        self.redis_client.subscribe(self.signal_channel, self._process_signal_message)
+        # S'abonner au canal des signaux et sauvegarder le client_id
+        self.client_id = self.redis_client.subscribe(self.signal_channel, self._process_signal_message)
         logger.info(f"✅ Abonné au canal Redis des signaux: {self.signal_channel}")
         
         # Démarrer le thread de traitement des signaux
@@ -262,7 +267,8 @@ class SignalProcessor:
             self.processing_thread.join(timeout=5.0)
         
         # Se désabonner du canal Redis
-        self.redis_client.unsubscribe()
+        if hasattr(self, 'client_id') and self.client_id:
+            self.redis_client.unsubscribe(self.client_id)
         self.redis_client.close()
         
         logger.info("✅ Processeur de signaux arrêté")

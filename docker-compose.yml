@@ -173,6 +173,8 @@ services:
     build:
       context: .  # Point sur le répertoire racine du projet
       dockerfile: trader/Dockerfile  # Chemin vers le Dockerfile
+    ports:
+      - "5002:5002"
     environment:
       - WAIT_FOR_REDIS=true
       - WAIT_FOR_KAFKA=true
@@ -192,7 +194,7 @@ services:
       analyzer:
         condition: service_started
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8080)); s.close()"]
+      test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 5002)); s.close()"]
       interval: 30s
       timeout: 10s
       retries: 3

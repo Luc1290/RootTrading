@@ -1,3 +1,4 @@
 .env*
 /doc/
 /exports/
+CLAUDE.md

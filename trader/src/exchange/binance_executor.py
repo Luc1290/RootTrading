@@ -40,8 +40,6 @@ class BinanceExecutor:
         
         # Initialiser les classes utilitaires
         self.utils = BinanceUtils(api_key, api_secret)
-        self.symbol_constraints = BinanceSymbolConstraints()
-        self.validator = OrderValidator(self.symbol_constraints)
         
         # Variables pour le mode démo
         self.demo_order_id = 10000000  # ID de départ pour les ordres démo
@@ -55,6 +53,10 @@ class BinanceExecutor:
         
         # Récupérer les informations de trading pour tous les symboles
         self.symbol_info = self.utils.fetch_exchange_info()
+        
+        # Initialiser les contraintes avec les informations en temps réel
+        self.symbol_constraints = BinanceSymbolConstraints(self.symbol_info)
+        self.validator = OrderValidator(self.symbol_constraints)
         
         logger.info(f"✅ BinanceExecutor initialisé en mode {'DÉMO' if demo_mode else 'RÉEL'}")
     

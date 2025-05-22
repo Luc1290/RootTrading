@@ -158,7 +158,9 @@ class RSIStrategy(BaseStrategy):
         current_price = df['close'].iloc[-1]
         
         # Loguer les valeurs actuelles
-        logger.info(f"[RSI] {self.symbol}: RSI={current_rsi:.2f}, Price={current_price:.2f}")
+        # Utiliser plus de précision pour les paires BTC
+        precision = 5 if 'BTC' in self.symbol else 2
+        logger.info(f"[RSI] {self.symbol}: RSI={current_rsi:.2f}, Price={current_price:.{precision}f}")
         
         # Vérifier les conditions pour générer un signal
         signal = None

@@ -154,8 +154,10 @@ class EMACrossStrategy(BaseStrategy):
         prev_long_ema = long_ema[-2] if len(long_ema) > 1 else None
         
         # Loguer les valeurs actuelles
-        logger.info(f"[EMA Cross] {self.symbol}: Price={current_price:.2f}, "
-                    f"Short EMA={current_short_ema:.2f}, Long EMA={current_long_ema:.2f}")
+        # Utiliser plus de précision pour les paires BTC
+        precision = 5 if 'BTC' in self.symbol else 2
+        logger.info(f"[EMA Cross] {self.symbol}: Price={current_price:.{precision}f}, "
+                    f"Short EMA={current_short_ema:.{precision}f}, Long EMA={current_long_ema:.{precision}f}")
         
         # Vérifier les conditions pour générer un signal
         signal = None
