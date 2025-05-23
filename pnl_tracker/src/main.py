@@ -142,6 +142,10 @@ def main():
     os.makedirs(args.export_dir, exist_ok=True)
     os.makedirs(args.results_dir, exist_ok=True)
     
+    # Variables pour tracker les exports
+    last_daily_export_date = None
+    last_hourly_export_hour = None
+    
     try:
         # Initialiser le logger PnL
         pnl_logger = PnLLogger(export_dir=args.export_dir)
@@ -195,22 +199,51 @@ def main():
             # Exporter les statistiques périodiquement (tous les jours à minuit)
             current_time = time.time()
             current_datetime = time.localtime(current_time)
+            current_date = time.strftime("%Y-%m-%d", current_datetime)
             
-            # À minuit, exporter les statistiques
-            if current_datetime.tm_hour == 0 and current_datetime.tm_min == 0 and current_datetime.tm_sec < 10:
+            # Export horaire (toutes les heures)
+            current_hour = current_datetime.tm_hour
+            if current_datetime.tm_min == 0 and last_hourly_export_hour != current_hour:
                 try:
+                    logger.info(f"📊 Export horaire des statistiques PnL ({current_hour}h)")
+                    
+                    # Nom de fichier avec l'heure
+                    timestamp = time.strftime("%Y%m%d_%H", current_datetime)
+                    hourly_filename = f"pnl_stats_hourly_{timestamp}.xlsx"
+                    
+                    # Exporter les statistiques
+                    export_path = pnl_logger.export_stats_to_csv(filename=hourly_filename)
+                    if export_path:
+                        logger.info(f"✅ Export horaire réussi: {export_path}")
+                    
+                    # Marquer l'export comme effectué pour cette heure
+                    last_hourly_export_hour = current_hour
+                    
+                except Exception as e:
+                    logger.error(f"❌ Erreur lors de l'export horaire: {str(e)}")
+            
+            # À minuit, exporter les statistiques complètes (une seule fois par jour)
+            if current_datetime.tm_hour == 0 and current_datetime.tm_min == 0 and last_daily_export_date != current_date:
+                try:
+                    logger.info(f"🕐 Déclenchement de l'export quotidien pour {current_date}")
+                    
                     # Exporter les statistiques
                     export_path = pnl_logger.export_stats_to_csv()
                     if export_path:
-                        logger.info(f"Statistiques PnL exportées vers: {export_path}")
+                        logger.info(f"✅ Statistiques PnL exportées vers: {export_path}")
                     
                     # Exporter l'historique des trades
                     try:
                         history_path = pnl_logger.export_trade_history(days=90)
                         if history_path:
-                            logger.info(f"Historique des trades exporté vers: {history_path}")
+                            logger.info(f"✅ Historique des trades exporté vers: {history_path}")
                     except Exception as inner_e:
                         logger.error(f"❌ Erreur lors de l'exportation de l'historique: {str(inner_e)}")
+                    
+                    # Marquer l'export comme effectué pour aujourd'hui
+                    last_daily_export_date = current_date
+                    logger.info(f"✅ Export quotidien terminé pour {current_date}")
+                    
                 except Exception as e:
                     logger.error(f"❌ Erreur lors de l'exportation périodique: {str(e)}")
             

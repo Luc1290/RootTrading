@@ -259,12 +259,20 @@ class ExchangeReconciliation:
                     
                     # Calculer P&L si possible
                     if cycle.entry_price and cycle.exit_price and cycle.quantity:
-                        # Déterminer le type d'ordre de façon robuste
-                        status_str = cycle.status.value.upper() if hasattr(cycle.status, 'value') else str(cycle.status).upper()
-                        # Si achat puis vente : (prix_sortie - prix_entrée) * quantité
-                        if "BUY" in status_str:
+                        # Déterminer si c'était un cycle d'achat ou de vente initial
+                        # On vérifie l'ordre d'entrée pour savoir la direction initiale
+                        if entry_execution:
+                            entry_side = entry_execution.side
+                        else:
+                            # Fallback: si l'ordre d'entrée n'est pas trouvé, on suppose BUY
+                            # (la plupart des stratégies commencent par acheter)
+                            entry_side = OrderSide.BUY
+                            logger.warning(f"⚠️ Ordre d'entrée non trouvé pour le cycle {cycle.id}, assumé BUY")
+                        
+                        # Si entrée = BUY, alors sortie = SELL : profit = (prix_sortie - prix_entrée) * quantité
+                        if entry_side == OrderSide.BUY:
                             cycle.profit_loss = (cycle.exit_price - cycle.entry_price) * cycle.quantity
-                        # Si vente puis achat : (prix_entrée - prix_sortie) * quantité
+                        # Si entrée = SELL, alors sortie = BUY : profit = (prix_entrée - prix_sortie) * quantité
                         else:
                             cycle.profit_loss = (cycle.entry_price - cycle.exit_price) * cycle.quantity
                         

@@ -600,21 +600,31 @@ class PocketChecker:
             amounts_synced = amount_diff_percent <= 5.0
         
             if not cycles_synced or not amounts_synced:
-                logger.warning(
-                    f"⚠️ Désynchronisation détectée: "
+                # Ne pas logger comme warning si la différence est de 1 cycle seulement
+                log_level = logging.INFO if abs(active_cycle_count - pocket_cycle_count) == 1 else logging.WARNING
+                logger.log(
+                    log_level,
+                    f"{'ℹ️' if log_level == logging.INFO else '⚠️'} Différence détectée: "
                     f"{active_cycle_count} cycles actifs vs {pocket_cycle_count} dans les poches. "
                     f"Montant utilisé: {trade_used_value:.2f} vs {pocket_used_value:.2f} (diff: {amount_diff_percent:.2f}%)"
                 )
-            
-                # Utiliser notre nouvelle méthode de réconciliation avancée
-                reconciliation_success = self.reconcile_pockets()
                 
-                if reconciliation_success:
-                    logger.info("✅ Réconciliation avancée des poches réussie")
+                # Si la différence est de plus d'un cycle OU si les montants diffèrent de plus de 5%
+                if abs(active_cycle_count - pocket_cycle_count) > 1 or amount_diff_percent > 5.0:
+                    logger.info("🔄 Tentative de réconciliation automatique...")
+                    # Utiliser notre nouvelle méthode de réconciliation avancée
+                    reconciliation_success = self.reconcile_pockets()
+                    
+                    if reconciliation_success:
+                        logger.info("✅ Réconciliation avancée des poches réussie")
+                    else:
+                        logger.error("❌ Échec de la réconciliation avancée des poches")
+                    
+                    return reconciliation_success
                 else:
-                    logger.error("❌ Échec de la réconciliation avancée des poches")
-                
-                return reconciliation_success
+                    # Différence mineure acceptable
+                    logger.debug("Différence mineure acceptable, pas de réconciliation nécessaire")
+                    return True
         
             logger.info("✅ Poches correctement synchronisées")
             return True

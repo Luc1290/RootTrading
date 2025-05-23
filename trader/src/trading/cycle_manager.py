@@ -208,15 +208,36 @@ class CycleManager:
                 execution = self.binance_executor.execute_order(entry_order)
                 
                 # Vérifier si l'exécution a réussi
-                if not execution or not execution.order_id or execution.status != OrderStatus.FILLED:
-                    logger.error(f"❌ L'ordre d'entrée pour le cycle {cycle_id} a échoué ou n'est pas FILLED")
+                if not execution or not execution.order_id:
+                    logger.error(f"❌ L'ordre d'entrée pour le cycle {cycle_id} a échoué - pas d'ID d'ordre")
                     
                     # Créer le cycle avec un statut FAILED pour la traçabilité
                     cycle.status = CycleStatus.FAILED
                     cycle.updated_at = datetime.now()
                     if not hasattr(cycle, 'metadata'):
                         cycle.metadata = {}
-                    cycle.metadata['fail_reason'] = "Ordre d'entrée échoué"
+                    cycle.metadata['fail_reason'] = "Ordre d'entrée échoué - pas d'ID"
+                    
+                    # Sauvegarder le cycle échoué pour la traçabilité
+                    self.repository.save_cycle(cycle)
+                    
+                    # Publier l'événement d'échec
+                    self._publish_cycle_event(cycle, "failed")
+                    
+                    return None
+                
+                # Pour les ordres LIMIT, le statut initial est NEW, pas FILLED
+                # On accepte NEW, PARTIALLY_FILLED et FILLED comme statuts valides
+                valid_statuses = [OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED, OrderStatus.FILLED]
+                if execution.status not in valid_statuses:
+                    logger.error(f"❌ L'ordre d'entrée pour le cycle {cycle_id} a un statut invalide: {execution.status}")
+                    
+                    # Créer le cycle avec un statut FAILED pour la traçabilité
+                    cycle.status = CycleStatus.FAILED
+                    cycle.updated_at = datetime.now()
+                    if not hasattr(cycle, 'metadata'):
+                        cycle.metadata = {}
+                    cycle.metadata['fail_reason'] = f"Statut d'ordre invalide: {execution.status}"
                     
                     # Sauvegarder le cycle échoué pour la traçabilité
                     self.repository.save_cycle(cycle)

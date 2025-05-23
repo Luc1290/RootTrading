@@ -18,6 +18,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 from shared.src.redis_client import RedisClient
 from shared.src.config import TRADING_MODE
 from shared.src.enums import OrderSide, SignalStrength, CycleStatus
+from coordinator.src.cycle_sync_monitor import CycleSyncMonitor
 from shared.src.schemas import StrategySignal, TradeOrder
 
 from coordinator.src.pocket_checker import PocketChecker
@@ -51,6 +52,12 @@ class SignalHandler:
         self.redis_client = RedisClient()
         self.redis_client.subscribe("roottrading:order:failed", self.handle_order_failed)
         
+        # S'abonner aux événements de cycles pour rester synchronisé
+        self.redis_client.subscribe("roottrading:cycle:created", self.handle_cycle_created)
+        self.redis_client.subscribe("roottrading:cycle:closed", self.handle_cycle_closed)
+        self.redis_client.subscribe("roottrading:cycle:canceled", self.handle_cycle_canceled)
+        self.redis_client.subscribe("roottrading:cycle:failed", self.handle_cycle_failed)
+        
         # Canal Redis pour les signaux
         self.signal_channel = "roottrading:analyze:signal"
         
@@ -63,6 +70,12 @@ class SignalHandler:
         
         # Gestionnaire de poches
         self.pocket_checker = PocketChecker(portfolio_api_url)
+        
+        # Moniteur de synchronisation des cycles (solution définitive)
+        self.sync_monitor = CycleSyncMonitor(
+            trader_api_url=trader_api_url,
+            check_interval=30  # Vérification toutes les 30 secondes
+        )
         
         # Cache des prix actuels
         self.price_cache = {}
@@ -594,6 +607,9 @@ class SignalHandler:
         )
         self.processing_thread.start()
         
+        # Démarrer le moniteur de synchronisation
+        self.sync_monitor.start()
+        
         logger.info("✅ Gestionnaire de signaux démarré")
     
     def stop(self) -> None:
@@ -608,6 +624,9 @@ class SignalHandler:
         # Attendre que le thread de traitement se termine
         if self.processing_thread and self.processing_thread.is_alive():
             self.processing_thread.join(timeout=5.0)
+        
+        # Arrêter le moniteur de synchronisation
+        self.sync_monitor.stop()
         
         # Se désabonner du canal Redis
         self.redis_client.unsubscribe()
@@ -653,6 +672,47 @@ class SignalHandler:
         
         except Exception as e:
             logger.error(f"❌ Erreur lors du traitement de l'échec d'ordre: {str(e)}")
+    
+    def handle_cycle_created(self, channel: str, data: Dict[str, Any]) -> None:
+        """
+        Traite la création d'un cycle pour maintenir la synchronisation.
+        """
+        cycle_id = data.get('cycle_id')
+        logger.debug(f"📌 Cycle créé: {cycle_id}")
+        # La réservation est déjà faite, on note juste l'événement
+        
+    def handle_cycle_closed(self, channel: str, data: Dict[str, Any]) -> None:
+        """
+        Traite la fermeture d'un cycle et force une réconciliation des poches.
+        """
+        cycle_id = data.get('cycle_id')
+        symbol = data.get('symbol')
+        profit_loss = data.get('profit_loss', 0)
+        
+        logger.info(f"💰 Cycle fermé: {cycle_id} ({symbol}) - P&L: {profit_loss:.2f}")
+        
+        # Forcer une réconciliation pour mettre à jour les poches
+        self.pocket_checker.force_refresh()
+        
+    def handle_cycle_canceled(self, channel: str, data: Dict[str, Any]) -> None:
+        """
+        Traite l'annulation d'un cycle et libère les fonds.
+        """
+        cycle_id = data.get('cycle_id')
+        logger.info(f"🚫 Cycle annulé: {cycle_id}")
+        
+        # Forcer une réconciliation pour libérer les fonds
+        self.pocket_checker.force_refresh()
+        
+    def handle_cycle_failed(self, channel: str, data: Dict[str, Any]) -> None:
+        """
+        Traite l'échec d'un cycle.
+        """
+        cycle_id = data.get('cycle_id')
+        logger.info(f"❌ Cycle échoué: {cycle_id}")
+        
+        # Forcer une réconciliation
+        self.pocket_checker.force_refresh()
 
 class CircuitBreaker:
     """Circuit breaker pour éviter les appels répétés à des services en échec."""

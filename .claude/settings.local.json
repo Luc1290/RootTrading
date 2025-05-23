@@ -20,7 +20,8 @@
       "Bash(timeout 30 docker-compose logs -f trader)",
       "Bash(python:*)",
       "Bash(docker-compose up:*)",
-      "Bash(docker-compose build:*)"
+      "Bash(docker-compose build:*)",
+      "Bash(sed:*)"
     ],
     "deny": []
   }

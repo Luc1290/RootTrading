@@ -349,6 +349,9 @@ class BinanceUtils:
             if float(data.get('executedQty', 0)) > 0 else 0
         )
         
+        # Pour les ordres non encore exécutés, utiliser origQty au lieu de executedQty
+        quantity = float(data['executedQty']) if float(data.get('executedQty', 0)) > 0 else float(data.get('origQty', 0))
+        
         # Créer et retourner l'exécution
         return TradeExecution(
             order_id=str(data['orderId']),
@@ -356,7 +359,7 @@ class BinanceUtils:
             side=OrderSide(data['side']),
             status=OrderStatus(data['status']),
             price=price,
-            quantity=float(data['executedQty']),
+            quantity=quantity,
             quote_quantity=float(data['cummulativeQuoteQty']),
             fee=None,  # Les frais ne sont pas inclus dans la réponse initiale
             fee_asset=None,

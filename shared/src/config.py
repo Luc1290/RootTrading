@@ -42,25 +42,15 @@ INTERVAL = os.getenv("INTERVAL", "1m")
 TRADING_MODE = os.getenv("TRADING_MODE", "demo")  # 'demo' ou 'live'
 
 # Quantités individuelles par symbole (doivent correspondre aux SYMBOLS)
-TRADE_QUANTITY_BTCUSDC = float(os.getenv("TRADE_QUANTITY_BTC", 0.001))  # Min: 0.001
+TRADE_QUANTITY_BTCUSDC = float(os.getenv("TRADE_QUANTITY_BTC", 0.0005))  # Min: 0.00001
 TRADE_QUANTITY_ETHUSDC = float(os.getenv("TRADE_QUANTITY_ETH", 0.01))   # Min: 0.01
 TRADE_QUANTITY_ETHBTC  = float(os.getenv("TRADE_QUANTITY_ETHBTC", 0.01))   # Min: 0.001 ETH, min notional: 0.0001 BTC
-TRADE_QUANTITY_SUIBTC  = float(os.getenv("TRADE_QUANTITY_SUI", 9))
-TRADE_QUANTITY_SUIUSDC = float(os.getenv("TRADE_QUANTITY_SUI", 9))
-TRADE_QUANTITY_BNBUSDC = float(os.getenv("TRADE_QUANTITY_BNB", 0.05))   # Min: ~0.05
-TRADE_QUANTITY_BNBETH  = float(os.getenv("TRADE_QUANTITY_BNB", 0.05))   # Min: ~0.05
-TRADE_QUANTITY_SUIBNB  = float(os.getenv("TRADE_QUANTITY_SUI", 9))
 
 # Dictionnaire centralisé
 TRADE_QUANTITIES = {
     "BTCUSDC": TRADE_QUANTITY_BTCUSDC,
     "ETHUSDC": TRADE_QUANTITY_ETHUSDC,
     "ETHBTC":  TRADE_QUANTITY_ETHBTC,
-    "SUIBTC":  TRADE_QUANTITY_SUIBTC,
-    "SUIUSDC": TRADE_QUANTITY_SUIUSDC,
-    "BNBUSDC": TRADE_QUANTITY_BNBUSDC,
-    "BNBETH":  TRADE_QUANTITY_BNBETH,
-    "SUIBNB":  TRADE_QUANTITY_SUIBNB,
 }
 
 # Valeur par défaut utilisée par compatibilité
@@ -109,8 +99,8 @@ LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 # Configuration des poches de trading
 POCKET_CONFIG = {
-    "active": float(os.getenv("POCKET_ACTIVE_PERCENT", 60)) / 100,  # Poche pour trades actifs
-    "buffer": float(os.getenv("POCKET_BUFFER_PERCENT", 30)) / 100,  # Poche tampon
+    "active": float(os.getenv("POCKET_ACTIVE_PERCENT", 80)) / 100,  # Poche pour trades actifs
+    "buffer": float(os.getenv("POCKET_BUFFER_PERCENT", 10)) / 100,  # Poche tampon
     "safety": float(os.getenv("POCKET_SAFETY_PERCENT", 10)) / 100,  # Poche de sécurité
 }
 

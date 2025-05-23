@@ -19,6 +19,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 
 from coordinator.src.signal_handler import SignalHandler
 from coordinator.src.pocket_checker import PocketChecker
+from coordinator.src.cycle_sync_monitor import CycleSyncMonitor
 
 # Configuration du logging
 logging.basicConfig(
@@ -53,6 +54,7 @@ class CoordinatorService:
         
         self.signal_handler = None
         self.pocket_checker = None
+        self.cycle_sync_monitor = None
         self.running = False
         self.start_time = time.time()
         
@@ -69,6 +71,8 @@ class CoordinatorService:
         self.app.route('/force-reallocation', methods=['POST'])(self.force_reallocation)
         self.app.route('/status', methods=['GET'])(self.get_status)
         self.app.route('/force-reconcile', methods=['POST'])(self.force_reconciliation)
+        self.app.route('/sync-monitor/status', methods=['GET'])(self.get_sync_monitor_status)
+        self.app.route('/sync-monitor/force', methods=['POST'])(self.force_sync_monitor)
 
     def force_reconciliation(self):
         """
@@ -139,7 +143,8 @@ class CoordinatorService:
             "signal_processing": {
                 "running": self.signal_handler is not None and self.signal_handler.processing_thread is not None,
                 "queue_size": self.signal_handler.signal_queue.qsize() if self.signal_handler else 0
-            }
+            },
+            "cycle_sync_monitor": self.cycle_sync_monitor.get_stats() if self.cycle_sync_monitor else None
         }
         
         return jsonify(diagnostic_info)
@@ -197,6 +202,33 @@ class CoordinatorService:
             status_data["market_filters"] = self.signal_handler.market_filters
         
         return jsonify(status_data)
+    
+    def get_sync_monitor_status(self):
+        """
+        Récupère l'état du moniteur de synchronisation des cycles.
+        """
+        if not self.cycle_sync_monitor:
+            return jsonify({
+                "status": "not_initialized"
+            }), 503
+        
+        return jsonify(self.cycle_sync_monitor.get_stats())
+    
+    def force_sync_monitor(self):
+        """
+        Force une synchronisation immédiate via le moniteur de cycles.
+        """
+        if not self.cycle_sync_monitor:
+            return jsonify({
+                "status": "error",
+                "message": "Sync monitor not initialized"
+            }), 503
+        
+        success = self.cycle_sync_monitor.force_sync()
+        return jsonify({
+            "status": "success" if success else "failed",
+            "stats": self.cycle_sync_monitor.get_stats()
+        })
     
     def _check_service_health(self, service_url):
         """
@@ -337,8 +369,15 @@ class CoordinatorService:
                 portfolio_api_url=self.portfolio_api_url
             )
             
+            # Initialiser le moniteur de synchronisation des cycles
+            self.cycle_sync_monitor = CycleSyncMonitor(
+                trader_api_url=self.trader_api_url,
+                check_interval=30  # Vérifier toutes les 30 secondes
+            )
+            
             # Démarrer les composants
             self.signal_handler.start()
+            self.cycle_sync_monitor.start()
             
             # Réallouer les fonds initialement
             logger.info("Réallocation initiale des fonds...")
@@ -411,6 +450,10 @@ class CoordinatorService:
         if self.signal_handler:
             self.signal_handler.stop()
             self.signal_handler = None
+        
+        if self.cycle_sync_monitor:
+            self.cycle_sync_monitor.stop()
+            self.cycle_sync_monitor = None
         
         logger.info("Service Coordinator terminé")
 
