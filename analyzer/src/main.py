@@ -176,7 +176,7 @@ class AnalyzerService:
             debug: Activer le mode debug pour Flask
         """
         api_thread = threading.Thread(
-            target=lambda: self.app.run(host='0.0.0.0', port=self.port, debug=debug, use_reloader=False),
+            target=lambda: self.app.run(host='0.0.0.0', port=self.port, debug=debug, use_reloader=False, threaded=True),
             daemon=True
         )
         api_thread.start()
@@ -224,7 +224,7 @@ def parse_arguments():
     parser.add_argument(
         '--port', 
         type=int, 
-        default=5001, 
+        default=5012, 
         help='Port pour l\'API REST'
     )
     parser.add_argument(

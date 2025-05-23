@@ -68,6 +68,20 @@ class StrategyTuner:
                 "../../analyzer/strategies"
             ))
         
+        # Vérifier si le répertoire des stratégies existe
+        if not os.path.exists(self.strategies_dir):
+            logger.warning(f"⚠️ Répertoire des stratégies non trouvé: {self.strategies_dir}")
+            logger.info("💡 Strategy tuning sera désactivé si aucune stratégie n'est disponible")
+            self.strategies_available = False
+        else:
+            self.strategies_available = True
+            logger.info(f"✅ Répertoire des stratégies trouvé: {self.strategies_dir}")
+            
+        # Ajouter le répertoire des stratégies au path Python
+        if self.strategies_available and self.strategies_dir not in sys.path:
+            sys.path.insert(0, os.path.dirname(self.strategies_dir))
+            sys.path.insert(0, self.strategies_dir)
+        
         self.results_dir = results_dir
         self.conn = None
         
@@ -79,6 +93,9 @@ class StrategyTuner:
         
         # Initialiser la connexion à la base de données
         self._init_db_connection()
+        
+        # Vérifier la disponibilité des données de marché
+        self._check_market_data_availability()
         
         logger.info(f"✅ StrategyTuner initialisé")
     
@@ -120,6 +137,42 @@ class StrategyTuner:
             self._init_db_connection()
             return self.conn is not None
     
+    def _check_market_data_availability(self) -> None:
+        """
+        Vérifie la disponibilité des données de marché pour le backtesting.
+        """
+        if not self._ensure_connection():
+            logger.warning("⚠️ Impossible de vérifier les données de marché - pas de connexion DB")
+            self.market_data_available = False
+            return
+        
+        try:
+            with self.conn.cursor() as cursor:
+                # Vérifier si la table market_data existe et contient des données
+                cursor.execute("""
+                    SELECT COUNT(*) as count, 
+                           MIN(time) as earliest, 
+                           MAX(time) as latest
+                    FROM market_data 
+                    WHERE symbol IN %s
+                """, (tuple(SYMBOLS),))
+                
+                result = cursor.fetchone()
+                count = result[0] if result else 0
+                
+                if count > 0:
+                    self.market_data_available = True
+                    logger.info(f"✅ {count} données de marché disponibles pour le backtesting")
+                    logger.info(f"📅 Période: {result[1]} à {result[2]}")
+                else:
+                    self.market_data_available = False
+                    logger.warning("⚠️ Aucune donnée de marché trouvée - backtesting désactivé")
+                    logger.info("💡 Démarrez le gateway pour collecter des données historiques")
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la vérification des données de marché: {str(e)}")
+            self.market_data_available = False
+    
     def load_strategy_module(self, strategy_name: str) -> Optional[Any]:
         """
         Charge dynamiquement une stratégie.
@@ -130,6 +183,10 @@ class StrategyTuner:
         Returns:
             Module de la stratégie ou None en cas d'échec
         """
+        if not self.strategies_available:
+            logger.warning(f"⚠️ Stratégies non disponibles, impossible de charger {strategy_name}")
+            return None
+            
         try:
             # S'assurer que le fichier existe
             strategy_file = os.path.join(self.strategies_dir, f"{strategy_name}.py")
@@ -137,16 +194,41 @@ class StrategyTuner:
                 logger.error(f"❌ Fichier de stratégie non trouvé: {strategy_file}")
                 return None
             
-            # Charger le module
-            module_name = f"analyzer.strategies.{strategy_name}"
-            strategy_module = importlib.import_module(module_name)
+            # Plusieurs méthodes pour charger le module
+            strategy_module = None
             
-            logger.info(f"✅ Module de stratégie chargé: {module_name}")
-            return strategy_module
+            # Méthode 1: Import via analyzer.strategies
+            try:
+                module_name = f"analyzer.strategies.{strategy_name}"
+                strategy_module = importlib.import_module(module_name)
+                logger.info(f"✅ Module de stratégie chargé (méthode 1): {module_name}")
+                return strategy_module
+            except ImportError:
+                logger.debug(f"Méthode 1 échouée pour {strategy_name}, tentative méthode 2")
             
-        except ImportError as e:
-            logger.error(f"❌ Erreur lors du chargement de la stratégie {strategy_name}: {str(e)}")
+            # Méthode 2: Import direct depuis le répertoire
+            try:
+                module_name = strategy_name
+                strategy_module = importlib.import_module(module_name)
+                logger.info(f"✅ Module de stratégie chargé (méthode 2): {module_name}")
+                return strategy_module
+            except ImportError:
+                logger.debug(f"Méthode 2 échouée pour {strategy_name}, tentative méthode 3")
+            
+            # Méthode 3: Import via spec_from_file_location
+            try:
+                import importlib.util
+                spec = importlib.util.spec_from_file_location(strategy_name, strategy_file)
+                strategy_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(strategy_module)
+                logger.info(f"✅ Module de stratégie chargé (méthode 3): {strategy_name}")
+                return strategy_module
+            except Exception as e:
+                logger.debug(f"Méthode 3 échouée pour {strategy_name}: {str(e)}")
+            
+            logger.error(f"❌ Toutes les méthodes d'import ont échoué pour {strategy_name}")
             return None
+            
         except Exception as e:
             logger.error(f"❌ Erreur inattendue lors du chargement de la stratégie {strategy_name}: {str(e)}")
             return None

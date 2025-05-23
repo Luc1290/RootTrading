@@ -246,7 +246,7 @@ class AnalyzerManager:
                                     # Assurer que tous les champs requis sont présents et correctement formatés
                                     side_value = signal.side.value if hasattr(signal.side, 'value') else str(signal.side)
                                     strength_value = signal.strength.value if hasattr(signal.strength, 'value') else "MODERATE"
-                                    timestamp_value = signal.timestamp.isoformat() if hasattr(signal.timestamp, 'isoformat') else datetime.datetime.now().isoformat()
+                                    timestamp_value = signal.timestamp.isoformat() if hasattr(signal.timestamp, 'isoformat') else datetime.now().isoformat()
                 
                                     # Créer un dictionnaire avec les données du signal
                                     signal_dict = {

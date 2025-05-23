@@ -358,7 +358,13 @@ class CoordinatorService:
                 time.sleep(5)
             
             if portfolio_health_checks >= 5:
-                logger.warning("⚠️ Service Portfolio non disponible après 5 tentatives, démarrage malgré tout...")
+                logger.error("❌ Service Portfolio non disponible après 5 tentatives")
+                logger.info("💡 Le Coordinator attendra que le Portfolio soit disponible...")
+                # Continuer à attendre mais avec un intervalle plus long
+                while not self.check_portfolio_health():
+                    logger.info("⏳ En attente du service Portfolio... (vérification toutes les 30s)")
+                    time.sleep(30)
+                logger.info("✅ Service Portfolio maintenant disponible!")
             
             # Initialiser le vérificateur de poches
             self.pocket_checker = PocketChecker(portfolio_api_url=self.portfolio_api_url)

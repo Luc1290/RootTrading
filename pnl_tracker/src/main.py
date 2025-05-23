@@ -10,6 +10,7 @@ import os
 import threading
 import argparse
 from typing import Dict, Any
+from flask import Flask, jsonify
 
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
@@ -34,6 +35,52 @@ logger = logging.getLogger("pnl_tracker")
 pnl_logger = None
 strategy_tuner = None
 running = True
+app = Flask(__name__)
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Point de terminaison pour vérifier l'état du service."""
+    status = {
+        "status": "healthy" if running else "stopped",
+        "timestamp": time.time(),
+        "pnl_logger": pnl_logger is not None,
+        "strategy_tuner": strategy_tuner is not None
+    }
+    
+    if pnl_logger:
+        try:
+            stats = pnl_logger.get_stats()
+            status["latest_stats"] = {
+                "total_trades": stats.get("global_stats", {}).get("total_trades", 0),
+                "total_pnl": stats.get("global_stats", {}).get("total_profit_loss", 0),
+                "win_rate": stats.get("global_stats", {}).get("win_rate", 0)
+            }
+        except Exception:
+            status["latest_stats"] = "error"
+    
+    return jsonify(status)
+
+@app.route('/stats', methods=['GET'])
+def get_stats():
+    """Récupère les statistiques PnL actuelles."""
+    if not pnl_logger:
+        return jsonify({"error": "PnL Logger not initialized"}), 503
+    
+    try:
+        stats = pnl_logger.get_stats()
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def start_http_server(port=5006):
+    """Démarre le serveur HTTP dans un thread séparé."""
+    def run_server():
+        app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    
+    server_thread = threading.Thread(target=run_server, daemon=True)
+    server_thread.start()
+    logger.info(f"✅ Serveur HTTP démarré sur le port {port}")
+    return server_thread
 
 def signal_handler(signum, frame):
     """
@@ -169,16 +216,28 @@ def main():
         if not args.no_tuning:
             try:
                 strategy_tuner = StrategyTuner(results_dir=args.results_dir)
-                logger.info("✅ Strategy Tuner initialisé")
                 
-                # Planifier une optimisation toutes les 24 heures
-                last_optimization_time = 0
-                optimization_interval = 24 * 3600  # 24 heures
+                # Vérifier si le tuning est possible
+                if hasattr(strategy_tuner, 'strategies_available') and not strategy_tuner.strategies_available:
+                    logger.warning("⚠️ Stratégies non disponibles - optimisation désactivée")
+                    strategy_tuner = None
+                elif hasattr(strategy_tuner, 'market_data_available') and not strategy_tuner.market_data_available:
+                    logger.warning("⚠️ Données de marché non disponibles - optimisation désactivée")
+                    strategy_tuner = None
+                else:
+                    logger.info("✅ Strategy Tuner initialisé")
+                    # Planifier une optimisation toutes les 24 heures
+                    last_optimization_time = 0
+                    optimization_interval = 24 * 3600  # 24 heures
+                    
             except Exception as e:
                 logger.error(f"❌ Erreur lors de l'initialisation du Strategy Tuner: {str(e)}")
                 strategy_tuner = None
         else:
             logger.info("Optimisation des stratégies désactivée")
+        
+        # Démarrer le serveur HTTP pour le healthcheck
+        start_http_server(port=5006)
         
         logger.info("✅ Service PnL Tracker démarré")
         

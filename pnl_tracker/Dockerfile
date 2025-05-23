@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     build-essential \
     libpq-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copie des requirements et installation
@@ -25,6 +26,13 @@ COPY shared /app/shared
 
 # Copie du code du service
 COPY pnl_tracker /app/pnl_tracker
+
+# Copie des stratégies pour le strategy tuner (optionnel)
+COPY analyzer/strategies /app/analyzer/strategies || echo "Stratégies non trouvées, optimisation désactivée"
+
+# Créer les répertoires analyzer si nécessaire
+RUN mkdir -p /app/analyzer && touch /app/analyzer/__init__.py
+RUN test -d /app/analyzer/strategies && touch /app/analyzer/strategies/__init__.py || echo "Pas de stratégies à initialiser"
 
 # Exposition du port
 EXPOSE 5006

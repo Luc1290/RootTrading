@@ -34,8 +34,8 @@ logger = logging.getLogger("gateway")
 if not BINANCE_API_KEY or not BINANCE_SECRET_KEY:
     logger.warning("⚠️ Clés API Binance non configurées ou incomplètes!")
 
-# Créer le client WebSocket Binance
-ws_client = BinanceWebSocket(symbols=SYMBOLS, interval=INTERVAL)
+# Variables globales
+ws_client = None
 running = True
 start_time = time.time()
 

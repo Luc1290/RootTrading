@@ -107,7 +107,7 @@ services:
       kafka:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8080)); s.close()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5011/health').read()"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -132,7 +132,7 @@ services:
       dispatcher:
         condition: service_started
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8080)); s.close()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5010/health').read()"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -161,7 +161,7 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8080)); s.close()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5012/health').read()"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -179,7 +179,7 @@ services:
       - WAIT_FOR_REDIS=true
       - WAIT_FOR_KAFKA=true
       - WAIT_FOR_DB=true
-      - WAIT_FOR=dispatcher:8080,analyzer:8080
+      - WAIT_FOR=dispatcher:5011,analyzer:5012
     env_file: .env
     restart: unless-stopped
     depends_on:
@@ -314,11 +314,11 @@ services:
     volumes:
       - ./exports:/app/exports
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8080)); s.close()"]
+      test: ["CMD", "curl", "-f", "http://localhost:5006/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: 30s
     networks:
       - roottrading-net
 

@@ -95,7 +95,17 @@ class CycleSyncMonitor:
                 return
                 
             db_cycles = response.json()
-            db_cycle_ids = {cycle['id'] for cycle in db_cycles}
+            
+            # Filtrer les cycles vraiment actifs (status non terminal)
+            # Utiliser une comparaison insensible à la casse
+            terminal_statuses = {'completed', 'canceled', 'failed', 'error'}
+            active_cycles = []
+            for cycle in db_cycles:
+                status = cycle.get('status', '').lower()
+                if status not in terminal_statuses:
+                    active_cycles.append(cycle)
+            
+            db_cycle_ids = {cycle['id'] for cycle in active_cycles}
             
             # Détecter les cycles fantômes (dans notre cache mais pas dans la DB)
             phantom_cycles = self.known_cycles - db_cycle_ids

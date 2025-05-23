@@ -175,6 +175,15 @@ class PocketChecker:
             # Conserver l'ancien cache si erreur
             return False
     
+    def force_refresh(self) -> None:
+        """
+        Force un rafraîchissement immédiat du cache des poches.
+        Méthode utile après des événements importants (cycles fermés, annulés, etc.)
+        """
+        self.last_cache_update = 0
+        self._refresh_cache()
+        logger.info("♻️ Cache des poches forcé à se rafraîchir")
+    
     def get_available_funds(self, pocket_type: str = "active") -> float:
         """
         Récupère les fonds disponibles dans une poche de manière plus robuste.
