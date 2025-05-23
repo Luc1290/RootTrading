@@ -151,6 +151,46 @@ class CycleManager:
                 demo=self.demo_mode
             )
 
+            # Vérifier le solde avant d'acheter (seulement pour les ordres BUY)
+            if side == OrderSide.BUY and not self.demo_mode:
+                # Extraire la quote currency (USDC, BTC, etc.)
+                quote_currency = symbol.replace("BTC", "").replace("ETH", "").replace("BNB", "").replace("SUI", "")
+                if not quote_currency:  # Pour les paires comme ETHBTC
+                    quote_currency = "BTC" if "BTC" in symbol and symbol != "BTCUSDC" else "USDC"
+                
+                # Récupérer les soldes actuels
+                balances = self.binance_executor.utils.fetch_account_balances(self.binance_executor.time_offset)
+                available_balance = balances.get(quote_currency, {}).get('free', 0)
+                
+                # Calculer le coût total de l'ordre
+                total_cost = price * quantity * 1.001  # Ajouter 0.1% pour les frais
+                
+                # Vérifier si le solde est suffisant
+                if available_balance < total_cost:
+                    logger.error(f"❌ Solde {quote_currency} insuffisant: {available_balance:.2f} < {total_cost:.2f} requis")
+                    
+                    # Créer le cycle avec un statut FAILED pour la traçabilité
+                    cycle.status = CycleStatus.FAILED
+                    cycle.updated_at = datetime.now()
+                    if not hasattr(cycle, 'metadata'):
+                        cycle.metadata = {}
+                    cycle.metadata['fail_reason'] = f"Solde {quote_currency} insuffisant: {available_balance:.2f} < {total_cost:.2f}"
+                    
+                    # Sauvegarder le cycle échoué pour la traçabilité
+                    self.repository.save_cycle(cycle)
+                    
+                    # Publier l'événement d'échec
+                    self._publish_cycle_event(cycle, "failed")
+                    
+                    # Proposer une quantité ajustée si possible
+                    adjusted_quantity = (available_balance * 0.99) / price  # 99% du solde pour garder une marge
+                    min_quantity = self.binance_executor.symbol_constraints.get_min_qty(symbol)
+                    
+                    if adjusted_quantity >= min_quantity:
+                        logger.info(f"💡 Quantité ajustée suggérée: {adjusted_quantity:.8f} {symbol.replace(quote_currency, '')}")
+                    
+                    return None
+            
             # Créer l'ordre
             entry_order = TradeOrder(
                 symbol=symbol,
@@ -163,11 +203,59 @@ class CycleManager:
             )
 
             logger.info(f"🔄 Envoi de l'ordre d'entrée pour le cycle {cycle_id}")
-            execution = self.binance_executor.execute_order(entry_order)
-
-            # Vérifier si l'exécution a réussi
-            if not execution or not execution.order_id or execution.status != OrderStatus.FILLED:
-                logger.error(f"❌ L'ordre d'entrée pour le cycle {cycle_id} a échoué ou n'est pas FILLED")
+            
+            try:
+                execution = self.binance_executor.execute_order(entry_order)
+                
+                # Vérifier si l'exécution a réussi
+                if not execution or not execution.order_id or execution.status != OrderStatus.FILLED:
+                    logger.error(f"❌ L'ordre d'entrée pour le cycle {cycle_id} a échoué ou n'est pas FILLED")
+                    
+                    # Créer le cycle avec un statut FAILED pour la traçabilité
+                    cycle.status = CycleStatus.FAILED
+                    cycle.updated_at = datetime.now()
+                    if not hasattr(cycle, 'metadata'):
+                        cycle.metadata = {}
+                    cycle.metadata['fail_reason'] = "Ordre d'entrée échoué"
+                    
+                    # Sauvegarder le cycle échoué pour la traçabilité
+                    self.repository.save_cycle(cycle)
+                    
+                    # Publier l'événement d'échec
+                    self._publish_cycle_event(cycle, "failed")
+                    
+                    return None
+                    
+            except Exception as e:
+                logger.error(f"❌ Erreur lors de l'exécution de l'ordre: {str(e)}")
+                
+                # Créer le cycle avec un statut FAILED pour la traçabilité
+                cycle.status = CycleStatus.FAILED
+                cycle.updated_at = datetime.now()
+                if not hasattr(cycle, 'metadata'):
+                    cycle.metadata = {}
+                    
+                # Analyser le message d'erreur pour identifier les problèmes de fonds
+                error_msg = str(e).lower()
+                
+                # Vérifier spécifiquement les erreurs de solde insuffisant
+                if "insufficient balance" in error_msg or "account has insufficient balance" in error_msg:
+                    cycle.metadata['fail_reason'] = "Solde insuffisant"
+                    logger.warning(f"⚠️ Solde insuffisant pour {symbol}: {error_msg}")
+                else:
+                    cycle.metadata['fail_reason'] = f"Erreur d'exécution: {str(e)}"
+                if "insufficient balance" in error_msg or "insufficient funds" in error_msg:
+                    cycle.metadata['fail_reason'] = "Fonds insuffisants"
+                    logger.error(f"💰 Fonds insuffisants pour créer le cycle {cycle_id}")
+                else:
+                    cycle.metadata['fail_reason'] = str(e)
+                
+                # Sauvegarder le cycle échoué
+                self.repository.save_cycle(cycle)
+                
+                # Publier l'événement d'échec
+                self._publish_cycle_event(cycle, "failed")
+                
                 return None
 
             # Mise à jour du cycle avec données exécutées

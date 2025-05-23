@@ -214,8 +214,23 @@ class ExchangeReconciliation:
         if cycle.status in [CycleStatus.WAITING_SELL, CycleStatus.ACTIVE_SELL] and not cycle.exit_order_id:
             # Conversion robuste du statut pour l'affichage
             status_display = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
-            logger.warning(f"⚠️ Cycle {cycle.id} en statut {status_display} sans ordre de sortie, consistance vérifiée")
-            # Pas de mise à jour nécessaire ici, la situation peut être normale
+            logger.warning(f"⚠️ Cycle {cycle.id} en statut {status_display} sans ordre de sortie")
+            
+            # Vérifier depuis combien de temps le cycle est dans cet état
+            time_since_update = datetime.now() - cycle.updated_at
+            
+            # Si le cycle est bloqué depuis plus de 30 minutes, le marquer comme échoué
+            if time_since_update.total_seconds() > 1800:  # 30 minutes
+                logger.error(f"❌ Cycle {cycle.id} bloqué en {status_display} depuis {time_since_update.total_seconds()/60:.1f} minutes, marqué comme échoué")
+                cycle.status = CycleStatus.FAILED
+                cycle.updated_at = datetime.now()
+                if not hasattr(cycle, 'metadata') or cycle.metadata is None:
+                    cycle.metadata = {}
+                cycle.metadata['cancel_reason'] = f"Bloqué en {status_display} sans ordre de sortie pendant {time_since_update.total_seconds()/60:.1f} minutes"
+                self.repository.save_cycle(cycle)
+                return True
+            
+            logger.info(f"ℹ️ Cycle {cycle.id} en {status_display} depuis {time_since_update.total_seconds()/60:.1f} minutes")
             return False
         
         # Si le cycle a un ordre de sortie, vérifier son état

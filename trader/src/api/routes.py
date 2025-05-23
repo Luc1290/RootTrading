@@ -7,11 +7,12 @@ import time
 import json
 import hmac
 import hashlib
+from datetime import datetime
 from flask import request, jsonify, Blueprint, current_app
 import requests
 
 from shared.src.config import BINANCE_SECRET_KEY, TRADING_MODE
-from shared.src.enums import OrderSide
+from shared.src.enums import OrderSide, CycleStatus
 from shared.src.db_pool import get_db_metrics
 
 # Configuration du logging
@@ -408,6 +409,93 @@ def get_reconciliation_status():
             "message": f"Erreur: {str(e)}"
         }), 500
 
+@routes_bp.route('/cycles/cleanup', methods=['POST'])
+def cleanup_stuck_cycles():
+    """
+    Nettoie les cycles bloqués (active_sell sans ordre de sortie, etc.).
+    
+    Body JSON optionnel:
+    {
+        "timeout_minutes": 30,  # Délai avant de considérer un cycle comme bloqué (défaut: 30)
+        "dry_run": false       # Si true, simule le nettoyage sans modifier les données
+    }
+    """
+    order_manager = current_app.config['ORDER_MANAGER']
+    
+    if not order_manager:
+        return jsonify({"error": "OrderManager non initialisé"}), 500
+    
+    try:
+        # Récupérer les paramètres de la requête
+        data = request.json or {}
+        timeout_minutes = data.get('timeout_minutes', 30)
+        dry_run = data.get('dry_run', False)
+        
+        logger.info(f"🧹 Nettoyage des cycles bloqués (timeout: {timeout_minutes}m, dry_run: {dry_run})")
+        
+        # Récupérer tous les cycles actifs
+        cycles = order_manager.cycle_manager.repository.get_active_cycles()
+        
+        cleaned_cycles = []
+        now = datetime.now()
+        
+        for cycle in cycles:
+            # Vérifier les cycles bloqués en active_sell sans ordre de sortie
+            if cycle.status in [CycleStatus.ACTIVE_SELL, CycleStatus.WAITING_SELL] and not cycle.exit_order_id:
+                time_since_update = now - cycle.updated_at
+                
+                if time_since_update.total_seconds() > timeout_minutes * 60:
+                    cycle_info = {
+                        "id": cycle.id,
+                        "symbol": cycle.symbol,
+                        "status": cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status),
+                        "created_at": cycle.created_at.isoformat(),
+                        "updated_at": cycle.updated_at.isoformat(),
+                        "stuck_duration_minutes": time_since_update.total_seconds() / 60
+                    }
+                    
+                    if not dry_run:
+                        # Marquer le cycle comme échoué
+                        logger.info(f"🧹 Nettoyage du cycle bloqué {cycle.id}")
+                        cycle.status = CycleStatus.FAILED
+                        cycle.updated_at = now
+                        if not hasattr(cycle, 'metadata'):
+                            cycle.metadata = {}
+                        cycle.metadata['cancel_reason'] = f"Nettoyé après {time_since_update.total_seconds()/60:.1f} minutes bloqué en {cycle_info['status']}"
+                        
+                        # Sauvegarder le cycle
+                        order_manager.cycle_manager.repository.save_cycle(cycle)
+                        
+                        # Publier l'événement
+                        order_manager.cycle_manager._publish_cycle_event(cycle, "failed")
+                        
+                        cycle_info["action"] = "cleaned"
+                    else:
+                        cycle_info["action"] = "would_clean"
+                    
+                    cleaned_cycles.append(cycle_info)
+        
+        # Forcer une réconciliation après le nettoyage
+        if not dry_run and cleaned_cycles:
+            order_manager.reconciliation_service.force_reconciliation()
+        
+        return jsonify({
+            "success": True,
+            "dry_run": dry_run,
+            "timeout_minutes": timeout_minutes,
+            "total_active_cycles": len(cycles),
+            "cleaned_cycles_count": len(cleaned_cycles),
+            "cleaned_cycles": cleaned_cycles,
+            "message": f"{'Simulation de' if dry_run else ''} Nettoyage terminé: {len(cleaned_cycles)} cycles {'identifiés' if dry_run else 'nettoyés'}"
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur lors du nettoyage des cycles: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": f"Erreur: {str(e)}"
+        }), 500
+
 # ============================================================================
 # Routes de diagnostic
 # ============================================================================
@@ -545,6 +633,80 @@ def get_symbol_constraints(symbol):
     except Exception as e:
         logger.error(f"❌ Erreur lors de la récupération des contraintes pour {symbol}: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+@routes_bp.route('/balance/check', methods=['POST'])
+def check_balance_for_order():
+    """Vérifie si le solde est suffisant pour un ordre donné."""
+    try:
+        order_manager = current_app.config.get('ORDER_MANAGER')
+        if not order_manager:
+            return jsonify({"error": "OrderManager non initialisé"}), 500
+            
+        data = request.json
+        symbol = data.get('symbol')
+        side = data.get('side')
+        quantity = float(data.get('quantity', 0))
+        price = float(data.get('price', 0))
+        
+        if not all([symbol, side, quantity, price]):
+            return jsonify({
+                "success": False,
+                "message": "Paramètres manquants: symbol, side, quantity, price requis"
+            }), 400
+        
+        # Seulement vérifier pour les ordres BUY
+        if side.upper() != 'BUY':
+            return jsonify({
+                "success": True,
+                "message": "Vérification non nécessaire pour les ordres SELL",
+                "sufficient": True
+            })
+        
+        # Extraire la quote currency
+        quote_currency = symbol.replace("BTC", "").replace("ETH", "").replace("BNB", "").replace("SUI", "")
+        if not quote_currency:  # Pour les paires comme ETHBTC
+            quote_currency = "BTC" if "BTC" in symbol and symbol != "BTCUSDC" else "USDC"
+        
+        # Récupérer les soldes
+        balances = order_manager.binance_executor.utils.fetch_account_balances(
+            order_manager.binance_executor.time_offset
+        )
+        
+        available_balance = balances.get(quote_currency, {}).get('free', 0)
+        total_cost = price * quantity * 1.001  # Ajouter 0.1% pour les frais
+        
+        sufficient = available_balance >= total_cost
+        
+        response = {
+            "success": True,
+            "symbol": symbol,
+            "quote_currency": quote_currency,
+            "available_balance": available_balance,
+            "required_balance": total_cost,
+            "sufficient": sufficient,
+            "message": "Solde suffisant" if sufficient else f"Solde insuffisant: {available_balance:.2f} {quote_currency} < {total_cost:.2f} requis"
+        }
+        
+        # Si insuffisant, calculer la quantité maximale possible
+        if not sufficient:
+            adjusted_quantity = (available_balance * 0.99) / price
+            min_quantity = order_manager.binance_executor.symbol_constraints.get_min_qty(symbol)
+            
+            if adjusted_quantity >= min_quantity:
+                response["suggested_quantity"] = adjusted_quantity
+                response["suggested_cost"] = adjusted_quantity * price * 1.001
+            else:
+                response["suggested_quantity"] = 0
+                response["message"] += f" (minimum requis: {min_quantity} {symbol.replace(quote_currency, '')})"
+        
+        return jsonify(response)
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la vérification du solde: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": f"Erreur: {str(e)}"
+        }), 500
 
 # ============================================================================
 # Routes de filtrage de marché

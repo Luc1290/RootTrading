@@ -222,16 +222,21 @@ class OrderManager:
         # Récupérer la quantité à trader de la configuration
         base_quantity = TRADE_QUANTITIES.get(signal.symbol, TRADE_QUANTITY)
         
-        # Vérifier les contraintes de l'exchange et ajuster si nécessaire
-        constraints = self.binance_executor.symbol_constraints
-        min_quantity = constraints.calculate_min_quantity(signal.symbol, current_price)
-        
-        # Utiliser la plus grande des deux valeurs
-        quantity = max(base_quantity, min_quantity)
-        
-        # Log si la quantité a été ajustée
-        if quantity > base_quantity:
-            logger.info(f"Quantité ajustée pour {signal.symbol}: {base_quantity} → {quantity} (minimum requis)")
+        # Pour ETHBTC, utiliser directement la quantité configurée
+        # car le calcul de min_notional est complexe pour les paires non-USDC
+        if signal.symbol == "ETHBTC":
+            quantity = base_quantity
+        else:
+            # Vérifier les contraintes de l'exchange et ajuster si nécessaire
+            constraints = self.binance_executor.symbol_constraints
+            min_quantity = constraints.calculate_min_quantity(signal.symbol, current_price)
+            
+            # Utiliser la plus grande des deux valeurs
+            quantity = max(base_quantity, min_quantity)
+            
+            # Log si la quantité a été ajustée
+            if quantity > base_quantity:
+                logger.info(f"Quantité ajustée pour {signal.symbol}: {base_quantity} → {quantity} (minimum requis)")
         
         # Récupérer la poche (par défaut 'active')
         pocket = metadata.get('pocket', 'active')

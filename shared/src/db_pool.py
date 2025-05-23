@@ -385,7 +385,7 @@ class AdvancedConnectionPool:
             tx_status = conn.connection.get_transaction_status()
             if tx_status != 0:  # 0 = IDLE/READY (pas de transaction)
                 conn.connection.rollback()
-                logger.warning("Transaction abandonnée rollbackée lors de la libération")
+                logger.debug("Transaction nettoyée lors de la libération")
             
             # Remettre autocommit à True
             conn.connection.autocommit = True
@@ -601,7 +601,7 @@ class DBConnectionPool:
                 # Vérifier si une transaction est encore en cours et la rollback
                 if not conn.closed and conn.get_transaction_status() != 0:  # 0 = STATUS_READY
                     conn.rollback()
-                    logger.warning("Transaction abandonnée rollbackée lors de la libération")
+                    logger.debug("Transaction nettoyée lors de la libération")
                 
                 # Remettre autocommit à True
                 conn.autocommit = True
@@ -670,7 +670,7 @@ class DBContextManager:
         
         # Vérifier et nettoyer toute transaction résiduelle
         if self.conn.get_transaction_status() != extensions.STATUS_READY:
-            logger.warning("Transaction résiduelle détectée, rollback automatique")
+            logger.debug("Transaction résiduelle nettoyée")
             self.conn.rollback()
         
         # Configurer la gestion de transaction
@@ -769,14 +769,14 @@ class DBContextManager:
                 else:
                     # En mode sans auto_transaction, vérifier qu'aucune transaction n'est encore active
                     if status in (extensions.STATUS_INTRANS, extensions.STATUS_INERROR):
-                        logger.warning("Transaction non terminée détectée, rollback forcé")
+                        logger.debug("Transaction non terminée nettoyée")
                         self.conn.rollback()
         finally:
             # 3) toujours s'assurer qu'aucune transaction n'est active avant de changer autocommit
             if self.conn and not self.conn.closed:
                 # Vérifier qu'il n'y a plus de transactions actives 
                 if self.conn.get_transaction_status() != extensions.STATUS_READY:
-                    logger.warning("Transaction résiduelle détectée, rollback avant de changer autocommit")
+                    logger.debug("Nettoyage de transaction avant libération")
                     self.conn.rollback()
                 
                 # Maintenant on peut changer autocommit en toute sécurité
@@ -813,7 +813,7 @@ def transaction(cursor_factory=None):
             # S'assurer qu'aucune transaction n'est active
             if cursor.connection.get_transaction_status() != extensions.STATUS_READY:
                 cursor.connection.rollback()
-                logger.warning("Transaction résiduelle détectée et annulée automatiquement")
+                logger.debug("Transaction nettoyée avant démarrage")
             
             # Démarrer une nouvelle transaction propre
             cursor.connection.autocommit = False

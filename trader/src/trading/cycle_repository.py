@@ -234,6 +234,12 @@ class CycleRepository:
             # Vérifier l'existence de l'attribut 'confirmed'
             confirmed = getattr(cycle, 'confirmed', False)
             
+            # Préparer les métadonnées pour PostgreSQL
+            import json
+            metadata_json = None
+            if hasattr(cycle, 'metadata') and cycle.metadata:
+                metadata_json = json.dumps(cycle.metadata)
+            
             # Définir la requête SQL
             if exists:
                 query = """
@@ -255,7 +261,8 @@ class CycleRepository:
                     updated_at = %s,
                     completed_at = %s,
                     pocket = %s,
-                    demo = %s
+                    demo = %s,
+                    metadata = %s::jsonb
                 WHERE id = %s
                 """
                 
@@ -278,6 +285,7 @@ class CycleRepository:
                     cycle.completed_at,
                     cycle.pocket,
                     cycle.demo,
+                    metadata_json,
                     cycle.id
                 )
             else:
@@ -286,8 +294,8 @@ class CycleRepository:
                 (id, symbol, strategy, status, entry_order_id, exit_order_id,
                 entry_price, exit_price, quantity, target_price, stop_price,
                 trailing_delta, profit_loss, profit_loss_percent, created_at,
-                updated_at, completed_at, pocket, demo)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                updated_at, completed_at, pocket, demo, metadata)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                 """
                 
                 params = (
@@ -309,7 +317,8 @@ class CycleRepository:
                     cycle.updated_at,
                     cycle.completed_at,
                     cycle.pocket,
-                    cycle.demo
+                    cycle.demo,
+                    metadata_json
                 )
         
             # Exécuter la requête avec transaction explicite

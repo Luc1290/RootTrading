@@ -40,8 +40,8 @@ def _handle_cycle_created(channel, data):
 
         redis = RedisClient()
         
-        # Utiliser INCRBYFLOAT au lieu de DECRBYFLOAT (qui n'existe pas)
-        redis.incrbyfloat(pocket_key, -quantity)  # Utilise incrbyfloat avec valeur négative
+        # Utiliser decrbyfloat qui gère correctement l'appel à Redis
+        redis.decrbyfloat(pocket_key, quantity)
         redis.sadd(cycles_key, cycle_id)
 
         logger.info(f"📦 Cycle {cycle_id} ajouté à la poche '{pocket}' ({quantity} décrémentés)")
