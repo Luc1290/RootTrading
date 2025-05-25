@@ -41,8 +41,8 @@ class RSIStrategy(BaseStrategy):
         
         # Paramètres RSI
         self.rsi_window = self.params.get('window', get_strategy_param('rsi', 'window', 14))
-        self.overbought_threshold = self.params.get('overbought', get_strategy_param('rsi', 'overbought', 80))
-        self.oversold_threshold = self.params.get('oversold', get_strategy_param('rsi', 'oversold', 20))
+        self.overbought_threshold = self.params.get('overbought', get_strategy_param('rsi', 'overbought', 70))
+        self.oversold_threshold = self.params.get('oversold', get_strategy_param('rsi', 'oversold', 30))
         
         # Variables pour suivre les tendances
         self.prev_rsi = None
@@ -169,39 +169,84 @@ class RSIStrategy(BaseStrategy):
             # Pas assez de données pour un signal fiable
             return None
         
-        # Signal d'achat: RSI passe au-dessus du seuil de survente
-        if prev_rsi <= self.oversold_threshold and current_rsi > self.oversold_threshold:
+        # Signal d'achat: RSI entre en zone de survente (acheter dans le rouge)
+        # Deux conditions possibles:
+        # 1. RSI vient de passer sous le seuil de survente
+        # 2. RSI est déjà en survente et continue de baisser (plus agressif)
+        if current_rsi < self.oversold_threshold:
+            # Plus le RSI est bas, plus on est confiant
             confidence = self._calculate_confidence(current_rsi, OrderSide.BUY)
             
-            metadata = {
-                "rsi": current_rsi,
-                "rsi_threshold": self.oversold_threshold,
-                "previous_rsi": prev_rsi
-            }
+            # Ne générer un signal que si:
+            # - On vient d'entrer en survente (prev_rsi > oversold et current < oversold)
+            # - OU le RSI continue de baisser en zone de survente (pour moyenner à la baisse)
+            should_buy = False
+            signal_reason = ""
             
-            signal = self.create_signal(
-                side=OrderSide.BUY,
-                price=current_price,
-                confidence=confidence,
-                metadata=metadata
-            )
+            if prev_rsi > self.oversold_threshold:
+                # Première entrée en survente
+                should_buy = True
+                signal_reason = "entry_oversold"
+                confidence *= 0.8  # Confiance modérée pour la première entrée
+            elif current_rsi < prev_rsi - 2:  # RSI baisse de plus de 2 points
+                # RSI continue de chuter, opportunité de moyenner
+                should_buy = True
+                signal_reason = "deepening_oversold"
+                confidence *= 1.2  # Plus confiant quand ça baisse encore
+            
+            if should_buy:
+                metadata = {
+                    "rsi": float(current_rsi),
+                    "rsi_threshold": self.oversold_threshold,
+                    "previous_rsi": float(prev_rsi),
+                    "reason": signal_reason,
+                    "rsi_delta": float(current_rsi - prev_rsi)
+                }
+                
+                signal = self.create_signal(
+                    side=OrderSide.BUY,
+                    price=current_price,
+                    confidence=min(confidence, 0.95),
+                    metadata=metadata
+                )
         
-        # Signal de vente: RSI passe en-dessous du seuil de surachat
-        elif prev_rsi >= self.overbought_threshold and current_rsi < self.overbought_threshold:
+        # Signal de vente: RSI entre en zone de surachat (vendre dans le vert)
+        elif current_rsi > self.overbought_threshold:
+            # Plus le RSI est haut, plus on est confiant
             confidence = self._calculate_confidence(current_rsi, OrderSide.SELL)
             
-            metadata = {
-                "rsi": current_rsi,
-                "rsi_threshold": self.overbought_threshold,
-                "previous_rsi": prev_rsi
-            }
+            # Ne générer un signal que si:
+            # - On vient d'entrer en surachat
+            # - OU le RSI continue de monter en zone de surachat
+            should_sell = False
+            signal_reason = ""
             
-            signal = self.create_signal(
-                side=OrderSide.SELL,
-                price=current_price,
-                confidence=confidence,
-                metadata=metadata
-            )
+            if prev_rsi < self.overbought_threshold:
+                # Première entrée en surachat
+                should_sell = True
+                signal_reason = "entry_overbought"
+                confidence *= 0.8  # Confiance modérée
+            elif current_rsi > prev_rsi + 2:  # RSI monte de plus de 2 points
+                # RSI continue de monter, le marché est vraiment suracheté
+                should_sell = True
+                signal_reason = "extreme_overbought"
+                confidence *= 1.2  # Plus confiant
+            
+            if should_sell:
+                metadata = {
+                    "rsi": float(current_rsi),
+                    "rsi_threshold": self.overbought_threshold,
+                    "previous_rsi": float(prev_rsi),
+                    "reason": signal_reason,
+                    "rsi_delta": float(current_rsi - prev_rsi)
+                }
+                
+                signal = self.create_signal(
+                    side=OrderSide.SELL,
+                    price=current_price,
+                    confidence=min(confidence, 0.95),
+                    metadata=metadata
+                )
         
         # Mettre à jour les valeurs précédentes
         self.prev_rsi = current_rsi
@@ -212,6 +257,7 @@ class RSIStrategy(BaseStrategy):
     def _calculate_confidence(self, rsi_value: float, side: OrderSide) -> float:
         """
         Calcule le niveau de confiance d'un signal basé sur la valeur RSI.
+        Plus on est dans l'extrême (très survendu ou très suracheté), plus la confiance est élevée.
         
         Args:
             rsi_value: Valeur actuelle du RSI
@@ -221,18 +267,35 @@ class RSIStrategy(BaseStrategy):
             Niveau de confiance entre 0.0 et 1.0
         """
         if side == OrderSide.BUY:
-            # Plus le RSI est bas sous le seuil de survente, plus la confiance est élevée
-            # RSI=10 -> confiance élevée, RSI=29 -> confiance faible
-            base_confidence = (self.oversold_threshold - rsi_value) / self.oversold_threshold
-            # Limiter entre 0 et 0.5
-            base_confidence = min(max(base_confidence, 0), 0.5)
-            # Ajuster à l'échelle 0.5-1.0
-            return 0.5 + base_confidence
+            # Plus le RSI est bas, plus la confiance est élevée (acheter dans l'extrême rouge)
+            # RSI=5 -> confiance ~0.95, RSI=20 -> confiance ~0.6
+            if rsi_value >= self.oversold_threshold:
+                # Pas en survente, confiance faible
+                return 0.3
+            
+            # Échelle progressive: RSI 0-20 mappé sur confiance 0.95-0.6
+            confidence = 0.95 - (rsi_value / self.oversold_threshold) * 0.35
+            
+            # Bonus si RSI très bas (< 15)
+            if rsi_value < 15:
+                confidence *= 1.1
+                
+            return min(confidence, 0.95)
+            
         else:  # SELL
-            # Plus le RSI est élevé au-dessus du seuil de surachat, plus la confiance est élevée
-            # RSI=90 -> confiance élevée, RSI=71 -> confiance faible
-            base_confidence = (rsi_value - self.overbought_threshold) / (100 - self.overbought_threshold)
-            # Limiter entre 0 et 0.5
-            base_confidence = min(max(base_confidence, 0), 0.5)
-            # Ajuster à l'échelle 0.5-1.0
-            return 0.5 + base_confidence
+            # Plus le RSI est haut, plus la confiance est élevée (vendre dans l'extrême vert)
+            # RSI=95 -> confiance ~0.95, RSI=80 -> confiance ~0.6
+            if rsi_value <= self.overbought_threshold:
+                # Pas en surachat, confiance faible
+                return 0.3
+            
+            # Échelle progressive: RSI 80-100 mappé sur confiance 0.6-0.95
+            remaining_range = 100 - self.overbought_threshold
+            position_in_range = (rsi_value - self.overbought_threshold) / remaining_range
+            confidence = 0.6 + position_in_range * 0.35
+            
+            # Bonus si RSI très haut (> 85)
+            if rsi_value > 85:
+                confidence *= 1.1
+                
+            return min(confidence, 0.95)

@@ -195,6 +195,98 @@ class BaseStrategy(ABC):
             metadata=metadata or {}
         )
     
+    def calculate_atr(self, df: pd.DataFrame = None, period: int = 14) -> float:
+        """
+        Calcule l'ATR (Average True Range) pour mesurer la volatilité.
+        
+        Args:
+            df: DataFrame avec les données (si None, utilise le buffer)
+            period: Période pour le calcul de l'ATR
+            
+        Returns:
+            Valeur ATR en pourcentage du prix actuel
+        """
+        if df is None:
+            df = self.get_data_as_dataframe()
+        
+        if df is None or len(df) < period + 1:
+            return 1.0  # Retourner 1% par défaut si pas assez de données
+        
+        # Calculer le True Range
+        df['high'] = df['high'].astype(float)
+        df['low'] = df['low'].astype(float)  
+        df['close'] = df['close'].astype(float)
+        
+        df['previous_close'] = df['close'].shift(1)
+        df['tr1'] = df['high'] - df['low']
+        df['tr2'] = abs(df['high'] - df['previous_close'])
+        df['tr3'] = abs(df['low'] - df['previous_close'])
+        df['true_range'] = df[['tr1', 'tr2', 'tr3']].max(axis=1)
+        
+        # Calculer l'ATR comme la moyenne mobile du True Range
+        atr = df['true_range'].rolling(window=period).mean().iloc[-1]
+        
+        # Normaliser en pourcentage du prix actuel
+        current_price = df['close'].iloc[-1]
+        atr_percent = (atr / current_price) * 100
+        
+        return atr_percent
+    
+    def calculate_dynamic_targets(self, entry_price: float, side: OrderSide, 
+                                atr_percent: float = None, risk_reward_ratio: float = 1.5) -> Dict[str, float]:
+        """
+        Calcule des cibles et stops dynamiques basés sur l'ATR.
+        
+        Args:
+            entry_price: Prix d'entrée
+            side: Côté du trade (BUY ou SELL)
+            atr_percent: ATR en pourcentage (si None, calculé automatiquement)
+            risk_reward_ratio: Ratio risque/récompense souhaité
+            
+        Returns:
+            Dict avec target_price et stop_price
+        """
+        if atr_percent is None:
+            atr_percent = self.calculate_atr()
+        
+        # Limiter l'ATR pour éviter des cibles trop extrêmes
+        # Min 0.3%, Max 2%
+        atr_percent = max(0.3, min(atr_percent, 2.0))
+        
+        # Pour les paires crypto, ajuster selon la volatilité moyenne
+        if 'BTC' in self.symbol:
+            # Bitcoin est généralement moins volatil
+            atr_multiplier = 0.8
+        elif 'ETH' in self.symbol:
+            # Ethereum est moyennement volatil
+            atr_multiplier = 1.0
+        else:
+            # Autres cryptos peuvent être plus volatiles
+            atr_multiplier = 1.2
+        
+        # Distance de base pour le stop
+        stop_distance_percent = atr_percent * atr_multiplier
+        
+        # Calculer les prix
+        if side == OrderSide.BUY:
+            stop_price = entry_price * (1 - stop_distance_percent / 100)
+            # Target basé sur le ratio risque/récompense
+            target_distance = stop_distance_percent * risk_reward_ratio
+            target_price = entry_price * (1 + target_distance / 100)
+        else:  # SELL
+            stop_price = entry_price * (1 + stop_distance_percent / 100)
+            # Target basé sur le ratio risque/récompense
+            target_distance = stop_distance_percent * risk_reward_ratio
+            target_price = entry_price * (1 - target_distance / 100)
+        
+        return {
+            "target_price": target_price,
+            "stop_price": stop_price,
+            "atr_percent": atr_percent,
+            "stop_distance_percent": stop_distance_percent,
+            "target_distance_percent": target_distance * risk_reward_ratio
+        }
+    
     def __str__(self) -> str:
         """Représentation sous forme de chaîne de la stratégie."""
         return f"{self.name} Strategy ({self.symbol})"

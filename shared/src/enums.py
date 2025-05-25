@@ -8,6 +8,16 @@ class OrderSide(str, Enum):
     BUY = "BUY"
     SELL = "SELL"
 
+class OrderType(str, Enum):
+    """Type d'ordre sur l'exchange."""
+    LIMIT = "LIMIT"             # Ordre limite
+    MARKET = "MARKET"           # Ordre au marché
+    STOP_LOSS = "STOP_LOSS"     # Stop loss
+    STOP_LOSS_LIMIT = "STOP_LOSS_LIMIT"  # Stop loss limite
+    TAKE_PROFIT = "TAKE_PROFIT"  # Take profit
+    TAKE_PROFIT_LIMIT = "TAKE_PROFIT_LIMIT"  # Take profit limite
+    LIMIT_MAKER = "LIMIT_MAKER"  # Ordre limite maker only
+
 class OrderStatus(str, Enum):
     """Statut d'un ordre."""
     NEW = "NEW"                 # Ordre créé et envoyé à Binance

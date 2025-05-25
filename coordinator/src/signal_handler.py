@@ -97,6 +97,28 @@ class SignalHandler:
             self._handle_portfolio_update
         )
         
+        # === NOUVEAU: Gestion intelligente des signaux multiples ===
+        # Agrégation des signaux par symbole
+        self.signal_aggregator = {}  # {symbol: {timestamp: [signals]}}
+        self.aggregation_window = 1.0  # Réduit à 1 seconde pour plus de réactivité
+        self.aggregator_lock = threading.RLock()
+        
+        # Cache des cycles actifs pour éviter les doublons
+        self.active_cycles_cache = {}  # {symbol: {side: cycle_count}}
+        self.cache_update_time = 0
+        self.cache_ttl = 30  # TTL du cache en secondes
+        
+        # Configuration des limites
+        self.max_cycles_per_symbol_side = 3  # Max 3 BUY ou 3 SELL par symbole
+        self.contradiction_threshold = 0.7  # Seuil pour décider en cas de contradiction
+        
+        # NOUVEAU: Historique récent des signaux pour détecter les patterns
+        self.recent_signals_history = {}  # {symbol: [(signal, timestamp)]}
+        self.history_window = 30.0  # Garder 30 secondes d'historique
+        
+        # Thread pour l'agrégation périodique
+        self.aggregation_thread = None
+        
         logger.info(f"✅ SignalHandler initialisé en mode {'DÉMO' if self.demo_mode else 'RÉEL'}")
     
     def _handle_portfolio_update(self, channel: str, data: Dict[str, Any]) -> None:
@@ -156,18 +178,446 @@ class SignalHandler:
                 self._update_market_filters(signal)
                 return
         
-            # Ajouter à la file d'attente pour traitement
-            self.signal_queue.put(signal)
+            # NOUVEAU: Ajouter le signal à l'agrégateur au lieu de la file directe
+            self._add_signal_to_aggregator(signal)
         
             # Mettre à jour le cache des prix
             self.price_cache[signal.symbol] = signal.price
         
-            logger.info(f"📨 Signal reçu: {signal.side} {signal.symbol} @ {signal.price} ({signal.strategy})")
+            # Logger les métadonnées pour debug
+            if signal.metadata and ('target_price' in signal.metadata or 'stop_price' in signal.metadata):
+                logger.info(f"📨 Signal reçu: {signal.side} {signal.symbol} @ {signal.price} ({signal.strategy}) - Target: {signal.metadata.get('target_price', 'N/A')}, Stop: {signal.metadata.get('stop_price', 'N/A')}")
+            else:
+                logger.info(f"📨 Signal reçu: {signal.side} {signal.symbol} @ {signal.price} ({signal.strategy})")
     
         except Exception as e:
             logger.error(f"❌ Erreur lors du traitement du signal: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
+    
+    def _add_signal_to_aggregator(self, signal: StrategySignal) -> None:
+        """
+        Ajoute un signal à l'agrégateur avec logique intelligente.
+        
+        Args:
+            signal: Signal à ajouter
+        """
+        with self.aggregator_lock:
+            current_time = time.time()
+            
+            # Ajouter à l'historique
+            if signal.symbol not in self.recent_signals_history:
+                self.recent_signals_history[signal.symbol] = []
+            
+            # Nettoyer l'historique ancien
+            self.recent_signals_history[signal.symbol] = [
+                (s, t) for s, t in self.recent_signals_history[signal.symbol]
+                if current_time - t < self.history_window
+            ]
+            
+            # Ajouter le nouveau signal
+            self.recent_signals_history[signal.symbol].append((signal, current_time))
+            
+            # Vérifier s'il y a des signaux récents contradictoires
+            recent_signals = [s for s, t in self.recent_signals_history[signal.symbol] 
+                            if current_time - t < 3.0]  # Signaux des 3 dernières secondes
+            
+            contradictory = any(s.side != signal.side for s in recent_signals[:-1])
+            
+            # Si signal contradictoire récent OU plusieurs signaux proches, agréger
+            if contradictory or len(recent_signals) > 1:
+                # Agrégation nécessaire
+                if signal.symbol not in self.signal_aggregator:
+                    self.signal_aggregator[signal.symbol] = {}
+                
+                time_key = int(current_time / self.aggregation_window) * self.aggregation_window
+                
+                if time_key not in self.signal_aggregator[signal.symbol]:
+                    self.signal_aggregator[signal.symbol][time_key] = []
+                
+                self.signal_aggregator[signal.symbol][time_key].append(signal)
+                logger.info(f"📊 Signal ajouté à l'agrégation ({len(recent_signals)} signaux récents)")
+            else:
+                # Signal isolé, traiter immédiatement
+                logger.info(f"⚡ Signal isolé, traitement immédiat")
+                self._process_single_signal(signal)
+    
+    def _process_single_signal(self, signal: StrategySignal) -> None:
+        """
+        Traite immédiatement un signal isolé en vérifiant les positions existantes.
+        
+        Args:
+            signal: Signal à traiter
+        """
+        # Rafraîchir le cache des positions
+        self._refresh_active_cycles_cache()
+        
+        # Convertir signal.side en string si c'est un enum
+        signal_side_str = signal.side.value if hasattr(signal.side, 'value') else str(signal.side)
+        
+        # Vérifier les positions existantes pour ce symbole
+        opposite_side = "SELL" if signal_side_str == "BUY" else "BUY"
+        existing_opposite = self.active_cycles_cache.get(signal.symbol, {}).get(opposite_side, 0)
+        existing_same = self.active_cycles_cache.get(signal.symbol, {}).get(signal_side_str, 0)
+        
+        # Cas 1: Signal opposé à des positions existantes
+        if existing_opposite > 0:
+            logger.warning(f"⚠️ Signal {signal.side} contradictoire avec {existing_opposite} "
+                         f"positions {opposite_side} ouvertes sur {signal.symbol}")
+            
+            # Options possibles selon la force du signal
+            if signal.strength == SignalStrength.VERY_STRONG:
+                logger.info(f"🔄 Signal TRÈS FORT - Tentative de fermeture des positions opposées")
+                # Fermer les positions opposées si le signal est très fort
+                if self._close_opposite_positions(signal.symbol, opposite_side):
+                    logger.info(f"✅ Positions {opposite_side} fermées, nouveau signal {signal.side} autorisé")
+                    # Continuer avec le nouveau signal après fermeture
+                else:
+                    logger.warning(f"❌ Impossible de fermer les positions opposées, signal ignoré")
+                    return
+            elif signal.strength == SignalStrength.STRONG and existing_opposite == 1:
+                # Si seulement 1 position opposée et signal fort, on peut considérer la fermeture
+                logger.info(f"🤔 Signal FORT avec 1 position opposée - Évaluation...")
+                # Pour l'instant on bloque, mais on pourrait être plus flexible
+                return
+            else:
+                logger.info(f"❌ Signal contradictoire ignoré (positions opposées actives)")
+                return
+        
+        # Cas 2: Vérifier si on peut ajouter à la position existante
+        if existing_same >= self.max_cycles_per_symbol_side:
+            logger.warning(f"❌ Limite de {self.max_cycles_per_symbol_side} cycles {signal.side} "
+                         f"atteinte pour {signal.symbol}")
+            return
+        
+        # Cas 3: Vérifier l'anti-spam
+        if signal.symbol in self.recent_signals_history:
+            same_side_recent = [
+                s for s, t in self.recent_signals_history[signal.symbol]
+                if s.side == signal.side and time.time() - t < 10.0
+            ]
+            
+            if len(same_side_recent) > 2:
+                logger.warning(f"⚠️ Trop de signaux {signal.side} récents pour {signal.symbol}")
+                return
+        
+        # Cas 4: Signal renforcant une position existante
+        if existing_same > 0 and signal.strength >= SignalStrength.STRONG:
+            logger.info(f"💪 Signal renforçant {existing_same} position(s) {signal.side} existante(s)")
+            # On laisse passer pour pyramider la position
+        
+        # Ajouter à la file de traitement
+        self.signal_queue.put(signal)
+        logger.info(f"✅ Signal ajouté à la file: {signal.side} {signal.symbol} "
+                   f"(Positions: {existing_same} same, {existing_opposite} opposite)")
+    
+    def _close_opposite_positions(self, symbol: str, side: str) -> bool:
+        """
+        Ferme les positions du côté opposé pour un symbole donné.
+        
+        Args:
+            symbol: Symbole concerné
+            side: Côté des positions à fermer (BUY ou SELL)
+            
+        Returns:
+            True si toutes les positions ont été fermées avec succès
+        """
+        try:
+            # Récupérer les cycles actifs
+            response = self._make_request_with_retry(
+                f"{self.trader_api_url}/orders",
+                method="GET",
+                timeout=5.0
+            )
+            
+            if not response:
+                logger.error("Impossible de récupérer les cycles pour fermeture")
+                return False
+            
+            # Filtrer les cycles du symbole et côté concernés
+            cycles_to_close = [
+                cycle for cycle in response
+                if cycle.get('symbol') == symbol and cycle.get('side') == side
+            ]
+            
+            if not cycles_to_close:
+                logger.info(f"Aucun cycle {side} à fermer pour {symbol}")
+                return True
+            
+            # Fermer chaque cycle
+            success_count = 0
+            for cycle in cycles_to_close:
+                cycle_id = cycle.get('id')
+                if not cycle_id:
+                    continue
+                
+                # Appeler l'API pour fermer le cycle
+                close_response = self._make_request_with_retry(
+                    f"{self.trader_api_url}/close/{cycle_id}",
+                    method="POST",
+                    json_data={},
+                    timeout=10.0
+                )
+                
+                if close_response:
+                    logger.info(f"✅ Cycle {cycle_id} fermé avec succès")
+                    success_count += 1
+                else:
+                    logger.error(f"❌ Échec de fermeture du cycle {cycle_id}")
+            
+            # Mettre à jour le cache
+            self.cache_update_time = 0  # Forcer le rafraîchissement
+            
+            return success_count == len(cycles_to_close)
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la fermeture des positions: {str(e)}")
+            return False
+    
+    def _refresh_active_cycles_cache(self) -> None:
+        """
+        Rafraîchit le cache des cycles actifs depuis le trader.
+        """
+        try:
+            if time.time() - self.cache_update_time < self.cache_ttl:
+                return  # Cache encore valide
+            
+            # Récupérer les cycles actifs du trader
+            response = self._make_request_with_retry(
+                f"{self.trader_api_url}/orders",
+                method="GET",
+                timeout=5.0
+            )
+            
+            if not response:
+                logger.warning("Impossible de récupérer les cycles actifs")
+                return
+            
+            # Réinitialiser le cache
+            self.active_cycles_cache = {}
+            
+            # Compter les cycles par symbole et côté
+            for cycle in response:
+                symbol = cycle.get('symbol')
+                side = cycle.get('side')
+                
+                if symbol and side:
+                    if symbol not in self.active_cycles_cache:
+                        self.active_cycles_cache[symbol] = {'BUY': 0, 'SELL': 0}
+                    
+                    self.active_cycles_cache[symbol][side] = self.active_cycles_cache[symbol].get(side, 0) + 1
+            
+            self.cache_update_time = time.time()
+            logger.debug(f"Cache des cycles actifs mis à jour: {self.active_cycles_cache}")
+            
+        except Exception as e:
+            logger.error(f"Erreur lors du rafraîchissement du cache: {str(e)}")
+    
+    def _can_create_new_cycle(self, symbol: str, side: str) -> bool:
+        """
+        Vérifie s'il est possible de créer un nouveau cycle.
+        
+        Args:
+            symbol: Symbole du trade
+            side: Côté du trade (BUY/SELL)
+            
+        Returns:
+            True si on peut créer un nouveau cycle
+        """
+        # Ne pas bloquer si on ne peut pas récupérer les cycles
+        # (mieux vaut laisser passer que bloquer tout)
+        if not self.active_cycles_cache:
+            logger.warning("Cache vide, autorisation du cycle par défaut")
+            return True
+        
+        if symbol not in self.active_cycles_cache:
+            return True  # Aucun cycle actif pour ce symbole
+        
+        current_count = self.active_cycles_cache[symbol].get(side, 0)
+        
+        # Permettre plus de cycles en cas de signaux très forts
+        if current_count >= self.max_cycles_per_symbol_side:
+            logger.warning(f"Limite atteinte: {current_count} cycles {side} actifs pour {symbol}")
+            return False
+        
+        return True
+    
+    def _analyze_aggregated_signals(self) -> None:
+        """
+        Analyse les signaux agrégés et décide lesquels traiter.
+        Cette méthode s'exécute périodiquement dans un thread séparé.
+        """
+        while not self.stop_event.is_set():
+            try:
+                time.sleep(self.aggregation_window)
+                
+                with self.aggregator_lock:
+                    current_time = time.time()
+                    
+                    # Traiter chaque symbole
+                    for symbol in list(self.signal_aggregator.keys()):
+                        # Traiter chaque fenêtre temporelle
+                        for time_key in list(self.signal_aggregator[symbol].keys()):
+                            # Si la fenêtre est complète (assez ancienne)
+                            if current_time - time_key >= self.aggregation_window:
+                                signals = self.signal_aggregator[symbol].pop(time_key)
+                                
+                                if signals:
+                                    # Analyser et traiter les signaux groupés
+                                    self._process_aggregated_signals(symbol, signals)
+            
+            except Exception as e:
+                logger.error(f"Erreur dans l'analyse des signaux agrégés: {str(e)}")
+                time.sleep(1)
+    
+    def _process_aggregated_signals(self, symbol: str, signals: List[StrategySignal]) -> None:
+        """
+        Traite un groupe de signaux pour un symbole donné.
+        
+        Args:
+            symbol: Symbole concerné
+            signals: Liste des signaux à analyser
+        """
+        if not signals:
+            return
+        
+        logger.info(f"🔍 Analyse de {len(signals)} signaux pour {symbol}")
+        
+        # Séparer les signaux par côté
+        buy_signals = [s for s in signals if s.side == OrderSide.BUY]
+        sell_signals = [s for s in signals if s.side == OrderSide.SELL]
+        
+        # Cas 1: Signaux contradictoires
+        if buy_signals and sell_signals:
+            logger.warning(f"⚠️ Signaux contradictoires détectés pour {symbol}: "
+                         f"{len(buy_signals)} BUY vs {len(sell_signals)} SELL")
+            
+            # Calculer les scores moyens
+            buy_score = self._calculate_signal_score(buy_signals)
+            sell_score = self._calculate_signal_score(sell_signals)
+            
+            # Si la différence est significative, suivre le plus fort
+            if abs(buy_score - sell_score) > self.contradiction_threshold:
+                if buy_score > sell_score:
+                    self._process_buy_signals(symbol, buy_signals)
+                else:
+                    self._process_sell_signals(symbol, sell_signals)
+            else:
+                logger.info(f"🤷 Signaux trop contradictoires, aucune action pour {symbol}")
+        
+        # Cas 2: Signaux unanimes BUY
+        elif buy_signals:
+            self._process_buy_signals(symbol, buy_signals)
+        
+        # Cas 3: Signaux unanimes SELL
+        elif sell_signals:
+            self._process_sell_signals(symbol, sell_signals)
+    
+    def _calculate_signal_score(self, signals: List[StrategySignal]) -> float:
+        """
+        Calcule un score pondéré pour un groupe de signaux.
+        
+        Args:
+            signals: Liste de signaux
+            
+        Returns:
+            Score moyen pondéré
+        """
+        if not signals:
+            return 0.0
+        
+        total_score = 0.0
+        total_weight = 0.0
+        
+        for signal in signals:
+            # Pondération basée sur la force et la confiance
+            strength_weight = {
+                SignalStrength.WEAK: 0.25,
+                SignalStrength.MODERATE: 0.5,
+                SignalStrength.STRONG: 0.75,
+                SignalStrength.VERY_STRONG: 1.0
+            }.get(signal.strength, 0.5)
+            
+            weight = strength_weight * signal.confidence
+            total_score += weight
+            total_weight += 1
+        
+        return total_score / total_weight if total_weight > 0 else 0.0
+    
+    def _process_buy_signals(self, symbol: str, signals: List[StrategySignal]) -> None:
+        """
+        Traite un groupe de signaux BUY.
+        
+        Args:
+            symbol: Symbole
+            signals: Signaux BUY
+        """
+        # Vérifier si on peut créer un nouveau cycle
+        if not self._can_create_new_cycle(symbol, "BUY"):
+            logger.warning(f"❌ Impossible de créer plus de cycles BUY pour {symbol}")
+            return
+        
+        # Choisir le meilleur signal ou créer un signal composite
+        best_signal = self._select_best_signal(signals)
+        
+        # Si plus de 3 stratégies sont d'accord et signal très fort, possibilité de double position
+        if len(signals) >= 3 and best_signal.strength == SignalStrength.VERY_STRONG:
+            logger.info(f"🚀 Signal de consensus fort détecté pour {symbol} ({len(signals)} stratégies)")
+            # On pourrait créer 2 positions ici si vraiment fort
+        
+        # Ajouter à la file de traitement normale
+        self.signal_queue.put(best_signal)
+    
+    def _process_sell_signals(self, symbol: str, signals: List[StrategySignal]) -> None:
+        """
+        Traite un groupe de signaux SELL.
+        
+        Args:
+            symbol: Symbole
+            signals: Signaux SELL
+        """
+        # Vérifier si on peut créer un nouveau cycle
+        if not self._can_create_new_cycle(symbol, "SELL"):
+            logger.warning(f"❌ Impossible de créer plus de cycles SELL pour {symbol}")
+            return
+        
+        # Choisir le meilleur signal
+        best_signal = self._select_best_signal(signals)
+        
+        # Ajouter à la file de traitement normale
+        self.signal_queue.put(best_signal)
+    
+    def _select_best_signal(self, signals: List[StrategySignal]) -> StrategySignal:
+        """
+        Sélectionne le meilleur signal parmi une liste.
+        
+        Args:
+            signals: Liste de signaux
+            
+        Returns:
+            Meilleur signal
+        """
+        if not signals:
+            return None
+        
+        # Trier par force puis par confiance
+        sorted_signals = sorted(
+            signals,
+            key=lambda s: (s.strength.value, s.confidence),
+            reverse=True
+        )
+        
+        best = sorted_signals[0]
+        
+        # Enrichir les métadonnées avec les infos d'agrégation
+        if not best.metadata:
+            best.metadata = {}
+        
+        best.metadata['aggregated_count'] = len(signals)
+        best.metadata['strategies'] = [s.strategy for s in signals]
+        best.metadata['consensus_score'] = self._calculate_signal_score(signals)
+        
+        return best
     
     def _update_market_filters(self, signal: StrategySignal) -> None:
         """
@@ -450,7 +900,23 @@ class SignalHandler:
                 return None
     
             # Convertir le montant en quantité
-            quantity = trade_amount / signal.price
+            # Pour les paires non-USDC, il faut d'abord convertir le montant USDC
+            if signal.symbol.endswith("BTC"):
+                # Pour ETHBTC, il faut convertir le montant USDC en BTC d'abord
+                # Récupérer le prix de BTC/USDC pour la conversion
+                btc_price = self._get_btc_price()
+                if btc_price:
+                    # Convertir le montant USDC en BTC
+                    btc_amount = trade_amount / btc_price
+                    # Ensuite calculer la quantité d'ETH
+                    quantity = btc_amount / signal.price
+                else:
+                    logger.error("❌ Impossible de récupérer le prix BTC/USDC pour la conversion")
+                    self.pocket_checker.release_funds(trade_amount, temp_cycle_id, pocket_type)
+                    return None
+            else:
+                # Pour les paires USDC, calcul direct
+                quantity = trade_amount / signal.price
     
             # Calculer le stop-loss et take-profit
             stop_price = signal.metadata.get('stop_price')
@@ -466,6 +932,12 @@ class SignalHandler:
                 "strategy": signal.strategy,
                 "timestamp": int(time.time() * 1000)  # Un timestamp actuel en millisecondes
             }
+            
+            # Ajouter les prix cibles si disponibles
+            if target_price:
+                order_data["target_price"] = target_price
+            if stop_price:
+                order_data["stop_price"] = stop_price
     
             # Réserver les fonds dans la poche
             temp_cycle_id = f"temp_{int(time.time())}"
@@ -607,6 +1079,14 @@ class SignalHandler:
         )
         self.processing_thread.start()
         
+        # NOUVEAU: Démarrer le thread d'agrégation des signaux
+        self.aggregation_thread = threading.Thread(
+            target=self._analyze_aggregated_signals,
+            daemon=True,
+            name="SignalAggregator"
+        )
+        self.aggregation_thread.start()
+        
         # Démarrer le moniteur de synchronisation
         self.sync_monitor.start()
         
@@ -624,6 +1104,10 @@ class SignalHandler:
         # Attendre que le thread de traitement se termine
         if self.processing_thread and self.processing_thread.is_alive():
             self.processing_thread.join(timeout=5.0)
+        
+        # NOUVEAU: Attendre que le thread d'agrégation se termine
+        if self.aggregation_thread and self.aggregation_thread.is_alive():
+            self.aggregation_thread.join(timeout=5.0)
         
         # Arrêter le moniteur de synchronisation
         self.sync_monitor.stop()
@@ -693,6 +1177,30 @@ class SignalHandler:
         
         # Forcer une réconciliation pour mettre à jour les poches
         self.pocket_checker.force_refresh()
+    
+    def _get_btc_price(self) -> Optional[float]:
+        """
+        Récupère le prix actuel de BTC/USDC.
+        
+        Returns:
+            Prix de BTC en USDC ou None en cas d'échec
+        """
+        try:
+            # Récupérer le prix depuis le service trader via son API
+            url = f"{self.trader_api_url}/price/BTCUSDC"
+            response = self._make_request_with_retry(url, timeout=2.0)
+            
+            if response and 'price' in response:
+                btc_price = float(response['price'])
+                logger.debug(f"Prix BTC/USDC récupéré: {btc_price}")
+                return btc_price
+            
+            logger.warning("Impossible de récupérer le prix BTC/USDC")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération du prix BTC: {str(e)}")
+            return None
         
     def handle_cycle_canceled(self, channel: str, data: Dict[str, Any]) -> None:
         """

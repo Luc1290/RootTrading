@@ -8,7 +8,7 @@ import threading
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 
-from shared.src.enums import CycleStatus, OrderStatus
+from shared.src.enums import CycleStatus, OrderStatus, OrderSide
 
 # Helper pour la conversion robuste des statuts de cycle
 def parse_cycle_status(status_str):
@@ -36,7 +36,7 @@ class ExchangeReconciliation:
     """
     
     def __init__(self, cycle_repository: CycleRepository, binance_executor: BinanceExecutor, 
-                 reconciliation_interval: int = 600):
+                 reconciliation_interval: int = 600, cycle_manager=None):
         """
         Initialise le service de réconciliation.
         
@@ -44,9 +44,11 @@ class ExchangeReconciliation:
             cycle_repository: Référentiel de cycles de trading
             binance_executor: Exécuteur Binance pour vérifier l'état des ordres
             reconciliation_interval: Intervalle entre les réconciliations en secondes (défaut: 10 minutes)
+            cycle_manager: Gestionnaire de cycles pour mettre à jour le cache mémoire
         """
         self.repository = cycle_repository
         self.binance_executor = binance_executor
+        self.cycle_manager = cycle_manager
         self.reconciliation_interval = reconciliation_interval
         self.running = False
         self.reconciliation_thread = None
@@ -210,11 +212,56 @@ class ExchangeReconciliation:
             self.repository.save_cycle(cycle)
             return True
         
-        # Si le cycle est en attente de vente mais n'a pas d'ordre de sortie, vérifier
-        if cycle.status in [CycleStatus.WAITING_SELL, CycleStatus.ACTIVE_SELL] and not cycle.exit_order_id:
+        # Si le cycle est en attente de vente mais n'a pas d'ordre de sortie, créer l'ordre
+        if cycle.status in [CycleStatus.WAITING_SELL, CycleStatus.ACTIVE_SELL, CycleStatus.WAITING_BUY, CycleStatus.ACTIVE_BUY] and not cycle.exit_order_id:
             # Conversion robuste du statut pour l'affichage
             status_display = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
             logger.warning(f"⚠️ Cycle {cycle.id} en statut {status_display} sans ordre de sortie")
+            
+            # Vérifier que l'ordre d'entrée est bien FILLED avant de créer l'ordre de sortie
+            if entry_execution and entry_execution.status == OrderStatus.FILLED:
+                logger.info(f"🔧 Création de l'ordre de sortie manquant pour le cycle {cycle.id}")
+                
+                # Déterminer le side de l'ordre de sortie
+                if cycle.status in [CycleStatus.ACTIVE_BUY, CycleStatus.WAITING_SELL]:
+                    exit_side = OrderSide.SELL
+                else:
+                    exit_side = OrderSide.BUY
+                
+                # Créer l'ordre de sortie
+                try:
+                    from shared.src.enums import OrderType
+                    from shared.src.schemas import TradeOrder
+                    
+                    exit_price = cycle.target_price if cycle.target_price else None
+                    
+                    # Créer un objet TradeOrder
+                    exit_order = TradeOrder(
+                        symbol=cycle.symbol,
+                        side=exit_side,
+                        price=exit_price,
+                        quantity=cycle.quantity,
+                        order_type=OrderType.LIMIT if exit_price else OrderType.MARKET,
+                        client_order_id=f"exit_{cycle.id}"
+                    )
+                    
+                    exit_execution = self.binance_executor.execute_order(exit_order)
+                    
+                    if exit_execution:
+                        # Mettre à jour le cycle
+                        cycle.exit_order_id = exit_execution.order_id
+                        cycle.status = CycleStatus.WAITING_SELL if exit_side == OrderSide.SELL else CycleStatus.WAITING_BUY
+                        cycle.updated_at = datetime.now()
+                        self.repository.save_cycle(cycle)
+                        self.repository.save_execution(exit_execution, cycle.id)
+                        
+                        logger.info(f"✅ Ordre de sortie {exit_execution.order_id} créé pour le cycle {cycle.id}")
+                        return True
+                    else:
+                        logger.error(f"❌ Échec de création de l'ordre de sortie pour le cycle {cycle.id}")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Erreur lors de la création de l'ordre de sortie: {str(e)}")
             
             # Vérifier depuis combien de temps le cycle est dans cet état
             time_since_update = datetime.now() - cycle.updated_at
@@ -228,6 +275,14 @@ class ExchangeReconciliation:
                     cycle.metadata = {}
                 cycle.metadata['cancel_reason'] = f"Bloqué en {status_display} sans ordre de sortie pendant {time_since_update.total_seconds()/60:.1f} minutes"
                 self.repository.save_cycle(cycle)
+                
+                # Retirer le cycle du cache mémoire
+                if self.cycle_manager and hasattr(self.cycle_manager, 'active_cycles'):
+                    with self.cycle_manager.cycles_lock:
+                        if cycle.id in self.cycle_manager.active_cycles:
+                            del self.cycle_manager.active_cycles[cycle.id]
+                            logger.info(f"♻️ Cycle {cycle.id} retiré du cache mémoire (FAILED)")
+                
                 return True
             
             logger.info(f"ℹ️ Cycle {cycle.id} en {status_display} depuis {time_since_update.total_seconds()/60:.1f} minutes")
@@ -282,6 +337,14 @@ class ExchangeReconciliation:
                             cycle.profit_loss_percent = (cycle.profit_loss / entry_value) * 100
                     
                     self.repository.save_cycle(cycle)
+                    
+                    # Retirer le cycle du cache mémoire du cycle_manager
+                    if self.cycle_manager and hasattr(self.cycle_manager, 'active_cycles'):
+                        with self.cycle_manager.cycles_lock:
+                            if cycle.id in self.cycle_manager.active_cycles:
+                                del self.cycle_manager.active_cycles[cycle.id]
+                                logger.info(f"♻️ Cycle {cycle.id} retiré du cache mémoire")
+                    
                     return True
         
         # Vérifier si le cycle est actif depuis trop longtemps (> 7 jours)
@@ -297,6 +360,14 @@ class ExchangeReconciliation:
                 cycle.metadata = {}
             cycle.metadata['cancel_reason'] = "Timeout automatique après 7 jours"
             self.repository.save_cycle(cycle)
+            
+            # Retirer le cycle du cache mémoire
+            if self.cycle_manager and hasattr(self.cycle_manager, 'active_cycles'):
+                with self.cycle_manager.cycles_lock:
+                    if cycle.id in self.cycle_manager.active_cycles:
+                        del self.cycle_manager.active_cycles[cycle.id]
+                        logger.info(f"♻️ Cycle {cycle.id} retiré du cache mémoire (timeout 7 jours)")
+            
             return True
         
         # Aucune mise à jour nécessaire

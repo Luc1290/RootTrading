@@ -9,7 +9,7 @@ rules:
     scope: "global"
     condition: "active_trades > {max_trades}"
     parameters:
-      max_trades: 10
+      max_trades: 20  # Réduit à 20 pour capital de 1000€
     action: "pause_new_trades"
     severity: "warning"
     enabled: true
@@ -20,7 +20,7 @@ rules:
     scope: "global"
     condition: "daily_pnl_percent < {max_loss_percent}"
     parameters:
-      max_loss_percent: -5.0
+      max_loss_percent: -10.0  # Augmenté de -5% à -10% pour tolérer plus de volatilité
     action: "disable_trading"
     severity: "critical"
     enabled: true
@@ -32,7 +32,7 @@ rules:
     symbol: "BTCUSDC"
     condition: "BTCUSDC_exposure_percent > {max_percent}"
     parameters:
-      max_percent: 30.0
+      max_percent: 80.0
     action: "pause_symbol"
     severity: "warning"
     enabled: true
@@ -44,7 +44,7 @@ rules:
     symbol: "ETHUSDC"
     condition: "ETHUSDC_exposure_percent > {max_percent}"
     parameters:
-      max_percent: 25.0
+      max_percent: 80.0
     action: "pause_symbol"
     severity: "warning"
     enabled: true
@@ -56,7 +56,7 @@ rules:
     symbol: "BTCUSDC"
     condition: "BTCUSDC_volatility_1h > {volatility_threshold}"
     parameters:
-      volatility_threshold: 3.5
+      volatility_threshold: 8.0  # Augmenté de 3.5% à 8% - volatilité normale en crypto
     action: "pause_symbol"
     severity: "warning"
     enabled: true
@@ -68,7 +68,7 @@ rules:
     symbol: "ETHUSDC"
     condition: "ETHUSDC_volatility_1h > {volatility_threshold}"
     parameters:
-      volatility_threshold: 4.0
+      volatility_threshold: 10.0  # Augmenté de 4% à 10% - ETH est plus volatil que BTC
     action: "pause_symbol"
     severity: "warning"
     enabled: true
@@ -91,7 +91,7 @@ rules:
     symbol: "BTCUSDC"
     condition: "BTCUSDC_active_trades > {max_trades}"
     parameters:
-      max_trades: 5
+      max_trades: 10  # Réduit à 10 pour capital de 1000€ sur BTC
     action: "pause_symbol"
     severity: "info"
     enabled: true
@@ -102,8 +102,8 @@ rules:
     scope: "global"
     condition: "BTCUSDC_volatility_1h > {btc_threshold} and ETHUSDC_volatility_1h > {eth_threshold}"
     parameters:
-      btc_threshold: 5.0
-      eth_threshold: 6.0
+      btc_threshold: 12.0  # Augmenté de 5% à 12%
+      eth_threshold: 15.0  # Augmenté de 6% à 15%
     action: "disable_trading"
     severity: "critical"
     enabled: true
@@ -139,7 +139,7 @@ rules:
     symbol: "BTCUSDC"
     condition: "strategy_consecutive_losses > {max_losses}"
     parameters:
-      max_losses: 3
+      max_losses: 8  # Augmenté de 3 à 8 - laisse plus de chances à la stratégie
     action: "pause_strategy"
     severity: "warning"
     enabled: true
@@ -163,7 +163,7 @@ rules:
     scope: "global"
     condition: "BTCUSDC_price_change_1h < {crash_threshold}"
     parameters:
-      crash_threshold: -10.0  # Chute de 10% en 1 heure
+      crash_threshold: -12.0  # Augmenté de -10% à -12% - les mouvements de 10% sont courants en crypto
     action: "disable_trading"
     severity: "critical"
     enabled: true

@@ -168,41 +168,114 @@ class BollingerStrategy(BaseStrategy):
             # Pas assez de données pour un signal fiable
             return None
         
-        # Signal d'achat: Prix traverse la bande inférieure de bas en haut
-        if prev_price <= prev_lower and current_price > current_lower:
-            confidence = self._calculate_confidence(current_price, current_lower, current_upper, OrderSide.BUY)
+        # Calculer des métriques utiles
+        band_width = current_upper - current_lower
+        band_width_pct = (band_width / middle[-1]) * 100
+        price_position = (current_price - current_lower) / band_width  # 0 = bande basse, 1 = bande haute
+        
+        # Signal d'ACHAT: Prix touche ou pénètre la bande inférieure (acheter l'extrême)
+        if current_price <= current_lower * 1.002:  # Prix à ou sous la bande basse (avec 0.2% de marge)
+            # Plus le prix est sous la bande, plus c'est extrême
+            penetration_pct = ((current_lower - current_price) / current_lower) * 100
+            
+            # Vérifier si les bandes sont suffisamment écartées (éviter les marchés plats)
+            if band_width_pct < 1.0:  # Bandes très serrées, marché plat
+                confidence = 0.5
+                signal_reason = "squeeze_caution"
+            elif penetration_pct > 0.5:  # Forte pénétration sous la bande
+                confidence = 0.85
+                signal_reason = "strong_oversold"
+            elif current_price < current_lower:  # Légère pénétration
+                confidence = 0.75
+                signal_reason = "oversold"
+            else:  # Juste touché la bande
+                confidence = 0.65
+                signal_reason = "band_touch"
+            
+            # Bonus si on vient de l'extérieur (premier contact)
+            if prev_price > prev_lower * 1.01:
+                confidence *= 1.1
+                signal_reason += "_fresh"
+            
+            # Target réaliste : milieu de bande ou moins si bandes serrées
+            if band_width_pct < 2.0:
+                target_price = current_lower + (band_width * 0.5)  # 50% du chemin vers le milieu
+            else:
+                target_price = middle[-1]  # Bande du milieu
+            
+            # Stop dynamique basé sur la volatilité
+            stop_distance = band_width * 0.2  # 20% de la largeur de bande
+            stop_price = current_price - stop_distance
             
             metadata = {
                 "bb_upper": float(current_upper),
                 "bb_middle": float(middle[-1]),
                 "bb_lower": float(current_lower),
-                "target_price": float(middle[-1]),  # Target = middle band
-                "stop_price": float(current_lower - (current_lower * 0.01))  # Stop 1% below lower band
+                "band_width_pct": float(band_width_pct),
+                "price_position": float(price_position),
+                "penetration_pct": float(penetration_pct),
+                "reason": signal_reason,
+                "target_price": float(target_price),
+                "stop_price": float(stop_price)
             }
             
             signal = self.create_signal(
                 side=OrderSide.BUY,
                 price=current_price,
-                confidence=confidence,
+                confidence=min(confidence, 0.95),
                 metadata=metadata
             )
         
-        # Signal de vente: Prix traverse la bande supérieure de haut en bas
-        elif prev_price >= prev_upper and current_price < current_upper:
-            confidence = self._calculate_confidence(current_price, current_lower, current_upper, OrderSide.SELL)
+        # Signal de VENTE: Prix touche ou pénètre la bande supérieure (vendre l'extrême)
+        elif current_price >= current_upper * 0.998:  # Prix à ou au-dessus de la bande haute (avec 0.2% de marge)
+            # Plus le prix est au-dessus de la bande, plus c'est extrême
+            penetration_pct = ((current_price - current_upper) / current_upper) * 100
+            
+            # Vérifier si les bandes sont suffisamment écartées
+            if band_width_pct < 1.0:  # Bandes très serrées, marché plat
+                confidence = 0.5
+                signal_reason = "squeeze_caution"
+            elif penetration_pct > 0.5:  # Forte pénétration au-dessus de la bande
+                confidence = 0.85
+                signal_reason = "strong_overbought"
+            elif current_price > current_upper:  # Légère pénétration
+                confidence = 0.75
+                signal_reason = "overbought"
+            else:  # Juste touché la bande
+                confidence = 0.65
+                signal_reason = "band_touch"
+            
+            # Bonus si on vient de l'intérieur (premier contact)
+            if prev_price < prev_upper * 0.99:
+                confidence *= 1.1
+                signal_reason += "_fresh"
+            
+            # Target réaliste : milieu de bande ou moins si bandes serrées
+            if band_width_pct < 2.0:
+                target_price = current_upper - (band_width * 0.5)  # 50% du chemin vers le milieu
+            else:
+                target_price = middle[-1]  # Bande du milieu
+            
+            # Stop dynamique basé sur la volatilité
+            stop_distance = band_width * 0.2  # 20% de la largeur de bande
+            stop_price = current_price + stop_distance
             
             metadata = {
                 "bb_upper": float(current_upper),
                 "bb_middle": float(middle[-1]),
                 "bb_lower": float(current_lower),
-                "target_price": float(middle[-1]),  # Target = middle band
-                "stop_price": float(current_upper + (current_upper * 0.01))  # Stop 1% above upper band
+                "band_width_pct": float(band_width_pct),
+                "price_position": float(price_position),
+                "penetration_pct": float(penetration_pct),
+                "reason": signal_reason,
+                "target_price": float(target_price),
+                "stop_price": float(stop_price)
             }
             
             signal = self.create_signal(
                 side=OrderSide.SELL,
                 price=current_price,
-                confidence=confidence,
+                confidence=min(confidence, 0.95),
                 metadata=metadata
             )
         

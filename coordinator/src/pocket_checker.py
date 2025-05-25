@@ -430,7 +430,7 @@ class PocketChecker:
                 urljoin(trader_api_url, "/orders")
             )
             
-            if not active_cycles_data:
+            if active_cycles_data is None:
                 logger.error("Impossible de récupérer les cycles actifs")
                 return False
             
@@ -568,7 +568,7 @@ class PocketChecker:
                 urljoin(trader_api_url, "/orders")
             )
             
-            if not active_cycles_data:
+            if active_cycles_data is None:
                 logger.error("Impossible de récupérer les cycles actifs")
                 return False
                 

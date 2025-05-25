@@ -12,7 +12,7 @@ import threading
 from threading import RLock
 
 from shared.src.config import get_db_url, TRADING_MODE
-from shared.src.enums import OrderSide, OrderStatus, CycleStatus
+from shared.src.enums import OrderSide, OrderStatus, CycleStatus, OrderType
 from shared.src.schemas import TradeOrder, TradeExecution, TradeCycle
 from shared.src.db_pool import DBContextManager, DBConnectionPool, transaction
 
@@ -296,6 +296,15 @@ class CycleManager:
             self._publish_cycle_event(cycle, "created")
 
             logger.info(f"✅ Cycle {cycle_id} créé avec succès: {side.value} {quantity} {symbol} @ {execution.price}")
+            
+            # Créer automatiquement l'ordre de sortie si un prix cible existe
+            # On ne attend plus que l'ordre soit FILLED
+            if cycle.target_price:
+                logger.info(f"🎯 Création immédiate de l'ordre de sortie (target: {cycle.target_price})")
+                self._create_exit_order_for_cycle(cycle, initial_side=side)
+            else:
+                logger.warning(f"⚠️ Pas de prix cible défini pour le cycle {cycle_id}, ordre de sortie non créé")
+            
             return cycle
 
         except Exception as e:
@@ -564,6 +573,73 @@ class CycleManager:
         """
         # Déléguer au StopManager
         self.stop_manager.process_price_update(symbol, price, self.close_cycle)
+    
+    def _create_exit_order_for_cycle(self, cycle: TradeCycle, initial_side: Optional[OrderSide] = None) -> bool:
+        """
+        Crée automatiquement un ordre de sortie pour un cycle.
+        
+        Args:
+            cycle: Le cycle pour lequel créer l'ordre de sortie
+            initial_side: Le côté initial de l'ordre d'entrée (optionnel)
+            
+        Returns:
+            True si l'ordre de sortie a été créé avec succès
+        """
+        try:
+            # Déterminer le side de l'ordre de sortie (inverse de l'entrée)
+            if initial_side:
+                # Si on connait le côté initial, on prend son inverse
+                exit_side = OrderSide.SELL if initial_side == OrderSide.BUY else OrderSide.BUY
+            else:
+                # Sinon, on se base sur le statut du cycle
+                if cycle.status in [CycleStatus.ACTIVE_BUY, CycleStatus.WAITING_BUY]:
+                    exit_side = OrderSide.SELL
+                elif cycle.status in [CycleStatus.ACTIVE_SELL, CycleStatus.WAITING_SELL]:
+                    exit_side = OrderSide.BUY
+                else:
+                    logger.warning(f"⚠️ Statut inattendu pour créer un ordre de sortie: {cycle.status}")
+                    return False
+            
+            # Utiliser le prix target s'il existe, sinon créer un ordre au marché
+            exit_price = cycle.target_price if cycle.target_price else None
+            
+            logger.info(f"🎯 Création de l'ordre de sortie pour le cycle {cycle.id}")
+            logger.info(f"   Side: {exit_side.value}, Prix: {exit_price or 'MARKET'}, Quantité: {cycle.quantity}")
+            
+            # Créer l'ordre de sortie
+            from shared.src.schemas import TradeOrder
+            
+            exit_order = TradeOrder(
+                symbol=cycle.symbol,
+                side=exit_side,
+                price=exit_price,
+                quantity=cycle.quantity,
+                order_type=OrderType.LIMIT if exit_price else OrderType.MARKET,
+                client_order_id=f"exit_{cycle.id}"
+            )
+            
+            execution = self.binance_executor.execute_order(exit_order)
+            
+            if execution:
+                # Mettre à jour le cycle avec l'ID de l'ordre de sortie
+                with self.cycles_lock:
+                    cycle.exit_order_id = execution.order_id
+                    cycle.status = CycleStatus.WAITING_SELL if exit_side == OrderSide.SELL else CycleStatus.WAITING_BUY
+                    cycle.updated_at = datetime.now()
+                
+                # Sauvegarder les changements
+                self.repository.save_execution(execution, cycle.id)
+                self.repository.save_cycle(cycle)
+                
+                logger.info(f"✅ Ordre de sortie créé pour le cycle {cycle.id}: {execution.order_id}")
+                return True
+            else:
+                logger.error(f"❌ Échec de création de l'ordre de sortie pour le cycle {cycle.id}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la création de l'ordre de sortie: {str(e)}")
+            return False
     
     def close(self) -> None:
         """

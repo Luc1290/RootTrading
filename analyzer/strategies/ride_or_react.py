@@ -269,13 +269,18 @@ class RideOrReactStrategy(BaseStrategy):
                    f"1h={market_condition['1h_change']:.2f}%, "
                    f"24h={market_condition['24h_change']:.2f}%")
         
-        # Créer un signal "informatif" qui peut être utilisé par d'autres stratégies
-        # Ce n'est pas un signal d'achat/vente, mais un signal de contexte du marché
+        # Créer un signal informatif (non tradable) pour le Coordinator
+        # Ce signal ne sera PAS exécuté mais servira à mettre à jour les filtres de marché
+        metadata = market_condition.copy()
+        metadata['is_filter_signal'] = True  # Marquer comme signal de filtre
+        
+        # Le side n'a pas d'importance car ce signal ne sera pas tradé
+        # On met BUY pour ride (tendance haussière) et SELL pour react (prudence)
         return self.create_signal(
             side=OrderSide.BUY if market_condition["mode"] == "ride" else OrderSide.SELL,
             price=market_condition["current_price"],
-            confidence=0.8,
-            metadata=market_condition
+            confidence=0.0,  # Confiance à 0 pour éviter tout trading accidentel
+            metadata=metadata
         )
         
     def should_filter_signal(self, signal: StrategySignal) -> bool:
@@ -307,3 +312,22 @@ class RideOrReactStrategy(BaseStrategy):
         
         # En mode "react", ne pas filtrer les signaux
         return False
+    
+    def get_market_context(self) -> Optional[Dict[str, Any]]:
+        """
+        Retourne le contexte actuel du marché pour que les autres stratégies
+        puissent l'utiliser dans leur prise de décision.
+        
+        Returns:
+            Dictionnaire avec le mode, les variations de prix, l'ATR, etc.
+        """
+        return self.current_market_condition
+    
+    def get_current_mode(self) -> str:
+        """
+        Retourne le mode actuel (ride ou react).
+        
+        Returns:
+            "ride" ou "react"
+        """
+        return self.current_mode

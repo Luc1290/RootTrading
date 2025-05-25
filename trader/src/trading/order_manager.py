@@ -42,12 +42,14 @@ class OrderManager:
         self.binance_executor = BinanceExecutor(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY)
         self.cycle_manager = CycleManager(binance_executor=self.binance_executor)
         
-        # Initialiser le processeur de signaux
-        self.signal_processor = SignalProcessor(
-            symbols=self.symbols,
-            signal_callback=self.handle_signal,
-            min_signal_strength=SignalStrength.MODERATE
-        )
+        # DÉSACTIVÉ: Le trader ne doit recevoir les ordres que via l'API REST du coordinator
+        # pour éviter de bypasser les vérifications de fonds et le filtrage du marché
+        # self.signal_processor = SignalProcessor(
+        #     symbols=self.symbols,
+        #     signal_callback=self.handle_signal,
+        #     min_signal_strength=SignalStrength.MODERATE
+        # )
+        self.signal_processor = None
         
         # Initialiser le moniteur de prix
         self.price_monitor = PriceMonitor(
@@ -69,7 +71,8 @@ class OrderManager:
         self.reconciliation_service = ExchangeReconciliation(
             cycle_repository=self.cycle_manager.repository,
             binance_executor=self.binance_executor,
-            reconciliation_interval=600  # Réconciliation toutes les 10 minutes
+            reconciliation_interval=600,  # Réconciliation toutes les 10 minutes
+            cycle_manager=self.cycle_manager  # Passer le cycle_manager pour nettoyer le cache
         )
         
         logger.info(f"✅ OrderManager initialisé pour {len(self.symbols)} symboles: {', '.join(self.symbols)}")
@@ -297,7 +300,8 @@ class OrderManager:
         return min_profitable_change
     
     def create_manual_order(self, symbol: str, side: OrderSide, quantity: float, 
-                           price: Optional[float] = None) -> str:
+                           price: Optional[float] = None, strategy: str = "Manual",
+                           target_price: Optional[float] = None, stop_price: Optional[float] = None) -> str:
         """
         Crée un ordre manuel (hors signal).
         
@@ -306,6 +310,7 @@ class OrderManager:
             side: Côté de l'ordre (BUY ou SELL)
             quantity: Quantité à trader
             price: Prix (optionnel, sinon au marché)
+            strategy: Nom de la stratégie (optionnel, défaut: "Manual")
             
         Returns:
             ID du cycle créé ou message d'erreur
@@ -332,14 +337,16 @@ class OrderManager:
             if adjusted_quantity > quantity:
                 logger.info(f"Quantité ajustée pour {symbol}: {quantity} → {adjusted_quantity} (minimum requis)")
                 
-            # Créer un cycle avec la stratégie "Manual"
+            # Créer un cycle avec la stratégie et les prix cibles
             cycle = self.cycle_manager.create_cycle(
                 symbol=symbol,
-                strategy="Manual",
+                strategy=strategy,  # Utiliser la stratégie passée en paramètre
                 side=side,
                 price=price,
                 quantity=adjusted_quantity,
-                pocket="active"  # Utiliser la poche active par défaut
+                pocket="active",  # Utiliser la poche active par défaut
+                target_price=target_price,
+                stop_price=stop_price
             )
             
             if cycle:
@@ -405,8 +412,10 @@ class OrderManager:
         # Démarrer le moniteur de prix
         self.price_monitor.start()
         
-        # Démarrer le processeur de signaux
-        self.signal_processor.start()
+        # DÉSACTIVÉ: Le processeur de signaux ne doit plus écouter Redis directement
+        # Les ordres doivent venir uniquement via l'API REST
+        # if self.signal_processor:
+        #     self.signal_processor.start()
         
         # Démarrer le service de réconciliation
         self.reconciliation_service.start()
@@ -422,8 +431,9 @@ class OrderManager:
         """
         logger.info("Arrêt du gestionnaire d'ordres...")
         
-        # Arrêter le processeur de signaux
-        self.signal_processor.stop()
+        # DÉSACTIVÉ: Le processeur de signaux n'est plus utilisé
+        # if self.signal_processor:
+        #     self.signal_processor.stop()
         
         # Arrêter le moniteur de prix
         self.price_monitor.stop()

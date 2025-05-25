@@ -29,4 +29,4 @@ COPY scheduler /app/scheduler
 EXPOSE 5008
 
 # Commande de démarrage
-CMD ["python", "scheduler/src/monitor.py"]
+CMD ["python", "scheduler/src/main.py", "--monitor-config", "/app/scheduler/monitor_config.json"]

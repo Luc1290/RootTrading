@@ -166,22 +166,51 @@ class EMACrossStrategy(BaseStrategy):
             # Pas assez de données pour un signal fiable
             return None
         
-        # Signal d'achat: EMA courte croise EMA longue vers le haut
-        if prev_short_ema <= prev_long_ema and current_short_ema > current_long_ema:
-            # Calculer la distance entre les EMAs pour la confiance
-            distance_ratio = abs(current_short_ema - current_long_ema) / current_long_ema
-            confidence = min(0.5 + (distance_ratio * 10), 0.95)  # Max confidence of 0.95
+        # Nouvelle approche : acheter les pullbacks dans une tendance haussière
+        # et vendre les rebonds dans une tendance baissière
+        
+        # Déterminer la tendance actuelle basée sur les EMAs
+        is_uptrend = current_short_ema > current_long_ema
+        is_downtrend = current_short_ema < current_long_ema
+        
+        # Calculer la distance entre le prix et les EMAs
+        price_to_short_ema = (current_price - current_short_ema) / current_short_ema * 100
+        price_to_long_ema = (current_price - current_long_ema) / current_long_ema * 100
+        ema_spread = abs(current_short_ema - current_long_ema) / current_long_ema * 100
+        
+        # Signal d'ACHAT : Prix revient vers les EMAs dans une tendance haussière (pullback)
+        if is_uptrend and price_to_short_ema < -0.5:  # Prix sous l'EMA courte d'au moins 0.5%
+            # Plus le prix est proche de l'EMA longue, meilleur est le point d'entrée
+            if current_price <= current_long_ema * 1.01:  # Prix proche ou sous l'EMA longue
+                confidence = 0.85  # Excellente opportunité
+                signal_reason = "deep_pullback"
+            elif price_to_short_ema < -1.0:  # Prix bien sous l'EMA courte
+                confidence = 0.75  # Bonne opportunité
+                signal_reason = "moderate_pullback"
+            else:
+                confidence = 0.65  # Opportunité correcte
+                signal_reason = "light_pullback"
             
-            # Calculer le stop-loss et target
-            stop_loss = current_price * 0.98  # 2% sous le prix actuel
+            # Ajuster la confiance selon la force de la tendance
+            if ema_spread > 2.0:  # Tendance très forte
+                confidence *= 1.1
+            elif ema_spread < 0.5:  # Tendance faible
+                confidence *= 0.8
             
-            # Le target est calculé comme 2x la distance du stop-loss (risk-reward ratio de 1:2)
-            target_price = current_price + (2 * (current_price - stop_loss))
+            # Stop sous le récent plus bas ou l'EMA longue
+            stop_loss = min(current_price * 0.98, current_long_ema * 0.99)
+            
+            # Target basé sur le retour vers/au-dessus de l'EMA courte
+            target_price = current_short_ema * 1.01  # Viser légèrement au-dessus de l'EMA courte
             
             metadata = {
                 "short_ema": float(current_short_ema),
                 "long_ema": float(current_long_ema),
-                "ema_distance": float(distance_ratio),
+                "price_to_short_ema": float(price_to_short_ema),
+                "price_to_long_ema": float(price_to_long_ema),
+                "ema_spread": float(ema_spread),
+                "trend": "uptrend",
+                "reason": signal_reason,
                 "target_price": float(target_price),
                 "stop_price": float(stop_loss)
             }
@@ -189,26 +218,43 @@ class EMACrossStrategy(BaseStrategy):
             signal = self.create_signal(
                 side=OrderSide.BUY,
                 price=current_price,
-                confidence=confidence,
+                confidence=min(confidence, 0.95),
                 metadata=metadata
             )
         
-        # Signal de vente: EMA courte croise EMA longue vers le bas
-        elif prev_short_ema >= prev_long_ema and current_short_ema < current_long_ema:
-            # Calculer la distance entre les EMAs pour la confiance
-            distance_ratio = abs(current_short_ema - current_long_ema) / current_long_ema
-            confidence = min(0.5 + (distance_ratio * 10), 0.95)  # Max confidence of 0.95
+        # Signal de VENTE : Prix remonte vers les EMAs dans une tendance baissière (rebond)
+        elif is_downtrend and price_to_short_ema > 0.5:  # Prix au-dessus de l'EMA courte d'au moins 0.5%
+            # Plus le prix est proche de l'EMA longue, meilleur est le point de sortie
+            if current_price >= current_long_ema * 0.99:  # Prix proche ou au-dessus de l'EMA longue
+                confidence = 0.85  # Excellente opportunité
+                signal_reason = "strong_bounce"
+            elif price_to_short_ema > 1.0:  # Prix bien au-dessus de l'EMA courte
+                confidence = 0.75  # Bonne opportunité
+                signal_reason = "moderate_bounce"
+            else:
+                confidence = 0.65  # Opportunité correcte
+                signal_reason = "light_bounce"
             
-            # Calculer le stop-loss et target
-            stop_loss = current_price * 1.02  # 2% au-dessus du prix actuel
+            # Ajuster la confiance selon la force de la tendance
+            if ema_spread > 2.0:  # Tendance très forte
+                confidence *= 1.1
+            elif ema_spread < 0.5:  # Tendance faible
+                confidence *= 0.8
             
-            # Le target est calculé comme 2x la distance du stop-loss (risk-reward ratio de 1:2)
-            target_price = current_price - (2 * (stop_loss - current_price))
+            # Stop au-dessus du récent plus haut ou l'EMA longue
+            stop_loss = max(current_price * 1.02, current_long_ema * 1.01)
+            
+            # Target basé sur le retour vers/sous l'EMA courte
+            target_price = current_short_ema * 0.99  # Viser légèrement sous l'EMA courte
             
             metadata = {
                 "short_ema": float(current_short_ema),
                 "long_ema": float(current_long_ema),
-                "ema_distance": float(distance_ratio),
+                "price_to_short_ema": float(price_to_short_ema),
+                "price_to_long_ema": float(price_to_long_ema),
+                "ema_spread": float(ema_spread),
+                "trend": "downtrend",
+                "reason": signal_reason,
                 "target_price": float(target_price),
                 "stop_price": float(stop_loss)
             }
@@ -216,7 +262,7 @@ class EMACrossStrategy(BaseStrategy):
             signal = self.create_signal(
                 side=OrderSide.SELL,
                 price=current_price,
-                confidence=confidence,
+                confidence=min(confidence, 0.95),
                 metadata=metadata
             )
         

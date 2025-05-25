@@ -162,9 +162,13 @@ def create_order():
         side = OrderSide(data["side"])  # Conversion en enum
         quantity = float(data["quantity"])
         price = float(data["price"]) if "price" in data else None
+        strategy = data.get("strategy", "Manual")  # Récupérer la stratégie ou utiliser "Manual" par défaut
+        target_price = float(data["target_price"]) if "target_price" in data else None
+        stop_price = float(data["stop_price"]) if "stop_price" in data else None
         
-        # Créer l'ordre
-        result = order_manager.create_manual_order(symbol, side, quantity, price)
+        # Créer l'ordre avec la stratégie et les prix cibles
+        result = order_manager.create_manual_order(symbol, side, quantity, price, strategy, 
+                                                  target_price=target_price, stop_price=stop_price)
         
         # Vérifier si c'est un ID ou un message d'erreur
         if isinstance(result, str) and result.startswith("cycle_"):
@@ -806,3 +810,35 @@ def register_routes(app, order_manager):
     app.register_blueprint(routes_bp)
     
     logger.info("✅ Routes API enregistrées")
+    
+@routes_bp.route('/price/<symbol>', methods=['GET'])
+def get_current_price(symbol):
+    """
+    Récupère le prix actuel d'un symbole.
+    """
+    order_manager = current_app.config['ORDER_MANAGER']
+    
+    try:
+        # Récupérer le prix depuis le moniteur de prix
+        price = order_manager.price_monitor.get_last_price(symbol)
+        
+        if price:
+            return jsonify({
+                "success": True,
+                "symbol": symbol,
+                "price": price,
+                "timestamp": time.time()
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "message": f"Prix non disponible pour {symbol}"
+            }), 404
+            
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la récupération du prix: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": f"Erreur: {str(e)}"
+        }), 500
+

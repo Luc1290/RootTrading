@@ -168,16 +168,27 @@ class ReversalDivergenceStrategy(BaseStrategy):
                     # Calculer un score de force basé sur la divergence
                     score = min(abs(price_percent_change - rsi_percent_change) / 5, 1.0)
                     
-                    # Stop loss juste en-dessous du dernier plus bas
-                    stop_loss = last_price_low * 0.99
-                    
-                    # Target : retour au dernier haut significatif ou +2x la distance du stop loss
-                    if len(price_highs) > 0:
-                        target_price = max(df.iloc[price_highs[-1]]['close'], df.iloc[-1]['close'] * 1.02)
-                    else:
-                        target_price = df.iloc[-1]['close'] * 1.03
-                    
                     current_price = df.iloc[-1]['close']
+                    
+                    # Utiliser l'ATR pour des cibles dynamiques
+                    atr_percent = self.calculate_atr(df)
+                    
+                    # Pour les divergences, utiliser un ratio risque/récompense plus agressif
+                    # car ce sont des signaux de renversement de haute qualité
+                    risk_reward = 2.0 if score > 0.7 else 1.5
+                    
+                    targets = self.calculate_dynamic_targets(
+                        entry_price=current_price,
+                        side=OrderSide.BUY,
+                        atr_percent=atr_percent,
+                        risk_reward_ratio=risk_reward
+                    )
+                    
+                    # Le stop peut être ajusté pour être sous le dernier plus bas
+                    # si c'est plus proche que l'ATR stop
+                    low_stop = last_price_low * 0.995
+                    stop_loss = max(low_stop, targets['stop_price'])
+                    target_price = targets['target_price']
                     
                     return {
                         "type": "bullish",
@@ -219,16 +230,26 @@ class ReversalDivergenceStrategy(BaseStrategy):
                     # Calculer un score de force basé sur la divergence
                     score = min(abs(price_percent_change - rsi_percent_change) / 5, 1.0)
                     
-                    # Stop loss juste au-dessus du dernier plus haut
-                    stop_loss = last_price_high * 1.01
-                    
-                    # Target : retour au dernier bas significatif ou -2x la distance du stop loss
-                    if len(price_lows) > 0:
-                        target_price = min(df.iloc[price_lows[-1]]['close'], df.iloc[-1]['close'] * 0.98)
-                    else:
-                        target_price = df.iloc[-1]['close'] * 0.97
-                    
                     current_price = df.iloc[-1]['close']
+                    
+                    # Utiliser l'ATR pour des cibles dynamiques
+                    atr_percent = self.calculate_atr(df)
+                    
+                    # Pour les divergences, utiliser un ratio risque/récompense plus agressif
+                    risk_reward = 2.0 if score > 0.7 else 1.5
+                    
+                    targets = self.calculate_dynamic_targets(
+                        entry_price=current_price,
+                        side=OrderSide.SELL,
+                        atr_percent=atr_percent,
+                        risk_reward_ratio=risk_reward
+                    )
+                    
+                    # Le stop peut être ajusté pour être au-dessus du dernier plus haut
+                    # si c'est plus proche que l'ATR stop
+                    high_stop = last_price_high * 1.005
+                    stop_loss = min(high_stop, targets['stop_price'])
+                    target_price = targets['target_price']
                     
                     return {
                         "type": "bearish",

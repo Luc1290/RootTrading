@@ -80,6 +80,12 @@ STRATEGY_PARAMS = {
             "12h": float(os.getenv("ROD_12H_THRESHOLD", 5.1)),
             "24h": float(os.getenv("ROD_24H_THRESHOLD", 7.8)),
         }
+    },
+    "macd": {
+        "fast_period": int(os.getenv("MACD_FAST_PERIOD", 12)),
+        "slow_period": int(os.getenv("MACD_SLOW_PERIOD", 26)),
+        "signal_period": int(os.getenv("MACD_SIGNAL_PERIOD", 9)),
+        "histogram_threshold": float(os.getenv("MACD_HISTOGRAM_THRESHOLD", 0.001)),
     }
 }
 
