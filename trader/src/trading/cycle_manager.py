@@ -345,13 +345,14 @@ class CycleManager:
         except Exception as e:
             logger.warning(f"⚠️ Impossible de publier l'événement de cycle sur Redis: {str(e)}")
     
-    def close_cycle(self, cycle_id: str, exit_price: Optional[float] = None) -> bool:
+    def close_cycle(self, cycle_id: str, exit_price: Optional[float] = None, is_stop_loss: bool = False) -> bool:
         """
         Ferme un cycle de trading en exécutant l'ordre de sortie.
         
         Args:
             cycle_id: ID du cycle à fermer
             exit_price: Prix de sortie (optionnel, sinon au marché)
+            is_stop_loss: Si True, indique que c'est un stop loss qui se déclenche
             
         Returns:
             True si la fermeture a réussi, False sinon
@@ -377,12 +378,25 @@ class CycleManager:
             else:
                 exit_side = OrderSide.BUY
             
+            # Si c'est un stop loss et qu'il y a un ordre de sortie existant, l'annuler
+            if is_stop_loss and cycle.exit_order_id:
+                try:
+                    logger.info(f"🛑 Stop loss déclenché - Annulation de l'ordre limite {cycle.exit_order_id}")
+                    cancel_result = self.binance_executor.cancel_order(cycle.symbol, cycle.exit_order_id)
+                    if cancel_result:
+                        logger.info(f"✅ Ordre limite {cycle.exit_order_id} annulé avec succès")
+                    else:
+                        logger.warning(f"⚠️ L'ordre {cycle.exit_order_id} n'a pas pu être annulé")
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur lors de l'annulation de l'ordre {cycle.exit_order_id}: {str(e)}")
+                    # Continuer même si l'annulation échoue
+            
             # Créer l'ordre de sortie
             exit_order = TradeOrder(
                 symbol=cycle.symbol,
                 side=exit_side,
                 quantity=cycle.quantity,
-                price=exit_price,  # None pour un ordre au marché
+                price=exit_price,  # None pour un ordre au marché si stop loss
                 client_order_id=f"exit_{cycle_id}",
                 strategy=cycle.strategy,
                 demo=cycle.demo
@@ -455,15 +469,32 @@ class CycleManager:
                 
                 cycle = self.active_cycles[cycle_id]
             
-            # Vérifier si des ordres doivent être annulés
-            if cycle.status in [CycleStatus.ACTIVE_BUY, CycleStatus.ACTIVE_SELL]:
-                # Déterminer l'ordre à annuler
-                order_id = cycle.entry_order_id if cycle.exit_order_id is None else cycle.exit_order_id
-                
-                if order_id:
-                    # Annuler l'ordre sur Binance
-                    logger.info(f"🔄 Annulation de l'ordre {order_id} pour le cycle {cycle_id}")
-                    self.binance_executor.cancel_order(cycle.symbol, order_id)
+            # Annuler TOUS les ordres associés au cycle
+            orders_to_cancel = []
+            
+            # Ajouter l'ordre d'entrée s'il existe et n'est pas FILLED
+            if cycle.entry_order_id:
+                entry_status = self.binance_executor.get_order_status(cycle.symbol, cycle.entry_order_id)
+                if entry_status and entry_status.status in [OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED]:
+                    orders_to_cancel.append(('entrée', cycle.entry_order_id))
+            
+            # Ajouter l'ordre de sortie s'il existe
+            if cycle.exit_order_id:
+                exit_status = self.binance_executor.get_order_status(cycle.symbol, cycle.exit_order_id)
+                if exit_status and exit_status.status in [OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED]:
+                    orders_to_cancel.append(('sortie', cycle.exit_order_id))
+            
+            # Annuler tous les ordres trouvés
+            for order_type, order_id in orders_to_cancel:
+                try:
+                    logger.info(f"🔄 Annulation de l'ordre de {order_type} {order_id} pour le cycle {cycle_id}")
+                    cancel_result = self.binance_executor.cancel_order(cycle.symbol, order_id)
+                    if cancel_result:
+                        logger.info(f"✅ Ordre {order_id} annulé avec succès")
+                    else:
+                        logger.warning(f"⚠️ Impossible d'annuler l'ordre {order_id}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur lors de l'annulation de l'ordre {order_id}: {str(e)}")
             
             # Mettre à jour le cycle
             with self.cycles_lock:
@@ -571,8 +602,12 @@ class CycleManager:
             symbol: Symbole mis à jour
             price: Nouveau prix
         """
-        # Déléguer au StopManager
-        self.stop_manager.process_price_update(symbol, price, self.close_cycle)
+        # Créer un wrapper pour close_cycle qui indique que c'est un stop
+        def close_cycle_by_stop(cycle_id: str, exit_price: Optional[float] = None) -> bool:
+            return self.close_cycle(cycle_id, exit_price, is_stop_loss=True)
+        
+        # Déléguer au StopManager avec le wrapper
+        self.stop_manager.process_price_update(symbol, price, close_cycle_by_stop)
     
     def _create_exit_order_for_cycle(self, cycle: TradeCycle, initial_side: Optional[OrderSide] = None) -> bool:
         """

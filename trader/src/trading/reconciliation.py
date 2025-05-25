@@ -154,13 +154,17 @@ class ExchangeReconciliation:
                     logger.error(f"🔍 Cycle status type: {type(cycle.status)}, value: {cycle.status}")
                     cycles_failed += 1
             
+            # Nettoyer les ordres orphelins après la réconciliation des cycles
+            orphans_cleaned = self._clean_orphan_orders()
+            
             # Mettre à jour les statistiques
             self.stats["cycles_checked"] = cycles_checked
             self.stats["cycles_reconciled"] = cycles_reconciled
             self.stats["cycles_failed"] = cycles_failed
+            self.stats["orphan_orders_cleaned"] = orphans_cleaned
             self.stats["last_run_duration"] = time.time() - start_time
             
-            logger.info(f"✅ Réconciliation terminée: {cycles_reconciled}/{cycles_checked} cycles mis à jour ({cycles_failed} échecs)")
+            logger.info(f"✅ Réconciliation terminée: {cycles_reconciled}/{cycles_checked} cycles mis à jour ({cycles_failed} échecs, {orphans_cleaned} ordres orphelins nettoyés)")
             
         except Exception as e:
             logger.error(f"❌ Erreur lors de la réconciliation des cycles: {str(e)}")
@@ -233,15 +237,21 @@ class ExchangeReconciliation:
                     from shared.src.enums import OrderType
                     from shared.src.schemas import TradeOrder
                     
-                    exit_price = cycle.target_price if cycle.target_price else None
+                    # IMPORTANT: Utiliser le target_price pour créer un ordre LIMITE
+                    # Ne PAS créer d'ordre au marché qui fermerait immédiatement la position
+                    if not cycle.target_price:
+                        logger.warning(f"⚠️ Pas de target_price défini pour le cycle {cycle.id}, ordre de sortie non créé")
+                        return False
                     
-                    # Créer un objet TradeOrder
+                    exit_price = cycle.target_price
+                    
+                    # Créer un objet TradeOrder LIMITE au target price
                     exit_order = TradeOrder(
                         symbol=cycle.symbol,
                         side=exit_side,
                         price=exit_price,
                         quantity=cycle.quantity,
-                        order_type=OrderType.LIMIT if exit_price else OrderType.MARKET,
+                        order_type=OrderType.LIMIT,  # Toujours LIMIT pour attendre le target
                         client_order_id=f"exit_{cycle.id}"
                     )
                     
@@ -390,3 +400,92 @@ class ExchangeReconciliation:
         stats = self.stats.copy()
         stats['last_reconciliation'] = self.last_reconciliation.isoformat() if self.last_reconciliation else None
         return stats
+    
+    def _clean_orphan_orders(self) -> int:
+        """
+        Détecte et annule les ordres orphelins sur Binance.
+        Un ordre est considéré orphelin si:
+        - Il existe sur Binance mais le cycle correspondant est terminé/annulé
+        - C'est un ordre de sortie d'un cycle qui n'existe plus
+        
+        Returns:
+            Nombre d'ordres orphelins nettoyés
+        """
+        orphans_cleaned = 0
+        
+        try:
+            logger.info("🔍 Recherche des ordres orphelins...")
+            
+            # Récupérer tous les cycles récents (dernières 48h) qui sont terminés/annulés
+            query = """
+                SELECT id, symbol, entry_order_id, exit_order_id, status, target_price
+                FROM trade_cycles 
+                WHERE status IN ('completed', 'canceled', 'failed')
+                AND created_at > NOW() - INTERVAL '48 hours'
+                AND exit_order_id IS NOT NULL
+            """
+            
+            completed_cycles = []
+            # Utiliser DBContextManager pour accéder à la DB
+            from shared.src.db_pool import DBContextManager
+            
+            with DBContextManager() as cursor:
+                cursor.execute(query)
+                for row in cursor.fetchall():
+                    completed_cycles.append({
+                        'id': row[0],
+                        'symbol': row[1],
+                        'entry_order_id': row[2],
+                        'exit_order_id': row[3],
+                        'status': row[4],
+                        'target_price': row[5]
+                    })
+            
+            logger.info(f"📊 {len(completed_cycles)} cycles terminés avec ordre de sortie trouvés")
+            
+            # Pour chaque cycle terminé, vérifier si l'ordre de sortie est toujours ouvert
+            for cycle_data in completed_cycles:
+                try:
+                    if not cycle_data['exit_order_id']:
+                        continue
+                    
+                    # Vérifier l'état de l'ordre de sortie sur Binance
+                    exit_status = self.binance_executor.get_order_status(
+                        cycle_data['symbol'], 
+                        cycle_data['exit_order_id']
+                    )
+                    
+                    # Si l'ordre est toujours ouvert (NEW ou PARTIALLY_FILLED)
+                    if exit_status and exit_status.status in [OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED]:
+                        logger.warning(f"🚨 Ordre orphelin détecté: {cycle_data['exit_order_id']} "
+                                     f"pour le cycle {cycle_data['id']} ({cycle_data['status']})")
+                        
+                        # Annuler l'ordre
+                        try:
+                            cancel_result = self.binance_executor.cancel_order(
+                                cycle_data['symbol'], 
+                                cycle_data['exit_order_id']
+                            )
+                            
+                            if cancel_result:
+                                logger.info(f"✅ Ordre orphelin {cycle_data['exit_order_id']} annulé avec succès")
+                                orphans_cleaned += 1
+                            else:
+                                logger.warning(f"⚠️ Impossible d'annuler l'ordre {cycle_data['exit_order_id']}")
+                        
+                        except Exception as e:
+                            logger.error(f"❌ Erreur lors de l'annulation de l'ordre orphelin {cycle_data['exit_order_id']}: {str(e)}")
+                
+                except Exception as e:
+                    logger.error(f"❌ Erreur lors de la vérification du cycle {cycle_data['id']}: {str(e)}")
+                    continue
+            
+            if orphans_cleaned > 0:
+                logger.info(f"🧹 {orphans_cleaned} ordres orphelins nettoyés")
+            else:
+                logger.info("✅ Aucun ordre orphelin trouvé")
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur lors du nettoyage des ordres orphelins: {str(e)}")
+        
+        return orphans_cleaned

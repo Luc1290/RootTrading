@@ -195,12 +195,27 @@ class RSIStrategy(BaseStrategy):
                 confidence *= 1.2  # Plus confiant quand ça baisse encore
             
             if should_buy:
+                # Calculer les niveaux de stop/target basés sur l'ATR
+                atr_percent = self.calculate_atr(df)
+                
+                # Pour RSI, utiliser des multiples plus conservateurs
+                # Stop: 1.5x ATR, Target: 2x ATR (ratio 1.33)
+                stop_distance = atr_percent * 1.5
+                target_distance = atr_percent * 2.0
+                
+                # Pour BUY: stop en dessous, target au-dessus
+                stop_price = current_price * (1 - stop_distance / 100)
+                target_price = current_price * (1 + target_distance / 100)
+                
                 metadata = {
                     "rsi": float(current_rsi),
                     "rsi_threshold": self.oversold_threshold,
                     "previous_rsi": float(prev_rsi),
                     "reason": signal_reason,
-                    "rsi_delta": float(current_rsi - prev_rsi)
+                    "rsi_delta": float(current_rsi - prev_rsi),
+                    "stop_price": float(stop_price),
+                    "target_price": float(target_price),
+                    "atr_percent": float(atr_percent)
                 }
                 
                 signal = self.create_signal(
@@ -233,12 +248,27 @@ class RSIStrategy(BaseStrategy):
                 confidence *= 1.2  # Plus confiant
             
             if should_sell:
+                # Calculer les niveaux de stop/target basés sur l'ATR
+                atr_percent = self.calculate_atr(df)
+                
+                # Pour RSI, utiliser des multiples plus conservateurs
+                # Stop: 1.5x ATR, Target: 2x ATR (ratio 1.33)
+                stop_distance = atr_percent * 1.5
+                target_distance = atr_percent * 2.0
+                
+                # Pour SELL: stop au-dessus, target en dessous
+                stop_price = current_price * (1 + stop_distance / 100)
+                target_price = current_price * (1 - target_distance / 100)
+                
                 metadata = {
                     "rsi": float(current_rsi),
                     "rsi_threshold": self.overbought_threshold,
                     "previous_rsi": float(prev_rsi),
                     "reason": signal_reason,
-                    "rsi_delta": float(current_rsi - prev_rsi)
+                    "rsi_delta": float(current_rsi - prev_rsi),
+                    "stop_price": float(stop_price),
+                    "target_price": float(target_price),
+                    "atr_percent": float(atr_percent)
                 }
                 
                 signal = self.create_signal(
