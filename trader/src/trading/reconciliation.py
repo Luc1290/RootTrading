@@ -205,6 +205,11 @@ class ExchangeReconciliation:
             self.repository.save_cycle(cycle)
             return True
         
+        # Ignorer uniquement les cycles marqués comme démo
+        if cycle.demo:
+            logger.debug(f"⏭️ Ignorer la réconciliation du cycle démo {cycle.id}")
+            return False
+        
         # Vérifier l'état de l'ordre d'entrée sur Binance
         entry_execution = self.binance_executor.get_order_status(cycle.symbol, cycle.entry_order_id)
         
@@ -298,8 +303,8 @@ class ExchangeReconciliation:
             logger.info(f"ℹ️ Cycle {cycle.id} en {status_display} depuis {time_since_update.total_seconds()/60:.1f} minutes")
             return False
         
-        # Si le cycle a un ordre de sortie, vérifier son état
-        if cycle.exit_order_id:
+        # Si le cycle a un ordre de sortie et n'est pas déjà terminé, vérifier son état
+        if cycle.exit_order_id and cycle.status not in [CycleStatus.COMPLETED, CycleStatus.CANCELED, CycleStatus.FAILED]:
             exit_execution = self.binance_executor.get_order_status(cycle.symbol, cycle.exit_order_id)
             
             # Si l'ordre de sortie n'existe pas, marquer comme échoué
@@ -417,12 +422,14 @@ class ExchangeReconciliation:
             logger.info("🔍 Recherche des ordres orphelins...")
             
             # Récupérer tous les cycles récents (dernières 48h) qui sont terminés/annulés
+            # Exclure les cycles démo pour éviter de vérifier leurs ordres sur Binance
             query = """
                 SELECT id, symbol, entry_order_id, exit_order_id, status, target_price
                 FROM trade_cycles 
                 WHERE status IN ('completed', 'canceled', 'failed')
                 AND created_at > NOW() - INTERVAL '48 hours'
                 AND exit_order_id IS NOT NULL
+                AND demo = false
             """
             
             completed_cycles = []
@@ -449,11 +456,17 @@ class ExchangeReconciliation:
                     if not cycle_data['exit_order_id']:
                         continue
                     
+                    # Ne plus vérifier l'ID numérique car les vrais ordres Binance peuvent avoir des IDs élevés
+                    
                     # Vérifier l'état de l'ordre de sortie sur Binance
                     exit_status = self.binance_executor.get_order_status(
                         cycle_data['symbol'], 
                         cycle_data['exit_order_id']
                     )
+                    
+                    # Si get_order_status retourne None (ordre démo ou erreur), passer au suivant
+                    if not exit_status:
+                        continue
                     
                     # Si l'ordre est toujours ouvert (NEW ou PARTIALLY_FILLED)
                     if exit_status and exit_status.status in [OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED]:

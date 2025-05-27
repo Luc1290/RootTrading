@@ -439,7 +439,12 @@ class PocketChecker:
                 logger.error(f"Format des cycles actifs invalide: {type(active_cycles_data)}")
                 active_cycles = []
             else:    
-                active_cycles = active_cycles_data
+                # Filtrer les cycles terminés comme le fait CycleSyncMonitor
+                terminal_statuses = {'completed', 'canceled', 'failed', 'error'}
+                active_cycles = [
+                    cycle for cycle in active_cycles_data 
+                    if cycle.get('status', '').lower() not in terminal_statuses
+                ]
         
             # Calculer le nombre total de cycles actifs
             active_cycle_count = len(active_cycles)
@@ -576,17 +581,30 @@ class PocketChecker:
         
             # Calculer le nombre total de cycles actifs
             active_cycle_count = len(active_cycles)
+            
+            # Compter aussi les cycles avec des données valides pour diagnostic
+            valid_cycle_count = len([
+                cycle for cycle in active_cycles
+                if ("quantity" in cycle and "entry_price" in cycle and 
+                    float(cycle.get("quantity", 0)) > 0 and float(cycle.get("entry_price", 0)) > 0)
+            ])
         
             # Calculer le nombre total de cycles dans les poches
             pocket_cycle_count = sum(p.get("active_cycles", 0) for p in pockets)
             
             # Calculer le montant total utilisé dans les trades
+            # Filtrer les cycles avec des données valides (quantity > 0 et entry_price > 0)
+            valid_cycles = [
+                cycle for cycle in active_cycles
+                if ("quantity" in cycle and "entry_price" in cycle and 
+                    float(cycle.get("quantity", 0)) > 0 and float(cycle.get("entry_price", 0)) > 0)
+            ]
+            
             trade_used_value = 0
             try:
                 trade_used_value = sum(
                     float(cycle.get("quantity", 0)) * float(cycle.get("entry_price", 0))
-                    for cycle in active_cycles
-                    if "quantity" in cycle and "entry_price" in cycle
+                    for cycle in valid_cycles
                 )
             except Exception as e:
                 logger.warning(f"Impossible de calculer le montant total des trades: {str(e)}")
@@ -599,7 +617,10 @@ class PocketChecker:
             
             # Vérifier la synchronisation des montants (avec une tolérance de 5%)
             amount_diff_percent = 0
-            if trade_used_value > 0 and pocket_used_value > 0:
+            if trade_used_value == 0 and pocket_used_value == 0:
+                # Cas particulier: si les deux sont à 0, il n'y a pas de différence
+                amount_diff_percent = 0
+            elif trade_used_value > 0 and pocket_used_value > 0:
                 amount_diff_percent = abs(trade_used_value - pocket_used_value) / max(trade_used_value, pocket_used_value) * 100
             elif trade_used_value > 0 and pocket_used_value == 0:
                 amount_diff_percent = 100  # 100% de différence si une valeur est nulle
@@ -611,12 +632,21 @@ class PocketChecker:
             if not cycles_synced or not amounts_synced:
                 # Ne pas logger comme warning si la différence est de 1 cycle seulement
                 log_level = logging.INFO if abs(active_cycle_count - pocket_cycle_count) == 1 else logging.WARNING
+                
+                # Collecter les IDs des cycles pour diagnostic
+                active_cycle_ids = [cycle.get('id', 'unknown') for cycle in active_cycles]
+                
                 logger.log(
                     log_level,
                     f"{'ℹ️' if log_level == logging.INFO else '⚠️'} Différence détectée: "
                     f"{active_cycle_count} cycles actifs vs {pocket_cycle_count} dans les poches. "
                     f"Montant utilisé: {trade_used_value:.2f} vs {pocket_used_value:.2f} (diff: {amount_diff_percent:.2f}%)"
                 )
+                
+                # Log détaillé pour diagnostic (seulement si différence > 1 cycle)
+                if abs(active_cycle_count - pocket_cycle_count) > 1:
+                    logger.debug(f"🔍 Cycles Trader: {active_cycle_ids}")
+                    logger.debug(f"🔍 Cycles valides (avec prix/quantité): {len(valid_cycles)} sur {len(active_cycles)}")
                 
                 # Si la différence est de plus d'un cycle OU si les montants diffèrent de plus de 5%
                 if abs(active_cycle_count - pocket_cycle_count) > 1 or amount_diff_percent > 5.0:

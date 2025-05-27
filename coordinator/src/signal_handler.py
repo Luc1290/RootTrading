@@ -391,13 +391,22 @@ class SignalHandler:
             
             if not response:
                 logger.warning("Impossible de récupérer les cycles actifs")
+                # En cas d'échec, vider le cache pour éviter d'utiliser des données obsolètes
+                self.active_cycles_cache = {}
+                self.cache_update_time = time.time()
                 return
             
             # Réinitialiser le cache
             self.active_cycles_cache = {}
             
-            # Compter les cycles par symbole et côté
+            # Compter les cycles par symbole et côté (en excluant les cycles terminés)
+            terminal_statuses = {'completed', 'canceled', 'failed', 'error'}
             for cycle in response:
+                # Filtrer les cycles terminés
+                status = cycle.get('status', '').lower()
+                if status in terminal_statuses:
+                    continue
+                    
                 symbol = cycle.get('symbol')
                 side = cycle.get('side')
                 
@@ -641,6 +650,10 @@ class SignalHandler:
             if mode not in ['ride', 'react', 'neutral']:
                 logger.warning(f"Mode de filtrage inconnu: {mode}, utilisation de 'react' par défaut")
                 mode = 'react'
+            
+            # Mapper wait_for_reversal vers no_trading
+            if action == 'wait_for_reversal':
+                action = 'no_trading'
             
             if action not in ['normal_trading', 'no_trading', 'buy_only', 'sell_only']:
                 logger.warning(f"Action de filtrage inconnue: {action}, utilisation de 'normal_trading' par défaut")

@@ -58,10 +58,10 @@ def diagnostic():
     last_prices = order_manager.last_prices.copy() if hasattr(order_manager, 'last_prices') else {}
     
     # Vérifier l'état des connexions
-    redis_status = "connected" if hasattr(order_manager.signal_processor.redis_client, 'connection') else "disconnected"
+    redis_status = "connected" if order_manager.signal_processor and hasattr(order_manager.signal_processor, 'redis_client') else "disabled"
     
     # Vérifier l'état d'exécution des threads
-    thread_alive = hasattr(order_manager.signal_processor, 'processing_thread') and order_manager.signal_processor.processing_thread.is_alive()
+    thread_alive = order_manager.signal_processor and hasattr(order_manager.signal_processor, 'processing_thread') and order_manager.signal_processor.processing_thread.is_alive() if order_manager.signal_processor else False
     
     # Construire la réponse
     diagnostic_info = {
@@ -94,12 +94,12 @@ def diagnostic():
             "processing_thread": "running" if thread_alive else "stopped",
             "binance": order_manager.binance_executor.demo_mode and "demo" or "live"
         },
-        "signal_stats": order_manager.signal_processor.get_stats() if hasattr(order_manager.signal_processor, 'get_stats') else {},
+        "signal_stats": order_manager.signal_processor.get_stats() if order_manager.signal_processor and hasattr(order_manager.signal_processor, 'get_stats') else {},
         "memory_usage_mb": current_app.config.get('MEMORY_USAGE', 0)
     }
     
     # Ajouter des statistiques sur la file d'attente
-    if hasattr(order_manager.signal_processor, 'signal_queue'):
+    if order_manager.signal_processor and hasattr(order_manager.signal_processor, 'signal_queue'):
         diagnostic_info["queue_size"] = order_manager.signal_processor.signal_queue.qsize()
     
     # AJOUT DES MÉTRIQUES DE BASE DE DONNÉES
@@ -413,6 +413,40 @@ def get_reconciliation_status():
             "message": f"Erreur: {str(e)}"
         }), 500
 
+@routes_bp.route('/cycles/reload', methods=['POST'])
+def reload_active_cycles():
+    """Force le rechargement de tous les cycles actifs depuis la base de données."""
+    order_manager = current_app.config['ORDER_MANAGER']
+    
+    if not order_manager:
+        return jsonify({"error": "OrderManager non initialisé"}), 500
+    
+    try:
+        # Forcer le rechargement des cycles actifs
+        logger.info("🔄 Rechargement forcé des cycles actifs depuis la base de données")
+        order_manager.cycle_manager._load_active_cycles_from_db()
+        
+        # Récupérer le nombre de cycles chargés
+        with order_manager.cycle_manager.cycles_lock:
+            cycles_count = len(order_manager.cycle_manager.active_cycles)
+            cycle_ids = list(order_manager.cycle_manager.active_cycles.keys())
+        
+        logger.info(f"✅ {cycles_count} cycles actifs rechargés en mémoire")
+        
+        return jsonify({
+            "success": True,
+            "message": f"{cycles_count} cycles actifs rechargés",
+            "cycles_count": cycles_count,
+            "cycle_ids": cycle_ids[:10]  # Retourner seulement les 10 premiers IDs
+        })
+    
+    except Exception as e:
+        logger.error(f"❌ Erreur lors du rechargement des cycles: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": f"Erreur: {str(e)}"
+        }), 500
+
 @routes_bp.route('/cycles/cleanup', methods=['POST'])
 def cleanup_stuck_cycles():
     """
@@ -637,6 +671,48 @@ def get_symbol_constraints(symbol):
     except Exception as e:
         logger.error(f"❌ Erreur lors de la récupération des contraintes pour {symbol}: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+@routes_bp.route('/binance/cancel-order', methods=['POST'])
+def cancel_binance_order():
+    """Annule directement un ordre sur Binance par son order_id."""
+    try:
+        order_manager = current_app.config.get('ORDER_MANAGER')
+        if not order_manager:
+            return jsonify({"error": "OrderManager non initialisé"}), 500
+            
+        data = request.json
+        order_id = data.get('order_id')
+        symbol = data.get('symbol')
+        
+        if not all([order_id, symbol]):
+            return jsonify({
+                "success": False,
+                "message": "Paramètres manquants: order_id et symbol requis"
+            }), 400
+        
+        # Annuler directement sur Binance
+        success = order_manager.binance_executor.cancel_order(symbol, order_id)
+        
+        if success:
+            logger.info(f"✅ Ordre {order_id} annulé directement sur Binance")
+            return jsonify({
+                "success": True,
+                "message": f"Ordre {order_id} annulé avec succès",
+                "order_id": order_id,
+                "symbol": symbol
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "message": f"Impossible d'annuler l'ordre {order_id}"
+            }), 400
+            
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de l'annulation directe de l'ordre: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": f"Erreur: {str(e)}"
+        }), 500
 
 @routes_bp.route('/balance/check', methods=['POST'])
 def check_balance_for_order():

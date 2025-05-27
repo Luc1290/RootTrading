@@ -378,7 +378,8 @@ class CycleRepository:
         try:
             # Méthode plus simple : utiliser le statut comme une chaîne de caractères brute
             # Ne pas tenter de l'interpréter comme une énumération lors du filtrage
-            where_clauses = ["status NOT IN ('completed', 'canceled', 'failed', 'COMPLETED', 'CANCELED', 'FAILED')"]
+            # Inclure tous les statuts actifs (waiting_buy, active_buy, waiting_sell, active_sell)
+            where_clauses = ["LOWER(status) NOT IN ('completed', 'canceled', 'failed', 'initiating')"]
             params = []
             
             if symbol:

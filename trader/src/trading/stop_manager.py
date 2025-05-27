@@ -92,13 +92,29 @@ class StopManager:
         for update in trailing_updates:
             self._update_trailing_stop(update['id'], update['type'], update['value'])
         
-        # Déclencher les stops et targets
-        for cycle_id in stops_to_trigger:
-            logger.info(f"🔴 Stop-loss déclenché pour le cycle {cycle_id} au prix {price}")
-            close_cycle_callback(cycle_id, price)
+        # Déclencher les stops et targets (en évitant les doublons)
+        cycles_to_close = set()
+        close_reasons = {}
         
+        for cycle_id in stops_to_trigger:
+            cycles_to_close.add(cycle_id)
+            close_reasons[cycle_id] = "stop-loss"
+            
         for cycle_id in targets_to_trigger:
-            logger.info(f"🎯 Prix cible atteint pour le cycle {cycle_id} au prix {price}")
+            if cycle_id not in cycles_to_close:
+                cycles_to_close.add(cycle_id)
+                close_reasons[cycle_id] = "target"
+            else:
+                # Le cycle est déjà marqué pour fermeture (stop-loss a priorité)
+                logger.debug(f"⚠️ Cycle {cycle_id} déclenche à la fois stop-loss et target, stop-loss prioritaire")
+        
+        # Fermer chaque cycle une seule fois
+        for cycle_id in cycles_to_close:
+            reason = close_reasons[cycle_id]
+            if reason == "stop-loss":
+                logger.info(f"🔴 Stop-loss déclenché pour le cycle {cycle_id} au prix {price}")
+            else:
+                logger.info(f"🎯 Prix cible atteint pour le cycle {cycle_id} au prix {price}")
             close_cycle_callback(cycle_id, price)
     
     def _update_trailing_stop(self, cycle_id: str, update_type: str, price_value: float) -> None:

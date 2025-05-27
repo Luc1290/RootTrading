@@ -7,7 +7,7 @@ import logging
 import time
 from typing import Dict, List, Any, Optional, Union
 
-from shared.src.config import SYMBOLS, TRADE_QUANTITIES, TRADE_QUANTITY
+from shared.src.config import SYMBOLS, TRADE_QUANTITIES, TRADE_QUANTITY, TRADING_MODE
 from shared.src.enums import OrderSide, SignalStrength, CycleStatus
 from shared.src.schemas import StrategySignal, TradeOrder
 
@@ -39,7 +39,9 @@ class OrderManager:
         self.start_time = time.time()
         
         # Initialiser les composants
-        self.binance_executor = BinanceExecutor(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY)
+        # Vérifier si on est en mode demo selon la config
+        demo_mode = TRADING_MODE.lower() == 'demo'
+        self.binance_executor = BinanceExecutor(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY, demo_mode=demo_mode)
         self.cycle_manager = CycleManager(binance_executor=self.binance_executor)
         
         # DÉSACTIVÉ: Le trader ne doit recevoir les ordres que via l'API REST du coordinator

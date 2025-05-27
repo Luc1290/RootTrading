@@ -158,9 +158,9 @@ class BinanceExecutor:
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'exécution: {str(e)}")
             
-            # En cas d'erreur, simuler l'ordre
-            logger.info("Passage en mode simulation suite à l'erreur")
-            return self._simulate_order(order)
+            # NE PAS simuler l'ordre en cas d'erreur
+            # Cela crée des incohérences (cycles non-démo avec ordres démo)
+            raise e
     
     def get_order_status(self, symbol: str, order_id: str) -> Optional[TradeExecution]:
         """
@@ -175,6 +175,11 @@ class BinanceExecutor:
         """
         # En mode démo, récupérer depuis la mémoire
         if self.demo_mode:
+            return self.demo_trades.get(order_id)
+        
+        # Vérifier si c'est un ordre créé en mode démo (stocké dans demo_trades)
+        if order_id in self.demo_trades:
+            logger.debug(f"⏭️ Ordre démo détecté ({order_id}), ignorer la vérification Binance")
             return self.demo_trades.get(order_id)
         
         # En mode réel, interroger Binance
@@ -204,6 +209,11 @@ class BinanceExecutor:
                     logger.info(f"✅ [DÉMO] Ordre annulé: {order_id}")
                     return True
             return False
+        
+        # Vérifier si c'est un ordre créé en mode démo (stocké dans demo_trades)
+        if order_id in self.demo_trades:
+            logger.debug(f"⏭️ Ordre démo détecté ({order_id}), ignorer l'annulation Binance")
+            return True  # Considérer comme réussi pour ne pas bloquer le processus
         
         # En mode réel, annuler sur Binance
         try:
@@ -252,3 +262,29 @@ class BinanceExecutor:
         except Exception as e:
             logger.error(f"❌ Erreur lors de la récupération des frais de trading: {str(e)}")
             return (0.001, 0.001)  # Valeurs par défaut en cas d'erreur
+    
+    def get_order_status(self, symbol: str, order_id: str) -> Optional[TradeExecution]:
+        """
+        Récupère le statut d'un ordre.
+        
+        Args:
+            symbol: Symbole (ex: 'BTCUSDC')
+            order_id: ID de l'ordre
+            
+        Returns:
+            TradeExecution avec le statut mis à jour ou None si erreur
+        """
+        # Vérifier d'abord si c'est un ordre démo stocké localement
+        if order_id in self.demo_trades:
+            return self.demo_trades[order_id]
+            
+        # Si on est en mode démo, ne pas essayer d'appeler Binance
+        if self.demo_mode:
+            return None
+        
+        # Ordre réel sur Binance
+        try:
+            return self.utils.fetch_order_status(symbol, order_id, self.time_offset)
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la récupération du statut de l'ordre {order_id}: {str(e)}")
+            return None

@@ -141,7 +141,7 @@ class BinanceUtils:
             
             # Encoder les paramètres en query string
             query_string = urlencode(processed_params)
-            logger.debug(f"Génération de signature pour: {query_string}")
+            # logger.debug(f"Génération de signature pour: {query_string}")  # Commenté pour réduire le bruit dans les logs
             
             # Générer la signature HMAC-SHA256
             signature = hmac.new(
@@ -380,6 +380,10 @@ class BinanceUtils:
         Returns:
             Exécution mise à jour ou None si erreur
         """
+        # Ne plus vérifier l'ID numérique car les vrais ordres Binance peuvent avoir des IDs élevés
+        # La vérification des ordres démo doit se faire ailleurs (dans BinanceExecutor)
+        # logger.debug(f"Vérification order_id: {order_id} (type: {type(order_id)})")  # Commenté pour réduire le bruit dans les logs
+            
         try:
             order_url = f"{self.BASE_URL}{self.API_V3}/order"
             timestamp = int(time.time() * 1000) + time_offset
@@ -440,6 +444,9 @@ class BinanceUtils:
         Returns:
             True si l'annulation a réussi, False sinon
         """
+        # Ne plus vérifier l'ID numérique car les vrais ordres Binance peuvent avoir des IDs élevés
+        # La vérification des ordres démo doit se faire ailleurs (dans BinanceExecutor)
+            
         try:
             cancel_url = f"{self.BASE_URL}{self.API_V3}/order"
             timestamp = int(time.time() * 1000) + time_offset
