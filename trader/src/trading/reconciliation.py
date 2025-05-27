@@ -227,8 +227,28 @@ class ExchangeReconciliation:
             status_display = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
             logger.warning(f"⚠️ Cycle {cycle.id} en statut {status_display} sans ordre de sortie")
             
-            # Vérifier que l'ordre d'entrée est bien FILLED avant de créer l'ordre de sortie
+            # IMPORTANT: Vérifier que l'ordre d'entrée est bien FILLED avant de créer l'ordre de sortie
             if entry_execution and entry_execution.status == OrderStatus.FILLED:
+                # Synchroniser les balances du portfolio avant de créer l'ordre de sortie
+                logger.info(f"🔄 Synchronisation du portfolio avant création de l'ordre de sortie")
+                try:
+                    from shared.src.kafka_client import KafkaManager
+                    import json
+                    
+                    # Envoyer un message pour forcer la synchronisation du portfolio
+                    kafka_manager = KafkaManager()
+                    sync_message = {
+                        "type": "sync_request",
+                        "cycle_id": cycle.id,
+                        "symbol": cycle.symbol,
+                        "reason": "reconciliation_exit_order"
+                    }
+                    kafka_manager.send_message("portfolio.sync", json.dumps(sync_message))
+                    
+                    # Attendre un peu pour que la synchronisation se fasse
+                    time.sleep(2)
+                except Exception as e:
+                    logger.warning(f"⚠️ Impossible de demander la synchronisation du portfolio: {e}")
                 logger.info(f"🔧 Création de l'ordre de sortie manquant pour le cycle {cycle.id}")
                 
                 # Déterminer le side de l'ordre de sortie
@@ -250,12 +270,15 @@ class ExchangeReconciliation:
                     
                     exit_price = cycle.target_price
                     
+                    # Utiliser la quantité réellement exécutée si disponible
+                    executed_quantity = cycle.metadata.get('executed_quantity', cycle.quantity) if cycle.metadata else cycle.quantity
+                    
                     # Créer un objet TradeOrder LIMITE au target price
                     exit_order = TradeOrder(
                         symbol=cycle.symbol,
                         side=exit_side,
                         price=exit_price,
-                        quantity=cycle.quantity,
+                        quantity=executed_quantity,
                         order_type=OrderType.LIMIT,  # Toujours LIMIT pour attendre le target
                         client_order_id=f"exit_{cycle.id}"
                     )

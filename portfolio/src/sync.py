@@ -52,8 +52,21 @@ async def sync_db_forever():
         try:
             db = DBManager()
             pockets = PocketManager(db)
-            # RÉACTIVÉ: La synchronisation avec vérification périodique
-            pockets.sync_with_trades()
+            portfolio = PortfolioModel(db)
+            
+            # 1. Synchroniser avec les trades actifs
+            success1 = pockets.sync_with_trades()
+            
+            # 2. Récupérer la valeur totale du portfolio
+            summary = portfolio.get_portfolio_summary()
+            if summary:
+                # 3. Synchroniser les poches avec les soldes réels du portfolio
+                success2 = pockets.update_pockets_allocation(summary.total_value)
+                logger.info(f"🔄 Synchronisation complète: trades={success1}, allocation={success2}")
+            else:
+                logger.warning("⚠️ Impossible de récupérer le résumé du portfolio")
+            
+            portfolio.close()
             db.close()
             logger.info("🔄 Synchronisation des poches DB terminée")
         except Exception as e:

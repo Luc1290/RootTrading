@@ -95,7 +95,11 @@ class OrderValidator:
             notional = adjusted_order.quantity * price
             min_notional = self.constraints.get_min_notional(adjusted_order.symbol)
             
-            if notional < min_notional:
+            # Ajouter une petite marge de tolérance pour éviter les erreurs d'arrondi
+            # Utiliser 1e-8 comme epsilon pour les comparaisons de décimaux
+            epsilon = 1e-8
+            
+            if notional < min_notional - epsilon:
                 logger.error(f"❌ Notional {notional:.8f} trop faible pour {adjusted_order.symbol} (min: {min_notional})")
                 raise OrderValidationError(f"Notional trop faible pour {adjusted_order.symbol}: {notional:.8f} (min: {min_notional})")
             

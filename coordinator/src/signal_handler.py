@@ -857,15 +857,15 @@ class SignalHandler:
         """
         quote_asset = self._get_quote_asset(signal.symbol)
         
-        # Valeurs par défaut selon l'actif
+        # Récupérer les valeurs depuis les variables d'environnement
         default_amounts = {
-            'USDC': 100.0,     # 100 USDC
-            'BTC': 0.001,      # 0.001 BTC (~110 USDC au prix actuel)
-            'ETH': 0.04,       # 0.04 ETH (~100 USDC au prix actuel)
-            'BNB': 0.2         # 0.2 BNB (~100 USDC au prix actuel)
+            'USDC': float(os.getenv('TRADE_QUANTITY_USDC', 20.0)),      # Depuis .env
+            'BTC': float(os.getenv('TRADE_QUANTITY_BTC', 0.00025)),     # Depuis .env
+            'ETH': float(os.getenv('TRADE_QUANTITY_ETH', 0.005)),       # Depuis .env
+            'BNB': float(os.getenv('TRADE_QUANTITY_BNB', 0.05))         # Valeur par défaut
         }
         
-        default_amount = default_amounts.get(quote_asset, 100.0)
+        default_amount = default_amounts.get(quote_asset, 20.0)
         
         # Ajuster en fonction de la force du signal
         if signal.strength == SignalStrength.WEAK:

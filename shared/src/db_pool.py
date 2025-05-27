@@ -379,16 +379,20 @@ class AdvancedConnectionPool:
                 logger.info("Connexion invalide fermée lors de sa libération")
             return
         
-        # S'assurer que autocommit est activé
-        if not conn.connection.autocommit:
-            # Vérifier s'il y a une transaction active et la rollback
+        # Nettoyer systématiquement toute transaction en cours
+        try:
             tx_status = conn.connection.get_transaction_status()
-            if tx_status != 0:  # 0 = IDLE/READY (pas de transaction)
+            if tx_status != extensions.STATUS_READY:  # Pas dans l'état IDLE
                 conn.connection.rollback()
-                logger.debug("Transaction nettoyée lors de la libération")
-            
-            # Remettre autocommit à True
+                logger.debug(f"Transaction nettoyée lors de la libération (status={tx_status})")
+        except Exception as e:
+            logger.warning(f"Erreur lors du nettoyage de transaction: {e}")
+        
+        # S'assurer que autocommit est activé
+        try:
             conn.connection.autocommit = True
+        except Exception as e:
+            logger.warning(f"Erreur lors de l'activation d'autocommit: {e}")
         
         # Marquer la connexion comme libérée
         conn.release()
@@ -670,12 +674,18 @@ class DBContextManager:
         
         # Vérifier et nettoyer toute transaction résiduelle
         if self.conn.get_transaction_status() != extensions.STATUS_READY:
-            logger.debug("Transaction résiduelle nettoyée")
+            logger.debug("Transaction résiduelle nettoyée à l'ouverture")
             self.conn.rollback()
         
         # Configurer la gestion de transaction
         if self.auto_transaction:
             self.conn.autocommit = False
+            # Démarrer explicitement une transaction
+            self.conn.cursor().execute("BEGIN")
+            self.conn.cursor().close()
+        else:
+            # S'assurer que autocommit est bien activé
+            self.conn.autocommit = True
         
         # Créer un curseur avec le factory spécifié
         cursor_args = {}

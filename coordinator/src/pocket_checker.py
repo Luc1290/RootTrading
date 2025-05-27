@@ -54,14 +54,63 @@ class PocketChecker:
         # --- Cache Redis ------------------------------------------------
         self.redis = RedisClient()
         self._redis_key = "roottrading:pockets:snapshot"
-        # Thread d'abonnement : invalide le cache local à chaque update
-        threading.Thread(
-            target=self._subscribe_updates,
-            daemon=True
-        ).start()
+        # DÉSACTIVER Redis PubSub temporairement pour éviter la duplication
+        # threading.Thread(
+        #     target=self._subscribe_updates,
+        #     daemon=True
+        # ).start()
+        
+        # Utiliser SEULEMENT Kafka pour éviter les doublons
+        self._start_kafka_listener()
 
         
         logger.info(f"✅ PocketChecker initialisé - API Portfolio: {portfolio_api_url}")
+    
+    def _start_kafka_listener(self):
+        """Démarre l'écoute des événements Kafka pour les mises à jour de pockets."""
+        try:
+            from shared.src.kafka_client import KafkaManager
+            
+            def kafka_listener():
+                kafka = KafkaManager()
+                
+                def handle_pocket_update(message):
+                    try:
+                        data = json.loads(message) if isinstance(message, str) else message
+                        event_type = data.get('type', '')
+                        
+                        if event_type in ['pocket.updated', 'pocket.reserved', 'pocket.released']:
+                            # Invalider le cache local
+                            self.last_cache_update = 0
+                            logger.debug(f"📨 Cache invalidé par événement Kafka: {event_type}")
+                            
+                            # Si possible, mettre à jour directement depuis l'événement
+                            if 'pockets' in data:
+                                self._update_cache_from_event(data['pockets'])
+                                
+                    except Exception as e:
+                        logger.error(f"Erreur lors du traitement de l'événement Kafka: {e}")
+                
+                # S'abonner au topic des pockets
+                kafka.subscribe("portfolio.pockets", handle_pocket_update)
+                logger.info("📡 Écoute Kafka démarrée pour portfolio.pockets")
+                
+            # Démarrer dans un thread séparé
+            thread = threading.Thread(target=kafka_listener, daemon=True)
+            thread.start()
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Impossible de démarrer l'écoute Kafka: {e}")
+    
+    def _update_cache_from_event(self, pockets_data):
+        """Met à jour le cache local avec les données reçues par événement."""
+        try:
+            if isinstance(pockets_data, list):
+                self.pocket_cache = {p["pocket_type"]: p for p in pockets_data}
+                self.last_cache_update = time.time()
+                logger.debug("✅ Cache mis à jour depuis événement Kafka")
+        except Exception as e:
+            logger.error(f"Erreur lors de la mise à jour du cache: {e}")
 
     def _make_request_with_retry(self, url, method="GET", json_data=None, params=None, max_retries=3, timeout=5.0):
         """
@@ -123,7 +172,14 @@ class PocketChecker:
             return False
 
         try:
-            pockets = json.loads(raw)
+            # Si raw est déjà une chaîne (à cause de decode_responses=True), 
+            # on doit faire json.loads
+            if isinstance(raw, str):
+                pockets = json.loads(raw)
+            else:
+                # Si c'est déjà un objet Python (liste/dict), on l'utilise directement
+                pockets = raw
+                
             # Transformer en dict {pocket_type: data}
             self.pocket_cache = {p["pocket_type"]: p for p in pockets}
             self.last_cache_update = time.time()

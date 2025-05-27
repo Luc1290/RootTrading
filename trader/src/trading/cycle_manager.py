@@ -6,6 +6,7 @@ Version simplifiée qui délègue à d'autres modules.
 import logging
 import time
 import uuid
+import os
 from typing import Dict, List, Any, Optional, Union
 from datetime import datetime
 import threading
@@ -623,8 +624,8 @@ class CycleManager:
             
             # Libérer les fonds dans la poche
             if cycle.pocket:
-                # Le montant de base réservé est toujours 80 USDC
-                base_amount = 80.0
+                # Le montant de base réservé selon le .env
+                base_amount = float(os.getenv('TRADE_QUANTITY_USDC', 20.0))
                 
                 # Calculer le montant total à libérer (base + profit ou base - perte)
                 if cycle.symbol.endswith('USDC'):

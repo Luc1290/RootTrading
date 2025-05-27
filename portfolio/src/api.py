@@ -101,6 +101,44 @@ app.add_middleware(
 # Ajouter la compression gzip
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+# Cache mémoire simple avec TTL
+class InMemoryCache:
+    """Cache mémoire simple avec TTL pour réduire la charge sur la DB."""
+    
+    def __init__(self):
+        self.cache = {}
+        self.lock = threading.Lock()
+    
+    def get(self, key: str) -> Optional[Any]:
+        """Récupère une valeur du cache si elle est valide."""
+        with self.lock:
+            if key in self.cache:
+                value, expiry = self.cache[key]
+                if time.time() < expiry:
+                    return value
+                else:
+                    del self.cache[key]
+        return None
+    
+    def set(self, key: str, value: Any, ttl: float = 2.0):
+        """Stocke une valeur dans le cache avec un TTL."""
+        with self.lock:
+            expiry = time.time() + ttl
+            self.cache[key] = (value, expiry)
+    
+    def clear(self, pattern: Optional[str] = None):
+        """Efface le cache (ou les clés correspondant au pattern)."""
+        with self.lock:
+            if pattern is None:
+                self.cache.clear()
+            else:
+                keys_to_delete = [k for k in self.cache.keys() if pattern in k]
+                for k in keys_to_delete:
+                    del self.cache[k]
+
+# Instance globale du cache
+api_cache = InMemoryCache()
+
 # Classes pour les réponses API
 class TradeHistoryResponse(BaseModel):
     trades: List[Dict[str, Any]]
@@ -326,18 +364,34 @@ async def get_portfolio_summary(
     response: Response = None
 ):
     """
-    Récupère un résumé du portefeuille.
+    Récupère un résumé du portefeuille avec cache mémoire.
     
     Returns:
         Résumé du portefeuille
     """
+    # Vérifier le cache
+    cache_key = "portfolio_summary"
+    cached_summary = api_cache.get(cache_key)
+    
+    if cached_summary:
+        logger.debug("📦 Résumé du portfolio servi depuis le cache")
+        if response:
+            response.headers["X-Cache"] = "HIT"
+            response.headers["Cache-Control"] = "public, max-age=5"
+        return cached_summary
+    
+    # Si pas en cache, récupérer depuis la DB
     summary = portfolio.get_portfolio_summary()
     
     if not summary:
         raise HTTPException(status_code=404, detail="Aucune donnée de portefeuille trouvée")
     
+    # Mettre en cache pour 2 secondes
+    api_cache.set(cache_key, summary, ttl=2.0)
+    
     # Ajouter des en-têtes de cache
     if response:
+        response.headers["X-Cache"] = "MISS"
         response.headers["Cache-Control"] = "public, max-age=5"
     
     return summary
@@ -370,18 +424,34 @@ async def get_pockets(
     response: Response = None
 ):
     """
-    Récupère l'état actuel des poches de capital.
+    Récupère l'état actuel des poches de capital avec cache mémoire.
     
     Returns:
         Liste des poches de capital
     """
+    # Vérifier le cache
+    cache_key = "pockets_list"
+    cached_pockets = api_cache.get(cache_key)
+    
+    if cached_pockets:
+        logger.debug("📦 Poches servies depuis le cache")
+        if response:
+            response.headers["X-Cache"] = "HIT"
+            response.headers["Cache-Control"] = "public, max-age=5"
+        return cached_pockets
+    
+    # Si pas en cache, récupérer depuis la DB
     pockets = pocket_manager.get_pockets()
     
     if not pockets:
         raise HTTPException(status_code=404, detail="Aucune poche trouvée")
     
+    # Mettre en cache pour 2 secondes
+    api_cache.set(cache_key, pockets, ttl=2.0)
+    
     # Ajouter des en-têtes de cache
     if response:
+        response.headers["X-Cache"] = "MISS"
         response.headers["Cache-Control"] = "public, max-age=5"
     
     return pockets
@@ -406,6 +476,9 @@ async def sync_pockets(
                 logger.error("❌ Échec de la synchronisation des poches en arrière-plan")
             else:
                 logger.info("✅ Synchronisation des poches réussie en arrière-plan")
+                # Invalider le cache après la synchronisation
+                api_cache.clear("pockets")
+                api_cache.clear("portfolio")
         except Exception as e:
             logger.error(f"❌ Erreur lors de la synchronisation en arrière-plan: {str(e)}")
     
@@ -480,6 +553,9 @@ async def reserve_funds(
     if not success:
         raise HTTPException(status_code=400, detail="Échec de la réservation des fonds")
     
+    # Invalider le cache après la réservation
+    api_cache.clear("pockets")
+    
     return {"status": "success", "message": f"{amount} réservés dans la poche {pocket_type}"}
 
 @app.post("/pockets/{pocket_type}/release", status_code=200)
@@ -512,6 +588,9 @@ async def release_funds(
     
     if not success:
         raise HTTPException(status_code=400, detail="Échec de la libération des fonds")
+    
+    # Invalider le cache après la libération
+    api_cache.clear("pockets")
     
     return {"status": "success", "message": f"{amount} libérés dans la poche {pocket_type}"}
 
