@@ -105,8 +105,40 @@ class CycleRepository:
                 cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_trade_executions_timestamp ON trade_executions (timestamp);
                 """)
+                
+                # Ajouter la colonne confirmed si elle n'existe pas
+                cursor.execute("""
+                ALTER TABLE trade_cycles 
+                ADD COLUMN IF NOT EXISTS confirmed BOOLEAN DEFAULT TRUE;
+                """)
+                
+                # Créer un trigger pour normaliser automatiquement les statuts en minuscules
+                cursor.execute("""
+                CREATE OR REPLACE FUNCTION normalize_cycle_status()
+                RETURNS TRIGGER AS $$
+                BEGIN
+                    NEW.status = LOWER(NEW.status);
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+                """)
+                
+                cursor.execute("""
+                DROP TRIGGER IF EXISTS normalize_status_trigger ON trade_cycles;
+                CREATE TRIGGER normalize_status_trigger
+                BEFORE INSERT OR UPDATE OF status ON trade_cycles
+                FOR EACH ROW
+                EXECUTE FUNCTION normalize_cycle_status();
+                """)
+                
+                # Normaliser les statuts existants
+                cursor.execute("""
+                UPDATE trade_cycles 
+                SET status = LOWER(status)
+                WHERE status != LOWER(status);
+                """)
             
-            logger.info("✅ Schéma de base de données initialisé")
+            logger.info("✅ Schéma de base de données initialisé avec normalisation des statuts")
         
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'initialisation du schéma de base de données: {str(e)}")
@@ -228,8 +260,10 @@ class CycleRepository:
                 )
                 exists = cursor.fetchone() is not None
         
-            # Convertir l'enum en chaîne
+            # Convertir l'enum en chaîne - toujours en minuscules pour la cohérence
             status = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
+            # Le trigger normalisera automatiquement en minuscules, mais on le fait aussi ici par sécurité
+            status = status.lower()
             
             # Vérifier l'existence de l'attribut 'confirmed'
             confirmed = getattr(cycle, 'confirmed', False)
@@ -376,11 +410,17 @@ class CycleRepository:
             Liste des cycles actifs filtrés
         """
         try:
-            # Méthode plus simple : utiliser le statut comme une chaîne de caractères brute
-            # Ne pas tenter de l'interpréter comme une énumération lors du filtrage
-            # Inclure tous les statuts actifs (waiting_buy, active_buy, waiting_sell, active_sell)
-            where_clauses = ["LOWER(status) NOT IN ('completed', 'canceled', 'failed', 'initiating')"]
-            params = []
+            # Utiliser les valeurs enum pour la cohérence
+            # Les statuts sont maintenant toujours en minuscules grâce au trigger
+            terminal_statuses = [
+                CycleStatus.COMPLETED.value,
+                CycleStatus.CANCELED.value,
+                CycleStatus.FAILED.value,
+                CycleStatus.INITIATING.value
+            ]
+            placeholders = ','.join(['%s'] * len(terminal_statuses))
+            where_clauses = [f"status NOT IN ({placeholders})"]
+            params = terminal_statuses
             
             if symbol:
                 where_clauses.append("symbol = %s")
@@ -422,6 +462,44 @@ class CycleRepository:
         
         except Exception as e:
             logger.error(f"❌ Erreur lors de la récupération des cycles actifs: {str(e)}")
+            return []
+    
+    def get_all_cycles(self) -> List[TradeCycle]:
+        """
+        Récupère tous les cycles de la base de données.
+        
+        Returns:
+            Liste de tous les cycles
+        """
+        try:
+            with DBContextManager(auto_transaction=False) as cursor:
+                query = """
+                SELECT * FROM trade_cycles
+                ORDER BY created_at DESC
+                """
+                
+                cursor.execute(query)
+                
+                # Récupérer les résultats
+                cycle_records = cursor.fetchall()
+                
+                # Obtenir les noms des colonnes
+                column_names = [desc[0] for desc in cursor.description]
+                
+                # Convertir les résultats en objets TradeCycle
+                cycles = []
+                for record in cycle_records:
+                    # Convertir le tuple en dictionnaire
+                    cycle_data = dict(zip(column_names, record))
+                    
+                    # Convertir les données en objet TradeCycle
+                    cycle = self._create_cycle_from_data(cycle_data)
+                    cycles.append(cycle)
+                
+                return cycles
+        
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la récupération de tous les cycles: {str(e)}")
             return []
     
     def _create_cycle_from_data(self, cycle_data: Dict[str, Any]) -> TradeCycle:

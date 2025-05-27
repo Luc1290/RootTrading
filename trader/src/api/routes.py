@@ -133,6 +133,87 @@ def get_orders():
     active_orders = order_manager.get_active_orders()
     return jsonify(active_orders)
 
+@routes_bp.route('/cycles', methods=['GET'])
+def get_cycles():
+    """
+    API centralisée pour récupérer les cycles actifs.
+    SEULE SOURCE DE VÉRITÉ pour tous les services.
+    
+    Query params:
+        - symbol: Filtrer par symbole (optionnel)
+        - status: Filtrer par statut (optionnel) 
+        - confirmed: Filtrer par confirmation (optionnel, défaut: true)
+        - include_completed: Inclure les cycles terminés (optionnel, défaut: false)
+    """
+    order_manager = current_app.config['ORDER_MANAGER']
+    
+    if not order_manager:
+        return jsonify({"error": "OrderManager non initialisé"}), 500
+    
+    try:
+        # Récupérer les paramètres de requête
+        symbol = request.args.get('symbol')
+        status = request.args.get('status')
+        confirmed = request.args.get('confirmed', 'true').lower() == 'true'
+        include_completed = request.args.get('include_completed', 'false').lower() == 'true'
+        
+        # Récupérer tous les cycles depuis le repository
+        cycles = order_manager.cycle_manager.repository.get_all_cycles()
+        
+        # Filtrer selon les critères
+        filtered_cycles = []
+        for cycle in cycles:
+            # Filtrer par statut terminal
+            if not include_completed and cycle.status in [CycleStatus.COMPLETED, CycleStatus.CANCELED, CycleStatus.FAILED]:
+                continue
+                
+            # Filtrer par confirmation
+            if confirmed and not cycle.confirmed:
+                continue
+                
+            # Filtrer par symbole
+            if symbol and cycle.symbol != symbol:
+                continue
+                
+            # Filtrer par statut spécifique
+            if status and cycle.status.value != status:
+                continue
+                
+            filtered_cycles.append(cycle)
+        
+        # Convertir en dictionnaires pour la réponse JSON
+        result = []
+        for cycle in filtered_cycles:
+            result.append({
+                "id": cycle.id,
+                "symbol": cycle.symbol,
+                "strategy": cycle.strategy,
+                "status": cycle.status.value,
+                "confirmed": cycle.confirmed,
+                "entry_price": cycle.entry_price,
+                "quantity": cycle.quantity,
+                "target_price": cycle.target_price,
+                "stop_price": cycle.stop_price,
+                "entry_order_id": cycle.entry_order_id,
+                "exit_order_id": cycle.exit_order_id,
+                "created_at": cycle.created_at.isoformat() if cycle.created_at else None,
+                "updated_at": cycle.updated_at.isoformat() if cycle.updated_at else None,
+                "pocket": cycle.pocket
+            })
+        
+        return jsonify({
+            "success": True,
+            "count": len(result),
+            "cycles": result
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la récupération des cycles: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
 @routes_bp.route('/order', methods=['POST'])
 def create_order():
     """

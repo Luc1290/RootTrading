@@ -84,9 +84,10 @@ class CycleSyncMonitor:
         self.stats["last_check"] = time.time()
         
         try:
-            # Récupérer les cycles actifs depuis l'API trader
+            # Récupérer les cycles actifs depuis l'API centralisée
             response = requests.get(
-                urljoin(self.trader_api_url, "/orders"),
+                urljoin(self.trader_api_url, "/cycles"),
+                params={"confirmed": "true", "include_completed": "false"},
                 timeout=5
             )
             
@@ -94,18 +95,15 @@ class CycleSyncMonitor:
                 logger.warning(f"Impossible de récupérer les cycles: {response.status_code}")
                 return
                 
-            db_cycles = response.json()
+            result = response.json()
+            if not result.get('success'):
+                logger.warning(f"Réponse invalide de l'API cycles")
+                return
+                
+            db_cycles = result.get('cycles', [])
             
-            # Filtrer les cycles vraiment actifs (status non terminal)
-            # Utiliser une comparaison insensible à la casse
-            terminal_statuses = {'completed', 'canceled', 'failed', 'error'}
-            active_cycles = []
-            for cycle in db_cycles:
-                status = cycle.get('status', '').lower()
-                if status not in terminal_statuses:
-                    active_cycles.append(cycle)
-            
-            db_cycle_ids = {cycle['id'] for cycle in active_cycles}
+            # Les cycles retournés par l'API /cycles sont déjà filtrés comme actifs
+            db_cycle_ids = {cycle['id'] for cycle in db_cycles}
             
             # Détecter les cycles fantômes (dans notre cache mais pas dans la DB)
             phantom_cycles = self.known_cycles - db_cycle_ids

@@ -323,22 +323,29 @@ class SignalHandler:
             True si toutes les positions ont été fermées avec succès
         """
         try:
-            # Récupérer les cycles actifs
+            # Récupérer les cycles actifs depuis l'API centralisée
             response = self._make_request_with_retry(
-                f"{self.trader_api_url}/orders",
+                f"{self.trader_api_url}/cycles",
                 method="GET",
+                params={"symbol": symbol, "confirmed": "true", "include_completed": "false"},
                 timeout=5.0
             )
             
-            if not response:
+            if not response or not response.get('success'):
                 logger.error("Impossible de récupérer les cycles pour fermeture")
                 return False
             
-            # Filtrer les cycles du symbole et côté concernés
-            cycles_to_close = [
-                cycle for cycle in response
-                if cycle.get('symbol') == symbol and cycle.get('side') == side
-            ]
+            # Extraire les cycles depuis la réponse
+            cycles = response.get('cycles', [])
+            
+            # Filtrer les cycles du côté concerné
+            cycles_to_close = []
+            for cycle in cycles:
+                # Déterminer le côté en fonction du statut
+                status = cycle.get('status', '')
+                if (side == 'BUY' and status in ['waiting_buy', 'active_buy']) or \
+                   (side == 'SELL' and status in ['waiting_sell', 'active_sell']):
+                    cycles_to_close.append(cycle)
             
             if not cycles_to_close:
                 logger.info(f"Aucun cycle {side} à fermer pour {symbol}")
@@ -376,21 +383,23 @@ class SignalHandler:
     
     def _refresh_active_cycles_cache(self) -> None:
         """
-        Rafraîchit le cache des cycles actifs depuis le trader.
+        Rafraîchit le cache des cycles actifs depuis l'API centralisée du Trader.
+        SEULE SOURCE DE VÉRITÉ pour les cycles.
         """
         try:
             if time.time() - self.cache_update_time < self.cache_ttl:
                 return  # Cache encore valide
             
-            # Récupérer les cycles actifs du trader
+            # Récupérer les cycles actifs depuis l'API centralisée
             response = self._make_request_with_retry(
-                f"{self.trader_api_url}/orders",
+                f"{self.trader_api_url}/cycles",
                 method="GET",
+                params={"confirmed": "true", "include_completed": "false"},
                 timeout=5.0
             )
             
-            if not response:
-                logger.warning("Impossible de récupérer les cycles actifs")
+            if not response or not response.get('success'):
+                logger.warning("Impossible de récupérer les cycles actifs depuis l'API centralisée")
                 # En cas d'échec, vider le cache pour éviter d'utiliser des données obsolètes
                 self.active_cycles_cache = {}
                 self.cache_update_time = time.time()
@@ -399,25 +408,30 @@ class SignalHandler:
             # Réinitialiser le cache
             self.active_cycles_cache = {}
             
-            # Compter les cycles par symbole et côté (en excluant les cycles terminés)
-            terminal_statuses = {'completed', 'canceled', 'failed', 'error'}
-            for cycle in response:
-                # Filtrer les cycles terminés
-                status = cycle.get('status', '').lower()
-                if status in terminal_statuses:
-                    continue
-                    
+            # Extraire les cycles depuis la réponse
+            cycles = response.get('cycles', [])
+            
+            # Compter les cycles par symbole et côté
+            for cycle in cycles:
                 symbol = cycle.get('symbol')
-                side = cycle.get('side')
                 
-                if symbol and side:
+                # Déterminer le côté en fonction du statut
+                status = cycle.get('status', '')
+                if status in ['waiting_buy', 'active_buy']:
+                    side = 'BUY'
+                elif status in ['waiting_sell', 'active_sell']:
+                    side = 'SELL'
+                else:
+                    continue  # Ignorer les autres statuts
+                
+                if symbol:
                     if symbol not in self.active_cycles_cache:
                         self.active_cycles_cache[symbol] = {'BUY': 0, 'SELL': 0}
                     
                     self.active_cycles_cache[symbol][side] = self.active_cycles_cache[symbol].get(side, 0) + 1
             
             self.cache_update_time = time.time()
-            logger.debug(f"Cache des cycles actifs mis à jour: {self.active_cycles_cache}")
+            logger.debug(f"Cache des cycles actifs mis à jour depuis l'API centralisée: {self.active_cycles_cache}")
             
         except Exception as e:
             logger.error(f"Erreur lors du rafraîchissement du cache: {str(e)}")

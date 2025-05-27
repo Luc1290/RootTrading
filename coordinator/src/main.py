@@ -375,15 +375,16 @@ class CoordinatorService:
                 portfolio_api_url=self.portfolio_api_url
             )
             
-            # Initialiser le moniteur de synchronisation des cycles
-            self.cycle_sync_monitor = CycleSyncMonitor(
-                trader_api_url=self.trader_api_url,
-                check_interval=30  # Vérifier toutes les 30 secondes
-            )
+            # DÉSACTIVÉ: Le moniteur de synchronisation n'est plus nécessaire
+            # car le Trader est maintenant la SEULE source de vérité pour les cycles
+            # self.cycle_sync_monitor = CycleSyncMonitor(
+            #     trader_api_url=self.trader_api_url,
+            #     check_interval=30  # Vérifier toutes les 30 secondes
+            # )
             
             # Démarrer les composants
             self.signal_handler.start()
-            self.cycle_sync_monitor.start()
+            # self.cycle_sync_monitor.start()  # DÉSACTIVÉ
             
             # Réallouer les fonds initialement
             logger.info("Réallocation initiale des fonds...")
