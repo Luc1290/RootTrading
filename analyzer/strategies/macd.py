@@ -220,6 +220,10 @@ class MACDStrategy(BaseStrategy):
             Signal de trading ou None
         """
         try:
+            # Vérifier le cooldown avant de générer un signal
+            if not self.can_generate_signal():
+                return None
+                
             # Vérifier si on a assez de données
             if len(self.data_buffer) < self.buffer_size:
                 return None
@@ -277,8 +281,8 @@ class MACDStrategy(BaseStrategy):
                         'histogram': round(current_histogram, 6),
                         'crossover': crossover is not None,
                         'divergence': divergence is not None,
-                        'stop_price': round(stop_price, 2),
-                        'target_price': round(target_price, 2)
+                        'stop_price': round(stop_price, 8),
+                        'target_price': round(target_price, 8)
                     }
                 )
                 
@@ -305,13 +309,14 @@ class MACDStrategy(BaseStrategy):
                         'histogram': round(current_histogram, 6),
                         'crossover': crossover is not None,
                         'divergence': divergence is not None,
-                        'stop_price': round(stop_price, 2),
-                        'target_price': round(target_price, 2)
+                        'stop_price': round(stop_price, 8),
+                        'target_price': round(target_price, 8)
                     }
                 )
             
-            # Le cooldown est géré par la classe de base
+            # Mettre à jour le timestamp si un signal est généré
             if signal:
+                self.last_signal_time = datetime.now()
                 logger.info(f"📊 Signal MACD généré: {signal.side} {signal.symbol} "
                            f"(Crossover: {crossover}, Divergence: {divergence})")
             

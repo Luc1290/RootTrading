@@ -255,7 +255,7 @@ class PocketChecker:
         
         return available >= required
     
-    def reserve_funds(self, amount: float, cycle_id: str, pocket_type: str = "active") -> bool:
+    def reserve_funds(self, amount: float, cycle_id: str, pocket_type: str = "active", asset: str = "USDC") -> bool:
         """
         Réserve des fonds dans une poche pour un cycle de trading.
         
@@ -275,7 +275,7 @@ class PocketChecker:
         # Réserver les fonds avec retry
         try:
             url = urljoin(self.portfolio_api_url, f"/pockets/{pocket_type}/reserve")
-            params = {"amount": amount, "cycle_id": cycle_id}
+            params = {"amount": amount, "cycle_id": cycle_id, "asset": asset}
             
             result = self._make_request_with_retry(url, method="POST", params=params)
             
@@ -293,7 +293,7 @@ class PocketChecker:
             logger.error(f"❌ Erreur lors de la réservation des fonds: {str(e)}")
             return False
     
-    def release_funds(self, amount: float, cycle_id: str, pocket_type: str = "active") -> bool:
+    def release_funds(self, amount: float, cycle_id: str, pocket_type: str = "active", asset: str = "USDC") -> bool:
         """
         Libère des fonds réservés dans une poche.
         
@@ -307,7 +307,7 @@ class PocketChecker:
         """
         try:
             url = urljoin(self.portfolio_api_url, f"/pockets/{pocket_type}/release")
-            params = {"amount": amount, "cycle_id": cycle_id}
+            params = {"amount": amount, "cycle_id": cycle_id, "asset": asset}
             
             result = self._make_request_with_retry(url, method="POST", params=params)
             
@@ -325,7 +325,7 @@ class PocketChecker:
             logger.error(f"❌ Erreur lors de la libération des fonds: {str(e)}")
             return False
     
-    def determine_best_pocket(self, amount: float) -> Optional[str]:
+    def determine_best_pocket(self, amount: float, asset: str = "USDC") -> Optional[str]:
         """
         Détermine la meilleure poche à utiliser pour un trade.
         Essaie d'abord la poche active, puis la tampon si nécessaire.

@@ -41,7 +41,7 @@ class BaseStrategy(ABC):
         self.buffer_size = self.params.get('buffer_size', 100)  # Taille par défaut du buffer
         self.data_buffer = deque(maxlen=self.buffer_size)  # Buffer circulaire pour stocker les données
         self.last_signal_time: Optional[datetime] = None
-        self.signal_cooldown = self.params.get('signal_cooldown', 3600)  # Temps min entre signaux (sec)
+        self.signal_cooldown = self.params.get('signal_cooldown', 60)  # Temps min entre signaux (sec)
     
     @property
     @abstractmethod

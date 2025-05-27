@@ -168,6 +168,7 @@ class PocketManager:
         query = """
         SELECT 
             pocket_type,
+            asset,
             allocation_percent,
             current_value,
             used_value,
@@ -176,6 +177,7 @@ class PocketManager:
         FROM 
             capital_pockets
         ORDER BY 
+            asset,
             CASE pocket_type
                 WHEN 'active' THEN 1
                 WHEN 'buffer' THEN 2
@@ -194,6 +196,7 @@ class PocketManager:
         for row in result:
             pocket = PocketSummary(
                 pocket_type=row['pocket_type'],
+                asset=row['asset'],
                 allocation_percent=float(row['allocation_percent']),
                 current_value=float(row['current_value']),
                 used_value=float(row['used_value']),
@@ -300,109 +303,25 @@ class PocketManager:
     def update_pockets_allocation(self, total_value: float) -> bool:
         """
         Met à jour la répartition des poches en fonction de la valeur totale du portefeuille.
+        DÉSACTIVÉ pour préserver les poches par actif configurées manuellement.
         
         Args:
-            total_value: Valeur totale du portefeuille
+            total_value: Valeur totale du portefeuille (ignorée)
             
         Returns:
-            True si la mise à jour a réussi, False sinon
-            
-        Raises:
-            ValueError: Si la valeur totale est négative
+            True (pas de modification réelle)
         """
-        try:
-            logger.info(f"Début update_pockets_allocation avec total_value={total_value}")
+        logger.info(f"⚠️ update_pockets_allocation appelée avec total_value={total_value} - DÉSACTIVÉE pour préserver les poches par actif")
         
-            if total_value < 0:
-                raise ValueError(f"Valeur totale du portefeuille négative ({total_value})")
-            
-            if total_value == 0:
-                logger.warning(f"⚠️ Valeur totale du portefeuille nulle, utilisation d'une valeur minimale")
-                total_value = 100.0  # Valeur par défaut
-                logger.info(f"Nouvelle valeur après correction: {total_value}")
-            
-            # Mettre en cache la valeur totale
-            SharedCache.set('total_portfolio_value', total_value)
+        # Mettre en cache la valeur totale pour compatibilité
+        SharedCache.set('total_portfolio_value', total_value)
         
-            # Récupérer l'état actuel des poches
-            pockets = self.get_pockets()
+        # Ne pas modifier les poches - elles sont configurées par actif spécifique
+        logger.info("✅ Allocation des poches préservée (système multi-actifs)")
         
-            logger.info(f"Poches récupérées: {len(pockets)} poches")
-        
-            if not pockets:
-                logger.warning("⚠️ Aucune poche trouvée")
-                return False
-            
-            # Préparer la mise à jour par lots
-            updates = []
-            
-            # Pour chaque poche, calculer les nouvelles valeurs
-            for pocket in pockets:
-                # Récupérer l'allocation configurée
-                allocation = self.pocket_config.get(pocket.pocket_type, 0.0)
-                logger.info(f"Poche {pocket.pocket_type}: allocation={allocation}")
-                
-                # Calculer la nouvelle valeur
-                new_current_value = total_value * allocation
-                
-                # La valeur utilisée reste inchangée
-                used_value = pocket.used_value
-                
-                # Calculer la nouvelle valeur disponible
-                new_available_value = max(0, new_current_value - used_value)
-                
-                # Ajouter à la liste des mises à jour
-                updates.append({
-                    'pocket_type': pocket.pocket_type,
-                    'allocation_percent': allocation * 100,
-                    'current_value': new_current_value,
-                    'available_value': new_available_value
-                })
-            
-            # Exécuter les mises à jour en une seule transaction
-            with self.db.conn.cursor() as cursor:
-                for update in updates:
-                    cursor.execute(
-                        """
-                        UPDATE capital_pockets
-                        SET 
-                            allocation_percent = %(allocation_percent)s,
-                            current_value = %(current_value)s,
-                            available_value = %(available_value)s,
-                            updated_at = NOW()
-                        WHERE 
-                            pocket_type = %(pocket_type)s
-                        """,
-                        update
-                    )
-                
-                self.db.conn.commit()
-            
-            # Invalider le cache
-            SharedCache.clear('pockets')
-            
-            logger.info(f"✅ Allocation des poches mise à jour (total: {total_value:.2f})")
-            
-            return True
-        
-        except ValueError as e:
-            # Erreur de validation
-            logger.warning(f"⚠️ Erreur de validation: {str(e)}")
-            # Utiliser la valeur minimale
-            if 'négative' in str(e) or 'nulle' in str(e):
-                try:
-                    return self.update_pockets_allocation(100.0)
-                except Exception as inner_e:
-                    logger.error(f"❌ Échec de l'utilisation de la valeur par défaut: {str(inner_e)}")
-                    return False
-            return False
-        except Exception as e:
-            import traceback
-            logger.error(f"❌ Exception dans update_pockets_allocation: {str(e)}")
-            logger.error(traceback.format_exc())
-            return False
+        return True
     
-    def reserve_funds(self, pocket_type: str, amount: float, cycle_id: str) -> bool:
+    def reserve_funds(self, pocket_type: str, amount: float, cycle_id: str, asset: str = "USDC") -> bool:
         """
         Réserve des fonds dans une poche pour un cycle de trading.
         
@@ -410,6 +329,7 @@ class PocketManager:
             pocket_type: Type de poche ('active', 'buffer', 'safety')
             amount: Montant à réserver
             cycle_id: ID du cycle de trading
+            asset: Actif de la poche (USDC, BTC, ETH, etc.)
             
         Returns:
             True si la réservation a réussi, False sinon
@@ -427,19 +347,20 @@ class PocketManager:
             query = """
             SELECT 
                 pocket_type,
+                asset,
                 available_value,
                 active_cycles
             FROM 
                 capital_pockets
             WHERE 
-                pocket_type = %s
+                pocket_type = %s AND asset = %s
             FOR UPDATE
             """
             
             # Démarrer une transaction explicite
             self.db.execute_query("BEGIN")
             
-            result = self.db.execute_query(query, (pocket_type,), fetch_one=True, commit=False)
+            result = self.db.execute_query(query, (pocket_type, asset), fetch_one=True, commit=False)
             
             if not result:
                 # Annuler la transaction
@@ -465,10 +386,10 @@ class PocketManager:
                 active_cycles = active_cycles + 1,
                 updated_at = NOW()
             WHERE 
-                pocket_type = %s
+                pocket_type = %s AND asset = %s
             """
             
-            update_result = self.db.execute_query(update_query, (amount, amount, pocket_type), commit=False)
+            update_result = self.db.execute_query(update_query, (amount, amount, pocket_type, asset), commit=False)
             
             if update_result is None:
                 # Annuler la transaction
@@ -479,15 +400,15 @@ class PocketManager:
             # Enregistrer l'opération dans la table des transactions de poches (journal)
             journal_query = """
             INSERT INTO pocket_transactions
-            (pocket_type, transaction_type, amount, cycle_id, created_at)
-            VALUES (%s, %s, %s, %s, NOW())
+            (pocket_type, asset, transaction_type, amount, cycle_id, created_at)
+            VALUES (%s, %s, %s, %s, %s, NOW())
             ON CONFLICT DO NOTHING
             """
             
             try:
                 self.db.execute_query(
                     journal_query, 
-                    (pocket_type, 'reserve', amount, cycle_id),
+                    (pocket_type, asset, 'reserve', amount, cycle_id),
                     commit=False
                 )
             except Exception as e:
@@ -500,7 +421,7 @@ class PocketManager:
             # Invalider le cache
             SharedCache.clear('pockets')
             
-            logger.info(f"✅ {amount:.2f} réservés dans la poche {pocket_type} pour le cycle {cycle_id}")
+            logger.info(f"✅ {amount:.8f} {asset} réservés dans la poche {pocket_type} pour le cycle {cycle_id}")
             
             return True
             
@@ -522,7 +443,7 @@ class PocketManager:
             logger.error(traceback.format_exc())
             return False
     
-    def release_funds(self, pocket_type: str, amount: float, cycle_id: str) -> bool:
+    def release_funds(self, pocket_type: str, amount: float, cycle_id: str, asset: str = "USDC") -> bool:
         """
         Libère des fonds réservés dans une poche.
         
@@ -539,7 +460,58 @@ class PocketManager:
             return False
         
         try:
-            # Verrouiller la ligne pour éviter les conditions de course
+            # Démarrer une transaction explicite
+            self.db.execute_query("BEGIN")
+            
+            # ÉTAPE 1: Vérifier que le cycle a été réellement réservé
+            journal_check = """
+            SELECT SUM(amount) AS reserved
+            FROM pocket_transactions
+            WHERE transaction_type = 'reserve' AND cycle_id = %s
+            """
+            reserve_result = self.db.execute_query(journal_check, (cycle_id,), fetch_one=True, commit=False)
+            
+            reserved_amount = 0.0
+            if reserve_result and reserve_result['reserved']:
+                reserved_amount = float(reserve_result['reserved'])
+            
+            if reserved_amount <= 0:
+                # Vérifier s'il y a un mapping temp → final dans Redis
+                if cycle_id.startswith("temp_"):
+                    try:
+                        # Pas d'import Redis ici, donc on laisse tel quel pour l'instant
+                        logger.warning(f"⛔ Cycle temporaire {cycle_id} non trouvé en DB, vérifier le mapping Redis")
+                    except:
+                        pass
+                
+                logger.warning(f"⛔ Impossible de libérer le cycle {cycle_id}, aucune réservation détectée (réservé: {reserved_amount})")
+                self.db.execute_query("ROLLBACK")
+                return False
+            
+            # Vérifier les montants déjà libérés pour ce cycle
+            release_check = """
+            SELECT COALESCE(SUM(amount), 0) AS released
+            FROM pocket_transactions
+            WHERE transaction_type = 'release' AND cycle_id = %s
+            """
+            release_result = self.db.execute_query(release_check, (cycle_id,), fetch_one=True, commit=False)
+            
+            already_released = 0.0
+            if release_result and release_result['released']:
+                already_released = float(release_result['released'])
+            
+            remaining_to_release = reserved_amount - already_released
+            
+            if amount > remaining_to_release:
+                logger.warning(f"⚠️ Tentative de libérer {amount}, mais seulement {remaining_to_release} reste à libérer pour le cycle {cycle_id}")
+                if remaining_to_release <= 0:
+                    logger.warning(f"⛔ Cycle {cycle_id} déjà entièrement libéré")
+                    self.db.execute_query("ROLLBACK")
+                    return False
+                # Ajuster le montant
+                amount = remaining_to_release
+            
+            # ÉTAPE 2: Verrouiller la ligne pour éviter les conditions de course
             query = """
             SELECT 
                 pocket_type,
@@ -552,9 +524,6 @@ class PocketManager:
             FOR UPDATE
             """
             
-            # Démarrer une transaction explicite
-            self.db.execute_query("BEGIN")
-            
             result = self.db.execute_query(query, (pocket_type,), fetch_one=True, commit=False)
             
             if not result:
@@ -565,11 +534,11 @@ class PocketManager:
             used_value = float(result['used_value'])
             active_cycles = int(result['active_cycles'])
             
-            # Vérifier si le montant à libérer n'est pas trop grand
+            # Vérifier si le montant à libérer n'est pas trop grand par rapport à la poche
             if amount > used_value:
-                logger.warning(f"⚠️ Tentative de libérer plus que ce qui est utilisé: {amount} > {used_value}")
+                logger.warning(f"⚠️ Tentative de libérer plus que ce qui est utilisé dans la poche: {amount} > {used_value}")
                 # Limiter le montant à la valeur utilisée
-                amount = used_value
+                amount = min(amount, used_value)
             
             # Mettre à jour la poche
             query = """

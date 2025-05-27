@@ -3,6 +3,7 @@ Stratégie de trading basée sur l'indicateur RSI (Relative Strength Index).
 Génère des signaux d'achat quand le RSI est survendu et des signaux de vente quand il est suracheté.
 """
 import logging
+from datetime import datetime
 from typing import Dict, Any, Optional, List
 import numpy as np
 import pandas as pd
@@ -140,6 +141,10 @@ class RSIStrategy(BaseStrategy):
         Returns:
             Signal de trading ou None si aucun signal n'est généré
         """
+        # Vérifier le cooldown avant de générer un signal
+        if not self.can_generate_signal():
+            return None
+            
         # Convertir les données en DataFrame
         df = self.get_data_as_dataframe()
         if df is None or len(df) < self.get_min_data_points():
@@ -281,6 +286,10 @@ class RSIStrategy(BaseStrategy):
         # Mettre à jour les valeurs précédentes
         self.prev_rsi = current_rsi
         self.prev_price = current_price
+        
+        # Mettre à jour le timestamp si un signal est généré
+        if signal:
+            self.last_signal_time = datetime.now()
         
         return signal
     

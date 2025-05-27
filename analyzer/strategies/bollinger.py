@@ -3,6 +3,7 @@ Stratégie de trading basée sur les bandes de Bollinger.
 Génère des signaux lorsque le prix traverse les bandes de Bollinger.
 """
 import logging
+from datetime import datetime
 from typing import Dict, Any, Optional, List
 import numpy as np
 import pandas as pd
@@ -134,6 +135,10 @@ class BollingerStrategy(BaseStrategy):
         Returns:
             Signal de trading ou None si aucun signal n'est généré
         """
+        # Vérifier le cooldown avant de générer un signal
+        if not self.can_generate_signal():
+            return None
+            
         # Convertir les données en DataFrame
         df = self.get_data_as_dataframe()
         if df is None or len(df) < self.get_min_data_points():
@@ -283,6 +288,10 @@ class BollingerStrategy(BaseStrategy):
         self.prev_price = current_price
         self.prev_upper = current_upper
         self.prev_lower = current_lower
+        
+        # Mettre à jour le timestamp si un signal est généré
+        if signal:
+            self.last_signal_time = datetime.now()
         
         return signal
     

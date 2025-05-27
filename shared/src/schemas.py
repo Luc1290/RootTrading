@@ -125,6 +125,7 @@ class PortfolioSummary(BaseModel):
 class PocketSummary(BaseModel):
     """État d'une poche de trading."""
     pocket_type: str
+    asset: str = "USDC"  # Actif de la poche (USDC, BTC, ETH, etc.)
     allocation_percent: float
     current_value: float
     used_value: float

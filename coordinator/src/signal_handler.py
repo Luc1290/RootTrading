@@ -626,7 +626,7 @@ class SignalHandler:
         # Trier par force puis par confiance
         sorted_signals = sorted(
             signals,
-            key=lambda s: (s.strength.value, s.confidence),
+            key=lambda s: (s.strength.value if hasattr(s.strength, 'value') else str(s.strength), s.confidence),
             reverse=True
         )
         
@@ -821,18 +821,51 @@ class SignalHandler:
             
             return False
     
-    def _calculate_trade_amount(self, signal: StrategySignal) -> float:
+    def _get_quote_asset(self, symbol: str) -> str:
         """
-        Calcule le montant à trader basé sur le signal.
+        Détermine l'actif de cotation (quote asset) pour un symbole.
+        
+        Args:
+            symbol: Symbole de trading (ex: BTCUSDC, ETHBTC)
+            
+        Returns:
+            L'actif de cotation (USDC, BTC, ETH, etc.)
+        """
+        # Pour les paires communes
+        if symbol.endswith('USDC'):
+            return 'USDC'
+        elif symbol.endswith('BTC'):
+            return 'BTC'
+        elif symbol.endswith('ETH'):
+            return 'ETH'
+        elif symbol.endswith('BNB'):
+            return 'BNB'
+        else:
+            # Par défaut, on suppose USDC
+            logger.warning(f"Impossible de déterminer l'actif de quote pour {symbol}, utilisation de USDC par défaut")
+            return 'USDC'
+    
+    def _calculate_trade_amount(self, signal: StrategySignal) -> tuple[float, str]:
+        """
+        Calcule le montant à trader basé sur le signal et l'actif.
         
         Args:
             signal: Signal de trading
             
         Returns:
-            Montant en USDC à réserver
+            Tuple (montant, actif) - ex: (100.0, 'USDC') ou (0.001, 'BTC')
         """
-        # Valeurs par défaut
-        default_amount = 100.0  # 100 USDC par défaut
+        quote_asset = self._get_quote_asset(signal.symbol)
+        
+        # Valeurs par défaut selon l'actif
+        default_amounts = {
+            'USDC': 100.0,     # 100 USDC
+            'BTC': 0.001,      # 0.001 BTC (~110 USDC au prix actuel)
+            'ETH': 0.04,       # 0.04 ETH (~100 USDC au prix actuel)
+            'BNB': 0.2         # 0.2 BNB (~100 USDC au prix actuel)
+        }
+        
+        default_amount = default_amounts.get(quote_asset, 100.0)
         
         # Ajuster en fonction de la force du signal
         if signal.strength == SignalStrength.WEAK:
@@ -846,10 +879,7 @@ class SignalHandler:
         else:
             amount = default_amount
         
-        # TODO: Logique d'ajustement plus complexe basée sur le portefeuille total
-        # et les limites de risque par trade
-        
-        return amount
+        return amount, quote_asset
     
     def _make_request_with_retry(self, url, method="GET", json_data=None, params=None, max_retries=3, timeout=5.0):
         """
@@ -910,11 +940,11 @@ class SignalHandler:
 
         try:
             # Calculer le montant à trader
-            trade_amount = self._calculate_trade_amount(signal)
+            trade_amount, quote_asset = self._calculate_trade_amount(signal)
     
-            # Déterminer la poche à utiliser
+            # Déterminer la poche à utiliser en fonction de l'actif
             try:
-                pocket_type = self.pocket_checker.determine_best_pocket(trade_amount)
+                pocket_type = self.pocket_checker.determine_best_pocket(trade_amount, asset=quote_asset)
                 # Appel au portfolio réussi
                 self.portfolio_circuit.record_success()
             except Exception as e:
@@ -939,7 +969,6 @@ class SignalHandler:
                     quantity = btc_amount / signal.price
                 else:
                     logger.error("❌ Impossible de récupérer le prix BTC/USDC pour la conversion")
-                    self.pocket_checker.release_funds(trade_amount, temp_cycle_id, pocket_type)
                     return None
             else:
                 # Pour les paires USDC, calcul direct
@@ -968,8 +997,31 @@ class SignalHandler:
     
             # Réserver les fonds dans la poche
             temp_cycle_id = f"temp_{int(time.time())}"
+            
+            # Calculer le montant en USDC à réserver
+            if quote_asset == 'BTC':
+                # Pour les paires BTC, convertir le montant BTC en USDC pour la réservation
+                btc_price = self._get_btc_price()
+                if btc_price:
+                    reserve_amount_usdc = trade_amount * btc_price
+                    logger.info(f"Conversion pour réservation: {trade_amount:.6f} BTC = {reserve_amount_usdc:.2f} USDC (prix BTC: {btc_price:.2f})")
+                else:
+                    logger.error("❌ Impossible de récupérer le prix BTC/USDC pour la réservation")
+                    return None
+            elif quote_asset == 'ETH':
+                # Pour les paires ETH, convertir le montant ETH en USDC
+                eth_price = self._get_eth_price()  # À implémenter si nécessaire
+                if eth_price:
+                    reserve_amount_usdc = trade_amount * eth_price
+                else:
+                    logger.error("❌ Impossible de récupérer le prix ETH/USDC pour la réservation")
+                    return None
+            else:
+                # Pour les paires USDC, pas de conversion nécessaire
+                reserve_amount_usdc = trade_amount
+            
             try:
-                reserved = self.pocket_checker.reserve_funds(trade_amount, temp_cycle_id, pocket_type)
+                reserved = self.pocket_checker.reserve_funds(reserve_amount_usdc, temp_cycle_id, pocket_type)
                 # Autre appel au portfolio réussi
                 self.portfolio_circuit.record_success()
             except Exception as e:
@@ -984,7 +1036,7 @@ class SignalHandler:
             # Vérifier le circuit breaker pour le Trader
             if not self.trader_circuit.can_execute():
                 logger.warning(f"Circuit ouvert pour le service Trader, libération des fonds réservés")
-                self.pocket_checker.release_funds(trade_amount, temp_cycle_id, pocket_type)
+                self.pocket_checker.release_funds(reserve_amount_usdc, temp_cycle_id, pocket_type)
                 return None
     
             # Créer le cycle via l'API du Trader avec retry
@@ -1000,7 +1052,7 @@ class SignalHandler:
                 if not result:
                     logger.error("❌ Échec de la création du cycle: aucune réponse du Trader")
                     # Libérer les fonds réservés
-                    self.pocket_checker.release_funds(trade_amount, temp_cycle_id, pocket_type)
+                    self.pocket_checker.release_funds(reserve_amount_usdc, temp_cycle_id, pocket_type)
                     return None
                 
                 cycle_id = result.get('order_id')
@@ -1016,8 +1068,17 @@ class SignalHandler:
         
                 # Mettre à jour la réservation avec l'ID réel du cycle
                 try:
-                    self.pocket_checker.release_funds(trade_amount, temp_cycle_id, pocket_type)
-                    self.pocket_checker.reserve_funds(trade_amount, cycle_id, pocket_type)
+                    # Stocker le mapping dans Redis pour la réconciliation future
+                    try:
+                        # Utiliser la méthode set avec expiration du RedisClientPool
+                        self.redis_client.set(f"cycle_mapper:{temp_cycle_id}", cycle_id, expiration=3600)  # 1h TTL
+                        logger.debug(f"🔗 Mapping sauvé: {temp_cycle_id} → {cycle_id}")
+                    except Exception as redis_e:
+                        logger.warning(f"⚠️ Impossible de sauver le mapping Redis: {redis_e}")
+                    
+                    # Libérer l'ID temporaire et réserver avec l'ID final
+                    self.pocket_checker.release_funds(reserve_amount_usdc, temp_cycle_id, pocket_type)
+                    self.pocket_checker.reserve_funds(reserve_amount_usdc, cycle_id, pocket_type)
                     self.portfolio_circuit.record_success()
                 except Exception as e:
                     self.portfolio_circuit.record_failure()
@@ -1039,7 +1100,7 @@ class SignalHandler:
                 self.trader_circuit.record_failure()
                 logger.error(f"❌ Erreur lors de la création du cycle: {str(e)}")
                 # Libérer les fonds réservés
-                self.pocket_checker.release_funds(trade_amount, temp_cycle_id, pocket_type)
+                self.pocket_checker.release_funds(reserve_amount_usdc, temp_cycle_id, pocket_type)
                 return None
     
         except Exception as e:
@@ -1227,6 +1288,30 @@ class SignalHandler:
             
         except Exception as e:
             logger.error(f"Erreur lors de la récupération du prix BTC: {str(e)}")
+            return None
+    
+    def _get_eth_price(self) -> Optional[float]:
+        """
+        Récupère le prix actuel de ETH/USDC.
+        
+        Returns:
+            Prix de ETH en USDC ou None en cas d'échec
+        """
+        try:
+            # Récupérer le prix depuis le service trader via son API
+            url = f"{self.trader_api_url}/price/ETHUSDC"
+            response = self._make_request_with_retry(url, timeout=2.0)
+            
+            if response and 'price' in response:
+                eth_price = float(response['price'])
+                logger.debug(f"Prix ETH/USDC récupéré: {eth_price}")
+                return eth_price
+            
+            logger.warning("Impossible de récupérer le prix ETH/USDC")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération du prix ETH: {str(e)}")
             return None
         
     def handle_cycle_canceled(self, channel: str, data: Dict[str, Any]) -> None:

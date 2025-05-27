@@ -52,10 +52,10 @@ async def sync_db_forever():
         try:
             db = DBManager()
             pockets = PocketManager(db)
-            # DÉSACTIVÉ: La synchronisation des trades est maintenant gérée uniquement par le Trader
-            # pockets.sync_with_trades()
+            # RÉACTIVÉ: La synchronisation avec vérification périodique
+            pockets.sync_with_trades()
             db.close()
-            logger.info("🔄 Synchronisation des poches DB (sync_with_trades désactivé)")
+            logger.info("🔄 Synchronisation des poches DB terminée")
         except Exception as e:
             logger.error(f"❌ Erreur sync DB: {e}")
         await asyncio.sleep(60)

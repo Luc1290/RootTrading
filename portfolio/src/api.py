@@ -454,6 +454,7 @@ async def reserve_funds(
     pocket_type: str = Path(..., description="Type de poche (active, buffer, safety)"),
     amount: float = Query(..., description="Montant à réserver"),
     cycle_id: str = Query(..., description="ID du cycle de trading"),
+    asset: str = Query("USDC", description="Actif de la poche (USDC, BTC, ETH, etc.)"),
     pocket_manager: PocketManager = Depends(get_pocket_manager)
 ):
     """
@@ -474,7 +475,7 @@ async def reserve_funds(
     if pocket_type not in ['active', 'buffer', 'safety']:
         raise HTTPException(status_code=400, detail=f"Type de poche invalide: {pocket_type}")
     
-    success = pocket_manager.reserve_funds(pocket_type, amount, cycle_id)
+    success = pocket_manager.reserve_funds(pocket_type, amount, cycle_id, asset)
     
     if not success:
         raise HTTPException(status_code=400, detail="Échec de la réservation des fonds")
@@ -486,6 +487,7 @@ async def release_funds(
     pocket_type: str = Path(..., description="Type de poche (active, buffer, safety)"),
     amount: float = Query(..., description="Montant à libérer"),
     cycle_id: str = Query(..., description="ID du cycle de trading"),
+    asset: str = Query("USDC", description="Actif de la poche (USDC, BTC, ETH, etc.)"),
     pocket_manager: PocketManager = Depends(get_pocket_manager)
 ):
     """
@@ -506,7 +508,7 @@ async def release_funds(
     if pocket_type not in ['active', 'buffer', 'safety']:
         raise HTTPException(status_code=400, detail=f"Type de poche invalide: {pocket_type}")
     
-    success = pocket_manager.release_funds(pocket_type, amount, cycle_id)
+    success = pocket_manager.release_funds(pocket_type, amount, cycle_id, asset)
     
     if not success:
         raise HTTPException(status_code=400, detail="Échec de la libération des fonds")

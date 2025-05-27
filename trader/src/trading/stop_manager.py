@@ -55,6 +55,11 @@ class StopManager:
         trailing_updates = []
         
         for cycle in cycles:
+            # PROTECTION AJOUTÉE: Skip si le cycle est déjà terminé
+            if cycle.status == CycleStatus.COMPLETED:
+                logger.debug(f"⛔ Skip du stop/target check, cycle {cycle.id} déjà terminé.")
+                continue
+                
             # Vérifier les stop-loss
             if cycle.stop_price is not None:
                 if ((cycle.status in [CycleStatus.ACTIVE_BUY, CycleStatus.WAITING_SELL] and 

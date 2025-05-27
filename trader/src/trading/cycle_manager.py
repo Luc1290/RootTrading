@@ -160,7 +160,9 @@ class CycleManager:
                 
                 # Récupérer les soldes actuels
                 balances = self.binance_executor.utils.fetch_account_balances(self.binance_executor.time_offset)
+                logger.info(f"🔍 Balances Binance récupérées: {balances}")
                 available_balance = balances.get(quote_currency, {}).get('free', 0)
+                logger.info(f"💰 Balance {quote_currency}: {available_balance}")
                 
                 # Calculer le coût total de l'ordre
                 total_cost = price * quantity * 1.001  # Ajouter 0.1% pour les frais
@@ -283,6 +285,10 @@ class CycleManager:
             with self.cycles_lock:
                 cycle.entry_order_id = execution.order_id
                 cycle.entry_price = execution.price
+                # Si la quantité exécutée diffère, la stocker dans metadata
+                if execution.quantity != cycle.quantity:
+                    logger.info(f"📊 Quantité ajustée: {cycle.quantity} → {execution.quantity}")
+                    cycle.metadata['executed_quantity'] = float(execution.quantity)
                 cycle.status = CycleStatus.ACTIVE_BUY if side == OrderSide.BUY else CycleStatus.ACTIVE_SELL
                 cycle.confirmed = True
                 cycle.updated_at = datetime.now()
@@ -298,8 +304,16 @@ class CycleManager:
             logger.info(f"✅ Cycle {cycle_id} créé avec succès: {side.value} {quantity} {symbol} @ {execution.price}")
             
             # Créer automatiquement l'ordre de sortie si un prix cible existe
-            # On ne attend plus que l'ordre soit FILLED
+            # Valider et corriger le target_price si nécessaire
             if cycle.target_price:
+                # Vérifier la cohérence du target_price
+                original_target = cycle.target_price
+                cycle.target_price = self._fix_target_price_if_invalid(cycle.target_price, execution.price, side)
+                
+                if cycle.target_price != original_target:
+                    logger.warning(f"⚠️ Target price corrigé: {original_target} → {cycle.target_price} pour {side.value} @ {execution.price}")
+                    self.repository.save_cycle(cycle)
+                
                 logger.info(f"🎯 Création immédiate de l'ordre de sortie (target: {cycle.target_price})")
                 self._create_exit_order_for_cycle(cycle, initial_side=side)
             else:
@@ -360,16 +374,24 @@ class CycleManager:
         try:
             # Récupérer le cycle
             with self.cycles_lock:
+                # D'abord vérifier l'état en DB pour éviter les doubles fermetures
+                db_cycle = self.repository.get_cycle(cycle_id)
+                if db_cycle and db_cycle.status in [CycleStatus.COMPLETED, CycleStatus.CANCELED, CycleStatus.FAILED]:
+                    logger.debug(f"✅ Cycle {cycle_id} déjà fermé en DB avec le statut {db_cycle.status}")
+                    # Nettoyer le cache mémoire s'il y est encore
+                    self.active_cycles.pop(cycle_id, None)
+                    return True
+                
                 if cycle_id not in self.active_cycles:
-                    # Vérifier si le cycle est déjà fermé dans la DB
-                    db_cycle = self.cycle_repository.get_cycle(cycle_id)
-                    if db_cycle and db_cycle.status in [CycleStatus.COMPLETED, CycleStatus.CANCELED, CycleStatus.FAILED]:
-                        logger.debug(f"✅ Cycle {cycle_id} déjà fermé avec le statut {db_cycle.status}")
-                        return True  # Le cycle est déjà fermé, pas besoin de le traiter
                     logger.warning(f"⚠️ Cycle {cycle_id} non trouvé dans les cycles actifs")
                     return False
                 
                 cycle = self.active_cycles[cycle_id]
+                
+                # PROTECTION SUPPLÉMENTAIRE: Vérifier si le cycle en mémoire est déjà complété
+                if cycle.status == CycleStatus.COMPLETED:
+                    logger.info(f"⛔ Le cycle {cycle_id} est déjà marqué comme terminé, skip du close.")
+                    return True
             
             # Vérifier que le cycle peut être fermé
             if cycle.status not in [CycleStatus.WAITING_BUY, CycleStatus.ACTIVE_BUY, 
@@ -502,10 +524,15 @@ class CycleManager:
             else:
                 client_order_id = f"exit_{cycle_id}"
             
+            # Utiliser la quantité réellement exécutée à l'entrée (si disponible dans metadata)
+            exit_quantity = cycle.metadata.get('executed_quantity', cycle.quantity)
+            if exit_quantity != cycle.quantity:
+                logger.debug(f"📊 Utilisation de la quantité exécutée pour la sortie: {exit_quantity} (vs théorique: {cycle.quantity})")
+            
             exit_order = TradeOrder(
                 symbol=cycle.symbol,
                 side=exit_side,
-                quantity=cycle.quantity,
+                quantity=exit_quantity,
                 price=exit_price,  # None pour un ordre au marché si stop loss
                 client_order_id=client_order_id,
                 strategy=cycle.strategy,
@@ -595,10 +622,34 @@ class CycleManager:
                 self.active_cycles.pop(cycle_id, None)
             
             # Libérer les fonds dans la poche
-            if cycle.pocket and cycle.entry_price and cycle.quantity:
-                amount_to_release = cycle.entry_price * cycle.quantity
+            if cycle.pocket:
+                # Le montant de base réservé est toujours 80 USDC
+                base_amount = 80.0
+                
+                # Calculer le montant total à libérer (base + profit ou base - perte)
+                if cycle.symbol.endswith('USDC'):
+                    # Pour BTCUSDC, ETHUSDC : le profit_loss est déjà en USDC
+                    amount_to_release = base_amount + profit_loss
+                elif cycle.symbol.endswith('BTC'):
+                    # Pour ETHBTC : convertir le profit_loss de BTC vers USDC
+                    btc_price = self.binance_executor.utils.get_current_price('BTCUSDC')
+                    if btc_price and hasattr(cycle, 'profit_loss'):
+                        profit_loss_usdc = cycle.profit_loss * btc_price
+                        amount_to_release = base_amount + profit_loss_usdc
+                    else:
+                        # Si pas de prix ou pas de P&L, libérer juste le montant de base
+                        logger.warning(f"⚠️ Impossible de calculer le P&L en USDC, libération du montant de base")
+                        amount_to_release = base_amount
+                else:
+                    # Autre paire, utiliser juste le montant de base
+                    amount_to_release = base_amount
+                
+                # S'assurer qu'on ne libère pas un montant négatif
+                amount_to_release = max(0, amount_to_release)
+                
                 try:
                     self._release_pocket_funds(cycle.pocket, amount_to_release, cycle_id)
+                    logger.info(f"✅ {amount_to_release:.2f} USDC libérés de la poche {cycle.pocket} pour le cycle {cycle_id}")
                 except Exception as e:
                     logger.error(f"❌ Erreur lors de la libération des fonds: {str(e)}")
             
@@ -626,7 +677,7 @@ class CycleManager:
             with self.cycles_lock:
                 if cycle_id not in self.active_cycles:
                     # Vérifier si le cycle est déjà fermé dans la DB
-                    db_cycle = self.cycle_repository.get_cycle(cycle_id)
+                    db_cycle = self.repository.get_cycle(cycle_id)
                     if db_cycle and db_cycle.status in [CycleStatus.COMPLETED, CycleStatus.CANCELED, CycleStatus.FAILED]:
                         logger.debug(f"✅ Cycle {cycle_id} déjà fermé avec le statut {db_cycle.status}")
                         return True  # Le cycle est déjà fermé, pas d'erreur
@@ -682,10 +733,12 @@ class CycleManager:
                 self.active_cycles.pop(cycle_id, None)
             
             # Libérer les fonds dans la poche si le cycle avait réservé des fonds
-            if cycle.pocket and cycle.entry_price and cycle.quantity:
-                amount_to_release = cycle.entry_price * cycle.quantity
+            if cycle.pocket:
+                # Pour une annulation, on libère le montant de base sans profit/perte
+                amount_to_release = 80.0
                 try:
                     self._release_pocket_funds(cycle.pocket, amount_to_release, cycle_id)
+                    logger.info(f"✅ {amount_to_release:.2f} USDC libérés de la poche {cycle.pocket} pour le cycle annulé {cycle_id}")
                 except Exception as e:
                     logger.error(f"❌ Erreur lors de la libération des fonds: {str(e)}")
             
@@ -814,8 +867,11 @@ class CycleManager:
             # Utiliser le prix target s'il existe, sinon créer un ordre au marché
             exit_price = cycle.target_price if cycle.target_price else None
             
+            # Utiliser la quantité réellement exécutée à l'entrée (si disponible)
+            exit_quantity = getattr(cycle, 'executed_quantity', cycle.quantity)
+            
             logger.info(f"🎯 Création de l'ordre de sortie pour le cycle {cycle.id}")
-            logger.info(f"   Side: {exit_side.value}, Prix: {exit_price or 'MARKET'}, Quantité: {cycle.quantity}")
+            logger.info(f"   Side: {exit_side.value}, Prix: {exit_price or 'MARKET'}, Quantité: {exit_quantity}")
             
             # Vérifier les fonds disponibles avant de créer l'ordre de sortie
             balances = self.binance_executor.get_account_balances()
@@ -824,7 +880,7 @@ class CycleManager:
             if exit_side == OrderSide.BUY:
                 # Pour acheter, on a besoin de la devise de cotation (ex: USDC pour BTCUSDC)
                 quote_asset = cycle.symbol[-4:] if cycle.symbol.endswith('USDC') else cycle.symbol[-3:]
-                required_amount = cycle.quantity * (exit_price or cycle.entry_price)
+                required_amount = exit_quantity * (exit_price or cycle.entry_price)
                 available = balances.get(quote_asset, {}).get('free', 0)
                 
                 if available < required_amount:
@@ -835,8 +891,8 @@ class CycleManager:
                 base_asset = cycle.symbol[:-4] if cycle.symbol.endswith('USDC') else cycle.symbol[:-3]
                 available = balances.get(base_asset, {}).get('free', 0)
                 
-                if available < cycle.quantity:
-                    logger.warning(f"⚠️ Solde {base_asset} insuffisant pour l'ordre de sortie: {available:.8f} < {cycle.quantity:.8f}")
+                if available < exit_quantity:
+                    logger.warning(f"⚠️ Solde {base_asset} insuffisant pour l'ordre de sortie: {available:.8f} < {exit_quantity:.8f}")
                     # Continuer quand même car l'ordre pourrait être exécuté plus tard
             
             # Créer l'ordre de sortie
@@ -846,7 +902,7 @@ class CycleManager:
                 symbol=cycle.symbol,
                 side=exit_side,
                 price=exit_price,
-                quantity=cycle.quantity,
+                quantity=exit_quantity,
                 order_type=OrderType.LIMIT if exit_price else OrderType.MARKET,
                 client_order_id=f"exit_{cycle.id}"
             )
@@ -874,6 +930,42 @@ class CycleManager:
             logger.error(f"❌ Erreur lors de la création de l'ordre de sortie: {str(e)}")
             return False
     
+    def _fix_target_price_if_invalid(self, target_price: float, entry_price: float, side: OrderSide) -> float:
+        """
+        Corrige un target_price invalide en calculant un target cohérent.
+        
+        Args:
+            target_price: Prix cible original (potentiellement invalide)
+            entry_price: Prix d'entrée réel
+            side: Direction du trade (BUY ou SELL)
+            
+        Returns:
+            Prix cible corrigé et cohérent
+        """
+        try:
+            # Pour un BUY, le target doit être > entry_price
+            # Pour un SELL, le target doit être < entry_price
+            if side == OrderSide.BUY:
+                if target_price <= entry_price:
+                    # Target invalide pour un BUY, calculer un target à +1%
+                    corrected_target = entry_price * 1.01
+                    logger.warning(f"🔧 Target BUY invalide ({target_price} <= {entry_price}), corrigé à {corrected_target}")
+                    return corrected_target
+            elif side == OrderSide.SELL:
+                if target_price >= entry_price:
+                    # Target invalide pour un SELL, calculer un target à -1%
+                    corrected_target = entry_price * 0.99
+                    logger.warning(f"🔧 Target SELL invalide ({target_price} >= {entry_price}), corrigé à {corrected_target}")
+                    return corrected_target
+            
+            # Target valide, retourner tel quel
+            return target_price
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la correction du target_price: {str(e)}")
+            # En cas d'erreur, retourner un target par défaut à +/-1%
+            return entry_price * 1.01 if side == OrderSide.BUY else entry_price * 0.99
+
     def _release_pocket_funds(self, pocket_type: str, amount: float, cycle_id: str) -> bool:
         """
         Libère les fonds réservés dans une poche via l'API du portfolio.
