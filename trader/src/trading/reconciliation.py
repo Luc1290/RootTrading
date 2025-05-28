@@ -232,18 +232,18 @@ class ExchangeReconciliation:
                 # Synchroniser les balances du portfolio avant de créer l'ordre de sortie
                 logger.info(f"🔄 Synchronisation du portfolio avant création de l'ordre de sortie")
                 try:
-                    from shared.src.kafka_client import KafkaManager
+                    from shared.src.kafka_client import KafkaClientPool
                     import json
                     
                     # Envoyer un message pour forcer la synchronisation du portfolio
-                    kafka_manager = KafkaManager()
+                    kafka_manager = KafkaClientPool.get_instance()
                     sync_message = {
                         "type": "sync_request",
                         "cycle_id": cycle.id,
                         "symbol": cycle.symbol,
                         "reason": "reconciliation_exit_order"
                     }
-                    kafka_manager.send_message("portfolio.sync", json.dumps(sync_message))
+                    kafka_manager.produce("portfolio.sync", json.dumps(sync_message))
                     
                     # Attendre un peu pour que la synchronisation se fasse
                     time.sleep(2)

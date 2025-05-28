@@ -139,6 +139,10 @@ class InMemoryCache:
 # Instance globale du cache
 api_cache = InMemoryCache()
 
+# Instance globale du PocketManager (singleton)
+_pocket_manager_instance = None
+_pocket_manager_lock = threading.Lock()
+
 # Classes pour les réponses API
 class TradeHistoryResponse(BaseModel):
     trades: List[Dict[str, Any]]
@@ -198,13 +202,16 @@ def get_portfolio_model():
         model.close()
 
 def get_pocket_manager():
-    """Fournit une instance du gestionnaire de poches."""
-    db = DBManager()
-    manager = PocketManager(db_manager=db)
-    try:
-        yield manager
-    finally:
-        manager.close()
+    """Fournit une instance du gestionnaire de poches (singleton)."""
+    global _pocket_manager_instance
+    
+    with _pocket_manager_lock:
+        if _pocket_manager_instance is None:
+            db = DBManager()
+            _pocket_manager_instance = PocketManager(db_manager=db)
+            logger.info("✅ Instance singleton du PocketManager créée")
+    
+    yield _pocket_manager_instance
 
 # Routes
 @app.get("/")

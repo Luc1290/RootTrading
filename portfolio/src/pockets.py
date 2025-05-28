@@ -92,7 +92,11 @@ class PocketManager:
                     
                     for res_id, res_data in all_reservations.items():
                         try:
-                            reservation = json.loads(res_data)
+                            # Redis peut retourner soit une chaîne JSON, soit un dict déjà décodé
+                            if isinstance(res_data, dict):
+                                reservation = res_data
+                            else:
+                                reservation = json.loads(res_data)
                             # Si la réservation a plus de 24h, la considérer comme orpheline
                             age_hours = (time.time() - reservation.get('timestamp', 0)) / 3600
                             
@@ -305,7 +309,8 @@ class PocketManager:
             confirmed_cycles = [c for c in active_cycles_data if c.get("confirmed") is True]
 
             active_cycle_count = len(confirmed_cycles)
-            pocket_cycle_count = sum(p.get("active_cycles", 0) for p in pockets_data)
+            # Ne compter les cycles que pour l'asset USDC pour éviter la duplication
+            pocket_cycle_count = sum(p.get("active_cycles", 0) for p in pockets_data if p.get("asset") == "USDC")
 
             trade_used_value = sum(
                 float(c.get("quantity", 0)) * float(c.get("entry_price", 0))
@@ -367,8 +372,8 @@ class PocketManager:
         
         # Publier sur Kafka pour une meilleure intégration
         try:
-            from shared.src.kafka_client import KafkaManager
-            kafka = KafkaManager()
+            from shared.src.kafka_client import KafkaClientPool
+            kafka = KafkaClientPool.get_instance()
             
             event = {
                 "type": "pocket.updated",
@@ -376,7 +381,7 @@ class PocketManager:
                 "pockets": [p.dict() for p in pockets]
             }
             
-            kafka.send_message("portfolio.pockets", json.dumps(event))
+            kafka.produce("portfolio.pockets", json.dumps(event))
             logger.debug("📨 Événement pocket.updated publié sur Kafka")
             
         except Exception as e:
@@ -569,24 +574,44 @@ class PocketManager:
                     return False
                 
                 # Enregistrer l'opération dans la table des transactions de poches (journal)
-                journal_query = """
-                INSERT INTO pocket_transactions
-                (pocket_type, asset, transaction_type, amount, cycle_id, reservation_id, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, NOW())
-                ON CONFLICT DO NOTHING
-                """
-                
+                # IMPORTANT: Essayer le journal AVANT le commit de la transaction principale
+                journal_success = False
                 try:
+                    journal_query = """
+                    INSERT INTO pocket_transactions
+                    (pocket_type, asset, transaction_type, amount, cycle_id, reservation_id, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                    ON CONFLICT DO NOTHING
+                    """
                     self.db.execute_query(
                         journal_query, 
                         (pocket_type, asset, 'reserve', amount, cycle_id, reservation_id),
                         commit=False
                     )
+                    journal_success = True
+                    logger.debug(f"Journal avec reservation_id réussi pour {cycle_id}")
                 except Exception as e:
-                    # Si la table n'existe pas, on l'ignore
-                    logger.debug(f"Note: Table pocket_transactions peut ne pas exister: {str(e)}")
+                    # Fallback sans reservation_id si la colonne n'existe pas
+                    logger.debug(f"Fallback sans reservation_id: {str(e)}")
+                    try:
+                        journal_query_fallback = """
+                        INSERT INTO pocket_transactions
+                        (pocket_type, asset, transaction_type, amount, cycle_id, created_at)
+                        VALUES (%s, %s, %s, %s, %s, NOW())
+                        ON CONFLICT DO NOTHING
+                        """
+                        self.db.execute_query(
+                            journal_query_fallback, 
+                            (pocket_type, asset, 'reserve', amount, cycle_id),
+                            commit=False
+                        )
+                        journal_success = True
+                        logger.debug(f"Journal fallback réussi pour {cycle_id}")
+                    except Exception as e2:
+                        logger.warning(f"Impossible d'enregistrer le journal: {str(e2)}")
+                        # Continuer quand même la transaction principale
                 
-                # Valider la transaction
+                # Valider la transaction (pocket + journal)
                 self.db.execute_query("COMMIT")
                 
                 # Invalider le cache
@@ -660,20 +685,25 @@ class PocketManager:
             
             for res_id, res_data in all_reservations.items():
                 try:
-                    reservation = json.loads(res_data)
+                    # Redis peut retourner soit une chaîne JSON, soit un dict déjà décodé
+                    if isinstance(res_data, dict):
+                        reservation = res_data
+                    else:
+                        reservation = json.loads(res_data)
                     if reservation.get('cycle_id') == cycle_id:
                         reservation_found = reservation
                         break
                 except:
                     continue
             
-            # Si pas trouvé dans Redis, vérifier dans la DB
+            # Si pas trouvé dans Redis, vérifier dans la DB (fallback sans reservation_id)
+            # Vérifier d'abord s'il y a des réservations pour ce cycle_id (avec ou sans reservation_id)
             journal_check = """
-            SELECT SUM(amount) AS reserved, MAX(reservation_id) as reservation_id
+            SELECT SUM(amount) AS reserved
             FROM pocket_transactions
-            WHERE transaction_type = 'reserve' AND cycle_id = %s
+            WHERE transaction_type = 'reserve' AND cycle_id = %s AND pocket_type = %s AND asset = %s
             """
-            reserve_result = self.db.execute_query(journal_check, (cycle_id,), fetch_one=True, commit=False)
+            reserve_result = self.db.execute_query(journal_check, (cycle_id, pocket_type, asset), fetch_one=True, commit=False)
             
             reserved_amount = 0.0
             reservation_id = None
@@ -684,8 +714,8 @@ class PocketManager:
                 logger.debug(f"✅ Réservation trouvée dans Redis: {reservation_id}")
             elif reserve_result and reserve_result['reserved']:
                 reserved_amount = float(reserve_result['reserved'])
-                reservation_id = reserve_result.get('reservation_id')
-                logger.debug(f"✅ Réservation trouvée dans DB: {reservation_id}")
+                reservation_id = f"legacy_{cycle_id}"  # ID fallback pour les anciennes réservations
+                logger.debug(f"✅ Réservation trouvée dans DB (legacy): {cycle_id}")
             
             if reserved_amount <= 0:
                 logger.warning(f"⛔ Impossible de libérer le cycle {cycle_id}, aucune réservation détectée")
@@ -766,22 +796,36 @@ class PocketManager:
                 return False
             
             # Enregistrer l'opération dans la table des transactions de poches (journal)
-            journal_query = """
-            INSERT INTO pocket_transactions
-            (pocket_type, asset, transaction_type, amount, cycle_id, reservation_id, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, NOW())
-            ON CONFLICT DO NOTHING
-            """
-            
+            # Essayer d'abord avec reservation_id, puis fallback sans
             try:
+                journal_query = """
+                INSERT INTO pocket_transactions
+                (pocket_type, asset, transaction_type, amount, cycle_id, reservation_id, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                ON CONFLICT DO NOTHING
+                """
                 self.db.execute_query(
                     journal_query, 
                     (pocket_type, asset, 'release', amount, cycle_id, reservation_id),
                     commit=False
                 )
             except Exception as e:
-                # Si la table n'existe pas, on l'ignore
-                logger.debug(f"Note: Table pocket_transactions peut ne pas exister: {str(e)}")
+                # Fallback sans reservation_id si la colonne n'existe pas
+                logger.debug(f"Fallback sans reservation_id: {str(e)}")
+                journal_query_fallback = """
+                INSERT INTO pocket_transactions
+                (pocket_type, asset, transaction_type, amount, cycle_id, created_at)
+                VALUES (%s, %s, %s, %s, %s, NOW())
+                ON CONFLICT DO NOTHING
+                """
+                try:
+                    self.db.execute_query(
+                        journal_query_fallback, 
+                        (pocket_type, asset, 'release', amount, cycle_id),
+                        commit=False
+                    )
+                except Exception as e2:
+                    logger.debug(f"Note: Table pocket_transactions peut ne pas exister: {str(e2)}")
             
             # Valider la transaction
             self.db.execute_query("COMMIT")
@@ -857,6 +901,7 @@ class PocketManager:
         """
         try:
             # Mise à jour des cycles actifs pour les poches ayant des cycles
+            # Note: On met le nombre de cycles uniquement sur l'asset USDC pour éviter la duplication
             query = """
             WITH pocket_cycles AS (
                 SELECT 
@@ -872,7 +917,10 @@ class PocketManager:
             )
             UPDATE capital_pockets cp
             SET 
-                active_cycles = COALESCE(pc.cycle_count, 0),
+                active_cycles = CASE 
+                    WHEN cp.asset = 'USDC' THEN COALESCE(pc.cycle_count, 0)
+                    ELSE 0
+                END,
                 updated_at = NOW()
             FROM 
                 pocket_cycles pc

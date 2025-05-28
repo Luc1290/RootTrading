@@ -680,9 +680,7 @@ class DBContextManager:
         # Configurer la gestion de transaction
         if self.auto_transaction:
             self.conn.autocommit = False
-            # Démarrer explicitement une transaction
-            self.conn.cursor().execute("BEGIN")
-            self.conn.cursor().close()
+            # La transaction sera démarrée automatiquement au premier statement
         else:
             # S'assurer que autocommit est bien activé
             self.conn.autocommit = True

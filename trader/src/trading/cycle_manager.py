@@ -98,6 +98,16 @@ class CycleManager:
             
             logger.info(f"🧹 {len(cycles_to_remove)} cycles inactifs nettoyés de la mémoire")
     
+    def _remove_failed_cycle(self, cycle_id: str) -> None:
+        """
+        Supprime immédiatement un cycle failed de la mémoire.
+        Cette méthode est appelée dès qu'un cycle passe en statut FAILED.
+        """
+        with self.cycles_lock:
+            if cycle_id in self.active_cycles:
+                self.active_cycles.pop(cycle_id)
+                logger.debug(f"🗑️ Cycle {cycle_id} supprimé de la mémoire (FAILED)")
+    
     def _load_active_cycles_from_db(self) -> None:
         """
         Charge les cycles actifs depuis la base de données.
@@ -184,6 +194,12 @@ class CycleManager:
                     
                     # Publier l'événement d'échec
                     self._publish_cycle_event(cycle, "failed")
+                    
+                    # Nettoyer les ordres potentiels sur Binance
+                    self._cleanup_cycle_orders(cycle)
+                    
+                    # Ne pas ajouter le cycle failed dans active_cycles
+                    # (Il n'y est pas encore car on retourne None avant de l'ajouter)
                     
                     # Proposer une quantité ajustée si possible
                     adjusted_quantity = (available_balance * 0.99) / price  # 99% du solde pour garder une marge
@@ -499,6 +515,8 @@ class CycleManager:
                         cycle.status = CycleStatus.FAILED
                         cycle.updated_at = datetime.now()
                     self.repository.save_cycle(cycle)
+                    # Supprimer le cycle de la mémoire
+                    self._remove_failed_cycle(cycle_id)
                     return False
             else:
                 # Pour acheter, on a besoin de la devise de cotation (ex: USDC pour BTCUSDC)
@@ -513,6 +531,8 @@ class CycleManager:
                         cycle.status = CycleStatus.FAILED
                         cycle.updated_at = datetime.now()
                     self.repository.save_cycle(cycle)
+                    # Supprimer le cycle de la mémoire
+                    self._remove_failed_cycle(cycle_id)
                     return False
             
             # Créer l'ordre de sortie avec un ID unique pour éviter les duplicatas
@@ -555,6 +575,8 @@ class CycleManager:
                         cycle.updated_at = datetime.now()
                     self.repository.save_cycle(cycle)
                     logger.error(f"❌ Cycle {cycle_id} marqué comme FAILED suite à un solde insuffisant")
+                    # Supprimer le cycle de la mémoire
+                    self._remove_failed_cycle(cycle_id)
                 
                 return False
             
@@ -617,6 +639,9 @@ class CycleManager:
             
             # Publier sur Redis
             self._publish_cycle_event(cycle, "closed")
+            
+            # Nettoyer les ordres restants sur Binance
+            self._cleanup_cycle_orders(cycle)
             
             # Supprimer le cycle des cycles actifs
             with self.cycles_lock:
@@ -729,6 +754,9 @@ class CycleManager:
             # Publier sur Redis
             self._publish_cycle_event(cycle, "canceled")
             
+            # Nettoyer les ordres restants sur Binance
+            self._cleanup_cycle_orders(cycle)
+            
             # Supprimer le cycle des cycles actifs
             with self.cycles_lock:
                 self.active_cycles.pop(cycle_id, None)
@@ -784,6 +812,14 @@ class CycleManager:
             logger.error(f"❌ Erreur lors de la mise à jour du stop-loss pour le cycle {cycle_id}: {str(e)}")
             return False
     
+    def reload_active_cycles(self) -> None:
+        """
+        Recharge les cycles actifs depuis la base de données.
+        Utile pour resynchroniser la mémoire avec la DB.
+        """
+        logger.info("🔄 Rechargement des cycles actifs depuis la DB...")
+        self._load_active_cycles_from_db()
+    
     def get_cycle(self, cycle_id: str) -> Optional[TradeCycle]:
         """
         Récupère un cycle par son ID.
@@ -809,7 +845,9 @@ class CycleManager:
             Liste des cycles actifs filtrés
         """
         with self.cycles_lock:
-            cycles = list(self.active_cycles.values())
+            # Filtrer les cycles FAILED qui ne devraient pas être là
+            cycles = [cycle for cycle in self.active_cycles.values() 
+                     if cycle.status not in [CycleStatus.FAILED, CycleStatus.COMPLETED, CycleStatus.CANCELED]]
         
         # Filtrer par symbole
         if symbol:
@@ -1000,6 +1038,61 @@ class CycleManager:
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'appel à l'API portfolio: {str(e)}")
             return False
+    
+    def _cleanup_cycle_orders(self, cycle: TradeCycle) -> None:
+        """
+        Annule tous les ordres ouverts d'un cycle sur Binance.
+        Appelé lors de la fermeture ou l'échec d'un cycle.
+        
+        Args:
+            cycle: Le cycle dont les ordres doivent être nettoyés
+        """
+        try:
+            orders_to_cancel = []
+            
+            # Vérifier l'ordre d'entrée
+            if cycle.entry_order_id:
+                # Vérifier le statut de l'ordre
+                order_status = self.binance_executor.get_order_status(cycle.symbol, cycle.entry_order_id)
+                if order_status and order_status.status == OrderStatus.NEW:
+                    orders_to_cancel.append(('entrée', cycle.entry_order_id))
+            
+            # Vérifier l'ordre de sortie
+            if cycle.exit_order_id:
+                # Vérifier le statut de l'ordre
+                order_status = self.binance_executor.get_order_status(cycle.symbol, cycle.exit_order_id)
+                if order_status and order_status.status == OrderStatus.NEW:
+                    orders_to_cancel.append(('sortie', cycle.exit_order_id))
+            
+            # Annuler les ordres trouvés
+            for order_type, order_id in orders_to_cancel:
+                try:
+                    result = self.binance_executor.cancel_order(cycle.symbol, order_id)
+                    if result:
+                        logger.info(f"🧹 Ordre {order_type} {order_id} annulé pour le cycle {cycle.id}")
+                        
+                        # Mettre à jour le statut dans la DB
+                        try:
+                            update_query = """
+                            UPDATE trade_executions
+                            SET status = 'CANCELED', updated_at = NOW()
+                            WHERE order_id = %s
+                            """
+                            # Utiliser DBContextManager avec transaction
+                            with DBContextManager(self.db_url) as cursor:
+                                cursor.execute(update_query, (order_id,))
+                        except Exception as db_error:
+                            logger.warning(f"⚠️ Impossible de mettre à jour le statut en DB: {str(db_error)}")
+                    else:
+                        logger.warning(f"⚠️ Impossible d'annuler l'ordre {order_type} {order_id}")
+                except Exception as e:
+                    logger.error(f"❌ Erreur lors de l'annulation de l'ordre {order_id}: {str(e)}")
+            
+            if orders_to_cancel:
+                logger.info(f"✅ {len(orders_to_cancel)} ordres nettoyés pour le cycle {cycle.id}")
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur lors du nettoyage des ordres du cycle {cycle.id}: {str(e)}")
     
     def close(self) -> None:
         """

@@ -657,6 +657,19 @@ class RedisClientPool:
         # Parser chaque valeur
         return {k: self._parse_value(v) for k, v in result.items()} if result else {}
     
+    def hdel(self, name: str, *keys) -> int:
+        """
+        Supprime un ou plusieurs champs d'une table de hachage.
+        
+        Args:
+            name: Nom de la table
+            *keys: Clés des champs à supprimer
+            
+        Returns:
+            Nombre de champs supprimés
+        """
+        return self._retry_operation(self.redis.hdel, name, *keys)
+    
     def sadd(self, key: str, *values) -> int:
         """
         Ajoute un ou plusieurs éléments à un set.

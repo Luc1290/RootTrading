@@ -1157,7 +1157,7 @@ class SignalHandler:
         logger.info("🚀 Démarrage du gestionnaire de signaux...")
         
         # S'abonner au canal des signaux
-        self.redis_client.subscribe(self.signal_channel, self._process_signal)
+        self.pubsub_client_id = self.redis_client.subscribe(self.signal_channel, self._process_signal)
         
         # Démarrer le thread de traitement des signaux
         self.stop_event.clear()
@@ -1201,7 +1201,8 @@ class SignalHandler:
         self.sync_monitor.stop()
         
         # Se désabonner du canal Redis
-        self.redis_client.unsubscribe()
+        if hasattr(self, 'pubsub_client_id'):
+            self.redis_client.unsubscribe(self.pubsub_client_id)
         
         logger.info("✅ Gestionnaire de signaux arrêté")
 

@@ -41,7 +41,8 @@ class CycleRepository:
             db_url: URL de connexion à la base de données
         """
         self.db_url = db_url
-        self._init_db_schema()
+        # Commenté temporairement - les tables existent déjà
+        # self._init_db_schema()
         logger.info("✅ CycleRepository initialisé")
     
     def _init_db_schema(self) -> None:
@@ -50,10 +51,11 @@ class CycleRepository:
         Crée les tables nécessaires si elles n'existent pas.
         """
         try:
-            # Use a connection with autocommit=True for schema operations
-            with DBContextManager(auto_transaction=False) as cursor:
-                # Table des ordres/exécutions
-                cursor.execute("""
+            # Use a connection from the pool for schema operations
+            with DBContextManager(self.db_url) as db:
+                with db.get_connection() as conn:
+                    # Table des ordres/exécutions
+                    cursor.execute("""
                 CREATE TABLE IF NOT EXISTS trade_executions (
                     order_id VARCHAR(50) PRIMARY KEY,
                     symbol VARCHAR(20) NOT NULL,

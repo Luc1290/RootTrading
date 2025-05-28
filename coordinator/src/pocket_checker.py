@@ -69,12 +69,12 @@ class PocketChecker:
     def _start_kafka_listener(self):
         """Démarre l'écoute des événements Kafka pour les mises à jour de pockets."""
         try:
-            from shared.src.kafka_client import KafkaManager
+            from shared.src.kafka_client import KafkaClientPool
             
             def kafka_listener():
-                kafka = KafkaManager()
+                kafka = KafkaClientPool.get_instance()
                 
-                def handle_pocket_update(message):
+                def handle_pocket_update(topic, message):
                     try:
                         data = json.loads(message) if isinstance(message, str) else message
                         event_type = data.get('type', '')
@@ -92,7 +92,7 @@ class PocketChecker:
                         logger.error(f"Erreur lors du traitement de l'événement Kafka: {e}")
                 
                 # S'abonner au topic des pockets
-                kafka.subscribe("portfolio.pockets", handle_pocket_update)
+                kafka.consume(["portfolio.pockets"], handle_pocket_update)
                 logger.info("📡 Écoute Kafka démarrée pour portfolio.pockets")
                 
             # Démarrer dans un thread séparé
@@ -339,8 +339,8 @@ class PocketChecker:
                 logger.error(f"❌ Échec de la réservation des fonds: aucune réponse")
                 return False
             
-            # Invalider le cache
-            self.last_cache_update = 0
+            # Forcer un rafraîchissement immédiat du cache
+            self.force_refresh()
             
             logger.info(f"✅ {amount:.2f} USDC réservés dans la poche {pocket_type} pour le cycle {cycle_id}")
             return True
@@ -371,8 +371,8 @@ class PocketChecker:
                 logger.error(f"❌ Échec de la libération des fonds: aucune réponse")
                 return False
             
-            # Invalider le cache
-            self.last_cache_update = 0
+            # Forcer un rafraîchissement immédiat du cache
+            self.force_refresh()
             
             logger.info(f"✅ {amount:.2f} USDC libérés dans la poche {pocket_type} pour le cycle {cycle_id}")
             return True

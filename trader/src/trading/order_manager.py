@@ -5,6 +5,7 @@ Version simplifiée utilisant les nouveaux modules.
 """
 import logging
 import time
+import threading
 from typing import Dict, List, Any, Optional, Union
 
 from shared.src.config import SYMBOLS, TRADE_QUANTITIES, TRADE_QUANTITY, TRADING_MODE
@@ -423,7 +424,16 @@ class OrderManager:
         self.reconciliation_service.start()
         
         # Force une réconciliation initiale pour nettoyer les cycles fantômes
-        self.reconciliation_service.force_reconciliation()
+        # Utiliser un thread séparé pour éviter de bloquer le démarrage
+        def delayed_reconciliation():
+            time.sleep(5)  # Attendre 5 secondes après le démarrage
+            try:
+                logger.info("🔄 Lancement de la réconciliation initiale...")
+                self.reconciliation_service.force_reconciliation()
+            except Exception as e:
+                logger.error(f"❌ Erreur lors de la réconciliation initiale: {str(e)}")
+        
+        threading.Thread(target=delayed_reconciliation, daemon=True).start()
         
         logger.info("✅ Gestionnaire d'ordres démarré")
     
