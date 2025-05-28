@@ -208,6 +208,9 @@ class BollingerStrategy(BaseStrategy):
             else:
                 target_price = middle[-1]  # Bande du milieu
             
+            # S'assurer que le target BUY est supérieur au prix d'entrée
+            target_price = max(target_price, current_price * 1.005)
+            
             # Stop dynamique basé sur la volatilité
             stop_distance = band_width * 0.2  # 20% de la largeur de bande
             stop_price = current_price - stop_distance
@@ -260,6 +263,9 @@ class BollingerStrategy(BaseStrategy):
                 target_price = current_upper - (band_width * 0.5)  # 50% du chemin vers le milieu
             else:
                 target_price = middle[-1]  # Bande du milieu
+            
+            # S'assurer que le target SELL est inférieur au prix d'entrée
+            target_price = min(target_price, current_price * 0.995)
             
             # Stop dynamique basé sur la volatilité
             stop_distance = band_width * 0.2  # 20% de la largeur de bande

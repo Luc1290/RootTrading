@@ -574,6 +574,47 @@ class BinanceUtils:
             # En cas d'erreur, retourner des frais standard
             return (0.001, 0.001)
                 
+    def fetch_open_orders(self, symbol: Optional[str] = None, time_offset: int = 0) -> List[Dict[str, Any]]:
+        """
+        Récupère tous les ordres ouverts sur Binance.
+        
+        Args:
+            symbol: Symbole optionnel pour filtrer (si None, récupère tous les ordres)
+            time_offset: Décalage temporel avec le serveur Binance
+            
+        Returns:
+            Liste des ordres ouverts
+        """
+        try:
+            orders_url = f"{self.BASE_URL}{self.API_V3}/openOrders"
+            timestamp = int(time.time() * 1000) + time_offset
+            
+            params = {"timestamp": timestamp}
+            
+            # Ajouter le symbole si spécifié
+            if symbol:
+                params["symbol"] = symbol
+            
+            # Générer la signature
+            params["signature"] = self.generate_signature(params)
+            
+            # Envoyer la requête
+            response = self.session.get(orders_url, params=params)
+            response.raise_for_status()
+            
+            orders = response.json()
+            logger.info(f"📊 {len(orders)} ordres ouverts trouvés" + (f" pour {symbol}" if symbol else ""))
+            
+            return orders
+        
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la récupération des ordres ouverts: {str(e)}")
+            if hasattr(e, 'response') and e.response:
+                logger.error(f"Réponse: {e.response.text}")
+            
+            # En cas d'erreur, retourner une liste vide
+            return []
+                
     def fetch_exchange_info(self) -> Dict[str, Dict[str, Any]]:
         """
         Récupère les informations de trading pour tous les symboles.

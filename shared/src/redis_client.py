@@ -684,6 +684,20 @@ class RedisClientPool:
         formatted_values = [self._format_value(v) for v in values]
         return self._retry_operation(self.redis.sadd, key, *formatted_values)
     
+    def srem(self, key: str, *values) -> int:
+        """
+        Supprime un ou plusieurs éléments d'un set.
+        
+        Args:
+            key: Clé du set
+            *values: Valeurs à supprimer
+            
+        Returns:
+            Nombre d'éléments supprimés
+        """
+        formatted_values = [self._format_value(v) for v in values]
+        return self._retry_operation(self.redis.srem, key, *formatted_values)
+    
     def smembers(self, key: str) -> List[Any]:
         """
         Récupère tous les membres d'un set.
@@ -696,6 +710,19 @@ class RedisClientPool:
         """
         result = self._retry_operation(self.redis.smembers, key)
         return [self._parse_value(v) for v in result] if result else []
+    
+    def incrbyfloat(self, key: str, value: float) -> float:
+        """
+        Incrémente la valeur d'une clé par un nombre à virgule flottante.
+        
+        Args:
+            key: Clé dont la valeur sera incrémentée
+            value: Valeur à incrémenter (float)
+            
+        Returns:
+            Nouvelle valeur de la clé après incrémentation
+        """
+        return self._retry_operation(self.redis.incrbyfloat, key, float(value))
     
     def pipeline(self):
         """

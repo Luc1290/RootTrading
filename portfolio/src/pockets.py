@@ -260,17 +260,30 @@ class PocketManager:
         if not result:
             return []
         
-        # Convertir en objets PocketSummary
+        # Convertir en objets PocketSummary avec recalcul des valeurs réelles
         pockets = []
         for row in result:
+            pocket_type = row['pocket_type']
+            asset = row['asset']
+            current_value = float(row['current_value'])
+            
+            # Recalculer used_value depuis les transactions réelles
+            real_used_value = self._calculate_real_used_value(pocket_type, asset)
+            
+            # Recalculer active_cycles depuis les cycles actifs avec réservations
+            real_active_cycles = self._calculate_real_active_cycles(pocket_type, asset)
+            
+            # Recalculer available_value
+            real_available_value = max(0, current_value - real_used_value)
+            
             pocket = PocketSummary(
-                pocket_type=row['pocket_type'],
-                asset=row['asset'],
+                pocket_type=pocket_type,
+                asset=asset,
                 allocation_percent=float(row['allocation_percent']),
-                current_value=float(row['current_value']),
-                used_value=float(row['used_value']),
-                available_value=float(row['available_value']),
-                active_cycles=row['active_cycles']
+                current_value=current_value,
+                used_value=real_used_value,
+                available_value=real_available_value,
+                active_cycles=real_active_cycles
             )
             pockets.append(pocket)
         
@@ -278,6 +291,69 @@ class PocketManager:
         SharedCache.set('pockets', pockets)
         
         return pockets
+    
+    def _calculate_real_used_value(self, pocket_type: str, asset: str) -> float:
+        """
+        Calcule la vraie valeur utilisée depuis les transactions de réservation actives.
+        Ne considère que les cycles réellement actifs en base de données.
+        
+        Args:
+            pocket_type: Type de poche
+            asset: Actif
+            
+        Returns:
+            Montant réellement réservé pour des cycles actifs
+        """
+        try:
+            # Récupérer la somme des réservations actives SEULEMENT pour les cycles actifs
+            query = """
+            SELECT COALESCE(SUM(
+                CASE WHEN pt.transaction_type = 'reserve' THEN pt.amount
+                     WHEN pt.transaction_type = 'release' THEN -pt.amount
+                     ELSE 0 END
+            ), 0) AS net_reserved
+            FROM pocket_transactions pt
+            INNER JOIN trade_cycles tc ON pt.cycle_id = tc.id
+            WHERE pt.pocket_type = %s AND pt.asset = %s
+            AND tc.status NOT IN ('completed', 'canceled', 'failed')
+            """
+            result = self.db.execute_query(query, (pocket_type, asset), fetch_one=True)
+            net_reserved = float(result['net_reserved']) if result else 0.0
+            
+            # S'assurer que la valeur n'est pas négative
+            return max(0, net_reserved)
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur lors du calcul de used_value pour {pocket_type}/{asset}: {str(e)}")
+            return 0.0
+    
+    def _calculate_real_active_cycles(self, pocket_type: str, asset: str) -> int:
+        """
+        Calcule le nombre réel de cycles actifs ayant des réservations dans cette poche.
+        Ne considère que les cycles réellement actifs en base de données.
+        
+        Args:
+            pocket_type: Type de poche
+            asset: Actif
+            
+        Returns:
+            Nombre de cycles actifs avec réservations
+        """
+        try:
+            # Compter simplement les cycles actifs dans cette poche
+            query = """
+            SELECT COUNT(*) AS active_cycles
+            FROM trade_cycles
+            WHERE status NOT IN ('completed', 'canceled', 'failed')
+            AND pocket = %s
+            """
+            result = self.db.execute_query(query, (pocket_type,), fetch_one=True)
+            return int(result['active_cycles']) if result else 0
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur lors du calcul d'active_cycles pour {pocket_type}/{asset}: {str(e)}")
+            return 0
+
     def check_pocket_synchronization(self) -> bool:
         """
         Vérifie si les poches sont synchronisées avec les cycles **réellement confirmés**.
@@ -653,6 +729,168 @@ class PocketManager:
         logger.error(f"❌ Impossible de réserver les fonds après {max_retries} tentatives")
         return False
     
+    def get_reserved_amount(self, pocket_type: str, cycle_id: str, asset: str = "USDC") -> float:
+        """
+        Récupère le montant restant à libérer pour un cycle donné.
+        
+        Args:
+            pocket_type: Type de poche ('active', 'buffer', 'safety')
+            cycle_id: ID du cycle de trading
+            asset: Actif de la poche (USDC, BTC, ETH, etc.)
+            
+        Returns:
+            Montant restant à libérer (0 si entièrement libéré)
+        """
+        try:
+            # Vérifier les montants réservés vs libérés pour ce cycle
+            reserved_query = """
+            SELECT COALESCE(SUM(amount), 0) AS reserved
+            FROM pocket_transactions
+            WHERE transaction_type = 'reserve' AND cycle_id = %s AND pocket_type = %s AND asset = %s
+            """
+            reserved_result = self.db.execute_query(reserved_query, (cycle_id, pocket_type, asset), fetch_one=True)
+            
+            released_query = """
+            SELECT COALESCE(SUM(amount), 0) AS released
+            FROM pocket_transactions
+            WHERE transaction_type = 'release' AND cycle_id = %s AND pocket_type = %s AND asset = %s
+            """
+            released_result = self.db.execute_query(released_query, (cycle_id, pocket_type, asset), fetch_one=True)
+            
+            reserved_amount = float(reserved_result['reserved']) if reserved_result else 0.0
+            released_amount = float(released_result['released']) if released_result else 0.0
+            
+            remaining = max(0, reserved_amount - released_amount)
+            logger.debug(f"🔍 Cycle {cycle_id}: réservé={reserved_amount}, libéré={released_amount}, restant={remaining}")
+            
+            return remaining
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la vérification des montants réservés: {str(e)}")
+            return 0.0
+
+    def get_reserved_amount_with_lock(self, pocket_type: str, cycle_id: str, asset: str = "USDC") -> float:
+        """
+        Récupère le montant restant à libérer pour un cycle donné avec verrouillage pour éviter les race conditions.
+        
+        Args:
+            pocket_type: Type de poche ('active', 'buffer', 'safety')
+            cycle_id: ID du cycle de trading
+            asset: Actif de la poche (USDC, BTC, ETH, etc.)
+            
+        Returns:
+            Montant restant à libérer (0 si entièrement libéré)
+        """
+        try:
+            # Démarrer une transaction explicite pour le verrouillage
+            self.db.execute_query("BEGIN")
+            
+            # CORRECTION: Verrouiller d'abord les lignes concernées, puis faire l'agrégation
+            # Verrouiller toutes les transactions pour ce cycle
+            lock_query = """
+            SELECT id FROM pocket_transactions
+            WHERE cycle_id = %s AND pocket_type = %s AND asset = %s
+            FOR UPDATE
+            """
+            self.db.execute_query(lock_query, (cycle_id, pocket_type, asset), commit=False)
+            
+            # Maintenant calculer les montants (les lignes sont verrouillées)
+            reserved_query = """
+            SELECT COALESCE(SUM(amount), 0) AS reserved
+            FROM pocket_transactions
+            WHERE transaction_type = 'reserve' AND cycle_id = %s AND pocket_type = %s AND asset = %s
+            """
+            reserved_result = self.db.execute_query(reserved_query, (cycle_id, pocket_type, asset), fetch_one=True, commit=False)
+            
+            released_query = """
+            SELECT COALESCE(SUM(amount), 0) AS released
+            FROM pocket_transactions
+            WHERE transaction_type = 'release' AND cycle_id = %s AND pocket_type = %s AND asset = %s
+            """
+            released_result = self.db.execute_query(released_query, (cycle_id, pocket_type, asset), fetch_one=True, commit=False)
+            
+            reserved_amount = float(reserved_result['reserved']) if reserved_result else 0.0
+            released_amount = float(released_result['released']) if released_result else 0.0
+            
+            remaining = max(0, reserved_amount - released_amount)
+            
+            # Commit pour libérer les verrous
+            self.db.execute_query("COMMIT")
+            
+            logger.debug(f"🔒 Cycle {cycle_id} (avec verrou): réservé={reserved_amount}, libéré={released_amount}, restant={remaining}")
+            
+            return remaining
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la vérification verrouillée des montants réservés: {str(e)}")
+            self.db.execute_query("ROLLBACK")
+            return 0.0
+
+    def deposit_funds(self, pocket_type: str, amount: float, source: str, asset: str = "USDC") -> bool:
+        """
+        Dépose des fonds dans une poche (ex: profits).
+        
+        Args:
+            pocket_type: Type de poche ('active', 'buffer', 'safety')
+            amount: Montant à déposer
+            source: Source du dépôt
+            asset: Actif de la poche (USDC, BTC, ETH, etc.)
+            
+        Returns:
+            True si le dépôt a réussi, False sinon
+        """
+        if amount <= 0:
+            logger.warning(f"⚠️ Montant invalide: {amount}")
+            return False
+        
+        try:
+            # Démarrer une transaction
+            self.db.execute_query("BEGIN")
+            
+            # Enregistrer la transaction de dépôt
+            transaction_query = """
+            INSERT INTO pocket_transactions (
+                id, pocket_type, asset, transaction_type, amount, 
+                reference_id, description, created_at
+            ) VALUES (
+                gen_random_uuid(), %s, %s, 'deposit', %s, 
+                %s, %s, NOW()
+            )
+            """
+            
+            description = f"Dépôt de {source}"
+            self.db.execute_query(
+                transaction_query, 
+                (pocket_type, asset, amount, source, description), 
+                commit=False
+            )
+            
+            # Mettre à jour le solde de la poche
+            update_query = """
+            UPDATE capital_pockets 
+            SET current_value = current_value + %s,
+                available_value = available_value + %s,
+                updated_at = NOW()
+            WHERE pocket_type = %s AND asset = %s
+            """
+            
+            self.db.execute_query(update_query, (amount, amount, pocket_type, asset), commit=False)
+            
+            # Valider la transaction
+            self.db.execute_query("COMMIT")
+            
+            logger.info(f"💰 {amount:.2f} {asset} déposés dans la poche {pocket_type} (source: {source})")
+            
+            # Publier l'état des poches
+            self._publish_pockets_state()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur lors du dépôt: {str(e)}")
+            self.db.execute_query("ROLLBACK")
+            return False
+
     def release_funds(self, pocket_type: str, amount: float, cycle_id: str, asset: str = "USDC") -> bool:
         """
         Libère des fonds réservés dans une poche.

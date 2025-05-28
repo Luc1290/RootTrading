@@ -574,7 +574,7 @@ async def release_funds(
     pocket_manager: PocketManager = Depends(get_pocket_manager)
 ):
     """
-    Libère des fonds réservés dans une poche.
+    Libère des fonds réservés dans une poche avec idempotence.
     
     Args:
         pocket_type: Type de poche
@@ -591,6 +591,26 @@ async def release_funds(
     if pocket_type not in ['active', 'buffer', 'safety']:
         raise HTTPException(status_code=400, detail=f"Type de poche invalide: {pocket_type}")
     
+    # IDEMPOTENCE: Vérifier si ce cycle a déjà été entièrement libéré
+    try:
+        # Vérifier s'il reste des fonds réservés pour ce cycle
+        remaining_reserved = pocket_manager.get_reserved_amount_with_lock(pocket_type, cycle_id, asset)
+        
+        if remaining_reserved == 0:
+            # Cycle déjà entièrement libéré, retourner succès (idempotent)
+            logger.info(f"⚠️ Tentative de libérer {amount}, mais le cycle {cycle_id} est déjà entièrement libéré")
+            return {"status": "success", "message": f"Cycle {cycle_id} déjà entièrement libéré", "already_released": True}
+        
+        if remaining_reserved < amount:
+            # Tentative de libérer plus que ce qui reste
+            logger.warning(f"⚠️ Tentative de libérer {amount}, mais seulement {remaining_reserved} reste à libérer pour le cycle {cycle_id}")
+            # Libérer seulement ce qui reste
+            amount = remaining_reserved
+            
+    except Exception as e:
+        logger.warning(f"⚠️ Impossible de vérifier le montant réservé: {str(e)}")
+        # Continuer avec la libération normale en cas d'erreur de vérification
+    
     success = pocket_manager.release_funds(pocket_type, amount, cycle_id, asset)
     
     if not success:
@@ -600,6 +620,74 @@ async def release_funds(
     api_cache.clear("pockets")
     
     return {"status": "success", "message": f"{amount} libérés dans la poche {pocket_type}"}
+
+@app.post("/pockets/{pocket_type}/deposit", status_code=200)
+async def deposit_funds(
+    pocket_type: str = Path(..., description="Type de poche (active, buffer, safety)"),
+    amount: float = Query(..., description="Montant à déposer"),
+    source: str = Query(..., description="Source du dépôt (ex: profit_cycle_123)"),
+    asset: str = Query("USDC", description="Actif de la poche (USDC, BTC, ETH, etc.)"),
+    pocket_manager: PocketManager = Depends(get_pocket_manager)
+):
+    """
+    Dépose des fonds dans une poche (ex: profits).
+    
+    Args:
+        pocket_type: Type de poche
+        amount: Montant à déposer
+        source: Source du dépôt
+        asset: Actif
+    
+    Returns:
+        Statut du dépôt
+    """
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Montant invalide")
+    
+    # Valider le type de poche - dépôts autorisés seulement sur buffer/safety
+    if pocket_type not in ['buffer', 'safety']:
+        raise HTTPException(status_code=400, detail=f"Dépôts non autorisés sur la poche '{pocket_type}'. Utilisez 'buffer' ou 'safety'.")
+    
+    success = pocket_manager.deposit_funds(pocket_type, amount, source, asset)
+    
+    if not success:
+        raise HTTPException(status_code=400, detail="Échec du dépôt des fonds")
+    
+    # Invalider le cache après le dépôt
+    api_cache.clear("pockets")
+    
+    return {"status": "success", "message": f"{amount} {asset} déposés dans la poche {pocket_type}"}
+
+@app.get("/pockets/{pocket_type}/reserved", status_code=200)
+async def get_reserved_amount(
+    pocket_type: str = Path(..., description="Type de poche (active, buffer, safety)"),
+    cycle_id: str = Query(..., description="ID du cycle de trading"),
+    asset: str = Query("USDC", description="Actif de la poche (USDC, BTC, ETH, etc.)"),
+    pocket_manager: PocketManager = Depends(get_pocket_manager)
+):
+    """
+    Récupère le montant réservé pour un cycle donné.
+    
+    Args:
+        pocket_type: Type de poche
+        cycle_id: ID du cycle de trading
+        asset: Actif
+    
+    Returns:
+        Montant réservé
+    """
+    # Valider le type de poche
+    if pocket_type not in ['active', 'buffer', 'safety']:
+        raise HTTPException(status_code=400, detail=f"Type de poche invalide: {pocket_type}")
+    
+    reserved_amount = pocket_manager.get_reserved_amount(pocket_type, cycle_id, asset)
+    
+    return {
+        "cycle_id": cycle_id,
+        "pocket_type": pocket_type,
+        "asset": asset,
+        "reserved_amount": reserved_amount
+    }
 
 @app.get("/trades", response_model=TradeHistoryResponse)
 async def get_trade_history(

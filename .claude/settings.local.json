@@ -1,13 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(docker exec:*)",
-      "Bash(docker restart:*)",
+      "Bash(docker exec:*)",      
       "Bash(docker cp:*)",
-      "Bash(__NEW_LINE__ docker cp /mnt/e/RootTrading/RootTrading/trader/src/exchange/constraints.py roottrading-trader-1:/app/trader/src/exchange/)",
-      "Bash(__NEW_LINE__ docker cp /mnt/e/RootTrading/RootTrading/trader/src/trading/order_manager.py roottrading-trader-1:/app/trader/src/trading/)",
-      "Bash(__NEW_LINE__ docker restart roottrading-trader-1)",
-      "Bash(docker-compose restart:*)",
       "Bash(docker-compose exec:*)",
       "Bash(docker-compose ps:*)",
       "Bash(docker-compose logs:*)",
@@ -18,11 +13,10 @@
       "Bash(docker logs:*)",
       "Bash(grep:*)",
       "Bash(timeout 30 docker-compose logs -f trader)",
-      "Bash(python:*)",
-      "Bash(docker-compose up:*)",
-      "Bash(docker-compose build:*)",
+      "Bash(python:*)",      
       "Bash(sed:*)"
     ],
     "deny": []
-  }
+  },
+  "enableAllProjectMcpServers": false
 }

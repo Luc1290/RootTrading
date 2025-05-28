@@ -7,6 +7,7 @@ import json
 import requests
 import threading
 import time
+import uuid
 from typing import Dict, Any, Optional, List
 import queue
 
@@ -957,19 +958,11 @@ class SignalHandler:
                 return None
     
             # Convertir le montant en quantité
-            # Pour les paires non-USDC, il faut d'abord convertir le montant USDC
             if signal.symbol.endswith("BTC"):
-                # Pour ETHBTC, il faut convertir le montant USDC en BTC d'abord
-                # Récupérer le prix de BTC/USDC pour la conversion
-                btc_price = self._get_btc_price()
-                if btc_price:
-                    # Convertir le montant USDC en BTC
-                    btc_amount = trade_amount / btc_price
-                    # Ensuite calculer la quantité d'ETH
-                    quantity = btc_amount / signal.price
-                else:
-                    logger.error("❌ Impossible de récupérer le prix BTC/USDC pour la conversion")
-                    return None
+                # Pour ETHBTC, trade_amount est déjà en BTC (ex: 0.00025 BTC)
+                # Calculer directement la quantité d'ETH : BTC_amount / prix_ETHBTC
+                quantity = trade_amount / signal.price
+                logger.debug(f"📊 Calcul quantité ETHBTC: {trade_amount:.6f} BTC / {signal.price:.6f} = {quantity:.6f} ETH")
             else:
                 # Pour les paires USDC, calcul direct
                 quantity = trade_amount / signal.price
@@ -995,8 +988,8 @@ class SignalHandler:
             if stop_price:
                 order_data["stop_price"] = stop_price
     
-            # Réserver les fonds dans la poche
-            temp_cycle_id = f"temp_{int(time.time())}"
+            # Réserver les fonds dans la poche avec un ID unique incluant les microsecondes
+            temp_cycle_id = f"temp_{int(time.time() * 1000000)}_{uuid.uuid4().hex[:8]}"
             
             # Calculer le montant en USDC à réserver
             if quote_asset == 'BTC':

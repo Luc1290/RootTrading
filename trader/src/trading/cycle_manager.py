@@ -8,7 +8,7 @@ import time
 import uuid
 import os
 from typing import Dict, List, Any, Optional, Union
-from datetime import datetime
+from datetime import datetime, timezone
 import threading
 from threading import RLock
 
@@ -58,6 +58,10 @@ class CycleManager:
             self._load_active_cycles_from_db()
             # Démarrer le thread de nettoyage périodique
             self._start_cleanup_thread()
+            # Démarrer le thread de synchronisation DB périodique
+            self._start_sync_thread()
+            # Démarrer le thread de nettoyage des ordres orphelins
+            self._start_orphan_cleanup_thread()
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'initialisation de la base de données: {str(e)}")
         
@@ -78,6 +82,291 @@ class CycleManager:
         cleanup_thread.start()
         logger.info("Thread de nettoyage des cycles démarré")
 
+    def _start_sync_thread(self):
+        """Démarre un thread de synchronisation périodique avec la DB."""
+        def sync_routine():
+            while True:
+                try:
+                    # Synchroniser toutes les 30 secondes
+                    time.sleep(30)
+                    self._sync_cycles_with_db()
+                except Exception as e:
+                    logger.error(f"❌ Erreur dans le thread de synchronisation: {str(e)}")
+        
+        sync_thread = threading.Thread(target=sync_routine, daemon=True, name="CycleSyncThread")
+        sync_thread.start()
+        logger.info("🔄 Thread de synchronisation DB démarré (30s)")
+
+    def _sync_cycles_with_db(self):
+        """Synchronise les cycles en mémoire avec la base de données."""
+        try:
+            # Récupérer tous les cycles actifs depuis la DB
+            db_cycles = self.repository.get_active_cycles()
+            db_cycle_ids = {cycle.id for cycle in db_cycles}
+            
+            with self.cycles_lock:
+                # 1. Identifier les cycles à supprimer de la mémoire (n'existent plus en DB ou sont terminés)
+                memory_cycle_ids = set(self.active_cycles.keys())
+                cycles_to_remove = memory_cycle_ids - db_cycle_ids
+                
+                # 2. Identifier les nouveaux cycles à ajouter (existent en DB mais pas en mémoire)
+                cycles_to_add = []
+                for cycle in db_cycles:
+                    if cycle.id not in self.active_cycles:
+                        cycles_to_add.append(cycle)
+                
+                # 3. Supprimer les cycles obsolètes
+                if cycles_to_remove:
+                    for cycle_id in cycles_to_remove:
+                        del self.active_cycles[cycle_id]
+                    logger.info(f"🗑️ {len(cycles_to_remove)} cycles supprimés de la mémoire (plus en DB)")
+                
+                # 4. Ajouter les nouveaux cycles
+                if cycles_to_add:
+                    for cycle in cycles_to_add:
+                        self.active_cycles[cycle.id] = cycle
+                    logger.info(f"➕ {len(cycles_to_add)} nouveaux cycles ajoutés depuis la DB")
+                
+                # 5. Mettre à jour les statuts des cycles existants
+                updated_count = 0
+                for cycle in db_cycles:
+                    if cycle.id in self.active_cycles:
+                        mem_cycle = self.active_cycles[cycle.id]
+                        if mem_cycle.status != cycle.status or mem_cycle.exit_order_id != cycle.exit_order_id:
+                            self.active_cycles[cycle.id] = cycle
+                            updated_count += 1
+                
+                if updated_count > 0:
+                    logger.debug(f"🔄 {updated_count} cycles mis à jour depuis la DB")
+                
+                # Log final
+                total_cycles = len(self.active_cycles)
+                if cycles_to_remove or cycles_to_add or updated_count > 0:
+                    logger.info(f"✅ Synchronisation DB terminée: {total_cycles} cycles actifs en mémoire")
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la synchronisation avec la DB: {str(e)}")
+
+    def _start_orphan_cleanup_thread(self):
+        """Démarre un thread de nettoyage périodique des ordres orphelins."""
+        def orphan_cleanup_routine():
+            # Attendre 2 minutes au démarrage pour laisser le système se stabiliser
+            time.sleep(120)
+            
+            while True:
+                try:
+                    # Nettoyer les ordres orphelins toutes les 5 minutes
+                    self._cleanup_orphan_orders()
+                    time.sleep(300)  # 5 minutes
+                except Exception as e:
+                    logger.error(f"❌ Erreur dans le thread de nettoyage des ordres orphelins: {str(e)}")
+                    time.sleep(60)  # En cas d'erreur, attendre 1 minute avant de réessayer
+        
+        orphan_thread = threading.Thread(target=orphan_cleanup_routine, daemon=True, name="OrphanCleanupThread")
+        orphan_thread.start()
+        logger.info("🧹 Thread de nettoyage des ordres orphelins démarré (toutes les 5 minutes)")
+
+    def _cleanup_orphan_orders(self):
+        """Nettoie les ordres orphelins sur Binance en distinguant les 3 cas selon votre analyse."""
+        try:
+            logger.info("🧹 Début du nettoyage intelligent des ordres orphelins")
+            
+            # 1. Construire le mapping cycle => orderId pour les cycles actifs
+            with self.cycles_lock:
+                active_cycles = list(self.active_cycles.values())
+            
+            # Récupérer aussi depuis la DB pour être complet
+            db_cycles = self.repository.get_active_cycles()
+            all_active_cycles = {}
+            
+            # Fusionner mémoire et DB (la mémoire prime si conflit)
+            for cycle in db_cycles:
+                all_active_cycles[cycle.id] = cycle
+            for cycle in active_cycles:
+                all_active_cycles[cycle.id] = cycle
+            
+            # Construire le mapping orderId => (type, cycle) pour les ordres légitimes
+            cycle_orders = {}
+            for cycle in all_active_cycles.values():
+                # Seuls les cycles en waiting_* ont des ordres actifs sur Binance
+                status_str = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
+                if status_str in ['waiting_buy', 'waiting_sell', 'active_buy', 'active_sell']:
+                    if cycle.entry_order_id:
+                        cycle_orders[cycle.entry_order_id] = ("entry", cycle)
+                    if cycle.exit_order_id:
+                        cycle_orders[cycle.exit_order_id] = ("exit", cycle)
+            
+            # 2. Récupérer tous les ordres ouverts sur Binance
+            open_orders = self.binance_executor.utils.fetch_open_orders()
+            binance_order_ids = {order['orderId'] for order in open_orders}
+            
+            # 3. Parcourir les ordres Binance et appliquer la logique des 3 cas
+            orphan_count = 0
+            cleaned_count = 0
+            
+            for order in open_orders:
+                order_id = order['orderId']
+                symbol = order['symbol']
+                client_order_id = order.get('clientOrderId', '')
+                
+                if order_id in cycle_orders:
+                    # CAS A: Ordre légitime avec cycle correspondant
+                    order_type, cycle = cycle_orders[order_id]
+                    logger.debug(f"✅ Ordre légitime trouvé: {symbol} {order['side']} (cycle {cycle.id}, {order_type})")
+                    continue
+                
+                # CAS C: Vrai orphelin - Annuler l'ordre
+                orphan_count += 1
+                logger.warning(f"🚨 Ordre orphelin détecté: {symbol} {order['side']} {order['origQty']}@{order['price']} (ID: {order_id}, ClientID: {client_order_id})")
+                
+                try:
+                    self.binance_executor.utils.cancel_order(symbol, order_id)
+                    cleaned_count += 1
+                    logger.info(f"✅ Ordre orphelin {order_id} annulé sur Binance")
+                except Exception as e:
+                    logger.error(f"❌ Impossible d'annuler l'ordre orphelin {order_id}: {str(e)}")
+            
+            # 4. CAS B: Détecter les cycles fantômes (waiting_* sans ordre sur Binance) + TTL
+            phantom_cycles = []
+            ttl_expired_cycles = []
+            
+            for cycle in all_active_cycles.values():
+                status_str = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
+                if status_str in ['waiting_buy', 'waiting_sell']:
+                    # Vérifier le TTL (30 minutes max en waiting_*)
+                    if cycle.updated_at:
+                        if cycle.updated_at.tzinfo is None:
+                            cycle_time = cycle.updated_at.replace(tzinfo=timezone.utc)
+                        else:
+                            cycle_time = cycle.updated_at
+                        now = datetime.now(timezone.utc)
+                        age_minutes = (now - cycle_time).total_seconds() / 60
+                        
+                        if age_minutes > 30:
+                            ttl_expired_cycles.append((cycle, age_minutes))
+                            logger.warning(f"⏰ Cycle TTL expiré: {cycle.id} en {status_str} depuis {age_minutes:.1f}min")
+                            continue  # On traite les TTL expirés séparément
+                    
+                    # Ces cycles doivent avoir un ordre actif sur Binance
+                    expected_order_ids = [cycle.entry_order_id, cycle.exit_order_id]
+                    has_active_order = any(
+                        order_id and order_id in binance_order_ids 
+                        for order_id in expected_order_ids
+                    )
+                    
+                    if not has_active_order:
+                        phantom_cycles.append(cycle)
+                        logger.warning(f"👻 Cycle fantôme détecté: {cycle.id} en statut {status_str} sans ordre sur Binance")
+            
+            # 5. Traiter les cycles TTL expirés
+            for cycle, age_minutes in ttl_expired_cycles:
+                try:
+                    logger.warning(f"⏰ Traitement du cycle TTL expiré {cycle.id} ({age_minutes:.1f}min)")
+                    
+                    # Annuler les ordres sur Binance s'ils existent encore
+                    if cycle.entry_order_id:
+                        try:
+                            self.binance_executor.utils.cancel_order(cycle.symbol, cycle.entry_order_id)
+                            logger.info(f"✅ Ordre d'entrée {cycle.entry_order_id} annulé (TTL)")
+                        except Exception as e:
+                            logger.debug(f"Ordre d'entrée {cycle.entry_order_id} déjà supprimé: {str(e)}")
+                    
+                    if cycle.exit_order_id:
+                        try:
+                            self.binance_executor.utils.cancel_order(cycle.symbol, cycle.exit_order_id)
+                            logger.info(f"✅ Ordre de sortie {cycle.exit_order_id} annulé (TTL)")
+                        except Exception as e:
+                            logger.debug(f"Ordre de sortie {cycle.exit_order_id} déjà supprimé: {str(e)}")
+                    
+                    # Marquer comme failed
+                    with self.cycles_lock:
+                        cycle.status = CycleStatus.FAILED
+                        cycle.updated_at = datetime.now()
+                        if not hasattr(cycle, 'metadata'):
+                            cycle.metadata = {}
+                        status_str = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
+                        cycle.metadata['fail_reason'] = f"TTL expiré après {age_minutes:.1f}min en {status_str}"
+                    
+                    # Sauvegarder et nettoyer
+                    self.repository.save_cycle(cycle)
+                    
+                    if cycle.pocket:
+                        base_amount = self._get_reserved_amount_for_cycle(cycle.id, cycle.pocket)
+                        try:
+                            self._release_pocket_funds(cycle.pocket, base_amount, cycle.id)
+                            logger.info(f"💰 {base_amount:.2f} USDC libérés pour le cycle TTL expiré {cycle.id}")
+                        except Exception as e:
+                            logger.error(f"❌ Erreur lors de la libération des fonds pour {cycle.id}: {str(e)}")
+                    
+                    self._publish_cycle_event(cycle, "failed")
+                    
+                    with self.cycles_lock:
+                        self.active_cycles.pop(cycle.id, None)
+                    
+                    logger.info(f"🕐 Cycle TTL expiré {cycle.id} fermé et nettoyé")
+                    
+                except Exception as e:
+                    logger.error(f"❌ Erreur lors du traitement du cycle TTL expiré {cycle.id}: {str(e)}")
+            
+            # 6. Traiter les cycles fantômes
+            for cycle in phantom_cycles:
+                try:
+                    # Vérifier depuis combien de temps le cycle est en waiting
+                    
+                    # Calculer l'âge du cycle
+                    if cycle.updated_at:
+                        if cycle.updated_at.tzinfo is None:
+                            # Si pas de timezone, on assume UTC
+                            cycle_time = cycle.updated_at.replace(tzinfo=timezone.utc)
+                        else:
+                            cycle_time = cycle.updated_at
+                        now = datetime.now(timezone.utc)
+                        age_minutes = (now - cycle_time).total_seconds() / 60
+                    else:
+                        age_minutes = 999  # Très vieux si pas de timestamp
+                    
+                    # Marquer comme failed et libérer les fonds
+                    with self.cycles_lock:
+                        cycle.status = CycleStatus.FAILED
+                        cycle.updated_at = datetime.now()
+                        if not hasattr(cycle, 'metadata'):
+                            cycle.metadata = {}
+                        cycle.metadata['fail_reason'] = f"Ordre manquant sur Binance (âge: {age_minutes:.1f}min)"
+                    
+                    # Sauvegarder en DB
+                    self.repository.save_cycle(cycle)
+                    
+                    # Libérer les fonds de la poche
+                    if cycle.pocket:
+                        base_amount = self._get_reserved_amount_for_cycle(cycle.id, cycle.pocket)
+                        try:
+                            self._release_pocket_funds(cycle.pocket, base_amount, cycle.id)
+                            logger.info(f"💰 {base_amount:.2f} USDC libérés pour le cycle fantôme {cycle.id}")
+                        except Exception as e:
+                            logger.error(f"❌ Erreur lors de la libération des fonds pour {cycle.id}: {str(e)}")
+                    
+                    # Publier l'événement
+                    self._publish_cycle_event(cycle, "failed")
+                    
+                    # Supprimer de la mémoire
+                    with self.cycles_lock:
+                        self.active_cycles.pop(cycle.id, None)
+                    
+                    logger.info(f"🔧 Cycle fantôme {cycle.id} fermé et nettoyé (âge: {age_minutes:.1f}min)")
+                    
+                except Exception as e:
+                    logger.error(f"❌ Erreur lors du traitement du cycle fantôme {cycle.id}: {str(e)}")
+            
+            # 7. Résumé du nettoyage
+            total_issues = orphan_count + len(phantom_cycles) + len(ttl_expired_cycles)
+            if total_issues > 0:
+                logger.warning(f"🎯 Nettoyage terminé: {cleaned_count}/{orphan_count} ordres orphelins annulés, {len(phantom_cycles)} cycles fantômes fermés, {len(ttl_expired_cycles)} cycles TTL expirés")
+            else:
+                logger.debug("✨ Aucun problème détecté - système propre")
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur lors du nettoyage intelligent des ordres orphelins: {str(e)}")
+
     def _cleanup_inactive_cycles(self):
         """Nettoie les cycles inactifs qui sont restés en mémoire trop longtemps."""
         now = datetime.now()
@@ -96,7 +385,7 @@ class CycleManager:
                 for cycle_id in cycles_to_remove:
                     self.active_cycles.pop(cycle_id, None)
             
-            logger.info(f"🧹 {len(cycles_to_remove)} cycles inactifs nettoyés de la mémoire")
+            logger.debug(f"🧹 {len(cycles_to_remove)} cycles inactifs nettoyés de la mémoire")
     
     def _remove_failed_cycle(self, cycle_id: str) -> None:
         """
@@ -649,33 +938,22 @@ class CycleManager:
             
             # Libérer les fonds dans la poche
             if cycle.pocket:
-                # Le montant de base réservé selon le .env
-                base_amount = float(os.getenv('TRADE_QUANTITY_USDC', 20.0))
-                
-                # Calculer le montant total à libérer (base + profit ou base - perte)
-                if cycle.symbol.endswith('USDC'):
-                    # Pour BTCUSDC, ETHUSDC : le profit_loss est déjà en USDC
-                    amount_to_release = base_amount + profit_loss
-                elif cycle.symbol.endswith('BTC'):
-                    # Pour ETHBTC : convertir le profit_loss de BTC vers USDC
-                    btc_price = self.binance_executor.utils.get_current_price('BTCUSDC')
-                    if btc_price and hasattr(cycle, 'profit_loss'):
-                        profit_loss_usdc = cycle.profit_loss * btc_price
-                        amount_to_release = base_amount + profit_loss_usdc
-                    else:
-                        # Si pas de prix ou pas de P&L, libérer juste le montant de base
-                        logger.warning(f"⚠️ Impossible de calculer le P&L en USDC, libération du montant de base")
-                        amount_to_release = base_amount
-                else:
-                    # Autre paire, utiliser juste le montant de base
-                    amount_to_release = base_amount
-                
-                # S'assurer qu'on ne libère pas un montant négatif
-                amount_to_release = max(0, amount_to_release)
+                # CORRECTION: Récupérer le montant réellement réservé pour ce cycle
+                # Évite les divergences avec les valeurs d'environnement
+                base_amount = self._get_reserved_amount_for_cycle(cycle_id, cycle.pocket)
                 
                 try:
-                    self._release_pocket_funds(cycle.pocket, amount_to_release, cycle_id)
-                    logger.info(f"✅ {amount_to_release:.2f} USDC libérés de la poche {cycle.pocket} pour le cycle {cycle_id}")
+                    # Libérer uniquement le montant de base réservé
+                    self._release_pocket_funds(cycle.pocket, base_amount, cycle_id)
+                    logger.info(f"✅ {base_amount:.2f} USDC (montant de base) libérés de la poche {cycle.pocket} pour le cycle {cycle_id}")
+                    
+                    # Si il y a un profit, le déposer dans la poche buffer
+                    if profit_loss > 0:
+                        self._deposit_profit_to_buffer(profit_loss, cycle_id)
+                        logger.info(f"💰 Profit de {profit_loss:.2f} USDC déposé dans la poche buffer pour le cycle {cycle_id}")
+                    elif profit_loss < 0:
+                        logger.info(f"📉 Perte de {abs(profit_loss):.2f} USDC enregistrée pour le cycle {cycle_id}")
+                        
                 except Exception as e:
                     logger.error(f"❌ Erreur lors de la libération des fonds: {str(e)}")
             
@@ -1024,7 +1302,7 @@ class CycleManager:
             # Appeler l'API du portfolio pour libérer les fonds
             response = requests.post(
                 f"{portfolio_url}/pockets/{pocket_type}/release",
-                params={"amount": amount, "cycle_id": cycle_id},
+                params={"amount": amount, "cycle_id": cycle_id, "asset": "USDC"},
                 timeout=5.0
             )
             
@@ -1038,6 +1316,76 @@ class CycleManager:
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'appel à l'API portfolio: {str(e)}")
             return False
+    
+    def _deposit_profit_to_buffer(self, profit_amount: float, cycle_id: str) -> bool:
+        """
+        Dépose les profits dans la poche buffer via l'API du portfolio.
+        
+        Args:
+            profit_amount: Montant du profit à déposer
+            cycle_id: ID du cycle source du profit
+            
+        Returns:
+            True si réussi, False sinon
+        """
+        try:
+            import requests
+            portfolio_url = "http://portfolio:8000"
+            
+            # Appeler l'API du portfolio pour déposer le profit
+            response = requests.post(
+                f"{portfolio_url}/pockets/buffer/deposit",
+                params={"amount": profit_amount, "source": f"profit_cycle_{cycle_id}", "asset": "USDC"},
+                timeout=5.0
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"✅ {profit_amount:.2f} USDC de profit déposés dans la poche buffer pour le cycle {cycle_id}")
+                return True
+            else:
+                logger.warning(f"⚠️ Impossible de déposer le profit: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur lors du dépôt du profit: {str(e)}")
+            return False
+
+    def _get_reserved_amount_for_cycle(self, cycle_id: str, pocket_type: str) -> float:
+        """
+        Récupère le montant réellement réservé pour un cycle depuis l'API Portfolio.
+        
+        Args:
+            cycle_id: ID du cycle
+            pocket_type: Type de poche
+            
+        Returns:
+            Montant réservé en USDC
+        """
+        try:
+            import requests
+            portfolio_url = "http://portfolio:8000"
+            
+            # Appeler l'API pour récupérer le montant réservé
+            response = requests.get(
+                f"{portfolio_url}/pockets/{pocket_type}/reserved",
+                params={"cycle_id": cycle_id, "asset": "USDC"},
+                timeout=5.0
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                reserved_amount = float(data.get('reserved_amount', 0))
+                logger.debug(f"💰 Montant réservé pour le cycle {cycle_id}: {reserved_amount:.2f} USDC")
+                return reserved_amount
+            else:
+                logger.warning(f"⚠️ Impossible de récupérer le montant réservé, utilisation de la valeur par défaut")
+                # Fallback vers la valeur d'environnement
+                return float(os.getenv('TRADE_QUANTITY_USDC', 20.0))
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la récupération du montant réservé: {str(e)}")
+            # Fallback vers la valeur d'environnement
+            return float(os.getenv('TRADE_QUANTITY_USDC', 20.0))
     
     def _cleanup_cycle_orders(self, cycle: TradeCycle) -> None:
         """
@@ -1054,14 +1402,22 @@ class CycleManager:
             if cycle.entry_order_id:
                 # Vérifier le statut de l'ordre
                 order_status = self.binance_executor.get_order_status(cycle.symbol, cycle.entry_order_id)
-                if order_status and order_status.status == OrderStatus.NEW:
+                if order_status and order_status.status in [OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED]:
                     orders_to_cancel.append(('entrée', cycle.entry_order_id))
+                    logger.debug(f"🧹 Ordre d'entrée {cycle.entry_order_id} ajouté pour nettoyage (statut: {order_status.status})")
             
             # Vérifier l'ordre de sortie
             if cycle.exit_order_id:
                 # Vérifier le statut de l'ordre
                 order_status = self.binance_executor.get_order_status(cycle.symbol, cycle.exit_order_id)
-                if order_status and order_status.status == OrderStatus.NEW:
+                if order_status and order_status.status in [OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED]:
+                    orders_to_cancel.append(('sortie', cycle.exit_order_id))
+                    logger.debug(f"🧹 Ordre de sortie {cycle.exit_order_id} ajouté pour nettoyage (statut: {order_status.status})")
+                elif order_status:
+                    logger.debug(f"🔍 Ordre de sortie {cycle.exit_order_id} non nettoyé (statut: {order_status.status})")
+                else:
+                    logger.warning(f"⚠️ Impossible de vérifier le statut de l'ordre {cycle.exit_order_id}")
+                    # En cas de doute, on essaie quand même d'annuler
                     orders_to_cancel.append(('sortie', cycle.exit_order_id))
             
             # Annuler les ordres trouvés
@@ -1089,7 +1445,9 @@ class CycleManager:
                     logger.error(f"❌ Erreur lors de l'annulation de l'ordre {order_id}: {str(e)}")
             
             if orders_to_cancel:
-                logger.info(f"✅ {len(orders_to_cancel)} ordres nettoyés pour le cycle {cycle.id}")
+                logger.debug(f"✅ {len(orders_to_cancel)} ordres nettoyés pour le cycle {cycle.id}")
+            else:
+                logger.debug(f"🔍 Aucun ordre à nettoyer pour le cycle {cycle.id} (entry_order_id: {cycle.entry_order_id}, exit_order_id: {cycle.exit_order_id})")
                 
         except Exception as e:
             logger.error(f"❌ Erreur lors du nettoyage des ordres du cycle {cycle.id}: {str(e)}")

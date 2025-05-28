@@ -283,6 +283,7 @@ class CycleRepository:
                     symbol = %s,
                     strategy = %s,
                     status = %s,
+                    confirmed = %s,
                     entry_order_id = %s,
                     exit_order_id = %s,
                     entry_price = %s,
@@ -306,6 +307,7 @@ class CycleRepository:
                     cycle.symbol,
                     cycle.strategy,
                     status,
+                    confirmed,
                     cycle.entry_order_id,
                     cycle.exit_order_id,
                     cycle.entry_price,
@@ -327,11 +329,11 @@ class CycleRepository:
             else:
                 query = """
                 INSERT INTO trade_cycles
-                (id, symbol, strategy, status, entry_order_id, exit_order_id,
+                (id, symbol, strategy, status, confirmed, entry_order_id, exit_order_id,
                 entry_price, exit_price, quantity, target_price, stop_price,
                 trailing_delta, profit_loss, profit_loss_percent, created_at,
                 updated_at, completed_at, pocket, demo, metadata)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                 """
                 
                 params = (
@@ -339,6 +341,7 @@ class CycleRepository:
                     cycle.symbol,
                     cycle.strategy,
                     status,
+                    confirmed,
                     cycle.entry_order_id,
                     cycle.exit_order_id,
                     cycle.entry_price,

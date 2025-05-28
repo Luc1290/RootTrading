@@ -135,7 +135,7 @@ class BreakoutStrategy(BaseStrategy):
         
         # Obtenir le dernier chandelier
         last_candle = df.iloc[-1]
-        last_idx = df.index.get_loc(last_candle.name)
+        last_idx = len(df) - 1  # Index basé sur la position, pas sur l'index du DataFrame
         
         # Vérifier chaque range pour un breakout
         for start_idx, end_idx, support, resistance in ranges:

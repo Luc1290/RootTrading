@@ -201,7 +201,8 @@ class EMACrossStrategy(BaseStrategy):
             stop_loss = min(current_price * 0.98, current_long_ema * 0.99)
             
             # Target basé sur le retour vers/au-dessus de l'EMA courte
-            target_price = current_short_ema * 1.01  # Viser légèrement au-dessus de l'EMA courte
+            # S'assurer que le target est toujours supérieur au prix d'entrée pour un BUY
+            target_price = max(current_short_ema * 1.01, current_price * 1.005)  # Au minimum +0.5% du prix actuel
             
             metadata = {
                 "short_ema": float(current_short_ema),
@@ -245,7 +246,8 @@ class EMACrossStrategy(BaseStrategy):
             stop_loss = max(current_price * 1.02, current_long_ema * 1.01)
             
             # Target basé sur le retour vers/sous l'EMA courte
-            target_price = current_short_ema * 0.99  # Viser légèrement sous l'EMA courte
+            # S'assurer que le target est toujours inférieur au prix d'entrée pour un SELL
+            target_price = min(current_short_ema * 0.99, current_price * 0.995)  # Au maximum -0.5% du prix actuel
             
             metadata = {
                 "short_ema": float(current_short_ema),

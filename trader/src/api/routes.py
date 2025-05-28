@@ -157,13 +157,18 @@ def get_cycles():
         confirmed = request.args.get('confirmed', 'true').lower() == 'true'
         include_completed = request.args.get('include_completed', 'false').lower() == 'true'
         
-        # Récupérer tous les cycles depuis le repository
-        cycles = order_manager.cycle_manager.repository.get_all_cycles()
+        # Récupérer les cycles depuis le cycle manager (qui sont déjà synchronisés)
+        if include_completed:
+            # Si on veut tous les cycles, on utilise le repository
+            cycles = order_manager.cycle_manager.repository.get_all_cycles()
+        else:
+            # Sinon on utilise les cycles actifs du cycle manager (déjà filtrés)
+            cycles = order_manager.cycle_manager.get_active_cycles()
         
         # Filtrer selon les critères
         filtered_cycles = []
         for cycle in cycles:
-            # Filtrer par statut terminal
+            # Si on utilise get_active_cycles(), pas besoin de refiltrer par statut
             if not include_completed and cycle.status in [CycleStatus.COMPLETED, CycleStatus.CANCELED, CycleStatus.FAILED]:
                 continue
                 
@@ -188,7 +193,7 @@ def get_cycles():
                 "id": cycle.id,
                 "symbol": cycle.symbol,
                 "strategy": cycle.strategy,
-                "status": cycle.status.value,
+                "status": cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status),
                 "confirmed": cycle.confirmed,
                 "entry_price": cycle.entry_price,
                 "quantity": cycle.quantity,

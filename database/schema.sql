@@ -167,11 +167,13 @@ CREATE INDEX IF NOT EXISTS capital_pockets_updated_at_idx ON capital_pockets(upd
 
 -- Table des transactions des poches de capital
 CREATE TABLE IF NOT EXISTS pocket_transactions (
-    id SERIAL PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     pocket_type VARCHAR(20) NOT NULL CHECK (pocket_type IN ('active', 'buffer', 'safety')),
-    transaction_type VARCHAR(20) NOT NULL CHECK (transaction_type IN ('reserve', 'release', 'allocate', 'reallocate')),
+    asset VARCHAR(10) NOT NULL DEFAULT 'USDC',
+    transaction_type VARCHAR(20) NOT NULL CHECK (transaction_type IN ('reserve', 'release', 'allocate', 'reallocate', 'deposit')),
     amount NUMERIC(24, 8) NOT NULL,
     cycle_id VARCHAR(50),
+    reference_id VARCHAR(100),
     description TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );

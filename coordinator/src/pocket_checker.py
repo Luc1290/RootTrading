@@ -238,7 +238,7 @@ class PocketChecker:
         """
         self.last_cache_update = 0
         self._refresh_cache()
-        logger.info("♻️ Cache des poches forcé à se rafraîchir")
+        logger.debug("♻️ Cache des poches forcé à se rafraîchir")
     
     def get_available_funds(self, pocket_type: str = "active") -> float:
         """
