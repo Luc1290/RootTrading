@@ -320,7 +320,8 @@ class KafkaClientPool:
     
     def ensure_topics_exist(self, topics: List[str], 
                           num_partitions: int = 3, 
-                          replication_factor: int = 1) -> None:
+                          replication_factor: int = 1,
+                          config: Optional[Dict[str, str]] = None) -> None:
         """
         S'assure que les topics existent, les crée si nécessaire.
         
@@ -328,6 +329,7 @@ class KafkaClientPool:
             topics: Liste des topics à vérifier/créer
             num_partitions: Nombre de partitions pour les nouveaux topics
             replication_factor: Facteur de réplication pour les nouveaux topics
+            config: Configuration supplémentaire pour les topics
         """
         # Exclure les patterns avec wildcards
         topics_to_check = [t for t in topics if '*' not in t]
@@ -342,11 +344,13 @@ class KafkaClientPool:
         topics_to_create = []
         for topic in topics_to_check:
             if topic not in existing_topics:
-                topics_to_create.append(NewTopic(
+                new_topic = NewTopic(
                     topic,
                     num_partitions=num_partitions,
-                    replication_factor=replication_factor
-                ))
+                    replication_factor=replication_factor,
+                    config=config or {}
+                )
+                topics_to_create.append(new_topic)
         
         if not topics_to_create:
             return

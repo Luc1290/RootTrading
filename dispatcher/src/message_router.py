@@ -39,7 +39,8 @@ class MessageRouter:
         # Mappings des topics vers les canaux
         self.topic_to_channel = {
             "market.data": "market:data",  # Le symbole sera ajouté dynamiquement
-            "signals": "analyze:signal",
+            "analyzer.signals": "analyze:signal",  # Signaux bruts de l'analyzer
+            "signals.filtered": "signals:filtered",  # Signaux filtrés du signal_aggregator
             "executions": "trade:execution",
             "orders": "trade:order"
         }

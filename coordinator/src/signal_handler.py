@@ -60,7 +60,8 @@ class SignalHandler:
         self.redis_client.subscribe("roottrading:cycle:failed", self.handle_cycle_failed)
         
         # Canal Redis pour les signaux
-        self.signal_channel = "roottrading:analyze:signal"
+        # CHANGEMENT: Écouter les signaux filtrés au lieu des signaux bruts
+        self.signal_channel = "roottrading:signals:filtered"
         
         # File d'attente thread-safe pour les signaux
         self.signal_queue = queue.Queue()

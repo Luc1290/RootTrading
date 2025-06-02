@@ -170,6 +170,34 @@ services:
     networks:
       - roottrading-net
 
+  signal_aggregator:
+    build:
+      context: .  # Point sur le répertoire racine du projet
+      dockerfile: signal_aggregator/Dockerfile  # Chemin vers le Dockerfile
+    environment:
+      - WAIT_FOR_REDIS=true
+      - WAIT_FOR_KAFKA=true
+      - WAIT_FOR_DB=true
+    env_file: .env
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      analyzer:
+        condition: service_started
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8080)); s.close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - roottrading-net
+
   trader:
     build:
       context: .  # Point sur le répertoire racine du projet
