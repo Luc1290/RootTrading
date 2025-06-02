@@ -197,11 +197,14 @@ class ExchangeReconciliation:
         Returns:
             True si le cycle a été mis à jour, False sinon
         """
-        # Si le cycle n'a pas d'ordre d'entrée, le marquer comme annulé
+        # Si le cycle n'a pas d'ordre d'entrée, le marquer comme échoué
         if not cycle.entry_order_id:
-            logger.warning(f"⚠️ Cycle {cycle.id} sans ordre d'entrée, marqué comme annulé")
-            cycle.status = CycleStatus.CANCELED
+            logger.error(f"❌ Cycle {cycle.id} sans ordre d'entrée, marqué comme FAILED")
+            cycle.status = CycleStatus.FAILED
             cycle.updated_at = datetime.now()
+            if not hasattr(cycle, 'metadata'):
+                cycle.metadata = {}
+            cycle.metadata['fail_reason'] = "Pas d'ordre d'entrée"
             self.repository.save_cycle(cycle)
             return True
         
@@ -213,11 +216,14 @@ class ExchangeReconciliation:
         # Vérifier l'état de l'ordre d'entrée sur Binance
         entry_execution = self.binance_executor.get_order_status(cycle.symbol, cycle.entry_order_id)
         
-        # Si l'ordre d'entrée n'existe pas sur Binance, le marquer comme annulé
+        # Si l'ordre d'entrée n'existe pas sur Binance, le marquer comme échoué
         if not entry_execution and not self.binance_executor.demo_mode:
-            logger.warning(f"⚠️ Ordre d'entrée {cycle.entry_order_id} non trouvé sur Binance, cycle {cycle.id} marqué comme annulé")
-            cycle.status = CycleStatus.CANCELED
+            logger.error(f"❌ Ordre d'entrée {cycle.entry_order_id} non trouvé sur Binance, cycle {cycle.id} marqué comme FAILED")
+            cycle.status = CycleStatus.FAILED
             cycle.updated_at = datetime.now()
+            if not hasattr(cycle, 'metadata'):
+                cycle.metadata = {}
+            cycle.metadata['fail_reason'] = "Ordre d'entrée non trouvé sur Binance"
             self.repository.save_cycle(cycle)
             return True
         
@@ -227,28 +233,22 @@ class ExchangeReconciliation:
             status_display = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
             logger.warning(f"⚠️ Cycle {cycle.id} en statut {status_display} sans ordre de sortie")
             
+            # PROTECTION: Vérifier d'abord si un ordre de sortie n'a pas été créé récemment
+            # Recharger le cycle depuis la DB pour avoir la dernière version
+            fresh_cycle = self.repository.get_cycle(cycle.id)
+            if fresh_cycle and fresh_cycle.exit_order_id:
+                logger.info(f"✅ Un ordre de sortie {fresh_cycle.exit_order_id} a été créé entre temps pour le cycle {cycle.id}")
+                cycle.exit_order_id = fresh_cycle.exit_order_id
+                return False
+            
             # IMPORTANT: Vérifier que l'ordre d'entrée est bien FILLED avant de créer l'ordre de sortie
             if entry_execution and entry_execution.status == OrderStatus.FILLED:
                 # Synchroniser les balances du portfolio avant de créer l'ordre de sortie
                 logger.info(f"🔄 Synchronisation du portfolio avant création de l'ordre de sortie")
-                try:
-                    from shared.src.kafka_client import KafkaClientPool
-                    import json
-                    
-                    # Envoyer un message pour forcer la synchronisation du portfolio
-                    kafka_manager = KafkaClientPool.get_instance()
-                    sync_message = {
-                        "type": "sync_request",
-                        "cycle_id": cycle.id,
-                        "symbol": cycle.symbol,
-                        "reason": "reconciliation_exit_order"
-                    }
-                    kafka_manager.produce("portfolio.sync", json.dumps(sync_message))
-                    
-                    # Attendre un peu pour que la synchronisation se fasse
-                    time.sleep(2)
-                except Exception as e:
-                    logger.warning(f"⚠️ Impossible de demander la synchronisation du portfolio: {e}")
+                # NOTE: Suppression de l'appel Kafka "portfolio.sync" qui n'est écouté nulle part
+                # Le portfolio se synchronise automatiquement via ses propres mécanismes
+                # (réconciliation périodique, événements Kafka, etc.)
+                logger.info(f"📊 Le portfolio sera synchronisé automatiquement lors de la prochaine réconciliation")
                 logger.info(f"🔧 Création de l'ordre de sortie manquant pour le cycle {cycle.id}")
                 
                 # Déterminer le side de l'ordre de sortie
@@ -362,15 +362,18 @@ class ExchangeReconciliation:
                             entry_side = OrderSide.BUY
                             logger.warning(f"⚠️ Ordre d'entrée non trouvé pour le cycle {cycle.id}, assumé BUY")
                         
+                        # IMPORTANT: Utiliser la quantité réellement exécutée
+                        actual_quantity = cycle.metadata.get('executed_quantity', cycle.quantity) if cycle.metadata else cycle.quantity
+                        
                         # Si entrée = BUY, alors sortie = SELL : profit = (prix_sortie - prix_entrée) * quantité
                         if entry_side == OrderSide.BUY:
-                            cycle.profit_loss = (cycle.exit_price - cycle.entry_price) * cycle.quantity
+                            cycle.profit_loss = (cycle.exit_price - cycle.entry_price) * actual_quantity
                         # Si entrée = SELL, alors sortie = BUY : profit = (prix_entrée - prix_sortie) * quantité
                         else:
-                            cycle.profit_loss = (cycle.entry_price - cycle.exit_price) * cycle.quantity
+                            cycle.profit_loss = (cycle.entry_price - cycle.exit_price) * actual_quantity
                         
                         # Calculer le pourcentage de P&L
-                        entry_value = cycle.entry_price * cycle.quantity
+                        entry_value = cycle.entry_price * actual_quantity
                         if entry_value > 0:
                             cycle.profit_loss_percent = (cycle.profit_loss / entry_value) * 100
                     

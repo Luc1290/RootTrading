@@ -55,7 +55,7 @@ class SignalHandler:
         
         # S'abonner aux événements de cycles pour rester synchronisé
         self.redis_client.subscribe("roottrading:cycle:created", self.handle_cycle_created)
-        self.redis_client.subscribe("roottrading:cycle:closed", self.handle_cycle_closed)
+        self.redis_client.subscribe("roottrading:cycle:completed", self.handle_cycle_completed)
         self.redis_client.subscribe("roottrading:cycle:canceled", self.handle_cycle_canceled)
         self.redis_client.subscribe("roottrading:cycle:failed", self.handle_cycle_failed)
         
@@ -75,7 +75,7 @@ class SignalHandler:
         # Moniteur de synchronisation des cycles (solution définitive)
         self.sync_monitor = CycleSyncMonitor(
             trader_api_url=trader_api_url,
-            check_interval=30  # Vérification toutes les 30 secondes
+            check_interval=10  # Vérification toutes les 10 secondes pour plus de réactivité
         )
         
         # Cache des prix actuels
@@ -1247,7 +1247,7 @@ class SignalHandler:
         logger.debug(f"📌 Cycle créé: {cycle_id}")
         # La réservation est déjà faite, on note juste l'événement
         
-    def handle_cycle_closed(self, channel: str, data: Dict[str, Any]) -> None:
+    def handle_cycle_completed(self, channel: str, data: Dict[str, Any]) -> None:
         """
         Traite la fermeture d'un cycle et force une réconciliation des poches.
         """
@@ -1325,7 +1325,11 @@ class SignalHandler:
         cycle_id = data.get('cycle_id')
         logger.info(f"❌ Cycle échoué: {cycle_id}")
         
-        # Forcer une réconciliation
+        # Forcer une synchronisation immédiate du cache
+        if hasattr(self, 'sync_monitor') and self.sync_monitor:
+            self.sync_monitor.force_sync()
+        
+        # Forcer une réconciliation des poches
         self.pocket_checker.force_refresh()
 
 class CircuitBreaker:

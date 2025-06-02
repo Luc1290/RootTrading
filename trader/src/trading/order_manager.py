@@ -339,6 +339,17 @@ class OrderManager:
             # Log si la quantité a été ajustée
             if adjusted_quantity > quantity:
                 logger.info(f"Quantité ajustée pour {symbol}: {quantity} → {adjusted_quantity} (minimum requis)")
+            
+            # Calculer les prix cibles par défaut si non spécifiés
+            if target_price is None:
+                # Par défaut: +3% pour BUY, -3% pour SELL
+                target_price = price * 1.03 if side == OrderSide.BUY else price * 0.97
+                logger.info(f"Prix cible calculé automatiquement: {target_price:.2f}")
+            
+            if stop_price is None:
+                # Par défaut: -2% pour BUY, +2% pour SELL
+                stop_price = price * 0.98 if side == OrderSide.BUY else price * 1.02
+                logger.info(f"Stop loss calculé automatiquement: {stop_price:.2f}")
                 
             # Créer un cycle avec la stratégie et les prix cibles
             cycle = self.cycle_manager.create_cycle(
