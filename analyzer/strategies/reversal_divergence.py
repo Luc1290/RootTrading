@@ -194,7 +194,7 @@ class ReversalDivergenceStrategy(BaseStrategy):
                         "type": "bullish",
                         "side": OrderSide.BUY,
                         "price": current_price,
-                        "confidence": 0.5 + (score / 2),  # Confiance entre 0.5 et 1.0
+                        "confidence": 0.75 + (score / 4),  # Confiance entre 0.75 et 1.0 (augmentée)
                         "last_price_low": float(last_price_low),
                         "prev_price_low": float(prev_price_low),
                         "last_rsi_low": float(last_rsi_low),
@@ -255,7 +255,7 @@ class ReversalDivergenceStrategy(BaseStrategy):
                         "type": "bearish",
                         "side": OrderSide.SELL,
                         "price": current_price,
-                        "confidence": 0.5 + (score / 2),  # Confiance entre 0.5 et 1.0
+                        "confidence": 0.75 + (score / 4),  # Confiance entre 0.75 et 1.0 (augmentée)
                         "last_price_high": float(last_price_high),
                         "prev_price_high": float(prev_price_high),
                         "last_rsi_high": float(last_rsi_high),

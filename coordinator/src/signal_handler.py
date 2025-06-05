@@ -264,27 +264,32 @@ class SignalHandler:
         
         # Cas 1: Signal opposé à des positions existantes
         if existing_opposite > 0:
-            logger.warning(f"⚠️ Signal {signal.side} contradictoire avec {existing_opposite} "
-                         f"positions {opposite_side} ouvertes sur {signal.symbol}")
-            
-            # Options possibles selon la force du signal
-            if signal.strength == SignalStrength.VERY_STRONG:
-                logger.info(f"🔄 Signal TRÈS FORT - Tentative de fermeture des positions opposées")
-                # Fermer les positions opposées si le signal est très fort
-                if self._close_opposite_positions(signal.symbol, opposite_side):
-                    logger.info(f"✅ Positions {opposite_side} fermées, nouveau signal {signal.side} autorisé")
-                    # Continuer avec le nouveau signal après fermeture
-                else:
-                    logger.warning(f"❌ Impossible de fermer les positions opposées, signal ignoré")
-                    return
-            elif signal.strength == SignalStrength.STRONG and existing_opposite == 1:
-                # Si seulement 1 position opposée et signal fort, on peut considérer la fermeture
-                logger.info(f"🤔 Signal FORT avec 1 position opposée - Évaluation...")
-                # Pour l'instant on bloque, mais on pourrait être plus flexible
-                return
+            # NOUVEAU: Les signaux du signal_aggregator ont déjà géré les conflits intelligemment
+            if signal.strategy.startswith("Aggregated_"):
+                logger.info(f"✅ Signal agrégé accepté malgré {existing_opposite} positions {opposite_side} "
+                           f"(conflits déjà résolus par l'agrégateur)")
             else:
-                logger.info(f"❌ Signal contradictoire ignoré (positions opposées actives)")
-                return
+                logger.warning(f"⚠️ Signal {signal.side} contradictoire avec {existing_opposite} "
+                             f"positions {opposite_side} ouvertes sur {signal.symbol}")
+                
+                # Options possibles selon la force du signal
+                if signal.strength == SignalStrength.VERY_STRONG:
+                    logger.info(f"🔄 Signal TRÈS FORT - Tentative de fermeture des positions opposées")
+                    # Fermer les positions opposées si le signal est très fort
+                    if self._close_opposite_positions(signal.symbol, opposite_side):
+                        logger.info(f"✅ Positions {opposite_side} fermées, nouveau signal {signal.side} autorisé")
+                        # Continuer avec le nouveau signal après fermeture
+                    else:
+                        logger.warning(f"❌ Impossible de fermer les positions opposées, signal ignoré")
+                        return
+                elif signal.strength == SignalStrength.STRONG and existing_opposite == 1:
+                    # Si seulement 1 position opposée et signal fort, on peut considérer la fermeture
+                    logger.info(f"🤔 Signal FORT avec 1 position opposée - Évaluation...")
+                    # Pour l'instant on bloque, mais on pourrait être plus flexible
+                    return
+                else:
+                    logger.info(f"❌ Signal contradictoire ignoré (positions opposées actives)")
+                    return
         
         # Cas 2: Vérifier si on peut ajouter à la position existante
         if existing_same >= self.max_cycles_per_symbol_side:
@@ -292,8 +297,8 @@ class SignalHandler:
                          f"atteinte pour {signal.symbol}")
             return
         
-        # Cas 3: Vérifier l'anti-spam
-        if signal.symbol in self.recent_signals_history:
+        # Cas 3: Vérifier l'anti-spam (exemption pour les signaux agrégés)
+        if signal.symbol in self.recent_signals_history and not signal.strategy.startswith("Aggregated_"):
             same_side_recent = [
                 s for s, t in self.recent_signals_history[signal.symbol]
                 if s.side == signal.side and time.time() - t < 10.0
@@ -304,7 +309,7 @@ class SignalHandler:
                 return
         
         # Cas 4: Signal renforcant une position existante
-        if existing_same > 0 and signal.strength >= SignalStrength.STRONG:
+        if existing_same > 0 and signal.strength and signal.strength >= SignalStrength.STRONG:
             logger.info(f"💪 Signal renforçant {existing_same} position(s) {signal.side} existante(s)")
             # On laisse passer pour pyramider la position
         
@@ -716,6 +721,10 @@ class SignalHandler:
         Returns:
             True si le signal doit être filtré (ignoré), False sinon
         """
+        # NOUVEAU: Les signaux agrégés sont exemptés du filtrage (conflits déjà résolus)
+        if signal.strategy.startswith("Aggregated_"):
+            logger.info(f"✅ Signal agrégé exempté du filtrage: {signal.strategy}")
+            return False
         # Vérifier si nous avons des informations de filtrage pour ce symbole
         if signal.symbol not in self.market_filters:
             # Aucune information de filtrage, essayer de récupérer des données récentes
@@ -1121,8 +1130,8 @@ class SignalHandler:
                     self.signal_queue.task_done()
                     continue
                 
-                # Vérifier la force du signal
-                if signal.strength in [SignalStrength.WEAK]:
+                # Vérifier la force du signal (exemption pour les signaux agrégés)
+                if signal.strength and signal.strength in [SignalStrength.WEAK] and not signal.strategy.startswith("Aggregated_"):
                     logger.info(f"⚠️ Signal ignoré: trop faible ({signal.strength})")
                     self.signal_queue.task_done()
                     continue

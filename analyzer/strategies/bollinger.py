@@ -185,7 +185,7 @@ class BollingerStrategy(BaseStrategy):
             
             # Vérifier si les bandes sont suffisamment écartées (éviter les marchés plats)
             if band_width_pct < 1.0:  # Bandes très serrées, marché plat
-                confidence = 0.5
+                confidence = 0.7  # Augmenté de 0.5 à 0.7
                 signal_reason = "squeeze_caution"
             elif penetration_pct > 0.5:  # Forte pénétration sous la bande
                 confidence = 0.85
@@ -194,7 +194,7 @@ class BollingerStrategy(BaseStrategy):
                 confidence = 0.75
                 signal_reason = "oversold"
             else:  # Juste touché la bande
-                confidence = 0.65
+                confidence = 0.75  # Augmenté de 0.65 à 0.75
                 signal_reason = "band_touch"
             
             # Bonus si on vient de l'extérieur (premier contact)
@@ -211,9 +211,20 @@ class BollingerStrategy(BaseStrategy):
             # S'assurer que le target BUY est supérieur au prix d'entrée
             target_price = max(target_price, current_price * 1.005)
             
-            # Stop dynamique basé sur la volatilité
-            stop_distance = band_width * 0.2  # 20% de la largeur de bande
+            # Stop dynamique basé sur la volatilité avec multipliers augmentés
+            if 'BTC' in self.symbol:
+                stop_multiplier, target_adjust = 0.15, 1.5  # Plus agressif pour BTC
+            else:
+                stop_multiplier, target_adjust = 0.3, 2.0   # Plus conservateur pour autres
+            
+            stop_distance = band_width * stop_multiplier
             stop_price = current_price - stop_distance
+            
+            # Augmenter aussi la distance target
+            if band_width_pct < 2.0:
+                target_price = current_lower + (band_width * 0.5 * target_adjust)
+            else:
+                target_price = middle[-1] + (band_width * 0.3 * target_adjust)  # Plus agressif
             
             metadata = {
                 "bb_upper": float(current_upper),
@@ -267,9 +278,20 @@ class BollingerStrategy(BaseStrategy):
             # S'assurer que le target SELL est inférieur au prix d'entrée
             target_price = min(target_price, current_price * 0.995)
             
-            # Stop dynamique basé sur la volatilité
-            stop_distance = band_width * 0.2  # 20% de la largeur de bande
+            # Stop dynamique basé sur la volatilité avec multipliers augmentés
+            if 'BTC' in self.symbol:
+                stop_multiplier, target_adjust = 0.15, 1.5  # Plus agressif pour BTC
+            else:
+                stop_multiplier, target_adjust = 0.3, 2.0   # Plus conservateur pour autres
+            
+            stop_distance = band_width * stop_multiplier
             stop_price = current_price + stop_distance
+            
+            # Augmenter aussi la distance target
+            if band_width_pct < 2.0:
+                target_price = current_upper - (band_width * 0.5 * target_adjust)
+            else:
+                target_price = middle[-1] - (band_width * 0.3 * target_adjust)  # Plus agressif
             
             metadata = {
                 "bb_upper": float(current_upper),

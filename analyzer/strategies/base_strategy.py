@@ -264,19 +264,24 @@ class BaseStrategy(ABC):
             # Autres cryptos peuvent être plus volatiles
             atr_multiplier = 1.2
         
-        # Distance de base pour le stop
-        stop_distance_percent = atr_percent * atr_multiplier
+        # Distance de base pour le stop avec multipliers augmentés
+        if 'BTC' in self.symbol:
+            base_stop_mult, base_target_mult = 1.5, 4.0  # Plus agressif pour BTC
+        else:
+            base_stop_mult, base_target_mult = 2.5, 6.0  # Plus conservateur pour autres
+        
+        stop_distance_percent = atr_percent * atr_multiplier * base_stop_mult
         
         # Calculer les prix
         if side == OrderSide.BUY:
             stop_price = entry_price * (1 - stop_distance_percent / 100)
-            # Target basé sur le ratio risque/récompense
-            target_distance = stop_distance_percent * risk_reward_ratio
+            # Target plus agressif avec nouveau multiplier
+            target_distance = atr_percent * atr_multiplier * base_target_mult
             target_price = entry_price * (1 + target_distance / 100)
         else:  # SELL
             stop_price = entry_price * (1 + stop_distance_percent / 100)
-            # Target basé sur le ratio risque/récompense
-            target_distance = stop_distance_percent * risk_reward_ratio
+            # Target plus agressif avec nouveau multiplier
+            target_distance = atr_percent * atr_multiplier * base_target_mult
             target_price = entry_price * (1 - target_distance / 100)
         
         return {

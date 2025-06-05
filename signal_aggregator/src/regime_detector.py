@@ -153,8 +153,8 @@ class RegimeDetector:
     async def update_all_regimes(self):
         """Update regimes for all active symbols"""
         try:
-            # Get all active symbols from Redis
-            symbols = await self.redis.smembers("active_symbols")
+            # Use common trading symbols since active_symbols might not exist
+            symbols = ["BTCUSDC", "ETHUSDC", "ETHBTC"]
             
             for symbol in symbols:
                 await self.get_regime(symbol)  # This will calculate and cache

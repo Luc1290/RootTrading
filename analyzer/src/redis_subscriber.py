@@ -17,6 +17,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 
 from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB, CHANNEL_PREFIX, SYMBOLS
 from shared.src.redis_client import RedisClient
+from shared.src.kafka_client import KafkaClient
 from shared.src.schemas import StrategySignal
 from analyzer.src.bar_aggregator import BarAggregator
 
@@ -38,6 +39,7 @@ class RedisSubscriber:
         """
         self.symbols = symbols or SYMBOLS
         self.redis_client = RedisClient()
+        self.kafka_client = KafkaClient()
         self.market_data_channels = [f"{CHANNEL_PREFIX}:market:data:{symbol.lower()}" for symbol in self.symbols]
         # Agrégateurs par symbole
         self.aggregators = {sym: BarAggregator() for sym in self.symbols}
@@ -162,9 +164,16 @@ class RedisSubscriber:
                     logger.error(f"❌ Champ {field} manquant ou nul après conversion")
                     return
         
-            # Publier sur le canal des signaux
+            # Publier sur Redis (pour le coordinator actuel)
             self.redis_client.publish(self.signal_channel, signal_dict)
-            logger.info(f"✅ Signal publié sur {self.signal_channel}: {signal.side} pour {signal.symbol} @ {signal.price}")
+            
+            # Publier aussi sur Kafka (pour le signal_aggregator)
+            try:
+                self.kafka_client.produce('analyzer.signals', signal_dict)
+                logger.info(f"✅ Signal publié sur Redis et Kafka: {signal.side} pour {signal.symbol} @ {signal.price}")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur publication Kafka: {e}. Signal publié sur Redis seulement.")
+                logger.info(f"✅ Signal publié sur {self.signal_channel}: {signal.side} pour {signal.symbol} @ {signal.price}")
     
         except Exception as e:
             logger.error(f"❌ Erreur lors de la publication du signal: {str(e)}")

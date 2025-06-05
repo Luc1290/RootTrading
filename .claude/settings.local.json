@@ -1,7 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(docker exec:*)",      
+      "Bash(docker exec:*)",
       "Bash(docker cp:*)",
       "Bash(docker-compose exec:*)",
       "Bash(docker-compose ps:*)",
@@ -13,8 +13,10 @@
       "Bash(docker logs:*)",
       "Bash(grep:*)",
       "Bash(timeout 30 docker-compose logs -f trader)",
-      "Bash(python:*)",      
-      "Bash(sed:*)"
+      "Bash(python:*)",
+      "Bash(sed:*)",
+      "Bash(awk:*)",
+      "Bash(find:*)"
     ],
     "deny": []
   },

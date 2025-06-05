@@ -262,10 +262,16 @@ class MACDStrategy(BaseStrategy):
                 # Signal d'achat
                 signal_strength = self.calculate_signal_strength(current_histogram, crossover, divergence)
                 
-                # Calculer les niveaux
+                # Calculer les niveaux avec multipliers augmentés
                 atr = self._calculate_atr(df)
-                stop_price = current_price - (atr * 2)
-                target_price = current_price + (atr * 3)
+                # Ajuster selon le symbole pour donner une chance à BTCUSDC
+                if 'BTC' in self.symbol:
+                    stop_multiplier, target_multiplier = 1.5, 4.5  # Plus agressif pour BTC
+                else:
+                    stop_multiplier, target_multiplier = 2.5, 6.0   # Plus conservateur pour autres
+                
+                stop_price = current_price - (atr * stop_multiplier)
+                target_price = current_price + (atr * target_multiplier)
                 
                 signal = StrategySignal(
                     strategy=self.name,
@@ -273,7 +279,7 @@ class MACDStrategy(BaseStrategy):
                     side=OrderSide.BUY,
                     timestamp=datetime.now(),
                     price=current_price,
-                    confidence=0.7 if divergence else 0.6,
+                    confidence=0.8 if divergence else 0.75,  # Augmenté pour passer le nouveau filtre
                     strength=signal_strength,
                     metadata={
                         'macd': round(current_macd, 6),
@@ -290,10 +296,16 @@ class MACDStrategy(BaseStrategy):
                 # Signal de vente
                 signal_strength = self.calculate_signal_strength(current_histogram, crossover, divergence)
                 
-                # Calculer les niveaux
+                # Calculer les niveaux avec multipliers augmentés
                 atr = self._calculate_atr(df)
-                stop_price = current_price + (atr * 2)
-                target_price = current_price - (atr * 3)
+                # Ajuster selon le symbole pour donner une chance à BTCUSDC
+                if 'BTC' in self.symbol:
+                    stop_multiplier, target_multiplier = 1.5, 4.5  # Plus agressif pour BTC
+                else:
+                    stop_multiplier, target_multiplier = 2.5, 6.0   # Plus conservateur pour autres
+                
+                stop_price = current_price + (atr * stop_multiplier)
+                target_price = current_price - (atr * target_multiplier)
                 
                 signal = StrategySignal(
                     strategy=self.name,

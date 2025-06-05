@@ -253,7 +253,7 @@ class BreakoutStrategy(BaseStrategy):
         range_duration = breakout['range_duration']
         
         # Plus le range est long, plus la confiance est grande
-        confidence = min(0.5 + (range_duration / 20), 0.95)
+        confidence = min(0.75 + (range_duration / 20), 0.98)  # Augmenté de 0.5 à 0.75
         
         # Récupérer les informations du breakout
         side = breakout['side']

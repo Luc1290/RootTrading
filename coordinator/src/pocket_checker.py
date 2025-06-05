@@ -558,10 +558,25 @@ class PocketChecker:
             for cycle in active_cycles:
                 pocket = cycle.get("pocket", "active")
                 try:
-                    amount = float(cycle.get("quantity", 0)) * float(cycle.get("entry_price", 0))
+                    symbol = cycle.get("symbol", "")
+                    quantity = float(cycle.get("quantity", 0))
+                    entry_price = float(cycle.get("entry_price", 0))
+                    
+                    # Calculer le montant en quote asset
+                    amount = quantity * entry_price
+                    
+                    # Convertir en USDC si nécessaire
+                    amount_usdc = self._convert_to_usdc(amount, symbol)
+                    if amount_usdc > 0:
+                        logger.debug(f"Cycle {cycle.get('id')}: {quantity} * {entry_price} = {amount:.8f} {symbol[-3:]} = {amount_usdc:.2f} USDC")
+                        amount = amount_usdc
+                    else:
+                        logger.warning(f"Cycle {cycle.get('id')}: Impossible de convertir {amount:.8f} {symbol} en USDC")
+                    
                     if pocket in amounts_by_pocket:
                         amounts_by_pocket[pocket] += amount
-                except (ValueError, TypeError):
+                except (ValueError, TypeError) as e:
+                    logger.error(f"Erreur de calcul pour le cycle {cycle.get('id')}: {str(e)}")
                     continue
             
             # Préparer les données pour la réconciliation
@@ -658,10 +673,16 @@ class PocketChecker:
             
             trade_used_value = 0
             try:
-                trade_used_value = sum(
-                    float(cycle.get("quantity", 0)) * float(cycle.get("entry_price", 0))
-                    for cycle in valid_cycles
-                )
+                for cycle in valid_cycles:
+                    symbol = cycle.get("symbol", "")
+                    quantity = float(cycle.get("quantity", 0))
+                    entry_price = float(cycle.get("entry_price", 0))
+                    amount = quantity * entry_price
+                    
+                    # Convertir en USDC
+                    amount_usdc = self._convert_to_usdc(amount, symbol)
+                    trade_used_value += amount_usdc
+                    
             except Exception as e:
                 logger.warning(f"Impossible de calculer le montant total des trades: {str(e)}")
             
@@ -727,3 +748,42 @@ class PocketChecker:
         except Exception as e:
             logger.error(f"❌ Erreur lors de la vérification de synchronisation: {str(e)}")
             return False
+    
+    def _convert_to_usdc(self, amount: float, symbol: str) -> float:
+        """
+        Convertit un montant en USDC selon la paire de trading.
+        
+        Args:
+            amount: Le montant dans la devise de base
+            symbol: Le symbole de la paire (ex: ETHBTC, BTCUSDC)
+            
+        Returns:
+            Le montant converti en USDC
+        """
+        if symbol.endswith("USDC"):
+            return amount
+            
+        if symbol.endswith("BTC"):
+            try:
+                response = requests.get(f"http://trader:5002/price/BTCUSDC", timeout=2.0)
+                if response.status_code == 200:
+                    btc_price = float(response.json().get('price', 0))
+                    if btc_price > 0:
+                        return amount * btc_price
+            except Exception as e:
+                logger.warning(f"Impossible d'obtenir le prix BTC: {e}")
+                
+        elif symbol.endswith("ETH"):
+            try:
+                response = requests.get(f"http://trader:5002/price/ETHUSDC", timeout=2.0)
+                if response.status_code == 200:
+                    eth_price = float(response.json().get('price', 0))
+                    if eth_price > 0:
+                        return amount * eth_price
+            except Exception as e:
+                logger.warning(f"Impossible d'obtenir le prix ETH: {e}")
+                
+        # Si conversion impossible, retourner 0 pour éviter les erreurs
+        logger.warning(f"Impossible de convertir {amount} {symbol} en USDC")
+        return 0
+

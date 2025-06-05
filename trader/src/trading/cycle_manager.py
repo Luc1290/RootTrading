@@ -345,6 +345,34 @@ class CycleManager:
                     else:
                         age_minutes = 999  # Très vieux si pas de timestamp
                     
+                    # NOUVEAU: Délai minimum avant de considérer un ordre comme fantôme
+                    MIN_AGE_BEFORE_PHANTOM = 3.0  # 3 minutes minimum
+                    if age_minutes < MIN_AGE_BEFORE_PHANTOM:
+                        logger.debug(f"⏳ Cycle {cycle.id} trop récent ({age_minutes:.1f}min < {MIN_AGE_BEFORE_PHANTOM}min), skip")
+                        continue
+                    
+                    # NOUVEAU: Recharger le cycle depuis la DB pour avoir les dernières infos
+                    fresh_cycle = self.repository.get_cycle(cycle.id)
+                    if fresh_cycle:
+                        # NOUVEAU: Vérifier si le cycle a été exécuté (exit_price existe)
+                        if fresh_cycle.exit_price is not None:
+                            logger.info(f"✅ Cycle {cycle.id} a un exit_price ({fresh_cycle.exit_price}), pas un fantôme")
+                            # Mettre à jour le cycle en mémoire
+                            with self.cycles_lock:
+                                self.active_cycles[cycle.id] = fresh_cycle
+                            continue
+                        
+                        # NOUVEAU: Vérifier si le cycle est déjà en statut terminal
+                        if fresh_cycle.status in [CycleStatus.COMPLETED, CycleStatus.CANCELED, CycleStatus.FAILED]:
+                            logger.info(f"✅ Cycle {cycle.id} déjà en statut {fresh_cycle.status}, pas un fantôme")
+                            # Mettre à jour le cycle en mémoire
+                            with self.cycles_lock:
+                                self.active_cycles[cycle.id] = fresh_cycle
+                            continue
+                        
+                        # Utiliser le cycle rechargé pour la suite
+                        cycle = fresh_cycle
+                    
                     # Marquer comme failed et libérer les fonds
                     with self.cycles_lock:
                         cycle.status = CycleStatus.FAILED
@@ -466,6 +494,18 @@ class CycleManager:
                         )
                         
                         if not has_order:
+                            # NOUVEAU: Recharger le cycle depuis la DB pour avoir les dernières infos
+                            fresh_cycle = self.repository.get_cycle(cycle_id)
+                            if fresh_cycle and fresh_cycle.exit_price is not None:
+                                logger.info(f"✅ Cycle {cycle_id} a un exit_price ({fresh_cycle.exit_price}), pas un fantôme au démarrage")
+                                # Mettre à jour en mémoire avec le statut correct
+                                self.active_cycles[cycle_id] = fresh_cycle
+                                continue
+                            
+                            # Utiliser le cycle rechargé si disponible pour avoir les dernières infos
+                            if fresh_cycle:
+                                cycle = fresh_cycle
+                            
                             logger.warning(f"👻 Cycle {cycle_id} en statut {status_str} sans ordre Binance correspondant")
                             cycles_to_fail.append(cycle)
             

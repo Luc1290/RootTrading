@@ -203,10 +203,14 @@ class RSIStrategy(BaseStrategy):
                 # Calculer les niveaux de stop/target basés sur l'ATR
                 atr_percent = self.calculate_atr(df)
                 
-                # Pour RSI, utiliser des multiples plus conservateurs
-                # Stop: 1.5x ATR, Target: 2x ATR (ratio 1.33)
-                stop_distance = atr_percent * 1.5
-                target_distance = atr_percent * 2.0
+                # Multipliers augmentés selon le symbole
+                if 'BTC' in self.symbol:
+                    stop_mult, target_mult = 1.2, 3.5  # Plus agressif pour BTC
+                else:
+                    stop_mult, target_mult = 2.0, 5.0  # Plus conservateur pour autres
+                
+                stop_distance = atr_percent * stop_mult
+                target_distance = atr_percent * target_mult
                 
                 # Pour BUY: stop en dessous, target au-dessus
                 stop_price = current_price * (1 - stop_distance / 100)
@@ -256,10 +260,14 @@ class RSIStrategy(BaseStrategy):
                 # Calculer les niveaux de stop/target basés sur l'ATR
                 atr_percent = self.calculate_atr(df)
                 
-                # Pour RSI, utiliser des multiples plus conservateurs
-                # Stop: 1.5x ATR, Target: 2x ATR (ratio 1.33)
-                stop_distance = atr_percent * 1.5
-                target_distance = atr_percent * 2.0
+                # Multipliers augmentés selon le symbole
+                if 'BTC' in self.symbol:
+                    stop_mult, target_mult = 1.2, 3.5  # Plus agressif pour BTC
+                else:
+                    stop_mult, target_mult = 2.0, 5.0  # Plus conservateur pour autres
+                
+                stop_distance = atr_percent * stop_mult
+                target_distance = atr_percent * target_mult
                 
                 # Pour SELL: stop au-dessus, target en dessous
                 stop_price = current_price * (1 + stop_distance / 100)
@@ -312,14 +320,14 @@ class RSIStrategy(BaseStrategy):
                 # Pas en survente, confiance faible
                 return 0.3
             
-            # Échelle progressive: RSI 0-20 mappé sur confiance 0.95-0.6
-            confidence = 0.95 - (rsi_value / self.oversold_threshold) * 0.35
+            # Échelle progressive augmentée: RSI 0-20 mappé sur confiance 0.98-0.75
+            confidence = 0.98 - (rsi_value / self.oversold_threshold) * 0.23
             
             # Bonus si RSI très bas (< 15)
             if rsi_value < 15:
                 confidence *= 1.1
                 
-            return min(confidence, 0.95)
+            return min(confidence, 0.98)  # Augmenté de 0.95 à 0.98
             
         else:  # SELL
             # Plus le RSI est haut, plus la confiance est élevée (vendre dans l'extrême vert)
@@ -328,13 +336,13 @@ class RSIStrategy(BaseStrategy):
                 # Pas en surachat, confiance faible
                 return 0.3
             
-            # Échelle progressive: RSI 80-100 mappé sur confiance 0.6-0.95
+            # Échelle progressive augmentée: RSI 80-100 mappé sur confiance 0.75-0.98
             remaining_range = 100 - self.overbought_threshold
             position_in_range = (rsi_value - self.overbought_threshold) / remaining_range
-            confidence = 0.6 + position_in_range * 0.35
+            confidence = 0.75 + position_in_range * 0.23
             
             # Bonus si RSI très haut (> 85)
             if rsi_value > 85:
                 confidence *= 1.1
                 
-            return min(confidence, 0.95)
+            return min(confidence, 0.98)  # Augmenté de 0.95 à 0.98

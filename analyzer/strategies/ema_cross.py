@@ -182,13 +182,13 @@ class EMACrossStrategy(BaseStrategy):
         if is_uptrend and price_to_short_ema < -0.5:  # Prix sous l'EMA courte d'au moins 0.5%
             # Plus le prix est proche de l'EMA longue, meilleur est le point d'entrée
             if current_price <= current_long_ema * 1.01:  # Prix proche ou sous l'EMA longue
-                confidence = 0.85  # Excellente opportunité
+                confidence = 0.9   # Augmenté de 0.85 à 0.9
                 signal_reason = "deep_pullback"
             elif price_to_short_ema < -1.0:  # Prix bien sous l'EMA courte
-                confidence = 0.75  # Bonne opportunité
+                confidence = 0.8   # Augmenté de 0.75 à 0.8
                 signal_reason = "moderate_pullback"
             else:
-                confidence = 0.65  # Opportunité correcte
+                confidence = 0.7   # Augmenté de 0.65 à 0.7
                 signal_reason = "light_pullback"
             
             # Ajuster la confiance selon la force de la tendance
@@ -197,12 +197,16 @@ class EMACrossStrategy(BaseStrategy):
             elif ema_spread < 0.5:  # Tendance faible
                 confidence *= 0.8
             
-            # Stop sous le récent plus bas ou l'EMA longue
-            stop_loss = min(current_price * 0.98, current_long_ema * 0.99)
+            # Stop avec multipliers augmentés selon le symbole
+            if 'BTC' in self.symbol:
+                stop_pct, target_pct = 0.015, 0.025  # 1.5% stop, 2.5% target pour BTC
+            else:
+                stop_pct, target_pct = 0.025, 0.04   # 2.5% stop, 4% target pour autres
             
-            # Target basé sur le retour vers/au-dessus de l'EMA courte
-            # S'assurer que le target est toujours supérieur au prix d'entrée pour un BUY
-            target_price = max(current_short_ema * 1.01, current_price * 1.005)  # Au minimum +0.5% du prix actuel
+            stop_loss = min(current_price * (1 - stop_pct), current_long_ema * 0.99)
+            
+            # Target plus agressif
+            target_price = max(current_short_ema * (1 + target_pct/2), current_price * (1 + target_pct))
             
             metadata = {
                 "short_ema": float(current_short_ema),
@@ -227,13 +231,13 @@ class EMACrossStrategy(BaseStrategy):
         elif is_downtrend and price_to_short_ema > 0.5:  # Prix au-dessus de l'EMA courte d'au moins 0.5%
             # Plus le prix est proche de l'EMA longue, meilleur est le point de sortie
             if current_price >= current_long_ema * 0.99:  # Prix proche ou au-dessus de l'EMA longue
-                confidence = 0.85  # Excellente opportunité
+                confidence = 0.9   # Augmenté de 0.85 à 0.9
                 signal_reason = "strong_bounce"
             elif price_to_short_ema > 1.0:  # Prix bien au-dessus de l'EMA courte
-                confidence = 0.75  # Bonne opportunité
+                confidence = 0.8   # Augmenté de 0.75 à 0.8
                 signal_reason = "moderate_bounce"
             else:
-                confidence = 0.65  # Opportunité correcte
+                confidence = 0.7   # Augmenté de 0.65 à 0.7
                 signal_reason = "light_bounce"
             
             # Ajuster la confiance selon la force de la tendance
@@ -242,12 +246,16 @@ class EMACrossStrategy(BaseStrategy):
             elif ema_spread < 0.5:  # Tendance faible
                 confidence *= 0.8
             
-            # Stop au-dessus du récent plus haut ou l'EMA longue
-            stop_loss = max(current_price * 1.02, current_long_ema * 1.01)
+            # Stop avec multipliers augmentés selon le symbole  
+            if 'BTC' in self.symbol:
+                stop_pct, target_pct = 0.015, 0.025  # 1.5% stop, 2.5% target pour BTC
+            else:
+                stop_pct, target_pct = 0.025, 0.04   # 2.5% stop, 4% target pour autres
             
-            # Target basé sur le retour vers/sous l'EMA courte
-            # S'assurer que le target est toujours inférieur au prix d'entrée pour un SELL
-            target_price = min(current_short_ema * 0.99, current_price * 0.995)  # Au maximum -0.5% du prix actuel
+            stop_loss = max(current_price * (1 + stop_pct), current_long_ema * 1.01)
+            
+            # Target plus agressif pour SELL
+            target_price = min(current_short_ema * (1 - target_pct/2), current_price * (1 - target_pct))
             
             metadata = {
                 "short_ema": float(current_short_ema),

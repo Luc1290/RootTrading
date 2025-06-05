@@ -30,7 +30,7 @@ class SignalAggregator:
         
         # Voting thresholds
         self.min_vote_threshold = 0.5
-        self.min_confidence_threshold = 0.6
+        self.min_confidence_threshold = 0.7  # Augmenté de 0.6 à 0.7 pour filtrer les signaux faibles
         
     async def process_signal(self, signal: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Process a raw signal and return aggregated decision"""
@@ -38,13 +38,26 @@ class SignalAggregator:
             symbol = signal['symbol']
             strategy = signal['strategy']
             
+            # Convert 'side' to 'direction' for compatibility
+            if 'side' in signal and 'direction' not in signal:
+                side = signal['side']
+                if side in ['BUY', 'buy']:
+                    signal['direction'] = 'BUY'
+                elif side in ['SELL', 'sell']:
+                    signal['direction'] = 'SELL'
+                else:
+                    logger.warning(f"Unknown side value: {side}")
+                    return None
+            
             # Handle timestamp conversion
             timestamp_str = signal.get('timestamp', signal.get('created_at'))
             if timestamp_str:
                 if isinstance(timestamp_str, str):
                     timestamp = datetime.fromisoformat(timestamp_str)
+                    if timestamp.tzinfo is None:
+                        timestamp = timestamp.replace(tzinfo=timezone.utc)
                 else:
-                    timestamp = datetime.fromtimestamp(timestamp_str / 1000 if timestamp_str > 1e10 else timestamp_str)
+                    timestamp = datetime.fromtimestamp(timestamp_str / 1000 if timestamp_str > 1e10 else timestamp_str, tz=timezone.utc)
             else:
                 timestamp = datetime.now(timezone.utc)
             
@@ -103,9 +116,12 @@ class SignalAggregator:
         timestamp_str = signal.get('timestamp', signal.get('created_at'))
         if timestamp_str:
             if isinstance(timestamp_str, str):
-                return datetime.fromisoformat(timestamp_str)
+                timestamp = datetime.fromisoformat(timestamp_str)
+                if timestamp.tzinfo is None:
+                    timestamp = timestamp.replace(tzinfo=timezone.utc)
+                return timestamp
             else:
-                return datetime.fromtimestamp(timestamp_str / 1000 if timestamp_str > 1e10 else timestamp_str)
+                return datetime.fromtimestamp(timestamp_str / 1000 if timestamp_str > 1e10 else timestamp_str, tz=timezone.utc)
         return datetime.now(timezone.utc)
             
     async def _aggregate_signals(self, symbol: str, signals: List[Dict], 
@@ -132,18 +148,25 @@ class SignalAggregator:
             if confidence < self.min_confidence_threshold:
                 continue
                 
+            # Get direction (handle both 'direction' and 'side' keys)
+            direction = signal.get('direction', signal.get('side'))
+            if direction in ['BUY', 'buy']:
+                direction = 'BUY'
+            elif direction in ['SELL', 'sell']:
+                direction = 'SELL'
+            
             # Weighted signal
             weighted_signal = {
                 'strategy': strategy,
-                'direction': signal['direction'],
+                'direction': direction,
                 'confidence': confidence,
                 'weight': weight,
                 'score': confidence * weight
             }
             
-            if signal['direction'] == 'BUY':
+            if direction == 'BUY':
                 buy_signals.append(weighted_signal)
-            elif signal['direction'] == 'SELL':
+            elif direction == 'SELL':
                 sell_signals.append(weighted_signal)
                 
         # Calculate total scores
@@ -176,23 +199,69 @@ class SignalAggregator:
         stop_loss_sum = 0
         
         for signal in signals:
-            if signal['direction'] == direction and signal['strategy'] in contributing_strategies:
+            signal_direction = signal.get('direction', signal.get('side'))
+            if signal_direction == direction and signal['strategy'] in contributing_strategies:
                 weight = await self.performance_tracker.get_strategy_weight(signal['strategy'])
-                take_profit_sum += signal.get('take_profit', 0.0028) * weight
-                stop_loss_sum += signal.get('stop_loss', 0.002) * weight
+                
+                # Extract target_price and stop_price from metadata
+                metadata = signal.get('metadata', {})
+                target_price = metadata.get('target_price', signal.get('take_profit', signal['price'] * 1.002))
+                stop_price = metadata.get('stop_price', signal.get('stop_loss', signal['price'] * 0.998))
+                
+                take_profit_sum += target_price * weight
+                stop_loss_sum += stop_price * weight
                 
         take_profit = take_profit_sum / total_weight
         stop_loss = stop_loss_sum / total_weight
         
+        # Get the latest price from one of the signals
+        current_price = signals[0]['price'] if signals else 0.0
+        
+        # Create main strategy name from contributing strategies
+        main_strategy = contributing_strategies[0] if contributing_strategies else 'SignalAggregator'
+        
+        # Déterminer la force du signal basée sur la confiance
+        if confidence >= 0.8:
+            strength = 'very_strong'
+        elif confidence >= 0.6:
+            strength = 'strong'
+        elif confidence >= 0.4:
+            strength = 'moderate'
+        else:
+            strength = 'weak'
+            
+        # Calculer la distance de trailing stop basée sur la distance target/stop
+        price_distance = abs(take_profit - current_price) / current_price
+        # Trailing stop à 50% de la distance target pour laisser de la marge
+        trailing_delta = price_distance * 50  # En pourcentage
+        
+        # Minimum 0.15% pour éviter les trails trop serrés
+        trailing_delta = max(trailing_delta, 0.15)
+        # Maximum 1.0% pour éviter les trails trop larges
+        trailing_delta = min(trailing_delta, 1.0)
+        
         return {
             'symbol': symbol,
-            'direction': direction,
+            'side': direction,  # Use 'side' instead of 'direction' for coordinator compatibility
+            'direction': direction,  # Keep for backward compatibility
+            'price': current_price,  # Add price field required by coordinator
+            'strategy': f"Aggregated_{len(contributing_strategies)}",  # Create strategy name
             'confidence': confidence,
+            'strength': strength,  # Ajouter la force du signal
             'take_profit': take_profit,
             'stop_loss': stop_loss,
+            'trailing_delta': trailing_delta,  # NOUVEAU: Trailing stop activé
             'contributing_strategies': contributing_strategies,
             'buy_score': buy_score,
-            'sell_score': sell_score
+            'sell_score': sell_score,
+            'metadata': {
+                'aggregated': True,
+                'contributing_strategies': contributing_strategies,
+                'strategy_count': len(contributing_strategies),
+                'target_price': take_profit,
+                'stop_price': stop_loss,
+                'trailing_delta': trailing_delta  # NOUVEAU: Ajouter au metadata
+            }
         }
         
     def _is_strategy_active(self, strategy: str, regime: str) -> bool:
