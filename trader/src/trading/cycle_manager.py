@@ -586,7 +586,7 @@ class CycleManager:
     
     def create_cycle(self, symbol: str, strategy: str, side: Union[OrderSide, str], 
                     price: float, quantity: float, pocket: Optional[str] = None,
-                    target_price: Optional[float] = None, stop_price: Optional[float] = None,
+                    stop_price: Optional[float] = None,
                     trailing_delta: Optional[float] = None) -> Optional[TradeCycle]:
         """
         Crée un nouveau cycle de trading et exécute l'ordre d'entrée.
@@ -606,7 +606,7 @@ class CycleManager:
                 logger.error(f"❌ Quantité invalide pour création de cycle: {quantity}")
                 return None
             
-            # Avec TrailingStop pur, pas besoin de target_price obligatoire
+            # Avec StopManagerPure, seul stop_price est nécessaire
             # Le stop à 3% suffit pour gérer la sortie automatiquement
 
             cycle_id = f"cycle_{uuid.uuid4().hex[:16]}"
@@ -620,7 +620,6 @@ class CycleManager:
                 status=CycleStatus.INITIATING,
                 entry_price=None,
                 quantity=quantity,
-                target_price=None,  # Plus utilisé avec TrailingStop pur
                 stop_price=stop_price,
                 trailing_delta=trailing_delta,
                 created_at=now,
@@ -837,7 +836,15 @@ class CycleManager:
 
             # Enregistrer l'exécution et le cycle
             self.repository.save_execution(execution, cycle_id)
-            self.repository.save_cycle(cycle)
+            logger.info(f"🔍 DEBUG: Avant save_cycle, attributs du cycle: {list(cycle.__dict__.keys())}")
+            try:
+                self.repository.save_cycle(cycle)
+            except Exception as e:
+                import traceback
+                logger.error(f"❌ Erreur détaillée save_cycle: {str(e)}")
+                logger.error(f"❌ Stack trace save_cycle: {traceback.format_exc()}")
+                # Ne pas faire échouer le cycle pour cette erreur de sauvegarde
+                logger.warning("⚠️ Cycle créé mais non sauvegardé - continuons")
 
             # Publier sur Redis
             self._publish_cycle_event(cycle, "created")
@@ -1416,41 +1423,6 @@ class CycleManager:
         self.stop_manager.process_price_update(symbol, price, close_cycle_by_stop)
     
     
-    def _fix_target_price_if_invalid(self, target_price: float, entry_price: float, side: OrderSide) -> float:
-        """
-        Corrige un target_price invalide en calculant un target cohérent.
-        
-        Args:
-            target_price: Prix cible original (potentiellement invalide)
-            entry_price: Prix d'entrée réel
-            side: Direction de l'ordre D'ENTRÉE (BUY ou SELL)
-            
-        Returns:
-            Prix cible corrigé et cohérent
-        """
-        try:
-            # Si l'entrée est BUY, on veut vendre plus haut (target > entry)
-            # Si l'entrée est SELL, on veut racheter plus bas (target < entry)
-            if side == OrderSide.BUY:
-                if target_price <= entry_price:
-                    # Target invalide pour une position LONG, calculer un target à +1%
-                    corrected_target = entry_price * 1.01
-                    logger.warning(f"🔧 Target invalide pour position LONG ({target_price} <= {entry_price}), corrigé à {corrected_target}")
-                    return corrected_target
-            elif side == OrderSide.SELL:
-                if target_price >= entry_price:
-                    # Target invalide pour une position SHORT, calculer un target à -1%
-                    corrected_target = entry_price * 0.99
-                    logger.warning(f"🔧 Target invalide pour position SHORT ({target_price} >= {entry_price}), corrigé à {corrected_target}")
-                    return corrected_target
-            
-            # Target valide, retourner tel quel
-            return target_price
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la correction du target_price: {str(e)}")
-            # En cas d'erreur, retourner un target par défaut à +/-1%
-            return entry_price * 1.01 if side == OrderSide.BUY else entry_price * 0.99
 
     def _release_pocket_funds(self, pocket_type: str, amount: float, cycle_id: str) -> bool:
         """

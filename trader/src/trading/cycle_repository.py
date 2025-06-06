@@ -85,7 +85,6 @@ class CycleRepository:
                     entry_price NUMERIC(16, 8),
                     exit_price NUMERIC(16, 8),
                     quantity NUMERIC(16, 8),
-                    target_price NUMERIC(16, 8),
                     stop_price NUMERIC(16, 8),
                     trailing_delta NUMERIC(16, 8),
                     profit_loss NUMERIC(16, 8),
@@ -289,7 +288,6 @@ class CycleRepository:
                     entry_price = %s,
                     exit_price = %s,
                     quantity = %s,
-                    target_price = %s,
                     stop_price = %s,
                     trailing_delta = %s,
                     profit_loss = %s,
@@ -313,7 +311,6 @@ class CycleRepository:
                     cycle.entry_price,
                     cycle.exit_price,
                     cycle.quantity,
-                    cycle.target_price,
                     cycle.stop_price,
                     cycle.trailing_delta,
                     cycle.profit_loss,
@@ -330,10 +327,10 @@ class CycleRepository:
                 query = """
                 INSERT INTO trade_cycles
                 (id, symbol, strategy, status, confirmed, entry_order_id, exit_order_id,
-                entry_price, exit_price, quantity, target_price, stop_price,
+                entry_price, exit_price, quantity, stop_price,
                 trailing_delta, profit_loss, profit_loss_percent, created_at,
                 updated_at, completed_at, pocket, demo, metadata)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                 """
                 
                 params = (
@@ -347,7 +344,6 @@ class CycleRepository:
                     cycle.entry_price,
                     cycle.exit_price,
                     cycle.quantity,
-                    cycle.target_price,
                     cycle.stop_price,
                     cycle.trailing_delta,
                     cycle.profit_loss,
@@ -368,7 +364,9 @@ class CycleRepository:
             return True
     
         except Exception as e:
+            import traceback
             logger.error(f"❌ Erreur lors de l'enregistrement du cycle en base de données: {str(e)}")
+            logger.error(f"❌ Stack trace: {traceback.format_exc()}")
             return False
     
     def get_cycle(self, cycle_id: str) -> Optional[TradeCycle]:
@@ -384,7 +382,7 @@ class CycleRepository:
         try:
             with DBContextManager() as cursor:
                 cursor.execute(
-                    "SELECT * FROM trade_cycles WHERE id = %s",
+                    "SELECT id, symbol, strategy, status, confirmed, entry_order_id, exit_order_id, entry_price, exit_price, quantity, stop_price, trailing_delta, min_price, max_price, profit_loss, profit_loss_percent, created_at, updated_at, completed_at, pocket, demo, metadata FROM trade_cycles WHERE id = %s",
                     (cycle_id,)
                 )
                 
@@ -440,7 +438,11 @@ class CycleRepository:
             # Exécuter la requête - IMPORTANT: auto_transaction=False
             with DBContextManager(auto_transaction=False) as cursor:
                 query = f"""
-                SELECT * FROM trade_cycles
+                SELECT id, symbol, strategy, status, confirmed, entry_order_id, exit_order_id,
+                       entry_price, exit_price, quantity, stop_price,
+                       trailing_delta, min_price, max_price, profit_loss, profit_loss_percent,
+                       created_at, updated_at, completed_at, pocket, demo, metadata
+                FROM trade_cycles
                 WHERE {where_clause}
                 ORDER BY created_at DESC
                 """
@@ -479,7 +481,11 @@ class CycleRepository:
         try:
             with DBContextManager(auto_transaction=False) as cursor:
                 query = """
-                SELECT * FROM trade_cycles
+                SELECT id, symbol, strategy, status, confirmed, entry_order_id, exit_order_id,
+                       entry_price, exit_price, quantity, stop_price,
+                       trailing_delta, min_price, max_price, profit_loss, profit_loss_percent,
+                       created_at, updated_at, completed_at, pocket, demo, metadata
+                FROM trade_cycles
                 ORDER BY created_at DESC
                 """
                 
@@ -533,7 +539,6 @@ class CycleRepository:
             entry_price=float(cycle_data['entry_price']) if cycle_data['entry_price'] else None,
             exit_price=float(cycle_data['exit_price']) if cycle_data['exit_price'] else None,
             quantity=float(cycle_data['quantity']) if cycle_data['quantity'] else None,
-            target_price=float(cycle_data['target_price']) if cycle_data['target_price'] else None,
             stop_price=float(cycle_data['stop_price']) if cycle_data['stop_price'] else None,
             trailing_delta=float(cycle_data['trailing_delta']) if cycle_data['trailing_delta'] else None,
             profit_loss=float(cycle_data['profit_loss']) if cycle_data['profit_loss'] else None,

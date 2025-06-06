@@ -354,7 +354,7 @@ class ExchangeReconciliation:
             # Récupérer tous les cycles récents (dernières 48h) qui sont terminés/annulés
             # Exclure les cycles démo pour éviter de vérifier leurs ordres sur Binance
             query = """
-                SELECT id, symbol, entry_order_id, exit_order_id, status, target_price
+                SELECT id, symbol, entry_order_id, exit_order_id, status
                 FROM trade_cycles 
                 WHERE status IN ('completed', 'canceled', 'failed')
                 AND created_at > NOW() - INTERVAL '48 hours'
@@ -374,8 +374,7 @@ class ExchangeReconciliation:
                         'symbol': row[1],
                         'entry_order_id': row[2],
                         'exit_order_id': row[3],
-                        'status': row[4],
-                        'target_price': row[5]
+                        'status': row[4]
                     })
             
             logger.info(f"📊 {len(completed_cycles)} cycles terminés avec ordre de sortie trouvés")
