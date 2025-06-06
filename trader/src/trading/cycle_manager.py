@@ -19,7 +19,7 @@ from shared.src.db_pool import DBContextManager, DBConnectionPool, transaction
 
 from trader.src.exchange.binance_executor import BinanceExecutor
 from trader.src.trading.cycle_repository import CycleRepository
-from trader.src.trading.stop_manager import StopManager
+from trader.src.trading.stop_manager_pure import StopManagerPure
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ class CycleManager:
         
         # Initialiser les composants
         self.repository = CycleRepository(self.db_url)
-        self.stop_manager = StopManager(self.repository)
+        self.stop_manager = StopManagerPure(self.repository)
         
         # Dictionnaire des cycles actifs {id_cycle: cycle}
         self.active_cycles: Dict[str, TradeCycle] = {}
@@ -65,6 +65,8 @@ class CycleManager:
             self._start_sync_thread()
             # Démarrer le thread de nettoyage des ordres orphelins
             self._start_orphan_cleanup_thread()
+            # Démarrer le thread de réconciliation des balances
+            self._start_balance_reconciliation_thread()
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'initialisation de la base de données: {str(e)}")
         
@@ -135,7 +137,7 @@ class CycleManager:
                 for cycle in db_cycles:
                     if cycle.id in self.active_cycles:
                         mem_cycle = self.active_cycles[cycle.id]
-                        if mem_cycle.status != cycle.status or mem_cycle.exit_order_id != cycle.exit_order_id:
+                        if mem_cycle.status != cycle.status:
                             self.active_cycles[cycle.id] = cycle
                             updated_count += 1
                 
@@ -264,8 +266,26 @@ class CycleManager:
                             continue  # On traite les TTL expirés séparément
                     
                     # Pour ces cycles, vérifier le bon ordre selon le statut
-                    # TOUS les cycles waiting/active doivent avoir leur ordre de SORTIE actif
-                    expected_order_id = cycle.exit_order_id
+                    # NOUVEAU: Avec le système no-exit-order, distinguer entrée vs sortie
+                    expected_order_id = None
+                    is_entry_phase = False
+                    
+                    # Détecter si c'est la phase d'entrée ou de sortie
+                    if cycle.entry_order_id and not cycle.exit_price:
+                        # Cycle en cours : entrée non terminée ou sortie sans exit order
+                        entry_execution = self.binance_executor.get_order_status(cycle.symbol, cycle.entry_order_id)
+                        if entry_execution and entry_execution.status != OrderStatus.FILLED:
+                            # Phase d'entrée : ordre d'entrée pas encore rempli
+                            is_entry_phase = True
+                            expected_order_id = cycle.entry_order_id
+                        else:
+                            # Phase de sortie : ordre d'entrée rempli, pas d'exit order (nouveau système)
+                            logger.debug(f"✅ Cycle {cycle.id} en phase de sortie {status_str} sans exit order (nouveau système)")
+                            continue  # Skip la vérification, c'est normal dans le nouveau système
+                    else:
+                        # Cycle sans entry_order_id valide
+                        expected_order_id = cycle.entry_order_id
+                        is_entry_phase = True
                     
                     has_active_order = (
                         expected_order_id and 
@@ -274,9 +294,10 @@ class CycleManager:
                          int(expected_order_id) in binance_order_ids)
                     )
                     
-                    if not has_active_order:
+                    if not has_active_order and expected_order_id:
                         phantom_cycles.append(cycle)
-                        logger.warning(f"👻 Cycle fantôme détecté: {cycle.id} en statut {status_str} sans ordre sur Binance")
+                        phase_desc = "entrée" if is_entry_phase else "sortie"
+                        logger.warning(f"👻 Cycle fantôme détecté: {cycle.id} en statut {status_str} sans ordre de {phase_desc} sur Binance")
             
             # 5. Traiter les cycles TTL expirés
             for cycle, age_minutes in ttl_expired_cycles:
@@ -483,15 +504,26 @@ class CycleManager:
                     
                     # Vérifier si le cycle devrait avoir des ordres actifs
                     if status_str in ['waiting_buy', 'waiting_sell', 'active_buy', 'active_sell']:
-                        # Tous les cycles actifs doivent avoir leur ordre de SORTIE actif
-                        expected_order_id = cycle.exit_order_id
-                        
-                        has_order = (
-                            expected_order_id and 
-                            (str(expected_order_id) in binance_order_ids or
-                             expected_order_id in binance_order_ids or
-                             str(expected_order_id) in {str(oid) for oid in binance_order_ids})
-                        )
+                        # NOUVEAU: Avec no-exit-order, vérifier seulement les cycles en phase d'entrée
+                        if cycle.entry_order_id and not cycle.exit_price:
+                            # Vérifier si ordre d'entrée existe et n'est pas FILLED
+                            entry_execution = self.binance_executor.get_order_status(cycle.symbol, cycle.entry_order_id)
+                            if entry_execution and entry_execution.status != OrderStatus.FILLED:
+                                # Phase d'entrée : vérifier présence ordre d'entrée
+                                expected_order_id = cycle.entry_order_id
+                                has_order = (
+                                    expected_order_id and 
+                                    (str(expected_order_id) in binance_order_ids or
+                                     expected_order_id in binance_order_ids or
+                                     str(expected_order_id) in {str(oid) for oid in binance_order_ids})
+                                )
+                            else:
+                                # Phase de sortie : normal sans exit order
+                                logger.debug(f"✅ Cycle {cycle_id} en phase de sortie au startup (nouveau système)")
+                                has_order = True  # Considérer comme OK
+                        else:
+                            # Cycle terminé ou sans entry_order_id
+                            has_order = True  # Pas de vérification nécessaire
                         
                         if not has_order:
                             # NOUVEAU: Recharger le cycle depuis la DB pour avoir les dernières infos
@@ -574,10 +606,8 @@ class CycleManager:
                 logger.error(f"❌ Quantité invalide pour création de cycle: {quantity}")
                 return None
             
-            # Valider que target_price est obligatoire
-            if not target_price or target_price <= 0:
-                logger.error(f"❌ Prix cible invalide ou manquant pour création de cycle: {target_price}")
-                return None
+            # Avec TrailingStop pur, pas besoin de target_price obligatoire
+            # Le stop à 3% suffit pour gérer la sortie automatiquement
 
             cycle_id = f"cycle_{uuid.uuid4().hex[:16]}"
             now = datetime.now()
@@ -590,7 +620,7 @@ class CycleManager:
                 status=CycleStatus.INITIATING,
                 entry_price=None,
                 quantity=quantity,
-                target_price=target_price,
+                target_price=None,  # Plus utilisé avec TrailingStop pur
                 stop_price=stop_price,
                 trailing_delta=trailing_delta,
                 created_at=now,
@@ -603,58 +633,99 @@ class CycleManager:
             # Garder le prix de référence pour les calculs (validation des fonds, target price, etc.)
             reference_price = price
             
-            # Vérifier le solde avant d'acheter (seulement pour les ordres BUY)
-            if side == OrderSide.BUY and not self.demo_mode:
-                # Extraire la quote currency (USDC, BTC, etc.)
-                quote_currency = symbol.replace("BTC", "").replace("ETH", "").replace("BNB", "").replace("SUI", "")
-                if not quote_currency:  # Pour les paires comme ETHBTC
-                    quote_currency = "BTC" if "BTC" in symbol and symbol != "BTCUSDC" else "USDC"
+            # Vérifier le solde avant d'exécuter l'ordre (pour BUY et SELL)
+            if not self.demo_mode:
+                # Extraire la base currency et quote currency
+                if symbol.endswith('USDC'):
+                    base_currency = symbol.replace('USDC', '')
+                    quote_currency = 'USDC'
+                elif symbol.endswith('BTC'):
+                    base_currency = symbol.replace('BTC', '') if symbol != 'BTCUSDC' else 'BTC'
+                    quote_currency = 'BTC' if symbol != 'BTCUSDC' else 'USDC'
+                else:
+                    # Fallback pour autres paires
+                    base_currency = symbol[:3]
+                    quote_currency = symbol[3:]
                 
                 # Récupérer les soldes actuels
                 balances = self.binance_executor.utils.fetch_account_balances(self.binance_executor.time_offset)
                 logger.info(f"🔍 Balances Binance récupérées: {balances}")
-                available_balance = balances.get(quote_currency, {}).get('free', 0)
-                logger.info(f"💰 Balance {quote_currency}: {available_balance}")
                 
-                # Calculer le coût total de l'ordre
-                # Pour un ordre MARKET, ajouter une marge pour le slippage potentiel
-                slippage_margin = 1.005  # 0.5% de marge pour le slippage
-                fee_margin = 1.001       # 0.1% pour les frais taker
-                total_cost = reference_price * quantity * slippage_margin * fee_margin
-                
-                # Vérifier si le solde est suffisant
-                if available_balance < total_cost:
-                    logger.error(f"❌ Solde {quote_currency} insuffisant: {available_balance:.2f} < {total_cost:.2f} requis (incluant marge de sécurité)")
+                if side == OrderSide.BUY:
+                    # Pour BUY: vérifier qu'on a assez de quote currency
+                    available_balance = balances.get(quote_currency, {}).get('free', 0)
+                    logger.info(f"💰 Balance {quote_currency}: {available_balance}")
                     
-                    # Créer le cycle avec un statut FAILED pour la traçabilité
-                    cycle.status = CycleStatus.FAILED
-                    cycle.updated_at = datetime.now()
-                    if not hasattr(cycle, 'metadata'):
-                        cycle.metadata = {}
-                    cycle.metadata['fail_reason'] = f"Solde {quote_currency} insuffisant: {available_balance:.2f} < {total_cost:.2f}"
+                    # Calculer le coût total de l'ordre
+                    slippage_margin = 1.005  # 0.5% de marge pour le slippage
+                    fee_margin = 1.001       # 0.1% pour les frais taker
+                    total_cost = reference_price * quantity * slippage_margin * fee_margin
                     
-                    # Sauvegarder le cycle échoué pour la traçabilité
-                    self.repository.save_cycle(cycle)
+                    if available_balance < total_cost:
+                        logger.error(f"❌ Solde {quote_currency} insuffisant pour BUY: {available_balance:.2f} < {total_cost:.2f}")
+                        
+                        # Créer le cycle avec un statut FAILED pour la traçabilité
+                        cycle.status = CycleStatus.FAILED
+                        cycle.updated_at = datetime.now()
+                        if not hasattr(cycle, 'metadata'):
+                            cycle.metadata = {}
+                        cycle.metadata['fail_reason'] = f"Solde {quote_currency} insuffisant: {available_balance:.2f} < {total_cost:.2f}"
+                        
+                        # Sauvegarder le cycle échoué pour la traçabilité
+                        self.repository.save_cycle(cycle)
+                        
+                        # Publier l'événement d'échec
+                        self._publish_cycle_event(cycle, "failed")
+                        
+                        # Nettoyer les ordres potentiels sur Binance
+                        self._cleanup_cycle_orders(cycle)
+                        
+                        # Proposer une quantité ajustée si possible
+                        safe_margin = 0.98  # 98% du solde pour couvrir slippage + frais
+                        adjusted_quantity = (available_balance * safe_margin) / reference_price
+                        min_quantity = self.binance_executor.symbol_constraints.get_min_qty(symbol)
+                        
+                        if adjusted_quantity >= min_quantity:
+                            logger.info(f"💡 Quantité ajustée suggérée: {adjusted_quantity:.8f} {base_currency}")
+                        
+                        return None
+                        
+                elif side == OrderSide.SELL:
+                    # Pour SELL: vérifier qu'on a assez de base currency à vendre
+                    available_balance = balances.get(base_currency, {}).get('free', 0)
+                    logger.info(f"💰 Balance {base_currency}: {available_balance}")
                     
-                    # Publier l'événement d'échec
-                    self._publish_cycle_event(cycle, "failed")
+                    # Ajouter une petite marge pour les frais
+                    required_quantity = quantity * 1.001  # 0.1% de marge pour les frais
                     
-                    # Nettoyer les ordres potentiels sur Binance
-                    self._cleanup_cycle_orders(cycle)
-                    
-                    # Ne pas ajouter le cycle failed dans active_cycles
-                    # (Il n'y est pas encore car on retourne None avant de l'ajouter)
-                    
-                    # Proposer une quantité ajustée si possible
-                    # Utiliser une marge plus conservative pour les ordres MARKET
-                    safe_margin = 0.98  # 98% du solde pour couvrir slippage + frais
-                    adjusted_quantity = (available_balance * safe_margin) / reference_price
-                    min_quantity = self.binance_executor.symbol_constraints.get_min_qty(symbol)
-                    
-                    if adjusted_quantity >= min_quantity:
-                        logger.info(f"💡 Quantité ajustée suggérée: {adjusted_quantity:.8f} {symbol.replace(quote_currency, '')}")
-                    
-                    return None
+                    if available_balance < required_quantity:
+                        logger.error(f"❌ Solde {base_currency} insuffisant pour SELL: {available_balance:.8f} < {required_quantity:.8f}")
+                        
+                        # Créer le cycle avec un statut FAILED pour la traçabilité
+                        cycle.status = CycleStatus.FAILED
+                        cycle.updated_at = datetime.now()
+                        if not hasattr(cycle, 'metadata'):
+                            cycle.metadata = {}
+                        cycle.metadata['fail_reason'] = f"Solde {base_currency} insuffisant: {available_balance:.8f} < {required_quantity:.8f}"
+                        
+                        # Sauvegarder le cycle échoué pour la traçabilité
+                        self.repository.save_cycle(cycle)
+                        
+                        # Publier l'événement d'échec
+                        self._publish_cycle_event(cycle, "failed")
+                        
+                        # Nettoyer les ordres potentiels sur Binance
+                        self._cleanup_cycle_orders(cycle)
+                        
+                        # Proposer une quantité ajustée si possible
+                        safe_margin = 0.99  # 99% du solde disponible
+                        adjusted_quantity = available_balance * safe_margin
+                        min_quantity = self.binance_executor.symbol_constraints.get_min_qty(symbol)
+                        
+                        if adjusted_quantity >= min_quantity:
+                            logger.info(f"💡 Quantité ajustée suggérée: {adjusted_quantity:.8f} {base_currency}")
+                        
+                        return None
             
             # Créer l'ordre d'entrée - utiliser MARKET pour exécution immédiate
             # On ne passe pas de prix à l'ordre pour forcer MARKET
@@ -749,6 +820,9 @@ class CycleManager:
             with self.cycles_lock:
                 cycle.entry_order_id = execution.order_id
                 cycle.entry_price = execution.price
+                # Initialiser min_price et max_price avec le prix d'entrée
+                cycle.min_price = execution.price
+                cycle.max_price = execution.price
                 # Si la quantité exécutée diffère, la stocker dans metadata
                 if execution.quantity != cycle.quantity:
                     logger.info(f"📊 Quantité ajustée: {cycle.quantity} → {execution.quantity}")
@@ -770,29 +844,9 @@ class CycleManager:
 
             logger.info(f"✅ Cycle {cycle_id} créé avec succès: {side.value} {quantity} {symbol} @ {execution.price}")
             
-            # Créer automatiquement l'ordre de sortie si un prix cible existe
-            # Valider et corriger le target_price si nécessaire
-            if cycle.target_price:
-                # Vérifier la cohérence du target_price
-                original_target = cycle.target_price
-                cycle.target_price = self._fix_target_price_if_invalid(cycle.target_price, execution.price, side)
-                
-                if cycle.target_price != original_target:
-                    logger.warning(f"⚠️ Target price corrigé: {original_target} → {cycle.target_price} pour {side.value} @ {execution.price}")
-                    self.repository.save_cycle(cycle)
-                
-                logger.info(f"🎯 Création immédiate de l'ordre de sortie (target: {cycle.target_price})")
-                self._create_exit_order_for_cycle(cycle, initial_side=side)
-            else:
-                # Ceci ne devrait jamais arriver car target_price est validé en amont
-                logger.error(f"❌ ERREUR CRITIQUE: Cycle {cycle_id} créé sans prix cible!")
-                # Marquer immédiatement le cycle comme failed
-                with self.cycles_lock:
-                    cycle.status = CycleStatus.FAILED
-                    cycle.metadata['fail_reason'] = "Pas de prix cible défini"
-                self.repository.save_cycle(cycle)
-                self._publish_cycle_event(cycle, "failed")
-                return None
+            # Avec TrailingStop pur, pas d'ordre de sortie sur Binance
+            # Le StopManagerPure gère tout automatiquement avec le trailing stop à 3%
+            logger.info(f"🎯 Cycle créé - StopManagerPure gère le trailing stop à 3%")
             
             return cycle
 
@@ -1348,7 +1402,7 @@ class CycleManager:
     def process_price_update(self, symbol: str, price: float) -> None:
         """
         Traite une mise à jour de prix pour un symbole.
-        Délègue au StopManager pour gérer les stops/targets.
+        Délègue au StopManagerPure pour gérer le trailing stop uniquement.
         
         Args:
             symbol: Symbole mis à jour
@@ -1358,136 +1412,9 @@ class CycleManager:
         def close_cycle_by_stop(cycle_id: str, exit_price: Optional[float] = None) -> bool:
             return self.close_cycle(cycle_id, exit_price, is_stop_loss=True)
         
-        # Déléguer au StopManager avec le wrapper
+        # Déléguer au StopManagerPure avec le wrapper
         self.stop_manager.process_price_update(symbol, price, close_cycle_by_stop)
     
-    def _create_exit_order_for_cycle(self, cycle: TradeCycle, initial_side: Optional[OrderSide] = None) -> bool:
-        """
-        Crée automatiquement un ordre de sortie pour un cycle.
-        
-        Args:
-            cycle: Le cycle pour lequel créer l'ordre de sortie
-            initial_side: Le côté initial de l'ordre d'entrée (optionnel)
-            
-        Returns:
-            True si l'ordre de sortie a été créé avec succès
-        """
-        try:
-            # PROTECTION CONTRE LES ORDRES MULTIPLES
-            # Vérifier si un ordre de sortie existe déjà
-            if cycle.exit_order_id:
-                logger.warning(f"⚠️ Le cycle {cycle.id} a déjà un ordre de sortie {cycle.exit_order_id}, vérification du statut...")
-                
-                # Vérifier le statut de l'ordre existant
-                order_status = self.binance_executor.get_order_status(cycle.symbol, cycle.exit_order_id)
-                
-                if order_status and order_status.status in [OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED]:
-                    logger.info(f"✅ L'ordre de sortie {cycle.exit_order_id} est toujours actif, pas de nouvel ordre créé")
-                    return True  # L'ordre existe et est actif, pas besoin d'en créer un nouveau
-                elif order_status and order_status.status == OrderStatus.FILLED:
-                    logger.info(f"✅ L'ordre de sortie {cycle.exit_order_id} est déjà exécuté")
-                    return True  # L'ordre est déjà exécuté
-                else:
-                    logger.warning(f"⚠️ L'ordre de sortie {cycle.exit_order_id} n'est plus actif ou n'existe pas, création d'un nouvel ordre")
-                    # L'ordre n'existe plus ou est dans un état inattendu, on peut continuer
-            
-            # Déterminer le side de l'ordre de sortie (inverse de l'entrée)
-            if initial_side:
-                # Si on connait le côté initial, on prend son inverse
-                exit_side = OrderSide.SELL if initial_side == OrderSide.BUY else OrderSide.BUY
-            else:
-                # Sinon, on se base sur le statut du cycle
-                if cycle.status in [CycleStatus.ACTIVE_BUY, CycleStatus.WAITING_BUY]:
-                    # Position SHORT → fermer par BUY
-                    exit_side = OrderSide.BUY
-                elif cycle.status in [CycleStatus.ACTIVE_SELL, CycleStatus.WAITING_SELL]:
-                    # Position LONG → fermer par SELL
-                    exit_side = OrderSide.SELL
-                else:
-                    logger.warning(f"⚠️ Statut inattendu pour créer un ordre de sortie: {cycle.status}")
-                    return False
-            
-            # Utiliser le prix target s'il existe, sinon créer un ordre au marché
-            exit_price = cycle.target_price if cycle.target_price else None
-            
-            # Utiliser la quantité réellement exécutée à l'entrée (si disponible)
-            # La quantité exécutée est stockée dans metadata
-            if hasattr(cycle, 'metadata') and cycle.metadata and 'executed_quantity' in cycle.metadata:
-                exit_quantity = cycle.metadata['executed_quantity']
-            else:
-                exit_quantity = cycle.quantity
-            
-            logger.info(f"🎯 Création de l'ordre de sortie pour le cycle {cycle.id}")
-            logger.info(f"   Side: {exit_side.value}, Prix: {exit_price or 'MARKET'}, Quantité: {exit_quantity}")
-            
-            # Vérifier les fonds disponibles avant de créer l'ordre de sortie
-            balances = self.binance_executor.get_account_balances()
-            
-            # Déterminer la devise nécessaire selon le côté
-            if exit_side == OrderSide.BUY:
-                # Pour acheter, on a besoin de la devise de cotation (ex: USDC pour BTCUSDC)
-                quote_asset = cycle.symbol[-4:] if cycle.symbol.endswith('USDC') else cycle.symbol[-3:]
-                required_amount = exit_quantity * (exit_price or cycle.entry_price)
-                available = balances.get(quote_asset, {}).get('free', 0)
-                
-                if available < required_amount:
-                    logger.warning(f"⚠️ Solde {quote_asset} insuffisant pour l'ordre de sortie: {available:.2f} < {required_amount:.2f}")
-                    # Continuer quand même car l'ordre pourrait être exécuté plus tard
-            else:
-                # Pour vendre, on a besoin de la devise de base (ex: BTC pour BTCUSDC)
-                base_asset = cycle.symbol[:-4] if cycle.symbol.endswith('USDC') else cycle.symbol[:-3]
-                available = balances.get(base_asset, {}).get('free', 0)
-                
-                if available < exit_quantity:
-                    logger.warning(f"⚠️ Solde {base_asset} insuffisant pour l'ordre de sortie: {available:.8f} < {exit_quantity:.8f}")
-                    # Continuer quand même car l'ordre pourrait être exécuté plus tard
-            
-            # Créer l'ordre de sortie
-            from shared.src.schemas import TradeOrder
-            
-            exit_order = TradeOrder(
-                symbol=cycle.symbol,
-                side=exit_side,
-                price=exit_price,
-                quantity=exit_quantity,
-                order_type=OrderType.LIMIT if exit_price else OrderType.MARKET,
-                client_order_id=f"exit_{cycle.id}"
-            )
-            
-            execution = self.binance_executor.execute_order(exit_order)
-            
-            if execution:
-                # PROTECTION FINALE: Vérifier une dernière fois qu'un ordre n'a pas été créé entre temps
-                fresh_cycle = self.repository.get_cycle(cycle.id)
-                if fresh_cycle and fresh_cycle.exit_order_id and fresh_cycle.exit_order_id != cycle.exit_order_id:
-                    logger.warning(f"⚠️ Un autre ordre de sortie {fresh_cycle.exit_order_id} a été créé entre temps, annulation de {execution.order_id}")
-                    # Annuler l'ordre qu'on vient de créer
-                    try:
-                        self.binance_executor.cancel_order(cycle.symbol, execution.order_id)
-                        logger.info(f"✅ Ordre dupliqué {execution.order_id} annulé avec succès")
-                    except Exception as e:
-                        logger.error(f"❌ Impossible d'annuler l'ordre dupliqué {execution.order_id}: {str(e)}")
-                    return False
-                
-                # Mettre à jour le cycle avec l'ID de l'ordre de sortie
-                with self.cycles_lock:
-                    cycle.exit_order_id = execution.order_id
-                    # Ne pas changer le statut, il est déjà en WAITING_SELL ou WAITING_BUY
-                    cycle.updated_at = datetime.now()
-                
-                # Sauvegarder les changements
-                self.repository.save_execution(execution, cycle.id)
-                self.repository.save_cycle(cycle)
-                
-                logger.info(f"✅ Ordre de sortie créé pour le cycle {cycle.id}: {execution.order_id}")
-                return True
-            else:
-                logger.error(f"❌ Échec de création de l'ordre de sortie pour le cycle {cycle.id}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la création de l'ordre de sortie: {str(e)}")
-            return False
     
     def _fix_target_price_if_invalid(self, target_price: float, entry_price: float, side: OrderSide) -> float:
         """
@@ -1694,6 +1621,112 @@ class CycleManager:
         except Exception as e:
             logger.error(f"❌ Erreur lors du nettoyage des ordres du cycle {cycle.id}: {str(e)}")
     
+    def _start_balance_reconciliation_thread(self):
+        """Démarre un thread de réconciliation périodique des balances."""
+        def balance_reconciliation_routine():
+            while True:
+                try:
+                    # Réconciliation des balances toutes les 10 minutes
+                    time.sleep(600)  # 10 minutes
+                    self._reconcile_global_balances()
+                except Exception as e:
+                    logger.error(f"❌ Erreur dans le thread de réconciliation des balances: {str(e)}")
+        
+        balance_thread = threading.Thread(target=balance_reconciliation_routine, daemon=True, name="BalanceReconciliationThread")
+        balance_thread.start()
+        logger.info("💰 Thread de réconciliation des balances démarré (10min)")
+
+    def _reconcile_global_balances(self):
+        """
+        Vérifie la cohérence globale entre les balances Binance et les cycles actifs.
+        Solution 3: Réconciliation simplifiée sans tracking granulaire.
+        """
+        try:
+            # Récupérer tous les cycles actifs en phase de sortie
+            with self.cycles_lock:
+                active_cycles = list(self.active_cycles.values())
+            
+            # Grouper par asset les quantités attendues
+            expected_balances = {}
+            
+            for cycle in active_cycles:
+                # Seulement pour les cycles en phase de sortie (ont des assets à vendre)
+                status_str = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
+                
+                if status_str in ['waiting_sell', 'active_sell']:
+                    # Cycle LONG: a des BTC/ETH à vendre
+                    if cycle.symbol.endswith('USDC'):
+                        asset = cycle.symbol[:-4]  # BTCUSDC -> BTC
+                    elif cycle.symbol.endswith('BTC'):
+                        asset = cycle.symbol[:-3]  # ETHBTC -> ETH
+                    else:
+                        continue  # Skip symboles non reconnus
+                    
+                    if asset not in expected_balances:
+                        expected_balances[asset] = 0.0
+                    expected_balances[asset] += cycle.quantity
+                
+                elif status_str in ['waiting_buy', 'active_buy']:
+                    # Cycle SHORT: a des USDC/BTC à utiliser pour racheter
+                    if cycle.symbol.endswith('USDC'):
+                        asset = 'USDC'
+                        # Quantité approximative en USDC (entry_price * quantity)
+                        usdc_amount = cycle.entry_price * cycle.quantity if cycle.entry_price else 0
+                    elif cycle.symbol.endswith('BTC'):
+                        asset = 'BTC'
+                        # Quantité approximative en BTC 
+                        usdc_amount = cycle.entry_price * cycle.quantity if cycle.entry_price else 0
+                    else:
+                        continue
+                    
+                    if asset not in expected_balances:
+                        expected_balances[asset] = 0.0
+                    expected_balances[asset] += usdc_amount if asset in ['USDC', 'BTC'] else cycle.quantity
+
+            # Récupérer les balances réelles de Binance
+            try:
+                binance_balances = self.binance_executor.get_account_balances()
+            except Exception as e:
+                logger.warning(f"⚠️ Impossible de récupérer les balances Binance: {str(e)}")
+                return
+
+            # Comparer et alerter en cas de désynchronisation majeure
+            tolerance = 0.001  # Tolérance pour les arrondis
+            alerts = []
+
+            for asset, expected_qty in expected_balances.items():
+                if expected_qty < tolerance:  # Skip les très petites quantités
+                    continue
+                    
+                actual_balance = binance_balances.get(asset, {}).get('free', 0.0)
+                difference = abs(actual_balance - expected_qty)
+                difference_percent = (difference / expected_qty * 100) if expected_qty > 0 else 0
+
+                if difference > tolerance and difference_percent > 5:  # Plus de 5% de différence
+                    alerts.append({
+                        'asset': asset,
+                        'expected': expected_qty,
+                        'actual': actual_balance,
+                        'difference': difference,
+                        'difference_percent': difference_percent
+                    })
+
+            # Logger les résultats
+            if alerts:
+                logger.warning(f"⚠️ Désynchronisation des balances détectée:")
+                for alert in alerts:
+                    logger.warning(f"   {alert['asset']}: Attendu {alert['expected']:.6f}, Actuel {alert['actual']:.6f} "
+                                 f"(Diff: {alert['difference']:.6f}, {alert['difference_percent']:.1f}%)")
+            else:
+                logger.debug(f"✅ Balances cohérentes: {len(expected_balances)} assets vérifiés")
+
+            # Log détaillé pour debug
+            if expected_balances:
+                logger.debug(f"💰 Réconciliation: {expected_balances}")
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la réconciliation des balances: {str(e)}")
+
     def close(self) -> None:
         """
         Ferme proprement le gestionnaire de cycles.

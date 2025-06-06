@@ -202,29 +202,22 @@ class BollingerStrategy(BaseStrategy):
                 confidence *= 1.1
                 signal_reason += "_fresh"
             
-            # Target réaliste : milieu de bande ou moins si bandes serrées
-            if band_width_pct < 2.0:
-                target_price = current_lower + (band_width * 0.5)  # 50% du chemin vers le milieu
-            else:
-                target_price = middle[-1]  # Bande du milieu
+            # Stop basé sur la volatilité uniquement
             
-            # S'assurer que le target BUY est supérieur au prix d'entrée
-            target_price = max(target_price, current_price * 1.005)
-            
-            # Stop dynamique basé sur la volatilité avec multipliers augmentés
+            # Stop basé sur la volatilité (pour métadonnées seulement)
             if 'BTC' in self.symbol:
-                stop_multiplier, target_adjust = 0.15, 1.5  # Plus agressif pour BTC
+                stop_multiplier = 0.5  # BTC
             else:
-                stop_multiplier, target_adjust = 0.3, 2.0   # Plus conservateur pour autres
+                stop_multiplier = 0.6   # Autres
             
             stop_distance = band_width * stop_multiplier
-            stop_price = current_price - stop_distance
             
-            # Augmenter aussi la distance target
-            if band_width_pct < 2.0:
-                target_price = current_lower + (band_width * 0.5 * target_adjust)
-            else:
-                target_price = middle[-1] + (band_width * 0.3 * target_adjust)  # Plus agressif
+            # Forcer un stop minimum en pourcentage absolu
+            min_stop_percent = 0.5 if 'BTC' in self.symbol else 0.8
+            min_stop_distance = current_price * (min_stop_percent / 100)
+            stop_distance = max(stop_distance, min_stop_distance)
+            
+            stop_price = current_price - stop_distance
             
             metadata = {
                 "bb_upper": float(current_upper),
@@ -234,7 +227,6 @@ class BollingerStrategy(BaseStrategy):
                 "price_position": float(price_position),
                 "penetration_pct": float(penetration_pct),
                 "reason": signal_reason,
-                "target_price": float(target_price),
                 "stop_price": float(stop_price)
             }
             
@@ -269,29 +261,22 @@ class BollingerStrategy(BaseStrategy):
                 confidence *= 1.1
                 signal_reason += "_fresh"
             
-            # Target réaliste : milieu de bande ou moins si bandes serrées
-            if band_width_pct < 2.0:
-                target_price = current_upper - (band_width * 0.5)  # 50% du chemin vers le milieu
-            else:
-                target_price = middle[-1]  # Bande du milieu
+            # Stop basé sur la volatilité uniquement
             
-            # S'assurer que le target SELL est inférieur au prix d'entrée
-            target_price = min(target_price, current_price * 0.995)
-            
-            # Stop dynamique basé sur la volatilité avec multipliers augmentés
+            # Stop basé sur la volatilité (pour métadonnées seulement)
             if 'BTC' in self.symbol:
-                stop_multiplier, target_adjust = 0.15, 1.5  # Plus agressif pour BTC
+                stop_multiplier = 0.5  # BTC
             else:
-                stop_multiplier, target_adjust = 0.3, 2.0   # Plus conservateur pour autres
+                stop_multiplier = 0.6   # Autres
             
             stop_distance = band_width * stop_multiplier
-            stop_price = current_price + stop_distance
             
-            # Augmenter aussi la distance target
-            if band_width_pct < 2.0:
-                target_price = current_upper - (band_width * 0.5 * target_adjust)
-            else:
-                target_price = middle[-1] - (band_width * 0.3 * target_adjust)  # Plus agressif
+            # Forcer un stop minimum en pourcentage absolu
+            min_stop_percent = 0.5 if 'BTC' in self.symbol else 0.8
+            min_stop_distance = current_price * (min_stop_percent / 100)
+            stop_distance = max(stop_distance, min_stop_distance)
+            
+            stop_price = current_price + stop_distance
             
             metadata = {
                 "bb_upper": float(current_upper),
@@ -301,7 +286,6 @@ class BollingerStrategy(BaseStrategy):
                 "price_position": float(price_position),
                 "penetration_pct": float(penetration_pct),
                 "reason": signal_reason,
-                "target_price": float(target_price),
                 "stop_price": float(stop_price)
             }
             

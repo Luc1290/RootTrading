@@ -158,17 +158,14 @@ class BreakoutStrategy(BaseStrategy):
                     # car les faux breakouts sont fréquents
                     risk_reward = 1.2 if range_height / support * 100 < 2 else 1.5
                     
-                    targets = self.calculate_dynamic_targets(
-                        entry_price=last_close,
-                        side=OrderSide.BUY,
-                        atr_percent=atr_percent,
-                        risk_reward_ratio=risk_reward
-                    )
+                    # Calculer le stop basé sur l'ATR et la résistance cassée
+                    atr_stop_distance = atr_percent / 100
+                    atr_stop = last_close * (1 - atr_stop_distance)
                     
                     # Le stop peut être ajusté pour être juste sous la résistance cassée
                     # si c'est plus proche que l'ATR stop
                     resistance_stop = resistance * 0.995
-                    stop_loss = max(resistance_stop, targets['stop_price'])
+                    stop_loss = max(resistance_stop, atr_stop)
                     
                     return {
                         "type": "bullish",
@@ -179,7 +176,6 @@ class BreakoutStrategy(BaseStrategy):
                         "range_duration": end_idx - start_idx + 1,
                         "range_height_percent": (range_height / support) * 100,
                         "atr_percent": atr_percent,
-                        "target_price": targets['target_price'],
                         "stop_price": stop_loss
                     }
                 
@@ -196,17 +192,14 @@ class BreakoutStrategy(BaseStrategy):
                     # Pour les breakouts, utiliser un ratio risque/récompense plus conservateur
                     risk_reward = 1.2 if range_height / support * 100 < 2 else 1.5
                     
-                    targets = self.calculate_dynamic_targets(
-                        entry_price=last_close,
-                        side=OrderSide.SELL,
-                        atr_percent=atr_percent,
-                        risk_reward_ratio=risk_reward
-                    )
+                    # Calculer le stop basé sur l'ATR et le support cassé
+                    atr_stop_distance = atr_percent / 100
+                    atr_stop = last_close * (1 + atr_stop_distance)
                     
                     # Le stop peut être ajusté pour être juste au-dessus du support cassé
                     # si c'est plus proche que l'ATR stop
                     support_stop = support * 1.005
-                    stop_loss = min(support_stop, targets['stop_price'])
+                    stop_loss = min(support_stop, atr_stop)
                     
                     return {
                         "type": "bearish",
@@ -217,7 +210,6 @@ class BreakoutStrategy(BaseStrategy):
                         "range_duration": end_idx - start_idx + 1,
                         "range_height_percent": (range_height / support) * 100,
                         "atr_percent": atr_percent,
-                        "target_price": targets['target_price'],
                         "stop_price": stop_loss
                     }
         
@@ -265,7 +257,6 @@ class BreakoutStrategy(BaseStrategy):
             "support": float(breakout['support']),
             "resistance": float(breakout['resistance']),
             "range_duration": int(breakout['range_duration']),
-            "target_price": float(breakout['target_price']),
             "stop_price": float(breakout['stop_price'])
         }
         

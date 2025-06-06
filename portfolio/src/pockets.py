@@ -444,7 +444,7 @@ class PocketManager:
 
         # Notifier les consommateurs (Coordinator) qu’un nouvel état est dispo
         redis.publish(channel, json.dumps({"ts": int(time.time())}))
-        logger.debug("📡 Snapshot poches publié dans Redis")
+        logger.info("📡 Snapshot poches publié dans Redis")
         
         # Publier sur Kafka pour une meilleure intégration
         try:
@@ -458,7 +458,7 @@ class PocketManager:
             }
             
             kafka.produce("portfolio.pockets", json.dumps(event))
-            logger.debug("📨 Événement pocket.updated publié sur Kafka")
+            logger.info("📨 Événement pocket.updated publié sur Kafka")
             
         except Exception as e:
             logger.warning(f"⚠️ Impossible de publier sur Kafka: {e}")

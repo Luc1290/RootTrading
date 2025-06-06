@@ -187,15 +187,14 @@ class SignalAggregator:
             logger.debug(f"No clear signal for {symbol}: buy={buy_score:.2f}, sell={sell_score:.2f}")
             return None
             
-        # Calculate averaged take profit and stop loss
+        # Calculate averaged stop loss (plus de take profit avec TrailingStop pur)
         relevant_signals = buy_signals if direction == 'BUY' else sell_signals
         
         total_weight = sum(s['weight'] for s in relevant_signals)
         if total_weight == 0:
             return None
             
-        # Weighted average of targets
-        take_profit_sum = 0
+        # Weighted average of stop loss seulement (plus de target avec TrailingStop pur)
         stop_loss_sum = 0
         
         for signal in signals:
@@ -203,15 +202,12 @@ class SignalAggregator:
             if signal_direction == direction and signal['strategy'] in contributing_strategies:
                 weight = await self.performance_tracker.get_strategy_weight(signal['strategy'])
                 
-                # Extract target_price and stop_price from metadata
+                # Extract stop_price from metadata (plus de target_price avec TrailingStop pur)
                 metadata = signal.get('metadata', {})
-                target_price = metadata.get('target_price', signal.get('take_profit', signal['price'] * 1.002))
                 stop_price = metadata.get('stop_price', signal.get('stop_loss', signal['price'] * 0.998))
                 
-                take_profit_sum += target_price * weight
                 stop_loss_sum += stop_price * weight
                 
-        take_profit = take_profit_sum / total_weight
         stop_loss = stop_loss_sum / total_weight
         
         # Get the latest price from one of the signals
@@ -230,15 +226,8 @@ class SignalAggregator:
         else:
             strength = 'weak'
             
-        # Calculer la distance de trailing stop basée sur la distance target/stop
-        price_distance = abs(take_profit - current_price) / current_price
-        # Trailing stop à 50% de la distance target pour laisser de la marge
-        trailing_delta = price_distance * 50  # En pourcentage
-        
-        # Minimum 0.15% pour éviter les trails trop serrés
-        trailing_delta = max(trailing_delta, 0.15)
-        # Maximum 1.0% pour éviter les trails trop larges
-        trailing_delta = min(trailing_delta, 1.0)
+        # Trailing stop fixe à 3% pour système pur (TrailingStop gère le reste)
+        trailing_delta = 3.0
         
         return {
             'symbol': symbol,
@@ -248,7 +237,6 @@ class SignalAggregator:
             'strategy': f"Aggregated_{len(contributing_strategies)}",  # Create strategy name
             'confidence': confidence,
             'strength': strength,  # Ajouter la force du signal
-            'take_profit': take_profit,
             'stop_loss': stop_loss,
             'trailing_delta': trailing_delta,  # NOUVEAU: Trailing stop activé
             'contributing_strategies': contributing_strategies,
@@ -258,7 +246,6 @@ class SignalAggregator:
                 'aggregated': True,
                 'contributing_strategies': contributing_strategies,
                 'strategy_count': len(contributing_strategies),
-                'target_price': take_profit,
                 'stop_price': stop_loss,
                 'trailing_delta': trailing_delta  # NOUVEAU: Ajouter au metadata
             }

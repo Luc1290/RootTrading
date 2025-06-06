@@ -49,18 +49,18 @@ class PocketChecker:
         
         # Cache pour éviter trop d'appels API
         self.pocket_cache = {}
-        self.cache_expiry = 30  # Réduit de 60 à 30 secondes pour plus de réactivité
+        self.cache_expiry = 5  # Réduit à 5 secondes pour éviter les données obsolètes
         self.last_cache_update = 0
         # --- Cache Redis ------------------------------------------------
         self.redis = RedisClient()
         self._redis_key = "roottrading:pockets:snapshot"
-        # DÉSACTIVER Redis PubSub temporairement pour éviter la duplication
-        # threading.Thread(
-        #     target=self._subscribe_updates,
-        #     daemon=True
-        # ).start()
+        # Réactiver Redis PubSub pour une synchronisation fiable
+        threading.Thread(
+            target=self._subscribe_updates,
+            daemon=True
+        ).start()
         
-        # Utiliser SEULEMENT Kafka pour éviter les doublons
+        # Utiliser Kafka ET Redis pour une redondance
         self._start_kafka_listener()
 
         
@@ -76,17 +76,22 @@ class PocketChecker:
                 
                 def handle_pocket_update(topic, message):
                     try:
+                        logger.info(f"🔍 Message Kafka reçu sur {topic}: {str(message)[:200]}...")
                         data = json.loads(message) if isinstance(message, str) else message
                         event_type = data.get('type', '')
+                        logger.info(f"🔍 Type d'événement: {event_type}")
                         
                         if event_type in ['pocket.updated', 'pocket.reserved', 'pocket.released']:
                             # Invalider le cache local
                             self.last_cache_update = 0
-                            logger.debug(f"📨 Cache invalidé par événement Kafka: {event_type}")
+                            logger.info(f"📨 Cache invalidé par événement Kafka: {event_type}")
                             
                             # Si possible, mettre à jour directement depuis l'événement
                             if 'pockets' in data:
                                 self._update_cache_from_event(data['pockets'])
+                                logger.info(f"✅ Cache mis à jour directement depuis Kafka")
+                        else:
+                            logger.warning(f"⚠️ Événement Kafka ignoré - type: {event_type}")
                                 
                     except Exception as e:
                         logger.error(f"Erreur lors du traitement de l'événement Kafka: {e}")
@@ -399,6 +404,19 @@ class PocketChecker:
         # Essayer la poche tampon en second
         if self.check_funds_availability(amount, self.buffer_pocket):
             logger.info(f"Utilisation de la poche tampon pour {amount:.2f} USDC (poche active insuffisante)")
+            return self.buffer_pocket
+        
+        # NOUVEAU: Si aucune poche n'a de fonds, forcer une vérification directe (cache possiblement obsolète)
+        logger.warning(f"⚠️ Aucune poche n'a de fonds selon le cache - Vérification directe...")
+        self.last_cache_update = 0  # Forcer un refresh immédiat
+        
+        # Réessayer après avoir invalidé le cache
+        if self.check_funds_availability(amount, self.active_pocket):
+            logger.info(f"✅ Fonds trouvés dans la poche active après refresh du cache")
+            return self.active_pocket
+        
+        if self.check_funds_availability(amount, self.buffer_pocket):
+            logger.info(f"✅ Fonds trouvés dans la poche tampon après refresh du cache") 
             return self.buffer_pocket
         
         # Ne pas utiliser la poche de sécurité automatiquement

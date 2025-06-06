@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS trade_cycles (
     target_price NUMERIC(16, 8),
     stop_price NUMERIC(16, 8),
     trailing_delta NUMERIC(16, 8),
+    min_price NUMERIC(16, 8),
+    max_price NUMERIC(16, 8),
     profit_loss NUMERIC(16, 8),
     profit_loss_percent NUMERIC(16, 8),
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),

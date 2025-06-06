@@ -214,16 +214,9 @@ class OrderManager:
         current_price = self.last_prices.get(signal.symbol, signal.price)
         metadata = signal.metadata or {}
         
-        # Calculer les prix cibles et stops
-        target_price = float(metadata.get('target_price', current_price * 1.03 if signal.side == OrderSide.BUY else current_price * 0.97))
+        # Calculer les stops (plus de target avec TrailingStop pur)
         stop_price = float(metadata.get('stop_price', current_price * 0.98 if signal.side == OrderSide.BUY else current_price * 1.02))
         trailing_delta = float(metadata['trailing_delta']) if 'trailing_delta' in metadata else None
-        
-        # Vérifier la rentabilité potentielle
-        target_price_percent = abs((target_price - current_price) / current_price * 100)
-        if target_price_percent < min_change:
-            logger.info(f"⚠️ Signal ignoré: gain potentiel {target_price_percent:.2f}% inférieur au seuil minimal {min_change:.2f}%")
-            return
         
         # Récupérer la quantité à trader de la configuration
         base_quantity = TRADE_QUANTITIES.get(signal.symbol, TRADE_QUANTITY)
@@ -247,7 +240,7 @@ class OrderManager:
         # Récupérer la poche (par défaut 'active')
         pocket = metadata.get('pocket', 'active')
         
-        # Créer un cycle
+        # Créer un cycle avec TrailingStop pur
         cycle = self.cycle_manager.create_cycle(
             symbol=signal.symbol,
             strategy=signal.strategy,
@@ -255,7 +248,6 @@ class OrderManager:
             price=current_price,
             quantity=quantity,
             pocket=pocket,
-            target_price=target_price,
             stop_price=stop_price,
             trailing_delta=trailing_delta
         )
@@ -304,7 +296,7 @@ class OrderManager:
     
     def create_manual_order(self, symbol: str, side: OrderSide, quantity: float, 
                            price: Optional[float] = None, strategy: str = "Manual",
-                           target_price: Optional[float] = None, stop_price: Optional[float] = None) -> str:
+                           stop_price: Optional[float] = None) -> str:
         """
         Crée un ordre manuel (hors signal).
         
@@ -340,26 +332,20 @@ class OrderManager:
             if adjusted_quantity > quantity:
                 logger.info(f"Quantité ajustée pour {symbol}: {quantity} → {adjusted_quantity} (minimum requis)")
             
-            # Calculer les prix cibles par défaut si non spécifiés
-            if target_price is None:
-                # Par défaut: +3% pour BUY, -3% pour SELL
-                target_price = price * 1.03 if side == OrderSide.BUY else price * 0.97
-                logger.info(f"Prix cible calculé automatiquement: {target_price:.2f}")
-            
+            # Calculer le stop par défaut si non spécifié (plus de target avec TrailingStop pur)
             if stop_price is None:
                 # Par défaut: -2% pour BUY, +2% pour SELL
                 stop_price = price * 0.98 if side == OrderSide.BUY else price * 1.02
                 logger.info(f"Stop loss calculé automatiquement: {stop_price:.2f}")
                 
-            # Créer un cycle avec la stratégie et les prix cibles
+            # Créer un cycle avec TrailingStop pur (plus de target_price)
             cycle = self.cycle_manager.create_cycle(
                 symbol=symbol,
-                strategy=strategy,  # Utiliser la stratégie passée en paramètre
+                strategy=strategy,
                 side=side,
                 price=price,
                 quantity=adjusted_quantity,
-                pocket="active",  # Utiliser la poche active par défaut
-                target_price=target_price,
+                pocket="active",
                 stop_price=stop_price
             )
             
@@ -410,7 +396,6 @@ class OrderManager:
                 "entry_price": cycle.entry_price,
                 "current_price": self.last_prices.get(cycle.symbol),
                 "quantity": cycle.quantity,
-                "target_price": cycle.target_price,
                 "stop_price": cycle.stop_price,
                 "created_at": cycle.created_at.isoformat() if cycle.created_at else None
             })

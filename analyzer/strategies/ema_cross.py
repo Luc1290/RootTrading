@@ -197,16 +197,13 @@ class EMACrossStrategy(BaseStrategy):
             elif ema_spread < 0.5:  # Tendance faible
                 confidence *= 0.8
             
-            # Stop avec multipliers augmentés selon le symbole
+            # Stop selon le symbole
             if 'BTC' in self.symbol:
-                stop_pct, target_pct = 0.015, 0.025  # 1.5% stop, 2.5% target pour BTC
+                stop_pct = 0.015  # 1.5% stop pour BTC
             else:
-                stop_pct, target_pct = 0.025, 0.04   # 2.5% stop, 4% target pour autres
+                stop_pct = 0.025  # 2.5% stop pour autres
             
             stop_loss = min(current_price * (1 - stop_pct), current_long_ema * 0.99)
-            
-            # Target plus agressif
-            target_price = max(current_short_ema * (1 + target_pct/2), current_price * (1 + target_pct))
             
             metadata = {
                 "short_ema": float(current_short_ema),
@@ -216,7 +213,6 @@ class EMACrossStrategy(BaseStrategy):
                 "ema_spread": float(ema_spread),
                 "trend": "uptrend",
                 "reason": signal_reason,
-                "target_price": float(target_price),
                 "stop_price": float(stop_loss)
             }
             
@@ -246,16 +242,13 @@ class EMACrossStrategy(BaseStrategy):
             elif ema_spread < 0.5:  # Tendance faible
                 confidence *= 0.8
             
-            # Stop avec multipliers augmentés selon le symbole  
+            # Stop selon le symbole  
             if 'BTC' in self.symbol:
-                stop_pct, target_pct = 0.015, 0.025  # 1.5% stop, 2.5% target pour BTC
+                stop_pct = 0.015  # 1.5% stop pour BTC
             else:
-                stop_pct, target_pct = 0.025, 0.04   # 2.5% stop, 4% target pour autres
+                stop_pct = 0.025  # 2.5% stop pour autres
             
             stop_loss = max(current_price * (1 + stop_pct), current_long_ema * 1.01)
-            
-            # Target plus agressif pour SELL
-            target_price = min(current_short_ema * (1 - target_pct/2), current_price * (1 - target_pct))
             
             metadata = {
                 "short_ema": float(current_short_ema),
@@ -265,7 +258,6 @@ class EMACrossStrategy(BaseStrategy):
                 "ema_spread": float(ema_spread),
                 "trend": "downtrend",
                 "reason": signal_reason,
-                "target_price": float(target_price),
                 "stop_price": float(stop_loss)
             }
             

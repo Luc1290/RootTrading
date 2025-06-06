@@ -109,18 +109,20 @@ class CycleSyncMonitor:
             phantom_cycles = self.known_cycles - db_cycle_ids
             
             if phantom_cycles:
-                logger.warning(f"⚠️ {len(phantom_cycles)} cycles fantômes détectés")
+                logger.warning(f"⚠️ {len(phantom_cycles)} cycles fantômes détectés: {phantom_cycles}")
                 self.stats["discrepancies_found"] += 1
                 self.stats["last_discrepancy"] = time.time()
                 
-                # Nettoyer les cycles fantômes de notre cache
-                for cycle_id in phantom_cycles:
-                    self.known_cycles.remove(cycle_id)
-                    self.stats["cycles_cleaned"] += 1
-                    logger.info(f"🧹 Cycle fantôme retiré du cache: {cycle_id}")
+                # DÉSACTIVÉ: Ne pas nettoyer automatiquement pour éviter les suppressions erronées
+                # for cycle_id in phantom_cycles:
+                #     self.known_cycles.remove(cycle_id)
+                #     self.stats["cycles_cleaned"] += 1
+                #     logger.info(f"🧹 Cycle fantôme retiré du cache: {cycle_id}")
+                logger.info(f"🚫 Nettoyage automatique DÉSACTIVÉ - Cycles suspectés fantômes: {list(phantom_cycles)}")
             
-            # Mettre à jour notre cache avec les cycles de la DB
-            self.known_cycles = db_cycle_ids
+            # Ajouter les nouveaux cycles de la DB sans supprimer les existants
+            # Pour éviter de perdre des cycles légitimes non encore visibles par l'API
+            self.known_cycles.update(db_cycle_ids)
             
             # Logger périodiquement l'état
             if self.stats["checks_performed"] % 10 == 0:
@@ -158,3 +160,17 @@ class CycleSyncMonitor:
             "active_cycles": len(self.known_cycles),
             "running": self.running
         }
+    
+    def remove_cycle_from_cache(self, cycle_id: str) -> None:
+        """
+        Retire un cycle du cache local.
+        
+        Args:
+            cycle_id: ID du cycle à retirer
+        """
+        if cycle_id in self.known_cycles:
+            self.known_cycles.remove(cycle_id)
+            self.stats["cycles_cleaned"] += 1
+            logger.debug(f"✅ Cycle {cycle_id} retiré du cache local")
+        else:
+            logger.debug(f"⚠️ Cycle {cycle_id} n'était pas dans le cache local")

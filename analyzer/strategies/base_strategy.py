@@ -232,64 +232,51 @@ class BaseStrategy(ABC):
         
         return atr_percent
     
-    def calculate_dynamic_targets(self, entry_price: float, side: OrderSide, 
-                                atr_percent: float = None, risk_reward_ratio: float = 1.5) -> Dict[str, float]:
+    def calculate_dynamic_stop(self, entry_price: float, side: OrderSide, 
+                             atr_percent: float = None) -> Dict[str, float]:
         """
-        Calcule des cibles et stops dynamiques basés sur l'ATR.
+        Calcule seulement le stop dynamique basé sur l'ATR (plus de target avec TrailingStop pur).
         
         Args:
             entry_price: Prix d'entrée
             side: Côté du trade (BUY ou SELL)
             atr_percent: ATR en pourcentage (si None, calculé automatiquement)
-            risk_reward_ratio: Ratio risque/récompense souhaité
             
         Returns:
-            Dict avec target_price et stop_price
+            Dict avec stop_price seulement
         """
         if atr_percent is None:
             atr_percent = self.calculate_atr()
         
-        # Limiter l'ATR pour éviter des cibles trop extrêmes
-        # Min 0.3%, Max 2%
+        # Limiter l'ATR pour éviter des stops trop extrêmes
         atr_percent = max(0.3, min(atr_percent, 2.0))
         
         # Pour les paires crypto, ajuster selon la volatilité moyenne
         if 'BTC' in self.symbol:
-            # Bitcoin est généralement moins volatil
             atr_multiplier = 0.8
         elif 'ETH' in self.symbol:
-            # Ethereum est moyennement volatil
             atr_multiplier = 1.0
         else:
-            # Autres cryptos peuvent être plus volatiles
             atr_multiplier = 1.2
         
-        # Distance de base pour le stop avec multipliers augmentés
+        # Distance de base pour le stop
         if 'BTC' in self.symbol:
-            base_stop_mult, base_target_mult = 1.5, 4.0  # Plus agressif pour BTC
+            base_stop_mult = 1.5
         else:
-            base_stop_mult, base_target_mult = 2.5, 6.0  # Plus conservateur pour autres
+            base_stop_mult = 2.5
         
         stop_distance_percent = atr_percent * atr_multiplier * base_stop_mult
         
-        # Calculer les prix
+        # Calculer le prix de stop
         if side == OrderSide.BUY:
             stop_price = entry_price * (1 - stop_distance_percent / 100)
-            # Target plus agressif avec nouveau multiplier
-            target_distance = atr_percent * atr_multiplier * base_target_mult
-            target_price = entry_price * (1 + target_distance / 100)
         else:  # SELL
             stop_price = entry_price * (1 + stop_distance_percent / 100)
-            # Target plus agressif avec nouveau multiplier
-            target_distance = atr_percent * atr_multiplier * base_target_mult
-            target_price = entry_price * (1 - target_distance / 100)
         
         return {
-            "target_price": target_price,
             "stop_price": stop_price,
             "atr_percent": atr_percent,
-            "stop_distance_percent": stop_distance_percent,
-            "target_distance_percent": target_distance * risk_reward_ratio
+            "stop_distance_percent": stop_distance_percent
         }
     
     def __str__(self) -> str:

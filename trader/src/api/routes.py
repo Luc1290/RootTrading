@@ -197,7 +197,6 @@ def get_cycles():
                 "confirmed": cycle.confirmed,
                 "entry_price": cycle.entry_price,
                 "quantity": cycle.quantity,
-                "target_price": cycle.target_price,
                 "stop_price": cycle.stop_price,
                 "entry_order_id": cycle.entry_order_id,
                 "exit_order_id": cycle.exit_order_id,
@@ -249,12 +248,11 @@ def create_order():
         quantity = float(data["quantity"])
         price = float(data["price"]) if "price" in data else None
         strategy = data.get("strategy", "Manual")  # Récupérer la stratégie ou utiliser "Manual" par défaut
-        target_price = float(data["target_price"]) if "target_price" in data else None
         stop_price = float(data["stop_price"]) if "stop_price" in data else None
         
-        # Créer l'ordre avec la stratégie et les prix cibles
+        # Créer l'ordre avec la stratégie et stop price seulement (plus de target avec TrailingStop pur)
         result = order_manager.create_manual_order(symbol, side, quantity, price, strategy, 
-                                                  target_price=target_price, stop_price=stop_price)
+                                                  stop_price=stop_price)
         
         # Vérifier si c'est un ID ou un message d'erreur
         if isinstance(result, str) and result.startswith("cycle_"):
@@ -564,8 +562,8 @@ def cleanup_stuck_cycles():
         now = datetime.now()
         
         for cycle in cycles:
-            # Vérifier les cycles bloqués en active_sell sans ordre de sortie
-            if cycle.status in [CycleStatus.ACTIVE_SELL, CycleStatus.WAITING_SELL] and not cycle.exit_order_id:
+            # Vérifier les cycles bloqués depuis trop longtemps (sans exit_order_id car géré par StopManager)
+            if cycle.status in [CycleStatus.ACTIVE_SELL, CycleStatus.WAITING_SELL]:
                 time_since_update = now - cycle.updated_at
                 
                 if time_since_update.total_seconds() > timeout_minutes * 60:

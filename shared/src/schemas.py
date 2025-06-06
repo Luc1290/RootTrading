@@ -89,9 +89,10 @@ class TradeCycle(BaseModel):
     entry_price: Optional[float] = None
     exit_price: Optional[float] = None
     quantity: Optional[float] = None
-    target_price: Optional[float] = None
     stop_price: Optional[float] = None
     trailing_delta: Optional[float] = None
+    min_price: Optional[float] = None
+    max_price: Optional[float] = None
     profit_loss: Optional[float] = None
     profit_loss_percent: Optional[float] = None
     created_at: datetime

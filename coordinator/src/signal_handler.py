@@ -187,8 +187,8 @@ class SignalHandler:
             self.price_cache[signal.symbol] = signal.price
         
             # Logger les métadonnées pour debug
-            if signal.metadata and ('target_price' in signal.metadata or 'stop_price' in signal.metadata):
-                logger.info(f"📨 Signal reçu: {signal.side} {signal.symbol} @ {signal.price} ({signal.strategy}) - Target: {signal.metadata.get('target_price', 'N/A')}, Stop: {signal.metadata.get('stop_price', 'N/A')}")
+            if signal.metadata and 'stop_price' in signal.metadata:
+                logger.info(f"📨 Signal reçu: {signal.side} {signal.symbol} @ {signal.price} ({signal.strategy}) - Stop: {signal.metadata.get('stop_price', 'N/A')}")
             else:
                 logger.info(f"📨 Signal reçu: {signal.side} {signal.symbol} @ {signal.price} ({signal.strategy})")
     
@@ -257,27 +257,30 @@ class SignalHandler:
         # Convertir signal.side en string si c'est un enum
         signal_side_str = signal.side.value if hasattr(signal.side, 'value') else str(signal.side)
         
+        # Mapper signal vers position réelle
+        signal_position = "LONG" if signal_side_str == "BUY" else "SHORT"
+        opposite_position = "SHORT" if signal_position == "LONG" else "LONG"
+        
         # Vérifier les positions existantes pour ce symbole
-        opposite_side = "SELL" if signal_side_str == "BUY" else "BUY"
-        existing_opposite = self.active_cycles_cache.get(signal.symbol, {}).get(opposite_side, 0)
-        existing_same = self.active_cycles_cache.get(signal.symbol, {}).get(signal_side_str, 0)
+        existing_opposite = self.active_cycles_cache.get(signal.symbol, {}).get(opposite_position, 0)
+        existing_same = self.active_cycles_cache.get(signal.symbol, {}).get(signal_position, 0)
         
         # Cas 1: Signal opposé à des positions existantes
         if existing_opposite > 0:
             # NOUVEAU: Les signaux du signal_aggregator ont déjà géré les conflits intelligemment
             if signal.strategy.startswith("Aggregated_"):
-                logger.info(f"✅ Signal agrégé accepté malgré {existing_opposite} positions {opposite_side} "
+                logger.info(f"✅ Signal agrégé accepté malgré {existing_opposite} positions {opposite_position} "
                            f"(conflits déjà résolus par l'agrégateur)")
             else:
-                logger.warning(f"⚠️ Signal {signal.side} contradictoire avec {existing_opposite} "
-                             f"positions {opposite_side} ouvertes sur {signal.symbol}")
+                logger.warning(f"⚠️ Signal {signal_position} contradictoire avec {existing_opposite} "
+                             f"positions {opposite_position} ouvertes sur {signal.symbol}")
                 
                 # Options possibles selon la force du signal
                 if signal.strength == SignalStrength.VERY_STRONG:
                     logger.info(f"🔄 Signal TRÈS FORT - Tentative de fermeture des positions opposées")
                     # Fermer les positions opposées si le signal est très fort
-                    if self._close_opposite_positions(signal.symbol, opposite_side):
-                        logger.info(f"✅ Positions {opposite_side} fermées, nouveau signal {signal.side} autorisé")
+                    if self._close_opposite_positions(signal.symbol, opposite_position):
+                        logger.info(f"✅ Positions {opposite_position} fermées, nouveau signal {signal_position} autorisé")
                         # Continuer avec le nouveau signal après fermeture
                     else:
                         logger.warning(f"❌ Impossible de fermer les positions opposées, signal ignoré")
@@ -310,12 +313,12 @@ class SignalHandler:
         
         # Cas 4: Signal renforcant une position existante
         if existing_same > 0 and signal.strength and signal.strength >= SignalStrength.STRONG:
-            logger.info(f"💪 Signal renforçant {existing_same} position(s) {signal.side} existante(s)")
+            logger.info(f"💪 Signal renforçant {existing_same} position(s) {signal_position} existante(s)")
             # On laisse passer pour pyramider la position
         
         # Ajouter à la file de traitement
         self.signal_queue.put(signal)
-        logger.info(f"✅ Signal ajouté à la file: {signal.side} {signal.symbol} "
+        logger.info(f"✅ Signal ajouté à la file: {signal_position} {signal.symbol} "
                    f"(Positions: {existing_same} same, {existing_opposite} opposite)")
     
     def _close_opposite_positions(self, symbol: str, side: str) -> bool:
@@ -348,10 +351,15 @@ class SignalHandler:
             # Filtrer les cycles du côté concerné
             cycles_to_close = []
             for cycle in cycles:
-                # Déterminer le côté en fonction du statut
+                # Déterminer la position réelle en fonction du statut
                 status = cycle.get('status', '')
-                if (side == 'BUY' and status in ['waiting_buy', 'active_buy']) or \
-                   (side == 'SELL' and status in ['waiting_sell', 'active_sell']):
+                position_type = None
+                if status in ['waiting_buy', 'active_buy']:
+                    position_type = 'SHORT'  # va racheter = était short
+                elif status in ['waiting_sell', 'active_sell']:
+                    position_type = 'LONG'   # va vendre = était long
+                
+                if position_type == side:
                     cycles_to_close.append(cycle)
             
             if not cycles_to_close:
@@ -422,18 +430,20 @@ class SignalHandler:
             for cycle in cycles:
                 symbol = cycle.get('symbol')
                 
-                # Déterminer le côté en fonction du statut
+                # Déterminer le côté de la POSITION RÉELLE (pas du prochain ordre)
                 status = cycle.get('status', '')
                 if status in ['waiting_buy', 'active_buy']:
-                    side = 'BUY'
+                    # waiting_buy = position SHORT (va racheter pour fermer)
+                    side = 'SHORT'
                 elif status in ['waiting_sell', 'active_sell']:
-                    side = 'SELL'
+                    # waiting_sell = position LONG (va vendre pour fermer)
+                    side = 'LONG'
                 else:
                     continue  # Ignorer les autres statuts
                 
                 if symbol:
                     if symbol not in self.active_cycles_cache:
-                        self.active_cycles_cache[symbol] = {'BUY': 0, 'SELL': 0}
+                        self.active_cycles_cache[symbol] = {'LONG': 0, 'SHORT': 0}
                     
                     self.active_cycles_cache[symbol][side] = self.active_cycles_cache[symbol].get(side, 0) + 1
             
@@ -977,9 +987,9 @@ class SignalHandler:
                 # Pour les paires USDC, calcul direct
                 quantity = trade_amount / signal.price
     
-            # Calculer le stop-loss et take-profit
+            # Calculer le stop-loss et trailing delta
             stop_price = signal.metadata.get('stop_price')
-            target_price = signal.metadata.get('target_price')
+            trailing_delta = signal.metadata.get('trailing_delta')
     
             # Préparer la requête pour le Trader
             # Important: Convertir les enums en chaînes explicitement
@@ -992,11 +1002,11 @@ class SignalHandler:
                 "timestamp": int(time.time() * 1000)  # Un timestamp actuel en millisecondes
             }
             
-            # Ajouter les prix cibles si disponibles
-            if target_price:
-                order_data["target_price"] = target_price
+            # Ajouter les paramètres de stop si disponibles
             if stop_price:
                 order_data["stop_price"] = stop_price
+            if trailing_delta:
+                order_data["trailing_delta"] = trailing_delta
     
             # Réserver les fonds dans la poche avec un ID unique incluant les microsecondes
             temp_cycle_id = f"temp_{int(time.time() * 1000000)}_{uuid.uuid4().hex[:8]}"
@@ -1267,6 +1277,11 @@ class SignalHandler:
         
         logger.info(f"💰 Cycle fermé: {cycle_id} ({symbol}) - P&L: {profit_loss:.2f}")
         
+        # Mettre à jour le cache du sync monitor
+        if hasattr(self, 'sync_monitor') and self.sync_monitor:
+            self.sync_monitor.remove_cycle_from_cache(cycle_id)
+            logger.debug(f"🔄 Cycle {cycle_id} retiré du cache du sync monitor")
+        
         # Forcer une réconciliation pour mettre à jour les poches
         self.pocket_checker.force_refresh()
     
@@ -1325,6 +1340,11 @@ class SignalHandler:
         cycle_id = data.get('cycle_id')
         logger.info(f"🚫 Cycle annulé: {cycle_id}")
         
+        # Mettre à jour le cache du sync monitor
+        if hasattr(self, 'sync_monitor') and self.sync_monitor:
+            self.sync_monitor.remove_cycle_from_cache(cycle_id)
+            logger.debug(f"🔄 Cycle {cycle_id} retiré du cache du sync monitor")
+        
         # Forcer une réconciliation pour libérer les fonds
         self.pocket_checker.force_refresh()
         
@@ -1335,9 +1355,10 @@ class SignalHandler:
         cycle_id = data.get('cycle_id')
         logger.info(f"❌ Cycle échoué: {cycle_id}")
         
-        # Forcer une synchronisation immédiate du cache
+        # Mettre à jour le cache du sync monitor
         if hasattr(self, 'sync_monitor') and self.sync_monitor:
-            self.sync_monitor.force_sync()
+            self.sync_monitor.remove_cycle_from_cache(cycle_id)
+            logger.debug(f"🔄 Cycle {cycle_id} retiré du cache du sync monitor")
         
         # Forcer une réconciliation des poches
         self.pocket_checker.force_refresh()

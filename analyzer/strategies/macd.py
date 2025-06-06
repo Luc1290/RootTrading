@@ -262,16 +262,15 @@ class MACDStrategy(BaseStrategy):
                 # Signal d'achat
                 signal_strength = self.calculate_signal_strength(current_histogram, crossover, divergence)
                 
-                # Calculer les niveaux avec multipliers augmentés
+                # Calculer le niveau de stop
                 atr = self._calculate_atr(df)
                 # Ajuster selon le symbole pour donner une chance à BTCUSDC
                 if 'BTC' in self.symbol:
-                    stop_multiplier, target_multiplier = 1.5, 4.5  # Plus agressif pour BTC
+                    stop_multiplier = 1.5  # Plus agressif pour BTC
                 else:
-                    stop_multiplier, target_multiplier = 2.5, 6.0   # Plus conservateur pour autres
+                    stop_multiplier = 2.5   # Plus conservateur pour autres
                 
                 stop_price = current_price - (atr * stop_multiplier)
-                target_price = current_price + (atr * target_multiplier)
                 
                 signal = StrategySignal(
                     strategy=self.name,
@@ -287,8 +286,7 @@ class MACDStrategy(BaseStrategy):
                         'histogram': round(current_histogram, 6),
                         'crossover': crossover is not None,
                         'divergence': divergence is not None,
-                        'stop_price': round(stop_price, 8),
-                        'target_price': round(target_price, 8)
+                        'stop_price': round(stop_price, 8)
                     }
                 )
                 
@@ -296,16 +294,15 @@ class MACDStrategy(BaseStrategy):
                 # Signal de vente
                 signal_strength = self.calculate_signal_strength(current_histogram, crossover, divergence)
                 
-                # Calculer les niveaux avec multipliers augmentés
+                # Calculer le niveau de stop
                 atr = self._calculate_atr(df)
                 # Ajuster selon le symbole pour donner une chance à BTCUSDC
                 if 'BTC' in self.symbol:
-                    stop_multiplier, target_multiplier = 1.5, 4.5  # Plus agressif pour BTC
+                    stop_multiplier = 1.5  # Plus agressif pour BTC
                 else:
-                    stop_multiplier, target_multiplier = 2.5, 6.0   # Plus conservateur pour autres
+                    stop_multiplier = 2.5   # Plus conservateur pour autres
                 
                 stop_price = current_price + (atr * stop_multiplier)
-                target_price = current_price - (atr * target_multiplier)
                 
                 signal = StrategySignal(
                     strategy=self.name,
@@ -321,8 +318,7 @@ class MACDStrategy(BaseStrategy):
                         'histogram': round(current_histogram, 6),
                         'crossover': crossover is not None,
                         'divergence': divergence is not None,
-                        'stop_price': round(stop_price, 8),
-                        'target_price': round(target_price, 8)
+                        'stop_price': round(stop_price, 8)
                     }
                 )
             

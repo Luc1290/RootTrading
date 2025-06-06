@@ -200,21 +200,19 @@ class RSIStrategy(BaseStrategy):
                 confidence *= 1.2  # Plus confiant quand ça baisse encore
             
             if should_buy:
-                # Calculer les niveaux de stop/target basés sur l'ATR
+                # Calculer le niveau de stop basé sur l'ATR
                 atr_percent = self.calculate_atr(df)
                 
-                # Multipliers augmentés selon le symbole
+                # Multiplier selon le symbole
                 if 'BTC' in self.symbol:
-                    stop_mult, target_mult = 1.2, 3.5  # Plus agressif pour BTC
+                    stop_mult = 1.2  # Plus agressif pour BTC
                 else:
-                    stop_mult, target_mult = 2.0, 5.0  # Plus conservateur pour autres
+                    stop_mult = 2.0  # Plus conservateur pour autres
                 
                 stop_distance = atr_percent * stop_mult
-                target_distance = atr_percent * target_mult
                 
-                # Pour BUY: stop en dessous, target au-dessus
+                # Pour BUY: stop en dessous
                 stop_price = current_price * (1 - stop_distance / 100)
-                target_price = current_price * (1 + target_distance / 100)
                 
                 metadata = {
                     "rsi": float(current_rsi),
@@ -223,7 +221,6 @@ class RSIStrategy(BaseStrategy):
                     "reason": signal_reason,
                     "rsi_delta": float(current_rsi - prev_rsi),
                     "stop_price": float(stop_price),
-                    "target_price": float(target_price),
                     "atr_percent": float(atr_percent)
                 }
                 
@@ -257,21 +254,19 @@ class RSIStrategy(BaseStrategy):
                 confidence *= 1.2  # Plus confiant
             
             if should_sell:
-                # Calculer les niveaux de stop/target basés sur l'ATR
+                # Calculer le niveau de stop basé sur l'ATR
                 atr_percent = self.calculate_atr(df)
                 
-                # Multipliers augmentés selon le symbole
+                # Multiplier selon le symbole
                 if 'BTC' in self.symbol:
-                    stop_mult, target_mult = 1.2, 3.5  # Plus agressif pour BTC
+                    stop_mult = 1.2  # Plus agressif pour BTC
                 else:
-                    stop_mult, target_mult = 2.0, 5.0  # Plus conservateur pour autres
+                    stop_mult = 2.0  # Plus conservateur pour autres
                 
                 stop_distance = atr_percent * stop_mult
-                target_distance = atr_percent * target_mult
                 
-                # Pour SELL: stop au-dessus, target en dessous
+                # Pour SELL: stop au-dessus
                 stop_price = current_price * (1 + stop_distance / 100)
-                target_price = current_price * (1 - target_distance / 100)
                 
                 metadata = {
                     "rsi": float(current_rsi),
@@ -280,7 +275,6 @@ class RSIStrategy(BaseStrategy):
                     "reason": signal_reason,
                     "rsi_delta": float(current_rsi - prev_rsi),
                     "stop_price": float(stop_price),
-                    "target_price": float(target_price),
                     "atr_percent": float(atr_percent)
                 }
                 
