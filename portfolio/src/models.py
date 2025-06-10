@@ -16,8 +16,8 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
-from shared.src.config import get_db_url, POCKET_CONFIG
-from shared.src.schemas import AssetBalance, PortfolioSummary, PocketSummary
+from shared.src.config import get_db_url
+from shared.src.schemas import AssetBalance, PortfolioSummary
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
@@ -631,7 +631,6 @@ class PortfolioModel:
             tc.profit_loss_percent,
             tc.created_at,
             tc.completed_at,
-            tc.pocket,
             tc.demo
         FROM 
             trade_cycles tc

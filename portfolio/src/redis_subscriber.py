@@ -38,12 +38,11 @@ def _handle_cycle_created(channel, data):
     """
     try:
         cycle_id = data.get("cycle_id")
-        pocket = data.get("pocket", "active")
         symbol = data.get("symbol", "N/A")
         quantity = float(data.get("quantity", 0.0))
         entry_price = float(data.get("entry_price", 0.0))
         
-        logger.info(f"📊 [MONITORING] Cycle créé: {cycle_id} | Poche: {pocket} | "
+        logger.info(f"📊 [MONITORING] Cycle créé: {cycle_id} | "
                    f"Symbol: {symbol} | Qty: {quantity} | Prix: {entry_price}")
         
     except Exception as e:
@@ -60,14 +59,13 @@ def _handle_cycle_completed(channel, data):
     """
     try:
         cycle_id = data.get("cycle_id")
-        pocket = data.get("pocket", "active")
         symbol = data.get("symbol", "N/A")
         entry_price = float(data.get("entry_price", 0.0))
         exit_price = float(data.get("exit_price", 0.0))
         quantity = float(data.get("quantity", 0.0))
         pnl = float(data.get("pnl", 0.0))
         
-        logger.info(f"💰 [MONITORING] Cycle complété: {cycle_id} | Poche: {pocket} | "
+        logger.info(f"💰 [MONITORING] Cycle complété: {cycle_id} | "
                    f"Symbol: {symbol} | PnL: {pnl:.2f} | "
                    f"Entry: {entry_price} -> Exit: {exit_price}")
         
@@ -85,11 +83,10 @@ def _handle_cycle_canceled(channel, data):
     """
     try:
         cycle_id = data.get("cycle_id")
-        pocket = data.get("pocket", "active")
         symbol = data.get("symbol", "N/A")
         reason = data.get("reason", "Non spécifié")
         
-        logger.info(f"🚫 [MONITORING] Cycle annulé: {cycle_id} | Poche: {pocket} | "
+        logger.info(f"🚫 [MONITORING] Cycle annulé: {cycle_id} | "
                    f"Symbol: {symbol} | Raison: {reason}")
         
     except Exception as e:
@@ -106,11 +103,10 @@ def _handle_cycle_failed(channel, data):
     """
     try:
         cycle_id = data.get("cycle_id")
-        pocket = data.get("pocket", "active")
         symbol = data.get("symbol", "N/A")
         error = data.get("error", "Non spécifié")
         
-        logger.info(f"❌ [MONITORING] Cycle échoué: {cycle_id} | Poche: {pocket} | "
+        logger.info(f"❌ [MONITORING] Cycle échoué: {cycle_id} | "
                    f"Symbol: {symbol} | Erreur: {error}")
         
     except Exception as e:

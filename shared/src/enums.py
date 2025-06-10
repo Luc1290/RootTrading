@@ -43,13 +43,6 @@ class CycleStatus(str, Enum):
     COMPLETED = "completed"              # Cycle terminé avec succès
     CANCELED = "canceled"                # Cycle annulé
     FAILED = "failed"                    # Cycle échoué
-
-class PocketType(str, Enum):
-    """Type de poche de capital."""
-    ACTIVE = "active"    # Poche pour les trades actifs
-    BUFFER = "buffer"    # Poche tampon pour opportunités
-    SAFETY = "safety"    # Poche de sécurité/rendement
-
 class StrategyMode(str, Enum):
     """Mode de fonctionnement d'une stratégie."""
     ACTIVE = "active"    # Stratégie active et générant des signaux

@@ -99,7 +99,6 @@ class TradeCycle(BaseModel):
     updated_at: datetime
     completed_at: Optional[datetime] = None
     confirmed: bool = False
-    pocket: Optional[str] = None
     demo: bool = False
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
     
@@ -122,17 +121,6 @@ class PortfolioSummary(BaseModel):
     performance_7d: Optional[float] = None
     active_trades: int = 0
     timestamp: datetime = Field(default_factory=datetime.utcnow)
-
-class PocketSummary(BaseModel):
-    """État d'une poche de trading."""
-    pocket_type: str
-    asset: str = "USDC"  # Actif de la poche (USDC, BTC, ETH, etc.)
-    allocation_percent: float
-    current_value: float
-    used_value: float
-    available_value: float
-    active_cycles: int = 0
-
 class ErrorMessage(BaseModel):
     """Message d'erreur standardisé."""
     service: str

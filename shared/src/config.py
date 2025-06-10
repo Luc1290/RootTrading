@@ -103,13 +103,6 @@ KAFKA_TOPIC_ERRORS = "errors"
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-# Configuration des poches de trading
-POCKET_CONFIG = {
-    "active": float(os.getenv("POCKET_ACTIVE_PERCENT", 80)) / 100,  # Poche pour trades actifs
-    "buffer": float(os.getenv("POCKET_BUFFER_PERCENT", 10)) / 100,  # Poche tampon
-    "safety": float(os.getenv("POCKET_SAFETY_PERCENT", 10)) / 100,  # Poche de sécurité
-}
-
 def get_db_url() -> str:
     """Retourne l'URL de connexion à la base de données PostgreSQL."""
     return f"postgresql://{PGUSER}:{PGPASSWORD}@{PGHOST}:{PGPORT}/{PGDATABASE}"

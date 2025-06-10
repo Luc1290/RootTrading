@@ -4,6 +4,7 @@ Repository pour les cycles de trading.
 S'occupe du stockage et de la récupération des cycles en base de données.
 """
 import logging
+from sqlite3 import Cursor
 from typing import Dict, List, Any, Optional, Union
 from datetime import datetime
 
@@ -55,7 +56,7 @@ class CycleRepository:
             with DBContextManager(self.db_url) as db:
                 with db.get_connection() as conn:
                     # Table des ordres/exécutions
-                    cursor.execute("""
+                    Cursor.execute("""
                 CREATE TABLE IF NOT EXISTS trade_executions (
                     order_id VARCHAR(50) PRIMARY KEY,
                     symbol VARCHAR(20) NOT NULL,
@@ -74,7 +75,7 @@ class CycleRepository:
                 """)
                 
                 # Table des cycles de trading
-                cursor.execute("""
+                Cursor.execute("""
                 CREATE TABLE IF NOT EXISTS trade_cycles (
                     id VARCHAR(50) PRIMARY KEY,
                     symbol VARCHAR(20) NOT NULL,
@@ -92,29 +93,28 @@ class CycleRepository:
                     created_at TIMESTAMP NOT NULL,
                     updated_at TIMESTAMP NOT NULL,
                     completed_at TIMESTAMP,
-                    pocket VARCHAR(20),
                     demo BOOLEAN NOT NULL DEFAULT FALSE
                 );
                 """)
                 
                 # Créer un index sur status pour des requêtes plus rapides
-                cursor.execute("""
+                Cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_trade_cycles_status ON trade_cycles (status);
                 """)
                 
                 # Créer un index sur le timestamp pour des requêtes chronologiques
-                cursor.execute("""
+                Cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_trade_executions_timestamp ON trade_executions (timestamp);
                 """)
                 
                 # Ajouter la colonne confirmed si elle n'existe pas
-                cursor.execute("""
+                Cursor.execute("""
                 ALTER TABLE trade_cycles 
                 ADD COLUMN IF NOT EXISTS confirmed BOOLEAN DEFAULT TRUE;
                 """)
                 
                 # Créer un trigger pour normaliser automatiquement les statuts en minuscules
-                cursor.execute("""
+                Cursor.execute("""
                 CREATE OR REPLACE FUNCTION normalize_cycle_status()
                 RETURNS TRIGGER AS $$
                 BEGIN
@@ -124,7 +124,7 @@ class CycleRepository:
                 $$ LANGUAGE plpgsql;
                 """)
                 
-                cursor.execute("""
+                Cursor.execute("""
                 DROP TRIGGER IF EXISTS normalize_status_trigger ON trade_cycles;
                 CREATE TRIGGER normalize_status_trigger
                 BEFORE INSERT OR UPDATE OF status ON trade_cycles
@@ -133,7 +133,7 @@ class CycleRepository:
                 """)
                 
                 # Normaliser les statuts existants
-                cursor.execute("""
+                Cursor.execute("""
                 UPDATE trade_cycles 
                 SET status = LOWER(status)
                 WHERE status != LOWER(status);
@@ -295,7 +295,6 @@ class CycleRepository:
                     created_at = %s,
                     updated_at = %s,
                     completed_at = %s,
-                    pocket = %s,
                     demo = %s,
                     metadata = %s::jsonb
                 WHERE id = %s
@@ -318,7 +317,6 @@ class CycleRepository:
                     cycle.created_at,
                     cycle.updated_at,
                     cycle.completed_at,
-                    cycle.pocket,
                     cycle.demo,
                     metadata_json,
                     cycle.id
@@ -329,7 +327,7 @@ class CycleRepository:
                 (id, symbol, strategy, status, confirmed, entry_order_id, exit_order_id,
                 entry_price, exit_price, quantity, stop_price,
                 trailing_delta, profit_loss, profit_loss_percent, created_at,
-                updated_at, completed_at, pocket, demo, metadata)
+                updated_at, completed_at, demo, metadata)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                 """
                 
@@ -351,7 +349,6 @@ class CycleRepository:
                     cycle.created_at,
                     cycle.updated_at,
                     cycle.completed_at,
-                    cycle.pocket,
                     cycle.demo,
                     metadata_json
                 )
@@ -382,7 +379,7 @@ class CycleRepository:
         try:
             with DBContextManager() as cursor:
                 cursor.execute(
-                    "SELECT id, symbol, strategy, status, confirmed, entry_order_id, exit_order_id, entry_price, exit_price, quantity, stop_price, trailing_delta, min_price, max_price, profit_loss, profit_loss_percent, created_at, updated_at, completed_at, pocket, demo, metadata FROM trade_cycles WHERE id = %s",
+                    "SELECT id, symbol, strategy, status, confirmed, entry_order_id, exit_order_id, entry_price, exit_price, quantity, stop_price, trailing_delta, min_price, max_price, profit_loss, profit_loss_percent, created_at, updated_at, completed_at, demo, metadata FROM trade_cycles WHERE id = %s",
                     (cycle_id,)
                 )
                 
@@ -441,7 +438,7 @@ class CycleRepository:
                 SELECT id, symbol, strategy, status, confirmed, entry_order_id, exit_order_id,
                        entry_price, exit_price, quantity, stop_price,
                        trailing_delta, min_price, max_price, profit_loss, profit_loss_percent,
-                       created_at, updated_at, completed_at, pocket, demo, metadata
+                       created_at, updated_at, completed_at, demo, metadata
                 FROM trade_cycles
                 WHERE {where_clause}
                 ORDER BY created_at DESC
@@ -484,7 +481,7 @@ class CycleRepository:
                 SELECT id, symbol, strategy, status, confirmed, entry_order_id, exit_order_id,
                        entry_price, exit_price, quantity, stop_price,
                        trailing_delta, min_price, max_price, profit_loss, profit_loss_percent,
-                       created_at, updated_at, completed_at, pocket, demo, metadata
+                       created_at, updated_at, completed_at, demo, metadata
                 FROM trade_cycles
                 ORDER BY created_at DESC
                 """
@@ -546,6 +543,5 @@ class CycleRepository:
             created_at=cycle_data['created_at'],
             updated_at=cycle_data['updated_at'],
             completed_at=cycle_data['completed_at'],
-            pocket=cycle_data['pocket'],
             demo=cycle_data['demo']
         )

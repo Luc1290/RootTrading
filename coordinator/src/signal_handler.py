@@ -22,8 +22,6 @@ from shared.src.enums import OrderSide, SignalStrength, CycleStatus
 from coordinator.src.cycle_sync_monitor import CycleSyncMonitor
 from shared.src.schemas import StrategySignal, TradeOrder
 
-from coordinator.src.pocket_checker import PocketChecker
-
 # Configuration du logging
 logging.basicConfig(
     level=logging.INFO,
@@ -69,10 +67,7 @@ class SignalHandler:
         # Thread pour le traitement des signaux
         self.processing_thread = None
         self.stop_event = threading.Event()
-        
-        # Gestionnaire de poches
-        self.pocket_checker = PocketChecker(portfolio_api_url)
-        
+
         # Moniteur de synchronisation des cycles (solution définitive)
         self.sync_monitor = CycleSyncMonitor(
             trader_api_url=trader_api_url,
@@ -122,29 +117,6 @@ class SignalHandler:
         self.aggregation_thread = None
         
         logger.info(f"✅ SignalHandler initialisé en mode {'DÉMO' if self.demo_mode else 'RÉEL'}")
-    
-    def _handle_portfolio_update(self, channel: str, data: Dict[str, Any]) -> None:
-        """
-        Gère les notifications de mise à jour du portfolio.
-        Déclenche une mise à jour du cache et une réallocation.
-        
-        Args:
-            channel: Canal Redis
-            data: Données de notification
-        """
-        try:
-            logger.info(f"📢 Notification de mise à jour du portfolio reçue: {data}")
-            
-            # Invalider le cache des poches
-            if hasattr(self, 'pocket_checker') and self.pocket_checker:
-                self.pocket_checker.last_cache_update = 0
-                
-                # Déclencher une réallocation des fonds
-                logger.info("Réallocation des fonds suite à notification...")
-                self.pocket_checker.reallocate_funds()
-                
-        except Exception as e:
-            logger.error(f"❌ Erreur lors du traitement de la notification: {str(e)}")
     
     def _process_signal(self, channel: str, data: Dict[str, Any]) -> None:
         """
@@ -866,6 +838,29 @@ class SignalHandler:
             logger.warning(f"Impossible de déterminer l'actif de quote pour {symbol}, utilisation de USDC par défaut")
             return 'USDC'
     
+    def _get_base_asset(self, symbol: str) -> str:
+        """
+        Détermine l'actif de base (base asset) pour un symbole.
+        
+        Args:
+            symbol: Symbole de trading (ex: BTCUSDC, ETHBTC)
+            
+        Returns:
+            L'actif de base (BTC, ETH, etc.)
+        """
+        # Pour les paires communes
+        if symbol.endswith('USDC'):
+            return symbol[:-4]  # BTCUSDC -> BTC, ETHUSDC -> ETH
+        elif symbol.endswith('BTC'):
+            return symbol[:-3]  # ETHBTC -> ETH
+        elif symbol.endswith('ETH'):
+            return symbol[:-3]  # XRPETH -> XRP
+        elif symbol.endswith('BNB'):
+            return symbol[:-3]  # ADABNB -> ADA
+        else:
+            # Par défaut, supposer que les 3 premiers caractères sont l'actif de base
+            return symbol[:3]
+    
     def _calculate_trade_amount(self, signal: StrategySignal) -> tuple[float, str]:
         """
         Calcule le montant à trader basé sur le signal et l'actif.
@@ -963,18 +958,27 @@ class SignalHandler:
             # Calculer le montant à trader
             trade_amount, quote_asset = self._calculate_trade_amount(signal)
     
-            # Déterminer la poche à utiliser en fonction de l'actif
+            # Déterminer l'actif et le montant nécessaire selon le côté de l'ordre
+            base_asset = self._get_base_asset(signal.symbol)
+            
+            if signal.side == OrderSide.BUY:
+                # BUY : On achète donc on a besoin de l'actif de cotation (quote asset)
+                required_asset = quote_asset
+                required_amount = trade_amount
+                logger.info(f"BUY {signal.symbol}: Besoin de {required_amount:.6f} {required_asset}")
+            else:  # OrderSide.SELL
+                # SELL : On vend donc on a besoin de l'actif de base (base asset)
+                required_asset = base_asset
+                required_amount = quantity  # La quantité d'actif de base à vendre
+                logger.info(f"SELL {signal.symbol}: Besoin de {required_amount:.6f} {required_asset}")
+            
+            # Vérifier directement les balances Binance
             try:
-                pocket_type = self.pocket_checker.determine_best_pocket(trade_amount, asset=quote_asset)
-                # Appel au portfolio réussi
-                self.portfolio_circuit.record_success()
+                if not self._check_binance_balance(required_asset, required_amount):
+                    logger.warning(f"❌ Solde {required_asset} insuffisant sur Binance pour le trade")
+                    return None
             except Exception as e:
-                self.portfolio_circuit.record_failure()
-                logger.error(f"❌ Erreur lors de l'interaction avec Portfolio: {str(e)}")
-                return None
-    
-            if not pocket_type:
-                logger.warning(f"❌ Aucune poche disponible pour un trade de {trade_amount:.2f} USDC")
+                logger.error(f"❌ Erreur lors de la vérification des soldes Binance: {str(e)}")
                 return None
     
             # Convertir le montant en quantité
@@ -1008,49 +1012,7 @@ class SignalHandler:
             if trailing_delta:
                 order_data["trailing_delta"] = trailing_delta
     
-            # Réserver les fonds dans la poche avec un ID unique incluant les microsecondes
-            temp_cycle_id = f"temp_{int(time.time() * 1000000)}_{uuid.uuid4().hex[:8]}"
-            
-            # Calculer le montant en USDC à réserver
-            if quote_asset == 'BTC':
-                # Pour les paires BTC, convertir le montant BTC en USDC pour la réservation
-                btc_price = self._get_btc_price()
-                if btc_price:
-                    reserve_amount_usdc = trade_amount * btc_price
-                    logger.info(f"Conversion pour réservation: {trade_amount:.6f} BTC = {reserve_amount_usdc:.2f} USDC (prix BTC: {btc_price:.2f})")
-                else:
-                    logger.error("❌ Impossible de récupérer le prix BTC/USDC pour la réservation")
-                    return None
-            elif quote_asset == 'ETH':
-                # Pour les paires ETH, convertir le montant ETH en USDC
-                eth_price = self._get_eth_price()  # À implémenter si nécessaire
-                if eth_price:
-                    reserve_amount_usdc = trade_amount * eth_price
-                else:
-                    logger.error("❌ Impossible de récupérer le prix ETH/USDC pour la réservation")
-                    return None
-            else:
-                # Pour les paires USDC, pas de conversion nécessaire
-                reserve_amount_usdc = trade_amount
-            
-            try:
-                reserved = self.pocket_checker.reserve_funds(reserve_amount_usdc, temp_cycle_id, pocket_type)
-                # Autre appel au portfolio réussi
-                self.portfolio_circuit.record_success()
-            except Exception as e:
-                self.portfolio_circuit.record_failure()
-                logger.error(f"❌ Erreur lors de la réservation des fonds: {str(e)}")
-                return None
-    
-            if not reserved:
-                logger.error(f"❌ Échec de réservation des fonds pour le trade")
-                return None
-    
-            # Vérifier le circuit breaker pour le Trader
-            if not self.trader_circuit.can_execute():
-                logger.warning(f"Circuit ouvert pour le service Trader, libération des fonds réservés")
-                self.pocket_checker.release_funds(reserve_amount_usdc, temp_cycle_id, pocket_type)
-                return None
+            # Plus de réservation de poches - on vérifie directement les balances Binance
     
             # Créer le cycle via l'API du Trader avec retry
             try:
@@ -1064,8 +1026,6 @@ class SignalHandler:
                 
                 if not result:
                     logger.error("❌ Échec de la création du cycle: aucune réponse du Trader")
-                    # Libérer les fonds réservés
-                    self.pocket_checker.release_funds(reserve_amount_usdc, temp_cycle_id, pocket_type)
                     return None
                 
                 cycle_id = result.get('order_id')
@@ -1075,35 +1035,6 @@ class SignalHandler:
         
                 if not cycle_id:
                     logger.error("❌ Réponse invalide du Trader: pas d'ID de cycle")
-                    # Libérer les fonds réservés
-                    self.pocket_checker.release_funds(trade_amount, temp_cycle_id, pocket_type)
-                    return None
-        
-                # Mettre à jour la réservation avec l'ID réel du cycle
-                try:
-                    # Stocker le mapping dans Redis pour la réconciliation future
-                    try:
-                        # Utiliser la méthode set avec expiration du RedisClientPool
-                        self.redis_client.set(f"cycle_mapper:{temp_cycle_id}", cycle_id, expiration=3600)  # 1h TTL
-                        logger.debug(f"🔗 Mapping sauvé: {temp_cycle_id} → {cycle_id}")
-                    except Exception as redis_e:
-                        logger.warning(f"⚠️ Impossible de sauver le mapping Redis: {redis_e}")
-                    
-                    # Libérer l'ID temporaire et réserver avec l'ID final
-                    self.pocket_checker.release_funds(reserve_amount_usdc, temp_cycle_id, pocket_type)
-                    self.pocket_checker.reserve_funds(reserve_amount_usdc, cycle_id, pocket_type)
-                    self.portfolio_circuit.record_success()
-                except Exception as e:
-                    self.portfolio_circuit.record_failure()
-                    logger.error(f"❌ Erreur lors de la mise à jour de la réservation: {str(e)}")
-                    # Tenter d'annuler le cycle créé
-                    try:
-                        self._make_request_with_retry(
-                            f"{self.trader_api_url}/order/{cycle_id}",
-                            method="DELETE"
-                        )
-                    except:
-                        pass
                     return None
         
                 logger.info(f"✅ Cycle de trading créé: {cycle_id} ({signal.side} {signal.symbol})")
@@ -1112,8 +1043,6 @@ class SignalHandler:
             except requests.RequestException as e:
                 self.trader_circuit.record_failure()
                 logger.error(f"❌ Erreur lors de la création du cycle: {str(e)}")
-                # Libérer les fonds réservés
-                self.pocket_checker.release_funds(reserve_amount_usdc, temp_cycle_id, pocket_type)
                 return None
     
         except Exception as e:
@@ -1243,7 +1172,6 @@ class SignalHandler:
                 # Cycle temporaire, libérer les fonds
                 amount = data.get("amount", 0)
                 if amount > 0:
-                    self.pocket_checker.release_funds(amount, cycle_id, "active")
                     logger.info(f"✅ {amount} USDC libérés pour le cycle temporaire {cycle_id} après échec")
             else:
                 # Cycle confirmé, annuler le cycle via l'API Trader
@@ -1281,9 +1209,6 @@ class SignalHandler:
         if hasattr(self, 'sync_monitor') and self.sync_monitor:
             self.sync_monitor.remove_cycle_from_cache(cycle_id)
             logger.debug(f"🔄 Cycle {cycle_id} retiré du cache du sync monitor")
-        
-        # Forcer une réconciliation pour mettre à jour les poches
-        self.pocket_checker.force_refresh()
     
     def _get_btc_price(self) -> Optional[float]:
         """
@@ -1332,6 +1257,43 @@ class SignalHandler:
         except Exception as e:
             logger.error(f"Erreur lors de la récupération du prix ETH: {str(e)}")
             return None
+    
+    def _check_binance_balance(self, asset: str, required_amount: float) -> bool:
+        """
+        Vérifie si on a assez de solde d'un actif sur Binance.
+        
+        Args:
+            asset: Actif à vérifier (BTC, ETH, USDC, etc.)
+            required_amount: Montant requis
+            
+        Returns:
+            True si le solde est suffisant, False sinon
+        """
+        try:
+            # Récupérer les balances depuis le trader
+            url = f"{self.trader_api_url}/balance/{asset}"
+            response = self._make_request_with_retry(url, timeout=2.0)
+            
+            if not response:
+                logger.error(f"Impossible de récupérer le solde {asset}")
+                return False
+            
+            available_balance = float(response.get('free', 0))
+            
+            # Ajouter une marge de sécurité de 1% pour les frais
+            required_with_margin = required_amount * 1.01
+            
+            logger.info(f"Vérification solde {asset}: {available_balance:.8f} disponible, {required_with_margin:.8f} requis")
+            
+            if available_balance >= required_with_margin:
+                return True
+            else:
+                logger.warning(f"❌ Solde {asset} insuffisant: {available_balance:.8f} < {required_with_margin:.8f}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Erreur lors de la vérification du solde {asset}: {str(e)}")
+            return False
         
     def handle_cycle_canceled(self, channel: str, data: Dict[str, Any]) -> None:
         """
@@ -1344,10 +1306,7 @@ class SignalHandler:
         if hasattr(self, 'sync_monitor') and self.sync_monitor:
             self.sync_monitor.remove_cycle_from_cache(cycle_id)
             logger.debug(f"🔄 Cycle {cycle_id} retiré du cache du sync monitor")
-        
-        # Forcer une réconciliation pour libérer les fonds
-        self.pocket_checker.force_refresh()
-        
+
     def handle_cycle_failed(self, channel: str, data: Dict[str, Any]) -> None:
         """
         Traite l'échec d'un cycle.
@@ -1359,10 +1318,6 @@ class SignalHandler:
         if hasattr(self, 'sync_monitor') and self.sync_monitor:
             self.sync_monitor.remove_cycle_from_cache(cycle_id)
             logger.debug(f"🔄 Cycle {cycle_id} retiré du cache du sync monitor")
-        
-        # Forcer une réconciliation des poches
-        self.pocket_checker.force_refresh()
-
 class CircuitBreaker:
     """Circuit breaker pour éviter les appels répétés à des services en échec."""
     

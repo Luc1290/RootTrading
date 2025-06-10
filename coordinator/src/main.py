@@ -18,7 +18,6 @@ from urllib.parse import urljoin
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
 from coordinator.src.signal_handler import SignalHandler
-from coordinator.src.pocket_checker import PocketChecker
 from coordinator.src.cycle_sync_monitor import CycleSyncMonitor
 
 # Configuration du logging
@@ -53,7 +52,6 @@ class CoordinatorService:
         self.port = port
         
         self.signal_handler = None
-        self.pocket_checker = None
         self.cycle_sync_monitor = None
         self.running = False
         self.start_time = time.time()
@@ -72,38 +70,7 @@ class CoordinatorService:
         self.app.route('/status', methods=['GET'])(self.get_status)
         self.app.route('/force-reconcile', methods=['POST'])(self.force_reconciliation)
         self.app.route('/sync-monitor/status', methods=['GET'])(self.get_sync_monitor_status)
-        self.app.route('/sync-monitor/force', methods=['POST'])(self.force_sync_monitor)
-
-    def force_reconciliation(self):
-        """
-        Force une réconciliation complète des poches avec les cycles actifs.
-        """
-        if not self.running or not self.pocket_checker:
-            return jsonify({
-                "status": "error",
-                "message": "Service not running"
-            }), 503
-        
-        try:
-            success = self.pocket_checker.reconcile_pockets(force=True)
-            
-            if success:
-                return jsonify({
-                    "status": "success",
-                    "message": "Forced reconciliation completed successfully"
-                })
-            else:
-                return jsonify({
-                    "status": "error",
-                    "message": "Forced reconciliation failed"
-                }), 500
-        
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la réconciliation forcée: {str(e)}")
-            return jsonify({
-                "status": "error",
-                "message": f"Exception: {str(e)}"
-            }), 500
+        self.app.route('/sync-monitor/force', methods=['POST'])(self.force_sync_monitor)   
     
     def health_check(self):
         """
@@ -114,8 +81,7 @@ class CoordinatorService:
             "timestamp": time.time(),
             "uptime": time.time() - self.start_time,
             "components": {
-                "signal_handler": self.signal_handler is not None,
-                "pocket_checker": self.pocket_checker is not None
+                "signal_handler": self.signal_handler is not None
             }
         })
     
@@ -125,11 +91,8 @@ class CoordinatorService:
         """
         # Vérifier la santé des services dépendants
         trader_health = self._check_service_health(self.trader_api_url)
-        portfolio_health = self._check_service_health(self.portfolio_api_url)
-        
-        # Obtenir des informations sur les poches
-        pockets_info = self._get_pockets_info() if self.pocket_checker else None
-        
+        portfolio_health = self._check_service_health(self.portfolio_api_url)        
+                
         # Construire la réponse de diagnostic
         diagnostic_info = {
             "status": "operational" if self.running else "stopped",
@@ -138,8 +101,7 @@ class CoordinatorService:
             "services": {
                 "trader": trader_health,
                 "portfolio": portfolio_health
-            },
-            "pockets": pockets_info,
+            },            
             "signal_processing": {
                 "running": self.signal_handler is not None and self.signal_handler.processing_thread is not None,
                 "queue_size": self.signal_handler.signal_queue.qsize() if self.signal_handler else 0
@@ -148,39 +110,7 @@ class CoordinatorService:
         }
         
         return jsonify(diagnostic_info)
-    
-    def force_reallocation(self):
-        """
-        Force une réallocation des fonds entre les poches.
-        """
-        if not self.running or not self.pocket_checker:
-            return jsonify({
-                "status": "error",
-                "message": "Service not running"
-            }), 503
         
-        try:
-            success = self.pocket_checker.reallocate_funds()
-            
-            if success:
-                self.pocket_checker.check_pocket_synchronization()
-                return jsonify({
-                    "status": "success",
-                    "message": "Reallocation completed"
-                })
-            else:
-                return jsonify({
-                    "status": "error",
-                    "message": "Reallocation failed"
-                }), 500
-        
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la réallocation forcée: {str(e)}")
-            return jsonify({
-                "status": "error",
-                "message": f"Exception: {str(e)}"
-            }), 500
-    
     def get_status(self):
         """
         Renvoie l'état actuel du Coordinator.
@@ -260,47 +190,7 @@ class CoordinatorService:
             return {
                 "status": "error",
                 "error": str(e)
-            }
-    
-    def _get_pockets_info(self):
-        """
-        Récupère les informations sur les poches.
-        
-        Returns:
-            Dict avec les informations sur les poches
-        """
-        if not self.pocket_checker:
-            return None
-            
-        try:
-            # Forcer un rafraîchissement du cache
-            self.pocket_checker._refresh_cache()
-            
-            # Préparer les informations de poche
-            pockets_info = {}
-            
-            for pocket_type in ["active", "buffer", "safety"]:
-                available = self.pocket_checker.get_available_funds(pocket_type)
-                
-                if pocket_type in self.pocket_checker.pocket_cache:
-                    pocket_data = self.pocket_checker.pocket_cache[pocket_type]
-                    pockets_info[pocket_type] = {
-                        "available": available,
-                        "total": pocket_data.get("total_value", 0),
-                        "used": pocket_data.get("used_value", 0),
-                        "active_cycles": pocket_data.get("active_cycles", 0)
-                    }
-                else:
-                    pockets_info[pocket_type] = {
-                        "available": available,
-                        "status": "not_in_cache"
-                    }
-            
-            return pockets_info
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la récupération des infos de poche: {str(e)}")
-            return {"error": str(e)}
+            }       
     
     def check_portfolio_health(self) -> bool:
         """
@@ -366,14 +256,14 @@ class CoordinatorService:
                     time.sleep(30)
                 logger.info("✅ Service Portfolio maintenant disponible!")
             
-            # Initialiser le vérificateur de poches
-            self.pocket_checker = PocketChecker(portfolio_api_url=self.portfolio_api_url)
-            
             # Initialiser le gestionnaire de signaux
             self.signal_handler = SignalHandler(
                 trader_api_url=self.trader_api_url,
                 portfolio_api_url=self.portfolio_api_url
             )
+            
+            # Démarrer le listener pour les cycles créés (libération automatique des fonds)
+            self._start_cycle_listener()
             
             # DÉSACTIVÉ: Le moniteur de synchronisation n'est plus nécessaire
             # car le Trader est maintenant la SEULE source de vérité pour les cycles
@@ -385,10 +275,6 @@ class CoordinatorService:
             # Démarrer les composants
             self.signal_handler.start()
             # self.cycle_sync_monitor.start()  # DÉSACTIVÉ
-            
-            # Réallouer les fonds initialement
-            logger.info("Réallocation initiale des fonds...")
-            self.pocket_checker.reallocate_funds()
             
             # Démarrer le serveur API
             self.start_api_server()
@@ -419,29 +305,9 @@ class CoordinatorService:
                 try:
                     logger.info("Vérification de santé du portfolio...")
                     if not self.check_portfolio_health():
-                        # Essayer de forcer une réconciliation si le portfolio est en ligne mais non-OK
-                        self.pocket_checker.check_pocket_synchronization()
-                    last_health_check = current_time
+                        logger.warning("Le service Portfolio n'est pas en bonne santé.")
                 except Exception as e:
-                    logger.error(f"❌ Erreur lors de la vérification de santé: {str(e)}")
-            
-            # Réduire l'intervalle à 2 minutes (120 secondes) au lieu de 5
-            if current_time - last_reallocation >= 120:
-                try:
-                    logger.info("Réallocation périodique des fonds...")
-                    self.pocket_checker.reallocate_funds()
-                    last_reallocation = current_time
-                except Exception as e:
-                    logger.error(f"❌ Erreur lors de la réallocation des fonds: {str(e)}")
-            
-            # Vérifier la synchronisation des poches toutes les 5 minutes (300s) au lieu de 15
-            if current_time - last_sync_check >= 300:
-                try:
-                    logger.info("Vérification de la synchronisation des poches...")
-                    self.pocket_checker.check_pocket_synchronization()
-                    last_sync_check = current_time
-                except Exception as e:
-                    logger.error(f"❌ Erreur lors de la vérification de synchronisation: {str(e)}")
+                    logger.error(f"❌ Erreur lors de la vérification de santé du portfolio: {str(e)}")
     
     def stop(self):
         """
@@ -463,6 +329,32 @@ class CoordinatorService:
             self.cycle_sync_monitor = None
         
         logger.info("Service Coordinator terminé")
+    
+    def _start_cycle_listener(self):
+        """
+        Démarre le listener pour les cycles créés afin de libérer automatiquement les fonds.
+        """
+        def cycle_listener_thread():
+            from shared.src.redis_client import RedisClient
+            redis = RedisClient()
+            
+            def handle_cycle_created(channel, data):
+                """
+                Libère automatiquement les fonds USDC après confirmation d'achat.
+                """
+                try:
+                    cycle_id = data.get("cycle_id")                    
+                    symbol = data.get("symbol", "")
+                    status = data.get("status", "")                                                
+                except Exception as e:
+                    logger.error(f"Erreur lors du traitement du cycle créé: {str(e)}")
+
+                # S'abonner au canal des cycles créés
+                    redis.subscribe("roottrading:cycle:created", handle_cycle_created)                    
+        
+        # Démarrer le thread
+        listener_thread = threading.Thread(target=cycle_listener_thread, daemon=True)
+        listener_thread.start()
 
 
 def main():

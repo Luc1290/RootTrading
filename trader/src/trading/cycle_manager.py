@@ -331,14 +331,6 @@ class CycleManager:
                     # Sauvegarder et nettoyer
                     self.repository.save_cycle(cycle)
                     
-                    if cycle.pocket:
-                        base_amount = self._get_reserved_amount_for_cycle(cycle.id, cycle.pocket)
-                        try:
-                            self._release_pocket_funds(cycle.pocket, base_amount, cycle.id)
-                            logger.info(f"💰 {base_amount:.2f} USDC libérés pour le cycle TTL expiré {cycle.id}")
-                        except Exception as e:
-                            logger.error(f"❌ Erreur lors de la libération des fonds pour {cycle.id}: {str(e)}")
-                    
                     self._publish_cycle_event(cycle, "failed")
                     
                     with self.cycles_lock:
@@ -404,15 +396,6 @@ class CycleManager:
                     
                     # Sauvegarder en DB
                     self.repository.save_cycle(cycle)
-                    
-                    # Libérer les fonds de la poche
-                    if cycle.pocket:
-                        base_amount = self._get_reserved_amount_for_cycle(cycle.id, cycle.pocket)
-                        try:
-                            self._release_pocket_funds(cycle.pocket, base_amount, cycle.id)
-                            logger.info(f"💰 {base_amount:.2f} USDC libérés pour le cycle fantôme {cycle.id}")
-                        except Exception as e:
-                            logger.error(f"❌ Erreur lors de la libération des fonds pour {cycle.id}: {str(e)}")
                     
                     # Publier l'événement
                     self._publish_cycle_event(cycle, "failed")
@@ -557,16 +540,6 @@ class CycleManager:
                     # Sauvegarder en base
                     self.repository.save_cycle(cycle)
                     
-                    # Libérer les fonds si nécessaire
-                    if cycle.pocket:
-                        base_amount = self._get_reserved_amount_for_cycle(cycle.id, cycle.pocket)
-                        if base_amount > 0:
-                            try:
-                                self._release_pocket_funds(cycle.pocket, base_amount, cycle.id)
-                                logger.info(f"💰 {base_amount:.2f} USDC libérés pour le cycle fantôme {cycle.id}")
-                            except Exception as e:
-                                logger.error(f"❌ Erreur lors de la libération des fonds pour {cycle.id}: {str(e)}")
-                    
                     # Publier l'événement
                     self._publish_cycle_event(cycle, "failed")
                     
@@ -585,7 +558,7 @@ class CycleManager:
             logger.error(f"❌ Erreur lors de la vérification des cycles au démarrage: {str(e)}")
     
     def create_cycle(self, symbol: str, strategy: str, side: Union[OrderSide, str], 
-                    price: float, quantity: float, pocket: Optional[str] = None,
+                    price: float, quantity: float,
                     stop_price: Optional[float] = None,
                     trailing_delta: Optional[float] = None) -> Optional[TradeCycle]:
         """
@@ -624,7 +597,6 @@ class CycleManager:
                 trailing_delta=trailing_delta,
                 created_at=now,
                 updated_at=now,
-                pocket=pocket,
                 demo=self.demo_mode,
                 metadata={}  # IMPORTANT: Toujours initialiser metadata
             )
@@ -878,10 +850,10 @@ class CycleManager:
                 "cycle_id": cycle.id,
                 "symbol": cycle.symbol,
                 "strategy": cycle.strategy,
+                "status": cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status),
                 "quantity": float(cycle.quantity) if hasattr(cycle.quantity, 'dtype') else cycle.quantity,
                 "entry_price": float(cycle.entry_price) if hasattr(cycle.entry_price, 'dtype') else cycle.entry_price,
                 "timestamp": int(cycle.created_at.timestamp() * 1000),
-                "pocket": cycle.pocket
             }
             
             # Ajouter des infos supplémentaires selon le type d'événement
@@ -986,16 +958,6 @@ class CycleManager:
                             
                             with self.cycles_lock:
                                 self.active_cycles.pop(cycle_id, None)
-                            
-                            # Libérer les fonds
-                            if cycle.pocket:
-                                # Utiliser le montant réellement réservé pour ce cycle
-                                amount_to_release = self._get_reserved_amount_for_cycle(cycle_id, cycle.pocket)
-                                try:
-                                    self._release_pocket_funds(cycle.pocket, amount_to_release, cycle_id)
-                                    logger.info(f"✅ {amount_to_release:.2f} USDC libérés de la poche {cycle.pocket}")
-                                except Exception as e:
-                                    logger.error(f"❌ Erreur lors de la libération des fonds: {str(e)}")
                             
                             logger.info(f"✅ Cycle {cycle_id} fermé avec succès: P&L = {profit_loss:.2f} ({profit_loss_percent:.2f}%)")
                             return True
@@ -1203,28 +1165,7 @@ class CycleManager:
             # Supprimer le cycle des cycles actifs
             with self.cycles_lock:
                 self.active_cycles.pop(cycle_id, None)
-            
-            # Libérer les fonds dans la poche
-            if cycle.pocket:
-                # CORRECTION: Récupérer le montant réellement réservé pour ce cycle
-                # Évite les divergences avec les valeurs d'environnement
-                base_amount = self._get_reserved_amount_for_cycle(cycle_id, cycle.pocket)
-                
-                try:
-                    # Libérer uniquement le montant de base réservé
-                    self._release_pocket_funds(cycle.pocket, base_amount, cycle_id)
-                    logger.info(f"✅ {base_amount:.2f} USDC (montant de base) libérés de la poche {cycle.pocket} pour le cycle {cycle_id}")
-                    
-                    # Si il y a un profit, le déposer dans la poche buffer
-                    if profit_loss > 0:
-                        self._deposit_profit_to_buffer(profit_loss, cycle_id)
-                        logger.info(f"💰 Profit de {profit_loss:.2f} USDC déposé dans la poche buffer pour le cycle {cycle_id}")
-                    elif profit_loss < 0:
-                        logger.info(f"📉 Perte de {abs(profit_loss):.2f} USDC enregistrée pour le cycle {cycle_id}")
                         
-                except Exception as e:
-                    logger.error(f"❌ Erreur lors de la libération des fonds: {str(e)}")
-            
             logger.info(f"✅ Cycle {cycle_id} fermé avec succès: P&L = {profit_loss:.2f} ({profit_loss_percent:.2f}%)")
             return True
         
@@ -1306,18 +1247,7 @@ class CycleManager:
             # Supprimer le cycle des cycles actifs
             with self.cycles_lock:
                 self.active_cycles.pop(cycle_id, None)
-            
-            # Libérer les fonds dans la poche si le cycle avait réservé des fonds
-            if cycle.pocket:
-                # Pour une annulation, on libère le montant de base sans profit/perte
-                # Utiliser le montant réellement réservé pour ce cycle
-                amount_to_release = self._get_reserved_amount_for_cycle(cycle_id, cycle.pocket)
-                try:
-                    self._release_pocket_funds(cycle.pocket, amount_to_release, cycle_id)
-                    logger.info(f"✅ {amount_to_release:.2f} USDC libérés de la poche {cycle.pocket} pour le cycle annulé {cycle_id}")
-                except Exception as e:
-                    logger.error(f"❌ Erreur lors de la libération des fonds: {str(e)}")
-            
+
             logger.info(f"✅ Cycle {cycle_id} annulé: {reason}")
             return True
         
@@ -1421,178 +1351,7 @@ class CycleManager:
         
         # Déléguer au StopManagerPure avec le wrapper
         self.stop_manager.process_price_update(symbol, price, close_cycle_by_stop)
-    
-    
-
-    def _release_pocket_funds(self, pocket_type: str, amount: float, cycle_id: str) -> bool:
-        """
-        Libère les fonds réservés dans une poche via l'API du portfolio.
         
-        Args:
-            pocket_type: Type de poche ('active', 'buffer', 'safety')
-            amount: Montant à libérer
-            cycle_id: ID du cycle
-            
-        Returns:
-            True si réussi, False sinon
-        """
-        try:
-            import requests
-            portfolio_url = "http://portfolio:8000"
-            
-            # Appeler l'API du portfolio pour libérer les fonds
-            response = requests.post(
-                f"{portfolio_url}/pockets/{pocket_type}/release",
-                params={"amount": amount, "cycle_id": cycle_id, "asset": "USDC"},
-                timeout=5.0
-            )
-            
-            if response.status_code == 200:
-                logger.info(f"✅ {amount:.2f} USDC libérés de la poche {pocket_type} pour le cycle {cycle_id}")
-                return True
-            else:
-                logger.error(f"❌ Échec de la libération des fonds: {response.status_code} - {response.text}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de l'appel à l'API portfolio: {str(e)}")
-            return False
-    
-    def _deposit_profit_to_buffer(self, profit_amount: float, cycle_id: str) -> bool:
-        """
-        Dépose les profits dans la poche buffer via l'API du portfolio.
-        
-        Args:
-            profit_amount: Montant du profit à déposer
-            cycle_id: ID du cycle source du profit
-            
-        Returns:
-            True si réussi, False sinon
-        """
-        try:
-            import requests
-            portfolio_url = "http://portfolio:8000"
-            
-            # Appeler l'API du portfolio pour déposer le profit
-            response = requests.post(
-                f"{portfolio_url}/pockets/buffer/deposit",
-                params={"amount": profit_amount, "source": f"profit_cycle_{cycle_id}", "asset": "USDC"},
-                timeout=5.0
-            )
-            
-            if response.status_code == 200:
-                logger.info(f"✅ {profit_amount:.2f} USDC de profit déposés dans la poche buffer pour le cycle {cycle_id}")
-                return True
-            else:
-                logger.warning(f"⚠️ Impossible de déposer le profit: {response.status_code} - {response.text}")
-                return False
-                
-        except Exception as e:
-            logger.warning(f"⚠️ Erreur lors du dépôt du profit: {str(e)}")
-            return False
-
-    def _get_reserved_amount_for_cycle(self, cycle_id: str, pocket_type: str) -> float:
-        """
-        Récupère le montant réellement réservé pour un cycle depuis l'API Portfolio.
-        
-        Args:
-            cycle_id: ID du cycle
-            pocket_type: Type de poche
-            
-        Returns:
-            Montant réservé en USDC
-        """
-        try:
-            import requests
-            portfolio_url = "http://portfolio:8000"
-            
-            # Appeler l'API pour récupérer le montant réservé
-            response = requests.get(
-                f"{portfolio_url}/pockets/{pocket_type}/reserved",
-                params={"cycle_id": cycle_id, "asset": "USDC"},
-                timeout=5.0
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                reserved_amount = float(data.get('reserved_amount', 0))
-                logger.debug(f"💰 Montant réservé pour le cycle {cycle_id}: {reserved_amount:.2f} USDC")
-                return reserved_amount
-            else:
-                logger.warning(f"⚠️ Impossible de récupérer le montant réservé, utilisation de la valeur par défaut")
-                # Fallback vers la valeur d'environnement
-                return float(os.getenv('TRADE_QUANTITY_USDC', 20.0))
-                
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la récupération du montant réservé: {str(e)}")
-            # Fallback vers la valeur d'environnement
-            return float(os.getenv('TRADE_QUANTITY_USDC', 20.0))
-    
-    def _cleanup_cycle_orders(self, cycle: TradeCycle) -> None:
-        """
-        Annule tous les ordres ouverts d'un cycle sur Binance.
-        Appelé lors de la fermeture ou l'échec d'un cycle.
-        
-        Args:
-            cycle: Le cycle dont les ordres doivent être nettoyés
-        """
-        try:
-            orders_to_cancel = []
-            
-            # Vérifier l'ordre d'entrée
-            if cycle.entry_order_id:
-                # Vérifier le statut de l'ordre
-                order_status = self.binance_executor.get_order_status(cycle.symbol, cycle.entry_order_id)
-                if order_status and order_status.status in [OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED]:
-                    orders_to_cancel.append(('entrée', cycle.entry_order_id))
-                    logger.debug(f"🧹 Ordre d'entrée {cycle.entry_order_id} ajouté pour nettoyage (statut: {order_status.status})")
-            
-            # Vérifier l'ordre de sortie
-            if cycle.exit_order_id:
-                # Vérifier le statut de l'ordre
-                order_status = self.binance_executor.get_order_status(cycle.symbol, cycle.exit_order_id)
-                if order_status and order_status.status in [OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED]:
-                    orders_to_cancel.append(('sortie', cycle.exit_order_id))
-                    logger.debug(f"🧹 Ordre de sortie {cycle.exit_order_id} ajouté pour nettoyage (statut: {order_status.status})")
-                elif order_status:
-                    logger.debug(f"🔍 Ordre de sortie {cycle.exit_order_id} non nettoyé (statut: {order_status.status})")
-                else:
-                    logger.warning(f"⚠️ Impossible de vérifier le statut de l'ordre {cycle.exit_order_id}")
-                    # En cas de doute, on essaie quand même d'annuler
-                    orders_to_cancel.append(('sortie', cycle.exit_order_id))
-            
-            # Annuler les ordres trouvés
-            for order_type, order_id in orders_to_cancel:
-                try:
-                    result = self.binance_executor.cancel_order(cycle.symbol, order_id)
-                    if result:
-                        logger.info(f"🧹 Ordre {order_type} {order_id} annulé pour le cycle {cycle.id}")
-                        
-                        # Mettre à jour le statut dans la DB
-                        try:
-                            update_query = """
-                            UPDATE trade_executions
-                            SET status = 'CANCELED', updated_at = NOW()
-                            WHERE order_id = %s
-                            """
-                            # Utiliser DBContextManager avec transaction
-                            with DBContextManager(self.db_url) as cursor:
-                                cursor.execute(update_query, (order_id,))
-                        except Exception as db_error:
-                            logger.warning(f"⚠️ Impossible de mettre à jour le statut en DB: {str(db_error)}")
-                    else:
-                        logger.warning(f"⚠️ Impossible d'annuler l'ordre {order_type} {order_id}")
-                except Exception as e:
-                    logger.error(f"❌ Erreur lors de l'annulation de l'ordre {order_id}: {str(e)}")
-            
-            if orders_to_cancel:
-                logger.debug(f"✅ {len(orders_to_cancel)} ordres nettoyés pour le cycle {cycle.id}")
-            else:
-                logger.debug(f"🔍 Aucun ordre à nettoyer pour le cycle {cycle.id} (entry_order_id: {cycle.entry_order_id}, exit_order_id: {cycle.exit_order_id})")
-                
-        except Exception as e:
-            logger.error(f"❌ Erreur lors du nettoyage des ordres du cycle {cycle.id}: {str(e)}")
-    
     def _start_balance_reconciliation_thread(self):
         """Démarre un thread de réconciliation périodique des balances."""
         def balance_reconciliation_routine():

@@ -21,10 +21,9 @@ import os
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
-from shared.src.schemas import AssetBalance, PortfolioSummary, PocketSummary
+from shared.src.schemas import AssetBalance, PortfolioSummary
 from portfolio.src.startup import on_startup
 from portfolio.src.models import PortfolioModel, DBManager, SharedCache
-from portfolio.src.pockets import PocketManager
 from portfolio.src.binance_account_manager import BinanceAccountManager
 
 # Mesure des performances et des ressources
@@ -139,10 +138,6 @@ class InMemoryCache:
 # Instance globale du cache
 api_cache = InMemoryCache()
 
-# Instance globale du PocketManager (singleton)
-_pocket_manager_instance = None
-_pocket_manager_lock = threading.Lock()
-
 # Classes pour les réponses API
 class TradeHistoryResponse(BaseModel):
     trades: List[Dict[str, Any]]
@@ -153,10 +148,6 @@ class TradeHistoryResponse(BaseModel):
 class PerformanceResponse(BaseModel):
     data: List[Dict[str, Any]]
     period: str
-
-class PocketUpdateRequest(BaseModel):
-    pocket_type: str
-    allocation_percent: float
 
 class ManualBalanceUpdateRequest(BaseModel):
     asset: str
@@ -200,18 +191,6 @@ def get_portfolio_model():
         yield model
     finally:
         model.close()
-
-def get_pocket_manager():
-    """Fournit une instance du gestionnaire de poches (singleton)."""
-    global _pocket_manager_instance
-    
-    with _pocket_manager_lock:
-        if _pocket_manager_instance is None:
-            db = DBManager()
-            _pocket_manager_instance = PocketManager(db_manager=db)
-            logger.info("✅ Instance singleton du PocketManager créée")
-    
-    yield _pocket_manager_instance
 
 # Routes
 @app.get("/")
@@ -280,10 +259,7 @@ async def diagnostic():
             db = DBManager()
             result = db.execute_query("SELECT COUNT(*) as count FROM portfolio_balances", fetch_one=True)
             db_stats["balance_count"] = result["count"] if result else 0
-            
-            result = db.execute_query("SELECT COUNT(*) as count FROM capital_pockets", fetch_one=True)
-            db_stats["pocket_count"] = result["count"] if result else 0
-            
+                        
             result = db.execute_query("SELECT COUNT(*) as count FROM trade_cycles", fetch_one=True)
             db_stats["cycle_count"] = result["count"] if result else 0
             
@@ -305,22 +281,6 @@ async def diagnostic():
             db.close()
         except Exception as e:
             db_stats["error"] = str(e)
-        
-        # Obtenir les info des poches
-        pockets_info = {}
-        try:
-            pocket_manager = PocketManager()
-            pockets = pocket_manager.get_pockets()
-            for pocket in pockets:
-                pockets_info[pocket.pocket_type] = {
-                    "current_value": float(pocket.current_value),
-                    "used_value": float(pocket.used_value),
-                    "available_value": float(pocket.available_value),
-                    "active_cycles": pocket.active_cycles
-                }
-            pocket_manager.close()
-        except Exception as e:
-            pockets_info["error"] = str(e)
         
         # Informations sur le cache
         cache_info = {
@@ -349,7 +309,6 @@ async def diagnostic():
             "uptime": time.time() - start_time,
             "version": "1.0.0",
             "database": db_stats,
-            "pockets": pockets_info,
             "cache": cache_info,
             "threads": thread_info,
             "system": system_info
@@ -424,270 +383,6 @@ async def get_balances(
         response.headers["Cache-Control"] = "public, max-age=5"
     
     return balances
-
-@app.get("/pockets", response_model=List[PocketSummary])
-async def get_pockets(
-    pocket_manager: PocketManager = Depends(get_pocket_manager),
-    response: Response = None
-):
-    """
-    Récupère l'état actuel des poches de capital avec cache mémoire.
-    
-    Returns:
-        Liste des poches de capital
-    """
-    # Vérifier le cache
-    cache_key = "pockets_list"
-    cached_pockets = api_cache.get(cache_key)
-    
-    if cached_pockets:
-        logger.debug("📦 Poches servies depuis le cache")
-        if response:
-            response.headers["X-Cache"] = "HIT"
-            response.headers["Cache-Control"] = "public, max-age=5"
-        return cached_pockets
-    
-    # Si pas en cache, récupérer depuis la DB
-    pockets = pocket_manager.get_pockets()
-    
-    if not pockets:
-        raise HTTPException(status_code=404, detail="Aucune poche trouvée")
-    
-    # Mettre en cache pour 2 secondes
-    api_cache.set(cache_key, pockets, ttl=2.0)
-    
-    # Ajouter des en-têtes de cache
-    if response:
-        response.headers["X-Cache"] = "MISS"
-        response.headers["Cache-Control"] = "public, max-age=5"
-    
-    return pockets
-
-@app.put("/pockets/sync", status_code=200)
-async def sync_pockets(
-    background_tasks: BackgroundTasks,
-    pocket_manager: PocketManager = Depends(get_pocket_manager)
-):
-    """
-    Synchronise les poches avec les trades actifs.
-    Exécuté en arrière-plan pour ne pas bloquer la réponse.
-    
-    Returns:
-        Statut de la synchronisation
-    """
-    # Fonction d'arrière-plan
-    def sync_task():
-        try:
-            success = pocket_manager.sync_with_trades()
-            if not success:
-                logger.error("❌ Échec de la synchronisation des poches en arrière-plan")
-            else:
-                logger.info("✅ Synchronisation des poches réussie en arrière-plan")
-                # Invalider le cache après la synchronisation
-                api_cache.clear("pockets")
-                api_cache.clear("portfolio")
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la synchronisation en arrière-plan: {str(e)}")
-    
-    # Ajouter la tâche en arrière-plan
-    background_tasks.add_task(sync_task)
-    
-    return {
-        "status": "accepted", 
-        "message": "Synchronisation des poches lancée en arrière-plan"
-    }
-
-@app.put("/pockets/allocation", status_code=200)
-async def update_pocket_allocation(
-    total_value: float = Query(..., description="Valeur totale du portefeuille"),
-    pocket_manager: PocketManager = Depends(get_pocket_manager)
-):
-    """
-    Met à jour l'allocation des poches en fonction de la valeur totale.
-    """
-    try:
-        # Validation des paramètres
-        if total_value < 0:
-            raise HTTPException(status_code=400, detail=f"Valeur totale invalide: {total_value}")
-        
-        # Modification: utiliser une valeur minimale si total_value est 0
-        if total_value == 0:
-            logger.info(f"Valeur totale reçue: {total_value}, utilisation d'une valeur minimale de 100.0")
-            total_value = 100.0  # Valeur par défaut pour l'initialisation
-        
-        success = pocket_manager.update_pockets_allocation(total_value)
-        
-        if not success:
-            raise HTTPException(status_code=500, detail="Échec de la mise à jour de l'allocation")
-        
-        return {"status": "success", "message": "Allocation mise à jour avec succès"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Erreur dans update_pocket_allocation: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Erreur interne: {str(e)}")
-
-@app.post("/pockets/{pocket_type}/reserve", status_code=200)
-async def reserve_funds(
-    pocket_type: str = Path(..., description="Type de poche (active, buffer, safety)"),
-    amount: float = Query(..., description="Montant à réserver"),
-    cycle_id: str = Query(..., description="ID du cycle de trading"),
-    asset: str = Query("USDC", description="Actif de la poche (USDC, BTC, ETH, etc.)"),
-    pocket_manager: PocketManager = Depends(get_pocket_manager)
-):
-    """
-    Réserve des fonds dans une poche pour un cycle de trading.
-    
-    Args:
-        pocket_type: Type de poche
-        amount: Montant à réserver
-        cycle_id: ID du cycle de trading
-    
-    Returns:
-        Statut de la réservation
-    """
-    if amount <= 0:
-        raise HTTPException(status_code=400, detail="Montant invalide")
-    
-    # Valider le type de poche
-    if pocket_type not in ['active', 'buffer', 'safety']:
-        raise HTTPException(status_code=400, detail=f"Type de poche invalide: {pocket_type}")
-    
-    success = pocket_manager.reserve_funds(pocket_type, amount, cycle_id, asset)
-    
-    if not success:
-        raise HTTPException(status_code=400, detail="Échec de la réservation des fonds")
-    
-    # Invalider le cache après la réservation
-    api_cache.clear("pockets")
-    
-    return {"status": "success", "message": f"{amount} réservés dans la poche {pocket_type}"}
-
-@app.post("/pockets/{pocket_type}/release", status_code=200)
-async def release_funds(
-    pocket_type: str = Path(..., description="Type de poche (active, buffer, safety)"),
-    amount: float = Query(..., description="Montant à libérer"),
-    cycle_id: str = Query(..., description="ID du cycle de trading"),
-    asset: str = Query("USDC", description="Actif de la poche (USDC, BTC, ETH, etc.)"),
-    pocket_manager: PocketManager = Depends(get_pocket_manager)
-):
-    """
-    Libère des fonds réservés dans une poche avec idempotence.
-    
-    Args:
-        pocket_type: Type de poche
-        amount: Montant à libérer
-        cycle_id: ID du cycle de trading
-    
-    Returns:
-        Statut de la libération
-    """
-    if amount <= 0:
-        raise HTTPException(status_code=400, detail="Montant invalide")
-    
-    # Valider le type de poche
-    if pocket_type not in ['active', 'buffer', 'safety']:
-        raise HTTPException(status_code=400, detail=f"Type de poche invalide: {pocket_type}")
-    
-    # IDEMPOTENCE: Vérifier si ce cycle a déjà été entièrement libéré
-    try:
-        # Vérifier s'il reste des fonds réservés pour ce cycle
-        remaining_reserved = pocket_manager.get_reserved_amount_with_lock(pocket_type, cycle_id, asset)
-        
-        if remaining_reserved == 0:
-            # Cycle déjà entièrement libéré, retourner succès (idempotent)
-            logger.info(f"⚠️ Tentative de libérer {amount}, mais le cycle {cycle_id} est déjà entièrement libéré")
-            return {"status": "success", "message": f"Cycle {cycle_id} déjà entièrement libéré", "already_released": True}
-        
-        if remaining_reserved < amount:
-            # Tentative de libérer plus que ce qui reste
-            logger.warning(f"⚠️ Tentative de libérer {amount}, mais seulement {remaining_reserved} reste à libérer pour le cycle {cycle_id}")
-            # Libérer seulement ce qui reste
-            amount = remaining_reserved
-            
-    except Exception as e:
-        logger.warning(f"⚠️ Impossible de vérifier le montant réservé: {str(e)}")
-        # Continuer avec la libération normale en cas d'erreur de vérification
-    
-    success = pocket_manager.release_funds(pocket_type, amount, cycle_id, asset)
-    
-    if not success:
-        raise HTTPException(status_code=400, detail="Échec de la libération des fonds")
-    
-    # Invalider le cache après la libération
-    api_cache.clear("pockets")
-    
-    return {"status": "success", "message": f"{amount} libérés dans la poche {pocket_type}"}
-
-@app.post("/pockets/{pocket_type}/deposit", status_code=200)
-async def deposit_funds(
-    pocket_type: str = Path(..., description="Type de poche (active, buffer, safety)"),
-    amount: float = Query(..., description="Montant à déposer"),
-    source: str = Query(..., description="Source du dépôt (ex: profit_cycle_123)"),
-    asset: str = Query("USDC", description="Actif de la poche (USDC, BTC, ETH, etc.)"),
-    pocket_manager: PocketManager = Depends(get_pocket_manager)
-):
-    """
-    Dépose des fonds dans une poche (ex: profits).
-    
-    Args:
-        pocket_type: Type de poche
-        amount: Montant à déposer
-        source: Source du dépôt
-        asset: Actif
-    
-    Returns:
-        Statut du dépôt
-    """
-    if amount <= 0:
-        raise HTTPException(status_code=400, detail="Montant invalide")
-    
-    # Valider le type de poche - dépôts autorisés seulement sur buffer/safety
-    if pocket_type not in ['buffer', 'safety']:
-        raise HTTPException(status_code=400, detail=f"Dépôts non autorisés sur la poche '{pocket_type}'. Utilisez 'buffer' ou 'safety'.")
-    
-    success = pocket_manager.deposit_funds(pocket_type, amount, source, asset)
-    
-    if not success:
-        raise HTTPException(status_code=400, detail="Échec du dépôt des fonds")
-    
-    # Invalider le cache après le dépôt
-    api_cache.clear("pockets")
-    
-    return {"status": "success", "message": f"{amount} {asset} déposés dans la poche {pocket_type}"}
-
-@app.get("/pockets/{pocket_type}/reserved", status_code=200)
-async def get_reserved_amount(
-    pocket_type: str = Path(..., description="Type de poche (active, buffer, safety)"),
-    cycle_id: str = Query(..., description="ID du cycle de trading"),
-    asset: str = Query("USDC", description="Actif de la poche (USDC, BTC, ETH, etc.)"),
-    pocket_manager: PocketManager = Depends(get_pocket_manager)
-):
-    """
-    Récupère le montant réservé pour un cycle donné.
-    
-    Args:
-        pocket_type: Type de poche
-        cycle_id: ID du cycle de trading
-        asset: Actif
-    
-    Returns:
-        Montant réservé
-    """
-    # Valider le type de poche
-    if pocket_type not in ['active', 'buffer', 'safety']:
-        raise HTTPException(status_code=400, detail=f"Type de poche invalide: {pocket_type}")
-    
-    reserved_amount = pocket_manager.get_reserved_amount(pocket_type, cycle_id, asset)
-    
-    return {
-        "cycle_id": cycle_id,
-        "pocket_type": pocket_type,
-        "asset": asset,
-        "reserved_amount": reserved_amount
-    }
 
 @app.get("/trades", response_model=TradeHistoryResponse)
 async def get_trade_history(
@@ -887,49 +582,6 @@ async def update_balance_manually(
     SharedCache.clear('portfolio_summary')
     
     return {"status": "success", "message": f"{len(balances)} soldes mis à jour"}
-
-@app.post("/pockets/reconcile", status_code=200)
-async def reconcile_pockets(
-    background_tasks: BackgroundTasks,
-    pocket_manager: PocketManager = Depends(get_pocket_manager)
-):
-    """
-    Force la réconciliation complète des poches avec les trades actifs.
-    Recalcule les valeurs utilisées, disponibles et le nombre de cycles actifs.
-    Exécuté en arrière-plan pour ne pas bloquer la réponse.
-    """
-    # Fonction d'arrière-plan
-    def reconcile_task():
-        try:
-            # Récupérer la valeur totale du portefeuille
-            portfolio = PortfolioModel()
-            summary = portfolio.get_portfolio_summary()
-            total_value = summary.total_value
-            
-            # Synchroniser les poches avec les trades actifs
-            success1 = pocket_manager.sync_with_trades()
-            
-            # Réallouer les poches selon les pourcentages configurés
-            success2 = pocket_manager.update_pockets_allocation(total_value)
-            
-            # Mettre à jour le nombre de cycles actifs
-            success3 = pocket_manager.recalculate_active_cycles()
-            
-            logger.info(f"✅ Réconciliation des poches terminée: sync={success1}, allocation={success2}, recalculation={success3}")
-            
-            portfolio.close()
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la réconciliation des poches: {str(e)}")
-            import traceback
-            logger.error(traceback.format_exc())
-    
-    # Ajouter la tâche en arrière-plan
-    background_tasks.add_task(reconcile_task)
-    
-    return {
-        "status": "accepted", 
-        "message": "Réconciliation des poches lancée en arrière-plan"
-    }
 
 @app.get("/_debug/db_test")
 async def test_db_connection():

@@ -57,7 +57,6 @@ CREATE TABLE IF NOT EXISTS trade_cycles (
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     completed_at TIMESTAMP,
     confirmed BOOLEAN NOT NULL DEFAULT FALSE,
-    pocket VARCHAR(20) DEFAULT 'active',
     -- Champ metadata pour stocker informations supplémentaires (réconciliation, raisons d'annulation, etc.)
     metadata JSONB,
     demo BOOLEAN NOT NULL DEFAULT FALSE    
@@ -148,42 +147,6 @@ CREATE TABLE IF NOT EXISTS portfolio_balances (
 CREATE INDEX IF NOT EXISTS portfolio_balances_asset_idx ON portfolio_balances(asset);
 CREATE INDEX IF NOT EXISTS portfolio_balances_timestamp_idx ON portfolio_balances(timestamp);
 CREATE INDEX IF NOT EXISTS portfolio_balances_asset_timestamp_idx ON portfolio_balances(asset, timestamp DESC);
-
--- Table des poches de capital (améliorée)
-CREATE TABLE IF NOT EXISTS capital_pockets (
-    id SERIAL PRIMARY KEY,
-    pocket_type VARCHAR(20) NOT NULL CHECK (pocket_type IN ('active', 'buffer', 'safety')),
-    allocation_percent NUMERIC(5, 2) NOT NULL,
-    current_value NUMERIC(24, 8) NOT NULL,
-    used_value NUMERIC(24, 8) NOT NULL,
-    available_value NUMERIC(24, 8) NOT NULL,
-    active_cycles INTEGER NOT NULL DEFAULT 0,
-    reserved_amount NUMERIC(24, 8) NOT NULL DEFAULT 0,  -- Montant réservé pour les ordres en attente
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
--- Index pour les poches
-CREATE UNIQUE INDEX IF NOT EXISTS capital_pockets_type_unique_idx ON capital_pockets(pocket_type);
-CREATE INDEX IF NOT EXISTS capital_pockets_updated_at_idx ON capital_pockets(updated_at);
-
--- Table des transactions des poches de capital
-CREATE TABLE IF NOT EXISTS pocket_transactions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    pocket_type VARCHAR(20) NOT NULL CHECK (pocket_type IN ('active', 'buffer', 'safety')),
-    asset VARCHAR(10) NOT NULL DEFAULT 'USDC',
-    transaction_type VARCHAR(20) NOT NULL CHECK (transaction_type IN ('reserve', 'release', 'allocate', 'reallocate', 'deposit')),
-    amount NUMERIC(24, 8) NOT NULL,
-    cycle_id VARCHAR(50),
-    reference_id VARCHAR(100),
-    description TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
--- Index pour les transactions
-CREATE INDEX IF NOT EXISTS pocket_transactions_pocket_type_idx ON pocket_transactions(pocket_type);
-CREATE INDEX IF NOT EXISTS pocket_transactions_cycle_id_idx ON pocket_transactions(cycle_id);
-CREATE INDEX IF NOT EXISTS pocket_transactions_created_at_idx ON pocket_transactions(created_at);
-CREATE INDEX IF NOT EXISTS pocket_transactions_type_created_idx ON pocket_transactions(transaction_type, created_at DESC);
 
 -- Table des paramètres des stratégies
 CREATE TABLE IF NOT EXISTS strategy_configs (
@@ -385,7 +348,6 @@ SELECT
     tc.entry_price, 
     tc.quantity, 
     tc.stop_price,
-    tc.pocket,
     lp.price as current_price,
     lp.time as price_timestamp,
     CASE 
@@ -504,28 +466,6 @@ BEGIN
         AND completed_at BETWEEN p_start_date AND p_end_date
         AND (p_symbol IS NULL OR symbol = p_symbol)
         AND (p_strategy IS NULL OR strategy = p_strategy);
-END;
-$$ LANGUAGE plpgsql;
-
--- Fonction pour obtenir le nombre de cycles actifs par poche
-CREATE OR REPLACE FUNCTION get_active_cycles_by_pocket()
-RETURNS TABLE (
-    pocket VARCHAR,
-    active_count BIGINT,
-    total_value NUMERIC
-) AS $$
-BEGIN
-    RETURN QUERY
-    SELECT 
-        COALESCE(tc.pocket, 'active') as pocket,
-        COUNT(*) as active_count,
-        SUM(COALESCE(tc.quantity * tc.entry_price, 0)) as total_value
-    FROM 
-        trade_cycles tc
-    WHERE 
-        tc.status NOT IN ('completed', 'canceled', 'failed')
-    GROUP BY 
-        COALESCE(tc.pocket, 'active');
 END;
 $$ LANGUAGE plpgsql;
 
@@ -672,12 +612,6 @@ BEFORE UPDATE ON risk_rules
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp();
 
-DROP TRIGGER IF EXISTS update_capital_pockets_timestamp ON capital_pockets;
-CREATE TRIGGER update_capital_pockets_timestamp
-BEFORE UPDATE ON capital_pockets
-FOR EACH ROW
-EXECUTE FUNCTION update_timestamp();
-
 -- Fonction de nettoyage périodique (améliorée)
 CREATE OR REPLACE PROCEDURE maintenance_cleanup(older_than_days INT DEFAULT 90)
 LANGUAGE plpgsql
@@ -704,15 +638,10 @@ BEGIN
     AND created_at < NOW() - (older_than_days || ' days')::INTERVAL;
     GET DIAGNOSTICS alerts_deleted = ROW_COUNT;
     
-    -- Nettoyer les anciennes transactions de poches (garder 1 an)
-    DELETE FROM pocket_transactions
-    WHERE created_at < NOW() - INTERVAL '365 days';
-    
     -- VACUUM ANALYZE pour optimiser les performances après suppression
     ANALYZE trading_signals;
     ANALYZE event_logs;
     ANALYZE alerts;
-    ANALYZE pocket_transactions;
     
     RAISE NOTICE 'Maintenance terminée. Supprimé: % signaux, % logs, % alertes', 
                  signals_deleted, logs_deleted, alerts_deleted;
@@ -767,31 +696,6 @@ BEGIN
 END;
 $$;
 
--- Procédure pour initialiser les poches de capital
-CREATE OR REPLACE PROCEDURE reset_capital_pockets(total_portfolio_value NUMERIC DEFAULT 1000.0)
-LANGUAGE plpgsql AS $$
-BEGIN
-    -- Supprimer les anciennes poches
-    DELETE FROM capital_pockets;
-    
-    -- Créer les poches standard avec les pourcentages du config
-    INSERT INTO capital_pockets (pocket_type, allocation_percent, current_value, used_value, available_value, active_cycles)
-    VALUES 
-        ('active', 80.0, total_portfolio_value * 0.8, 0, total_portfolio_value * 0.8, 0),
-        ('buffer', 10.0, total_portfolio_value * 0.1, 0, total_portfolio_value * 0.1, 0),
-        ('safety', 10.0, total_portfolio_value * 0.1, 0, total_portfolio_value * 0.1, 0);
-    
-    -- Enregistrer la transaction d'allocation initiale
-    INSERT INTO pocket_transactions (pocket_type, transaction_type, amount, description)
-    VALUES 
-        ('active', 'allocate', total_portfolio_value * 0.8, 'Initial allocation'),
-        ('buffer', 'allocate', total_portfolio_value * 0.1, 'Initial allocation'),
-        ('safety', 'allocate', total_portfolio_value * 0.1, 'Initial allocation');
-    
-    RAISE NOTICE 'Poches de capital initialisées avec un portefeuille de % USDC', total_portfolio_value;
-END; 
-$$;
-
 -- Insérer les contraintes Binance par défaut (basées sur les vraies valeurs de l'API)
 INSERT INTO binance_constraints (symbol, min_qty, max_qty, step_size, min_notional, price_precision, qty_precision) VALUES
 ('BTCUSDC', 0.00001, 9000.0, 0.00001, 5.0, 2, 5),
@@ -833,16 +737,10 @@ ON CONFLICT (name) DO UPDATE SET
     enabled = EXCLUDED.enabled,
     updated_at = NOW();
 
--- Initialiser les poches de capital avec une valeur par défaut
-CALL reset_capital_pockets(1000.0);
-
 -- Insérer des commentaires sur les tables pour la documentation
 COMMENT ON TABLE trade_cycles IS 'Cycles de trading complets avec métadonnées pour la réconciliation';
 COMMENT ON COLUMN trade_cycles.metadata IS 'Métadonnées JSON pour stocker des infos supplémentaires (réconciliation, raisons d''annulation, etc.)';
 COMMENT ON COLUMN trade_cycles.status IS 'Statut du cycle en minuscules pour cohérence avec les énumérations Python';
-
-COMMENT ON TABLE capital_pockets IS 'Poches de capital pour la gestion des risques et allocation des fonds';
-COMMENT ON TABLE pocket_transactions IS 'Historique des transactions sur les poches de capital';
 
 COMMENT ON TABLE binance_constraints IS 'Cache des contraintes de trading Binance pour éviter les appels API répétés';
 

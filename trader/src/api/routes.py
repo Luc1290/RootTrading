@@ -201,8 +201,7 @@ def get_cycles():
                 "entry_order_id": cycle.entry_order_id,
                 "exit_order_id": cycle.exit_order_id,
                 "created_at": cycle.created_at.isoformat() if cycle.created_at else None,
-                "updated_at": cycle.updated_at.isoformat() if cycle.updated_at else None,
-                "pocket": cycle.pocket
+                "updated_at": cycle.updated_at.isoformat() if cycle.updated_at else None
             })
         
         return jsonify({
@@ -999,6 +998,67 @@ def get_current_price(symbol):
         logger.error(f"❌ Erreur lors de la récupération du prix: {str(e)}")
         return jsonify({
             "success": False,
+            "message": f"Erreur: {str(e)}"
+        }), 500
+
+@routes_bp.route('/balance/<asset>', methods=['GET'])
+def get_asset_balance(asset):
+    """
+    Récupère le solde d'un actif spécifique depuis Binance.
+    Utilisé par le coordinator pour vérifier les balances directement.
+    
+    Args:
+        asset: Actif à vérifier (BTC, ETH, USDC, etc.)
+        
+    Returns:
+        JSON avec le solde de l'actif:
+        - free: Solde libre
+        - locked: Solde bloqué
+        - total: Solde total
+    """
+    order_manager = current_app.config['ORDER_MANAGER']
+    
+    if not order_manager:
+        return jsonify({"error": "OrderManager non initialisé"}), 500
+    
+    try:
+        # Valider l'actif
+        asset = asset.upper()
+        
+        # Récupérer les balances depuis Binance
+        balances = order_manager.binance_executor.utils.fetch_account_balances(
+            order_manager.binance_executor.time_offset
+        )
+        
+        if asset not in balances:
+            return jsonify({
+                "success": False,
+                "asset": asset,
+                "free": 0.0,
+                "locked": 0.0,
+                "total": 0.0,
+                "message": f"Actif {asset} non trouvé ou solde zéro"
+            })
+        
+        balance_info = balances[asset]
+        free_balance = float(balance_info.get('free', 0))
+        locked_balance = float(balance_info.get('locked', 0))
+        total_balance = free_balance + locked_balance
+        
+        return jsonify({
+            "success": True,
+            "asset": asset,
+            "free": free_balance,
+            "locked": locked_balance,
+            "total": total_balance,
+            "timestamp": time.time()
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la récupération du solde {asset}: {str(e)}")
+        return jsonify({
+            "success": False,
+            "asset": asset,
             "message": f"Erreur: {str(e)}"
         }), 500
 

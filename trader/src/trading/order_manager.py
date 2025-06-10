@@ -237,9 +237,6 @@ class OrderManager:
             if quantity > base_quantity:
                 logger.info(f"Quantité ajustée pour {signal.symbol}: {base_quantity} → {quantity} (minimum requis)")
         
-        # Récupérer la poche (par défaut 'active')
-        pocket = metadata.get('pocket', 'active')
-        
         # Créer un cycle avec TrailingStop pur
         cycle = self.cycle_manager.create_cycle(
             symbol=signal.symbol,
@@ -247,7 +244,6 @@ class OrderManager:
             side=signal.side,
             price=current_price,
             quantity=quantity,
-            pocket=pocket,
             stop_price=stop_price,
             trailing_delta=trailing_delta
         )
@@ -345,7 +341,6 @@ class OrderManager:
                 side=side,
                 price=price,
                 quantity=adjusted_quantity,
-                pocket="active",
                 stop_price=stop_price
             )
             

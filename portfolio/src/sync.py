@@ -2,7 +2,6 @@ import asyncio
 import threading
 import logging
 from portfolio.src.models import PortfolioModel, DBManager, SharedCache
-from portfolio.src.pockets import PocketManager
 from portfolio.src.binance_account_manager import BinanceAccountManager
 from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY
 
@@ -51,18 +50,16 @@ async def sync_db_forever():
     while True:
         try:
             db = DBManager()
-            pockets = PocketManager(db)
             portfolio = PortfolioModel(db)
             
             # 1. Synchroniser avec les trades actifs
-            success1 = pockets.sync_with_trades()
-            
+            success1 = portfolio.sync_with_trades()
+
             # 2. Récupérer la valeur totale du portfolio
             summary = portfolio.get_portfolio_summary()
             if summary:
                 # 3. Synchroniser les poches avec les soldes réels du portfolio
-                success2 = pockets.update_pockets_allocation(summary.total_value)
-                logger.info(f"🔄 Synchronisation complète: trades={success1}, allocation={success2}")
+                logger.info(f"🔄 Synchronisation complète: trades={success1}")
             else:
                 logger.warning("⚠️ Impossible de récupérer le résumé du portfolio")
             

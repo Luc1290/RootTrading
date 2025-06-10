@@ -38,7 +38,6 @@ SELECT 'Réservations cycle restantes: ' || COUNT(*) FROM portfolio_fund_reserva
 
 -- 6. Nettoyer aussi les clés Redis (à faire manuellement)
 SELECT 'IMPORTANT: Exécuter aussi ces commandes Redis:' AS info;
-SELECT '- redis-cli KEYS "roottrading:pocket:*:cycles" | xargs redis-cli DEL' AS commande;
 SELECT '- redis-cli KEYS "roottrading:cycle:*" | xargs redis-cli DEL' AS commande;
 
 -- 7. Message de confirmation
