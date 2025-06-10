@@ -99,36 +99,6 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Capital Pockets */}
-      {summary?.pockets && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold mb-4">Capital Allocation</h2>
-          <div className="space-y-4">
-            {summary.pockets.map(pocket => (
-              <div key={pocket.pocket_type}>
-                <div className="flex justify-between items-center mb-1">
-                  <span className="capitalize font-medium">{pocket.pocket_type} Pocket</span>
-                  <span>{formatCurrency(pocket.current_value)}</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div 
-                    className={`h-2 rounded-full ${
-                      pocket.pocket_type === 'active' ? 'bg-blue-500' : 
-                      pocket.pocket_type === 'buffer' ? 'bg-yellow-500' : 'bg-green-500'
-                    }`} 
-                    style={{ width: `${pocket.allocation_percent}%` }}
-                  ></div>
-                </div>
-                <div className="flex justify-between text-sm text-gray-500 mt-1">
-                  <span>Used: {formatCurrency(pocket.used_value)}</span>
-                  <span>Available: {formatCurrency(pocket.available_value)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Trading signals and cycle list */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent signals */}
