@@ -48,11 +48,21 @@ class StopManagerPure:
         Returns:
             Instance TrailingStop
         """
-        # Déterminer le side
-        if cycle.status in [CycleStatus.ACTIVE_BUY, CycleStatus.WAITING_SELL]:
+        # Déterminer le side basé sur la logique correcte
+        # waiting_sell = position LONG ouverte (a acheté, attend de vendre)
+        # waiting_buy = position SHORT ouverte (a vendu, attend de racheter)
+        if cycle.status == CycleStatus.WAITING_SELL:
+            side = Side.LONG  # Position longue ouverte
+        elif cycle.status == CycleStatus.WAITING_BUY:
+            side = Side.SHORT  # Position courte ouverte
+        elif cycle.status == CycleStatus.ACTIVE_BUY:
+            side = Side.LONG   # En cours d'achat pour position longue
+        elif cycle.status == CycleStatus.ACTIVE_SELL:
+            side = Side.SHORT  # En cours de vente pour position courte
+        else:
+            # Fallback : essayer de déduire du contexte
+            logger.warning(f"⚠️ Statut {cycle.status} non reconnu pour {cycle.id}, assume LONG par défaut")
             side = Side.LONG
-        else:  # ACTIVE_SELL, WAITING_BUY (position SHORT)
-            side = Side.SHORT
         
         # Créer le trailing stop
         ts = TrailingStop(
@@ -94,6 +104,7 @@ class StopManagerPure:
                 # Vérifier si on a un TrailingStop pour ce cycle
                 if cycle.id not in self.trailing_stops:
                     # Créer le TrailingStop s'il n'existe pas
+                    logger.debug(f"🔧 Initialisation trailing stop manquant pour cycle {cycle.id}")
                     self.initialize_trailing_stop(cycle)
                 
                 ts = self.trailing_stops[cycle.id]

@@ -52,6 +52,7 @@ class StrategyMode(str, Enum):
 
 class SignalStrength(str, Enum):
     """Force du signal généré par une stratégie."""
+    VERY_WEAK = "very_weak"  # Signal très faible
     WEAK = "weak"        # Signal faible
     MODERATE = "moderate"  # Signal modéré
     STRONG = "strong"    # Signal fort

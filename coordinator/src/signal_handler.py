@@ -106,7 +106,7 @@ class SignalHandler:
         self.cache_ttl = 30  # TTL du cache en secondes
         
         # Configuration des limites
-        self.max_cycles_per_symbol_side = 3  # Max 3 BUY ou 3 SELL par symbole
+        self.max_cycles_per_symbol_side = 100  # Max 100 BUY ou 100 SELL par symbole
         self.contradiction_threshold = 0.7  # Seuil pour décider en cas de contradiction
         
         # NOUVEAU: Historique récent des signaux pour détecter les patterns
@@ -233,6 +233,10 @@ class SignalHandler:
         signal_position = "LONG" if signal_side_str == "BUY" else "SHORT"
         opposite_position = "SHORT" if signal_position == "LONG" else "LONG"
         
+        # NOUVEAU: Filtre stratégique - Évaluer si le signal mérite d'être traité
+        if not self._should_process_signal_strategically(signal, signal_position, opposite_position):
+            return
+        
         # Vérifier les positions existantes pour ce symbole
         existing_opposite = self.active_cycles_cache.get(signal.symbol, {}).get(opposite_position, 0)
         existing_same = self.active_cycles_cache.get(signal.symbol, {}).get(signal_position, 0)
@@ -292,6 +296,171 @@ class SignalHandler:
         self.signal_queue.put(signal)
         logger.info(f"✅ Signal ajouté à la file: {signal_position} {signal.symbol} "
                    f"(Positions: {existing_same} same, {existing_opposite} opposite)")
+    
+    def _should_process_signal_strategically(self, signal: StrategySignal, signal_position: str, opposite_position: str) -> bool:
+        """
+        Évalue si un signal mérite d'être traité selon le contexte stratégique du portfolio.
+        
+        Cette méthode implémente la philosophie "Conviction & Cohérence":
+        - Ignorer les signaux contradictoires faibles
+        - Accepter les signaux qui confirment la tendance
+        - N'accepter les retournements que s'ils sont très forts
+        
+        Args:
+            signal: Signal à évaluer
+            signal_position: Position que le signal veut prendre (LONG/SHORT)
+            opposite_position: Position opposée (SHORT/LONG)
+            
+        Returns:
+            True si le signal doit être traité, False s'il doit être ignoré
+        """
+        # Récupérer les positions existantes
+        existing_opposite = self.active_cycles_cache.get(signal.symbol, {}).get(opposite_position, 0)
+        existing_same = self.active_cycles_cache.get(signal.symbol, {}).get(signal_position, 0)
+        
+        # Cas 1: Signal confirmant - toujours accepter (sauf si limite atteinte)
+        if existing_same > 0 and existing_opposite == 0:
+            logger.info(f"✅ Signal confirmant la tendance {signal_position} sur {signal.symbol}")
+            return True
+        
+        # Cas 2: Pas de position - accepter tous les signaux
+        if existing_same == 0 and existing_opposite == 0:
+            logger.info(f"✅ Nouvelle position {signal_position} sur {signal.symbol}")
+            return True
+        
+        # Cas 3: Signal contradictoire - appliquer filtre stratégique
+        if existing_opposite > 0:
+            # Calculer la "conviction" du portefeuille sur la position opposée
+            portfolio_conviction = self._calculate_portfolio_conviction(signal.symbol, opposite_position)
+            
+            # Évaluer la force du signal contradictoire
+            signal_strength_score = self._get_signal_strength_score(signal)
+            
+            # Décision stratégique
+            if signal_strength_score < 0.7:  # Signal faible à modéré
+                logger.info(f"🚫 Signal {signal_position} {signal.symbol} IGNORÉ - "
+                           f"Trop faible (score: {signal_strength_score:.2f}) pour contredire "
+                           f"{existing_opposite} positions {opposite_position}")
+                return False
+                
+            elif signal_strength_score < 0.85:  # Signal fort
+                if portfolio_conviction > 0.6:
+                    logger.info(f"🚫 Signal {signal_position} {signal.symbol} IGNORÉ - "
+                               f"Conviction portfolio trop forte ({portfolio_conviction:.2f}) "
+                               f"sur positions {opposite_position}")
+                    return False
+                else:
+                    logger.info(f"⚠️ Signal {signal_position} fort accepté - "
+                               f"Conviction portfolio faible sur {opposite_position}")
+                    return True
+                    
+            else:  # Signal très fort (>= 0.85)
+                logger.info(f"🔄 Signal {signal_position} TRÈS FORT ({signal_strength_score:.2f}) - "
+                           f"Retournement stratégique accepté malgré {existing_opposite} positions {opposite_position}")
+                return True
+        
+        # Cas 4: Autres cas (ne devrait pas arriver)
+        return True
+    
+    def _calculate_portfolio_conviction(self, symbol: str, position: str) -> float:
+        """
+        Calcule la conviction du portfolio sur une position.
+        Plus la valeur est élevée, plus le portfolio est "convaincu" de sa position.
+        
+        Args:
+            symbol: Symbole concerné
+            position: Position à évaluer (LONG/SHORT)
+            
+        Returns:
+            Score de conviction entre 0 et 1
+        """
+        # Facteurs de conviction:
+        # 1. Nombre de cycles actifs
+        active_cycles = self.active_cycles_cache.get(symbol, {}).get(position, 0)
+        cycles_factor = min(active_cycles / 3.0, 1.0)  # Normalisé sur 3 max
+        
+        # 2. Performance récente (à implémenter avec les données de PnL)
+        # Pour l'instant on utilise une valeur fixe
+        performance_factor = 0.5
+        
+        # 3. Durée des positions (plus c'est long, plus on est convaincu)
+        # Pour l'instant on utilise une valeur fixe
+        duration_factor = 0.6
+        
+        # 4. Cohérence des signaux récents
+        recent_coherence = self._calculate_recent_signal_coherence(symbol, position)
+        
+        # Moyenne pondérée
+        conviction = (
+            cycles_factor * 0.4 +
+            performance_factor * 0.2 +
+            duration_factor * 0.2 +
+            recent_coherence * 0.2
+        )
+        
+        return conviction
+    
+    def _calculate_recent_signal_coherence(self, symbol: str, position: str) -> float:
+        """
+        Calcule la cohérence des signaux récents pour une position.
+        
+        Args:
+            symbol: Symbole concerné
+            position: Position à évaluer (LONG/SHORT)
+            
+        Returns:
+            Score de cohérence entre 0 et 1
+        """
+        if symbol not in self.recent_signals_history:
+            return 0.5  # Neutre si pas d'historique
+        
+        current_time = time.time()
+        recent_signals = [
+            s for s, t in self.recent_signals_history[symbol]
+            if current_time - t < 60.0  # Dernière minute
+        ]
+        
+        if not recent_signals:
+            return 0.5
+        
+        # Compter les signaux cohérents avec la position
+        expected_side = OrderSide.BUY if position == "LONG" else OrderSide.SELL
+        coherent_signals = sum(1 for s in recent_signals if s.side == expected_side)
+        
+        coherence = coherent_signals / len(recent_signals)
+        return coherence
+    
+    def _get_signal_strength_score(self, signal: StrategySignal) -> float:
+        """
+        Convertit la force du signal en score numérique.
+        
+        Args:
+            signal: Signal à évaluer
+            
+        Returns:
+            Score entre 0 et 1
+        """
+        # Mapping des forces de signal
+        strength_scores = {
+            SignalStrength.VERY_WEAK: 0.2,
+            SignalStrength.WEAK: 0.4,
+            SignalStrength.MODERATE: 0.6,
+            SignalStrength.STRONG: 0.8,
+            SignalStrength.VERY_STRONG: 1.0
+        }
+        
+        base_score = strength_scores.get(signal.strength, 0.5)
+        
+        # Bonus pour les signaux agrégés (plus fiables)
+        if signal.strategy.startswith("Aggregated_"):
+            base_score = min(base_score + 0.1, 1.0)
+        
+        # Bonus/malus selon la confidence
+        if hasattr(signal, 'confidence') and signal.confidence is not None:
+            confidence_factor = signal.confidence
+            base_score = base_score * 0.7 + confidence_factor * 0.3
+        
+        return base_score
     
     def _close_opposite_positions(self, symbol: str, side: str) -> bool:
         """
@@ -969,7 +1138,14 @@ class SignalHandler:
             else:  # OrderSide.SELL
                 # SELL : On vend donc on a besoin de l'actif de base (base asset)
                 required_asset = base_asset
-                required_amount = quantity  # La quantité d'actif de base à vendre
+                # Calculer la quantité d'actif de base nécessaire
+                if signal.symbol.endswith("BTC"):
+                    # Pour ETHBTC par exemple, calculer la quantité d'ETH
+                    quantity = trade_amount / signal.price
+                else:
+                    # Pour les paires USDC, calculer la quantité d'actif de base
+                    quantity = trade_amount / signal.price
+                required_amount = quantity
                 logger.info(f"SELL {signal.symbol}: Besoin de {required_amount:.6f} {required_asset}")
             
             # Vérifier directement les balances Binance

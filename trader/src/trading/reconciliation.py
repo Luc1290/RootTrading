@@ -292,28 +292,6 @@ class ExchangeReconciliation:
                     
                     return True
         
-        # Vérifier si le cycle est actif depuis trop longtemps (> 7 jours)
-        cycle_age = datetime.now() - cycle.created_at
-        # Convertir le statut en chaîne minuscule pour comparaison insensible à la casse
-        status_lower = cycle.status.value.lower() if hasattr(cycle.status, 'value') else str(cycle.status).lower()
-        terminal_statuses = ['completed', 'canceled', 'failed']
-        if cycle_age.days > 7 and status_lower not in terminal_statuses:
-            logger.warning(f"⚠️ Cycle {cycle.id} actif depuis plus de 7 jours ({cycle_age.days}), marqué comme échoué")
-            cycle.status = CycleStatus.FAILED
-            cycle.updated_at = datetime.now()
-            if not hasattr(cycle, 'metadata') or cycle.metadata is None:
-                cycle.metadata = {}
-            cycle.metadata['cancel_reason'] = "Timeout automatique après 7 jours"
-            self.repository.save_cycle(cycle)
-            
-            # Retirer le cycle du cache mémoire
-            if self.cycle_manager and hasattr(self.cycle_manager, 'active_cycles'):
-                with self.cycle_manager.cycles_lock:
-                    if cycle.id in self.cycle_manager.active_cycles:
-                        del self.cycle_manager.active_cycles[cycle.id]
-                        logger.info(f"♻️ Cycle {cycle.id} retiré du cache mémoire (timeout 7 jours)")
-            
-            return True
         
         # Aucune mise à jour nécessaire
         return False

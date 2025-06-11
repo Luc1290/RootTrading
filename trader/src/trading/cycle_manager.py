@@ -138,6 +138,9 @@ class CycleManager:
                     if cycle.id in self.active_cycles:
                         mem_cycle = self.active_cycles[cycle.id]
                         if mem_cycle.status != cycle.status:
+                            # Préserver l'attribut confirmed du cycle en mémoire si il est True
+                            if hasattr(mem_cycle, 'confirmed') and mem_cycle.confirmed:
+                                cycle.confirmed = mem_cycle.confirmed
                             self.active_cycles[cycle.id] = cycle
                             updated_count += 1
                 
@@ -243,28 +246,17 @@ class CycleManager:
                 except Exception as e:
                     logger.error(f"❌ Impossible d'annuler l'ordre orphelin {order_id}: {str(e)}")
             
-            # 4. CAS B: Détecter les cycles fantômes (waiting_* sans ordre sur Binance) + TTL
+            # 4. CAS B: Détecter les cycles fantômes (waiting_* sans ordre sur Binance)
             phantom_cycles = []
-            ttl_expired_cycles = []
             
             for cycle in all_cycles.values():
                 status_str = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
                 # Vérifier tous les statuts actifs qui devraient avoir des ordres sur Binance
                 if status_str in ['waiting_buy', 'waiting_sell', 'active_buy', 'active_sell']:
-                    # Vérifier le TTL (30 minutes max en waiting_*)
-                    if cycle.updated_at:
-                        if cycle.updated_at.tzinfo is None:
-                            cycle_time = cycle.updated_at.replace(tzinfo=timezone.utc)
-                        else:
-                            cycle_time = cycle.updated_at
-                        now = datetime.now(timezone.utc)
-                        age_minutes = (now - cycle_time).total_seconds() / 60
-                        
-                        if age_minutes > 30:
-                            ttl_expired_cycles.append((cycle, age_minutes))
-                            logger.warning(f"⏰ Cycle TTL expiré: {cycle.id} en {status_str} depuis {age_minutes:.1f}min")
-                            continue  # On traite les TTL expirés séparément
-                    
+                    # Cas spécial : cycles en waiting_buy/waiting_sell avec entry_order_id (nouveau système trailing stop)
+                    if status_str in ['waiting_buy', 'waiting_sell'] and cycle.entry_order_id and not cycle.exit_price:
+                        logger.debug(f"✅ Cycle {cycle.id} en {status_str} avec trailing stop (nouveau système)")
+                        continue
                     # Pour ces cycles, vérifier le bon ordre selon le statut
                     # NOUVEAU: Avec le système no-exit-order, distinguer entrée vs sortie
                     expected_order_id = None
@@ -273,15 +265,21 @@ class CycleManager:
                     # Détecter si c'est la phase d'entrée ou de sortie
                     if cycle.entry_order_id and not cycle.exit_price:
                         # Cycle en cours : entrée non terminée ou sortie sans exit order
-                        entry_execution = self.binance_executor.get_order_status(cycle.symbol, cycle.entry_order_id)
-                        if entry_execution and entry_execution.status != OrderStatus.FILLED:
-                            # Phase d'entrée : ordre d'entrée pas encore rempli
-                            is_entry_phase = True
-                            expected_order_id = cycle.entry_order_id
-                        else:
-                            # Phase de sortie : ordre d'entrée rempli, pas d'exit order (nouveau système)
-                            logger.debug(f"✅ Cycle {cycle.id} en phase de sortie {status_str} sans exit order (nouveau système)")
-                            continue  # Skip la vérification, c'est normal dans le nouveau système
+                        try:
+                            entry_execution = self.binance_executor.get_order_status(cycle.symbol, cycle.entry_order_id)
+                            if entry_execution and entry_execution.status != OrderStatus.FILLED:
+                                # Phase d'entrée : ordre d'entrée pas encore rempli
+                                is_entry_phase = True
+                                expected_order_id = cycle.entry_order_id
+                            else:
+                                # Phase de sortie : ordre d'entrée rempli, pas d'exit order (nouveau système)
+                                logger.debug(f"✅ Cycle {cycle.id} en phase de sortie {status_str} sans exit order (nouveau système)")
+                                continue  # Skip la vérification, c'est normal dans le nouveau système
+                        except Exception as e:
+                            # Si on ne peut pas vérifier le statut de l'ordre d'entrée, 
+                            # on assume que c'est un cycle en phase de sortie (nouveau système)
+                            logger.debug(f"⚠️ Impossible de vérifier l'ordre d'entrée {cycle.entry_order_id} pour {cycle.id}: {str(e)} - Assumé comme phase de sortie")
+                            continue  # Skip la vérification, on assume que c'est le nouveau système
                     else:
                         # Cycle sans entry_order_id valide
                         expected_order_id = cycle.entry_order_id
@@ -299,49 +297,7 @@ class CycleManager:
                         phase_desc = "entrée" if is_entry_phase else "sortie"
                         logger.warning(f"👻 Cycle fantôme détecté: {cycle.id} en statut {status_str} sans ordre de {phase_desc} sur Binance")
             
-            # 5. Traiter les cycles TTL expirés
-            for cycle, age_minutes in ttl_expired_cycles:
-                try:
-                    logger.warning(f"⏰ Traitement du cycle TTL expiré {cycle.id} ({age_minutes:.1f}min)")
-                    
-                    # Annuler les ordres sur Binance s'ils existent encore
-                    if cycle.entry_order_id:
-                        try:
-                            self.binance_executor.utils.cancel_order(cycle.symbol, cycle.entry_order_id)
-                            logger.info(f"✅ Ordre d'entrée {cycle.entry_order_id} annulé (TTL)")
-                        except Exception as e:
-                            logger.debug(f"Ordre d'entrée {cycle.entry_order_id} déjà supprimé: {str(e)}")
-                    
-                    if cycle.exit_order_id:
-                        try:
-                            self.binance_executor.utils.cancel_order(cycle.symbol, cycle.exit_order_id)
-                            logger.info(f"✅ Ordre de sortie {cycle.exit_order_id} annulé (TTL)")
-                        except Exception as e:
-                            logger.debug(f"Ordre de sortie {cycle.exit_order_id} déjà supprimé: {str(e)}")
-                    
-                    # Marquer comme failed
-                    with self.cycles_lock:
-                        cycle.status = CycleStatus.FAILED
-                        cycle.updated_at = datetime.now()
-                        if not hasattr(cycle, 'metadata'):
-                            cycle.metadata = {}
-                        status_str = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
-                        cycle.metadata['fail_reason'] = f"TTL expiré après {age_minutes:.1f}min en {status_str}"
-                    
-                    # Sauvegarder et nettoyer
-                    self.repository.save_cycle(cycle)
-                    
-                    self._publish_cycle_event(cycle, "failed")
-                    
-                    with self.cycles_lock:
-                        self.active_cycles.pop(cycle.id, None)
-                    
-                    logger.info(f"🕐 Cycle TTL expiré {cycle.id} fermé et nettoyé")
-                    
-                except Exception as e:
-                    logger.error(f"❌ Erreur lors du traitement du cycle TTL expiré {cycle.id}: {str(e)}")
-            
-            # 6. Traiter les cycles fantômes
+            # 5. Traiter les cycles fantômes
             for cycle in phantom_cycles:
                 try:
                     # Vérifier depuis combien de temps le cycle est en waiting
@@ -410,9 +366,9 @@ class CycleManager:
                     logger.error(f"❌ Erreur lors du traitement du cycle fantôme {cycle.id}: {str(e)}")
             
             # 7. Résumé du nettoyage
-            total_issues = orphan_count + len(phantom_cycles) + len(ttl_expired_cycles)
+            total_issues = orphan_count + len(phantom_cycles)
             if total_issues > 0:
-                logger.warning(f"🎯 Nettoyage terminé: {cleaned_count}/{orphan_count} ordres orphelins annulés, {len(phantom_cycles)} cycles fantômes fermés, {len(ttl_expired_cycles)} cycles TTL expirés")
+                logger.warning(f"🎯 Nettoyage terminé: {cleaned_count}/{orphan_count} ordres orphelins annulés, {len(phantom_cycles)} cycles fantômes fermés")
             else:
                 logger.debug("✨ Aucun problème détecté - système propre")
                 
@@ -808,7 +764,6 @@ class CycleManager:
 
             # Enregistrer l'exécution et le cycle
             self.repository.save_execution(execution, cycle_id)
-            logger.info(f"🔍 DEBUG: Avant save_cycle, attributs du cycle: {list(cycle.__dict__.keys())}")
             try:
                 self.repository.save_cycle(cycle)
             except Exception as e:
@@ -823,9 +778,13 @@ class CycleManager:
 
             logger.info(f"✅ Cycle {cycle_id} créé avec succès: {side.value} {quantity} {symbol} @ {execution.price}")
             
-            # Avec TrailingStop pur, pas d'ordre de sortie sur Binance
-            # Le StopManagerPure gère tout automatiquement avec le trailing stop à 3%
-            logger.info(f"🎯 Cycle créé - StopManagerPure gère le trailing stop à 3%")
+            # Initialiser immédiatement le trailing stop
+            try:
+                self.stop_manager.initialize_trailing_stop(cycle)
+                logger.info(f"🎯 TrailingStop initialisé immédiatement pour le cycle {cycle_id}")
+            except Exception as e:
+                logger.warning(f"⚠️ Échec d'initialisation immédiate du trailing stop pour {cycle_id}: {str(e)}")
+                logger.info(f"🎯 Cycle créé - StopManagerPure gère le trailing stop à 3% (initialisation différée)")
             
             return cycle
 

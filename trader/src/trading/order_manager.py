@@ -1,6 +1,6 @@
 """
 Gestionnaire d'ordres pour le trader.
-Reçoit les signaux, les valide, et crée des cycles de trading.
+Gère les cycles de trading via l'API REST.
 Version simplifiée utilisant les nouveaux modules.
 """
 import logging
@@ -9,12 +9,11 @@ import threading
 from typing import Dict, List, Any, Optional, Union
 
 from shared.src.config import SYMBOLS, TRADE_QUANTITIES, TRADE_QUANTITY, TRADING_MODE
-from shared.src.enums import OrderSide, SignalStrength, CycleStatus
-from shared.src.schemas import StrategySignal, TradeOrder
+from shared.src.enums import OrderSide, CycleStatus
+from shared.src.schemas import TradeOrder
 
 from trader.src.trading.cycle_manager import CycleManager
 from trader.src.exchange.binance_executor import BinanceExecutor
-from trader.src.trading.signal_processor import SignalProcessor
 from trader.src.trading.price_monitor import PriceMonitor
 from trader.src.trading.reconciliation import ExchangeReconciliation
 from trader.src.utils.safety import safe_execute, notify_error
@@ -26,7 +25,7 @@ logger = logging.getLogger(__name__)
 class OrderManager:
     """
     Gestionnaire d'ordres.
-    Reçoit les signaux de trading, les valide, et crée des cycles de trading.
+    Gère les cycles de trading via l'API REST.
     """
     
     def __init__(self, symbols: List[str] = None):
@@ -45,14 +44,7 @@ class OrderManager:
         self.binance_executor = BinanceExecutor(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY, demo_mode=demo_mode)
         self.cycle_manager = CycleManager(binance_executor=self.binance_executor)
         
-        # DÉSACTIVÉ: Le trader ne doit recevoir les ordres que via l'API REST du coordinator
-        # pour éviter de bypasser les vérifications de fonds et le filtrage du marché
-        # self.signal_processor = SignalProcessor(
-        #     symbols=self.symbols,
-        #     signal_callback=self.handle_signal,
-        #     min_signal_strength=SignalStrength.MODERATE
-        # )
-        self.signal_processor = None
+        # Le trader reçoit maintenant les ordres uniquement via l'API REST du coordinator
         
         # Initialiser le moniteur de prix
         self.price_monitor = PriceMonitor(
@@ -195,63 +187,7 @@ class OrderManager:
         self.pause_until = 0
         logger.info("Trading repris pour tous les symboles et stratégies")
     
-    def handle_signal(self, signal: StrategySignal) -> None:
-        """
-        Traite un signal de trading validé.
-        
-        Args:
-            signal: Signal à traiter
-        """
-        # Ignorer si en pause
-        if self.is_trading_paused(signal.symbol, signal.strategy):
-            logger.info(f"⏸️ Signal ignoré: trading en pause pour {signal.symbol}/{signal.strategy}")
-            return
-        
-        # Calculer le pourcentage minimal de changement de prix nécessaire pour être rentable
-        min_change = self.calculate_min_profitable_change(signal.symbol)
-        
-        # Récupérer le prix actuel et les métadonnées
-        current_price = self.last_prices.get(signal.symbol, signal.price)
-        metadata = signal.metadata or {}
-        
-        # Calculer les stops (plus de target avec TrailingStop pur)
-        stop_price = float(metadata.get('stop_price', current_price * 0.98 if signal.side == OrderSide.BUY else current_price * 1.02))
-        trailing_delta = float(metadata['trailing_delta']) if 'trailing_delta' in metadata else None
-        
-        # Récupérer la quantité à trader de la configuration
-        base_quantity = TRADE_QUANTITIES.get(signal.symbol, TRADE_QUANTITY)
-        
-        # Pour ETHBTC, utiliser directement la quantité configurée
-        # car le calcul de min_notional est complexe pour les paires non-USDC
-        if signal.symbol == "ETHBTC":
-            quantity = base_quantity
-        else:
-            # Vérifier les contraintes de l'exchange et ajuster si nécessaire
-            constraints = self.binance_executor.symbol_constraints
-            min_quantity = constraints.calculate_min_quantity(signal.symbol, current_price)
-            
-            # Utiliser la plus grande des deux valeurs
-            quantity = max(base_quantity, min_quantity)
-            
-            # Log si la quantité a été ajustée
-            if quantity > base_quantity:
-                logger.info(f"Quantité ajustée pour {signal.symbol}: {base_quantity} → {quantity} (minimum requis)")
-        
-        # Créer un cycle avec TrailingStop pur
-        cycle = self.cycle_manager.create_cycle(
-            symbol=signal.symbol,
-            strategy=signal.strategy,
-            side=signal.side,
-            price=current_price,
-            quantity=quantity,
-            stop_price=stop_price,
-            trailing_delta=trailing_delta
-        )
-        
-        if cycle:
-            logger.info(f"✅ Nouveau cycle actif créé: {cycle.id}")
-        else:
-            logger.warning(f"❌ Échec de création du cycle pour {signal.symbol} ({signal.strategy})")
+    # handle_signal supprimée - Les ordres viennent maintenant via l'API REST
     
     def handle_price_update(self, symbol: str, price: float) -> None:
         """
@@ -406,10 +342,7 @@ class OrderManager:
         # Démarrer le moniteur de prix
         self.price_monitor.start()
         
-        # DÉSACTIVÉ: Le processeur de signaux ne doit plus écouter Redis directement
-        # Les ordres doivent venir uniquement via l'API REST
-        # if self.signal_processor:
-        #     self.signal_processor.start()
+        # Les ordres viennent uniquement via l'API REST du coordinator
         
         # Démarrer le service de réconciliation
         self.reconciliation_service.start()
@@ -434,9 +367,7 @@ class OrderManager:
         """
         logger.info("Arrêt du gestionnaire d'ordres...")
         
-        # DÉSACTIVÉ: Le processeur de signaux n'est plus utilisé
-        # if self.signal_processor:
-        #     self.signal_processor.stop()
+        # Plus de processeur de signaux - architecture REST uniquement
         
         # Arrêter le moniteur de prix
         self.price_monitor.stop()

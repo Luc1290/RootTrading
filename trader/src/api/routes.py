@@ -57,11 +57,8 @@ def diagnostic():
     # Collecter les informations sur les derniers prix
     last_prices = order_manager.last_prices.copy() if hasattr(order_manager, 'last_prices') else {}
     
-    # Vérifier l'état des connexions
-    redis_status = "connected" if order_manager.signal_processor and hasattr(order_manager.signal_processor, 'redis_client') else "disabled"
-    
-    # Vérifier l'état d'exécution des threads
-    thread_alive = order_manager.signal_processor and hasattr(order_manager.signal_processor, 'processing_thread') and order_manager.signal_processor.processing_thread.is_alive() if order_manager.signal_processor else False
+    # Architecture REST uniquement - plus de signal processor
+    redis_status = "disabled"  # Plus utilisé depuis l'architecture REST
     
     # Construire la réponse
     diagnostic_info = {
@@ -91,16 +88,13 @@ def diagnostic():
         },
         "connections": {
             "redis": redis_status,
-            "processing_thread": "running" if thread_alive else "stopped",
             "binance": order_manager.binance_executor.demo_mode and "demo" or "live"
         },
-        "signal_stats": order_manager.signal_processor.get_stats() if order_manager.signal_processor and hasattr(order_manager.signal_processor, 'get_stats') else {},
+        "signal_stats": {},  # Plus de signal processor
         "memory_usage_mb": current_app.config.get('MEMORY_USAGE', 0)
     }
     
-    # Ajouter des statistiques sur la file d'attente
-    if order_manager.signal_processor and hasattr(order_manager.signal_processor, 'signal_queue'):
-        diagnostic_info["queue_size"] = order_manager.signal_processor.signal_queue.qsize()
+    # Plus de file d'attente de signaux - architecture REST
     
     # AJOUT DES MÉTRIQUES DE BASE DE DONNÉES
     try:        

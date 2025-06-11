@@ -384,7 +384,7 @@ class AdvancedConnectionPool:
             tx_status = conn.connection.get_transaction_status()
             if tx_status != extensions.STATUS_READY:  # Pas dans l'état IDLE
                 conn.connection.rollback()
-                logger.debug(f"Transaction nettoyée lors de la libération (status={tx_status})")
+                # Debug supprimé - trop répétitif
         except Exception as e:
             logger.warning(f"Erreur lors du nettoyage de transaction: {e}")
         
@@ -605,7 +605,7 @@ class DBConnectionPool:
                 # Vérifier si une transaction est encore en cours et la rollback
                 if not conn.closed and conn.get_transaction_status() != 0:  # 0 = STATUS_READY
                     conn.rollback()
-                    logger.debug("Transaction nettoyée lors de la libération")
+                    # Debug supprimé - trop répétitif
                 
                 # Remettre autocommit à True
                 conn.autocommit = True
@@ -674,7 +674,7 @@ class DBContextManager:
         
         # Vérifier et nettoyer toute transaction résiduelle
         if self.conn.get_transaction_status() != extensions.STATUS_READY:
-            logger.debug("Transaction résiduelle nettoyée à l'ouverture")
+            # Debug supprimé - trop répétitif
             self.conn.rollback()
         
         # Configurer la gestion de transaction
@@ -777,14 +777,14 @@ class DBContextManager:
                 else:
                     # En mode sans auto_transaction, vérifier qu'aucune transaction n'est encore active
                     if status in (extensions.STATUS_INTRANS, extensions.STATUS_INERROR):
-                        logger.debug("Transaction non terminée nettoyée")
+                        # Debug supprimé - trop répétitif
                         self.conn.rollback()
         finally:
             # 3) toujours s'assurer qu'aucune transaction n'est active avant de changer autocommit
             if self.conn and not self.conn.closed:
                 # Vérifier qu'il n'y a plus de transactions actives 
                 if self.conn.get_transaction_status() != extensions.STATUS_READY:
-                    logger.debug("Nettoyage de transaction avant libération")
+                    # Debug supprimé - trop répétitif
                     self.conn.rollback()
                 
                 # Maintenant on peut changer autocommit en toute sécurité
@@ -821,7 +821,7 @@ def transaction(cursor_factory=None):
             # S'assurer qu'aucune transaction n'est active
             if cursor.connection.get_transaction_status() != extensions.STATUS_READY:
                 cursor.connection.rollback()
-                logger.debug("Transaction nettoyée avant démarrage")
+                # Debug supprimé - trop répétitif
             
             # Démarrer une nouvelle transaction propre
             cursor.connection.autocommit = False
@@ -831,14 +831,14 @@ def transaction(cursor_factory=None):
         # Commit changes if no exception occurred
         if cursor and cursor.connection and not cursor.connection.closed:
             cursor.connection.commit()
-            logger.debug("Transaction committed")
+            # Debug supprimé - trop répétitif
             
     except Exception as e:
         # Rollback on exception
         logger.error(f"❌ Transaction error: {str(e)}")
         if cursor and cursor.connection and not cursor.connection.closed:
             cursor.connection.rollback()
-            logger.debug("Transaction rolled back due to error")
+            # Debug supprimé - trop répétitif
         raise
     
     finally:

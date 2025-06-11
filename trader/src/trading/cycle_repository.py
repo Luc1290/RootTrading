@@ -268,6 +268,9 @@ class CycleRepository:
             
             # Vérifier l'existence de l'attribut 'confirmed'
             confirmed = getattr(cycle, 'confirmed', False)
+            # CORRECTION: Si le cycle a un entry_order_id, il doit être confirmé
+            if hasattr(cycle, 'entry_order_id') and cycle.entry_order_id:
+                confirmed = True
             
             # Préparer les métadonnées pour PostgreSQL
             import json
@@ -290,6 +293,8 @@ class CycleRepository:
                     quantity = %s,
                     stop_price = %s,
                     trailing_delta = %s,
+                    min_price = %s,
+                    max_price = %s,
                     profit_loss = %s,
                     profit_loss_percent = %s,
                     created_at = %s,
@@ -312,6 +317,8 @@ class CycleRepository:
                     cycle.quantity,
                     cycle.stop_price,
                     cycle.trailing_delta,
+                    cycle.min_price,
+                    cycle.max_price,
                     cycle.profit_loss,
                     cycle.profit_loss_percent,
                     cycle.created_at,
@@ -326,9 +333,9 @@ class CycleRepository:
                 INSERT INTO trade_cycles
                 (id, symbol, strategy, status, confirmed, entry_order_id, exit_order_id,
                 entry_price, exit_price, quantity, stop_price,
-                trailing_delta, profit_loss, profit_loss_percent, created_at,
+                trailing_delta, min_price, max_price, profit_loss, profit_loss_percent, created_at,
                 updated_at, completed_at, demo, metadata)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                 """
                 
                 params = (
@@ -344,6 +351,8 @@ class CycleRepository:
                     cycle.quantity,
                     cycle.stop_price,
                     cycle.trailing_delta,
+                    cycle.min_price,
+                    cycle.max_price,
                     cycle.profit_loss,
                     cycle.profit_loss_percent,
                     cycle.created_at,
@@ -538,10 +547,13 @@ class CycleRepository:
             quantity=float(cycle_data['quantity']) if cycle_data['quantity'] else None,
             stop_price=float(cycle_data['stop_price']) if cycle_data['stop_price'] else None,
             trailing_delta=float(cycle_data['trailing_delta']) if cycle_data['trailing_delta'] else None,
+            min_price=float(cycle_data['min_price']) if cycle_data['min_price'] else None,
+            max_price=float(cycle_data['max_price']) if cycle_data['max_price'] else None,
             profit_loss=float(cycle_data['profit_loss']) if cycle_data['profit_loss'] else None,
             profit_loss_percent=float(cycle_data['profit_loss_percent']) if cycle_data['profit_loss_percent'] else None,
             created_at=cycle_data['created_at'],
             updated_at=cycle_data['updated_at'],
             completed_at=cycle_data['completed_at'],
+            confirmed=cycle_data['confirmed'],
             demo=cycle_data['demo']
         )
