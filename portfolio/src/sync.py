@@ -52,14 +52,12 @@ async def sync_db_forever():
             db = DBManager()
             portfolio = PortfolioModel(db)
             
-            # 1. Synchroniser avec les trades actifs
-            success1 = portfolio.sync_with_trades()
-
-            # 2. Récupérer la valeur totale du portfolio
+            # 1. Récupérer la valeur totale du portfolio
             summary = portfolio.get_portfolio_summary()
             if summary:
-                # 3. Synchroniser les poches avec les soldes réels du portfolio
-                logger.info(f"🔄 Synchronisation complète: trades={success1}")
+                # 2. Logger les informations du portfolio
+                logger.info(f"🔄 Synchronisation DB - Portfolio total: {summary.total_value:.2f} USDC")
+                logger.info(f"   Trades actifs: {summary.active_trades}")
             else:
                 logger.warning("⚠️ Impossible de récupérer le résumé du portfolio")
             

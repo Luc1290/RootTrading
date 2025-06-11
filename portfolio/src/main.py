@@ -15,10 +15,15 @@ if __name__ == "__main__":
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
 
+    # Configuration du logging pour réduire la verbosité
+    import logging
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    
     uvicorn.run(
         app,
         host=args.host,
         port=args.port,
         reload=args.debug,
-        log_level="debug" if args.debug else "info"
+        log_level="debug" if args.debug else "info",
+        access_log=False  # Désactiver les logs d'accès pour les health checks
     )

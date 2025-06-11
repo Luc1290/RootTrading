@@ -73,7 +73,7 @@ class DBManager:
         try:
             self.pool = self.get_pool(self.db_url)
             self.conn = self.pool.getconn()
-            logger.info("✅ Connexion obtenue depuis le pool DB")
+            logger.debug("✅ Connexion obtenue depuis le pool DB")  # Changé de INFO à DEBUG
         except Exception as e:
             logger.error(f"❌ Impossible d'obtenir une connexion du pool: {str(e)}")
             # Fallback: connexion directe

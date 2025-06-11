@@ -202,7 +202,7 @@ class CoordinatorService:
             response = requests.get(health_url, timeout=2.0)
             
             if response.status_code == 200:
-                logger.info("✅ Service Portfolio en bonne santé")
+                # Log de santé réussi supprimé pour réduire la verbosité
                 return True
             else:
                 logger.warning(f"⚠️ Service Portfolio a retourné un code d'état non-OK: {response.status_code}")
@@ -301,9 +301,9 @@ class CoordinatorService:
             # Vérifier la santé du portfolio toutes les minutes
             if current_time - last_health_check >= 60:
                 try:
-                    logger.info("Vérification de santé du portfolio...")
                     if not self.check_portfolio_health():
                         logger.warning("Le service Portfolio n'est pas en bonne santé.")
+                    last_health_check = current_time
                 except Exception as e:
                     logger.error(f"❌ Erreur lors de la vérification de santé du portfolio: {str(e)}")
     
@@ -347,8 +347,8 @@ class CoordinatorService:
                 except Exception as e:
                     logger.error(f"Erreur lors du traitement du cycle créé: {str(e)}")
 
-                # S'abonner au canal des cycles créés
-                    redis.subscribe("roottrading:cycle:created", handle_cycle_created)                    
+            # S'abonner au canal des cycles créés
+            redis.subscribe("roottrading:cycle:created", handle_cycle_created)                    
         
         # Démarrer le thread
         listener_thread = threading.Thread(target=cycle_listener_thread, daemon=True)

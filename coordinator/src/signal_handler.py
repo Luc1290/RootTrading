@@ -1318,6 +1318,30 @@ class SignalHandler:
         if hasattr(self, 'sync_monitor') and self.sync_monitor:
             self.sync_monitor.remove_cycle_from_cache(cycle_id)
             logger.debug(f"🔄 Cycle {cycle_id} retiré du cache du sync monitor")
+    
+    def _handle_portfolio_update(self, channel: str, data: Dict[str, Any]) -> None:
+        """
+        Traite les notifications de mise à jour du portfolio.
+        
+        Args:
+            channel: Canal Redis d'où provient la notification
+            data: Données de la notification (balances mises à jour)
+        """
+        try:
+            logger.info(f"💰 Mise à jour du portfolio reçue")
+            
+            # Invalider le cache des cycles actifs pour forcer un rafraîchissement
+            # lors du prochain signal
+            self.cache_update_time = 0
+            
+            # Logger les changements de balance si disponibles
+            if 'balances' in data:
+                for asset, balance in data['balances'].items():
+                    logger.debug(f"  {asset}: {balance.get('free', 0):.8f} libre, {balance.get('locked', 0):.8f} verrouillé")
+                    
+        except Exception as e:
+            logger.error(f"❌ Erreur lors du traitement de la mise à jour du portfolio: {str(e)}")
+
 class CircuitBreaker:
     """Circuit breaker pour éviter les appels répétés à des services en échec."""
     
