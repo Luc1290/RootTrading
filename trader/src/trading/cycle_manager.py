@@ -1357,8 +1357,8 @@ class CycleManager:
         def balance_reconciliation_routine():
             while True:
                 try:
-                    # Réconciliation des balances toutes les 10 minutes
-                    time.sleep(600)  # 10 minutes
+                    # Réconciliation des balances toutes les 1 minute
+                    time.sleep(60)
                     self._reconcile_global_balances()
                 except Exception as e:
                     logger.error(f"❌ Erreur dans le thread de réconciliation des balances: {str(e)}")

@@ -66,9 +66,7 @@ class CoordinatorService:
         """Configure les routes de l'API Flask."""
         self.app.route('/health', methods=['GET'])(self.health_check)
         self.app.route('/diagnostic', methods=['GET'])(self.diagnostic)
-        self.app.route('/force-reallocation', methods=['POST'])(self.force_reallocation)
         self.app.route('/status', methods=['GET'])(self.get_status)
-        self.app.route('/force-reconcile', methods=['POST'])(self.force_reconciliation)
         self.app.route('/sync-monitor/status', methods=['GET'])(self.get_sync_monitor_status)
         self.app.route('/sync-monitor/force', methods=['POST'])(self.force_sync_monitor)   
     

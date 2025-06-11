@@ -104,11 +104,7 @@ def diagnostic():
     
     # AJOUT DES MÉTRIQUES DE BASE DE DONNÉES
     try:        
-        diagnostic_info["database"] = get_db_metrics()
-        
-        # Ajouter les informations de réconciliation
-        if hasattr(order_manager, 'reconciliation_service'):
-            diagnostic_info["reconciliation"] = order_manager.reconciliation_service.get_stats()
+        diagnostic_info["database"] = get_db_metrics()              
             
     except Exception as e:
         logger.warning(f"Impossible de récupérer les métriques de base de données: {str(e)}")
@@ -444,53 +440,9 @@ def reconcile_cycles():
         # Récupérer les options de la requête
         data = request.json or {}
         force = data.get('force', True)
-        
-        # Forcer une réconciliation
-        logger.info(f"Réconciliation manuelle déclenchée (force={force})")
-        
-        # Appeler le service de réconciliation
-        order_manager.reconciliation_service.reconcile_all_cycles(force=force)
-        
-        # Récupérer les statistiques après la réconciliation
-        stats = order_manager.reconciliation_service.get_stats()
-        
-        return jsonify({
-            "success": True,
-            "message": f"Réconciliation effectuée: {stats['cycles_reconciled']}/{stats['cycles_checked']} cycles mis à jour",
-            "stats": stats
-        })
     
     except Exception as e:
         logger.error(f"❌ Erreur lors de la réconciliation manuelle: {str(e)}")
-        return jsonify({
-            "success": False,
-            "message": f"Erreur: {str(e)}"
-        }), 500
-
-@routes_bp.route('/reconcile/status', methods=['GET'])
-def get_reconciliation_status():
-    """
-    Récupère l'état de la dernière réconciliation.
-    
-    Returns:
-        Statistiques de réconciliation au format JSON
-    """
-    order_manager = current_app.config['ORDER_MANAGER']
-    
-    if not order_manager:
-        return jsonify({"error": "OrderManager non initialisé"}), 500
-    
-    try:
-        # Récupérer les statistiques
-        stats = order_manager.reconciliation_service.get_stats()
-        
-        return jsonify({
-            "success": True,
-            "stats": stats
-        })
-    
-    except Exception as e:
-        logger.error(f"❌ Erreur lors de la récupération du statut de réconciliation: {str(e)}")
         return jsonify({
             "success": False,
             "message": f"Erreur: {str(e)}"
@@ -595,10 +547,6 @@ def cleanup_stuck_cycles():
                         cycle_info["action"] = "would_clean"
                     
                     cleaned_cycles.append(cycle_info)
-        
-        # Forcer une réconciliation après le nettoyage
-        if not dry_run and cleaned_cycles:
-            order_manager.reconciliation_service.force_reconciliation()
         
         return jsonify({
             "success": True,

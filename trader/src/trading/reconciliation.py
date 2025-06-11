@@ -36,14 +36,14 @@ class ExchangeReconciliation:
     """
     
     def __init__(self, cycle_repository: CycleRepository, binance_executor: BinanceExecutor, 
-                 reconciliation_interval: int = 600, cycle_manager=None):
+                 reconciliation_interval: int = 90, cycle_manager=None):
         """
         Initialise le service de réconciliation.
         
         Args:
             cycle_repository: Référentiel de cycles de trading
             binance_executor: Exécuteur Binance pour vérifier l'état des ordres
-            reconciliation_interval: Intervalle entre les réconciliations en secondes (défaut: 10 minutes)
+            reconciliation_interval: Intervalle entre les réconciliations en secondes (défaut: 1 minute 30s)
             cycle_manager: Gestionnaire de cycles pour mettre à jour le cache mémoire
         """
         self.repository = cycle_repository
