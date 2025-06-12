@@ -84,8 +84,8 @@ class TrailingStop:
                 self.min_price = price
                 new_stop = self._calc_stop(self.min_price)
                 
-                # Le stop ne peut que monter (pour protéger plus de profit)
-                if new_stop > self.stop_price:
+                # Le stop ne peut que descendre (pour protéger plus de profit) pour SHORT
+                if new_stop < self.stop_price:
                     self.stop_price = new_stop
                     logger.debug(f"📈 Stop SHORT mis à jour: {old_stop:.6f} → {self.stop_price:.6f} "
                                f"(nouveau min: {self.min_price:.6f})")

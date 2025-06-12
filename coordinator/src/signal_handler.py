@@ -20,6 +20,7 @@ from shared.src.redis_client import RedisClient
 from shared.src.config import TRADING_MODE
 from shared.src.enums import OrderSide, SignalStrength, CycleStatus
 from coordinator.src.cycle_sync_monitor import CycleSyncMonitor
+from coordinator.src.smart_cycle_manager import SmartCycleManager, CycleAction
 from shared.src.schemas import StrategySignal, TradeOrder
 
 # Configuration du logging
@@ -74,6 +75,9 @@ class SignalHandler:
             check_interval=10  # Vérification toutes les 10 secondes pour plus de réactivité
         )
         
+        # SmartCycleManager pour la gestion intelligente des cycles
+        self.smart_cycle_manager = SmartCycleManager()
+        
         # Cache des prix actuels
         self.price_cache = {}
         
@@ -106,7 +110,7 @@ class SignalHandler:
         self.cache_ttl = 30  # TTL du cache en secondes
         
         # Configuration des limites
-        self.max_cycles_per_symbol_side = 100  # Max 100 BUY ou 100 SELL par symbole
+        self.max_cycles_per_symbol_side = 10  # AUGMENTÉ: Max 10 positions par direction pour plus de granularité
         self.contradiction_threshold = 0.7  # Seuil pour décider en cas de contradiction
         
         # NOUVEAU: Historique récent des signaux pour détecter les patterns
@@ -243,32 +247,10 @@ class SignalHandler:
         
         # Cas 1: Signal opposé à des positions existantes
         if existing_opposite > 0:
-            # NOUVEAU: Les signaux du signal_aggregator ont déjà géré les conflits intelligemment
-            if signal.strategy.startswith("Aggregated_"):
-                logger.info(f"✅ Signal agrégé accepté malgré {existing_opposite} positions {opposite_position} "
-                           f"(conflits déjà résolus par l'agrégateur)")
-            else:
-                logger.warning(f"⚠️ Signal {signal_position} contradictoire avec {existing_opposite} "
-                             f"positions {opposite_position} ouvertes sur {signal.symbol}")
-                
-                # Options possibles selon la force du signal
-                if signal.strength == SignalStrength.VERY_STRONG:
-                    logger.info(f"🔄 Signal TRÈS FORT - Tentative de fermeture des positions opposées")
-                    # Fermer les positions opposées si le signal est très fort
-                    if self._close_opposite_positions(signal.symbol, opposite_position):
-                        logger.info(f"✅ Positions {opposite_position} fermées, nouveau signal {signal_position} autorisé")
-                        # Continuer avec le nouveau signal après fermeture
-                    else:
-                        logger.warning(f"❌ Impossible de fermer les positions opposées, signal ignoré")
-                        return
-                elif signal.strength == SignalStrength.STRONG and existing_opposite == 1:
-                    # Si seulement 1 position opposée et signal fort, on peut considérer la fermeture
-                    logger.info(f"🤔 Signal FORT avec 1 position opposée - Évaluation...")
-                    # Pour l'instant on bloque, mais on pourrait être plus flexible
-                    return
-                else:
-                    logger.info(f"❌ Signal contradictoire ignoré (positions opposées actives)")
-                    return
+            # NOUVEAU: BLOQUER TOUS LES SIGNAUX CONTRADICTOIRES MÊME AGGREGATED
+            logger.warning(f"🚫 BLOQUÉ: Signal {signal_position} contradictoire avec {existing_opposite} "
+                         f"positions {opposite_position} sur {signal.symbol} - Stratégie: {signal.strategy}")
+            return
         
         # Cas 2: Vérifier si on peut ajouter à la position existante
         if existing_same >= self.max_cycles_per_symbol_side:
@@ -1032,7 +1014,7 @@ class SignalHandler:
     
     def _calculate_trade_amount(self, signal: StrategySignal) -> tuple[float, str]:
         """
-        Calcule le montant à trader basé sur le signal et l'actif.
+        Calcule le montant à trader basé sur le signal, la balance disponible et la performance.
         
         Args:
             signal: Signal de trading
@@ -1042,29 +1024,51 @@ class SignalHandler:
         """
         quote_asset = self._get_quote_asset(signal.symbol)
         
-        # Récupérer les valeurs depuis les variables d'environnement
-        default_amounts = {
-            'USDC': float(os.getenv('TRADE_QUANTITY_USDC', 20.0)),      # Depuis .env
-            'BTC': float(os.getenv('TRADE_QUANTITY_BTC', 0.00025)),     # Depuis .env
-            'ETH': float(os.getenv('TRADE_QUANTITY_ETH', 0.005)),       # Depuis .env
-            'BNB': float(os.getenv('TRADE_QUANTITY_BNB', 0.05))         # Valeur par défaut
+        # Récupérer la balance disponible depuis le portfolio
+        try:
+            portfolio_url = f"http://portfolio:5003/balance/{quote_asset}"
+            response = self._make_request_with_retry(portfolio_url)
+            available_balance = response.get('available', 0) if response else 0
+        except Exception as e:
+            self.logger.warning(f"Impossible de récupérer la balance {quote_asset}: {e}")
+            available_balance = 0
+        
+        # Pourcentages d'allocation par force de signal
+        allocation_percentages = {
+            SignalStrength.WEAK: float(os.getenv('ALLOCATION_WEAK_PCT', 2.0)),      # 2% du capital
+            SignalStrength.MODERATE: float(os.getenv('ALLOCATION_MODERATE_PCT', 5.0)), # 5% du capital  
+            SignalStrength.STRONG: float(os.getenv('ALLOCATION_STRONG_PCT', 8.0)),     # 8% du capital
+            SignalStrength.VERY_STRONG: float(os.getenv('ALLOCATION_VERY_STRONG_PCT', 12.0)) # 12% du capital
         }
         
-        default_amount = default_amounts.get(quote_asset, 20.0)
+        # Calculer le montant basé sur le pourcentage de la balance
+        base_percentage = allocation_percentages.get(signal.strength, 5.0)
+        calculated_amount = available_balance * (base_percentage / 100.0)
         
-        # Ajuster en fonction de la force du signal
-        if signal.strength == SignalStrength.WEAK:
-            amount = default_amount * 0.5
-        elif signal.strength == SignalStrength.MODERATE:
-            amount = default_amount * 0.8
-        elif signal.strength == SignalStrength.STRONG:
-            amount = default_amount * 1.0
-        elif signal.strength == SignalStrength.VERY_STRONG:
-            amount = default_amount * 1.2
-        else:
-            amount = default_amount
+        # Montants minimums et maximums par devise
+        min_amounts = {
+            'USDC': float(os.getenv('MIN_TRADE_USDC', 10.0)),
+            'BTC': float(os.getenv('MIN_TRADE_BTC', 0.0001)),
+            'ETH': float(os.getenv('MIN_TRADE_ETH', 0.003)),
+            'BNB': float(os.getenv('MIN_TRADE_BNB', 0.02))
+        }
         
-        return amount, quote_asset
+        max_amounts = {
+            'USDC': float(os.getenv('MAX_TRADE_USDC', 500.0)),
+            'BTC': float(os.getenv('MAX_TRADE_BTC', 0.01)),
+            'ETH': float(os.getenv('MAX_TRADE_ETH', 0.2)),
+            'BNB': float(os.getenv('MAX_TRADE_BNB', 2.0))
+        }
+        
+        min_amount = min_amounts.get(quote_asset, 10.0)
+        max_amount = max_amounts.get(quote_asset, 100.0)
+        
+        # Appliquer les limites
+        final_amount = max(min_amount, min(calculated_amount, max_amount))
+        
+        self.logger.info(f"Allocation dynamique {signal.symbol}: {base_percentage}% de {available_balance:.4f} {quote_asset} = {final_amount:.4f} {quote_asset}")
+        
+        return final_amount, quote_asset
     
     def _make_request_with_retry(self, url, method="GET", json_data=None, params=None, max_retries=3, timeout=5.0):
         """
@@ -1251,13 +1255,17 @@ class SignalHandler:
                     self.signal_queue.task_done()
                     continue
                 
-                # Créer un cycle de trading
-                cycle_id = self._create_trade_cycle(signal)
+                # NOUVEAU: Utiliser le SmartCycleManager pour décider de l'action
+                decision = self._process_signal_with_smart_manager(signal)
                 
-                if cycle_id:
-                    logger.info(f"✅ Trade exécuté pour le signal {signal.strategy} sur {signal.symbol}")
+                if decision and decision.action != CycleAction.WAIT:
+                    success = self._execute_smart_decision(decision)
+                    if success:
+                        logger.info(f"✅ Action {decision.action.value} exécutée: {decision.reason}")
+                    else:
+                        logger.warning(f"⚠️ Échec d'exécution de l'action {decision.action.value}")
                 else:
-                    logger.warning(f"⚠️ Échec d'exécution du trade pour le signal {signal.strategy}")
+                    logger.info(f"💤 Aucune action requise pour {signal.symbol}: {decision.reason if decision else 'Signal non traité'}")
                 
                 # Marquer la tâche comme terminée
                 self.signal_queue.task_done()
@@ -1517,6 +1525,199 @@ class SignalHandler:
                     
         except Exception as e:
             logger.error(f"❌ Erreur lors du traitement de la mise à jour du portfolio: {str(e)}")
+    
+    def _process_signal_with_smart_manager(self, signal: StrategySignal) -> Optional:
+        """
+        Traite un signal avec le SmartCycleManager pour prendre une décision intelligente.
+        
+        Args:
+            signal: Signal reçu
+            
+        Returns:
+            SmartCycleDecision ou None
+        """
+        try:
+            # Récupérer le prix actuel
+            current_price = signal.price
+            
+            # Récupérer la balance disponible
+            quote_asset = self._get_quote_asset(signal.symbol)
+            try:
+                portfolio_url = f"http://portfolio:5003/balance/{quote_asset}"
+                response = self._make_request_with_retry(portfolio_url)
+                available_balance = response.get('available', 0) if response else 0
+            except Exception as e:
+                self.logger.warning(f"Impossible de récupérer la balance {quote_asset}: {e}")
+                available_balance = 0
+            
+            # Récupérer les cycles existants
+            existing_cycles = []
+            try:
+                cycles_response = self._make_request_with_retry(f"{self.trader_api_url}/cycles/{signal.symbol}")
+                if cycles_response and 'cycles' in cycles_response:
+                    existing_cycles = cycles_response['cycles']
+            except Exception as e:
+                self.logger.warning(f"Impossible de récupérer les cycles existants: {e}")
+            
+            # Demander au SmartCycleManager de prendre une décision
+            decision = self.smart_cycle_manager.analyze_signal(
+                signal=signal,
+                current_price=current_price,
+                available_balance=available_balance,
+                existing_cycles=existing_cycles
+            )
+            
+            self.logger.info(f"🧠 SmartCycleManager décision: {decision.action.value} - {decision.reason}")
+            return decision
+            
+        except Exception as e:
+            self.logger.error(f"❌ Erreur dans _process_signal_with_smart_manager: {str(e)}")
+            return None
+    
+    def _execute_smart_decision(self, decision) -> bool:
+        """
+        Exécute la décision prise par le SmartCycleManager.
+        
+        Args:
+            decision: SmartCycleDecision à exécuter
+            
+        Returns:
+            True si succès, False sinon
+        """
+        try:
+            if decision.action == CycleAction.CREATE_NEW:
+                return self._create_new_smart_cycle(decision, getattr(decision, 'signal', None))
+            
+            elif decision.action == CycleAction.REINFORCE:
+                return self._reinforce_existing_cycle(decision)
+            
+            elif decision.action == CycleAction.REDUCE:
+                return self._reduce_cycle_position(decision)
+            
+            elif decision.action == CycleAction.CLOSE:
+                return self._close_cycle_completely(decision)
+            
+            else:
+                self.logger.warning(f"Action non supportée: {decision.action}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"❌ Erreur lors de l'exécution de la décision: {str(e)}")
+            return False
+    
+    def _create_new_smart_cycle(self, decision, signal: StrategySignal = None) -> bool:
+        """
+        Crée un nouveau cycle basé sur une décision SmartCycleManager.
+        
+        Args:
+            decision: Décision de création
+            
+        Returns:
+            True si succès, False sinon
+        """
+        try:
+            # Récupérer le signal depuis la décision
+            original_signal = decision.signal if decision.signal else signal
+            
+            # Déterminer le side basé sur la direction désirée
+            # Si on veut une position LONG → signal BUY (acheter pour avoir l'actif)
+            # Si on veut une position SHORT → signal SELL (vendre pour ne plus avoir l'actif)
+            if original_signal and hasattr(original_signal, 'side'):
+                side = original_signal.side.value if hasattr(original_signal.side, 'value') else str(original_signal.side)
+            else:
+                side = "BUY"  # Par défaut
+            
+            # Préparer les données du cycle
+            order_data = {
+                "symbol": decision.symbol,
+                "side": side,
+                "quantity": decision.amount / decision.price_target if decision.price_target else decision.amount,
+                "price": decision.price_target or 0,
+                "strategy": f"SmartCycle_{decision.confidence:.0%}",
+                "timestamp": int(time.time() * 1000),
+                "metadata": {
+                    "smart_cycle": True,
+                    "reason": decision.reason,
+                    "confidence": decision.confidence
+                }
+            }
+            
+            # Envoyer au trader
+            result = self._make_request_with_retry(
+                f"{self.trader_api_url}/order",
+                method="POST",
+                json_data=order_data,
+                timeout=10.0
+            )
+            
+            if result and result.get('order_id'):
+                self.logger.info(f"✅ Nouveau SmartCycle créé: {result['order_id']}")
+                return True
+            else:
+                self.logger.error(f"❌ Échec création SmartCycle: {result}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"❌ Erreur création SmartCycle: {str(e)}")
+            return False
+    
+    def _reinforce_existing_cycle(self, decision) -> bool:
+        """
+        Renforce un cycle existant (DCA).
+        
+        Args:
+            decision: Décision de renforcement
+            
+        Returns:
+            True si succès, False sinon
+        """
+        # TODO: Implémenter le renforcement de cycle
+        self.logger.warning(f"⚠️ Renforcement de cycle pas encore implémenté: {decision.existing_cycle_id}")
+        return False
+    
+    def _reduce_cycle_position(self, decision) -> bool:
+        """
+        Réduit partiellement une position.
+        
+        Args:
+            decision: Décision de réduction
+            
+        Returns:
+            True si succès, False sinon
+        """
+        # TODO: Implémenter la vente partielle
+        self.logger.warning(f"⚠️ Vente partielle pas encore implémentée: {decision.existing_cycle_id}")
+        return False
+    
+    def _close_cycle_completely(self, decision) -> bool:
+        """
+        Ferme complètement un cycle.
+        
+        Args:
+            decision: Décision de fermeture
+            
+        Returns:
+            True si succès, False sinon
+        """
+        try:
+            # Envoyer la demande de fermeture au trader
+            result = self._make_request_with_retry(
+                f"{self.trader_api_url}/cycles/{decision.existing_cycle_id}/close",
+                method="POST",
+                json_data={"reason": decision.reason},
+                timeout=10.0
+            )
+            
+            if result and result.get('success'):
+                self.logger.info(f"✅ Cycle {decision.existing_cycle_id} fermé: {decision.reason}")
+                return True
+            else:
+                self.logger.error(f"❌ Échec fermeture cycle: {result}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"❌ Erreur fermeture cycle: {str(e)}")
+            return False
 
 class CircuitBreaker:
     """Circuit breaker pour éviter les appels répétés à des services en échec."""

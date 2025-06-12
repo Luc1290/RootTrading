@@ -178,10 +178,31 @@ class BollingerStrategy(BaseStrategy):
         band_width_pct = (band_width / middle[-1]) * 100
         price_position = (current_price - current_lower) / band_width  # 0 = bande basse, 1 = bande haute
         
+        # Filtre de tendance : vérifier la position du prix par rapport à la SMA
+        current_middle = middle[-1]
+        prev_middle = middle[-2] if len(middle) > 1 else current_middle
+        
+        # Tendance haussière si SMA monte
+        sma_trend_up = current_middle > prev_middle
+        # Prix au-dessus de la SMA = tendance haussière
+        price_above_sma = current_price > current_middle * 0.98  # 2% de tolérance
+        
         # Signal d'ACHAT: Prix touche ou pénètre la bande inférieure (acheter l'extrême)
+        # MAIS seulement si on n'est pas dans une forte tendance baissière
         if current_price <= current_lower * 1.002:  # Prix à ou sous la bande basse (avec 0.2% de marge)
             # Plus le prix est sous la bande, plus c'est extrême
             penetration_pct = ((current_lower - current_price) / current_lower) * 100
+            
+            # NOUVEAU : Ajuster la logique selon la tendance
+            if not sma_trend_up and not price_above_sma:
+                # Tendance baissière confirmée : réduire la confiance mais ne pas bloquer
+                confidence *= 0.4  # Réduire drastiquement la confiance
+                signal_reason += "_bearish_market"
+                logger.debug(f"[Bollinger] {self.symbol}: Signal BUY réduit en tendance baissière "
+                           f"(confiance réduite à {confidence:.2f})")
+                # Si la confiance devient trop faible, ne pas générer de signal
+                if confidence < 0.3:
+                    return None
             
             # Vérifier si les bandes sont suffisamment écartées (éviter les marchés plats)
             if band_width_pct < 1.0:  # Bandes très serrées, marché plat
@@ -212,8 +233,8 @@ class BollingerStrategy(BaseStrategy):
             
             stop_distance = band_width * stop_multiplier
             
-            # Forcer un stop minimum en pourcentage absolu
-            min_stop_percent = 0.5 if 'BTC' in self.symbol else 0.8
+            # Forcer un stop minimum en pourcentage absolu - AUGMENTÉ pour éviter les whipsaws
+            min_stop_percent = 1.5 if 'BTC' in self.symbol else 2.0  # 1.5% pour BTC, 2% pour autres
             min_stop_distance = current_price * (min_stop_percent / 100)
             stop_distance = max(stop_distance, min_stop_distance)
             
@@ -227,7 +248,9 @@ class BollingerStrategy(BaseStrategy):
                 "price_position": float(price_position),
                 "penetration_pct": float(penetration_pct),
                 "reason": signal_reason,
-                "stop_price": float(stop_price)
+                "stop_price": float(stop_price),
+                "sma_trend_up": sma_trend_up,
+                "price_above_sma": price_above_sma
             }
             
             signal = self.create_signal(
@@ -238,23 +261,39 @@ class BollingerStrategy(BaseStrategy):
             )
         
         # Signal de VENTE: Prix touche ou pénètre la bande supérieure (vendre l'extrême)
-        elif current_price >= current_upper * 0.998:  # Prix à ou au-dessus de la bande haute (avec 0.2% de marge)
-            # Plus le prix est au-dessus de la bande, plus c'est extrême
-            penetration_pct = ((current_price - current_upper) / current_upper) * 100
+        # OU signal de vente anticipé en tendance baissière forte
+        elif (current_price >= current_upper * 0.998 or  # Condition normale
+              (not sma_trend_up and not price_above_sma and current_price >= current_middle * 1.005)):  # Vente anticipée en tendance baissière
+            # Identifier le type de signal de vente
+            is_early_sell = (not sma_trend_up and not price_above_sma and 
+                           current_price < current_upper * 0.998 and 
+                           current_price >= current_middle * 1.005)
             
-            # Vérifier si les bandes sont suffisamment écartées
-            if band_width_pct < 1.0:  # Bandes très serrées, marché plat
-                confidence = 0.5
-                signal_reason = "squeeze_caution"
-            elif penetration_pct > 0.5:  # Forte pénétration au-dessus de la bande
-                confidence = 0.85
-                signal_reason = "strong_overbought"
-            elif current_price > current_upper:  # Légère pénétration
-                confidence = 0.75
-                signal_reason = "overbought"
-            else:  # Juste touché la bande
-                confidence = 0.65
-                signal_reason = "band_touch"
+            if is_early_sell:
+                # Signal de vente anticipé en tendance baissière
+                penetration_pct = ((current_price - current_middle) / current_middle) * 100
+                confidence = 0.75  # Confiance modérée pour vente anticipée
+                signal_reason = "early_sell_bearish_trend"
+                logger.info(f"[Bollinger] {self.symbol}: Signal SELL anticipé en tendance baissière")
+            else:
+                # Signal de vente normal (bande supérieure)
+                penetration_pct = ((current_price - current_upper) / current_upper) * 100
+            
+            # Calculer la confiance (seulement pour signaux normaux)
+            if not is_early_sell:
+                # Vérifier si les bandes sont suffisamment écartées
+                if band_width_pct < 1.0:  # Bandes très serrées, marché plat
+                    confidence = 0.7  # Aligné avec les signaux BUY pour cohérence
+                    signal_reason = "squeeze_caution"
+                elif penetration_pct > 0.5:  # Forte pénétration au-dessus de la bande
+                    confidence = 0.85
+                    signal_reason = "strong_overbought"
+                elif current_price > current_upper:  # Légère pénétration
+                    confidence = 0.75
+                    signal_reason = "overbought"
+                else:  # Juste touché la bande
+                    confidence = 0.65
+                    signal_reason = "band_touch"
             
             # Bonus si on vient de l'intérieur (premier contact)
             if prev_price < prev_upper * 0.99:

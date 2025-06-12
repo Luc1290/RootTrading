@@ -113,12 +113,41 @@ class CycleSyncMonitor:
                 self.stats["discrepancies_found"] += 1
                 self.stats["last_discrepancy"] = time.time()
                 
-                # DÉSACTIVÉ: Ne pas nettoyer automatiquement pour éviter les suppressions erronées
-                # for cycle_id in phantom_cycles:
-                #     self.known_cycles.remove(cycle_id)
-                #     self.stats["cycles_cleaned"] += 1
-                #     logger.info(f"🧹 Cycle fantôme retiré du cache: {cycle_id}")
-                logger.info(f"🚫 Nettoyage automatique DÉSACTIVÉ - Cycles suspectés fantômes: {list(phantom_cycles)}")
+                # Vérifier le statut de chaque cycle fantôme avant de le nettoyer
+                cycles_to_clean = []
+                for cycle_id in phantom_cycles:
+                    try:
+                        # Récupérer le statut du cycle
+                        response = requests.get(
+                            urljoin(self.trader_api_url, f"/cycles/{cycle_id}"),
+                            timeout=5
+                        )
+                        
+                        if response.status_code == 200:
+                            cycle_data = response.json()
+                            if cycle_data.get('success') and cycle_data.get('cycle'):
+                                status = cycle_data['cycle'].get('status', '')
+                                # Ne nettoyer que les cycles terminés
+                                if status in ['completed', 'canceled', 'failed']:
+                                    cycles_to_clean.append(cycle_id)
+                                    logger.info(f"✅ Cycle {cycle_id} marqué pour nettoyage (status: {status})")
+                                else:
+                                    logger.warning(f"⚠️ Cycle {cycle_id} gardé dans le cache (status: {status})")
+                        elif response.status_code == 404:
+                            # Si le cycle n'existe pas du tout, on peut le nettoyer
+                            cycles_to_clean.append(cycle_id)
+                            logger.info(f"✅ Cycle {cycle_id} marqué pour nettoyage (n'existe pas dans la DB)")
+                    except Exception as e:
+                        logger.error(f"❌ Erreur lors de la vérification du cycle {cycle_id}: {str(e)}")
+                
+                # Nettoyer uniquement les cycles confirmés comme terminés
+                for cycle_id in cycles_to_clean:
+                    self.known_cycles.remove(cycle_id)
+                    self.stats["cycles_cleaned"] += 1
+                    logger.info(f"🧹 Cycle fantôme retiré du cache: {cycle_id}")
+                
+                if cycles_to_clean:
+                    logger.info(f"✅ {len(cycles_to_clean)} cycles fantômes nettoyés sur {len(phantom_cycles)} détectés")
             
             # Ajouter les nouveaux cycles de la DB sans supprimer les existants
             # Pour éviter de perdre des cycles légitimes non encore visibles par l'API

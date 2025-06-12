@@ -1311,6 +1311,37 @@ class CycleManager:
         # Déléguer au StopManagerPure avec le wrapper
         self.stop_manager.process_price_update(symbol, price, close_cycle_by_stop)
         
+    def _cleanup_cycle_orders(self, cycle: TradeCycle) -> None:
+        """
+        Nettoie les ordres restants d'un cycle sur Binance.
+        
+        Args:
+            cycle: Le cycle dont les ordres doivent être nettoyés
+        """
+        try:
+            # Vérifier et annuler l'ordre d'entrée s'il existe et n'est pas FILLED
+            if cycle.entry_order_id:
+                try:
+                    entry_status = self.binance_executor.get_order_status(cycle.symbol, cycle.entry_order_id)
+                    if entry_status and entry_status.status in [OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED]:
+                        self.binance_executor.cancel_order(cycle.symbol, cycle.entry_order_id)
+                        logger.info(f"✅ Ordre d'entrée {cycle.entry_order_id} annulé")
+                except Exception as e:
+                    logger.debug(f"Ordre d'entrée {cycle.entry_order_id} déjà fermé ou non trouvé: {str(e)}")
+            
+            # Vérifier et annuler l'ordre de sortie s'il existe et n'est pas FILLED
+            if cycle.exit_order_id:
+                try:
+                    exit_status = self.binance_executor.get_order_status(cycle.symbol, cycle.exit_order_id)
+                    if exit_status and exit_status.status in [OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED]:
+                        self.binance_executor.cancel_order(cycle.symbol, cycle.exit_order_id)
+                        logger.info(f"✅ Ordre de sortie {cycle.exit_order_id} annulé")
+                except Exception as e:
+                    logger.debug(f"Ordre de sortie {cycle.exit_order_id} déjà fermé ou non trouvé: {str(e)}")
+                    
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur lors du nettoyage des ordres du cycle {cycle.id}: {str(e)}")
+    
     def _start_balance_reconciliation_thread(self):
         """Démarre un thread de réconciliation périodique des balances."""
         def balance_reconciliation_routine():

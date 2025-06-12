@@ -17,7 +17,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 from binance_ws import BinanceWebSocket
 from kafka_producer import get_producer
 from historical_data_fetcher import HistoricalDataFetcher
-from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY, SYMBOLS, INTERVAL
+from validation_data_fetcher import ValidationDataFetcher
+from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY, SYMBOLS, INTERVAL, VALIDATION_INTERVAL
 
 # Configuration du logging
 logging.basicConfig(
@@ -151,6 +152,7 @@ async def main():
     Fonction principale qui démarre le Gateway.
     """
     global ws_client
+    validation_fetcher = None
     
     # Parser les arguments
     args = parse_arguments()
@@ -188,13 +190,21 @@ async def main():
         # Créer le client WebSocket Binance
         ws_client = BinanceWebSocket(symbols=SYMBOLS, interval=INTERVAL)
         
-        # Démarrer le client WebSocket
-        await ws_client.start()
+        # Créer le service de validation des données 15m
+        validation_fetcher = ValidationDataFetcher()
+        
+        # Démarrer les services en parallèle
+        await asyncio.gather(
+            ws_client.start(),
+            validation_fetcher.start()
+        )
     except Exception as e:
         logger.error(f"❌ Erreur critique dans le Gateway: {str(e)}")
     finally:
         if ws_client:
             await ws_client.stop()
+        if validation_fetcher:
+            await validation_fetcher.stop()
         
         # Arrêter le serveur HTTP
         await http_runner.cleanup()

@@ -20,7 +20,8 @@
       "Bash(/home/lucpa/.nvm/versions/node/v22.16.0/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/x64-linux/rg -n \"TODO|FIXME|XXX|HACK|BUG|OPTIMIZE|REFACTOR|IMPROVE\" /mnt/e/RootTrading/RootTrading/)",
       "Bash(/home/lucpa/.nvm/versions/node/v22.16.0/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/x64-linux/rg -i -n \"(#|//|/\\*)\\s*(todo|fixme|xxx|hack|bug|optimize|refactor|improve)\" /mnt/e/RootTrading/RootTrading/)",
       "Bash(rg:*)",
-      "Bash(true)"
+      "Bash(true)",
+      "WebFetch(domain:www.binance.com)"
     ],
     "deny": []
   },

@@ -39,6 +39,7 @@ DB_MAX_CONNECTIONS = int(os.getenv("DB_MAX_CONNECTIONS", "50"))
 DEFAULT_SYMBOL = os.getenv("SYMBOL", "BTCUSDC")
 SYMBOLS = os.getenv("SYMBOLS", "BTCUSDC,ETHUSDC").split(",")
 INTERVAL = os.getenv("INTERVAL", "1m")
+VALIDATION_INTERVAL = os.getenv("VALIDATION_INTERVAL", "15m")
 TRADING_MODE = os.getenv("TRADING_MODE", "demo")  # 'demo' ou 'live'
 
 # Quantités individuelles par symbole (doivent correspondre aux SYMBOLS)

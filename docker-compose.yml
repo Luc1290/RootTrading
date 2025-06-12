@@ -298,7 +298,7 @@ services:
       - WAIT_FOR_REDIS=true
       - WAIT_FOR_KAFKA=true
       - WAIT_FOR_DB=true
-      - WAIT_FOR=trader:8080,portfolio:8000,risk_manager:8080
+      - WAIT_FOR=trader:8080,portfolio:8000,
     env_file: .env
     restart: unless-stopped
     depends_on:
@@ -311,8 +311,6 @@ services:
       trader:
         condition: service_started
       portfolio:
-        condition: service_started
-      risk_manager:
         condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8080)); s.close()"]

@@ -33,7 +33,7 @@ class SignalAggregator:
         self.min_confidence_threshold = 0.7  # Augmenté de 0.6 à 0.7 pour filtrer les signaux faibles
         
     async def process_signal(self, signal: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Process a raw signal and return aggregated decision"""
+        """Process a raw signal and return aggregated decision with multi-timeframe validation"""
         try:
             symbol = signal['symbol']
             strategy = signal['strategy']
@@ -48,6 +48,11 @@ class SignalAggregator:
                 else:
                     logger.warning(f"Unknown side value: {side}")
                     return None
+            
+            # NOUVEAU: Validation multi-timeframe (1m signal validé par contexte 15m)
+            if not await self._validate_signal_with_higher_timeframe(signal):
+                logger.info(f"Signal {strategy} {signal['direction']} sur {symbol} rejeté par validation 15m")
+                return None
             
             # Handle timestamp conversion
             timestamp_str = signal.get('timestamp', signal.get('created_at'))
@@ -280,11 +285,107 @@ class SignalAggregator:
                 
         # Check Redis for distributed cooldown
         cooldown_key = f"signal_cooldown:{symbol}"
-        cooldown = await self.redis.get(cooldown_key)
+        cooldown = self.redis.get(cooldown_key)
         
         return cooldown is not None
         
     async def set_cooldown(self, symbol: str, duration_seconds: int = 180):
         """Set cooldown for a symbol"""
         cooldown_key = f"signal_cooldown:{symbol}"
-        await self.redis.setex(cooldown_key, duration_seconds, "1")
+        self.redis.set(cooldown_key, "1", expiration=duration_seconds)
+    
+    async def _validate_signal_with_higher_timeframe(self, signal: Dict[str, Any]) -> bool:
+        """
+        Valide un signal 1m avec le contexte 15m pour éviter les faux signaux.
+        
+        Logique de validation :
+        - Signal BUY : validé si la tendance 15m est haussière ou neutre
+        - Signal SELL : validé si la tendance 15m est baissière ou neutre
+        
+        Args:
+            signal: Signal 1m à valider
+            
+        Returns:
+            True si le signal est validé, False sinon
+        """
+        try:
+            symbol = signal['symbol']
+            direction = signal['direction']
+            
+            # Récupérer les données 15m récentes depuis Redis
+            market_data_key = f"market_data:{symbol}:15m"
+            data_15m = await self.redis.get(market_data_key)
+            
+            if not data_15m:
+                # Si pas de données 15m, on accepte le signal (mode dégradé)
+                logger.warning(f"Pas de données 15m pour {symbol}, validation en mode dégradé")
+                return True
+            
+            try:
+                # Vérifier si c'est déjà une string ou si c'est bytes
+                if isinstance(data_15m, bytes):
+                    data_15m = data_15m.decode('utf-8')
+                data_15m = json.loads(data_15m)
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                logger.warning(f"Données 15m corrompues pour {symbol}: {e}")
+                return True
+            
+            # Calculer la tendance 15m avec une EMA simple
+            prices = data_15m.get('prices', [])
+            if len(prices) < 10:
+                # Pas assez de données pour une tendance fiable
+                return True
+            
+            # EMA courte (5 périodes) vs EMA longue (20 périodes) sur 15m
+            recent_prices = prices[-20:] if len(prices) >= 20 else prices
+            if len(recent_prices) < 5:
+                return True
+            
+            ema_short = self._calculate_ema(recent_prices[-5:], 5)
+            ema_long = self._calculate_ema(recent_prices, min(20, len(recent_prices)))
+            
+            # Déterminer la tendance 15m
+            if ema_short > ema_long * 1.001:  # Tendance haussière (0.1% de marge)
+                trend_15m = "BULLISH"
+            elif ema_short < ema_long * 0.999:  # Tendance baissière (0.1% de marge)
+                trend_15m = "BEARISH"
+            else:
+                trend_15m = "NEUTRAL"
+            
+            # Règles de validation
+            if direction == "BUY" and trend_15m == "BEARISH":
+                logger.info(f"Signal BUY {symbol} rejeté : tendance 15m baissière")
+                return False
+            elif direction == "SELL" and trend_15m == "BULLISH":
+                logger.info(f"Signal SELL {symbol} rejeté : tendance 15m haussière")
+                return False
+            
+            # Validation additionnelle : RSI 15m
+            rsi_15m = data_15m.get('rsi_14')
+            if rsi_15m:
+                if direction == "BUY" and rsi_15m > 75:
+                    logger.info(f"Signal BUY {symbol} rejeté : RSI 15m surachat ({rsi_15m})")
+                    return False
+                elif direction == "SELL" and rsi_15m < 25:
+                    logger.info(f"Signal SELL {symbol} rejeté : RSI 15m survente ({rsi_15m})")
+                    return False
+            
+            logger.debug(f"Signal {direction} {symbol} validé par tendance 15m {trend_15m}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Erreur validation multi-timeframe: {e}")
+            return True  # Mode dégradé : accepter le signal
+    
+    def _calculate_ema(self, prices: List[float], period: int) -> float:
+        """Calcule une EMA simple"""
+        if not prices or period <= 0:
+            return prices[-1] if prices else 0
+        
+        multiplier = 2 / (period + 1)
+        ema = prices[0]
+        
+        for price in prices[1:]:
+            ema = (price * multiplier) + (ema * (1 - multiplier))
+        
+        return ema

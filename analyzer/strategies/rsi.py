@@ -174,6 +174,22 @@ class RSIStrategy(BaseStrategy):
             # Pas assez de données pour un signal fiable
             return None
         
+        # NOUVEAU : Calculer une EMA courte pour détecter la tendance
+        ema_period = 20
+        if len(prices) >= ema_period:
+            ema = talib.EMA(prices, timeperiod=ema_period)
+            current_ema = ema[-1]
+            prev_ema = ema[-2] if len(ema) > 1 else current_ema
+            
+            # Tendance haussière si EMA monte et prix au-dessus
+            ema_trend_up = current_ema > prev_ema
+            price_above_ema = current_price > current_ema * 0.98  # 2% de tolérance
+        else:
+            # Pas assez de données pour l'EMA, on suppose neutre
+            ema_trend_up = True
+            price_above_ema = True
+            current_ema = current_price
+        
         # Signal d'achat: RSI entre en zone de survente (acheter dans le rouge)
         # Deux conditions possibles:
         # 1. RSI vient de passer sous le seuil de survente
@@ -181,6 +197,16 @@ class RSIStrategy(BaseStrategy):
         if current_rsi < self.oversold_threshold:
             # Plus le RSI est bas, plus on est confiant
             confidence = self._calculate_confidence(current_rsi, OrderSide.BUY)
+            
+            # NOUVEAU : Ajuster selon la tendance
+            if not ema_trend_up and not price_above_ema:
+                # Tendance baissière confirmée : réduire la confiance
+                confidence *= 0.5  # Réduire la confiance mais ne pas bloquer complètement
+                logger.debug(f"[RSI] {self.symbol}: Signal BUY réduit en tendance baissière "
+                           f"(confiance réduite à {confidence:.2f})")
+                # Si confiance trop faible, ne pas générer
+                if confidence < 0.3:
+                    return None
             
             # Ne générer un signal que si:
             # - On vient d'entrer en survente (prev_rsi > oversold et current < oversold)
@@ -203,11 +229,11 @@ class RSIStrategy(BaseStrategy):
                 # Calculer le niveau de stop basé sur l'ATR
                 atr_percent = self.calculate_atr(df)
                 
-                # Multiplier selon le symbole
+                # Multiplier selon le symbole - AUGMENTÉ pour éviter les sorties prématurées
                 if 'BTC' in self.symbol:
-                    stop_mult = 1.2  # Plus agressif pour BTC
+                    stop_mult = 2.5  # Stop à 2.5x ATR pour BTC
                 else:
-                    stop_mult = 2.0  # Plus conservateur pour autres
+                    stop_mult = 3.0  # Stop à 3x ATR pour autres
                 
                 stop_distance = atr_percent * stop_mult
                 
@@ -221,7 +247,10 @@ class RSIStrategy(BaseStrategy):
                     "reason": signal_reason,
                     "rsi_delta": float(current_rsi - prev_rsi),
                     "stop_price": float(stop_price),
-                    "atr_percent": float(atr_percent)
+                    "atr_percent": float(atr_percent),
+                    "ema_trend_up": ema_trend_up,
+                    "price_above_ema": price_above_ema,
+                    "current_ema": float(current_ema)
                 }
                 
                 signal = self.create_signal(
@@ -232,18 +261,32 @@ class RSIStrategy(BaseStrategy):
                 )
         
         # Signal de vente: RSI entre en zone de surachat (vendre dans le vert)
-        elif current_rsi > self.overbought_threshold:
-            # Plus le RSI est haut, plus on est confiant
-            confidence = self._calculate_confidence(current_rsi, OrderSide.SELL)
+        # OU signal de vente anticipé en tendance baissière (RSI > 50)
+        elif (current_rsi > self.overbought_threshold or
+              (not ema_trend_up and not price_above_ema and current_rsi > 50 and current_rsi > prev_rsi)):
+            # Identifier le type de signal
+            is_early_sell = (not ema_trend_up and not price_above_ema and 
+                           current_rsi <= self.overbought_threshold and 
+                           current_rsi > 50 and current_rsi > prev_rsi)
             
-            # Ne générer un signal que si:
-            # - On vient d'entrer en surachat
-            # - OU le RSI continue de monter en zone de surachat
+            if is_early_sell:
+                # Signal de vente anticipé en tendance baissière
+                confidence = 0.6  # Confiance modérée
+                logger.info(f"[RSI] {self.symbol}: Signal SELL anticipé en tendance baissière (RSI={current_rsi:.1f})")
+            else:
+                # Plus le RSI est haut, plus on est confiant (signal normal)
+                confidence = self._calculate_confidence(current_rsi, OrderSide.SELL)
+            
+            # Logique pour générer le signal
             should_sell = False
             signal_reason = ""
             
-            if prev_rsi < self.overbought_threshold:
-                # Première entrée en surachat
+            if is_early_sell:
+                # Signal anticipé : toujours générer si conditions remplies
+                should_sell = True
+                signal_reason = "early_sell_bearish_trend"
+            elif prev_rsi < self.overbought_threshold:
+                # Première entrée en surachat (signal normal)
                 should_sell = True
                 signal_reason = "entry_overbought"
                 confidence *= 0.8  # Confiance modérée
