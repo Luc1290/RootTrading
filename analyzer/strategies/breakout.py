@@ -169,7 +169,7 @@ class BreakoutStrategy(BaseStrategy):
                     
                     return {
                         "type": "bullish",
-                        "side": OrderSide.BUY,
+                        "side": OrderSide.LONG,
                         "price": last_close,
                         "support": support,
                         "resistance": resistance,
@@ -203,7 +203,7 @@ class BreakoutStrategy(BaseStrategy):
                     
                     return {
                         "type": "bearish",
-                        "side": OrderSide.SELL,
+                        "side": OrderSide.SHORT,
                         "price": last_close,
                         "support": support,
                         "resistance": resistance,

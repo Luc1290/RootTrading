@@ -217,7 +217,7 @@ class EMACrossStrategy(BaseStrategy):
             }
             
             signal = self.create_signal(
-                side=OrderSide.BUY,
+                side=OrderSide.LONG,
                 price=current_price,
                 confidence=min(confidence, 0.95),
                 metadata=metadata
@@ -262,7 +262,7 @@ class EMACrossStrategy(BaseStrategy):
             }
             
             signal = self.create_signal(
-                side=OrderSide.SELL,
+                side=OrderSide.SHORT,
                 price=current_price,
                 confidence=min(confidence, 0.95),
                 metadata=metadata

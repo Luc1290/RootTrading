@@ -215,7 +215,7 @@ def create_order():
     Exemple de requête:
     {
         "symbol": "BTCUSDC",
-        "side": "BUY",
+        "side": "LONG",  # ou "SHORT"
         "quantity": 0.001,
         "price": 50000  # optionnel
     }
@@ -640,7 +640,7 @@ def diagnostic_binance_signature():
     timestamp = int(time.time() * 1000)
     test_params = {
         "symbol": "BTCUSDC",
-        "side": "BUY",
+        "side": "LONG",
         "type": "LIMIT",
         "quantity": "0.00100",
         "price": "30000.00",
@@ -759,11 +759,11 @@ def check_balance_for_order():
                 "message": "Paramètres manquants: symbol, side, quantity, price requis"
             }), 400
         
-        # Seulement vérifier pour les ordres BUY
-        if side.upper() != 'BUY':
+        # Seulement vérifier pour les ordres LONG
+        if side.upper() != 'LONG':
             return jsonify({
                 "success": True,
-                "message": "Vérification non nécessaire pour les ordres SELL",
+                "message": "Vérification non nécessaire pour les ordres SHORT",
                 "sufficient": True
             })
         

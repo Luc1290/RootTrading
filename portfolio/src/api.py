@@ -384,6 +384,50 @@ async def get_balances(
     
     return balances
 
+@app.get("/balance/{asset}")
+async def get_balance_by_asset(
+    asset: str = Path(..., description="Actif à récupérer (BTC, ETH, USDC, etc.)"),
+    portfolio: PortfolioModel = Depends(get_portfolio_model),
+    response: Response = None
+):
+    """
+    Récupère le solde pour un actif spécifique.
+    
+    Args:
+        asset: Symbole de l'actif (BTC, ETH, USDC, etc.)
+    
+    Returns:
+        Solde de l'actif avec free, locked et total
+    """
+    # Récupérer tous les soldes
+    balances = portfolio.get_latest_balances()
+    
+    # Chercher l'actif demandé
+    for balance in balances:
+        if balance.asset == asset:
+            # Ajouter des en-têtes de cache
+            if response:
+                response.headers["Cache-Control"] = "public, max-age=5"
+            
+            return {
+                "asset": balance.asset,
+                "free": balance.free,
+                "locked": balance.locked,
+                "total": balance.total,
+                "value_usdc": balance.value_usdc,
+                "available": balance.free  # Alias pour la compatibilité
+            }
+    
+    # Si l'actif n'est pas trouvé, retourner 0
+    return {
+        "asset": asset,
+        "free": 0.0,
+        "locked": 0.0,
+        "total": 0.0,
+        "value_usdc": 0.0,
+        "available": 0.0
+    }
+
 @app.get("/trades", response_model=TradeHistoryResponse)
 async def get_trade_history(
     page: int = Query(1, ge=1, description="Numéro de page"),

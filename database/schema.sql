@@ -14,7 +14,7 @@ SET default_text_search_config = 'pg_catalog.english';
 CREATE TABLE IF NOT EXISTS trade_executions (
     order_id VARCHAR(50) PRIMARY KEY,
     symbol VARCHAR(20) NOT NULL,
-    side VARCHAR(10) NOT NULL CHECK (side IN ('BUY', 'SELL')),
+    side VARCHAR(10) NOT NULL CHECK (side IN ('LONG', 'SHORT')),
     status VARCHAR(20) NOT NULL CHECK (status IN ('NEW', 'PARTIALLY_FILLED', 'FILLED', 'CANCELED', 'REJECTED', 'EXPIRED', 'PENDING_CANCEL')),
     price NUMERIC(16, 8) NOT NULL,
     quantity NUMERIC(16, 8) NOT NULL,
@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS trading_signals (
     id SERIAL PRIMARY KEY,
     strategy VARCHAR(50) NOT NULL,
     symbol VARCHAR(20) NOT NULL,
-    side VARCHAR(10) NOT NULL CHECK (side IN ('BUY', 'SELL')),
+    side VARCHAR(10) NOT NULL CHECK (side IN ('LONG', 'SHORT')),
     timestamp TIMESTAMP NOT NULL,
     price NUMERIC(16, 8) NOT NULL,
     confidence NUMERIC(5, 4),
@@ -353,9 +353,9 @@ SELECT
     CASE 
         WHEN tc.entry_price IS NOT NULL AND lp.price IS NOT NULL THEN
             CASE 
-                WHEN tc.status LIKE '%buy%' THEN 
+                WHEN tc.status LIKE '%LONG%' THEN 
                     (lp.price - tc.entry_price) / tc.entry_price * 100
-                WHEN tc.status LIKE '%sell%' THEN 
+                WHEN tc.status LIKE '%SHORT%' THEN 
                     (tc.entry_price - lp.price) / tc.entry_price * 100
                 ELSE NULL
             END

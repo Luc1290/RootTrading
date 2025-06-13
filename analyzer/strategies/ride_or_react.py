@@ -275,9 +275,9 @@ class RideOrReactStrategy(BaseStrategy):
         metadata['is_filter_signal'] = True  # Marquer comme signal de filtre
         
         # Le side n'a pas d'importance car ce signal ne sera pas tradé
-        # On met BUY pour ride (tendance haussière) et SELL pour react (prudence)
+        # On met LONG pour ride (tendance haussière) et SHORT pour react (prudence)
         return self.create_signal(
-            side=OrderSide.BUY if market_condition["mode"] == "ride" else OrderSide.SELL,
+            side=OrderSide.LONG if market_condition["mode"] == "ride" else OrderSide.SHORT,
             price=market_condition["current_price"],
             confidence=0.0,  # Confiance à 0 pour éviter tout trading accidentel
             metadata=metadata
@@ -298,16 +298,16 @@ class RideOrReactStrategy(BaseStrategy):
         
         # En mode "ride", filtrer les signaux de vente si le marché est en tendance haussière
         if self.current_mode == "ride":
-            # Si le marché est en forte hausse et le signal est SELL, filtrer
+            # Si le marché est en forte hausse et le signal est SHORT, filtrer
             is_uptrend = self.current_market_condition.get('24h_change', 0) > 0
-            
-            if is_uptrend and signal.side == OrderSide.SELL:
-                logger.info(f"🔍 [Ride or React] Filtrage d'un signal SELL en mode RIDE (tendance haussière)")
+
+            if is_uptrend and signal.side == OrderSide.SHORT:
+                logger.info(f"🔍 [Ride or React] Filtrage d'un signal SHORT en mode RIDE (tendance haussière)")
                 return True
-            
-            # Si le marché est en forte baisse et le signal est BUY, filtrer
-            if not is_uptrend and signal.side == OrderSide.BUY:
-                logger.info(f"🔍 [Ride or React] Filtrage d'un signal BUY en mode RIDE (tendance baissière)")
+
+            # Si le marché est en forte baisse et le signal est LONG, filtrer
+            if not is_uptrend and signal.side == OrderSide.LONG:
+                logger.info(f"🔍 [Ride or React] Filtrage d'un signal LONG en mode RIDE (tendance baissière)")
                 return True
         
         # En mode "react", ne pas filtrer les signaux

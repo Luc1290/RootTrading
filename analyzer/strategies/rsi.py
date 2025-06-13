@@ -196,13 +196,13 @@ class RSIStrategy(BaseStrategy):
         # 2. RSI est déjà en survente et continue de baisser (plus agressif)
         if current_rsi < self.oversold_threshold:
             # Plus le RSI est bas, plus on est confiant
-            confidence = self._calculate_confidence(current_rsi, OrderSide.BUY)
+            confidence = self._calculate_confidence(current_rsi, OrderSide.LONG)
             
             # NOUVEAU : Ajuster selon la tendance
             if not ema_trend_up and not price_above_ema:
                 # Tendance baissière confirmée : réduire la confiance
                 confidence *= 0.5  # Réduire la confiance mais ne pas bloquer complètement
-                logger.debug(f"[RSI] {self.symbol}: Signal BUY réduit en tendance baissière "
+                logger.debug(f"[RSI] {self.symbol}: Signal LONG réduit en tendance baissière "
                            f"(confiance réduite à {confidence:.2f})")
                 # Si confiance trop faible, ne pas générer
                 if confidence < 0.3:
@@ -211,21 +211,21 @@ class RSIStrategy(BaseStrategy):
             # Ne générer un signal que si:
             # - On vient d'entrer en survente (prev_rsi > oversold et current < oversold)
             # - OU le RSI continue de baisser en zone de survente (pour moyenner à la baisse)
-            should_buy = False
+            should_LONG = False
             signal_reason = ""
             
             if prev_rsi > self.oversold_threshold:
                 # Première entrée en survente
-                should_buy = True
+                should_LONG = True
                 signal_reason = "entry_oversold"
                 confidence *= 0.8  # Confiance modérée pour la première entrée
             elif current_rsi < prev_rsi - 2:  # RSI baisse de plus de 2 points
                 # RSI continue de chuter, opportunité de moyenner
-                should_buy = True
+                should_LONG = True
                 signal_reason = "deepening_oversold"
                 confidence *= 1.2  # Plus confiant quand ça baisse encore
-            
-            if should_buy:
+
+            if should_LONG:
                 # Calculer le niveau de stop basé sur l'ATR
                 atr_percent = self.calculate_atr(df)
                 
@@ -236,8 +236,8 @@ class RSIStrategy(BaseStrategy):
                     stop_mult = 3.0  # Stop à 3x ATR pour autres
                 
                 stop_distance = atr_percent * stop_mult
-                
-                # Pour BUY: stop en dessous
+
+                # Pour LONG: stop en dessous
                 stop_price = current_price * (1 - stop_distance / 100)
                 
                 metadata = {
@@ -254,7 +254,7 @@ class RSIStrategy(BaseStrategy):
                 }
                 
                 signal = self.create_signal(
-                    side=OrderSide.BUY,
+                    side=OrderSide.LONG,
                     price=current_price,
                     confidence=min(confidence, 0.95),
                     metadata=metadata
@@ -265,38 +265,38 @@ class RSIStrategy(BaseStrategy):
         elif (current_rsi > self.overbought_threshold or
               (not ema_trend_up and not price_above_ema and current_rsi > 50 and current_rsi > prev_rsi)):
             # Identifier le type de signal
-            is_early_sell = (not ema_trend_up and not price_above_ema and 
-                           current_rsi <= self.overbought_threshold and 
+            is_early_short = (not ema_trend_up and not price_above_ema and
+                           current_rsi <= self.overbought_threshold and
                            current_rsi > 50 and current_rsi > prev_rsi)
-            
-            if is_early_sell:
+
+            if is_early_short:
                 # Signal de vente anticipé en tendance baissière
                 confidence = 0.6  # Confiance modérée
-                logger.info(f"[RSI] {self.symbol}: Signal SELL anticipé en tendance baissière (RSI={current_rsi:.1f})")
+                logger.info(f"[RSI] {self.symbol}: Signal SHORT anticipé en tendance baissière (RSI={current_rsi:.1f})")
             else:
                 # Plus le RSI est haut, plus on est confiant (signal normal)
-                confidence = self._calculate_confidence(current_rsi, OrderSide.SELL)
-            
+                confidence = self._calculate_confidence(current_rsi, OrderSide.SHORT)
+
             # Logique pour générer le signal
-            should_sell = False
+            should_short = False
             signal_reason = ""
-            
-            if is_early_sell:
+
+            if is_early_short:
                 # Signal anticipé : toujours générer si conditions remplies
-                should_sell = True
-                signal_reason = "early_sell_bearish_trend"
+                should_short = True
+                signal_reason = "early_short_bearish_trend"
             elif prev_rsi < self.overbought_threshold:
                 # Première entrée en surachat (signal normal)
-                should_sell = True
+                should_short = True
                 signal_reason = "entry_overbought"
                 confidence *= 0.8  # Confiance modérée
             elif current_rsi > prev_rsi + 2:  # RSI monte de plus de 2 points
                 # RSI continue de monter, le marché est vraiment suracheté
-                should_sell = True
+                should_short = True
                 signal_reason = "extreme_overbought"
                 confidence *= 1.2  # Plus confiant
-            
-            if should_sell:
+
+            if should_short:
                 # Calculer le niveau de stop basé sur l'ATR
                 atr_percent = self.calculate_atr(df)
                 
@@ -307,8 +307,8 @@ class RSIStrategy(BaseStrategy):
                     stop_mult = 2.0  # Plus conservateur pour autres
                 
                 stop_distance = atr_percent * stop_mult
-                
-                # Pour SELL: stop au-dessus
+
+                # Pour SHORT: stop au-dessus
                 stop_price = current_price * (1 + stop_distance / 100)
                 
                 metadata = {
@@ -322,7 +322,7 @@ class RSIStrategy(BaseStrategy):
                 }
                 
                 signal = self.create_signal(
-                    side=OrderSide.SELL,
+                    side=OrderSide.SHORT,
                     price=current_price,
                     confidence=min(confidence, 0.95),
                     metadata=metadata
@@ -345,12 +345,12 @@ class RSIStrategy(BaseStrategy):
         
         Args:
             rsi_value: Valeur actuelle du RSI
-            side: Côté du signal (BUY ou SELL)
+            side: Côté du signal (LONG ou SHORT)
             
         Returns:
             Niveau de confiance entre 0.0 et 1.0
         """
-        if side == OrderSide.BUY:
+        if side == OrderSide.LONG:
             # Plus le RSI est bas, plus la confiance est élevée (acheter dans l'extrême rouge)
             # RSI=5 -> confiance ~0.95, RSI=20 -> confiance ~0.6
             if rsi_value >= self.oversold_threshold:
@@ -365,8 +365,8 @@ class RSIStrategy(BaseStrategy):
                 confidence *= 1.1
                 
             return min(confidence, 0.98)  # Augmenté de 0.95 à 0.98
-            
-        else:  # SELL
+
+        else:  # SHORT
             # Plus le RSI est haut, plus la confiance est élevée (vendre dans l'extrême vert)
             # RSI=95 -> confiance ~0.95, RSI=80 -> confiance ~0.6
             if rsi_value <= self.overbought_threshold:

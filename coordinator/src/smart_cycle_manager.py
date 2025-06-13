@@ -98,13 +98,15 @@ class SmartCycleManager:
         Returns:
             Décision d'action SmartCycleDecision
         """
-        symbol_side = f"{signal.symbol}_{signal.side.value}"
+        # Gérer le cas où signal.side peut être une chaîne ou un enum
+        side_str = signal.side.value if hasattr(signal.side, 'value') else str(signal.side)
+        symbol_side = f"{signal.symbol}_{side_str}"
         
         # Calculer la confiance globale du signal
         confidence = self._calculate_signal_confidence(signal)
         
         # Vérifier s'il y a déjà un cycle actif
-        active_cycle = self._find_active_cycle(signal.symbol, signal.side.value, existing_cycles)
+        active_cycle = self._find_active_cycle(signal.symbol, side_str, existing_cycles)
         
         if not active_cycle:
             # Pas de cycle actif → Créer un nouveau cycle
@@ -133,10 +135,12 @@ class SmartCycleManager:
         
         base_confidence = strength_scores.get(signal.strength, 0.5)
         
-        # Bonus si multiple indicateurs alignés
-        if signal.indicators and len(signal.indicators) > 1:
-            alignment_bonus = min(0.2, len(signal.indicators) * 0.05)
-            base_confidence += alignment_bonus
+        # Bonus si multiple indicateurs alignés (utiliser metadata si disponible)
+        if signal.metadata and 'indicators' in signal.metadata:
+            indicators = signal.metadata.get('indicators', [])
+            if isinstance(indicators, list) and len(indicators) > 1:
+                alignment_bonus = min(0.2, len(indicators) * 0.05)
+                base_confidence += alignment_bonus
         
         # Malus si signal récent (moins de 2 minutes)
         signal_age = time.time() - signal.timestamp.timestamp()
@@ -220,7 +224,7 @@ class SmartCycleManager:
             symbol=signal.symbol,
             amount=amount,
             currency=currency,
-            reason=f"Nouveau cycle {signal.strength.value} (confiance: {confidence:.1%})",
+            reason=f"Nouveau cycle {signal.strength.value if hasattr(signal.strength, 'value') else str(signal.strength)} (confiance: {confidence:.1%})",
             confidence=confidence,
             price_target=price_target,
             signal=signal
@@ -250,7 +254,8 @@ class SmartCycleManager:
         current_quantity = active_cycle.get('quantity', 0)
         
         # Calculer la performance actuelle
-        if signal.side.value == "LONG":
+        side_str = signal.side.value if hasattr(signal.side, 'value') else str(signal.side)
+        if side_str == "BUY" or side_str == "LONG":
             price_change_pct = ((current_price - entry_price) / entry_price) * 100
         else:
             price_change_pct = ((entry_price - current_price) / entry_price) * 100
@@ -354,7 +359,8 @@ class SmartCycleManager:
         # Si confiance élevée → Prix proche du marché (plus agressif)
         # Si confiance faible → Prix plus conservateur
         
-        if signal.side.value == "LONG":
+        side_str = signal.side.value if hasattr(signal.side, 'value') else str(signal.side)
+        if side_str == "BUY" or side_str == "LONG":
             # Pour un LONG, plus la confiance est haute, plus on accepte d'acheter proche du prix actuel
             discount_pct = (1.0 - confidence) * 2.0  # Entre 0% et 2% de discount
             entry_price = current_price * (1 - discount_pct / 100)

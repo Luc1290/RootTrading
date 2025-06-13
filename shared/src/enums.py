@@ -5,8 +5,8 @@ from enum import Enum, auto
 
 class OrderSide(str, Enum):
     """Type d'ordre: achat ou vente."""
-    BUY = "BUY"
-    SELL = "SELL"
+    LONG = "LONG"
+    SHORT = "SHORT"
 
 class OrderType(str, Enum):
     """Type d'ordre sur l'exchange."""

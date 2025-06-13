@@ -133,7 +133,7 @@ class AnalyzerManager:
                                 try:
                                     signal_dict['side'] = OrderSide(signal_dict['side'])
                                 except (ValueError, TypeError):
-                                    signal_dict['side'] = OrderSide.BUY  # Valeur par défaut
+                                    signal_dict['side'] = OrderSide.LONG  # Valeur par défaut
                         
                             if isinstance(signal_dict.get('strength'), str):
                                 try:

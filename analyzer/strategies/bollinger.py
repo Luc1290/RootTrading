@@ -198,7 +198,7 @@ class BollingerStrategy(BaseStrategy):
                 # Tendance baissière confirmée : réduire la confiance mais ne pas bloquer
                 confidence *= 0.4  # Réduire drastiquement la confiance
                 signal_reason += "_bearish_market"
-                logger.debug(f"[Bollinger] {self.symbol}: Signal BUY réduit en tendance baissière "
+                logger.debug(f"[Bollinger] {self.symbol}: Signal LONG réduit en tendance baissière "
                            f"(confiance réduite à {confidence:.2f})")
                 # Si la confiance devient trop faible, ne pas générer de signal
                 if confidence < 0.3:
@@ -254,7 +254,7 @@ class BollingerStrategy(BaseStrategy):
             }
             
             signal = self.create_signal(
-                side=OrderSide.BUY,
+                side=OrderSide.LONG,
                 price=current_price,
                 confidence=min(confidence, 0.95),
                 metadata=metadata
@@ -265,25 +265,25 @@ class BollingerStrategy(BaseStrategy):
         elif (current_price >= current_upper * 0.998 or  # Condition normale
               (not sma_trend_up and not price_above_sma and current_price >= current_middle * 1.005)):  # Vente anticipée en tendance baissière
             # Identifier le type de signal de vente
-            is_early_sell = (not sma_trend_up and not price_above_sma and 
-                           current_price < current_upper * 0.998 and 
-                           current_price >= current_middle * 1.005)
-            
-            if is_early_sell:
+            is_early_short = (not sma_trend_up and not price_above_sma and
+                              current_price < current_upper * 0.998 and
+                              current_price >= current_middle * 1.005)
+
+            if is_early_short:
                 # Signal de vente anticipé en tendance baissière
                 penetration_pct = ((current_price - current_middle) / current_middle) * 100
                 confidence = 0.75  # Confiance modérée pour vente anticipée
-                signal_reason = "early_sell_bearish_trend"
-                logger.info(f"[Bollinger] {self.symbol}: Signal SELL anticipé en tendance baissière")
+                signal_reason = "early_short_bearish_trend"
+                logger.info(f"[Bollinger] {self.symbol}: Signal SHORT anticipé en tendance baissière")
             else:
                 # Signal de vente normal (bande supérieure)
                 penetration_pct = ((current_price - current_upper) / current_upper) * 100
             
             # Calculer la confiance (seulement pour signaux normaux)
-            if not is_early_sell:
+            if not is_early_short:
                 # Vérifier si les bandes sont suffisamment écartées
                 if band_width_pct < 1.0:  # Bandes très serrées, marché plat
-                    confidence = 0.7  # Aligné avec les signaux BUY pour cohérence
+                    confidence = 0.7  # Aligné avec les signaux LONG pour cohérence
                     signal_reason = "squeeze_caution"
                 elif penetration_pct > 0.5:  # Forte pénétration au-dessus de la bande
                     confidence = 0.85
@@ -329,7 +329,7 @@ class BollingerStrategy(BaseStrategy):
             }
             
             signal = self.create_signal(
-                side=OrderSide.SELL,
+                side=OrderSide.SHORT,
                 price=current_price,
                 confidence=min(confidence, 0.95),
                 metadata=metadata
@@ -354,21 +354,21 @@ class BollingerStrategy(BaseStrategy):
             price: Prix actuel
             lower: Valeur de la bande inférieure
             upper: Valeur de la bande supérieure
-            side: Côté du signal (BUY ou SELL)
-            
+            side: Côté du signal (LONG ou SHORT)
+
         Returns:
             Niveau de confiance entre 0.0 et 1.0
         """
         # Calcul de la distance du prix dans les bandes
         band_width = upper - lower
-        
-        if side == OrderSide.BUY:
+
+        if side == OrderSide.LONG:
             # Plus le prix est bas sous la bande inférieure, plus la confiance est élevée
             penetration = (lower - price) / band_width
             # Normaliser entre 0.5 et 1.0
             confidence = 0.5 + min(max(penetration * 2, 0), 0.5)
             return confidence
-        else:  # SELL
+        else:  # SHORT
             # Plus le prix est haut au-dessus de la bande supérieure, plus la confiance est élevée
             penetration = (price - upper) / band_width
             # Normaliser entre 0.5 et 1.0

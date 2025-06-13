@@ -234,7 +234,7 @@ class OrderManager:
         
         Args:
             symbol: Symbole (ex: 'BTCUSDC')
-            side: Côté de l'ordre (BUY ou SELL)
+            side: Côté de l'ordre (LONG ou SHORT)
             quantity: Quantité à trader
             price: Prix (optionnel, sinon au marché)
             strategy: Nom de la stratégie (optionnel, défaut: "Manual")
@@ -266,8 +266,8 @@ class OrderManager:
             
             # Calculer le stop par défaut si non spécifié (plus de target avec TrailingStop pur)
             if stop_price is None:
-                # Par défaut: -2% pour BUY, +2% pour SELL
-                stop_price = price * 0.98 if side == OrderSide.BUY else price * 1.02
+                # Par défaut: -2% pour LONG, +2% pour SHORT
+                stop_price = price * 0.98 if side == OrderSide.LONG else price * 1.02
                 logger.info(f"Stop loss calculé automatiquement: {stop_price:.2f}")
                 
             # Créer un cycle avec TrailingStop pur (plus de target_price)
@@ -320,10 +320,10 @@ class OrderManager:
                 "strategy": cycle.strategy,
                 "status": cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status),
                 # Vérification robuste du statut pour déterminer côté (insensible à la casse)
-                "side": "BUY" if (
-                    hasattr(cycle.status, 'value') and cycle.status.value.lower() in ['active_buy', 'waiting_buy'] or
-                    isinstance(cycle.status, str) and cycle.status.lower() in ['active_buy', 'waiting_buy']
-                ) else "SELL",
+                "side": "LONG" if (
+                    hasattr(cycle.status, 'value') and cycle.status.value.lower() in ['active_long', 'waiting_long'] or
+                    isinstance(cycle.status, str) and cycle.status.lower() in ['active_long', 'waiting_long']
+                ) else "SHORT",
                 "entry_price": cycle.entry_price,
                 "current_price": self.last_prices.get(cycle.symbol),
                 "quantity": cycle.quantity,

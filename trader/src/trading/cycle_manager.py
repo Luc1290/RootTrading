@@ -559,8 +559,8 @@ class CycleManager:
 
             # Garder le prix de référence pour les calculs (validation des fonds, target price, etc.)
             reference_price = price
-            
-            # Vérifier le solde avant d'exécuter l'ordre (pour BUY et SELL)
+
+            # Vérifier le solde avant d'exécuter l'ordre (pour LONG et SHORT)
             if not self.demo_mode:
                 # Extraire la base currency et quote currency
                 if symbol.endswith('USDC'):
@@ -578,8 +578,8 @@ class CycleManager:
                 balances = self.binance_executor.utils.fetch_account_balances(self.binance_executor.time_offset)
                 logger.info(f"🔍 Balances Binance récupérées: {balances}")
                 
-                if side == OrderSide.BUY:
-                    # Pour BUY: vérifier qu'on a assez de quote currency
+                if side == OrderSide.LONG:
+                    # Pour LONG: vérifier qu'on a assez de quote currency
                     available_balance = balances.get(quote_currency, {}).get('free', 0)
                     logger.info(f"💰 Balance {quote_currency}: {available_balance}")
                     
@@ -589,8 +589,8 @@ class CycleManager:
                     total_cost = reference_price * quantity * slippage_margin * fee_margin
                     
                     if available_balance < total_cost:
-                        logger.error(f"❌ Solde {quote_currency} insuffisant pour BUY: {available_balance:.2f} < {total_cost:.2f}")
-                        
+                        logger.error(f"❌ Solde {quote_currency} insuffisant pour LONG: {available_balance:.2f} < {total_cost:.2f}")
+
                         # Créer le cycle avec un statut FAILED pour la traçabilité
                         cycle.status = CycleStatus.FAILED
                         cycle.updated_at = datetime.now()
@@ -617,8 +617,8 @@ class CycleManager:
                         
                         return None
                         
-                elif side == OrderSide.SELL:
-                    # Pour SELL: vérifier qu'on a assez de base currency à vendre
+                elif side == OrderSide.SHORT:
+                    # Pour SHORT: vérifier qu'on a assez de base currency à vendre
                     available_balance = balances.get(base_currency, {}).get('free', 0)
                     logger.info(f"💰 Balance {base_currency}: {available_balance}")
                     
@@ -626,8 +626,8 @@ class CycleManager:
                     required_quantity = quantity * 1.001  # 0.1% de marge pour les frais
                     
                     if available_balance < required_quantity:
-                        logger.error(f"❌ Solde {base_currency} insuffisant pour SELL: {available_balance:.8f} < {required_quantity:.8f}")
-                        
+                        logger.error(f"❌ Solde {base_currency} insuffisant pour SHORT: {available_balance:.8f} < {required_quantity:.8f}")
+
                         # Créer le cycle avec un statut FAILED pour la traçabilité
                         cycle.status = CycleStatus.FAILED
                         cycle.updated_at = datetime.now()
@@ -755,9 +755,9 @@ class CycleManager:
                     logger.info(f"📊 Quantité ajustée: {cycle.quantity} → {execution.quantity}")
                     cycle.metadata['executed_quantity'] = float(execution.quantity)
                 # Après un ordre MARKET d'entrée, on attend l'ordre de sortie
-                # BUY -> on a acheté, on attend de vendre -> WAITING_SELL
-                # SELL -> on a vendu, on attend de racheter -> WAITING_BUY
-                cycle.status = CycleStatus.WAITING_SELL if side == OrderSide.BUY else CycleStatus.WAITING_BUY
+                # LONG -> on a acheté, on attend de vendre -> WAITING_SELL
+                # SHORT -> on a vendu, on attend de racheter -> WAITING_BUY
+                cycle.status = CycleStatus.WAITING_SELL if side == OrderSide.LONG else CycleStatus.WAITING_BUY
                 cycle.confirmed = True
                 cycle.updated_at = datetime.now()
                 self.active_cycles[cycle_id] = cycle
@@ -868,12 +868,13 @@ class CycleManager:
             
             # Déterminer le côté de l'ordre de sortie (inverse de l'entrée)
             if cycle.status in [CycleStatus.WAITING_BUY, CycleStatus.ACTIVE_BUY]:
-                # Position SHORT → fermer par BUY
-                exit_side = OrderSide.BUY
+                # Position SHORT → fermer par LONG
+                # Position SHORT → fermer par LONG
+                exit_side = OrderSide.LONG
             else:  # WAITING_SELL ou ACTIVE_SELL
-                # Position LONG → fermer par SELL
-                exit_side = OrderSide.SELL
-            
+                # Position LONG → fermer par SHORT
+                exit_side = OrderSide.SHORT
+
             # Si il y a un ordre de sortie existant, vérifier son statut avant de l'annuler
             # Ne pas essayer d'annuler si le cycle est en WAITING_SELL/BUY car l'ordre n'existe pas sur Binance
             # Si le cycle a un ordre de sortie et est en attente, vérifier s'il est exécuté
@@ -893,7 +894,7 @@ class CycleManager:
                             entry_value = cycle.entry_price * actual_quantity
                             exit_value = order_status.price * actual_quantity
                             
-                            if exit_side == OrderSide.SELL:
+                            if exit_side == OrderSide.SHORT:
                                 profit_loss = exit_value - entry_value
                             else:
                                 profit_loss = entry_value - exit_value
@@ -962,7 +963,7 @@ class CycleManager:
             # Vérifier les soldes disponibles avant de créer l'ordre
             balances = self.binance_executor.get_account_balances()
             
-            if exit_side == OrderSide.SELL:
+            if exit_side == OrderSide.SHORT:
                 # Pour vendre, on a besoin de la devise de base (ex: BTC pour BTCUSDC)
                 base_asset = cycle.symbol[:-4] if cycle.symbol.endswith('USDC') else cycle.symbol[:-3]
                 available = balances.get(base_asset, {}).get('free', 0)
@@ -1090,10 +1091,10 @@ class CycleManager:
             actual_entry_quantity = cycle.metadata.get('executed_quantity', cycle.quantity) if cycle.metadata else cycle.quantity
             entry_value = cycle.entry_price * actual_entry_quantity
             exit_value = execution.price * execution.quantity
-            
-            if exit_side == OrderSide.SELL:
-                # Si on vend, profit = sortie - entrée
-                profit_loss = exit_value - entry_value
+
+            if exit_side == OrderSide.SHORT:
+                # Si on vend à découvert, profit = entrée - sortie
+                profit_loss = entry_value - exit_value
             else:
                 # Si on achète (pour clôturer une vente), profit = entrée - sortie
                 profit_loss = entry_value - exit_value

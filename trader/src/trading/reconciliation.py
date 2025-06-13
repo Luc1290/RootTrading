@@ -261,18 +261,18 @@ class ExchangeReconciliation:
                         if entry_execution:
                             entry_side = entry_execution.side
                         else:
-                            # Fallback: si l'ordre d'entrée n'est pas trouvé, on suppose BUY
+                            # Fallback: si l'ordre d'entrée n'est pas trouvé, on suppose LONG
                             # (la plupart des stratégies commencent par acheter)
-                            entry_side = OrderSide.BUY
-                            logger.warning(f"⚠️ Ordre d'entrée non trouvé pour le cycle {cycle.id}, assumé BUY")
-                        
+                            entry_side = OrderSide.LONG
+                            logger.warning(f"⚠️ Ordre d'entrée non trouvé pour le cycle {cycle.id}, assumé LONG")
+
                         # IMPORTANT: Utiliser la quantité réellement exécutée
                         actual_quantity = cycle.metadata.get('executed_quantity', cycle.quantity) if cycle.metadata else cycle.quantity
-                        
-                        # Si entrée = BUY, alors sortie = SELL : profit = (prix_sortie - prix_entrée) * quantité
-                        if entry_side == OrderSide.BUY:
+
+                        # Si entrée = LONG, alors sortie = SHORT : profit = (prix_sortie - prix_entrée) * quantité
+                        if entry_side == OrderSide.LONG:
                             cycle.profit_loss = (cycle.exit_price - cycle.entry_price) * actual_quantity
-                        # Si entrée = SELL, alors sortie = BUY : profit = (prix_entrée - prix_sortie) * quantité
+                        # Si entrée = SHORT, alors sortie = LONG : profit = (prix_entrée - prix_sortie) * quantité
                         else:
                             cycle.profit_loss = (cycle.entry_price - cycle.exit_price) * actual_quantity
                         

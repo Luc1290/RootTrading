@@ -275,7 +275,7 @@ class MACDStrategy(BaseStrategy):
                 signal = StrategySignal(
                     strategy=self.name,
                     symbol=self.symbol,
-                    side=OrderSide.BUY,
+                    side=OrderSide.LONG,
                     timestamp=datetime.now(),
                     price=current_price,
                     confidence=0.8 if divergence else 0.75,  # Augmenté pour passer le nouveau filtre
@@ -307,7 +307,7 @@ class MACDStrategy(BaseStrategy):
                 signal = StrategySignal(
                     strategy=self.name,
                     symbol=self.symbol,
-                    side=OrderSide.SELL,
+                    side=OrderSide.SHORT,
                     timestamp=datetime.now(),
                     price=current_price,
                     confidence=0.7 if divergence else 0.6,
