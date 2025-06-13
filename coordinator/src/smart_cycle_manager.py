@@ -255,7 +255,7 @@ class SmartCycleManager:
         
         # Calculer la performance actuelle
         side_str = signal.side.value if hasattr(signal.side, 'value') else str(signal.side)
-        if side_str == "BUY" or side_str == "LONG":
+        if side_str == "LONG":
             price_change_pct = ((current_price - entry_price) / entry_price) * 100
         else:
             price_change_pct = ((entry_price - current_price) / entry_price) * 100

@@ -363,13 +363,20 @@ class BinanceUtils:
         
         # Convertir BUY/SELL de Binance vers LONG/SHORT pour notre enum
         binance_side = data['side']
+        logger.debug(f"🔍 Conversion OrderSide: '{binance_side}' (type: {type(binance_side)})")
         if binance_side == "BUY":
             side = OrderSide.LONG
         elif binance_side == "SELL":
             side = OrderSide.SHORT
         else:
             # Compatibilité au cas où la valeur serait déjà LONG/SHORT
-            side = OrderSide(binance_side)
+            # ou fallback pour des valeurs inattendues
+            try:
+                side = OrderSide(binance_side)
+            except ValueError:
+                # Si la conversion échoue, traiter comme inconnu et logger l'erreur
+                logger.error(f"❌ Valeur OrderSide non reconnue de Binance: {binance_side}")
+                raise ValueError(f"OrderSide invalide reçu de Binance: {binance_side}")
         
         # Créer et retourner l'exécution
         return TradeExecution(
@@ -431,13 +438,20 @@ class BinanceUtils:
             
             # Convertir BUY/SELL de Binance vers LONG/SHORT pour notre enum
             binance_side = order_response['side']
+            logger.debug(f"🔍 Conversion OrderSide: '{binance_side}' (type: {type(binance_side)})")
             if binance_side == "BUY":
                 side = OrderSide.LONG
             elif binance_side == "SELL":
                 side = OrderSide.SHORT
             else:
                 # Compatibilité au cas où la valeur serait déjà LONG/SHORT
-                side = OrderSide(binance_side)
+                # ou fallback pour des valeurs inattendues
+                try:
+                    side = OrderSide(binance_side)
+                except ValueError:
+                    # Si la conversion échoue, traiter comme inconnu et logger l'erreur
+                    logger.error(f"❌ Valeur OrderSide non reconnue de Binance: {binance_side}")
+                    raise ValueError(f"OrderSide invalide reçu de Binance: {binance_side}")
             
             # Préparer l'objet d'exécution
             execution = TradeExecution(

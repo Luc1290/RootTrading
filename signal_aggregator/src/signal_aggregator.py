@@ -234,6 +234,11 @@ class SignalAggregator:
         # Trailing stop fixe à 3% pour système pur (TrailingStop gère le reste)
         trailing_delta = 3.0
         
+        # Validation supplémentaire pour Aggregated_1 (une seule stratégie)
+        if len(contributing_strategies) == 1 and confidence < 0.8:
+            logger.info(f"Signal Aggregated_1 rejeté pour {symbol}: confiance {confidence:.2f} < 0.8 (seuil élevé pour signal unique)")
+            return None
+        
         return {
             'symbol': symbol,
             'side': direction,  # Use 'side' instead of 'direction' for coordinator compatibility

@@ -95,6 +95,15 @@ class StopManagerPure:
         # Stocker dans le cache
         self.trailing_stops[cycle.id] = ts
         
+        # Initialiser le GainProtector pour ce cycle
+        direction = "LONG" if side == Side.LONG else "SHORT"
+        self.gain_protector.initialize_cycle(
+            cycle_id=cycle.id,
+            entry_price=cycle.entry_price,
+            direction=direction,
+            quantity=cycle.quantity or 0.0
+        )
+        
         # Mettre à jour le cycle avec le stop initial
         cycle.stop_price = ts.stop_price
         cycle.trailing_delta = self.default_stop_pct
@@ -125,18 +134,9 @@ class StopManagerPure:
             for cycle in cycles:
                 # Vérifier si on a un TrailingStop pour ce cycle
                 if cycle.id not in self.trailing_stops:
-                    # Créer le TrailingStop s'il n'existe pas
+                    # Créer le TrailingStop s'il n'existe pas (inclut l'initialisation du GainProtector)
                     logger.debug(f"🔧 Initialisation trailing stop manquant pour cycle {cycle.id}")
                     self.initialize_trailing_stop(cycle)
-                    
-                    # Initialiser aussi le GainProtector pour ce cycle
-                    direction = "LONG" if cycle.status == CycleStatus.WAITING_SELL else "SHORT"
-                    self.gain_protector.initialize_cycle(
-                        cycle_id=cycle.id,
-                        entry_price=cycle.entry_price,
-                        direction=direction,
-                        quantity=cycle.quantity or 0.0
-                    )
                 
                 ts = self.trailing_stops[cycle.id]
                 

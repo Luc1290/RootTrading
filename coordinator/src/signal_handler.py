@@ -247,11 +247,24 @@ class SignalHandler:
         existing_same = self.active_cycles_cache.get(signal.symbol, {}).get(signal_position, 0)
         
         # Cas 1: Signal opposé à des positions existantes
+        # NOTE: Si _should_process_signal_strategically a retourné True,
+        # c'est qu'on a décidé d'accepter le retournement (signal très fort)
+        # Dans ce cas, on devrait fermer les positions opposées, pas bloquer le signal
         if existing_opposite > 0:
-            # NOUVEAU: BLOQUER TOUS LES SIGNAUX CONTRADICTOIRES MÊME AGGREGATED
-            logger.warning(f"🚫 BLOQUÉ: Signal {signal_position} contradictoire avec {existing_opposite} "
-                         f"positions {opposite_position} sur {signal.symbol} - Stratégie: {signal.strategy}")
-            return
+            # Calculer la force du signal pour décider
+            signal_strength_score = self._get_signal_strength_score(signal)
+            
+            if signal_strength_score >= 0.85:  # Signal très fort accepté par le filtre stratégique
+                logger.info(f"🔄 RETOURNEMENT ACCEPTÉ: Signal {signal_position} très fort ({signal_strength_score:.2f}) "
+                           f"va fermer {existing_opposite} positions {opposite_position} sur {signal.symbol}")
+                # Fermer les positions opposées avant de créer la nouvelle
+                self._close_opposite_positions(signal.symbol, opposite_position)
+                # Le signal continuera pour créer la nouvelle position
+            else:
+                # Signal pas assez fort, on bloque
+                logger.warning(f"🚫 BLOQUÉ: Signal {signal_position} contradictoire avec {existing_opposite} "
+                             f"positions {opposite_position} sur {signal.symbol} - Force insuffisante: {signal_strength_score:.2f}")
+                return
         
         # Cas 2: Vérifier si on peut ajouter à la position existante
         if existing_same >= self.max_cycles_per_symbol_side:
@@ -434,9 +447,22 @@ class SignalHandler:
         
         base_score = strength_scores.get(signal.strength, 0.5)
         
-        # Bonus pour les signaux agrégés (plus fiables)
+        # Bonus progressif pour les signaux agrégés selon le nombre de stratégies
         if signal.strategy.startswith("Aggregated_"):
-            base_score = min(base_score + 0.1, 1.0)
+            try:
+                num_strategies = int(signal.strategy.split("_")[1])
+                if num_strategies == 1:
+                    # Petit bonus pour une seule stratégie
+                    base_score = min(base_score + 0.05, 1.0)
+                elif num_strategies == 2:
+                    # Bonus moyen pour 2 stratégies
+                    base_score = min(base_score + 0.10, 1.0)
+                elif num_strategies >= 3:
+                    # Bonus fort pour 3+ stratégies (consensus fort)
+                    base_score = min(base_score + 0.15, 1.0)
+            except (IndexError, ValueError):
+                # Si on ne peut pas parser le nombre, bonus par défaut
+                base_score = min(base_score + 0.10, 1.0)
         
         # Bonus/malus selon la confidence
         if hasattr(signal, 'confidence') and signal.confidence is not None:
@@ -576,6 +602,95 @@ class SignalHandler:
             
         except Exception as e:
             logger.error(f"Erreur lors du rafraîchissement du cache: {str(e)}")
+    
+    def _close_opposite_positions(self, symbol: str, position_to_close: str) -> bool:
+        """
+        Ferme toutes les positions opposées pour permettre un retournement de marché.
+        
+        Args:
+            symbol: Symbole concerné (ex: BTCUSDC)
+            position_to_close: Position à fermer (LONG ou SHORT)
+            
+        Returns:
+            True si toutes les positions ont été fermées avec succès
+        """
+        try:
+            logger.info(f"🔄 Fermeture des positions {position_to_close} sur {symbol} pour retournement")
+            
+            # Récupérer les cycles actifs pour ce symbole
+            response = self._make_request_with_retry(
+                f"{self.trader_api_url}/cycles",
+                method="GET",
+                params={
+                    "symbol": symbol,
+                    "confirmed": "true",
+                    "include_completed": "false"
+                },
+                timeout=5.0
+            )
+            
+            if not response or not response.get('success'):
+                logger.error(f"Impossible de récupérer les cycles {position_to_close} pour {symbol}")
+                return False
+            
+            # Extraire les cycles
+            cycles = response.get('cycles', [])
+            cycles_to_close = []
+            
+            # Filtrer les cycles de la position à fermer
+            for cycle in cycles:
+                status = cycle.get('status', '')
+                cycle_position = None
+                
+                if status in ['waiting_sell', 'active_sell']:
+                    cycle_position = 'LONG'  # Position longue en attente/en cours de vente
+                elif status in ['waiting_buy', 'active_buy']:
+                    cycle_position = 'SHORT'  # Position courte en attente/en cours de rachat
+                
+                if cycle_position == position_to_close:
+                    cycles_to_close.append(cycle)
+            
+            if not cycles_to_close:
+                logger.info(f"Aucune position {position_to_close} à fermer pour {symbol}")
+                return True
+            
+            # Fermer chaque cycle
+            success_count = 0
+            for cycle in cycles_to_close:
+                cycle_id = cycle.get('id')
+                if not cycle_id:
+                    continue
+                
+                logger.info(f"📤 Fermeture du cycle {cycle_id} ({position_to_close})")
+                
+                # Appeler l'API pour fermer le cycle au marché
+                close_response = self._make_request_with_retry(
+                    f"{self.trader_api_url}/cycle/{cycle_id}/close",
+                    method="POST",
+                    json={"reason": "market_reversal"},
+                    timeout=10.0
+                )
+                
+                if close_response and close_response.get('success'):
+                    success_count += 1
+                    logger.info(f"✅ Cycle {cycle_id} fermé avec succès")
+                else:
+                    logger.error(f"❌ Échec de fermeture du cycle {cycle_id}")
+            
+            # Rafraîchir le cache après fermeture
+            self._refresh_active_cycles_cache()
+            
+            success = success_count == len(cycles_to_close)
+            if success:
+                logger.info(f"✅ Toutes les positions {position_to_close} fermées ({success_count}/{len(cycles_to_close)})")
+            else:
+                logger.warning(f"⚠️ Fermeture partielle: {success_count}/{len(cycles_to_close)} positions fermées")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la fermeture des positions {position_to_close}: {str(e)}")
+            return False
     
     def _can_create_new_cycle(self, symbol: str, side: str) -> bool:
         """

@@ -1421,26 +1421,32 @@ class CycleManager:
                     continue
                     
                 actual_balance = binance_balances.get(asset, {}).get('free', 0.0)
-                difference = abs(actual_balance - expected_qty)
-                difference_percent = (difference / expected_qty * 100) if expected_qty > 0 else 0
+                difference = actual_balance - expected_qty
+                difference_percent = (abs(difference) / expected_qty * 100) if expected_qty > 0 else 0
 
-                if difference > tolerance and difference_percent > 5:  # Plus de 5% de différence
+                # Alerter seulement si la balance actuelle est INFÉRIEURE à l'attendue (manque d'assets)
+                # Si elle est supérieure, c'est probablement des assets d'anciens cycles - pas un problème
+                if difference < -tolerance and difference_percent > 5:  # Manque plus de 5%
                     alerts.append({
                         'asset': asset,
                         'expected': expected_qty,
                         'actual': actual_balance,
-                        'difference': difference,
-                        'difference_percent': difference_percent
+                        'difference': abs(difference),
+                        'difference_percent': difference_percent,
+                        'type': 'insufficient_balance'
                     })
+                elif difference > tolerance and difference_percent > 50:  # Surplus significatif (>50%) - juste pour info
+                    logger.debug(f"💰 Surplus d'assets détecté pour {asset}: {actual_balance:.6f} vs attendu {expected_qty:.6f} "
+                                f"(+{difference:.6f}, +{difference_percent:.1f}%) - probablement des assets d'anciens cycles")
 
             # Logger les résultats
             if alerts:
-                logger.warning(f"⚠️ Désynchronisation des balances détectée:")
+                logger.warning(f"⚠️ Balances insuffisantes détectées:")
                 for alert in alerts:
                     logger.warning(f"   {alert['asset']}: Attendu {alert['expected']:.6f}, Actuel {alert['actual']:.6f} "
-                                 f"(Diff: {alert['difference']:.6f}, {alert['difference_percent']:.1f}%)")
+                                 f"(Manque: {alert['difference']:.6f}, -{alert['difference_percent']:.1f}%)")
             else:
-                logger.debug(f"✅ Balances cohérentes: {len(expected_balances)} assets vérifiés")
+                logger.debug(f"✅ Balances suffisantes: {len(expected_balances)} assets vérifiés")
 
             # Log détaillé pour debug
             if expected_balances:
