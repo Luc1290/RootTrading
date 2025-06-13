@@ -1544,7 +1544,7 @@ class SignalHandler:
             # Récupérer la balance disponible
             quote_asset = self._get_quote_asset(signal.symbol)
             try:
-                portfolio_url = f"http://portfolio:5003/balance/{quote_asset}"
+                portfolio_url = f"http://portfolio:8000/balance/{quote_asset}"
                 response = self._make_request_with_retry(portfolio_url)
                 available_balance = response.get('available', 0) if response else 0
             except Exception as e:

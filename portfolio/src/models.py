@@ -556,16 +556,11 @@ class PortfolioModel:
         if not balances:
             return False
         
-        # Préparer l'insertion
-        query = """
-        INSERT INTO portfolio_balances
-        (asset, free, locked, total, value_usdc, timestamp)
-        VALUES %s
-        """
-        
         now = datetime.now()
         values = []
+        assets_from_binance = set()
         
+        # Préparer les actifs présents sur Binance
         for balance in balances:
             # Accepter les objets AssetBalance ou les dictionnaires
             if isinstance(balance, dict):
@@ -583,19 +578,41 @@ class PortfolioModel:
                 total = balance.total
                 value_usdc = balance.value_usdc
             
+            assets_from_binance.add(asset)
             values.append((asset, free, locked, total, value_usdc, now))
         
-        # Utiliser execute_values pour une insertion plus efficace
+        # NOUVEAU: Récupérer tous les actifs connus (ayant eu une balance > 0 récemment)
+        known_assets_query = """
+        SELECT DISTINCT asset 
+        FROM portfolio_balances 
+        WHERE total > 0 
+        AND timestamp > NOW() - INTERVAL '7 days'
+        """
+        known_assets_result = self.db.execute_query(known_assets_query, fetch_all=True)
+        
+        if known_assets_result:
+            # Pour chaque actif connu mais absent de Binance, ajouter une entrée à 0
+            for row in known_assets_result:
+                asset = row['asset']
+                if asset not in assets_from_binance:
+                    # Ajouter cet actif avec une valeur de 0
+                    values.append((asset, 0.0, 0.0, 0.0, 0.0, now))
+                    logger.info(f"📉 Actif {asset} absent de Binance, mis à 0")
+        
+        # Insérer toutes les valeurs (présentes et à 0)
         success = self.db.execute_batch(
             "INSERT INTO portfolio_balances (asset, free, locked, total, value_usdc, timestamp) VALUES %s",
             values
         )
         
         if success:
-            logger.info(f"✅ Soldes mis à jour pour {len(balances)} actifs")
+            logger.info(f"✅ Soldes mis à jour: {len(assets_from_binance)} actifs actifs, {len(values) - len(assets_from_binance)} mis à 0")
             # Invalider le cache
             SharedCache.clear('latest_balances')
             SharedCache.clear('portfolio_summary')
+            
+        # Nettoyer les anciens enregistrements (garder seulement les 24 dernières heures)
+        self._cleanup_old_records()
         
         return success
     
@@ -762,6 +779,46 @@ class PortfolioModel:
             SharedCache.set(cache_key, result)
             
         return result or []
+    
+    def _cleanup_old_records(self) -> None:
+        """
+        Nettoie les anciens enregistrements de portfolio_balances.
+        Garde seulement les 24 dernières heures de données pour chaque actif,
+        mais conserve toujours au moins un enregistrement par actif.
+        """
+        try:
+            # Compter d'abord combien d'enregistrements vont être supprimés
+            count_query = """
+            SELECT COUNT(*) as count_to_delete
+            FROM portfolio_balances 
+            WHERE timestamp < NOW() - INTERVAL '24 hours'
+            AND (asset, timestamp) NOT IN (
+                SELECT asset, MAX(timestamp) 
+                FROM portfolio_balances 
+                GROUP BY asset
+            )
+            """
+            count_result = self.db.execute_query(count_query, fetch_one=True)
+            count_to_delete = count_result.get('count_to_delete', 0) if count_result else 0
+            
+            if count_to_delete > 0:
+                # Maintenant supprimer les enregistrements
+                cleanup_query = """
+                DELETE FROM portfolio_balances 
+                WHERE timestamp < NOW() - INTERVAL '24 hours'
+                AND (asset, timestamp) NOT IN (
+                    SELECT asset, MAX(timestamp) 
+                    FROM portfolio_balances 
+                    GROUP BY asset
+                )
+                """
+                
+                result = self.db.execute_query(cleanup_query, commit=True)
+                if result:
+                    logger.info(f"🧹 Nettoyage: {count_to_delete} anciens enregistrements supprimés")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur lors du nettoyage des anciens enregistrements: {e}")
     
     def close(self) -> None:
         """

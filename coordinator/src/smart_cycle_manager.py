@@ -98,13 +98,13 @@ class SmartCycleManager:
         Returns:
             Décision d'action SmartCycleDecision
         """
-        symbol_direction = f"{signal.symbol}_{signal.direction.value}"
+        symbol_side = f"{signal.symbol}_{signal.side.value}"
         
         # Calculer la confiance globale du signal
         confidence = self._calculate_signal_confidence(signal)
         
         # Vérifier s'il y a déjà un cycle actif
-        active_cycle = self._find_active_cycle(signal.symbol, signal.direction.value, existing_cycles)
+        active_cycle = self._find_active_cycle(signal.symbol, signal.side.value, existing_cycles)
         
         if not active_cycle:
             # Pas de cycle actif → Créer un nouveau cycle
@@ -250,7 +250,7 @@ class SmartCycleManager:
         current_quantity = active_cycle.get('quantity', 0)
         
         # Calculer la performance actuelle
-        if signal.direction.value == "LONG":
+        if signal.side.value == "LONG":
             price_change_pct = ((current_price - entry_price) / entry_price) * 100
         else:
             price_change_pct = ((entry_price - current_price) / entry_price) * 100
@@ -354,7 +354,7 @@ class SmartCycleManager:
         # Si confiance élevée → Prix proche du marché (plus agressif)
         # Si confiance faible → Prix plus conservateur
         
-        if signal.direction.value == "LONG":
+        if signal.side.value == "LONG":
             # Pour un LONG, plus la confiance est haute, plus on accepte d'acheter proche du prix actuel
             discount_pct = (1.0 - confidence) * 2.0  # Entre 0% et 2% de discount
             entry_price = current_price * (1 - discount_pct / 100)
