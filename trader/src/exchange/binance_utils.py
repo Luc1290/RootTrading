@@ -259,7 +259,16 @@ class BinanceUtils:
         client_order_id = order.client_order_id or f"root_{uuid.uuid4().hex[:16]}"
         
         # Convertir side en string si c'est un enum
-        side = order.side.value if hasattr(order.side, 'value') else str(order.side)
+        side_str = order.side.value if hasattr(order.side, 'value') else str(order.side)
+        
+        # Convertir LONG/SHORT vers BUY/SELL pour Binance
+        if side_str == "LONG":
+            side = "BUY"
+        elif side_str == "SHORT":
+            side = "SELL"
+        else:
+            # Compatibilité avec l'ancien système BUY/SELL (si présent)
+            side = side_str
         
         # Déterminer si c'est un ordre LIMIT ou MARKET
         order_type = "LIMIT" if order.price else "MARKET"
@@ -352,11 +361,21 @@ class BinanceUtils:
         # Pour les ordres non encore exécutés, utiliser origQty au lieu de executedQty
         quantity = float(data['executedQty']) if float(data.get('executedQty', 0)) > 0 else float(data.get('origQty', 0))
         
+        # Convertir BUY/SELL de Binance vers LONG/SHORT pour notre enum
+        binance_side = data['side']
+        if binance_side == "BUY":
+            side = OrderSide.LONG
+        elif binance_side == "SELL":
+            side = OrderSide.SHORT
+        else:
+            # Compatibilité au cas où la valeur serait déjà LONG/SHORT
+            side = OrderSide(binance_side)
+        
         # Créer et retourner l'exécution
         return TradeExecution(
             order_id=str(data['orderId']),
             symbol=data['symbol'],
-            side=OrderSide(data['side']),
+            side=side,
             status=OrderStatus(data['status']),
             price=price,
             quantity=quantity,
@@ -410,11 +429,21 @@ class BinanceUtils:
                 if float(order_response.get('executedQty', 0)) > 0 else 0
             )
             
+            # Convertir BUY/SELL de Binance vers LONG/SHORT pour notre enum
+            binance_side = order_response['side']
+            if binance_side == "BUY":
+                side = OrderSide.LONG
+            elif binance_side == "SELL":
+                side = OrderSide.SHORT
+            else:
+                # Compatibilité au cas où la valeur serait déjà LONG/SHORT
+                side = OrderSide(binance_side)
+            
             # Préparer l'objet d'exécution
             execution = TradeExecution(
                 order_id=str(order_response['orderId']),
                 symbol=order_response['symbol'],
-                side=OrderSide(order_response['side']),
+                side=side,
                 status=OrderStatus(order_response['status']),
                 price=price,
                 quantity=float(order_response['executedQty']),
