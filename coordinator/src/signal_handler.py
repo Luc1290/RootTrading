@@ -47,6 +47,7 @@ class SignalHandler:
         """
         self.trader_api_url = trader_api_url
         self.portfolio_api_url = portfolio_api_url
+        self.logger = logging.getLogger(__name__)
         
         # Client Redis pour les communications
         self.redis_client = RedisClient()
@@ -1026,7 +1027,7 @@ class SignalHandler:
         
         # Récupérer la balance disponible depuis le portfolio
         try:
-            portfolio_url = f"http://portfolio:5003/balance/{quote_asset}"
+            portfolio_url = f"http://portfolio:8000/balance/{quote_asset}"
             response = self._make_request_with_retry(portfolio_url)
             available_balance = response.get('available', 0) if response else 0
         except Exception as e:
@@ -1553,7 +1554,7 @@ class SignalHandler:
             # Récupérer les cycles existants
             existing_cycles = []
             try:
-                cycles_response = self._make_request_with_retry(f"{self.trader_api_url}/cycles/{signal.symbol}")
+                cycles_response = self._make_request_with_retry(f"{self.trader_api_url}/cycles?symbol={signal.symbol}")
                 if cycles_response and 'cycles' in cycles_response:
                     existing_cycles = cycles_response['cycles']
             except Exception as e:
@@ -1702,7 +1703,7 @@ class SignalHandler:
         try:
             # Envoyer la demande de fermeture au trader
             result = self._make_request_with_retry(
-                f"{self.trader_api_url}/cycles/{decision.existing_cycle_id}/close",
+                f"{self.trader_api_url}/close/{decision.existing_cycle_id}",
                 method="POST",
                 json_data={"reason": decision.reason},
                 timeout=10.0

@@ -185,8 +185,6 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
-      analyzer:
-        condition: service_started
       db:
         condition: service_healthy
     healthcheck:

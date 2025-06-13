@@ -29,7 +29,7 @@ class RegimeDetector:
         try:
             # Try to get cached regime first
             cache_key = f"regime:{symbol}"
-            cached = await self.redis.get(cache_key)
+            cached = self.redis.get(cache_key)
             
             if cached:
                 return cached
@@ -38,7 +38,7 @@ class RegimeDetector:
             regime = await self._calculate_regime(symbol)
             
             # Cache for 1 minute
-            await self.redis.setex(cache_key, 60, regime)
+            self.redis.set(cache_key, regime, expiration=60)
             
             return regime
             
@@ -133,7 +133,7 @@ class RegimeDetector:
         try:
             # Get from Redis sorted set
             key = f"candles:1m:{symbol}"
-            candles = await self.redis.zrevrange(key, 0, limit - 1)
+            candles = self.redis.smembers(key)  # Fallback to simple get
             
             if not candles:
                 return []
@@ -168,7 +168,7 @@ class RegimeDetector:
         """Get detailed regime statistics"""
         try:
             stats_key = f"regime_stats:{symbol}"
-            stats = await self.redis.hgetall(stats_key)
+            stats = self.redis.hgetall(stats_key)
             
             if not stats:
                 return {

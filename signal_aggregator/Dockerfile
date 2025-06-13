@@ -19,4 +19,4 @@ COPY shared/ ./shared/
 COPY signal_aggregator/src/ ./src/
 
 # Attendre que les services soient prêts puis démarrer
-CMD sleep 10 && python -u src/main.py
+CMD ["sh", "-c", "sleep 10 && python -u src/main.py"]

@@ -28,7 +28,7 @@ class PerformanceTracker:
         try:
             # Try cached weight first
             cache_key = f"strategy_weight:{strategy}"
-            cached = await self.redis.get(cache_key)
+            cached = self.redis.get(cache_key)
             
             if cached:
                 return float(cached)
@@ -37,7 +37,7 @@ class PerformanceTracker:
             weight = await self._calculate_strategy_weight(strategy)
             
             # Cache for 5 minutes
-            await self.redis.setex(cache_key, 300, str(weight))
+            self.redis.set(cache_key, str(weight), expiration=300)
             
             return weight
             
@@ -97,7 +97,7 @@ class PerformanceTracker:
         try:
             # Get recent trades
             trades_key = f"strategy_trades:{strategy}"
-            recent_trades = await self.redis.lrange(trades_key, 0, -1)
+            recent_trades = self.redis.smembers(trades_key)  # Fallback to set
             
             if not recent_trades:
                 return {}
@@ -181,7 +181,7 @@ class PerformanceTracker:
                 
                 # Store in Redis
                 cache_key = f"strategy_weight:{strategy}"
-                await self.redis.setex(cache_key, 300, str(weight))
+                self.redis.set(cache_key, str(weight), expiration=300)
                 
             logger.info(f"Updated metrics for {len(strategies)} strategies")
             
@@ -202,9 +202,8 @@ class PerformanceTracker:
                 'timestamp': datetime.now().isoformat()
             }
             
-            # Store in Redis list (keep last 1000 trades)
-            await self.redis.lpush(trades_key, json.dumps(trade_data))
-            await self.redis.ltrim(trades_key, 0, 999)
+            # Store in Redis set (simplified)
+            self.redis.sadd(trades_key, json.dumps(trade_data))
             
             # Update metrics cache
             await self.get_strategy_weight(strategy)

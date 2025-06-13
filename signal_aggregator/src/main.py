@@ -13,6 +13,7 @@ from signal_aggregator import SignalAggregator
 from regime_detector import RegimeDetector
 from performance_tracker import PerformanceTracker
 from shared.src.kafka_client import KafkaClient
+from shared.src.redis_client import RedisClient
 
 def get_config():
     """Wrapper pour la config"""
@@ -21,60 +22,6 @@ def get_config():
         'REDIS_HOST': os.getenv('REDIS_HOST', 'redis'),
         'REDIS_PORT': int(os.getenv('REDIS_PORT', 6379))
     }
-
-class RedisClient:
-    """Wrapper simple pour Redis"""
-    def __init__(self):
-        import redis
-        self.client = redis.Redis(
-            host=os.getenv('REDIS_HOST', 'redis'),
-            port=int(os.getenv('REDIS_PORT', 6379)),
-            decode_responses=True
-        )
-    
-    async def connect(self):
-        """Connexion asynchrone (placeholder)"""
-        pass
-    
-    async def close(self):
-        """Fermeture asynchrone (placeholder)"""
-        pass
-    
-    async def get(self, key):
-        """Get async wrapper"""
-        return self.client.get(key)
-    
-    async def set(self, key, value, ex=None):
-        """Set async wrapper"""
-        return self.client.set(key, value, ex=ex)
-    
-    async def setex(self, key, seconds, value):
-        """Setex async wrapper"""
-        return self.client.setex(key, seconds, value)
-    
-    async def smembers(self, key):
-        """Smembers async wrapper"""
-        return self.client.smembers(key)
-    
-    async def lrange(self, key, start, end):
-        """Lrange async wrapper"""
-        return self.client.lrange(key, start, end)
-    
-    async def zrevrange(self, key, start, end):
-        """Zrevrange async wrapper"""
-        return self.client.zrevrange(key, start, end)
-    
-    async def hgetall(self, key):
-        """Hgetall async wrapper"""
-        return self.client.hgetall(key)
-    
-    async def lpush(self, key, value):
-        """Lpush async wrapper"""
-        return self.client.lpush(key, value)
-    
-    async def ltrim(self, key, start, end):
-        """Ltrim async wrapper"""
-        return self.client.ltrim(key, start, end)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -103,7 +50,6 @@ class SignalAggregatorService:
             self.kafka = KafkaClient()
             
             self.redis = RedisClient()
-            await self.redis.connect()
             
             # Initialize components
             self.regime_detector = RegimeDetector(self.redis)
@@ -158,10 +104,10 @@ class SignalAggregatorService:
                     self.kafka.produce('signals.filtered', aggregated)
                     
                     # AUSSI publier sur Redis pour le coordinator
-                    loop.run_until_complete(self.redis.set(f"signal_filtered:{aggregated['symbol']}", str(aggregated), ex=300))
+                    self.redis.set(f"signal_filtered:{aggregated['symbol']}", str(aggregated), expiration=300)
                     # Et publier sur le canal Redis que le coordinator écoute
                     import json
-                    self.redis.client.publish('roottrading:signals:filtered', json.dumps(aggregated))
+                    self.redis.publish('roottrading:signals:filtered', json.dumps(aggregated))
                     
                     logger.info(f"✅ Published aggregated signal on Kafka and Redis: {aggregated}")
             finally:
@@ -198,7 +144,7 @@ class SignalAggregatorService:
         if self.kafka and self.consumer_id:
             self.kafka.stop_consuming(self.consumer_id)
         if self.redis:
-            await self.redis.close()
+            self.redis.close()
 
 
 async def main():

@@ -314,20 +314,16 @@ class SignalAggregator:
             
             # Récupérer les données 15m récentes depuis Redis
             market_data_key = f"market_data:{symbol}:15m"
-            data_15m = await self.redis.get(market_data_key)
+            data_15m = self.redis.get(market_data_key)
             
             if not data_15m:
                 # Si pas de données 15m, on accepte le signal (mode dégradé)
                 logger.warning(f"Pas de données 15m pour {symbol}, validation en mode dégradé")
                 return True
             
-            try:
-                # Vérifier si c'est déjà une string ou si c'est bytes
-                if isinstance(data_15m, bytes):
-                    data_15m = data_15m.decode('utf-8')
-                data_15m = json.loads(data_15m)
-            except (json.JSONDecodeError, UnicodeDecodeError) as e:
-                logger.warning(f"Données 15m corrompues pour {symbol}: {e}")
+            # Le RedisClient parse automatiquement les données JSON
+            if not isinstance(data_15m, dict):
+                logger.warning(f"Données 15m invalides pour {symbol}: type {type(data_15m)}")
                 return True
             
             # Calculer la tendance 15m avec une EMA simple
