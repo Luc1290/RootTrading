@@ -278,14 +278,14 @@ class BinanceUtils:
             "symbol": order.symbol,
             "side": side,
             "type": order_type,
-            "quantity": str(order.quantity),
+            "quantity": f"{order.quantity:.8f}".rstrip('0').rstrip('.'),
             "newClientOrderId": client_order_id,
             "timestamp": int(time.time() * 1000) + time_offset
         }
         
         # Ajouter les paramètres pour les ordres LIMIT
         if order_type == "LIMIT":
-            params["price"] = str(order.price)
+            params["price"] = f"{order.price:.8f}".rstrip('0').rstrip('.')
             params["timeInForce"] = "GTC"  # Good Till Canceled
         
         # Générer la signature
@@ -363,7 +363,6 @@ class BinanceUtils:
         
         # Convertir BUY/SELL de Binance vers LONG/SHORT pour notre enum
         binance_side = data['side']
-        logger.debug(f"🔍 Conversion OrderSide: '{binance_side}' (type: {type(binance_side)})")
         if binance_side == "BUY":
             side = OrderSide.LONG
         elif binance_side == "SELL":
@@ -438,7 +437,6 @@ class BinanceUtils:
             
             # Convertir BUY/SELL de Binance vers LONG/SHORT pour notre enum
             binance_side = order_response['side']
-            logger.debug(f"🔍 Conversion OrderSide: '{binance_side}' (type: {type(binance_side)})")
             if binance_side == "BUY":
                 side = OrderSide.LONG
             elif binance_side == "SELL":

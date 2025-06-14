@@ -114,7 +114,7 @@ class StopManagerPure:
         
         return ts
 
-    def process_price_update(self, symbol: str, price: float, close_cycle_callback: Callable[[str, Optional[float]], bool]) -> None:
+    def process_price_update(self, symbol: str, price: float, close_cycle_callback: Callable[[str, Optional[float]], bool], partial_sell_callback: Optional[Callable[[str, float, float, str], bool]] = None) -> None:
         """
         Traite une mise à jour de prix - VERSION PURE avec GainProtector.
         Utilise le TrailingStop + protection intelligente des gains.
@@ -123,6 +123,7 @@ class StopManagerPure:
             symbol: Symbole mis à jour
             price: Nouveau prix
             close_cycle_callback: Fonction de rappel pour fermer un cycle
+            partial_sell_callback: Fonction de rappel pour les ventes partielles (cycle_id, percentage, price, reason)
         """
         # Récupérer les cycles actifs pour ce symbole
         cycles = self.repository.get_active_cycles(symbol=symbol)
@@ -189,10 +190,22 @@ class StopManagerPure:
                             logger.debug(f"📈 Stop trailing mis à jour pour cycle {cycle.id}: "
                                        f"{old_stop:.6f} → {ts.stop_price:.6f}")
             
-            # Exécuter les ventes partielles (TODO: implémenter dans le cycle manager)
+            # Exécuter les ventes partielles
             for partial_sell in partial_sells_to_execute:
-                logger.warning(f"⚠️ Vente partielle demandée mais pas encore implémentée: {partial_sell}")
-                # TODO: Ajouter l'interface pour les ventes partielles dans le cycle manager
+                if partial_sell_callback:
+                    action = partial_sell['action']
+                    success = partial_sell_callback(
+                        partial_sell['cycle_id'],
+                        action['percentage'],
+                        partial_sell['price'],
+                        action['reason']
+                    )
+                    if success:
+                        logger.info(f"✅ Vente partielle {action['percentage']}% exécutée pour cycle {partial_sell['cycle_id']}")
+                    else:
+                        logger.error(f"❌ Échec vente partielle pour cycle {partial_sell['cycle_id']}")
+                else:
+                    logger.warning(f"⚠️ Vente partielle demandée mais callback non fourni: {partial_sell}")
             
             # Déclencher les stops en dehors du verrou
             for cycle_id in stops_to_trigger:

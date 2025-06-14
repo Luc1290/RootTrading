@@ -65,8 +65,6 @@ class CycleManager:
             self._start_sync_thread()
             # Démarrer le thread de nettoyage des ordres orphelins
             self._start_orphan_cleanup_thread()
-            # Démarrer le thread de réconciliation des balances
-            self._start_balance_reconciliation_thread()
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'initialisation de la base de données: {str(e)}")
         
@@ -1133,6 +1131,110 @@ class CycleManager:
             logger.error(f"❌ Erreur lors de la fermeture du cycle {cycle_id}: {str(e)}")
             return False
     
+    def partial_sell_cycle(self, cycle_id: str, percentage: float, price: float, reason: str = "take_profit") -> bool:
+        """
+        Effectue une fermeture partielle d'un cycle (vente partielle LONG ou rachat partiel SHORT).
+        
+        Args:
+            cycle_id: ID du cycle
+            percentage: Pourcentage à fermer (ex: 30.0 pour 30%)
+            price: Prix de fermeture partielle
+            reason: Raison de la fermeture partielle
+            
+        Returns:
+            True si la fermeture partielle a réussi, False sinon
+        """
+        try:
+            # Récupérer le cycle
+            with self.cycles_lock:
+                if cycle_id not in self.active_cycles:
+                    logger.warning(f"⚠️ Cycle {cycle_id} non trouvé pour fermeture partielle")
+                    return False
+                
+                cycle = self.active_cycles[cycle_id]
+                
+                # Vérifier que le cycle est dans un état fermable partiellement
+                if cycle.status not in [CycleStatus.WAITING_SELL, CycleStatus.ACTIVE_SELL, 
+                                       CycleStatus.WAITING_BUY, CycleStatus.ACTIVE_BUY]:
+                    logger.warning(f"⚠️ Impossible de fermer partiellement le cycle {cycle_id} avec statut {cycle.status}")
+                    return False
+            
+            # Déterminer le côté de la fermeture partielle selon la position
+            if cycle.status in [CycleStatus.WAITING_SELL, CycleStatus.ACTIVE_SELL]:
+                # Position LONG ouverte → fermeture partielle par VENTE (SHORT)
+                partial_side = OrderSide.SHORT
+                position_type = "LONG"
+            else:  # WAITING_BUY ou ACTIVE_BUY
+                # Position SHORT ouverte → fermeture partielle par RACHAT (LONG)
+                partial_side = OrderSide.LONG
+                position_type = "SHORT"
+            
+            # Calculer la quantité à fermer
+            total_quantity = cycle.metadata.get('executed_quantity', cycle.quantity)
+            partial_quantity = total_quantity * (percentage / 100.0)
+            
+            logger.info(f"💰 Fermeture partielle {percentage}% de la position {position_type} du cycle {cycle_id}: "
+                       f"{partial_quantity:.8f} {cycle.symbol} à {price}")
+            
+            # Créer l'ordre de fermeture partielle
+            client_order_id = f"partial_{cycle_id}_{int(time.time())}"
+            
+            order = TradeOrder(
+                id=client_order_id,
+                cycle_id=cycle_id,
+                symbol=cycle.symbol,
+                side=partial_side,
+                type=OrderType.MARKET,
+                quantity=partial_quantity,
+                price=price,
+                status=OrderStatus.NEW,
+                created_at=datetime.now(),
+                updated_at=datetime.now()
+            )
+            
+            # Exécuter l'ordre sur Binance
+            execution = self.binance_executor.execute_order(order)
+            
+            if not execution:
+                logger.error(f"❌ Échec de l'exécution de la fermeture partielle pour cycle {cycle_id}")
+                return False
+            
+            # Mettre à jour la quantité restante du cycle
+            remaining_quantity = total_quantity - execution.quantity
+            
+            with self.cycles_lock:
+                # Mettre à jour les métadonnées du cycle
+                if 'partial_sells' not in cycle.metadata:
+                    cycle.metadata['partial_sells'] = []
+                
+                cycle.metadata['partial_sells'].append({
+                    'timestamp': datetime.now().isoformat(),
+                    'percentage': percentage,
+                    'quantity': execution.quantity,
+                    'price': execution.price,
+                    'reason': reason,
+                    'order_id': execution.order_id,
+                    'side': partial_side.value,
+                    'position_type': position_type
+                })
+                
+                # Mettre à jour la quantité exécutée (maintenant réduite)
+                cycle.metadata['executed_quantity'] = remaining_quantity
+                cycle.updated_at = datetime.now()
+            
+            # Sauvegarder l'exécution et le cycle
+            self.repository.save_execution(execution, cycle_id)
+            self.repository.save_cycle(cycle)
+            
+            logger.info(f"✅ Fermeture partielle {position_type} réussie: {execution.quantity:.8f} à {execution.price:.6f}, "
+                       f"quantité restante: {remaining_quantity:.8f}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la fermeture partielle du cycle {cycle_id}: {str(e)}")
+            return False
+    
     def cancel_cycle(self, cycle_id: str, reason: str = "Annulation manuelle") -> bool:
         """
         Annule un cycle de trading.
@@ -1309,8 +1411,12 @@ class CycleManager:
         def close_cycle_by_stop(cycle_id: str, exit_price: Optional[float] = None) -> bool:
             return self.close_cycle(cycle_id, exit_price, is_stop_loss=True)
         
-        # Déléguer au StopManagerPure avec le wrapper
-        self.stop_manager.process_price_update(symbol, price, close_cycle_by_stop)
+        # Créer un wrapper pour partial_sell_cycle
+        def partial_sell_by_protection(cycle_id: str, percentage: float, price: float, reason: str) -> bool:
+            return self.partial_sell_cycle(cycle_id, percentage, price, reason)
+        
+        # Déléguer au StopManagerPure avec les deux wrappers
+        self.stop_manager.process_price_update(symbol, price, close_cycle_by_stop, partial_sell_by_protection)
         
     def _cleanup_cycle_orders(self, cycle: TradeCycle) -> None:
         """
@@ -1341,119 +1447,7 @@ class CycleManager:
                     logger.debug(f"Ordre de sortie {cycle.exit_order_id} déjà fermé ou non trouvé: {str(e)}")
                     
         except Exception as e:
-            logger.warning(f"⚠️ Erreur lors du nettoyage des ordres du cycle {cycle.id}: {str(e)}")
-    
-    def _start_balance_reconciliation_thread(self):
-        """Démarre un thread de réconciliation périodique des balances."""
-        def balance_reconciliation_routine():
-            while True:
-                try:
-                    # Réconciliation des balances toutes les 1 minute
-                    time.sleep(60)
-                    self._reconcile_global_balances()
-                except Exception as e:
-                    logger.error(f"❌ Erreur dans le thread de réconciliation des balances: {str(e)}")
-        
-        balance_thread = threading.Thread(target=balance_reconciliation_routine, daemon=True, name="BalanceReconciliationThread")
-        balance_thread.start()
-        logger.info("💰 Thread de réconciliation des balances démarré (10min)")
-
-    def _reconcile_global_balances(self):
-        """
-        Vérifie la cohérence globale entre les balances Binance et les cycles actifs.
-        Solution 3: Réconciliation simplifiée sans tracking granulaire.
-        """
-        try:
-            # Récupérer tous les cycles actifs en phase de sortie
-            with self.cycles_lock:
-                active_cycles = list(self.active_cycles.values())
-            
-            # Grouper par asset les quantités attendues
-            expected_balances = {}
-            
-            for cycle in active_cycles:
-                # Seulement pour les cycles en phase de sortie (ont des assets à vendre)
-                status_str = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
-                
-                if status_str in ['waiting_sell', 'active_sell']:
-                    # Cycle LONG: a des BTC/ETH à vendre
-                    if cycle.symbol.endswith('USDC'):
-                        asset = cycle.symbol[:-4]  # BTCUSDC -> BTC
-                    elif cycle.symbol.endswith('BTC'):
-                        asset = cycle.symbol[:-3]  # ETHBTC -> ETH
-                    else:
-                        continue  # Skip symboles non reconnus
-                    
-                    if asset not in expected_balances:
-                        expected_balances[asset] = 0.0
-                    expected_balances[asset] += cycle.quantity
-                
-                elif status_str in ['waiting_buy', 'active_buy']:
-                    # Cycle SHORT: a des USDC/BTC à utiliser pour racheter
-                    if cycle.symbol.endswith('USDC'):
-                        asset = 'USDC'
-                        # Quantité approximative en USDC (entry_price * quantity)
-                        usdc_amount = cycle.entry_price * cycle.quantity if cycle.entry_price else 0
-                    elif cycle.symbol.endswith('BTC'):
-                        asset = 'BTC'
-                        # Quantité approximative en BTC 
-                        usdc_amount = cycle.entry_price * cycle.quantity if cycle.entry_price else 0
-                    else:
-                        continue
-                    
-                    if asset not in expected_balances:
-                        expected_balances[asset] = 0.0
-                    expected_balances[asset] += usdc_amount if asset in ['USDC', 'BTC'] else cycle.quantity
-
-            # Récupérer les balances réelles de Binance
-            try:
-                binance_balances = self.binance_executor.get_account_balances()
-            except Exception as e:
-                logger.warning(f"⚠️ Impossible de récupérer les balances Binance: {str(e)}")
-                return
-
-            # Comparer et alerter en cas de désynchronisation majeure
-            tolerance = 0.001  # Tolérance pour les arrondis
-            alerts = []
-
-            for asset, expected_qty in expected_balances.items():
-                if expected_qty < tolerance:  # Skip les très petites quantités
-                    continue
-                    
-                actual_balance = binance_balances.get(asset, {}).get('free', 0.0)
-                difference = actual_balance - expected_qty
-                difference_percent = (abs(difference) / expected_qty * 100) if expected_qty > 0 else 0
-
-                # Alerter seulement si la balance actuelle est INFÉRIEURE à l'attendue (manque d'assets)
-                # Si elle est supérieure, c'est probablement des assets d'anciens cycles - pas un problème
-                if difference < -tolerance and difference_percent > 5:  # Manque plus de 5%
-                    alerts.append({
-                        'asset': asset,
-                        'expected': expected_qty,
-                        'actual': actual_balance,
-                        'difference': abs(difference),
-                        'difference_percent': difference_percent,
-                        'type': 'insufficient_balance'
-                    })
-                elif difference > tolerance and difference_percent > 50:  # Surplus significatif (>50%) - juste pour info
-                    logger.debug(f"💰 Surplus d'assets détecté pour {asset}: {actual_balance:.6f} vs attendu {expected_qty:.6f} "
-                                f"(+{difference:.6f}, +{difference_percent:.1f}%) - probablement des assets d'anciens cycles")
-
-            # Logger les résultats
-            if alerts:
-                logger.warning(f"⚠️ Balances insuffisantes détectées:")
-                for alert in alerts:
-                    logger.warning(f"   {alert['asset']}: Attendu {alert['expected']:.6f}, Actuel {alert['actual']:.6f} "
-                                 f"(Manque: {alert['difference']:.6f}, -{alert['difference_percent']:.1f}%)")
-            else:
-                logger.debug(f"✅ Balances suffisantes: {len(expected_balances)} assets vérifiés")
-
-            # Log détaillé pour debug
-            if expected_balances:
-                logger.debug(f"💰 Réconciliation: {expected_balances}")
-                
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la réconciliation des balances: {str(e)}")
+            logger.warning(f"⚠️ Erreur lors du nettoyage des ordres du cycle {cycle.id}: {str(e)}")       
 
     def close(self) -> None:
         """

@@ -156,7 +156,19 @@ class BinanceSymbolConstraints:
             logger.warning(f"⚠️ Quantité nulle après troncature : {quantity} → {truncated}")
             truncated = Decimal(str(self.get_min_qty(symbol)))
         
-        return float(truncated)
+        # Convertir en float mais s'assurer qu'il n'y a pas de notation scientifique
+        result = float(truncated)
+        
+        # Si le résultat est très petit, le formater explicitement pour éviter la notation scientifique
+        if result < 0.0001:
+            # Calculer le nombre de décimales nécessaires selon le step_size
+            step_decimals = len(str(step_dec).split('.')[-1]) if '.' in str(step_dec) else 0
+            # Formater avec suffisamment de décimales et reconvertir en float
+            formatted = f"{result:.{step_decimals}f}"
+            logger.debug(f"🔧 Formatage quantité pour éviter notation scientifique: {result} → {formatted}")
+            return float(formatted)
+        
+        return result
     
     def round_price(self, symbol: str, price: float) -> float:
         """

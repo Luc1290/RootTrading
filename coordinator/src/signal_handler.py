@@ -471,81 +471,6 @@ class SignalHandler:
         
         return base_score
     
-    def _close_opposite_positions(self, symbol: str, side: str) -> bool:
-        """
-        Ferme les positions du côté opposé pour un symbole donné.
-        
-        Args:
-            symbol: Symbole concerné
-            side: Côté des positions à fermer (LONG ou SHORT)
-
-        Returns:
-            True si toutes les positions ont été fermées avec succès
-        """
-        try:
-            # Récupérer les cycles actifs depuis l'API centralisée
-            response = self._make_request_with_retry(
-                f"{self.trader_api_url}/cycles",
-                method="GET",
-                params={"symbol": symbol, "confirmed": "true", "include_completed": "false"},
-                timeout=5.0
-            )
-            
-            if not response or not response.get('success'):
-                logger.error("Impossible de récupérer les cycles pour fermeture")
-                return False
-            
-            # Extraire les cycles depuis la réponse
-            cycles = response.get('cycles', [])
-            
-            # Filtrer les cycles du côté concerné
-            cycles_to_close = []
-            for cycle in cycles:
-                # Déterminer la position réelle en fonction du statut
-                status = cycle.get('status', '')
-                position_type = None
-                if status in ['waiting_buy', 'active_buy']:
-                    position_type = 'SHORT'  # va racheter = était short
-                elif status in ['waiting_sell', 'active_sell']:
-                    position_type = 'LONG'   # va vendre = était long
-                
-                if position_type == side:
-                    cycles_to_close.append(cycle)
-            
-            if not cycles_to_close:
-                logger.info(f"Aucun cycle {side} à fermer pour {symbol}")
-                return True
-            
-            # Fermer chaque cycle
-            success_count = 0
-            for cycle in cycles_to_close:
-                cycle_id = cycle.get('id')
-                if not cycle_id:
-                    continue
-                
-                # Appeler l'API pour fermer le cycle
-                close_response = self._make_request_with_retry(
-                    f"{self.trader_api_url}/close/{cycle_id}",
-                    method="POST",
-                    json_data={},
-                    timeout=10.0
-                )
-                
-                if close_response:
-                    logger.info(f"✅ Cycle {cycle_id} fermé avec succès")
-                    success_count += 1
-                else:
-                    logger.error(f"❌ Échec de fermeture du cycle {cycle_id}")
-            
-            # Mettre à jour le cache
-            self.cache_update_time = 0  # Forcer le rafraîchissement
-            
-            return success_count == len(cycles_to_close)
-            
-        except Exception as e:
-            logger.error(f"Erreur lors de la fermeture des positions: {str(e)}")
-            return False
-    
     def _refresh_active_cycles_cache(self) -> None:
         """
         Rafraîchit le cache des cycles actifs depuis l'API centralisée du Trader.
@@ -603,19 +528,19 @@ class SignalHandler:
         except Exception as e:
             logger.error(f"Erreur lors du rafraîchissement du cache: {str(e)}")
     
-    def _close_opposite_positions(self, symbol: str, position_to_close: str) -> bool:
+    def _close_opposite_positions(self, symbol: str, side: str) -> bool:
         """
         Ferme toutes les positions opposées pour permettre un retournement de marché.
         
         Args:
             symbol: Symbole concerné (ex: BTCUSDC)
-            position_to_close: Position à fermer (LONG ou SHORT)
+            side: Position à fermer (LONG ou SHORT)
             
         Returns:
             True si toutes les positions ont été fermées avec succès
         """
         try:
-            logger.info(f"🔄 Fermeture des positions {position_to_close} sur {symbol} pour retournement")
+            logger.info(f"🔄 Fermeture des positions {side} sur {symbol} pour retournement")
             
             # Récupérer les cycles actifs pour ce symbole
             response = self._make_request_with_retry(
@@ -647,11 +572,11 @@ class SignalHandler:
                 elif status in ['waiting_buy', 'active_buy']:
                     cycle_position = 'SHORT'  # Position courte en attente/en cours de rachat
                 
-                if cycle_position == position_to_close:
+                if cycle_position == side:
                     cycles_to_close.append(cycle)
             
             if not cycles_to_close:
-                logger.info(f"Aucune position {position_to_close} à fermer pour {symbol}")
+                logger.info(f"Aucune position {side} à fermer pour {symbol}")
                 return True
             
             # Fermer chaque cycle
@@ -661,13 +586,13 @@ class SignalHandler:
                 if not cycle_id:
                     continue
                 
-                logger.info(f"📤 Fermeture du cycle {cycle_id} ({position_to_close})")
+                logger.info(f"📤 Fermeture du cycle {cycle_id} ({side})")
                 
                 # Appeler l'API pour fermer le cycle au marché
                 close_response = self._make_request_with_retry(
-                    f"{self.trader_api_url}/cycle/{cycle_id}/close",
+                    f"{self.trader_api_url}/close/{cycle_id}",
                     method="POST",
-                    json={"reason": "market_reversal"},
+                    json_data={"reason": "market_reversal"},
                     timeout=10.0
                 )
                 
@@ -682,14 +607,14 @@ class SignalHandler:
             
             success = success_count == len(cycles_to_close)
             if success:
-                logger.info(f"✅ Toutes les positions {position_to_close} fermées ({success_count}/{len(cycles_to_close)})")
+                logger.info(f"✅ Toutes les positions {side} fermées ({success_count}/{len(cycles_to_close)})")
             else:
                 logger.warning(f"⚠️ Fermeture partielle: {success_count}/{len(cycles_to_close)} positions fermées")
             
             return success
             
         except Exception as e:
-            logger.error(f"❌ Erreur lors de la fermeture des positions {position_to_close}: {str(e)}")
+            logger.error(f"❌ Erreur lors de la fermeture des positions {side}: {str(e)}")
             return False
     
     def _can_create_new_cycle(self, symbol: str, side: str) -> bool:
@@ -1206,12 +1131,18 @@ class SignalHandler:
         
         while retry_count < max_retries:
             try:
+                # Headers par défaut pour toutes les requêtes
+                headers = {}
+                
                 if method == "GET":
-                    response = requests.get(url, params=params, timeout=timeout)
+                    response = requests.get(url, params=params, timeout=timeout, headers=headers)
                 elif method == "POST":
-                    response = requests.post(url, json=json_data, params=params, timeout=timeout)
+                    # Ajouter explicitement le Content-Type pour POST avec JSON
+                    if json_data is not None:
+                        headers['Content-Type'] = 'application/json'
+                    response = requests.post(url, json=json_data, params=params, timeout=timeout, headers=headers)
                 elif method == "DELETE":
-                    response = requests.delete(url, params=params, timeout=timeout)
+                    response = requests.delete(url, params=params, timeout=timeout, headers=headers)
                 else:
                     raise ValueError(f"Méthode non supportée: {method}")
                     
@@ -1594,6 +1525,115 @@ class SignalHandler:
         except Exception as e:
             logger.error(f"Erreur lors de la vérification du solde {asset}: {str(e)}")
             return False
+    
+    def _check_all_required_balances(self, signal: StrategySignal) -> Dict[str, Any]:
+        """
+        Vérifie toutes les balances nécessaires pour exécuter un trade.
+        
+        Args:
+            signal: Signal de trading
+            
+        Returns:
+            Dict avec 'sufficient', 'constraining_balance', 'reason', 'details'
+        """
+        try:
+            base_asset = self._get_base_asset(signal.symbol)
+            quote_asset = self._get_quote_asset(signal.symbol)
+            
+            # Récupérer les balances des deux actifs
+            balances = {}
+            for asset in [base_asset, quote_asset]:
+                try:
+                    # Vérifier d'abord Binance directement
+                    binance_response = self._make_request_with_retry(
+                        f"{self.trader_api_url}/balance/{asset}", timeout=2.0
+                    )
+                    if binance_response:
+                        balances[asset] = {
+                            'binance_free': float(binance_response.get('free', 0)),
+                            'binance_total': float(binance_response.get('total', 0))
+                        }
+                    else:
+                        balances[asset] = {'binance_free': 0, 'binance_total': 0}
+                        
+                    # Aussi récupérer du portfolio pour comparaison
+                    portfolio_response = self._make_request_with_retry(
+                        f"http://portfolio:8000/balance/{asset}", timeout=2.0
+                    )
+                    if portfolio_response:
+                        balances[asset]['portfolio_available'] = float(portfolio_response.get('available', 0))
+                    else:
+                        balances[asset]['portfolio_available'] = 0
+                        
+                except Exception as e:
+                    self.logger.warning(f"Erreur récupération balance {asset}: {e}")
+                    balances[asset] = {'binance_free': 0, 'binance_total': 0, 'portfolio_available': 0}
+            
+            # Déterminer quelle balance est critique selon le type de trade
+            if signal.side == OrderSide.LONG:
+                # LONG: On achète, on a besoin de quote_asset (ex: BTC pour ETHBTC)
+                critical_asset = quote_asset
+                critical_balance = balances[quote_asset]['binance_free']
+                
+                # Estimer le montant nécessaire (approximation)
+                estimated_cost = signal.price * 0.01  # 0.01 comme quantité de base
+                if critical_balance < estimated_cost:
+                    return {
+                        'sufficient': False,
+                        'constraining_balance': critical_balance,
+                        'reason': f"Solde {critical_asset} insuffisant: {critical_balance:.8f} < ~{estimated_cost:.8f}",
+                        'details': balances
+                    }
+                
+            else:  # OrderSide.SHORT
+                # SHORT: On vend, on a besoin de base_asset (ex: ETH pour ETHBTC)
+                critical_asset = base_asset
+                critical_balance = balances[base_asset]['binance_free']
+                
+                # Estimer la quantité nécessaire (approximation)
+                estimated_quantity = 0.01  # Quantité de base minimale
+                if critical_balance < estimated_quantity:
+                    return {
+                        'sufficient': False,
+                        'constraining_balance': critical_balance,
+                        'reason': f"Solde {critical_asset} insuffisant: {critical_balance:.8f} < ~{estimated_quantity:.8f}",
+                        'details': balances
+                    }
+            
+            # Si on arrive ici, les balances sont suffisantes
+            # NOUVEAU: Utiliser toujours les balances Binance réelles pour être cohérent
+            if signal.side == OrderSide.LONG:
+                # LONG: on a besoin de quote_asset, utiliser sa balance Binance réelle
+                constraining_balance = balances[quote_asset]['binance_free'] * 0.95  # 5% de marge de sécurité
+                self.logger.info(f"💡 LONG {signal.symbol}: balance contraignante basée sur {quote_asset}: "
+                               f"{balances[quote_asset]['binance_free']:.6f} * 0.95 = {constraining_balance:.6f} {quote_asset}")
+            else:  # OrderSide.SHORT
+                # SHORT: on a besoin de base_asset, calculer l'équivalent en quote_asset
+                available_base = balances[base_asset]['binance_free']
+                # Convertir la quantité de base disponible en valeur quote (avec marge de sécurité)
+                constraining_balance = available_base * signal.price * 0.9  # 10% de marge
+                self.logger.info(f"💡 SHORT {signal.symbol}: balance contraignante basée sur {base_asset}: "
+                               f"{available_base:.6f} * {signal.price:.6f} * 0.9 = {constraining_balance:.6f} {quote_asset}")
+            
+            self.logger.info(f"✅ Balances suffisantes pour {signal.side} {signal.symbol}: "
+                           f"{base_asset}={balances[base_asset]['binance_free']:.6f}, "
+                           f"{quote_asset}={balances[quote_asset]['binance_free']:.6f}")
+            
+            return {
+                'sufficient': True,
+                'constraining_balance': constraining_balance,
+                'reason': 'Balances suffisantes',
+                'details': balances
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ Erreur lors de la vérification des balances: {str(e)}")
+            return {
+                'sufficient': False,
+                'constraining_balance': 0,
+                'reason': f"Erreur vérification: {str(e)}",
+                'details': {}
+            }
         
     def handle_cycle_canceled(self, channel: str, data: Dict[str, Any]) -> None:
         """
@@ -1656,15 +1696,14 @@ class SignalHandler:
             # Récupérer le prix actuel
             current_price = signal.price
             
-            # Récupérer la balance disponible
-            quote_asset = self._get_quote_asset(signal.symbol)
-            try:
-                portfolio_url = f"http://portfolio:8000/balance/{quote_asset}"
-                response = self._make_request_with_retry(portfolio_url)
-                available_balance = response.get('available', 0) if response else 0
-            except Exception as e:
-                self.logger.warning(f"Impossible de récupérer la balance {quote_asset}: {e}")
-                available_balance = 0
+            # NOUVEAU: Vérifier toutes les balances nécessaires pour ce trade
+            balance_check = self._check_all_required_balances(signal)
+            if not balance_check['sufficient']:
+                self.logger.warning(f"❌ Balances insuffisantes pour {signal.side} {signal.symbol}: {balance_check['reason']}")
+                return None
+            
+            # Utiliser la balance contraignante comme available_balance
+            available_balance = balance_check['constraining_balance']
             
             # Récupérer les cycles existants
             existing_cycles = []
