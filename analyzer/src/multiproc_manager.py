@@ -272,10 +272,10 @@ class AnalyzerManager:
                                 except Exception as e:
                                     logger.error(f"Erreur lors de la conversion du signal: {str(e)}")
                         
-                                # Mettre les dictionnaires sur la file d'attente
-                                if signal_dicts:
-                                    self.signal_queue.put(signal_dicts)
-                                    logger.info(f"Mis {len(signal_dicts)} signaux sur la file d'attente")
+                            # Mettre les dictionnaires sur la file d'attente (APRÈS la boucle)
+                            if signal_dicts:
+                                self.signal_queue.put(signal_dicts)
+                                logger.info(f"Mis {len(signal_dicts)} signaux sur la file d'attente")
                 
                     except Exception as e:
                         logger.error(f"❌ Erreur lors de l'analyse des données: {str(e)}")
