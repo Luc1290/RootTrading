@@ -96,11 +96,11 @@ class StopManagerPure:
         self.trailing_stops[cycle.id] = ts
         
         # Initialiser le GainProtector pour ce cycle
-        direction = "LONG" if side == Side.LONG else "SHORT"
+        side = "LONG" if side == Side.LONG else "SHORT"
         self.gain_protector.initialize_cycle(
             cycle_id=cycle.id,
             entry_price=cycle.entry_price,
-            direction=direction,
+            side=side,
             quantity=cycle.quantity or 0.0
         )
         

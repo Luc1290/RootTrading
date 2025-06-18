@@ -111,7 +111,7 @@ class SignalHandler:
         self.cache_ttl = 30  # TTL du cache en secondes
         
         # Configuration des limites
-        self.max_cycles_per_symbol_side = 10  # AUGMENTÉ: Max 10 positions par direction pour plus de granularité
+        self.max_cycles_per_symbol_side = 10  # AUGMENTÉ: Max 10 positions par side pour plus de granularité
         self.contradiction_threshold = 0.7  # Seuil pour décider en cas de contradiction
         
         # NOUVEAU: Historique récent des signaux pour détecter les patterns
@@ -555,7 +555,7 @@ class SignalHandler:
             )
             
             if not response or not response.get('success'):
-                logger.error(f"Impossible de récupérer les cycles {position_to_close} pour {symbol}")
+                logger.error(f"Impossible de récupérer les cycles {side} pour {symbol}")
                 return False
             
             # Extraire les cycles
@@ -596,7 +596,7 @@ class SignalHandler:
                     timeout=10.0
                 )
                 
-                if close_response and close_response.get('success'):
+                if close_response and (close_response.get('success') or close_response.get('status') in ['closed', 'completed']):
                     success_count += 1
                     logger.info(f"✅ Cycle {cycle_id} fermé avec succès")
                 else:
@@ -1053,26 +1053,28 @@ class SignalHandler:
             # Par défaut, supposer que les 3 premiers caractères sont l'actif de base
             return symbol[:3]
     
-    def _calculate_trade_amount(self, signal: StrategySignal) -> tuple[float, str]:
+    def _calculate_trade_amount(self, signal: StrategySignal, available_balance: Optional[float] = None) -> tuple[float, str]:
         """
         Calcule le montant à trader basé sur le signal, la balance disponible et la performance.
         
         Args:
             signal: Signal de trading
+            available_balance: Balance disponible (optionnel, sinon récupérée du portfolio)
             
         Returns:
             Tuple (montant, actif) - ex: (100.0, 'USDC') ou (0.001, 'BTC')
         """
         quote_asset = self._get_quote_asset(signal.symbol)
         
-        # Récupérer la balance disponible depuis le portfolio
-        try:
-            portfolio_url = f"http://portfolio:8000/balance/{quote_asset}"
-            response = self._make_request_with_retry(portfolio_url)
-            available_balance = response.get('available', 0) if response else 0
-        except Exception as e:
-            self.logger.warning(f"Impossible de récupérer la balance {quote_asset}: {e}")
-            available_balance = 0
+        # Si la balance n'est pas fournie, la récupérer depuis le portfolio
+        if available_balance is None:
+            try:
+                portfolio_url = f"http://portfolio:8000/balance/{quote_asset}"
+                response = self._make_request_with_retry(portfolio_url)
+                available_balance = response.get('available', 0) if response else 0
+            except Exception as e:
+                self.logger.warning(f"Impossible de récupérer la balance {quote_asset}: {e}")
+                available_balance = 0
         
         # Pourcentages d'allocation par force de signal
         allocation_percentages = {
@@ -1575,8 +1577,9 @@ class SignalHandler:
                 critical_asset = quote_asset
                 critical_balance = balances[quote_asset]['binance_free']
                 
-                # Estimer le montant nécessaire (approximation)
-                estimated_cost = signal.price * 0.01  # 0.01 comme quantité de base
+                # Calculer le montant réel qui sera tradé en passant la balance
+                trade_amount, _ = self._calculate_trade_amount(signal, critical_balance)
+                estimated_cost = trade_amount
                 if critical_balance < estimated_cost:
                     return {
                         'sufficient': False,
@@ -1774,7 +1777,7 @@ class SignalHandler:
             # Récupérer le signal depuis la décision
             original_signal = decision.signal if decision.signal else signal
             
-            # Déterminer le side basé sur la direction désirée
+            # Déterminer le side basé sur la side désirée
             # Si on veut une position LONG → signal LONG (acheter pour avoir l'actif)
             # Si on veut une position SHORT → signal SHORT (vendre pour ne plus avoir l'actif)
             if original_signal and hasattr(original_signal, 'side'):
@@ -1834,13 +1837,15 @@ class SignalHandler:
         """
         Réduit partiellement une position.
         
+        
         Args:
             decision: Décision de réduction
             
         Returns:
             True si succès, False sinon
         """
-        # TODO: Implémenter la vente partielle
+        # 
+        # : Implémenter la vente partielle
         self.logger.warning(f"⚠️ Vente partielle pas encore implémentée: {decision.existing_cycle_id}")
         return False
     

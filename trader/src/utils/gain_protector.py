@@ -82,32 +82,32 @@ class GainProtector:
         # État de chaque cycle
         self.cycle_states: Dict[str, Dict] = {}
     
-    def initialize_cycle(self, cycle_id: str, entry_price: float, direction: str, quantity: float):
+    def initialize_cycle(self, cycle_id: str, entry_price: float, side: str, quantity: float):
         """
         Initialise la protection pour un nouveau cycle.
         
         Args:
             cycle_id: ID unique du cycle
             entry_price: Prix d'entrée
-            direction: LONG ou SHORT
+            side: LONG ou SHORT
             quantity: Quantité initiale
         """
         self.cycle_states[cycle_id] = {
             'entry_price': entry_price,
-            'direction': direction,
+            'side': side,
             'initial_quantity': quantity,
             'remaining_quantity': quantity,
             'current_level': 0,
             'max_gain_reached': 0.0,
             'levels_triggered': set(),
             'trailing_active': False,
-            'trailing_high': entry_price if direction == 'LONG' else entry_price,
+            'trailing_high': entry_price if side == 'LONG' else entry_price,
             'break_even_set': False,
             'created_at': time.time()
         }
-        
-        self.logger.info(f"🛡️ Protection initialisée pour cycle {cycle_id}: {direction} @ {entry_price}")
-    
+
+        self.logger.info(f"🛡️ Protection initialisée pour cycle {cycle_id}: {side} @ {entry_price}")
+
     def update_and_check_protections(self, cycle_id: str, current_price: float) -> List[Dict]:
         """
         Met à jour les protections et retourne les actions à exécuter.
@@ -127,7 +127,7 @@ class GainProtector:
         actions = []
         
         # Calculer le gain actuel
-        if state['direction'] == 'LONG':
+        if state['side'] == 'LONG':
             gain_pct = ((current_price - state['entry_price']) / state['entry_price']) * 100
         else:  # SHORT
             gain_pct = ((state['entry_price'] - current_price) / state['entry_price']) * 100
@@ -137,9 +137,10 @@ class GainProtector:
             state['max_gain_reached'] = gain_pct
             
             # Mettre à jour le trailing high/low
-            if state['direction'] == 'LONG':
+            if state['side'] == 'LONG':
                 state['trailing_high'] = max(state['trailing_high'], current_price)
-            else:
+            else: # SHORT
+                # Pour un SHORT, on suit le plus bas
                 state['trailing_high'] = min(state['trailing_high'], current_price)
         
         # Vérifier chaque niveau de protection
@@ -192,7 +193,7 @@ class GainProtector:
         
         # Déplacer le stop loss
         if target.new_stop_percentage is not None:
-            new_stop_price = self._calculate_stop_price(state['entry_price'], target.new_stop_percentage, state['direction'])
+            new_stop_price = self._calculate_stop_price(state['entry_price'], target.new_stop_percentage, state['side'])
             actions.append({
                 'action': 'update_stop',
                 'new_stop_price': new_stop_price,
@@ -228,8 +229,8 @@ class GainProtector:
             return None
         
         trailing_distance = state['trailing_distance']
-        
-        if state['direction'] == 'LONG':
+
+        if state['side'] == 'LONG':
             # Pour un LONG, vérifier si le prix a baissé de X% depuis le high
             price_drop_pct = ((state['trailing_high'] - current_price) / state['trailing_high']) * 100
             
@@ -260,19 +261,19 @@ class GainProtector:
         
         return None
     
-    def _calculate_stop_price(self, entry_price: float, stop_percentage: float, direction: str) -> float:
+    def _calculate_stop_price(self, entry_price: float, stop_percentage: float, side: str) -> float:
         """
         Calcule le prix de stop basé sur un pourcentage.
         
         Args:
             entry_price: Prix d'entrée
             stop_percentage: Pourcentage de stop (positif = profit, négatif = perte)
-            direction: LONG ou SHORT
-            
+            side: LONG ou SHORT
+
         Returns:
             Prix de stop calculé
         """
-        if direction == 'LONG':
+        if side == 'LONG':
             # Pour un LONG, stop_percentage positif = stop plus haut que l'entrée
             return entry_price * (1 + stop_percentage / 100)
         else:  # SHORT
@@ -297,7 +298,7 @@ class GainProtector:
         return {
             'cycle_id': cycle_id,
             'entry_price': state['entry_price'],
-            'direction': state['direction'],
+            'side': state['side'],
             'initial_quantity': state['initial_quantity'],
             'remaining_quantity': state['remaining_quantity'],
             'quantity_sold_pct': ((state['initial_quantity'] - state['remaining_quantity']) / state['initial_quantity']) * 100,
@@ -307,6 +308,7 @@ class GainProtector:
             'trailing_high': state['trailing_high'],
             'protection_level': self._get_current_protection_level(state)
         }
+    
     
     def _get_current_protection_level(self, state: Dict) -> GainProtectionLevel:
         """

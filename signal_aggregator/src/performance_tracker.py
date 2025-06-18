@@ -196,7 +196,7 @@ class PerformanceTracker:
             trade_data = {
                 'strategy': strategy,
                 'symbol': trade_result['symbol'],
-                'direction': trade_result['direction'],
+                'side': trade_result['side'],
                 'profit': trade_result['profit'],
                 'duration': trade_result['duration'],
                 'timestamp': datetime.now().isoformat()

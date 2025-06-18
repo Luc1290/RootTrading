@@ -55,7 +55,7 @@ class SmartCycleManager:
     Gestionnaire intelligent des cycles de trading.
     
     Principe :
-    - 1 seul cycle actif par symbole/direction
+    - 1 seul cycle actif par symbole/side
     - Renforcement dynamique basé sur les signaux
     - Allocation intelligente du capital
     - DCA automatique si opportunité
@@ -77,7 +77,7 @@ class SmartCycleManager:
         }
         
         # État des cycles actifs
-        self.active_cycles: Dict[str, Dict] = {}  # {symbol_direction: cycle_info}
+        self.active_cycles: Dict[str, Dict] = {}  # {side: cycle_info}
         
         self.logger.info("🧠 SmartCycleManager initialisé - Cycles intelligents activés")
     
@@ -149,14 +149,14 @@ class SmartCycleManager:
             base_confidence -= freshness_malus
         
         return min(1.0, max(0.1, base_confidence))
-    
-    def _find_active_cycle(self, symbol: str, direction: str, existing_cycles: List[Dict]) -> Optional[Dict]:
+
+    def _find_active_cycle(self, symbol: str, side: str, existing_cycles: List[Dict]) -> Optional[Dict]:
         """
-        Trouve le cycle actif pour un symbole/direction.
+        Trouve le cycle actif pour un symbole/side.
         
         Args:
             symbol: Symbole à chercher
-            direction: Direction du signal (LONG/SHORT)
+            side: Side du signal (LONG/SHORT)
             existing_cycles: Liste des cycles existants
             
         Returns:
@@ -169,13 +169,13 @@ class SmartCycleManager:
             cycle_status = cycle.get('status')
             
             if cycle_status == 'waiting_sell':
-                cycle_direction = "LONG"  # Position LONG ouverte
+                cycle_side = "LONG"  # Position LONG ouverte
             elif cycle_status == 'waiting_buy': 
-                cycle_direction = "SHORT"  # Position SHORT ouverte
+                cycle_side = "SHORT"  # Position SHORT ouverte
             else:
                 continue  # Ignorer les autres statuts
-            
-            if cycle.get('symbol') == symbol and cycle_direction == direction:
+
+            if cycle.get('symbol') == symbol and cycle_side == side:
                 return cycle
         
         return None

@@ -89,7 +89,9 @@ class PriceMonitor:
             self.price_update_callback(symbol, price)
             
         except Exception as e:
-            logger.error(f"❌ Erreur lors du traitement d'une mise à jour de prix: {str(e)}")
+            # Gestion robuste de l'erreur
+            error_msg = str(e) if hasattr(e, '__str__') else repr(e)
+            logger.error(f"❌ Erreur lors du traitement d'une mise à jour de prix: {error_msg}", exc_info=True)
     
     def _check_price_timeouts(self) -> None:
         """
@@ -117,7 +119,9 @@ class PriceMonitor:
                 time.sleep(60)
                 
             except Exception as e:
-                logger.error(f"❌ Erreur dans la vérification des timeouts: {str(e)}")
+                # Gestion robuste de l'erreur
+                error_msg = str(e) if hasattr(e, '__str__') else repr(e)
+                logger.error(f"❌ Erreur dans la vérification des timeouts: {error_msg}", exc_info=True)
                 time.sleep(10)  # En cas d'erreur, attendre 10 secondes
     
     def start(self) -> None:

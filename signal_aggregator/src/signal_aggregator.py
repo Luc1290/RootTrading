@@ -38,20 +38,20 @@ class SignalAggregator:
             symbol = signal['symbol']
             strategy = signal['strategy']
             
-            # Convert 'side' to 'direction' for compatibility
-            if 'side' in signal and 'direction' not in signal:
+            # Convert 'side' to 'side' for compatibility
+            if 'side' in signal and 'side' not in signal:
                 side = signal['side']
                 if side in ['LONG', 'long']:
-                    signal['direction'] = 'LONG'
+                    signal['side'] = 'LONG'
                 elif side in ['SHORT', 'short']:
-                    signal['direction'] = 'SHORT'
+                    signal['side'] = 'SHORT'
                 else:
                     logger.warning(f"Unknown side value: {side}")
                     return None
             
             # NOUVEAU: Validation multi-timeframe (1m signal validé par contexte 15m)
             if not await self._validate_signal_with_higher_timeframe(signal):
-                logger.info(f"Signal {strategy} {signal['direction']} sur {symbol} rejeté par validation 15m")
+                logger.info(f"Signal {strategy} {signal['side']} sur {symbol} rejeté par validation 15m")
                 return None
             
             # Handle timestamp conversion
@@ -132,8 +132,8 @@ class SignalAggregator:
     async def _aggregate_signals(self, symbol: str, signals: List[Dict], 
                                regime: str) -> Optional[Dict[str, Any]]:
         """Aggregate multiple signals into a single decision"""
-        
-        # Group signals by direction
+
+        # Group signals by side
         long_signals = []
         short_signals = []
 
@@ -152,39 +152,39 @@ class SignalAggregator:
             confidence = signal.get('confidence', 0.5)
             if confidence < self.min_confidence_threshold:
                 continue
-                
-            # Get direction (handle both 'direction' and 'side' keys)
-            direction = signal.get('direction', signal.get('side'))
-            if direction in ['LONG', 'long']:
-                direction = 'LONG'
-            elif direction in ['SHORT', 'short']:
-                direction = 'SHORT'
+
+            # Get side (handle both 'side' and 'side' keys)
+            side = signal.get('side', signal.get('side'))
+            if side in ['LONG', 'long']:
+                side = 'LONG'
+            elif side in ['SHORT', 'short']:
+                side = 'SHORT'
 
             # Weighted signal
             weighted_signal = {
                 'strategy': strategy,
-                'direction': direction,
+                'side': side,
                 'confidence': confidence,
                 'weight': weight,
                 'score': confidence * weight
             }
 
-            if direction == 'LONG':
+            if side == 'LONG':
                 long_signals.append(weighted_signal)
-            elif direction == 'SHORT':
+            elif side == 'SHORT':
                 short_signals.append(weighted_signal)
 
         # Calculate total scores
         long_score = sum(s['score'] for s in long_signals)
         short_score = sum(s['score'] for s in short_signals)
 
-        # Determine direction
+        # Determine side
         if long_score > short_score and long_score >= self.min_vote_threshold:
-            direction = 'LONG'
+            side = 'LONG'
             confidence = long_score / (long_score + short_score)
             contributing_strategies = [s['strategy'] for s in long_signals]
         elif short_score > long_score and short_score >= self.min_vote_threshold:
-            direction = 'SHORT'
+            side = 'SHORT'
             confidence = short_score / (long_score + short_score)
             contributing_strategies = [s['strategy'] for s in short_signals]
         else:
@@ -193,8 +193,8 @@ class SignalAggregator:
             return None
             
         # Calculate averaged stop loss (plus de take profit avec TrailingStop pur)
-        relevant_signals = long_signals if direction == 'LONG' else short_signals
-        
+        relevant_signals = long_signals if side == 'LONG' else short_signals
+
         total_weight = sum(s['weight'] for s in relevant_signals)
         if total_weight == 0:
             return None
@@ -203,8 +203,8 @@ class SignalAggregator:
         stop_loss_sum = 0
         
         for signal in signals:
-            signal_direction = signal.get('direction', signal.get('side'))
-            if signal_direction == direction and signal['strategy'] in contributing_strategies:
+            signal_side = signal.get('side', signal.get('side'))
+            if signal_side == side and signal['strategy'] in contributing_strategies:
                 weight = await self.performance_tracker.get_strategy_weight(signal['strategy'])
                 
                 # Extract stop_price from metadata (plus de target_price avec TrailingStop pur)
@@ -241,8 +241,7 @@ class SignalAggregator:
         
         return {
             'symbol': symbol,
-            'side': direction,  # Use 'side' instead of 'direction' for coordinator compatibility
-            'direction': direction,  # Keep for backward compatibility
+            'side': side,  # Use 'side' instead of 'side' for coordinator compatibility
             'price': current_price,  # Add price field required by coordinator
             'strategy': f"Aggregated_{len(contributing_strategies)}",  # Create strategy name
             'confidence': confidence,
@@ -315,8 +314,8 @@ class SignalAggregator:
         """
         try:
             symbol = signal['symbol']
-            direction = signal['direction']
-            
+            side = signal['side']
+
             # Récupérer les données 15m récentes depuis Redis
             market_data_key = f"market_data:{symbol}:15m"
             data_15m = self.redis.get(market_data_key)
@@ -354,24 +353,24 @@ class SignalAggregator:
                 trend_15m = "NEUTRAL"
             
             # Règles de validation
-            if direction == "LONG" and trend_15m == "BEARISH":
+            if side == "LONG" and trend_15m == "BEARISH":
                 logger.info(f"Signal LONG {symbol} rejeté : tendance 15m baissière")
                 return False
-            elif direction == "SHORT" and trend_15m == "BULLISH":
+            elif side == "SHORT" and trend_15m == "BULLISH":
                 logger.info(f"Signal SHORT {symbol} rejeté : tendance 15m haussière")
                 return False
             
             # Validation additionnelle : RSI 15m
             rsi_15m = data_15m.get('rsi_14')
             if rsi_15m:
-                if direction == "LONG" and rsi_15m > 75:
+                if side == "LONG" and rsi_15m > 75:
                     logger.info(f"Signal LONG {symbol} rejeté : RSI 15m surachat ({rsi_15m})")
                     return False
-                elif direction == "SHORT" and rsi_15m < 25:
+                elif side == "SHORT" and rsi_15m < 25:
                     logger.info(f"Signal SHORT {symbol} rejeté : RSI 15m survente ({rsi_15m})")
                     return False
-            
-            logger.debug(f"Signal {direction} {symbol} validé par tendance 15m {trend_15m}")
+
+            logger.debug(f"Signal {side} {symbol} validé par tendance 15m {trend_15m}")
             return True
             
         except Exception as e:

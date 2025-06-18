@@ -176,7 +176,12 @@ class BollingerStrategy(BaseStrategy):
         # Calculer des métriques utiles
         band_width = current_upper - current_lower
         band_width_pct = (band_width / middle[-1]) * 100
-        price_position = (current_price - current_lower) / band_width  # 0 = bande basse, 1 = bande haute
+        # Éviter la division par zéro
+        if band_width > 0:
+            price_position = (current_price - current_lower) / band_width  # 0 = bande basse, 1 = bande haute
+        else:
+            # Si les bandes sont identiques (volatilité nulle), position au milieu
+            price_position = 0.5
         
         # Filtre de tendance : vérifier la position du prix par rapport à la SMA
         current_middle = middle[-1]

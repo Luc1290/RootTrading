@@ -257,7 +257,7 @@ class ExchangeReconciliation:
                     # Calculer P&L si possible
                     if cycle.entry_price and cycle.exit_price and cycle.quantity:
                         # Déterminer si c'était un cycle d'achat ou de vente initial
-                        # On vérifie l'ordre d'entrée pour savoir la direction initiale
+                        # On vérifie l'ordre d'entrée pour savoir le side initiale
                         if entry_execution:
                             entry_side = entry_execution.side
                         else:

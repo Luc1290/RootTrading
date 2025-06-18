@@ -263,28 +263,3 @@ class BinanceExecutor:
             logger.error(f"❌ Erreur lors de la récupération des frais de trading: {str(e)}")
             return (0.001, 0.001)  # Valeurs par défaut en cas d'erreur
     
-    def get_order_status(self, symbol: str, order_id: str) -> Optional[TradeExecution]:
-        """
-        Récupère le statut d'un ordre.
-        
-        Args:
-            symbol: Symbole (ex: 'BTCUSDC')
-            order_id: ID de l'ordre
-            
-        Returns:
-            TradeExecution avec le statut mis à jour ou None si erreur
-        """
-        # Vérifier d'abord si c'est un ordre démo stocké localement
-        if order_id in self.demo_trades:
-            return self.demo_trades[order_id]
-            
-        # Si on est en mode démo, ne pas essayer d'appeler Binance
-        if self.demo_mode:
-            return None
-        
-        # Ordre réel sur Binance
-        try:
-            return self.utils.fetch_order_status(symbol, order_id, self.time_offset)
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la récupération du statut de l'ordre {order_id}: {str(e)}")
-            return None

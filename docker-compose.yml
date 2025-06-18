@@ -130,8 +130,6 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
-      dispatcher:
-        condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5010/health').read()"]
       interval: 30s
@@ -216,10 +214,6 @@ services:
         condition: service_healthy
       db:
         condition: service_healthy
-      dispatcher:
-        condition: service_started
-      analyzer:
-        condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 5002)); s.close()"]
       interval: 30s
@@ -246,8 +240,6 @@ services:
         condition: service_healthy
       db:
         condition: service_healthy
-      dispatcher:
-        condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8080)); s.close()"]
       interval: 30s
@@ -306,10 +298,6 @@ services:
         condition: service_healthy
       db:
         condition: service_healthy
-      trader:
-        condition: service_started
-      portfolio:
-        condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8080)); s.close()"]
       interval: 30s
