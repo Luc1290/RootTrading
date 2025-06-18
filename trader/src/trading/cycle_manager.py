@@ -814,7 +814,7 @@ class CycleManager:
             }
             
             # Ajouter des infos supplémentaires selon le type d'événement
-            if event_type == "closed" and cycle.exit_price:
+            if event_type == "completed" and cycle.exit_price:
                 cycle_data["exit_price"] = float(cycle.exit_price) if hasattr(cycle.exit_price, 'dtype') else cycle.exit_price
                 cycle_data["profit_loss"] = float(cycle.profit_loss) if hasattr(cycle.profit_loss, 'dtype') else cycle.profit_loss
                 cycle_data["profit_loss_percent"] = float(cycle.profit_loss_percent) if hasattr(cycle.profit_loss_percent, 'dtype') else cycle.profit_loss_percent
