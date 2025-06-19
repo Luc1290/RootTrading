@@ -18,11 +18,13 @@ from shared.src.enums import OrderSide, SignalStrength
 from shared.src.schemas import StrategySignal
 
 from .base_strategy import BaseStrategy
+from .advanced_filters_mixin import AdvancedFiltersMixin
+from .strategy_upgrader import wrap_generate_signal
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
 
-class RideOrReactStrategy(BaseStrategy):
+class RideOrReactStrategy(BaseStrategy, AdvancedFiltersMixin):
     """
     Stratégie adaptative qui permet de:
     - "Ride": Laisser courir les positions pendant les tendances fortes
@@ -61,6 +63,10 @@ class RideOrReactStrategy(BaseStrategy):
         
         logger.info(f"🔧 Stratégie Ride or React initialisée pour {symbol} "
                    f"(seuils: 1h={self.thresholds['1h']}%, 24h={self.thresholds['24h']}%)")
+        
+        # Upgrader automatiquement la méthode generate_signal avec filtres sophistiqués
+        self._original_generate_signal = self.generate_signal
+        self.generate_signal = wrap_generate_signal(self, self._original_generate_signal)
     
     @property
     def name(self) -> str:

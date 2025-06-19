@@ -18,11 +18,12 @@ from shared.src.enums import OrderSide
 from shared.src.schemas import StrategySignal
 
 from .base_strategy import BaseStrategy
+from .advanced_filters_mixin import AdvancedFiltersMixin
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
 
-class EMACrossStrategy(BaseStrategy):
+class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
     """
     Stratégie basée sur le croisement de moyennes mobiles exponentielles (EMA).
     Génère des signaux d'achat quand l'EMA courte croise l'EMA longue vers le haut
@@ -129,18 +130,24 @@ class EMACrossStrategy(BaseStrategy):
     
     def generate_signal(self) -> Optional[StrategySignal]:
         """
-        Génère un signal de trading basé sur le croisement d'EMAs.
+        Génère un signal de trading sophistiqué basé sur le croisement d'EMAs.
+        Utilise des filtres avancés pour éviter les faux signaux.
         
         Returns:
             Signal de trading ou None si aucun signal n'est généré
         """
+        # Vérifier le cooldown avant de générer un signal
+        if not self.can_generate_signal():
+            return None
+        
         # Convertir les données en DataFrame
         df = self.get_data_as_dataframe()
         if df is None or len(df) < self.get_min_data_points():
             return None
         
-        # Extraire les prix de clôture
+        # Extraire les données nécessaires
         prices = df['close'].values
+        volumes = df['volume'].values if 'volume' in df.columns else None
         
         # Calculer les EMAs
         short_ema, long_ema = self.calculate_emas(prices)
@@ -150,126 +157,216 @@ class EMACrossStrategy(BaseStrategy):
         current_short_ema = short_ema[-1]
         current_long_ema = long_ema[-1]
         
-        prev_short_ema = short_ema[-2] if len(short_ema) > 1 else None
-        prev_long_ema = long_ema[-2] if len(long_ema) > 1 else None
-        
         # Loguer les valeurs actuelles
-        # Utiliser plus de précision pour les paires BTC
         precision = 5 if 'BTC' in self.symbol else 2
-        logger.info(f"[EMA Cross] {self.symbol}: Price={current_price:.{precision}f}, "
+        logger.debug(f"[EMA Cross] {self.symbol}: Price={current_price:.{precision}f}, "
                     f"Short EMA={current_short_ema:.{precision}f}, Long EMA={current_long_ema:.{precision}f}")
         
-        # Vérifier les conditions pour générer un signal
-        signal = None
-        
-        if np.isnan(current_short_ema) or np.isnan(current_long_ema) or prev_short_ema is None or prev_long_ema is None:
-            # Pas assez de données pour un signal fiable
+        # Vérifications de base
+        if np.isnan(current_short_ema) or np.isnan(current_long_ema):
             return None
         
-        # Nouvelle approche : acheter les pullbacks dans une tendance haussière
-        # et vendre les rebonds dans une tendance baissière
+        # === NOUVEAU SYSTÈME DE FILTRES SOPHISTIQUES ===
         
-        # Déterminer la tendance actuelle basée sur les EMAs
-        is_uptrend = current_short_ema > current_long_ema
-        is_downtrend = current_short_ema < current_long_ema
+        # 1. FILTRE SETUP EMA DE BASE
+        signal_side = self._detect_ema_setup(short_ema, long_ema, prices)
+        if signal_side is None:
+            return None
         
-        # Calculer la distance entre le prix et les EMAs
-        price_to_short_ema = (current_price - current_short_ema) / current_short_ema * 100
-        price_to_long_ema = (current_price - current_long_ema) / current_long_ema * 100
-        ema_spread = abs(current_short_ema - current_long_ema) / current_long_ema * 100
+        # 2. FILTRE ADX (force de tendance)
+        adx_score = self._analyze_adx_strength(df)
+        if adx_score < 0.4:
+            logger.debug(f"[EMA Cross] {self.symbol}: Signal rejeté - ADX faible ({adx_score:.2f})")
+            return None
         
-        # Signal d'ACHAT : Prix revient vers les EMAs dans une tendance haussière (pullback)
-        if is_uptrend and price_to_short_ema < -0.5:  # Prix sous l'EMA courte d'au moins 0.5%
-            # Plus le prix est proche de l'EMA longue, meilleur est le point d'entrée
-            if current_price <= current_long_ema * 1.01:  # Prix proche ou sous l'EMA longue
-                confidence = 0.9   # Augmenté de 0.85 à 0.9
-                signal_reason = "deep_pullback"
-            elif price_to_short_ema < -1.0:  # Prix bien sous l'EMA courte
-                confidence = 0.8   # Augmenté de 0.75 à 0.8
-                signal_reason = "moderate_pullback"
-            else:
-                confidence = 0.7   # Augmenté de 0.65 à 0.7
-                signal_reason = "light_pullback"
-            
-            # Ajuster la confiance selon la force de la tendance
-            if ema_spread > 2.0:  # Tendance très forte
-                confidence *= 1.1
-            elif ema_spread < 0.5:  # Tendance faible
-                confidence *= 0.8
-            
-            # Stop selon le symbole
-            if 'BTC' in self.symbol:
-                stop_pct = 0.015  # 1.5% stop pour BTC
-            else:
-                stop_pct = 0.025  # 2.5% stop pour autres
-            
-            stop_loss = min(current_price * (1 - stop_pct), current_long_ema * 0.99)
-            
-            metadata = {
-                "short_ema": float(current_short_ema),
-                "long_ema": float(current_long_ema),
-                "price_to_short_ema": float(price_to_short_ema),
-                "price_to_long_ema": float(price_to_long_ema),
-                "ema_spread": float(ema_spread),
-                "trend": "uptrend",
-                "reason": signal_reason,
-                "stop_price": float(stop_loss)
-            }
-            
-            signal = self.create_signal(
-                side=OrderSide.LONG,
-                price=current_price,
-                confidence=min(confidence, 0.95),
-                metadata=metadata
-            )
+        # 3. FILTRE VOLUME (confirmation institutionnelle)
+        volume_score = self._analyze_volume_confirmation_common(volumes) if volumes is not None else 0.7
+        if volume_score < 0.4:
+            logger.debug(f"[EMA Cross] {self.symbol}: Signal rejeté - volume insuffisant ({volume_score:.2f})")
+            return None
         
-        # Signal de VENTE : Prix remonte vers les EMAs dans une tendance baissière (rebond)
-        elif is_downtrend and price_to_short_ema > 0.5:  # Prix au-dessus de l'EMA courte d'au moins 0.5%
-            # Plus le prix est proche de l'EMA longue, meilleur est le point de sortie
-            if current_price >= current_long_ema * 0.99:  # Prix proche ou au-dessus de l'EMA longue
-                confidence = 0.9   # Augmenté de 0.85 à 0.9
-                signal_reason = "strong_bounce"
-            elif price_to_short_ema > 1.0:  # Prix bien au-dessus de l'EMA courte
-                confidence = 0.8   # Augmenté de 0.75 à 0.8
-                signal_reason = "moderate_bounce"
-            else:
-                confidence = 0.7   # Augmenté de 0.65 à 0.7
-                signal_reason = "light_bounce"
-            
-            # Ajuster la confiance selon la force de la tendance
-            if ema_spread > 2.0:  # Tendance très forte
-                confidence *= 1.1
-            elif ema_spread < 0.5:  # Tendance faible
-                confidence *= 0.8
-            
-            # Stop selon le symbole  
-            if 'BTC' in self.symbol:
-                stop_pct = 0.015  # 1.5% stop pour BTC
-            else:
-                stop_pct = 0.025  # 2.5% stop pour autres
-            
-            stop_loss = max(current_price * (1 + stop_pct), current_long_ema * 1.01)
-            
-            metadata = {
-                "short_ema": float(current_short_ema),
-                "long_ema": float(current_long_ema),
-                "price_to_short_ema": float(price_to_short_ema),
-                "price_to_long_ema": float(price_to_long_ema),
-                "ema_spread": float(ema_spread),
-                "trend": "downtrend",
-                "reason": signal_reason,
-                "stop_price": float(stop_loss)
-            }
-            
-            signal = self.create_signal(
-                side=OrderSide.SHORT,
-                price=current_price,
-                confidence=min(confidence, 0.95),
-                metadata=metadata
-            )
+        # 4. FILTRE PULLBACK VALIDATION (éviter les faux breakouts)
+        pullback_score = self._validate_pullback_quality(df, signal_side, current_short_ema, current_long_ema)
         
-        # Mettre à jour les valeurs précédentes
-        self.prev_short_ema = current_short_ema
-        self.prev_long_ema = current_long_ema
+        # 5. FILTRE TREND ALIGNMENT (confirmation tendance supérieure)
+        trend_score = self._analyze_trend_alignment_common(df, signal_side)
+        
+        # 6. FILTRE RSI CONFIRMATION (momentum sous-jacent)
+        rsi_score = self._calculate_rsi_confirmation_common(df, signal_side)
+        
+        # 7. FILTRE SUPPORT/RESISTANCE (confluence niveaux)
+        sr_score = self._detect_support_resistance_common(df, current_price, signal_side)
+        
+        # === CALCUL DE CONFIANCE COMPOSITE ===
+        scores = {
+            'adx': adx_score,
+            'volume': volume_score,
+            'pullback': pullback_score,
+            'trend': trend_score,
+            'rsi': rsi_score,
+            'sr': sr_score
+        }
+        
+        weights = {
+            'adx': 0.25,      # Force de tendance cruciale pour EMA
+            'volume': 0.20,   # Confirmation volume
+            'pullback': 0.20, # Qualité du pullback
+            'trend': 0.15,    # Tendance supérieure
+            'rsi': 0.10,      # Momentum
+            'sr': 0.10        # Support/résistance
+        }
+        
+        confidence = self._calculate_composite_confidence_common(scores, weights)
+        
+        # Seuil minimum de confiance
+        if confidence < 0.65:
+            logger.debug(f"[EMA Cross] {self.symbol}: Signal rejeté - confiance trop faible ({confidence:.2f})")
+            return None
+        
+        # === CONSTRUCTION DU SIGNAL ===
+        signal = self.create_signal(
+            side=signal_side,
+            price=current_price,
+            confidence=confidence
+        )
+        
+        # Ajouter les métadonnées d'analyse
+        signal.metadata.update({
+            'short_ema': current_short_ema,
+            'long_ema': current_long_ema,
+            'ema_spread_pct': abs(current_short_ema - current_long_ema) / current_long_ema * 100,
+            'price_to_short_ema_pct': (current_price - current_short_ema) / current_short_ema * 100,
+            'price_to_long_ema_pct': (current_price - current_long_ema) / current_long_ema * 100,
+            'adx_score': adx_score,
+            'volume_score': volume_score,
+            'pullback_score': pullback_score,
+            'trend_score': trend_score,
+            'rsi_score': rsi_score,
+            'sr_score': sr_score
+        })
+        
+        logger.info(f"🎯 [EMA Cross] {self.symbol}: Signal {signal_side} @ {current_price:.{precision}f} "
+                   f"(confiance: {confidence:.2f}, scores: ADX={adx_score:.2f}, V={volume_score:.2f}, "
+                   f"PB={pullback_score:.2f})")
         
         return signal
+    
+    def _detect_ema_setup(self, short_ema: np.ndarray, long_ema: np.ndarray, prices: np.ndarray) -> Optional[OrderSide]:
+        """
+        Détecte le setup EMA de base avec logique sophistiquée.
+        """
+        if len(short_ema) < 3 or len(long_ema) < 3:
+            return None
+        
+        current_short = short_ema[-1]
+        current_long = long_ema[-1]
+        current_price = prices[-1]
+        
+        # Détecter la direction de la tendance
+        is_uptrend = current_short > current_long
+        is_downtrend = current_short < current_long
+        
+        # Calculer les distances
+        price_to_short_pct = (current_price - current_short) / current_short * 100
+        price_to_long_pct = (current_price - current_long) / current_long * 100
+        
+        # Setup LONG: Pullback dans tendance haussière
+        if is_uptrend and price_to_short_pct < -0.3:  # Prix sous EMA courte
+            # Vérifier que ce n'est pas un breakdown
+            if current_price > current_long * 0.98:  # Pas trop loin de l'EMA longue
+                return OrderSide.LONG
+        
+        # Setup SHORT: Rebond dans tendance baissière
+        elif is_downtrend and price_to_short_pct > 0.3:  # Prix au-dessus EMA courte
+            # Vérifier que ce n'est pas un breakout
+            if current_price < current_long * 1.02:  # Pas trop loin de l'EMA longue
+                return OrderSide.SHORT
+        
+        return None
+    
+    def _analyze_adx_strength(self, df: pd.DataFrame) -> float:
+        """
+        Analyse la force de tendance avec ADX.
+        """
+        try:
+            if len(df) < 30:
+                return 0.7
+            
+            high = df['high'].values
+            low = df['low'].values
+            close = df['close'].values
+            
+            # Calculer ADX
+            adx = talib.ADX(high, low, close, timeperiod=14)
+            
+            if np.isnan(adx[-1]):
+                return 0.7
+            
+            current_adx = adx[-1]
+            
+            # Score basé sur la force ADX
+            if current_adx > 40:
+                return 0.95  # Tendance très forte
+            elif current_adx > 30:
+                return 0.85  # Tendance forte
+            elif current_adx > 20:
+                return 0.75  # Tendance modérée
+            elif current_adx > 15:
+                return 0.65  # Tendance faible
+            else:
+                return 0.5   # Pas de tendance claire
+                
+        except Exception as e:
+            logger.warning(f"Erreur ADX: {e}")
+            return 0.7
+    
+    def _validate_pullback_quality(self, df: pd.DataFrame, signal_side: OrderSide, 
+                                  short_ema: float, long_ema: float) -> float:
+        """
+        Valide la qualité du pullback/rebond.
+        """
+        try:
+            if len(df) < 10:
+                return 0.7
+            
+            prices = df['close'].values
+            current_price = prices[-1]
+            
+            # Analyser la qualité du mouvement
+            price_volatility = np.std(prices[-10:]) / np.mean(prices[-10:])
+            
+            if signal_side == OrderSide.LONG:
+                # Pour LONG: prix doit être proche de l'EMA longue mais pas en breakdown
+                distance_to_long = abs(current_price - long_ema) / long_ema
+                
+                if distance_to_long < 0.01:  # Très proche EMA longue
+                    score = 0.9
+                elif distance_to_long < 0.02:  # Proche EMA longue
+                    score = 0.8
+                elif current_price > long_ema:  # Au-dessus EMA longue
+                    score = 0.75
+                else:  # En dessous EMA longue
+                    score = 0.6
+            
+            else:  # SHORT
+                # Pour SHORT: prix doit être proche de l'EMA longue mais pas en breakout
+                distance_to_long = abs(current_price - long_ema) / long_ema
+                
+                if distance_to_long < 0.01:  # Très proche EMA longue
+                    score = 0.9
+                elif distance_to_long < 0.02:  # Proche EMA longue
+                    score = 0.8
+                elif current_price < long_ema:  # En dessous EMA longue
+                    score = 0.75
+                else:  # Au-dessus EMA longue
+                    score = 0.6
+            
+            # Ajuster selon la volatilité
+            if price_volatility > 0.03:  # Haute volatilité
+                score *= 0.9
+            
+            return min(0.95, score)
+            
+        except Exception as e:
+            logger.warning(f"Erreur validation pullback: {e}")
+            return 0.7

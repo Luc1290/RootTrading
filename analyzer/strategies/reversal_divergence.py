@@ -18,11 +18,13 @@ from shared.src.enums import OrderSide
 from shared.src.schemas import StrategySignal
 
 from .base_strategy import BaseStrategy
+from .advanced_filters_mixin import AdvancedFiltersMixin
+from .strategy_upgrader import wrap_generate_signal
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
 
-class ReversalDivergenceStrategy(BaseStrategy):
+class ReversalDivergenceStrategy(BaseStrategy, AdvancedFiltersMixin):
     """
     Stratégie basée sur les divergences entre le prix et le RSI.
     Détecte les moments où le prix fait de nouveaux plus bas (ou plus hauts) 
@@ -49,6 +51,10 @@ class ReversalDivergenceStrategy(BaseStrategy):
         
         logger.info(f"🔧 Stratégie de Divergence initialisée pour {symbol} "
                    f"(rsi_window={self.rsi_window}, lookback={self.lookback})")
+        
+        # Upgrader automatiquement la méthode generate_signal avec filtres sophistiqués
+        self._original_generate_signal = self.generate_signal
+        self.generate_signal = wrap_generate_signal(self, self._original_generate_signal)
     
     @property
     def name(self) -> str:

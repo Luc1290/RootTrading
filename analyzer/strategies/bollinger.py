@@ -130,7 +130,8 @@ class BollingerStrategy(BaseStrategy):
     
     def generate_signal(self) -> Optional[StrategySignal]:
         """
-        Génère un signal de trading basé sur les bandes de Bollinger.
+        Génère un signal de trading sophistiqué basé sur les bandes de Bollinger.
+        Utilise des filtres multi-critères pour éviter le trading aléatoire.
         
         Returns:
             Signal de trading ou None si aucun signal n'est généré
@@ -144,238 +145,452 @@ class BollingerStrategy(BaseStrategy):
         if df is None or len(df) < self.get_min_data_points():
             return None
         
-        # Extraire les prix de clôture
+        # Extraire les données nécessaires
         prices = df['close'].values
+        highs = df['high'].values
+        lows = df['low'].values
+        volumes = df['volume'].values if 'volume' in df.columns else None
         
         # Calculer les bandes de Bollinger
         upper, middle, lower = self.calculate_bollinger_bands(prices)
         
         # Obtenir les dernières valeurs
         current_price = prices[-1]
-        prev_price = prices[-2] if len(prices) > 1 else None
-        
         current_upper = upper[-1]
         current_lower = lower[-1]
-        
-        prev_upper = upper[-2] if len(upper) > 1 else None
-        prev_lower = lower[-2] if len(lower) > 1 else None
+        current_middle = middle[-1]
         
         # Loguer les valeurs actuelles
-        # Utiliser plus de précision pour les paires BTC
         precision = 5 if 'BTC' in self.symbol else 2
-        logger.info(f"[Bollinger] {self.symbol}: Price={current_price:.{precision}f}, "
+        logger.debug(f"[Bollinger] {self.symbol}: Price={current_price:.{precision}f}, "
                     f"Upper={current_upper:.{precision}f}, Lower={current_lower:.{precision}f}")
         
-        # Vérifier les conditions pour générer un signal
-        signal = None
-        
-        if np.isnan(current_upper) or prev_price is None or np.isnan(prev_upper):
-            # Pas assez de données pour un signal fiable
+        # Vérifications de base
+        if np.isnan(current_upper) or np.isnan(current_lower):
             return None
         
-        # Calculer des métriques utiles
-        band_width = current_upper - current_lower
-        band_width_pct = (band_width / middle[-1]) * 100
-        # Éviter la division par zéro
-        if band_width > 0:
-            price_position = (current_price - current_lower) / band_width  # 0 = bande basse, 1 = bande haute
-        else:
-            # Si les bandes sont identiques (volatilité nulle), position au milieu
-            price_position = 0.5
+        # === NOUVEAU SYSTÈME DE FILTRES SOPHISTIQUES ===
         
-        # Filtre de tendance : vérifier la position du prix par rapport à la SMA
-        current_middle = middle[-1]
-        prev_middle = middle[-2] if len(middle) > 1 else current_middle
+        # 1. FILTRE SETUP DE BASE BOLLINGER
+        signal_side = self._detect_bollinger_setup(prices, upper, middle, lower)
+        if signal_side is None:
+            return None
         
-        # Tendance haussière si SMA monte
-        sma_trend_up = current_middle > prev_middle
-        # Prix au-dessus de la SMA = tendance haussière
-        price_above_sma = current_price > current_middle * 0.98  # 2% de tolérance
+        # 2. FILTRE VOLUME (confirmation institutionnelle)
+        volume_score = self._analyze_volume_confirmation(volumes) if volumes is not None else 0.7
+        if volume_score < 0.4:
+            logger.debug(f"[Bollinger] {self.symbol}: Signal rejeté - volume insuffisant ({volume_score:.2f})")
+            return None
         
-        # Signal d'ACHAT: Prix touche ou pénètre la bande inférieure (acheter l'extrême)
-        # MAIS seulement si on n'est pas dans une forte tendance baissière
-        if current_price <= current_lower * 1.002:  # Prix à ou sous la bande basse (avec 0.2% de marge)
-            # Plus le prix est sous la bande, plus c'est extrême
-            penetration_pct = ((current_lower - current_price) / current_lower) * 100
-            
-            # NOUVEAU : Ajuster la logique selon la tendance
-            if not sma_trend_up and not price_above_sma:
-                # Tendance baissière confirmée : réduire la confiance mais ne pas bloquer
-                confidence *= 0.4  # Réduire drastiquement la confiance
-                signal_reason += "_bearish_market"
-                logger.debug(f"[Bollinger] {self.symbol}: Signal LONG réduit en tendance baissière "
-                           f"(confiance réduite à {confidence:.2f})")
-                # Si la confiance devient trop faible, ne pas générer de signal
-                if confidence < 0.3:
-                    return None
-            
-            # Vérifier si les bandes sont suffisamment écartées (éviter les marchés plats)
-            if band_width_pct < 1.0:  # Bandes très serrées, marché plat
-                confidence = 0.7  # Augmenté de 0.5 à 0.7
-                signal_reason = "squeeze_caution"
-            elif penetration_pct > 0.5:  # Forte pénétration sous la bande
-                confidence = 0.85
-                signal_reason = "strong_oversold"
-            elif current_price < current_lower:  # Légère pénétration
-                confidence = 0.75
-                signal_reason = "oversold"
-            else:  # Juste touché la bande
-                confidence = 0.75  # Augmenté de 0.65 à 0.75
-                signal_reason = "band_touch"
-            
-            # Bonus si on vient de l'extérieur (premier contact)
-            if prev_price > prev_lower * 1.01:
-                confidence *= 1.1
-                signal_reason += "_fresh"
-            
-            # Stop basé sur la volatilité uniquement
-            
-            # Stop basé sur la volatilité (pour métadonnées seulement)
-            if 'BTC' in self.symbol:
-                stop_multiplier = 0.5  # BTC
-            else:
-                stop_multiplier = 0.6   # Autres
-            
-            stop_distance = band_width * stop_multiplier
-            
-            # Forcer un stop minimum en pourcentage absolu - AUGMENTÉ pour éviter les whipsaws
-            min_stop_percent = 1.5 if 'BTC' in self.symbol else 2.0  # 1.5% pour BTC, 2% pour autres
-            min_stop_distance = current_price * (min_stop_percent / 100)
-            stop_distance = max(stop_distance, min_stop_distance)
-            
-            stop_price = current_price - stop_distance
-            
-            metadata = {
-                "bb_upper": float(current_upper),
-                "bb_middle": float(middle[-1]),
-                "bb_lower": float(current_lower),
-                "band_width_pct": float(band_width_pct),
-                "price_position": float(price_position),
-                "penetration_pct": float(penetration_pct),
-                "reason": signal_reason,
-                "stop_price": float(stop_price),
-                "sma_trend_up": sma_trend_up,
-                "price_above_sma": price_above_sma
-            }
-            
-            signal = self.create_signal(
-                side=OrderSide.LONG,
-                price=current_price,
-                confidence=min(confidence, 0.95),
-                metadata=metadata
-            )
+        # 3. FILTRE DIVERGENCE RSI (momentum sous-jacent)
+        rsi_divergence_score = self._detect_rsi_divergence(df, signal_side)
         
-        # Signal de VENTE: Prix touche ou pénètre la bande supérieure (vendre l'extrême)
-        # OU signal de vente anticipé en tendance baissière forte
-        elif (current_price >= current_upper * 0.998 or  # Condition normale
-              (not sma_trend_up and not price_above_sma and current_price >= current_middle * 1.005)):  # Vente anticipée en tendance baissière
-            # Identifier le type de signal de vente
-            is_early_short = (not sma_trend_up and not price_above_sma and
-                              current_price < current_upper * 0.998 and
-                              current_price >= current_middle * 1.005)
-
-            if is_early_short:
-                # Signal de vente anticipé en tendance baissière
-                penetration_pct = ((current_price - current_middle) / current_middle) * 100
-                confidence = 0.75  # Confiance modérée pour vente anticipée
-                signal_reason = "early_short_bearish_trend"
-                logger.info(f"[Bollinger] {self.symbol}: Signal SHORT anticipé en tendance baissière")
-            else:
-                # Signal de vente normal (bande supérieure)
-                penetration_pct = ((current_price - current_upper) / current_upper) * 100
-            
-            # Calculer la confiance (seulement pour signaux normaux)
-            if not is_early_short:
-                # Vérifier si les bandes sont suffisamment écartées
-                if band_width_pct < 1.0:  # Bandes très serrées, marché plat
-                    confidence = 0.7  # Aligné avec les signaux LONG pour cohérence
-                    signal_reason = "squeeze_caution"
-                elif penetration_pct > 0.5:  # Forte pénétration au-dessus de la bande
-                    confidence = 0.85
-                    signal_reason = "strong_overbought"
-                elif current_price > current_upper:  # Légère pénétration
-                    confidence = 0.75
-                    signal_reason = "overbought"
-                else:  # Juste touché la bande
-                    confidence = 0.65
-                    signal_reason = "band_touch"
-            
-            # Bonus si on vient de l'intérieur (premier contact)
-            if prev_price < prev_upper * 0.99:
-                confidence *= 1.1
-                signal_reason += "_fresh"
-            
-            # Stop basé sur la volatilité uniquement
-            
-            # Stop basé sur la volatilité (pour métadonnées seulement)
-            if 'BTC' in self.symbol:
-                stop_multiplier = 0.5  # BTC
-            else:
-                stop_multiplier = 0.6   # Autres
-            
-            stop_distance = band_width * stop_multiplier
-            
-            # Forcer un stop minimum en pourcentage absolu
-            min_stop_percent = 0.5 if 'BTC' in self.symbol else 0.8
-            min_stop_distance = current_price * (min_stop_percent / 100)
-            stop_distance = max(stop_distance, min_stop_distance)
-            
-            stop_price = current_price + stop_distance
-            
-            metadata = {
-                "bb_upper": float(current_upper),
-                "bb_middle": float(middle[-1]),
-                "bb_lower": float(current_lower),
-                "band_width_pct": float(band_width_pct),
-                "price_position": float(price_position),
-                "penetration_pct": float(penetration_pct),
-                "reason": signal_reason,
-                "stop_price": float(stop_price)
-            }
-            
-            signal = self.create_signal(
-                side=OrderSide.SHORT,
-                price=current_price,
-                confidence=min(confidence, 0.95),
-                metadata=metadata
-            )
+        # 4. FILTRE SUPPORT/RESISTANCE (structure de prix)
+        sr_score = self._analyze_support_resistance_confluence(df, current_price, signal_side)
         
-        # Mettre à jour les valeurs précédentes
-        self.prev_price = current_price
-        self.prev_upper = current_upper
-        self.prev_lower = current_lower
+        # 5. FILTRE MULTI-TIMEFRAME (tendance supérieure)
+        trend_score = self._analyze_higher_timeframe_trend(signal_side)
         
-        # Mettre à jour le timestamp si un signal est généré
-        if signal:
-            self.last_signal_time = datetime.now()
+        # 6. FILTRE VOLATILITÉ (environnement de marché)
+        volatility_score = self._analyze_volatility_environment(upper, middle, lower)
+        
+        # 7. FILTRE SQUEEZE DETECTION (éviter les faux signaux en range)
+        squeeze_score = self._detect_bollinger_squeeze(upper, middle, lower)
+        
+        # === CALCUL DE CONFIANCE COMPOSITE ===
+        confidence = self._calculate_composite_confidence(
+            volume_score, rsi_divergence_score, sr_score, 
+            trend_score, volatility_score, squeeze_score
+        )
+        
+        # Seuil minimum de confiance pour éviter le trading aléatoire
+        if confidence < 0.65:
+            logger.debug(f"[Bollinger] {self.symbol}: Signal rejeté - confiance trop faible ({confidence:.2f})")
+            return None
+        
+        # === CONSTRUCTION DU SIGNAL ===
+        signal = self.create_signal(
+            side=signal_side,
+            price=current_price,
+            confidence=confidence
+        )
+        
+        # Ajouter les métadonnées d'analyse
+        signal.metadata.update({
+            'bollinger_position': (current_price - current_lower) / (current_upper - current_lower),
+            'volume_score': volume_score,
+            'rsi_divergence_score': rsi_divergence_score,
+            'sr_score': sr_score,
+            'trend_score': trend_score,
+            'volatility_score': volatility_score,
+            'squeeze_score': squeeze_score,
+            'band_width_pct': ((current_upper - current_lower) / current_middle) * 100,
+            'price_distance_from_band': self._calculate_band_distance(current_price, upper, lower, signal_side)
+        })
+        
+        logger.info(f"🎯 [Bollinger] {self.symbol}: Signal {signal_side} @ {current_price:.{precision}f} "
+                   f"(confiance: {confidence:.2f}, scores: V={volume_score:.2f}, RSI={rsi_divergence_score:.2f}, "
+                   f"SR={sr_score:.2f}, Trend={trend_score:.2f})")
         
         return signal
     
-    def _calculate_confidence(self, price: float, lower: float, upper: float, side: OrderSide) -> float:
+    def _detect_bollinger_setup(self, prices: np.ndarray, upper: np.ndarray, 
+                               middle: np.ndarray, lower: np.ndarray) -> Optional[OrderSide]:
         """
-        Calcule le niveau de confiance d'un signal basé sur la position dans les bandes.
+        Détecte le setup de base Bollinger avec logique sophistiquée.
+        """
+        current_price = prices[-1]
+        prev_price = prices[-2] if len(prices) > 1 else current_price
+        current_upper = upper[-1]
+        current_lower = lower[-1]
+        current_middle = middle[-1]
         
-        Args:
-            price: Prix actuel
-            lower: Valeur de la bande inférieure
-            upper: Valeur de la bande supérieure
-            side: Côté du signal (LONG ou SHORT)
-
-        Returns:
-            Niveau de confiance entre 0.0 et 1.0
+        # Setup LONG: Prix près/sous la bande basse avec rebond potentiel
+        if current_price <= current_lower * 1.003:  # Marge de 0.3%
+            # Vérifier si ce n'est pas un couteau qui tombe
+            recent_prices = prices[-5:] if len(prices) >= 5 else prices
+            if len(recent_prices) >= 3:
+                # Le prix doit montrer des signes de stabilisation
+                price_momentum = (recent_prices[-1] - recent_prices[-3]) / recent_prices[-3]
+                if price_momentum > -0.02:  # Pas de chute > 2% sur 3 périodes
+                    return OrderSide.LONG
+        
+        # Setup SHORT: Prix près/au-dessus de la bande haute avec rejet potentiel
+        elif current_price >= current_upper * 0.997:  # Marge de 0.3%
+            # Vérifier les signes de rejet
+            recent_highs = [prices[i] for i in range(max(0, len(prices)-3), len(prices))]
+            if len(recent_highs) >= 2:
+                # Prix doit montrer des signes de plafonnement
+                if max(recent_highs) - current_price < current_price * 0.005:  # Dans les 0.5% du plus haut
+                    return OrderSide.SHORT
+        
+        return None
+    
+    def _analyze_volume_confirmation(self, volumes: Optional[np.ndarray]) -> float:
         """
-        # Calcul de la distance du prix dans les bandes
-        band_width = upper - lower
-
+        Analyse la confirmation par le volume.
+        """
+        if volumes is None or len(volumes) < 10:
+            return 0.7  # Score neutre si pas de données volume
+        
+        current_volume = volumes[-1]
+        avg_volume_10 = np.mean(volumes[-10:])
+        avg_volume_20 = np.mean(volumes[-20:]) if len(volumes) >= 20 else avg_volume_10
+        
+        # Volume relatif par rapport aux moyennes
+        volume_ratio_10 = current_volume / avg_volume_10 if avg_volume_10 > 0 else 1.0
+        volume_ratio_20 = current_volume / avg_volume_20 if avg_volume_20 > 0 else 1.0
+        
+        # Score basé sur l'expansion du volume
+        if volume_ratio_10 > 1.5 and volume_ratio_20 > 1.3:
+            return 0.95  # Très forte expansion
+        elif volume_ratio_10 > 1.2 and volume_ratio_20 > 1.1:
+            return 0.85  # Bonne expansion
+        elif volume_ratio_10 > 0.8:
+            return 0.75  # Volume acceptable
+        else:
+            return 0.5   # Volume faible
+    
+    def _detect_rsi_divergence(self, df: pd.DataFrame, signal_side: OrderSide) -> float:
+        """
+        Détecte les divergences RSI pour confirmation du signal.
+        """
+        try:
+            prices = df['close'].values
+            if len(prices) < 30:
+                return 0.7  # Score neutre si pas assez de données
+            
+            # Calculer RSI
+            rsi = talib.RSI(prices, timeperiod=14)
+            if np.all(np.isnan(rsi[-10:])):
+                return 0.7
+            
+            current_rsi = rsi[-1]
+            
+            # Analyser les 20 dernières périodes pour les divergences
+            lookback = min(20, len(prices))
+            recent_prices = prices[-lookback:]
+            recent_rsi = rsi[-lookback:]
+            
+            # Filtrer les NaN
+            valid_mask = ~np.isnan(recent_rsi)
+            if np.sum(valid_mask) < 10:
+                return 0.7
+            
+            recent_prices = recent_prices[valid_mask]
+            recent_rsi = recent_rsi[valid_mask]
+            
+            if signal_side == OrderSide.LONG:
+                # Chercher divergence bullish: prix fait des plus bas, RSI des plus hauts
+                price_min_idx = np.argmin(recent_prices[-10:])
+                rsi_in_price_min_zone = recent_rsi[-10:][price_min_idx]
+                
+                # RSI actuel vs RSI au minimum de prix
+                if current_rsi > rsi_in_price_min_zone + 5:  # RSI a monté de 5+ points
+                    return 0.9  # Forte divergence bullish
+                elif current_rsi > rsi_in_price_min_zone:
+                    return 0.8  # Légère divergence bullish
+                elif current_rsi < 35:  # Zone survente sans divergence
+                    return 0.75
+                else:
+                    return 0.6
+            
+            else:  # SHORT
+                # Chercher divergence bearish: prix fait des plus hauts, RSI des plus bas
+                price_max_idx = np.argmax(recent_prices[-10:])
+                rsi_in_price_max_zone = recent_rsi[-10:][price_max_idx]
+                
+                if current_rsi < rsi_in_price_max_zone - 5:  # RSI a chuté de 5+ points
+                    return 0.9  # Forte divergence bearish
+                elif current_rsi < rsi_in_price_max_zone:
+                    return 0.8  # Légère divergence bearish
+                elif current_rsi > 65:  # Zone surachat sans divergence
+                    return 0.75
+                else:
+                    return 0.6
+                    
+        except Exception as e:
+            logger.warning(f"Erreur calcul divergence RSI: {e}")
+            return 0.7
+    
+    def _analyze_support_resistance_confluence(self, df: pd.DataFrame, 
+                                              current_price: float, signal_side: OrderSide) -> float:
+        """
+        Analyse la confluence avec les niveaux de support/résistance.
+        """
+        try:
+            prices = df['close'].values
+            highs = df['high'].values
+            lows = df['low'].values
+            
+            if len(prices) < 50:
+                return 0.7  # Score neutre si pas assez de données
+            
+            # Chercher les pivots sur les 50 dernières périodes
+            lookback = min(50, len(prices))
+            recent_highs = highs[-lookback:]
+            recent_lows = lows[-lookback:]
+            
+            # Détecter les niveaux pivots
+            pivot_highs = []
+            pivot_lows = []
+            
+            for i in range(2, len(recent_highs) - 2):
+                # Pivot haut
+                if (recent_highs[i] > recent_highs[i-1] and recent_highs[i] > recent_highs[i-2] and
+                    recent_highs[i] > recent_highs[i+1] and recent_highs[i] > recent_highs[i+2]):
+                    pivot_highs.append(recent_highs[i])
+                
+                # Pivot bas
+                if (recent_lows[i] < recent_lows[i-1] and recent_lows[i] < recent_lows[i-2] and
+                    recent_lows[i] < recent_lows[i+1] and recent_lows[i] < recent_lows[i+2]):
+                    pivot_lows.append(recent_lows[i])
+            
+            if signal_side == OrderSide.LONG:
+                # Chercher confluence avec support
+                if not pivot_lows:
+                    return 0.6
+                
+                # Trouver le support le plus proche
+                supports_below = [s for s in pivot_lows if s <= current_price * 1.02]
+                if not supports_below:
+                    return 0.5  # Pas de support proche
+                
+                nearest_support = max(supports_below)
+                distance_pct = abs(current_price - nearest_support) / current_price * 100
+                
+                if distance_pct < 0.5:
+                    return 0.95  # Très proche du support
+                elif distance_pct < 1.0:
+                    return 0.85  # Proche du support
+                elif distance_pct < 2.0:
+                    return 0.75  # Support raisonnable
+                else:
+                    return 0.6   # Support lointain
+            
+            else:  # SHORT
+                # Chercher confluence avec résistance
+                if not pivot_highs:
+                    return 0.6
+                
+                resistances_above = [r for r in pivot_highs if r >= current_price * 0.98]
+                if not resistances_above:
+                    return 0.5  # Pas de résistance proche
+                
+                nearest_resistance = min(resistances_above)
+                distance_pct = abs(nearest_resistance - current_price) / current_price * 100
+                
+                if distance_pct < 0.5:
+                    return 0.95  # Très proche de la résistance
+                elif distance_pct < 1.0:
+                    return 0.85  # Proche de la résistance
+                elif distance_pct < 2.0:
+                    return 0.75  # Résistance raisonnable
+                else:
+                    return 0.6   # Résistance lointaine
+                    
+        except Exception as e:
+            logger.warning(f"Erreur analyse S/R: {e}")
+            return 0.7
+    
+    def _analyze_higher_timeframe_trend(self, signal_side: OrderSide) -> float:
+        """
+        Analyse la tendance du timeframe supérieur (simulé avec EMA longue).
+        """
+        try:
+            df = self.get_data_as_dataframe()
+            if df is None or len(df) < 100:
+                return 0.7  # Score neutre
+            
+            prices = df['close'].values
+            
+            # Utiliser des EMA pour simuler différents timeframes
+            ema_50 = talib.EMA(prices, timeperiod=50)
+            ema_100 = talib.EMA(prices, timeperiod=100)
+            
+            if np.isnan(ema_50[-1]) or np.isnan(ema_100[-1]):
+                return 0.7
+            
+            current_price = prices[-1]
+            trend_50 = ema_50[-1]
+            trend_100 = ema_100[-1]
+            
+            # Déterminer la tendance supérieure
+            if trend_50 > trend_100 * 1.01:  # Tendance haussière forte
+                trend_direction = "BULLISH"
+                trend_strength = (trend_50 - trend_100) / trend_100
+            elif trend_50 < trend_100 * 0.99:  # Tendance baissière forte
+                trend_direction = "BEARISH" 
+                trend_strength = (trend_100 - trend_50) / trend_100
+            else:
+                trend_direction = "NEUTRAL"
+                trend_strength = 0
+            
+            # Score selon l'alignement avec la tendance
+            if signal_side == OrderSide.LONG:
+                if trend_direction == "BULLISH":
+                    return min(0.95, 0.8 + trend_strength * 10)  # Aligné avec tendance
+                elif trend_direction == "NEUTRAL":
+                    return 0.7  # Neutre
+                else:
+                    return 0.4  # Contre tendance
+            else:  # SHORT
+                if trend_direction == "BEARISH":
+                    return min(0.95, 0.8 + trend_strength * 10)
+                elif trend_direction == "NEUTRAL":
+                    return 0.7
+                else:
+                    return 0.4
+                    
+        except Exception as e:
+            logger.warning(f"Erreur analyse tendance supérieure: {e}")
+            return 0.7
+    
+    def _analyze_volatility_environment(self, upper: np.ndarray, 
+                                       middle: np.ndarray, lower: np.ndarray) -> float:
+        """
+        Analyse l'environnement de volatilité pour ajuster la confiance.
+        """
+        try:
+            # Calculer la largeur des bandes sur les 20 dernières périodes
+            lookback = min(20, len(upper))
+            recent_widths = []
+            
+            for i in range(len(upper) - lookback, len(upper)):
+                if not (np.isnan(upper[i]) or np.isnan(lower[i]) or np.isnan(middle[i])):
+                    width_pct = (upper[i] - lower[i]) / middle[i] * 100
+                    recent_widths.append(width_pct)
+            
+            if len(recent_widths) < 5:
+                return 0.7
+            
+            current_width = recent_widths[-1]
+            avg_width = np.mean(recent_widths[:-1])
+            
+            # Score basé sur l'expansion/contraction
+            if current_width > avg_width * 1.3:
+                return 0.9   # Volatilité en expansion = bon pour breakouts
+            elif current_width > avg_width * 1.1:
+                return 0.8   # Légère expansion
+            elif current_width > avg_width * 0.7:
+                return 0.75  # Volatilité normale
+            else:
+                return 0.5   # Volatilité trop faible = range
+                
+        except Exception as e:
+            logger.warning(f"Erreur analyse volatilité: {e}")
+            return 0.7
+    
+    def _detect_bollinger_squeeze(self, upper: np.ndarray, 
+                                 middle: np.ndarray, lower: np.ndarray) -> float:
+        """
+        Détecte le Bollinger Squeeze (préparation de breakout).
+        """
+        try:
+            if len(upper) < 20:
+                return 0.7
+            
+            # Calculer les largeurs sur 20 périodes
+            widths = []
+            for i in range(len(upper) - 20, len(upper)):
+                if not (np.isnan(upper[i]) or np.isnan(lower[i]) or np.isnan(middle[i])):
+                    width = (upper[i] - lower[i]) / middle[i]
+                    widths.append(width)
+            
+            if len(widths) < 10:
+                return 0.7
+            
+            current_width = widths[-1]
+            min_width_period = min(widths)
+            
+            # Squeeze détecté si largeur actuelle proche du minimum
+            squeeze_ratio = current_width / min_width_period if min_width_period > 0 else 1
+            
+            if squeeze_ratio < 1.1:
+                return 0.95  # Squeeze fort = prêt pour breakout
+            elif squeeze_ratio < 1.3:
+                return 0.85  # Squeeze modéré
+            else:
+                return 0.7   # Pas de squeeze particulier
+                
+        except Exception as e:
+            logger.warning(f"Erreur détection squeeze: {e}")
+            return 0.7
+    
+    def _calculate_composite_confidence(self, volume_score: float, rsi_score: float,
+                                       sr_score: float, trend_score: float,
+                                       volatility_score: float, squeeze_score: float) -> float:
+        """
+        Calcule la confiance composite basée sur tous les filtres.
+        """
+        # Pondération des différents facteurs
+        weights = {
+            'volume': 0.25,      # Volume très important
+            'rsi': 0.20,         # Divergences cruciales
+            'sr': 0.20,          # Structure de prix importante
+            'trend': 0.15,       # Tendance supérieure
+            'volatility': 0.10,  # Environnement de marché
+            'squeeze': 0.10      # Préparation breakout
+        }
+        
+        composite = (
+            volume_score * weights['volume'] +
+            rsi_score * weights['rsi'] +
+            sr_score * weights['sr'] +
+            trend_score * weights['trend'] +
+            volatility_score * weights['volatility'] +
+            squeeze_score * weights['squeeze']
+        )
+        
+        # Normaliser entre 0 et 1
+        return max(0.0, min(1.0, composite))
+    
+    def _calculate_band_distance(self, price: float, upper: np.ndarray, 
+                                lower: np.ndarray, side: OrderSide) -> float:
+        """
+        Calcule la distance du prix par rapport à la bande pertinente.
+        """
         if side == OrderSide.LONG:
-            # Plus le prix est bas sous la bande inférieure, plus la confiance est élevée
-            penetration = (lower - price) / band_width
-            # Normaliser entre 0.5 et 1.0
-            confidence = 0.5 + min(max(penetration * 2, 0), 0.5)
-            return confidence
-        else:  # SHORT
-            # Plus le prix est haut au-dessus de la bande supérieure, plus la confiance est élevée
-            penetration = (price - upper) / band_width
-            # Normaliser entre 0.5 et 1.0
-            confidence = 0.5 + min(max(penetration * 2, 0), 0.5)
-            return confidence
+            return ((lower[-1] - price) / price * 100) if price > 0 else 0
+        else:
+            return ((price - upper[-1]) / price * 100) if price > 0 else 0

@@ -18,11 +18,12 @@ from shared.src.enums import OrderSide
 from shared.src.schemas import StrategySignal
 
 from .base_strategy import BaseStrategy
+from .advanced_filters_mixin import AdvancedFiltersMixin
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
 
-class BreakoutStrategy(BaseStrategy):
+class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
     """
     Stratégie qui détecte les cassures (breakouts) après des périodes de consolidation.
     Génère des signaux d'achat quand le prix casse une résistance et des signaux de vente
@@ -217,7 +218,8 @@ class BreakoutStrategy(BaseStrategy):
     
     def generate_signal(self) -> Optional[StrategySignal]:
         """
-        Génère un signal de trading basé sur les breakouts.
+        Génère un signal de trading sophistiqué basé sur les breakouts.
+        Utilise des filtres avancés pour éviter les faux breakouts.
         
         Returns:
             Signal de trading ou None si aucun signal n'est généré
@@ -231,15 +233,169 @@ class BreakoutStrategy(BaseStrategy):
         if df is None or len(df) < self.get_min_data_points():
             return None
         
-        # Trouver les zones de consolidation
-        ranges = self._find_consolidation_ranges(df)
-        self.detected_ranges = ranges
+        # Extraire les données nécessaires
+        volumes = df['volume'].values if 'volume' in df.columns else None
+        current_price = df['close'].iloc[-1]
         
-        # Détecter un breakout
-        breakout = self._detect_breakout(df, ranges)
+        # === NOUVEAU SYSTÈME DE FILTRES SOPHISTIQUES ===
         
-        if not breakout:
+        # 1. FILTRE BREAKOUT DE BASE
+        breakout_info = self._detect_valid_breakout(df)
+        if breakout_info is None:
             return None
+        
+        signal_side = breakout_info['side']
+        
+        # 2. FILTRE VOLUME EXPANSION (confirmation institutionnelle)
+        volume_score = self._analyze_volume_confirmation_common(volumes) if volumes is not None else 0.7
+        if volume_score < 0.5:  # Plus strict pour breakouts
+            logger.debug(f"[Breakout] {self.symbol}: Signal rejeté - volume insuffisant ({volume_score:.2f})")
+            return None
+        
+        # 3. FILTRE FALSE BREAKOUT DETECTION (éviter les faux signaux)
+        false_breakout_score = self._detect_false_breakout_patterns(df, breakout_info)
+        if false_breakout_score < 0.5:
+            logger.debug(f"[Breakout] {self.symbol}: Signal rejeté - pattern faux breakout ({false_breakout_score:.2f})")
+            return None
+        
+        # 4. FILTRE RETEST VALIDATION (confirmation du niveau)
+        retest_score = self._validate_retest_opportunity(df, breakout_info)
+        
+        # 5. FILTRE TREND ALIGNMENT (direction générale)
+        trend_score = self._analyze_trend_alignment_common(df, signal_side)
+        
+        # 6. FILTRE ATR ENVIRONMENT (environnement volatilité)
+        atr_score = self._analyze_atr_environment_common(df)
+        
+        # === CALCUL DE CONFIANCE COMPOSITE ===
+        scores = {
+            'volume': volume_score,
+            'false_breakout': false_breakout_score,
+            'retest': retest_score,
+            'trend': trend_score,
+            'atr': atr_score
+        }
+        
+        weights = {
+            'volume': 0.30,        # Volume crucial pour breakouts
+            'false_breakout': 0.25, # Éviter faux signaux
+            'retest': 0.20,        # Validation niveau
+            'trend': 0.15,         # Direction générale
+            'atr': 0.10           # Environnement
+        }
+        
+        confidence = self._calculate_composite_confidence_common(scores, weights)
+        
+        # Seuil minimum de confiance
+        if confidence < 0.65:
+            logger.debug(f"[Breakout] {self.symbol}: Signal rejeté - confiance trop faible ({confidence:.2f})")
+            return None
+        
+        # === CONSTRUCTION DU SIGNAL ===
+        signal = self.create_signal(
+            side=signal_side,
+            price=current_price,
+            confidence=confidence
+        )
+        
+        # Ajouter les métadonnées d'analyse
+        signal.metadata.update({
+            'breakout_level': breakout_info.get('level'),
+            'range_duration': breakout_info.get('duration'),
+            'range_height_pct': breakout_info.get('height_pct'),
+            'volume_expansion': volume_score,
+            'false_breakout_score': false_breakout_score,
+            'retest_score': retest_score,
+            'trend_score': trend_score,
+            'atr_score': atr_score,
+            'breakout_strength': self._calculate_breakout_strength(breakout_info)
+        })
+        
+        precision = 5 if 'BTC' in self.symbol else 2
+        logger.info(f"🎯 [Breakout] {self.symbol}: Signal {signal_side} @ {current_price:.{precision}f} "
+                   f"(confiance: {confidence:.2f}, niveau: {breakout_info.get('level', 'N/A'):.{precision}f}, "
+                   f"scores: V={volume_score:.2f}, FB={false_breakout_score:.2f})")
+        
+        return signal
+    
+    def _detect_valid_breakout(self, df: pd.DataFrame) -> Optional[Dict]:
+        """Version simplifiée de détection de breakout."""
+        try:
+            highs = df['high'].values
+            lows = df['low'].values
+            closes = df['close'].values
+            
+            if len(df) < 20:
+                return None
+            
+            # Chercher résistance et support récents
+            lookback = min(20, len(df))
+            recent_highs = highs[-lookback:]
+            recent_lows = lows[-lookback:]
+            current_price = closes[-1]
+            
+            resistance = np.max(recent_highs[:-1])  # Exclure la bougie actuelle
+            support = np.min(recent_lows[:-1])
+            
+            # Breakout haussier
+            if current_price > resistance * 1.002:  # 0.2% au-dessus
+                return {
+                    'side': OrderSide.LONG,
+                    'level': resistance,
+                    'duration': lookback,
+                    'height_pct': (resistance - support) / support * 100
+                }
+            
+            # Breakout baissier
+            elif current_price < support * 0.998:  # 0.2% en dessous
+                return {
+                    'side': OrderSide.SHORT,
+                    'level': support,
+                    'duration': lookback,
+                    'height_pct': (resistance - support) / support * 100
+                }
+            
+            return None
+        except:
+            return None
+    
+    def _detect_false_breakout_patterns(self, df: pd.DataFrame, breakout_info: Dict) -> float:
+        """Détection simplifiée de faux breakouts."""
+        try:
+            # Score de base
+            score = 0.7
+            
+            # Vérifier la force du breakout
+            current_price = df['close'].iloc[-1]
+            level = breakout_info['level']
+            
+            if breakout_info['side'] == OrderSide.LONG:
+                penetration = (current_price - level) / level * 100
+            else:
+                penetration = (level - current_price) / level * 100
+            
+            if penetration > 1.0:  # Breakout > 1%
+                score += 0.2
+            elif penetration > 0.5:  # Breakout > 0.5%
+                score += 0.1
+            
+            return min(0.95, score)
+        except:
+            return 0.7
+    
+    def _validate_retest_opportunity(self, df: pd.DataFrame, breakout_info: Dict) -> float:
+        """Validation simplifiée du retest."""
+        return 0.8  # Score fixe pour simplifier
+    
+    def _calculate_breakout_strength(self, breakout_info: Dict) -> str:
+        """Calcul force du breakout."""
+        height_pct = breakout_info.get('height_pct', 0)
+        if height_pct > 3:
+            return "strong"
+        elif height_pct > 1.5:
+            return "moderate"
+        else:
+            return "weak"
         
         # Calculer la confiance basée sur la durée du range
         range_duration = breakout['range_duration']

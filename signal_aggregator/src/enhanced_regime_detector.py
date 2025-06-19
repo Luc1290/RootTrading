@@ -63,7 +63,11 @@ class EnhancedRegimeDetector:
             cached = self.redis.get(cache_key)
             
             if cached:
-                regime_data = json.loads(cached)
+                # Handle both string and dict cases
+                if isinstance(cached, str):
+                    regime_data = json.loads(cached)
+                else:
+                    regime_data = cached
                 return MarketRegime(regime_data['regime']), regime_data['metrics']
             
             # Calculer si pas en cache

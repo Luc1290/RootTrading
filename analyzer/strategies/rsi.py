@@ -25,9 +25,8 @@ logger = logging.getLogger(__name__)
 
 class RSIStrategy(BaseStrategy):
     """
-    Stratégie basée sur l'indicateur RSI (Relative Strength Index).
-    Génère des signaux d'achat quand le RSI est en zone de survente et des signaux de vente 
-    quand il est en zone de surachat.
+    Stratégie sophistiquée basée sur l'indicateur RSI (Relative Strength Index).
+    Utilise des filtres multi-critères pour éviter les faux signaux et le trading aléatoire.
     """
     
     def __init__(self, symbol: str, params: Dict[str, Any] = None):
@@ -40,10 +39,14 @@ class RSIStrategy(BaseStrategy):
         """
         super().__init__(symbol, params)
         
-        # Paramètres RSI
+        # Paramètres RSI adaptatifs
         self.rsi_window = self.params.get('window', get_strategy_param('rsi', 'window', 14))
-        self.overbought_threshold = self.params.get('overbought', get_strategy_param('rsi', 'overbought', 70))
-        self.oversold_threshold = self.params.get('oversold', get_strategy_param('rsi', 'oversold', 30))
+        self.overbought_threshold = self.params.get('overbought', get_strategy_param('rsi', 'overbought', 75))  # Plus strict
+        self.oversold_threshold = self.params.get('oversold', get_strategy_param('rsi', 'oversold', 25))      # Plus strict
+        
+        # Niveaux RSI adaptatifs selon la volatilité
+        self.extreme_overbought = 85  # Zone extrême
+        self.extreme_oversold = 15    # Zone extrême
         
         # Variables pour suivre les tendances
         self.prev_rsi = None
@@ -136,7 +139,8 @@ class RSIStrategy(BaseStrategy):
     
     def generate_signal(self) -> Optional[StrategySignal]:
         """
-        Génère un signal de trading basé sur l'indicateur RSI.
+        Génère un signal de trading sophistiqué basé sur l'indicateur RSI.
+        Utilise des filtres multi-critères pour éviter les faux signaux.
         
         Returns:
             Signal de trading ou None si aucun signal n'est généré
@@ -150,236 +154,438 @@ class RSIStrategy(BaseStrategy):
         if df is None or len(df) < self.get_min_data_points():
             return None
         
-        # Extraire les prix de clôture
+        # Extraire les données nécessaires
         prices = df['close'].values
+        highs = df['high'].values
+        lows = df['low'].values
+        volumes = df['volume'].values if 'volume' in df.columns else None
         
-        # Calculer le RSI
+        # Calculer les indicateurs
         rsi_values = self.calculate_rsi(prices)
-        
-        # Obtenir les dernières valeurs
+        current_price = prices[-1]
         current_rsi = rsi_values[-1]
-        prev_rsi = rsi_values[-2] if len(rsi_values) > 1 else None
-        
-        current_price = df['close'].iloc[-1]
         
         # Loguer les valeurs actuelles
-        # Utiliser plus de précision pour les paires BTC
         precision = 5 if 'BTC' in self.symbol else 2
-        logger.info(f"[RSI] {self.symbol}: RSI={current_rsi:.2f}, Price={current_price:.{precision}f}")
+        logger.debug(f"[RSI] {self.symbol}: RSI={current_rsi:.2f}, Price={current_price:.{precision}f}")
         
-        # Vérifier les conditions pour générer un signal
-        signal = None
-        
-        if np.isnan(current_rsi) or prev_rsi is None or np.isnan(prev_rsi):
-            # Pas assez de données pour un signal fiable
+        # Vérifications de base
+        if np.isnan(current_rsi):
             return None
         
-        # NOUVEAU : Calculer une EMA courte pour détecter la tendance
-        ema_period = 20
-        if len(prices) >= ema_period:
-            ema = talib.EMA(prices, timeperiod=ema_period)
-            current_ema = ema[-1]
-            prev_ema = ema[-2] if len(ema) > 1 else current_ema
-            
-            # Tendance haussière si EMA monte et prix au-dessus
-            ema_trend_up = current_ema > prev_ema
-            price_above_ema = current_price > current_ema * 0.98  # 2% de tolérance
-        else:
-            # Pas assez de données pour l'EMA, on suppose neutre
-            ema_trend_up = True
-            price_above_ema = True
-            current_ema = current_price
+        # === NOUVEAU SYSTÈME DE FILTRES SOPHISTIQUES ===
         
-        # Signal d'achat: RSI entre en zone de survente (acheter dans le rouge)
-        # Deux conditions possibles:
-        # 1. RSI vient de passer sous le seuil de survente
-        # 2. RSI est déjà en survente et continue de baisser (plus agressif)
-        if current_rsi < self.oversold_threshold:
-            # Plus le RSI est bas, plus on est confiant
-            confidence = self._calculate_confidence(current_rsi, OrderSide.LONG)
-            
-            # NOUVEAU : Ajuster selon la tendance
-            if not ema_trend_up and not price_above_ema:
-                # Tendance baissière confirmée : réduire la confiance
-                confidence *= 0.5  # Réduire la confiance mais ne pas bloquer complètement
-                logger.debug(f"[RSI] {self.symbol}: Signal LONG réduit en tendance baissière "
-                           f"(confiance réduite à {confidence:.2f})")
-                # Si confiance trop faible, ne pas générer
-                if confidence < 0.3:
-                    return None
-            
-            # Ne générer un signal que si:
-            # - On vient d'entrer en survente (prev_rsi > oversold et current < oversold)
-            # - OU le RSI continue de baisser en zone de survente (pour moyenner à la baisse)
-            should_LONG = False
-            signal_reason = ""
-            
-            if prev_rsi > self.oversold_threshold:
-                # Première entrée en survente
-                should_LONG = True
-                signal_reason = "entry_oversold"
-                confidence *= 0.8  # Confiance modérée pour la première entrée
-            elif current_rsi < prev_rsi - 2:  # RSI baisse de plus de 2 points
-                # RSI continue de chuter, opportunité de moyenner
-                should_LONG = True
-                signal_reason = "deepening_oversold"
-                confidence *= 1.2  # Plus confiant quand ça baisse encore
-
-            if should_LONG:
-                # Calculer le niveau de stop basé sur l'ATR
-                atr_percent = self.calculate_atr(df)
-                
-                # Multiplier selon le symbole - AUGMENTÉ pour éviter les sorties prématurées
-                if 'BTC' in self.symbol:
-                    stop_mult = 2.5  # Stop à 2.5x ATR pour BTC
-                else:
-                    stop_mult = 3.0  # Stop à 3x ATR pour autres
-                
-                stop_distance = atr_percent * stop_mult
-
-                # Pour LONG: stop en dessous
-                stop_price = current_price * (1 - stop_distance / 100)
-                
-                metadata = {
-                    "rsi": float(current_rsi),
-                    "rsi_threshold": self.oversold_threshold,
-                    "previous_rsi": float(prev_rsi),
-                    "reason": signal_reason,
-                    "rsi_delta": float(current_rsi - prev_rsi),
-                    "stop_price": float(stop_price),
-                    "atr_percent": float(atr_percent),
-                    "ema_trend_up": ema_trend_up,
-                    "price_above_ema": price_above_ema,
-                    "current_ema": float(current_ema)
-                }
-                
-                signal = self.create_signal(
-                    side=OrderSide.LONG,
-                    price=current_price,
-                    confidence=min(confidence, 0.95),
-                    metadata=metadata
-                )
+        # 1. FILTRE SETUP RSI DE BASE
+        signal_side = self._detect_rsi_setup(rsi_values, current_rsi)
+        if signal_side is None:
+            return None
         
-        # Signal de vente: RSI entre en zone de surachat (vendre dans le vert)
-        # OU signal de vente anticipé en tendance baissière (RSI > 50)
-        elif (current_rsi > self.overbought_threshold or
-              (not ema_trend_up and not price_above_ema and current_rsi > 50 and current_rsi > prev_rsi)):
-            # Identifier le type de signal
-            is_early_short = (not ema_trend_up and not price_above_ema and
-                           current_rsi <= self.overbought_threshold and
-                           current_rsi > 50 and current_rsi > prev_rsi)
-
-            if is_early_short:
-                # Signal de vente anticipé en tendance baissière
-                confidence = 0.6  # Confiance modérée
-                logger.info(f"[RSI] {self.symbol}: Signal SHORT anticipé en tendance baissière (RSI={current_rsi:.1f})")
-            else:
-                # Plus le RSI est haut, plus on est confiant (signal normal)
-                confidence = self._calculate_confidence(current_rsi, OrderSide.SHORT)
-
-            # Logique pour générer le signal
-            should_short = False
-            signal_reason = ""
-
-            if is_early_short:
-                # Signal anticipé : toujours générer si conditions remplies
-                should_short = True
-                signal_reason = "early_short_bearish_trend"
-            elif prev_rsi < self.overbought_threshold:
-                # Première entrée en surachat (signal normal)
-                should_short = True
-                signal_reason = "entry_overbought"
-                confidence *= 0.8  # Confiance modérée
-            elif current_rsi > prev_rsi + 2:  # RSI monte de plus de 2 points
-                # RSI continue de monter, le marché est vraiment suracheté
-                should_short = True
-                signal_reason = "extreme_overbought"
-                confidence *= 1.2  # Plus confiant
-
-            if should_short:
-                # Calculer le niveau de stop basé sur l'ATR
-                atr_percent = self.calculate_atr(df)
-                
-                # Multiplier selon le symbole
-                if 'BTC' in self.symbol:
-                    stop_mult = 1.2  # Plus agressif pour BTC
-                else:
-                    stop_mult = 2.0  # Plus conservateur pour autres
-                
-                stop_distance = atr_percent * stop_mult
-
-                # Pour SHORT: stop au-dessus
-                stop_price = current_price * (1 + stop_distance / 100)
-                
-                metadata = {
-                    "rsi": float(current_rsi),
-                    "rsi_threshold": self.overbought_threshold,
-                    "previous_rsi": float(prev_rsi),
-                    "reason": signal_reason,
-                    "rsi_delta": float(current_rsi - prev_rsi),
-                    "stop_price": float(stop_price),
-                    "atr_percent": float(atr_percent)
-                }
-                
-                signal = self.create_signal(
-                    side=OrderSide.SHORT,
-                    price=current_price,
-                    confidence=min(confidence, 0.95),
-                    metadata=metadata
-                )
+        # 2. FILTRE MOMENTUM (confirmation direction)
+        momentum_score = self._analyze_momentum_confirmation(df, signal_side)
+        if momentum_score < 0.4:
+            logger.debug(f"[RSI] {self.symbol}: Signal rejeté - momentum insuffisant ({momentum_score:.2f})")
+            return None
         
-        # Mettre à jour les valeurs précédentes
-        self.prev_rsi = current_rsi
-        self.prev_price = current_price
+        # 3. FILTRE VOLUME (confirmation institutionnelle)
+        volume_score = self._analyze_volume_confirmation(volumes) if volumes is not None else 0.7
+        if volume_score < 0.4:
+            logger.debug(f"[RSI] {self.symbol}: Signal rejeté - volume insuffisant ({volume_score:.2f})")
+            return None
         
-        # Mettre à jour le timestamp si un signal est généré
-        if signal:
-            self.last_signal_time = datetime.now()
+        # 4. FILTRE PRICE ACTION (structure prix/niveaux)
+        price_action_score = self._analyze_price_action_context(df, current_price, signal_side)
+        
+        # 5. FILTRE DIVERGENCE RSI AVANCÉE (confirmation technique)
+        divergence_score = self._detect_advanced_rsi_divergence(df, rsi_values, signal_side)
+        
+        # 6. FILTRE MULTI-TIMEFRAME (tendance supérieure)
+        trend_score = self._analyze_higher_timeframe_alignment(signal_side)
+        
+        # 7. FILTRE RSI OVERBOUGHT/OVERSOLD ADAPTATIF (environnement marché)
+        adaptive_score = self._calculate_adaptive_rsi_threshold(rsi_values, current_rsi, signal_side)
+        
+        # === CALCUL DE CONFIANCE COMPOSITE ===
+        confidence = self._calculate_composite_confidence(
+            momentum_score, volume_score, price_action_score,
+            divergence_score, trend_score, adaptive_score
+        )
+        
+        # Seuil minimum de confiance pour éviter le trading aléatoire
+        if confidence < 0.65:
+            logger.debug(f"[RSI] {self.symbol}: Signal rejeté - confiance trop faible ({confidence:.2f})")
+            return None
+        
+        # === CONSTRUCTION DU SIGNAL ===
+        signal = self.create_signal(
+            side=signal_side,
+            price=current_price,
+            confidence=confidence
+        )
+        
+        # Ajouter les métadonnées d'analyse
+        signal.metadata.update({
+            'rsi_value': current_rsi,
+            'rsi_zone': self._get_rsi_zone(current_rsi),
+            'momentum_score': momentum_score,
+            'volume_score': volume_score,
+            'price_action_score': price_action_score,
+            'divergence_score': divergence_score,
+            'trend_score': trend_score,
+            'adaptive_score': adaptive_score,
+            'rsi_trend': self._get_rsi_trend(rsi_values),
+            'oversold_threshold': self.oversold_threshold,
+            'overbought_threshold': self.overbought_threshold
+        })
+        
+        logger.info(f"🎯 [RSI] {self.symbol}: Signal {signal_side} @ {current_price:.{precision}f} "
+                   f"(RSI: {current_rsi:.1f}, confiance: {confidence:.2f}, "
+                   f"scores: M={momentum_score:.2f}, V={volume_score:.2f}, PA={price_action_score:.2f})")
         
         return signal
     
-    def _calculate_confidence(self, rsi_value: float, side: OrderSide) -> float:
+    def _detect_rsi_setup(self, rsi_values: np.ndarray, current_rsi: float) -> Optional[OrderSide]:
         """
-        Calcule le niveau de confiance d'un signal basé sur la valeur RSI.
-        Plus on est dans l'extrême (très survendu ou très suracheté), plus la confiance est élevée.
+        Détecte le setup RSI de base avec logique sophistiquée.
+        """
+        if len(rsi_values) < 3:
+            return None
         
-        Args:
-            rsi_value: Valeur actuelle du RSI
-            side: Côté du signal (LONG ou SHORT)
-            
-        Returns:
-            Niveau de confiance entre 0.0 et 1.0
+        prev_rsi = rsi_values[-2]
+        
+        # Setup LONG: RSI en zone survente avec momentum favorable
+        if current_rsi <= self.oversold_threshold:
+            # Vérifier que ce n'est pas un couteau qui tombe
+            if len(rsi_values) >= 5:
+                rsi_momentum = current_rsi - rsi_values[-5]
+                # Si RSI chute trop vite (>20 points en 5 périodes), attendre stabilisation
+                if rsi_momentum < -20:
+                    return None
+            return OrderSide.LONG
+        
+        # Setup SHORT: RSI en zone surachat avec momentum favorable  
+        elif current_rsi >= self.overbought_threshold:
+            # Vérifier que ce n'est pas un breakout en cours
+            if len(rsi_values) >= 5:
+                rsi_momentum = current_rsi - rsi_values[-5]
+                # Si RSI monte trop vite (>20 points en 5 périodes), attendre ralentissement
+                if rsi_momentum > 20:
+                    return None
+            return OrderSide.SHORT
+        
+        return None
+    
+    def _analyze_momentum_confirmation(self, df: pd.DataFrame, signal_side: OrderSide) -> float:
         """
-        if side == OrderSide.LONG:
-            # Plus le RSI est bas, plus la confiance est élevée (acheter dans l'extrême rouge)
-            # RSI=5 -> confiance ~0.95, RSI=20 -> confiance ~0.6
-            if rsi_value >= self.oversold_threshold:
-                # Pas en survente, confiance faible
-                return 0.3
+        Analyse la confirmation du momentum pour le signal RSI.
+        """
+        try:
+            prices = df['close'].values
+            if len(prices) < 10:
+                return 0.7
             
-            # Échelle progressive augmentée: RSI 0-20 mappé sur confiance 0.98-0.75
-            confidence = 0.98 - (rsi_value / self.oversold_threshold) * 0.23
+            # Calculer plusieurs indicateurs de momentum
+            roc_5 = ((prices[-1] - prices[-6]) / prices[-6] * 100) if len(prices) > 5 else 0
+            roc_10 = ((prices[-1] - prices[-11]) / prices[-11] * 100) if len(prices) > 10 else 0
             
-            # Bonus si RSI très bas (< 15)
-            if rsi_value < 15:
-                confidence *= 1.1
+            # MACD pour confirmation
+            if len(prices) >= 26:
+                macd_line, macd_signal, macd_hist = talib.MACD(prices)
+                current_macd = macd_hist[-1] if not np.isnan(macd_hist[-1]) else 0
+            else:
+                current_macd = 0
+            
+            if signal_side == OrderSide.LONG:
+                # Pour LONG: chercher momentum haussier naissant
+                score = 0.5  # Base
                 
-            return min(confidence, 0.98)  # Augmenté de 0.95 à 0.98
-
-        else:  # SHORT
-            # Plus le RSI est haut, plus la confiance est élevée (vendre dans l'extrême vert)
-            # RSI=95 -> confiance ~0.95, RSI=80 -> confiance ~0.6
-            if rsi_value <= self.overbought_threshold:
-                # Pas en surachat, confiance faible
-                return 0.3
-            
-            # Échelle progressive augmentée: RSI 80-100 mappé sur confiance 0.75-0.98
-            remaining_range = 100 - self.overbought_threshold
-            position_in_range = (rsi_value - self.overbought_threshold) / remaining_range
-            confidence = 0.75 + position_in_range * 0.23
-            
-            # Bonus si RSI très haut (> 85)
-            if rsi_value > 85:
-                confidence *= 1.1
+                if roc_5 > -2:  # Prix pas en chute libre
+                    score += 0.2
+                if roc_10 > -5:  # Pas de forte baisse sur 10 périodes
+                    score += 0.2
+                if current_macd > 0:  # MACD positif
+                    score += 0.1
                 
-            return min(confidence, 0.98)  # Augmenté de 0.95 à 0.98
+                return min(0.95, score)
+            
+            else:  # SHORT
+                # Pour SHORT: chercher momentum baissier naissant
+                score = 0.5  # Base
+                
+                if roc_5 < 2:  # Prix pas en montée folle
+                    score += 0.2
+                if roc_10 < 5:  # Pas de forte hausse sur 10 périodes
+                    score += 0.2
+                if current_macd < 0:  # MACD négatif
+                    score += 0.1
+                
+                return min(0.95, score)
+                
+        except Exception as e:
+            logger.warning(f"Erreur analyse momentum: {e}")
+            return 0.7
+    
+    def _analyze_volume_confirmation(self, volumes: Optional[np.ndarray]) -> float:
+        """
+        Analyse la confirmation par le volume (réutilise la logique Bollinger).
+        """
+        if volumes is None or len(volumes) < 10:
+            return 0.7
+        
+        current_volume = volumes[-1]
+        avg_volume_10 = np.mean(volumes[-10:])
+        avg_volume_20 = np.mean(volumes[-20:]) if len(volumes) >= 20 else avg_volume_10
+        
+        volume_ratio_10 = current_volume / avg_volume_10 if avg_volume_10 > 0 else 1.0
+        volume_ratio_20 = current_volume / avg_volume_20 if avg_volume_20 > 0 else 1.0
+        
+        if volume_ratio_10 > 1.3 and volume_ratio_20 > 1.2:
+            return 0.9   # Forte expansion volume
+        elif volume_ratio_10 > 1.1:
+            return 0.8   # Expansion modérée
+        elif volume_ratio_10 > 0.8:
+            return 0.7   # Volume acceptable
+        else:
+            return 0.5   # Volume faible
+    
+    def _analyze_price_action_context(self, df: pd.DataFrame, current_price: float, signal_side: OrderSide) -> float:
+        """
+        Analyse le contexte price action et les niveaux clés.
+        """
+        try:
+            prices = df['close'].values
+            highs = df['high'].values
+            lows = df['low'].values
+            
+            if len(prices) < 20:
+                return 0.7
+            
+            # Analyse des niveaux récents
+            recent_period = min(30, len(prices))
+            recent_highs = highs[-recent_period:]
+            recent_lows = lows[-recent_period:]
+            
+            if signal_side == OrderSide.LONG:
+                # Chercher confluence avec support
+                recent_lows_sorted = sorted(recent_lows)
+                potential_support = recent_lows_sorted[:3]  # 3 plus bas récents
+                
+                support_levels = []
+                for low in potential_support:
+                    if abs(current_price - low) / current_price < 0.05:  # Dans les 5%
+                        support_levels.append(low)
+                
+                if len(support_levels) >= 1:
+                    return 0.9   # Proche du support
+                elif current_price < np.mean(recent_lows) * 1.02:
+                    return 0.8   # Dans zone basse récente
+                else:
+                    return 0.7
+            
+            else:  # SHORT
+                # Chercher confluence avec résistance
+                recent_highs_sorted = sorted(recent_highs, reverse=True)
+                potential_resistance = recent_highs_sorted[:3]  # 3 plus hauts récents
+                
+                resistance_levels = []
+                for high in potential_resistance:
+                    if abs(high - current_price) / current_price < 0.05:  # Dans les 5%
+                        resistance_levels.append(high)
+                
+                if len(resistance_levels) >= 1:
+                    return 0.9   # Proche de la résistance
+                elif current_price > np.mean(recent_highs) * 0.98:
+                    return 0.8   # Dans zone haute récente
+                else:
+                    return 0.7
+                    
+        except Exception as e:
+            logger.warning(f"Erreur analyse price action: {e}")
+            return 0.7
+    
+    def _detect_advanced_rsi_divergence(self, df: pd.DataFrame, rsi_values: np.ndarray, signal_side: OrderSide) -> float:
+        """
+        Détecte les divergences RSI avancées.
+        """
+        try:
+            if len(rsi_values) < 20:
+                return 0.7
+            
+            prices = df['close'].values
+            lookback = min(15, len(prices))
+            
+            recent_prices = prices[-lookback:]
+            recent_rsi = rsi_values[-lookback:]
+            
+            # Filtrer les NaN
+            valid_mask = ~np.isnan(recent_rsi)
+            if np.sum(valid_mask) < 10:
+                return 0.7
+            
+            recent_prices = recent_prices[valid_mask]
+            recent_rsi = recent_rsi[valid_mask]
+            
+            if signal_side == OrderSide.LONG:
+                # Divergence bullish: prix fait plus bas, RSI fait plus haut
+                price_trend = np.polyfit(range(len(recent_prices)), recent_prices, 1)[0]
+                rsi_trend = np.polyfit(range(len(recent_rsi)), recent_rsi, 1)[0]
+                
+                if price_trend < 0 and rsi_trend > 0:  # Prix baisse, RSI monte
+                    return 0.9   # Forte divergence bullish
+                elif rsi_values[-1] < 35:  # Zone survente profonde
+                    return 0.8
+                else:
+                    return 0.7
+            
+            else:  # SHORT
+                # Divergence bearish: prix fait plus haut, RSI fait plus bas
+                price_trend = np.polyfit(range(len(recent_prices)), recent_prices, 1)[0]
+                rsi_trend = np.polyfit(range(len(recent_rsi)), recent_rsi, 1)[0]
+                
+                if price_trend > 0 and rsi_trend < 0:  # Prix monte, RSI baisse
+                    return 0.9   # Forte divergence bearish
+                elif rsi_values[-1] > 65:  # Zone surachat profonde
+                    return 0.8
+                else:
+                    return 0.7
+                    
+        except Exception as e:
+            logger.warning(f"Erreur détection divergence: {e}")
+            return 0.7
+    
+    def _analyze_higher_timeframe_alignment(self, signal_side: OrderSide) -> float:
+        """
+        Analyse l'alignement avec timeframe supérieur.
+        """
+        try:
+            df = self.get_data_as_dataframe()
+            if df is None or len(df) < 50:
+                return 0.7
+            
+            prices = df['close'].values
+            
+            # EMA 21 vs EMA 50 pour simuler timeframe supérieur
+            ema_21 = talib.EMA(prices, timeperiod=21)
+            ema_50 = talib.EMA(prices, timeperiod=50)
+            
+            if np.isnan(ema_21[-1]) or np.isnan(ema_50[-1]):
+                return 0.7
+            
+            current_price = prices[-1]
+            trend_21 = ema_21[-1]
+            trend_50 = ema_50[-1]
+            
+            if signal_side == OrderSide.LONG:
+                if current_price > trend_21 and trend_21 > trend_50:
+                    return 0.9   # Tendance alignée
+                elif current_price > trend_50:
+                    return 0.8   # Tendance modérée
+                else:
+                    return 0.5   # Contre tendance
+            
+            else:  # SHORT
+                if current_price < trend_21 and trend_21 < trend_50:
+                    return 0.9   # Tendance alignée
+                elif current_price < trend_50:
+                    return 0.8   # Tendance modérée
+                else:
+                    return 0.5   # Contre tendance
+                    
+        except Exception as e:
+            logger.warning(f"Erreur analyse timeframe: {e}")
+            return 0.7
+    
+    def _calculate_adaptive_rsi_threshold(self, rsi_values: np.ndarray, current_rsi: float, signal_side: OrderSide) -> float:
+        """
+        Calcule des seuils RSI adaptatifs selon l'environnement de marché.
+        """
+        try:
+            if len(rsi_values) < 20:
+                return 0.7
+            
+            # Analyse de la volatilité RSI
+            rsi_volatility = np.std(rsi_values[-20:])
+            
+            if signal_side == OrderSide.LONG:
+                # En haute volatilité, accepter des RSI moins extrêmes
+                if rsi_volatility > 15:  # RSI très volatile
+                    threshold = 35  # Seuil élargi
+                else:
+                    threshold = self.oversold_threshold
+                
+                if current_rsi <= threshold:
+                    if current_rsi <= self.extreme_oversold:
+                        return 0.95  # Zone extrême
+                    else:
+                        return 0.8   # Zone normale
+                else:
+                    return 0.6
+            
+            else:  # SHORT
+                if rsi_volatility > 15:
+                    threshold = 65  # Seuil élargi
+                else:
+                    threshold = self.overbought_threshold
+                
+                if current_rsi >= threshold:
+                    if current_rsi >= self.extreme_overbought:
+                        return 0.95  # Zone extrême
+                    else:
+                        return 0.8   # Zone normale
+                else:
+                    return 0.6
+                    
+        except Exception as e:
+            logger.warning(f"Erreur seuils adaptatifs: {e}")
+            return 0.7
+    
+    def _calculate_composite_confidence(self, momentum_score: float, volume_score: float,
+                                       price_action_score: float, divergence_score: float,
+                                       trend_score: float, adaptive_score: float) -> float:
+        """
+        Calcule la confiance composite basée sur tous les filtres.
+        """
+        weights = {
+            'momentum': 0.25,      # Momentum crucial pour RSI
+            'volume': 0.20,        # Volume important
+            'price_action': 0.20,  # Structure de prix
+            'divergence': 0.15,    # Divergences RSI
+            'trend': 0.10,         # Tendance supérieure
+            'adaptive': 0.10       # Seuils adaptatifs
+        }
+        
+        composite = (
+            momentum_score * weights['momentum'] +
+            volume_score * weights['volume'] +
+            price_action_score * weights['price_action'] +
+            divergence_score * weights['divergence'] +
+            trend_score * weights['trend'] +
+            adaptive_score * weights['adaptive']
+        )
+        
+        return max(0.0, min(1.0, composite))
+    
+    def _get_rsi_zone(self, rsi_value: float) -> str:
+        """Retourne la zone RSI actuelle."""
+        if rsi_value <= self.extreme_oversold:
+            return "extreme_oversold"
+        elif rsi_value <= self.oversold_threshold:
+            return "oversold"
+        elif rsi_value >= self.extreme_overbought:
+            return "extreme_overbought"
+        elif rsi_value >= self.overbought_threshold:
+            return "overbought"
+        else:
+            return "neutral"
+    
+    def _get_rsi_trend(self, rsi_values: np.ndarray) -> str:
+        """Retourne la tendance RSI."""
+        if len(rsi_values) < 3:
+            return "unknown"
+        
+        recent_trend = rsi_values[-1] - rsi_values[-3]
+        if recent_trend > 2:
+            return "rising"
+        elif recent_trend < -2:
+            return "falling"
+        else:
+            return "flat"
