@@ -251,9 +251,9 @@ class CycleManager:
                 status_str = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
                 # Vérifier tous les statuts actifs qui devraient avoir des ordres sur Binance
                 if status_str in ['waiting_buy', 'waiting_sell', 'active_buy', 'active_sell']:
-                    # Cas spécial : cycles en waiting_buy/waiting_sell avec entry_order_id (nouveau système trailing stop)
+                    # Cas spécial : cycles en waiting_buy/waiting_sell avec entry_order_id (trailing stop)
                     if status_str in ['waiting_buy', 'waiting_sell'] and cycle.entry_order_id and not cycle.exit_price:
-                        logger.debug(f"✅ Cycle {cycle.id} en {status_str} avec trailing stop (nouveau système)")
+                        logger.debug(f"✅ Cycle {cycle.id} en {status_str} avec trailing stop")
                         continue
                     # Pour ces cycles, vérifier le bon ordre selon le statut
                     # NOUVEAU: Avec le système no-exit-order, distinguer entrée vs sortie
@@ -270,12 +270,12 @@ class CycleManager:
                                 is_entry_phase = True
                                 expected_order_id = cycle.entry_order_id
                             else:
-                                # Phase de sortie : ordre d'entrée rempli, pas d'exit order (nouveau système)
-                                logger.debug(f"✅ Cycle {cycle.id} en phase de sortie {status_str} sans exit order (nouveau système)")
-                                continue  # Skip la vérification, c'est normal dans le nouveau système
+                                # Phase de sortie : ordre d'entrée rempli, pas d'exit order
+                                logger.debug(f"✅ Cycle {cycle.id} en phase de sortie {status_str} sans exit order")
+                                continue  # Skip la vérification, c'est normal
                         except Exception as e:
                             # Si on ne peut pas vérifier le statut de l'ordre d'entrée, 
-                            # on assume que c'est un cycle en phase de sortie (nouveau système)
+                            # on assume que c'est un cycle en phase de sortie
                             logger.debug(f"⚠️ Impossible de vérifier l'ordre d'entrée {cycle.entry_order_id} pour {cycle.id}: {str(e)} - Assumé comme phase de sortie")
                             continue  # Skip la vérification, on assume que c'est le nouveau système
                     else:
@@ -456,7 +456,7 @@ class CycleManager:
                                 )
                             else:
                                 # Phase de sortie : normal sans exit order
-                                logger.debug(f"✅ Cycle {cycle_id} en phase de sortie au startup (nouveau système)")
+                                logger.debug(f"✅ Cycle {cycle_id} en phase de sortie au startup")
                                 has_order = True  # Considérer comme OK
                         else:
                             # Cycle terminé ou sans entry_order_id
@@ -587,15 +587,15 @@ class CycleManager:
                     total_cost = reference_price * quantity * slippage_margin * fee_margin
                     
                     if available_balance < total_cost:
-                        logger.error(f"❌ Solde {quote_currency} insuffisant pour LONG: {available_balance:.2f} < {total_cost:.2f}")
+                        logger.error(f"❌ Solde {quote_currency} insuffisant pour LONG: {available_balance:.8f} < {total_cost:.8f}")
 
                         # Créer le cycle avec un statut FAILED pour la traçabilité
                         cycle.status = CycleStatus.FAILED
                         cycle.updated_at = datetime.now()
                         if not hasattr(cycle, 'metadata'):
                             cycle.metadata = {}
-                        cycle.metadata['fail_reason'] = f"Solde {quote_currency} insuffisant: {available_balance:.2f} < {total_cost:.2f}"
-                        
+                        cycle.metadata['fail_reason'] = f"Solde {quote_currency} insuffisant: {available_balance:.8f} < {total_cost:.8f}"
+
                         # Sauvegarder le cycle échoué pour la traçabilité
                         self.repository.save_cycle(cycle)
                         
@@ -983,7 +983,7 @@ class CycleManager:
                 available = balances.get(quote_asset, {}).get('free', 0)
                 
                 if available < required_amount:
-                    logger.error(f"❌ Solde {quote_asset} insuffisant pour l'ordre de sortie: {available:.2f} < {required_amount:.2f}")
+                    logger.error(f"❌ Solde {quote_asset} insuffisant pour l'ordre de sortie: {available:.8f} < {required_amount:.8f}")
                     # Marquer le cycle comme échoué
                     with self.cycles_lock:
                         cycle.status = CycleStatus.FAILED

@@ -518,9 +518,9 @@ class SmartCycleManager:
             
             if result and result.get('order_id'):
                 self.logger.info(f"✅ Cycle {decision.existing_cycle_id} renforcé: "
-                               f"+{additional_quantity:.6f} @ {decision.price_target:.2f} "
-                               f"(nouveau prix moyen: {new_avg_price:.2f})")
-                
+                               f"+{additional_quantity:.6f} @ {decision.price_target:.6f} "
+                               f"(nouveau prix moyen: {new_avg_price:.6f})")
+
                 # 7. Publier un événement pour tracking
                 if self.redis_client:
                     self.redis_client.publish("roottrading:cycle:reinforced", json.dumps({

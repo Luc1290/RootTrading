@@ -81,9 +81,9 @@ class PriceMonitor:
             if old_price:
                 change_pct = (price - old_price) / old_price * 100
                 log_level = logging.INFO if abs(change_pct) >= 0.5 else logging.DEBUG
-                logger.log(log_level, f"📊 Prix {symbol}: {price:.2f} ({change_pct:+.2f}%)")
+                logger.log(log_level, f"📊 Prix {symbol}: {price:.8f} ({change_pct:+.4f}%)")
             else:
-                logger.info(f"📊 Premier prix {symbol}: {price:.2f}")
+                logger.info(f"📊 Premier prix {symbol}: {price:.8f}")
             
             # Appeler le callback
             self.price_update_callback(symbol, price)

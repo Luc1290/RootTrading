@@ -76,21 +76,41 @@ class StopManagerPure:
             stop_pct=self.default_stop_pct
         )
         
-        # IMPORTANT: Pour une première initialisation, ne pas utiliser les valeurs 
-        # min_price/max_price existantes car elles peuvent être erronées.
-        # Le TrailingStop doit partir du prix d'entrée pour calculer le stop initial correct.
-        #
-        # ANCIENNE LOGIQUE (BUGGÉE):
-        # if cycle.min_price and cycle.min_price != cycle.entry_price:
-        #     ts.min_price = cycle.min_price
-        # if cycle.max_price and cycle.max_price != cycle.entry_price:
-        #     ts.max_price = cycle.max_price
-        #
-        # Cette logique causait des stops incorrects car elle utilisait des valeurs
-        # potentiellement erronées pour calculer le stop initial.
+        # CORRECTION: Restaurer l'état du TrailingStop après redémarrage
+        # Si le cycle a des min_price/max_price sauvegardés différents du prix d'entrée,
+        # cela signifie que le trailing stop avait déjà évolué avant le redémarrage.
+        # Il faut restaurer cet état pour ne pas perdre les gains du trailing stop.
         
-        # Le stop initial est déjà calculé correctement dans TrailingStop.__init__
-        # basé sur le prix d'entrée. Ne pas le modifier ici.
+        restored = False
+        
+        # Debug : afficher les valeurs pour diagnostiquer
+        logger.info(f"🔍 Debug restauration {cycle.id}: side={side.name}, "
+                   f"entry_price={cycle.entry_price:.6f}, max_price={cycle.max_price:.6f}, "
+                   f"min_price={cycle.min_price:.6f}")
+        
+        if side == Side.LONG and cycle.max_price and cycle.max_price > cycle.entry_price:
+            # Position LONG : restaurer le max_price et recalculer le stop
+            ts.max_price = cycle.max_price
+            new_stop = ts._calc_stop(cycle.max_price)
+            if new_stop > ts.stop_price:
+                ts.stop_price = new_stop
+                restored = True
+                logger.info(f"🔄 État TrailingStop LONG restauré pour {cycle.id}: "
+                           f"max_price={cycle.max_price:.6f}, stop={ts.stop_price:.6f}")
+                
+        elif side == Side.SHORT and cycle.min_price and cycle.min_price < cycle.entry_price:
+            # Position SHORT : restaurer le min_price et recalculer le stop  
+            ts.min_price = cycle.min_price
+            new_stop = ts._calc_stop(cycle.min_price)
+            if new_stop < ts.stop_price:
+                ts.stop_price = new_stop
+                restored = True
+                logger.info(f"🔄 État TrailingStop SHORT restauré pour {cycle.id}: "
+                           f"min_price={cycle.min_price:.6f}, stop={ts.stop_price:.6f}")
+        
+        if not restored:
+            logger.info(f"🎯 Nouveau TrailingStop initialisé pour {cycle.id}: "
+                       f"{side.name} @ {cycle.entry_price:.6f}, stop @ {ts.stop_price:.6f}")
         
         # Stocker dans le cache
         self.trailing_stops[cycle.id] = ts
@@ -104,13 +124,18 @@ class StopManagerPure:
             quantity=cycle.quantity or 0.0
         )
         
-        # Mettre à jour le cycle avec le stop initial
+        # Mettre à jour le cycle avec le stop (initial ou restauré)
         cycle.stop_price = ts.stop_price
         cycle.trailing_delta = self.default_stop_pct
-        self.repository.save_cycle(cycle)
         
-        logger.info(f"🎯 TrailingStop initialisé pour cycle {cycle.id}: "
-                   f"{side.name} @ {cycle.entry_price:.6f}, stop @ {ts.stop_price:.6f}")
+        # Pour les restaurations, aussi mettre à jour les extremes
+        if restored:
+            if side == Side.LONG:
+                cycle.max_price = ts.max_price
+            else:
+                cycle.min_price = ts.min_price
+        
+        self.repository.save_cycle(cycle)
         
         return ts
 
@@ -176,7 +201,7 @@ class StopManagerPure:
                         profit = ts.get_profit_if_exit_now(price)
                         logger.info(f"🔴 Stop trailing déclenché pour cycle {cycle.id}: "
                                    f"prix {price:.6f} ≤ stop {ts.stop_price:.6f}, "
-                                   f"profit: {profit:+.2f}%")
+                                   f"profit: {profit:+.6f}%")
                     else:
                         # Mettre à jour le cycle avec le nouveau stop_price
                         if ts.stop_price != cycle.stop_price:

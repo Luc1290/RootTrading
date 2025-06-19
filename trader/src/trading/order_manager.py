@@ -268,7 +268,7 @@ class OrderManager:
             if stop_price is None:
                 # Par défaut: -2% pour LONG, +2% pour SHORT
                 stop_price = price * 0.98 if side == OrderSide.LONG else price * 1.02
-                logger.info(f"Stop loss calculé automatiquement: {stop_price:.2f}")
+                logger.info(f"Stop loss calculé automatiquement: {stop_price:.8f}")
                 
             # Créer un cycle avec TrailingStop pur (plus de target_price)
             cycle = self.cycle_manager.create_cycle(

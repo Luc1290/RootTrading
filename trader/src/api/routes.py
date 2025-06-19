@@ -789,7 +789,7 @@ def check_balance_for_order():
             "available_balance": available_balance,
             "required_balance": total_cost,
             "sufficient": sufficient,
-            "message": "Solde suffisant" if sufficient else f"Solde insuffisant: {available_balance:.2f} {quote_currency} < {total_cost:.2f} requis"
+            "message": "Solde suffisant" if sufficient else f"Solde insuffisant: {available_balance:.8f} {quote_currency} < {total_cost:.8f} requis"
         }
         
         # Si insuffisant, calculer la quantité maximale possible
