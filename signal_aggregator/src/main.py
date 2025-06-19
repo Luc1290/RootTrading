@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 # Ajouter le chemin vers les modules partagés
 sys.path.insert(0, '/app')
 
-from signal_aggregator import SignalAggregator
+from signal_aggregator import SignalAggregator, EnhancedSignalAggregator
 from regime_detector import RegimeDetector
 from performance_tracker import PerformanceTracker
 from shared.src.kafka_client import KafkaClient
@@ -54,7 +54,8 @@ class SignalAggregatorService:
             # Initialize components
             self.regime_detector = RegimeDetector(self.redis)
             self.performance_tracker = PerformanceTracker(self.redis)
-            self.aggregator = SignalAggregator(
+            # Utiliser la version améliorée avec filtres intelligents
+            self.aggregator = EnhancedSignalAggregator(
                 self.redis,
                 self.regime_detector,
                 self.performance_tracker
@@ -97,7 +98,8 @@ class SignalAggregatorService:
             asyncio.set_event_loop(loop)
             
             try:
-                aggregated = loop.run_until_complete(self.aggregator.process_signal(message))
+                # Utiliser la méthode améliorée avec filtres intelligents
+                aggregated = loop.run_until_complete(self.aggregator.process_signal_enhanced(message))
                 
                 if aggregated:
                     # Publish filtered signal on Kafka

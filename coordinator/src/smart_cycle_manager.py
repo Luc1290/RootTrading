@@ -5,7 +5,9 @@ Remplace la logique de micro-cycles par des cycles renforcables et évolutifs.
 
 import logging
 import time
-from typing import Dict, Optional, Tuple, List
+import requests
+import json
+from typing import Dict, Optional, Tuple, List, Any
 from dataclasses import dataclass
 from enum import Enum
 
@@ -61,8 +63,12 @@ class SmartCycleManager:
     - DCA automatique si opportunité
     """
     
-    def __init__(self):
+    def __init__(self, trader_api_url: str = "http://trader:5002", redis_client=None):
         self.logger = logging.getLogger(__name__)
+        
+        # Configuration API
+        self.trader_api_url = trader_api_url
+        self.redis_client = redis_client
         
         # Configuration du renforcement
         self.min_reinforcement_gap = 1.5  # % minimum de baisse pour renforcer
@@ -397,6 +403,328 @@ class SmartCycleManager:
         
         currency_limits = limits.get(currency, {'min': 10.0, 'max': 100.0})
         return min(currency_limits['max'], max(currency_limits['min'], amount))
+    
+    def _make_request_with_retry(self, url: str, method: str = "GET", json_data: Optional[Dict] = None, 
+                                params: Optional[Dict] = None, timeout: float = 10.0, max_retries: int = 3) -> Optional[Dict]:
+        """
+        Effectue une requête HTTP avec retry et gestion d'erreurs.
+        
+        Args:
+            url: URL de la requête
+            method: Méthode HTTP (GET, POST, etc.)
+            json_data: Données JSON à envoyer
+            params: Paramètres URL
+            timeout: Timeout en secondes
+            max_retries: Nombre max de tentatives
+            
+        Returns:
+            Réponse JSON ou None en cas d'erreur
+        """
+        for attempt in range(max_retries):
+            try:
+                if method.upper() == "GET":
+                    response = requests.get(url, params=params, timeout=timeout)
+                elif method.upper() == "POST":
+                    response = requests.post(url, json=json_data, params=params, timeout=timeout)
+                else:
+                    self.logger.error(f"Méthode HTTP non supportée: {method}")
+                    return None
+                
+                response.raise_for_status()
+                return response.json()
+                
+            except requests.exceptions.RequestException as e:
+                self.logger.warning(f"Tentative {attempt + 1}/{max_retries} échouée pour {url}: {str(e)}")
+                if attempt == max_retries - 1:
+                    self.logger.error(f"Échec définitif de la requête vers {url}")
+                    return None
+                time.sleep(0.5 * (attempt + 1))  # Backoff progressif
+        
+        return None
+
+    def _reinforce_existing_cycle(self, decision: SmartCycleDecision) -> bool:
+        """
+        Renforce un cycle existant (DCA - Dollar Cost Averaging).
+        
+        Args:
+            decision: Décision de renforcement avec montant et raison
+            
+        Returns:
+            True si succès, False sinon
+        """
+        try:
+            # 1. Récupérer les détails du cycle existant
+            cycle_response = self._make_request_with_retry(
+                f"{self.trader_api_url}/cycles/{decision.existing_cycle_id}",
+                method="GET",
+                timeout=5.0
+            )
+            
+            if not cycle_response or not cycle_response.get('success'):
+                self.logger.error(f"Impossible de récupérer le cycle {decision.existing_cycle_id}")
+                return False
+            
+            cycle = cycle_response.get('cycle', {})
+            
+            # 2. Calculer la nouvelle quantité à ajouter
+            current_quantity = float(cycle.get('quantity', 0))
+            current_avg_price = float(cycle.get('entry_price', decision.price_target))
+            
+            # Nouvelle quantité basée sur le montant de renforcement
+            additional_quantity = decision.amount / decision.price_target
+            
+            # 3. Calculer le nouveau prix moyen (moyenne pondérée)
+            total_cost = (current_quantity * current_avg_price) + (additional_quantity * decision.price_target)
+            new_total_quantity = current_quantity + additional_quantity
+            new_avg_price = total_cost / new_total_quantity
+            
+            # 4. Déterminer le côté correct pour le renforcement
+            # Si waiting_sell → position LONG → besoin d'un ordre LONG pour renforcer
+            # Si waiting_buy → position SHORT → besoin d'un ordre SHORT pour renforcer
+            cycle_status = cycle.get('status', '')
+            if cycle_status == 'waiting_sell':
+                reinforce_side = "LONG"  # Acheter plus pour une position longue
+            elif cycle_status == 'waiting_buy':
+                reinforce_side = "SHORT"  # Vendre plus pour une position courte
+            else:
+                self.logger.error(f"Status de cycle invalide pour renforcement: {cycle_status}")
+                return False
+            
+            # 5. Créer l'ordre de renforcement
+            reinforce_data = {
+                "symbol": decision.symbol,
+                "side": reinforce_side,
+                "quantity": additional_quantity,
+                "price": decision.price_target,
+                "strategy": f"SmartCycle_DCA_{decision.confidence:.0%}",
+                "parent_cycle_id": decision.existing_cycle_id,  # Lier au cycle parent
+                "metadata": {
+                    "smart_cycle": True,
+                    "action": "reinforce",
+                    "reason": decision.reason,
+                    "confidence": decision.confidence,
+                    "new_avg_price": new_avg_price,
+                    "total_quantity": new_total_quantity
+                }
+            }
+            
+            # 6. Envoyer l'ordre de renforcement
+            result = self._make_request_with_retry(
+                f"{self.trader_api_url}/order",
+                method="POST",
+                json_data=reinforce_data,
+                timeout=10.0
+            )
+            
+            if result and result.get('order_id'):
+                self.logger.info(f"✅ Cycle {decision.existing_cycle_id} renforcé: "
+                               f"+{additional_quantity:.6f} @ {decision.price_target:.2f} "
+                               f"(nouveau prix moyen: {new_avg_price:.2f})")
+                
+                # 7. Publier un événement pour tracking
+                if self.redis_client:
+                    self.redis_client.publish("roottrading:cycle:reinforced", json.dumps({
+                        "cycle_id": decision.existing_cycle_id,
+                        "reinforcement_order_id": result['order_id'],
+                        "additional_quantity": additional_quantity,
+                        "price": decision.price_target,
+                        "new_avg_price": new_avg_price,
+                        "reason": decision.reason
+                    }))
+                
+                return True
+            else:
+                self.logger.error(f"❌ Échec du renforcement du cycle: {result}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"❌ Erreur lors du renforcement du cycle: {str(e)}")
+            return False
+
+    def _reduce_cycle_position(self, decision: SmartCycleDecision) -> bool:
+        """
+        Réduit partiellement une position (take profit partiel).
+        
+        Args:
+            decision: Décision de réduction avec montant/quantité
+            
+        Returns:
+            True si succès, False sinon
+        """
+        try:
+            # 1. Récupérer les détails du cycle
+            cycle_response = self._make_request_with_retry(
+                f"{self.trader_api_url}/cycles/{decision.existing_cycle_id}",
+                method="GET",
+                timeout=5.0
+            )
+            
+            if not cycle_response or not cycle_response.get('success'):
+                self.logger.error(f"Impossible de récupérer le cycle {decision.existing_cycle_id}")
+                return False
+            
+            cycle = cycle_response.get('cycle', {})
+            current_quantity = float(cycle.get('quantity', 0))
+            
+            # 2. Calculer la quantité à vendre (30% par défaut)
+            reduction_quantity = min(decision.amount, current_quantity * 0.3)
+            
+            if reduction_quantity <= 0:
+                self.logger.warning(f"Quantité de réduction invalide: {reduction_quantity}")
+                return False
+            
+            # 3. Créer un ordre de vente partielle
+            partial_close_data = {
+                "cycle_id": decision.existing_cycle_id,
+                "quantity": reduction_quantity,
+                "reason": decision.reason,
+                "partial": True  # Indique une fermeture partielle
+            }
+            
+            # 4. Envoyer la demande de fermeture partielle
+            result = self._make_request_with_retry(
+                f"{self.trader_api_url}/close/{decision.existing_cycle_id}/partial",
+                method="POST",
+                json_data=partial_close_data,
+                timeout=10.0
+            )
+            
+            if result and result.get('success'):
+                remaining_quantity = current_quantity - reduction_quantity
+                self.logger.info(f"✅ Position réduite: -{reduction_quantity:.6f} "
+                               f"(reste: {remaining_quantity:.6f}) - {decision.reason}")
+                
+                # 5. Publier un événement
+                if self.redis_client:
+                    self.redis_client.publish("roottrading:cycle:reduced", json.dumps({
+                        "cycle_id": decision.existing_cycle_id,
+                        "reduced_quantity": reduction_quantity,
+                        "remaining_quantity": remaining_quantity,
+                        "reason": decision.reason
+                    }))
+                
+                return True
+            else:
+                self.logger.error(f"❌ Échec de la réduction de position: {result}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"❌ Erreur lors de la réduction de position: {str(e)}")
+            return False
+
+    def _analyze_portfolio_exposure(self) -> Dict[str, Any]:
+        """
+        Analyse l'exposition totale du portfolio pour éviter la sur-concentration.
+        
+        Returns:
+            Dict avec les métriques d'exposition
+        """
+        try:
+            # Récupérer tous les cycles actifs
+            cycles_response = self._make_request_with_retry(
+                f"{self.trader_api_url}/cycles",
+                params={"confirmed": "true", "include_completed": "false"},
+                timeout=5.0
+            )
+            
+            if not cycles_response or not cycles_response.get('success'):
+                return {}
+            
+            cycles = cycles_response.get('cycles', [])
+            
+            # Calculer l'exposition par symbole et globale
+            exposure = {
+                'total_positions': len(cycles),
+                'by_symbol': {},
+                'by_side': {'LONG': 0, 'SHORT': 0},
+                'total_value_usd': 0
+            }
+            
+            for cycle in cycles:
+                symbol = cycle.get('symbol', '')
+                quantity = float(cycle.get('quantity', 0))
+                entry_price = float(cycle.get('entry_price', 0))
+                status = cycle.get('status', '')
+                
+                # Déterminer le côté de la position
+                if status in ['waiting_sell', 'active_sell']:
+                    side = 'LONG'
+                else:
+                    side = 'SHORT'
+                
+                # Calculer la valeur en USD (approximative)
+                position_value = quantity * entry_price
+                
+                # Mettre à jour les métriques
+                if symbol not in exposure['by_symbol']:
+                    exposure['by_symbol'][symbol] = {
+                        'count': 0,
+                        'total_value': 0,
+                        'LONG': 0,
+                        'SHORT': 0
+                    }
+                
+                exposure['by_symbol'][symbol]['count'] += 1
+                exposure['by_symbol'][symbol]['total_value'] += position_value
+                exposure['by_symbol'][symbol][side] += 1
+                exposure['by_side'][side] += 1
+                exposure['total_value_usd'] += position_value
+            
+            # Calculer les pourcentages de concentration
+            if exposure['total_value_usd'] > 0:
+                for symbol in exposure['by_symbol']:
+                    symbol_value = exposure['by_symbol'][symbol]['total_value']
+                    exposure['by_symbol'][symbol]['concentration_pct'] = (
+                        symbol_value / exposure['total_value_usd'] * 100
+                    )
+            
+            return exposure
+            
+        except Exception as e:
+            self.logger.error(f"Erreur analyse exposition portfolio: {str(e)}")
+            return {}
+
+    def should_allow_new_position(self, symbol: str, side: str) -> Tuple[bool, str]:
+        """
+        Vérifie si une nouvelle position devrait être autorisée selon les règles de risque.
+        
+        Args:
+            symbol: Symbole concerné
+            side: Côté de la position (LONG/SHORT)
+            
+        Returns:
+            Tuple (allowed, reason)
+        """
+        # Analyser l'exposition actuelle
+        exposure = self._analyze_portfolio_exposure()
+        
+        # Règle 1: Limite globale de positions
+        max_total_positions = 20  # Maximum 20 positions ouvertes
+        if exposure.get('total_positions', 0) >= max_total_positions:
+            return False, f"Limite globale atteinte: {max_total_positions} positions"
+        
+        # Règle 2: Limite par symbole
+        max_per_symbol = 5  # Maximum 5 positions par symbole
+        symbol_data = exposure.get('by_symbol', {}).get(symbol, {})
+        if symbol_data.get('count', 0) >= max_per_symbol:
+            return False, f"Limite par symbole atteinte: {max_per_symbol} positions sur {symbol}"
+        
+        # Règle 3: Concentration maximale
+        max_concentration = 30  # Maximum 30% du portfolio sur un symbole
+        if symbol_data.get('concentration_pct', 0) >= max_concentration:
+            return False, f"Concentration excessive: {symbol_data['concentration_pct']:.1f}% sur {symbol}"
+        
+        # Règle 4: Équilibre LONG/SHORT
+        long_count = exposure.get('by_side', {}).get('LONG', 0)
+        short_count = exposure.get('by_side', {}).get('SHORT', 0)
+        
+        # Si déséquilibre important, favoriser le côté opposé
+        if side == 'LONG' and long_count > short_count * 2:
+            return False, f"Déséquilibre LONG/SHORT: {long_count} LONG vs {short_count} SHORT"
+        elif side == 'SHORT' and short_count > long_count * 2:
+            return False, f"Déséquilibre SHORT/LONG: {short_count} SHORT vs {long_count} LONG"
+        
+        return True, "Position autorisée"
     
     def get_active_cycles_summary(self) -> Dict:
         """
