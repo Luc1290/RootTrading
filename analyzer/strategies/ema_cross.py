@@ -158,7 +158,7 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
         current_long_ema = long_ema[-1]
         
         # Loguer les valeurs actuelles
-        precision = 5 if 'BTC' in self.symbol else 2
+        precision = 5 if 'BTC' in self.symbol else 3
         logger.debug(f"[EMA Cross] {self.symbol}: Price={current_price:.{precision}f}, "
                     f"Short EMA={current_short_ema:.{precision}f}, Long EMA={current_long_ema:.{precision}f}")
         

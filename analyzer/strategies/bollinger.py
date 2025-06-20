@@ -161,7 +161,7 @@ class BollingerStrategy(BaseStrategy):
         current_middle = middle[-1]
         
         # Loguer les valeurs actuelles
-        precision = 5 if 'BTC' in self.symbol else 2
+        precision = 5 if 'BTC' in self.symbol else 3
         logger.debug(f"[Bollinger] {self.symbol}: Price={current_price:.{precision}f}, "
                     f"Upper={current_upper:.{precision}f}, Lower={current_lower:.{precision}f}")
         

@@ -1097,9 +1097,9 @@ class SignalHandler:
         }
         
         max_amounts = {
-            'USDC': float(os.getenv('MAX_TRADE_USDC', 500.0)),
-            'BTC': float(os.getenv('MAX_TRADE_BTC', 0.01)),
-            'ETH': float(os.getenv('MAX_TRADE_ETH', 0.2)),
+            'USDC': float(os.getenv('MAX_TRADE_USDC', 250.0)),
+            'BTC': float(os.getenv('MAX_TRADE_BTC', 0.005)),
+            'ETH': float(os.getenv('MAX_TRADE_ETH', 0.13)),
             'BNB': float(os.getenv('MAX_TRADE_BNB', 2.0))
         }
         
@@ -1109,7 +1109,7 @@ class SignalHandler:
         # Appliquer les limites
         final_amount = max(min_amount, min(calculated_amount, max_amount))
         
-        self.logger.info(f"Allocation dynamique {signal.symbol}: {base_percentage}% de {available_balance:.4f} {quote_asset} = {final_amount:.4f} {quote_asset}")
+        self.logger.info(f"Allocation dynamique {signal.symbol}: {base_percentage}% de {available_balance:.8f} {quote_asset} = {final_amount:.6f} {quote_asset}")
         
         return final_amount, quote_asset
     

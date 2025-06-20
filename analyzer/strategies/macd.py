@@ -249,7 +249,7 @@ class MACDStrategy(BaseStrategy):
             current_histogram = histogram.iloc[-1]
             
             # Loguer les valeurs actuelles
-            precision = 5 if 'BTC' in self.symbol else 2
+            precision = 5 if 'BTC' in self.symbol else 3
             logger.debug(f"[MACD] {self.symbol}: Price={current_price:.{precision}f}, "
                         f"MACD={current_macd:.6f}, Signal={current_signal:.6f}, Hist={current_histogram:.6f}")
             

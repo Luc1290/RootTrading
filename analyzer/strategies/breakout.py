@@ -311,7 +311,7 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
             'breakout_strength': self._calculate_breakout_strength(breakout_info)
         })
         
-        precision = 5 if 'BTC' in self.symbol else 2
+        precision = 5 if 'BTC' in self.symbol else 3
         logger.info(f"🎯 [Breakout] {self.symbol}: Signal {signal_side} @ {current_price:.{precision}f} "
                    f"(confiance: {confidence:.2f}, niveau: {breakout_info.get('level', 'N/A'):.{precision}f}, "
                    f"scores: V={volume_score:.2f}, FB={false_breakout_score:.2f})")

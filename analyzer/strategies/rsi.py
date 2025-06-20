@@ -166,7 +166,7 @@ class RSIStrategy(BaseStrategy):
         current_rsi = rsi_values[-1]
         
         # Loguer les valeurs actuelles
-        precision = 5 if 'BTC' in self.symbol else 2
+        precision = 5 if 'BTC' in self.symbol else 3
         logger.debug(f"[RSI] {self.symbol}: RSI={current_rsi:.2f}, Price={current_price:.{precision}f}")
         
         # Vérifications de base
