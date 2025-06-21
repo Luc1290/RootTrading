@@ -1,6 +1,0 @@
-# Requirements pour le service Risk Manager
--r ../requirements-shared.txt
-pyyaml==6.0.1
-requests==2.31.0
-psycopg2-binary==2.9.7
-redis==4.6.0

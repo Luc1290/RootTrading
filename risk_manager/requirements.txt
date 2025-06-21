@@ -1,6 +1,0 @@
-# Requirements pour le service Risk Manager
--r ../requirements-shared.txt
-pyyaml==6.0.1
-requests==2.31.0
-flask==2.3.3
-psutil==5.9.5
