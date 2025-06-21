@@ -261,10 +261,10 @@ class BinanceUtils:
         # Convertir side en string si c'est un enum
         side_str = order.side.value if hasattr(order.side, 'value') else str(order.side)
         
-        # Convertir LONG/SHORT vers BUY/SELL pour Binance
+        # Convertir LONG/sell vers BUY/SELL pour Binance
         if side_str == "LONG":
             side = "BUY"
-        elif side_str == "SHORT":
+        elif side_str == "sell":
             side = "SELL"
         else:
             # Compatibilité avec l'ancien système BUY/SELL (si présent)
@@ -361,14 +361,14 @@ class BinanceUtils:
         # Pour les ordres non encore exécutés, utiliser origQty au lieu de executedQty
         quantity = float(data['executedQty']) if float(data.get('executedQty', 0)) > 0 else float(data.get('origQty', 0))
         
-        # Convertir BUY/SELL de Binance vers LONG/SHORT pour notre enum
+        # Convertir BUY/SELL de Binance vers LONG/sell pour notre enum
         binance_side = data['side']
         if binance_side == "BUY":
             side = OrderSide.LONG
         elif binance_side == "SELL":
-            side = OrderSide.SHORT
+            side = OrderSide.sell
         else:
-            # Compatibilité au cas où la valeur serait déjà LONG/SHORT
+            # Compatibilité au cas où la valeur serait déjà LONG/sell
             # ou fallback pour des valeurs inattendues
             try:
                 side = OrderSide(binance_side)
@@ -435,14 +435,14 @@ class BinanceUtils:
                 if float(order_response.get('executedQty', 0)) > 0 else 0
             )
             
-            # Convertir BUY/SELL de Binance vers LONG/SHORT pour notre enum
+            # Convertir BUY/SELL de Binance vers LONG/sell pour notre enum
             binance_side = order_response['side']
             if binance_side == "BUY":
                 side = OrderSide.LONG
             elif binance_side == "SELL":
-                side = OrderSide.SHORT
+                side = OrderSide.sell
             else:
-                # Compatibilité au cas où la valeur serait déjà LONG/SHORT
+                # Compatibilité au cas où la valeur serait déjà LONG/sell
                 # ou fallback pour des valeurs inattendues
                 try:
                     side = OrderSide(binance_side)

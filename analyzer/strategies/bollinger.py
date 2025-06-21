@@ -255,14 +255,14 @@ class BollingerStrategy(BaseStrategy):
                 if price_momentum > -0.02:  # Pas de chute > 2% sur 3 périodes
                     return OrderSide.LONG
         
-        # Setup SHORT: Prix près/au-dessus de la bande haute avec rejet potentiel
+        # Setup sell: Prix près/au-dessus de la bande haute avec rejet potentiel
         elif current_price >= current_upper * 0.997:  # Marge de 0.3%
             # Vérifier les signes de rejet
             recent_highs = [prices[i] for i in range(max(0, len(prices)-3), len(prices))]
             if len(recent_highs) >= 2:
                 # Prix doit montrer des signes de plafonnement
                 if max(recent_highs) - current_price < current_price * 0.005:  # Dans les 0.5% du plus haut
-                    return OrderSide.SHORT
+                    return OrderSide.sell
         
         return None
     
@@ -335,7 +335,7 @@ class BollingerStrategy(BaseStrategy):
                 else:
                     return 0.6
             
-            else:  # SHORT
+            else:  # sell
                 # Chercher divergence bearish: prix fait des plus hauts, RSI des plus bas
                 price_max_idx = np.argmax(recent_prices[-10:])
                 rsi_in_price_max_zone = recent_rsi[-10:][price_max_idx]
@@ -408,7 +408,7 @@ class BollingerStrategy(BaseStrategy):
                 else:
                     return 0.6   # Support lointain
             
-            else:  # SHORT
+            else:  # sell
                 # Chercher confluence avec résistance
                 if not pivot_highs:
                     return 0.6
@@ -474,7 +474,7 @@ class BollingerStrategy(BaseStrategy):
                     return 0.7  # Neutre
                 else:
                     return 0.4  # Contre tendance
-            else:  # SHORT
+            else:  # sell
                 if trend_direction == "BEARISH":
                     return min(0.95, 0.8 + trend_strength * 10)
                 elif trend_direction == "NEUTRAL":

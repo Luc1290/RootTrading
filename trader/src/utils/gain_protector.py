@@ -44,38 +44,38 @@ class GainProtector:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         
-        # Configuration des niveaux de protection
+        # Configuration des niveaux de protection - MODE SCALPING
         self.protection_targets = {
-            # Niveau 1: Sécurisation break-even dès +1%
+            # Niveau 1: Sécurisation break-even dès +0.5%
             1: ProtectionTarget(
-                gain_threshold=1.0,
+                gain_threshold=0.5,
                 take_profit_percentage=0.0,  # Pas de vente, juste déplacer le stop
                 new_stop_percentage=0.0,     # Stop au break-even
                 trailing_distance=None
             ),
             
-            # Niveau 2: Premier take profit partiel à +2%
+            # Niveau 2: Premier take profit partiel à +1%
             2: ProtectionTarget(
-                gain_threshold=2.0,
-                take_profit_percentage=30.0,  # Vendre 30% de la position
-                new_stop_percentage=0.5,      # Stop à +0.5% (sécurisé)
-                trailing_distance=1.0         # Activer trailing à 1%
+                gain_threshold=1.0,
+                take_profit_percentage=40.0,  # Vendre 40% de la position
+                new_stop_percentage=0.25,     # Stop à +0.25% (sécurisé)
+                trailing_distance=0.5         # Activer trailing à 0.5%
             ),
             
-            # Niveau 3: Deuxième take profit à +4%
+            # Niveau 3: Deuxième take profit à +1.5%
             3: ProtectionTarget(
-                gain_threshold=4.0,
-                take_profit_percentage=30.0,  # Vendre 30% supplémentaire
-                new_stop_percentage=1.5,      # Stop à +1.5%
-                trailing_distance=0.8         # Trailing plus serré
+                gain_threshold=1.5,
+                take_profit_percentage=40.0,  # Vendre 40% supplémentaire
+                new_stop_percentage=0.75,     # Stop à +0.75%
+                trailing_distance=0.3         # Trailing plus serré
             ),
             
-            # Niveau 4: Protection finale à +6%
+            # Niveau 4: Protection finale à +2%
             4: ProtectionTarget(
-                gain_threshold=6.0,
+                gain_threshold=2.0,
                 take_profit_percentage=0.0,   # Garder le reste
-                new_stop_percentage=3.0,      # Stop à +3%
-                trailing_distance=0.5         # Trailing très serré
+                new_stop_percentage=1.25,     # Stop à +1.25%
+                trailing_distance=0.25        # Trailing très serré
             )
         }
         
@@ -89,7 +89,7 @@ class GainProtector:
         Args:
             cycle_id: ID unique du cycle
             entry_price: Prix d'entrée
-            side: LONG ou SHORT
+            side: LONG ou sell
             quantity: Quantité initiale
         """
         self.cycle_states[cycle_id] = {
@@ -129,7 +129,7 @@ class GainProtector:
         # Calculer le gain actuel
         if state['side'] == 'LONG':
             gain_pct = ((current_price - state['entry_price']) / state['entry_price']) * 100
-        else:  # SHORT
+        else:  # sell
             gain_pct = ((state['entry_price'] - current_price) / state['entry_price']) * 100
         
         # Mettre à jour le gain maximum
@@ -139,8 +139,8 @@ class GainProtector:
             # Mettre à jour le trailing high/low
             if state['side'] == 'LONG':
                 state['trailing_high'] = max(state['trailing_high'], current_price)
-            else: # SHORT
-                # Pour un SHORT, on suit le plus bas
+            else: # sell
+                # Pour un sell, on suit le plus bas
                 state['trailing_high'] = min(state['trailing_high'], current_price)
         
         # Vérifier chaque niveau de protection
@@ -244,8 +244,8 @@ class GainProtector:
                     'trailing_high': state['trailing_high'],
                     'drop_percentage': price_drop_pct
                 }
-        else:  # SHORT
-            # Pour un SHORT, vérifier si le prix a monté de X% depuis le low
+        else:  # sell
+            # Pour un sell, vérifier si le prix a monté de X% depuis le low
             price_rise_pct = ((current_price - state['trailing_high']) / state['trailing_high']) * 100
             
             if price_rise_pct >= trailing_distance:
@@ -268,7 +268,7 @@ class GainProtector:
         Args:
             entry_price: Prix d'entrée
             stop_percentage: Pourcentage de stop (positif = profit, négatif = perte)
-            side: LONG ou SHORT
+            side: LONG ou sell
 
         Returns:
             Prix de stop calculé
@@ -276,8 +276,8 @@ class GainProtector:
         if side == 'LONG':
             # Pour un LONG, stop_percentage positif = stop plus haut que l'entrée
             return entry_price * (1 + stop_percentage / 100)
-        else:  # SHORT
-            # Pour un SHORT, stop_percentage positif = stop plus bas que l'entrée
+        else:  # sell
+            # Pour un sell, stop_percentage positif = stop plus bas que l'entrée
             return entry_price * (1 - stop_percentage / 100)
     
     def get_cycle_status(self, cycle_id: str) -> Optional[Dict]:

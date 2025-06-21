@@ -20,16 +20,16 @@ logger = logging.getLogger(__name__)
 class StopManagerPure:
     """
     Gestionnaire de stops PURE.
-    Utilise uniquement un trailing stop à 3% - pas de target adaptatif.
+    Utilise uniquement un trailing stop à 1.5% - pas de target adaptatif. Mode SCALPING.
     """
     
-    def __init__(self, cycle_repository: CycleRepository, default_stop_pct: float = 3.0):
+    def __init__(self, cycle_repository: CycleRepository, default_stop_pct: float = 1.5):
         """
         Initialise le gestionnaire de stops pure.
         
         Args:
             cycle_repository: Repository pour les cycles
-            default_stop_pct: Pourcentage de stop par défaut (3%)
+            default_stop_pct: Pourcentage de stop par défaut (1.5% en mode scalping)
         """
         self.repository = cycle_repository
         self.price_locks = RLock()
@@ -41,7 +41,7 @@ class StopManagerPure:
         # Intégration du GainProtector
         self.gain_protector = GainProtector()
         
-        logger.info(f"✅ StopManagerPure initialisé (stop par défaut: {default_stop_pct}%) avec GainProtector")
+        logger.info(f"✅ StopManagerPure initialisé (stop par défaut: {default_stop_pct}% - MODE SCALPING) avec GainProtector")
     
     def initialize_trailing_stop(self, cycle: TradeCycle) -> TrailingStop:
         """
@@ -55,15 +55,15 @@ class StopManagerPure:
         """
         # Déterminer le side basé sur la logique correcte
         # waiting_sell = position LONG ouverte (a acheté, attend de vendre)
-        # waiting_buy = position SHORT ouverte (a vendu, attend de racheter)
+        # waiting_buy = position sell ouverte (a vendu, attend de racheter)
         if cycle.status == CycleStatus.WAITING_SELL:
             side = Side.LONG  # Position longue ouverte
         elif cycle.status == CycleStatus.WAITING_BUY:
-            side = Side.SHORT  # Position courte ouverte
+            side = Side.sell  # Position courte ouverte
         elif cycle.status == CycleStatus.ACTIVE_BUY:
             side = Side.LONG   # En cours d'achat pour position longue
         elif cycle.status == CycleStatus.ACTIVE_SELL:
-            side = Side.SHORT  # En cours de vente pour position courte
+            side = Side.sell  # En cours de vente pour position courte
         else:
             # Fallback : essayer de déduire du contexte
             logger.warning(f"⚠️ Statut {cycle.status} non reconnu pour {cycle.id}, assume LONG par défaut")
@@ -98,14 +98,14 @@ class StopManagerPure:
                 logger.info(f"🔄 État TrailingStop LONG restauré pour {cycle.id}: "
                            f"max_price={cycle.max_price:.6f}, stop={ts.stop_price:.6f}")
                 
-        elif side == Side.SHORT and cycle.min_price and cycle.min_price < cycle.entry_price:
-            # Position SHORT : restaurer le min_price et recalculer le stop  
+        elif side == Side.sell and cycle.min_price and cycle.min_price < cycle.entry_price:
+            # Position sell : restaurer le min_price et recalculer le stop  
             ts.min_price = cycle.min_price
             new_stop = ts._calc_stop(cycle.min_price)
             if new_stop < ts.stop_price:
                 ts.stop_price = new_stop
                 restored = True
-                logger.info(f"🔄 État TrailingStop SHORT restauré pour {cycle.id}: "
+                logger.info(f"🔄 État TrailingStop sell restauré pour {cycle.id}: "
                            f"min_price={cycle.min_price:.6f}, stop={ts.stop_price:.6f}")
         
         if not restored:
@@ -116,7 +116,7 @@ class StopManagerPure:
         self.trailing_stops[cycle.id] = ts
         
         # Initialiser le GainProtector pour ce cycle
-        side_str = "LONG" if side == Side.LONG else "SHORT"
+        side_str = "LONG" if side == Side.LONG else "sell"
         self.gain_protector.initialize_cycle(
             cycle_id=cycle.id,
             entry_price=cycle.entry_price,
@@ -208,7 +208,7 @@ class StopManagerPure:
                             old_stop = cycle.stop_price
                             cycle.stop_price = ts.stop_price
                             cycle.max_price = ts.max_price if ts.side == Side.LONG else cycle.max_price
-                            cycle.min_price = ts.min_price if ts.side == Side.SHORT else cycle.min_price
+                            cycle.min_price = ts.min_price if ts.side == Side.sell else cycle.min_price
                             
                             self.repository.save_cycle(cycle)
                             

@@ -234,7 +234,7 @@ class OrderManager:
         
         Args:
             symbol: Symbole (ex: 'BTCUSDC')
-            side: Côté de l'ordre (LONG ou SHORT)
+            side: Côté de l'ordre (LONG ou sell)
             quantity: Quantité à trader
             price: Prix (optionnel, sinon au marché)
             strategy: Nom de la stratégie (optionnel, défaut: "Manual")
@@ -266,7 +266,7 @@ class OrderManager:
             
             # Calculer le stop par défaut si non spécifié (plus de target avec TrailingStop pur)
             if stop_price is None:
-                # Par défaut: -2% pour LONG, +2% pour SHORT
+                # Par défaut: -2% pour LONG, +2% pour sell
                 stop_price = price * 0.98 if side == OrderSide.LONG else price * 1.02
                 logger.info(f"Stop loss calculé automatiquement: {stop_price:.8f}")
                 
@@ -323,7 +323,7 @@ class OrderManager:
                 "side": "LONG" if (
                     hasattr(cycle.status, 'value') and cycle.status.value.lower() in ['active_long', 'waiting_long'] or
                     isinstance(cycle.status, str) and cycle.status.lower() in ['active_long', 'waiting_long']
-                ) else "SHORT",
+                ) else "sell",
                 "entry_price": cycle.entry_price,
                 "current_price": self.last_prices.get(cycle.symbol),
                 "quantity": cycle.quantity,

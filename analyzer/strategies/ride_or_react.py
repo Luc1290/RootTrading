@@ -281,9 +281,9 @@ class RideOrReactStrategy(BaseStrategy, AdvancedFiltersMixin):
         metadata['is_filter_signal'] = True  # Marquer comme signal de filtre
         
         # Le side n'a pas d'importance car ce signal ne sera pas tradé
-        # On met LONG pour ride (tendance haussière) et SHORT pour react (prudence)
+        # On met LONG pour ride (tendance haussière) et sell pour react (prudence)
         return self.create_signal(
-            side=OrderSide.LONG if market_condition["mode"] == "ride" else OrderSide.SHORT,
+            side=OrderSide.LONG if market_condition["mode"] == "ride" else OrderSide.sell,
             price=market_condition["current_price"],
             confidence=0.0,  # Confiance à 0 pour éviter tout trading accidentel
             metadata=metadata
@@ -304,11 +304,11 @@ class RideOrReactStrategy(BaseStrategy, AdvancedFiltersMixin):
         
         # En mode "ride", filtrer les signaux de vente si le marché est en tendance haussière
         if self.current_mode == "ride":
-            # Si le marché est en forte hausse et le signal est SHORT, filtrer
+            # Si le marché est en forte hausse et le signal est sell, filtrer
             is_uptrend = self.current_market_condition.get('24h_change', 0) > 0
 
-            if is_uptrend and signal.side == OrderSide.SHORT:
-                logger.info(f"🔍 [Ride or React] Filtrage d'un signal SHORT en mode RIDE (tendance haussière)")
+            if is_uptrend and signal.side == OrderSide.sell:
+                logger.info(f"🔍 [Ride or React] Filtrage d'un signal sell en mode RIDE (tendance haussière)")
                 return True
 
             # Si le marché est en forte baisse et le signal est LONG, filtrer

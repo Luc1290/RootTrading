@@ -41,20 +41,20 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
         super().__init__(symbol, params)
         
         # Paramètres EMA
-        self.short_window = self.params.get('short_window', get_strategy_param('ema_cross', 'short_window', 5))
+        self.sell_window = self.params.get('sell_window', get_strategy_param('ema_cross', 'sell_window', 5))
         self.long_window = self.params.get('long_window', get_strategy_param('ema_cross', 'long_window', 20))
         
         # S'assurer que court < long
-        if self.short_window >= self.long_window:
-            logger.warning(f"⚠️ Configuration incorrecte: EMA court ({self.short_window}) >= EMA long ({self.long_window}). Ajustement automatique.")
-            self.short_window = min(self.short_window, self.long_window - 1)
+        if self.sell_window >= self.long_window:
+            logger.warning(f"⚠️ Configuration incorrecte: EMA court ({self.sell_window}) >= EMA long ({self.long_window}). Ajustement automatique.")
+            self.sell_window = min(self.sell_window, self.long_window - 1)
         
         # Variables pour suivre les tendances
-        self.prev_short_ema = None
+        self.prev_sell_ema = None
         self.prev_long_ema = None
         
         logger.info(f"🔧 Stratégie EMA Cross initialisée pour {symbol} "
-                   f"(short={self.short_window}, long={self.long_window})")
+                   f"(sell={self.sell_window}, long={self.long_window})")
     
     @property
     def name(self) -> str:
@@ -79,13 +79,13 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
             prices: Tableau numpy des prix de clôture
             
         Returns:
-            Tuple (short_ema, long_ema) des valeurs EMA
+            Tuple (sell_ema, long_ema) des valeurs EMA
         """
         try:
             # Utiliser TA-Lib pour calculer les EMAs
-            short_ema = talib.EMA(prices, timeperiod=self.short_window)
+            sell_ema = talib.EMA(prices, timeperiod=self.sell_window)
             long_ema = talib.EMA(prices, timeperiod=self.long_window)
-            return short_ema, long_ema
+            return sell_ema, long_ema
         except Exception as e:
             logger.error(f"Erreur lors du calcul des EMAs: {str(e)}")
             # Implémenter un calcul manuel de secours en cas d'erreur TA-Lib
@@ -99,25 +99,25 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
             prices: Tableau numpy des prix de clôture
             
         Returns:
-            Tuple (short_ema, long_ema) des valeurs EMA
+            Tuple (sell_ema, long_ema) des valeurs EMA
         """
         # Initialiser les tableaux
-        short_ema = np.zeros_like(prices)
+        sell_ema = np.zeros_like(prices)
         long_ema = np.zeros_like(prices)
         
         # Calculer les EMAs
         # Coefficient de lissage
-        short_alpha = 2 / (self.short_window + 1)
+        sell_alpha = 2 / (self.sell_window + 1)
         long_alpha = 2 / (self.long_window + 1)
         
         # Pour la première valeur, utiliser la moyenne simple (SMA)
         for i in range(len(prices)):
-            if i < self.short_window - 1:
-                short_ema[i] = np.nan
-            elif i == self.short_window - 1:
-                short_ema[i] = np.mean(prices[:self.short_window])
+            if i < self.sell_window - 1:
+                sell_ema[i] = np.nan
+            elif i == self.sell_window - 1:
+                sell_ema[i] = np.mean(prices[:self.sell_window])
             else:
-                short_ema[i] = (prices[i] * short_alpha) + (short_ema[i-1] * (1 - short_alpha))
+                sell_ema[i] = (prices[i] * sell_alpha) + (sell_ema[i-1] * (1 - sell_alpha))
                 
             if i < self.long_window - 1:
                 long_ema[i] = np.nan
@@ -126,7 +126,7 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
             else:
                 long_ema[i] = (prices[i] * long_alpha) + (long_ema[i-1] * (1 - long_alpha))
         
-        return short_ema, long_ema
+        return sell_ema, long_ema
     
     def generate_signal(self) -> Optional[StrategySignal]:
         """
@@ -150,26 +150,26 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
         volumes = df['volume'].values if 'volume' in df.columns else None
         
         # Calculer les EMAs
-        short_ema, long_ema = self.calculate_emas(prices)
+        sell_ema, long_ema = self.calculate_emas(prices)
         
         # Obtenir les dernières valeurs
         current_price = prices[-1]
-        current_short_ema = short_ema[-1]
+        current_sell_ema = sell_ema[-1]
         current_long_ema = long_ema[-1]
         
         # Loguer les valeurs actuelles
         precision = 5 if 'BTC' in self.symbol else 3
         logger.debug(f"[EMA Cross] {self.symbol}: Price={current_price:.{precision}f}, "
-                    f"Short EMA={current_short_ema:.{precision}f}, Long EMA={current_long_ema:.{precision}f}")
+                    f"sell EMA={current_sell_ema:.{precision}f}, Long EMA={current_long_ema:.{precision}f}")
         
         # Vérifications de base
-        if np.isnan(current_short_ema) or np.isnan(current_long_ema):
+        if np.isnan(current_sell_ema) or np.isnan(current_long_ema):
             return None
         
         # === NOUVEAU SYSTÈME DE FILTRES SOPHISTIQUES ===
         
         # 1. FILTRE SETUP EMA DE BASE
-        signal_side = self._detect_ema_setup(short_ema, long_ema, prices)
+        signal_side = self._detect_ema_setup(sell_ema, long_ema, prices)
         if signal_side is None:
             return None
         
@@ -186,7 +186,7 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
             return None
         
         # 4. FILTRE PULLBACK VALIDATION (éviter les faux breakouts)
-        pullback_score = self._validate_pullback_quality(df, signal_side, current_short_ema, current_long_ema)
+        pullback_score = self._validate_pullback_quality(df, signal_side, current_sell_ema, current_long_ema)
         
         # 5. FILTRE TREND ALIGNMENT (confirmation tendance supérieure)
         trend_score = self._analyze_trend_alignment_common(df, signal_side)
@@ -232,10 +232,10 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
         
         # Ajouter les métadonnées d'analyse
         signal.metadata.update({
-            'short_ema': current_short_ema,
+            'sell_ema': current_sell_ema,
             'long_ema': current_long_ema,
-            'ema_spread_pct': abs(current_short_ema - current_long_ema) / current_long_ema * 100,
-            'price_to_short_ema_pct': (current_price - current_short_ema) / current_short_ema * 100,
+            'ema_spread_pct': abs(current_sell_ema - current_long_ema) / current_long_ema * 100,
+            'price_to_sell_ema_pct': (current_price - current_sell_ema) / current_sell_ema * 100,
             'price_to_long_ema_pct': (current_price - current_long_ema) / current_long_ema * 100,
             'adx_score': adx_score,
             'volume_score': volume_score,
@@ -251,36 +251,36 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
         
         return signal
     
-    def _detect_ema_setup(self, short_ema: np.ndarray, long_ema: np.ndarray, prices: np.ndarray) -> Optional[OrderSide]:
+    def _detect_ema_setup(self, sell_ema: np.ndarray, long_ema: np.ndarray, prices: np.ndarray) -> Optional[OrderSide]:
         """
         Détecte le setup EMA de base avec logique sophistiquée.
         """
-        if len(short_ema) < 3 or len(long_ema) < 3:
+        if len(sell_ema) < 3 or len(long_ema) < 3:
             return None
         
-        current_short = short_ema[-1]
+        current_sell = sell_ema[-1]
         current_long = long_ema[-1]
         current_price = prices[-1]
         
         # Détecter la direction de la tendance
-        is_uptrend = current_short > current_long
-        is_downtrend = current_short < current_long
+        is_uptrend = current_sell > current_long
+        is_downtrend = current_sell < current_long
         
         # Calculer les distances
-        price_to_short_pct = (current_price - current_short) / current_short * 100
+        price_to_sell_pct = (current_price - current_sell) / current_sell * 100
         price_to_long_pct = (current_price - current_long) / current_long * 100
         
         # Setup LONG: Pullback dans tendance haussière
-        if is_uptrend and price_to_short_pct < -0.3:  # Prix sous EMA courte
+        if is_uptrend and price_to_sell_pct < -0.3:  # Prix sous EMA courte
             # Vérifier que ce n'est pas un breakdown
             if current_price > current_long * 0.98:  # Pas trop loin de l'EMA longue
                 return OrderSide.LONG
         
-        # Setup SHORT: Rebond dans tendance baissière
-        elif is_downtrend and price_to_short_pct > 0.3:  # Prix au-dessus EMA courte
+        # Setup sell: Rebond dans tendance baissière
+        elif is_downtrend and price_to_sell_pct > 0.3:  # Prix au-dessus EMA courte
             # Vérifier que ce n'est pas un breakout
             if current_price < current_long * 1.02:  # Pas trop loin de l'EMA longue
-                return OrderSide.SHORT
+                return OrderSide.sell
         
         return None
     
@@ -321,7 +321,7 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
             return 0.7
     
     def _validate_pullback_quality(self, df: pd.DataFrame, signal_side: OrderSide, 
-                                  short_ema: float, long_ema: float) -> float:
+                                  sell_ema: float, long_ema: float) -> float:
         """
         Valide la qualité du pullback/rebond.
         """
@@ -348,8 +348,8 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
                 else:  # En dessous EMA longue
                     score = 0.6
             
-            else:  # SHORT
-                # Pour SHORT: prix doit être proche de l'EMA longue mais pas en breakout
+            else:  # sell
+                # Pour sell: prix doit être proche de l'EMA longue mais pas en breakout
                 distance_to_long = abs(current_price - long_ema) / long_ema
                 
                 if distance_to_long < 0.01:  # Très proche EMA longue

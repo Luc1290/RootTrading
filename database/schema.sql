@@ -14,7 +14,7 @@ SET default_text_search_config = 'pg_catalog.english';
 CREATE TABLE IF NOT EXISTS trade_executions (
     order_id VARCHAR(50) PRIMARY KEY,
     symbol VARCHAR(20) NOT NULL,
-    side VARCHAR(10) NOT NULL CHECK (side IN ('LONG', 'SHORT')),
+    side VARCHAR(10) NOT NULL CHECK (side IN ('LONG', 'sell')),
     status VARCHAR(20) NOT NULL CHECK (status IN ('NEW', 'PARTIALLY_FILLED', 'FILLED', 'CANCELED', 'REJECTED', 'EXPIRED', 'PENDING_CANCEL')),
     price NUMERIC(16, 8) NOT NULL,
     quantity NUMERIC(16, 8) NOT NULL,
@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS trading_signals (
     id SERIAL PRIMARY KEY,
     strategy VARCHAR(50) NOT NULL,
     symbol VARCHAR(20) NOT NULL,
-    side VARCHAR(10) NOT NULL CHECK (side IN ('LONG', 'SHORT')),
+    side VARCHAR(10) NOT NULL CHECK (side IN ('LONG', 'sell')),
     timestamp TIMESTAMP NOT NULL,
     price NUMERIC(16, 8) NOT NULL,
     confidence NUMERIC(5, 4),
@@ -355,7 +355,7 @@ SELECT
             CASE 
                 WHEN tc.status LIKE '%LONG%' THEN 
                     (lp.price - tc.entry_price) / tc.entry_price * 100
-                WHEN tc.status LIKE '%SHORT%' THEN 
+                WHEN tc.status LIKE '%sell%' THEN 
                     (tc.entry_price - lp.price) / tc.entry_price * 100
                 ELSE NULL
             END
@@ -713,7 +713,7 @@ ON CONFLICT (symbol) DO UPDATE SET
 -- Insérer les configurations de stratégies par défaut
 INSERT INTO strategy_configs (name, mode, symbols, params, max_simultaneous_trades, enabled) VALUES
 ('RSI_Strategy', 'active', '["BTCUSDC", "ETHUSDC"]', '{"window": 14, "overbought": 70, "oversold": 30}', 3, true),
-('EMA_Cross_Strategy', 'active', '["BTCUSDC", "ETHUSDC"]', '{"short_window": 5, "long_window": 20}', 2, true),
+('EMA_Cross_Strategy', 'active', '["BTCUSDC", "ETHUSDC"]', '{"sell_window": 5, "long_window": 20}', 2, true),
 ('Bollinger_Bands_Strategy', 'monitoring', '["BTCUSDC", "ETHUSDC"]', '{"window": 20, "std_dev": 2.0}', 2, false),
 ('Ride_or_React_Strategy', 'active', '["BTCUSDC", "ETHUSDC", "ETHBTC"]', '{"thresholds": {"1h": 0.8, "3h": 2.5, "6h": 3.6, "12h": 5.1, "24h": 7.8}}', 1, true)
 ON CONFLICT (name) DO UPDATE SET

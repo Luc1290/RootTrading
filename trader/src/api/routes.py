@@ -215,7 +215,7 @@ def create_order():
     Exemple de requête:
     {
         "symbol": "BTCUSDC",
-        "side": "LONG",  # ou "SHORT"
+        "side": "LONG",  # ou "sell"
         "quantity": 0.001,
         "price": 50000  # optionnel
     }
@@ -763,7 +763,7 @@ def check_balance_for_order():
         if side.upper() != 'LONG':
             return jsonify({
                 "success": True,
-                "message": "Vérification non nécessaire pour les ordres SHORT",
+                "message": "Vérification non nécessaire pour les ordres sell",
                 "sufficient": True
             })
         

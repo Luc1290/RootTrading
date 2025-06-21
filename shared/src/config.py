@@ -68,7 +68,7 @@ STRATEGY_PARAMS = {
         "oversold": int(os.getenv("RSI_OVERSOLD", 30)),
     },
     "ema_cross": {
-        "short_window": int(os.getenv("SHORT_WINDOW", 5)),
+        "sell_window": int(os.getenv("sell_WINDOW", 5)),
         "long_window": int(os.getenv("LONG_WINDOW", 20)),
     },
     "bollinger": {

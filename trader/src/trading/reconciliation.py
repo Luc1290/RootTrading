@@ -269,10 +269,10 @@ class ExchangeReconciliation:
                         # IMPORTANT: Utiliser la quantité réellement exécutée
                         actual_quantity = cycle.metadata.get('executed_quantity', cycle.quantity) if cycle.metadata else cycle.quantity
 
-                        # Si entrée = LONG, alors sortie = SHORT : profit = (prix_sortie - prix_entrée) * quantité
+                        # Si entrée = LONG, alors sortie = sell : profit = (prix_sortie - prix_entrée) * quantité
                         if entry_side == OrderSide.LONG:
                             cycle.profit_loss = (cycle.exit_price - cycle.entry_price) * actual_quantity
-                        # Si entrée = SHORT, alors sortie = LONG : profit = (prix_entrée - prix_sortie) * quantité
+                        # Si entrée = sell, alors sortie = LONG : profit = (prix_entrée - prix_sortie) * quantité
                         else:
                             cycle.profit_loss = (cycle.entry_price - cycle.exit_price) * actual_quantity
                         

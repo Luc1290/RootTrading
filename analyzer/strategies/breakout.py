@@ -204,7 +204,7 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
                     
                     return {
                         "type": "bearish",
-                        "side": OrderSide.SHORT,
+                        "side": OrderSide.sell,
                         "price": last_close,
                         "support": support,
                         "resistance": resistance,
@@ -349,7 +349,7 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
             # Breakout baissier
             elif current_price < support * 0.998:  # 0.2% en dessous
                 return {
-                    'side': OrderSide.SHORT,
+                    'side': OrderSide.sell,
                     'level': support,
                     'duration': lookback,
                     'height_pct': (resistance - support) / support * 100

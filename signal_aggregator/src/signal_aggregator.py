@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TYPE_CHECKING, Union
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 import json
 import numpy as np
+
+logger = logging.getLogger(__name__)
+
+# Type alias pour le regime de marché
+if TYPE_CHECKING:
+    from enhanced_regime_detector import MarketRegime
+    MarketRegimeType = Union[MarketRegime, Any]
+else:
+    MarketRegimeType = Any
 
 try:
     from enhanced_regime_detector import EnhancedRegimeDetector, MarketRegime
@@ -13,8 +22,6 @@ except ImportError:
     logger.warning("Enhanced regime detector non disponible, utilisation du mode standard")
     EnhancedRegimeDetector = None
     MarketRegime = None
-
-logger = logging.getLogger(__name__)
 
 
 class SignalAggregator:
@@ -41,11 +48,11 @@ class SignalAggregator:
         # Signal buffer for aggregation
         self.signal_buffer = defaultdict(list)
         self.last_signal_time = {}
-        self.cooldown_period = timedelta(minutes=3)  # 3 candles for 1m timeframe
+        self.cooldown_period = timedelta(minutes=1)  # Réduit à 1 minute pour mode scalping
         
-        # Voting thresholds
-        self.min_vote_threshold = 0.5
-        self.min_confidence_threshold = 0.7  # Augmenté de 0.6 à 0.7 pour filtrer les signaux faibles
+        # Voting thresholds - MODE SCALPING (équilibré : fréquence vs qualité)
+        self.min_vote_threshold = 0.35  # Réduit de 0.5 à 0.35
+        self.min_confidence_threshold = 0.55  # Compromis : filtre le bruit mais garde la fréquence
         
     async def process_signal(self, signal: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Process a raw signal and return aggregated decision with multi-timeframe validation"""
@@ -58,16 +65,17 @@ class SignalAggregator:
                 side = signal['side']
                 if side in ['LONG', 'long']:
                     signal['side'] = 'LONG'
-                elif side in ['SHORT', 'short']:
-                    signal['side'] = 'SHORT'
+                elif side in ['sell', 'sell']:
+                    signal['side'] = 'sell'
                 else:
                     logger.warning(f"Unknown side value: {side}")
                     return None
             
-            # NOUVEAU: Validation multi-timeframe (1m signal validé par contexte 15m)
-            if not await self._validate_signal_with_higher_timeframe(signal):
-                logger.info(f"Signal {strategy} {signal['side']} sur {symbol} rejeté par validation 15m")
-                return None
+            # NOUVEAU: Validation multi-timeframe (DÉSACTIVÉE EN MODE SCALPING pour plus de signaux)
+            # En mode scalping, on privilégie la réactivité sur la sécurité multi-timeframe
+            # if not await self._validate_signal_with_higher_timeframe(signal):
+            #     logger.info(f"Signal {strategy} {signal['side']} sur {symbol} rejeté par validation 15m")
+            #     return None
             
             # Handle timestamp conversion
             timestamp_str = signal.get('timestamp', signal.get('created_at'))
@@ -96,8 +104,8 @@ class SignalAggregator:
                 if self._get_signal_timestamp(s) > cutoff_time
             ]
             
-            # Check if we have enough signals to make a decision
-            if len(self.signal_buffer[symbol]) < 2:
+            # Check if we have enough signals to make a decision - MODE SCALPING (1 signal suffit)
+            if len(self.signal_buffer[symbol]) < 1:
                 return None  # Wait for more signals
                 
             # Get market regime (enhanced if available, sinon fallback)
@@ -168,7 +176,7 @@ class SignalAggregator:
 
         # Group signals by side
         long_signals = []
-        short_signals = []
+        sell_signals = []
 
         for signal in signals:
             strategy = signal['strategy']
@@ -190,8 +198,8 @@ class SignalAggregator:
             side = signal.get('side', signal.get('side'))
             if side in ['LONG', 'long']:
                 side = 'LONG'
-            elif side in ['SHORT', 'short']:
-                side = 'SHORT'
+            elif side in ['sell', 'sell']:
+                side = 'sell'
 
             # Weighted signal
             weighted_signal = {
@@ -204,29 +212,29 @@ class SignalAggregator:
 
             if side == 'LONG':
                 long_signals.append(weighted_signal)
-            elif side == 'SHORT':
-                short_signals.append(weighted_signal)
+            elif side == 'sell':
+                sell_signals.append(weighted_signal)
 
         # Calculate total scores
         long_score = sum(s['score'] for s in long_signals)
-        short_score = sum(s['score'] for s in short_signals)
+        sell_score = sum(s['score'] for s in sell_signals)
 
         # Determine side
-        if long_score > short_score and long_score >= self.min_vote_threshold:
+        if long_score > sell_score and long_score >= self.min_vote_threshold:
             side = 'LONG'
-            confidence = long_score / (long_score + short_score)
+            confidence = long_score / (long_score + sell_score)
             contributing_strategies = [s['strategy'] for s in long_signals]
-        elif short_score > long_score and short_score >= self.min_vote_threshold:
-            side = 'SHORT'
-            confidence = short_score / (long_score + short_score)
-            contributing_strategies = [s['strategy'] for s in short_signals]
+        elif sell_score > long_score and sell_score >= self.min_vote_threshold:
+            side = 'sell'
+            confidence = sell_score / (long_score + sell_score)
+            contributing_strategies = [s['strategy'] for s in sell_signals]
         else:
             # No clear signal
-            logger.debug(f"No clear signal for {symbol}: long={long_score:.2f}, short={short_score:.2f}")
+            logger.debug(f"No clear signal for {symbol}: long={long_score:.2f}, sell={sell_score:.2f}")
             return None
             
         # Calculate averaged stop loss (plus de take profit avec TrailingStop pur)
-        relevant_signals = long_signals if side == 'LONG' else short_signals
+        relevant_signals = long_signals if side == 'LONG' else sell_signals
 
         total_weight = sum(s['weight'] for s in relevant_signals)
         if total_weight == 0:
@@ -268,8 +276,9 @@ class SignalAggregator:
         trailing_delta = 3.0
         
         # Validation supplémentaire pour Aggregated_1 (une seule stratégie)
-        if len(contributing_strategies) == 1 and confidence < 0.8:
-            logger.info(f"Signal Aggregated_1 rejeté pour {symbol}: confiance {confidence:.2f} < 0.8 (seuil élevé pour signal unique)")
+        # MODE SCALPING: Seuil réduit pour les signaux uniques pour plus de trades
+        if len(contributing_strategies) == 1 and confidence < 0.55:
+            logger.info(f"Signal Aggregated_1 rejeté pour {symbol}: confiance {confidence:.2f} < 0.55 (mode scalping)")
             return None
         
         return {
@@ -283,7 +292,7 @@ class SignalAggregator:
             'trailing_delta': trailing_delta,  # NOUVEAU: Trailing stop activé
             'contributing_strategies': contributing_strategies,
             'long_score': long_score,
-            'short_score': short_score,
+            'sell_score': sell_score,
             'metadata': {
                 'aggregated': True,
                 'contributing_strategies': contributing_strategies,
@@ -294,7 +303,7 @@ class SignalAggregator:
         }
     
     async def _aggregate_signals_enhanced(self, symbol: str, signals: List[Dict], 
-                                        regime: MarketRegime, regime_metrics: Dict[str, float]) -> Optional[Dict[str, Any]]:
+                                        regime: Any, regime_metrics: Dict[str, float]) -> Optional[Dict[str, Any]]:
         """
         Version améliorée de l'agrégation avec poids adaptatifs selon le régime
         """
@@ -303,7 +312,7 @@ class SignalAggregator:
         
         # Group signals by side
         long_signals = []
-        short_signals = []
+        sell_signals = []
 
         for signal in signals:
             strategy = signal['strategy']
@@ -326,8 +335,8 @@ class SignalAggregator:
             side = signal.get('side', signal.get('side'))
             if side in ['LONG', 'long']:
                 side = 'LONG'
-            elif side in ['SHORT', 'short']:
-                side = 'SHORT'
+            elif side in ['sell', 'sell']:
+                side = 'sell'
 
             # Enhanced weighted signal with regime adaptation
             weighted_signal = {
@@ -342,30 +351,30 @@ class SignalAggregator:
 
             if side == 'LONG':
                 long_signals.append(weighted_signal)
-            elif side == 'SHORT':
-                short_signals.append(weighted_signal)
+            elif side == 'sell':
+                sell_signals.append(weighted_signal)
 
         # Calculate total scores
         long_score = sum(s['score'] for s in long_signals)
-        short_score = sum(s['score'] for s in short_signals)
+        sell_score = sum(s['score'] for s in sell_signals)
 
         # Enhanced decision logic based on regime
         min_threshold = self._get_regime_threshold(regime)
         
         # Determine side
-        if long_score > short_score and long_score >= min_threshold:
+        if long_score > sell_score and long_score >= min_threshold:
             side = 'LONG'
-            confidence = long_score / (long_score + short_score)
+            confidence = long_score / (long_score + sell_score)
             contributing_strategies = [s['strategy'] for s in long_signals]
             relevant_signals = long_signals
-        elif short_score > long_score and short_score >= min_threshold:
-            side = 'SHORT'
-            confidence = short_score / (long_score + short_score)
-            contributing_strategies = [s['strategy'] for s in short_signals]
-            relevant_signals = short_signals
+        elif sell_score > long_score and sell_score >= min_threshold:
+            side = 'sell'
+            confidence = sell_score / (long_score + sell_score)
+            contributing_strategies = [s['strategy'] for s in sell_signals]
+            relevant_signals = sell_signals
         else:
             # No clear signal
-            logger.debug(f"No clear signal for {symbol} in {regime.value}: long={long_score:.2f}, short={short_score:.2f}")
+            logger.debug(f"No clear signal for {symbol} in {regime.value}: long={long_score:.2f}, sell={sell_score:.2f}")
             return None
             
         # Calculate averaged stop loss
@@ -426,7 +435,7 @@ class SignalAggregator:
             'trailing_delta': trailing_delta,
             'contributing_strategies': contributing_strategies,
             'long_score': long_score,
-            'short_score': short_score,
+            'sell_score': sell_score,
             'regime_analysis': {
                 'regime': regime.value,
                 'metrics': regime_metrics,
@@ -443,8 +452,11 @@ class SignalAggregator:
             }
         }
     
-    def _get_regime_threshold(self, regime: MarketRegime) -> float:
+    def _get_regime_threshold(self, regime: Any) -> float:
         """Retourne le seuil de vote minimum selon le régime"""
+        if MarketRegime is None:
+            return self.min_vote_threshold
+            
         thresholds = {
             MarketRegime.STRONG_TREND_UP: 0.6,
             MarketRegime.STRONG_TREND_DOWN: 0.6,
@@ -458,8 +470,11 @@ class SignalAggregator:
         }
         return thresholds.get(regime, self.min_vote_threshold)
     
-    def _get_single_strategy_threshold(self, regime: MarketRegime) -> float:
+    def _get_single_strategy_threshold(self, regime: Any) -> float:
         """Retourne le seuil de confiance pour les signaux d'une seule stratégie selon le régime"""
+        if MarketRegime is None:
+            return 0.8
+            
         thresholds = {
             MarketRegime.STRONG_TREND_UP: 0.7,
             MarketRegime.STRONG_TREND_DOWN: 0.7,
@@ -473,7 +488,7 @@ class SignalAggregator:
         }
         return thresholds.get(regime, 0.8)
     
-    def _apply_regime_confidence_boost(self, confidence: float, regime: MarketRegime, metrics: Dict[str, float]) -> float:
+    def _apply_regime_confidence_boost(self, confidence: float, regime: Any, metrics: Dict[str, float]) -> float:
         """Applique un boost de confiance basé sur les métriques du régime"""
         # Boost basé sur la force de la tendance (ADX)
         adx = metrics.get('adx', 20)
@@ -488,17 +503,18 @@ class SignalAggregator:
             confidence *= 1.05
         
         # Penalty pour les régimes indéfinis ou instables
-        if regime == MarketRegime.UNDEFINED:
-            confidence *= 0.9
-        elif regime in [MarketRegime.RANGE_VOLATILE]:
-            confidence *= 0.95
+        if MarketRegime is not None:
+            if regime == MarketRegime.UNDEFINED:
+                confidence *= 0.9
+            elif regime in [MarketRegime.RANGE_VOLATILE]:
+                confidence *= 0.95
         
         return min(1.0, confidence)  # Cap à 1.0
     
-    def _determine_signal_strength(self, confidence: float, regime: MarketRegime) -> str:
+    def _determine_signal_strength(self, confidence: float, regime: Any) -> str:
         """Détermine la force du signal basée sur la confiance et le régime"""
         # Ajustement des seuils selon le régime
-        if regime in [MarketRegime.STRONG_TREND_UP, MarketRegime.STRONG_TREND_DOWN]:
+        if MarketRegime is not None and regime in [MarketRegime.STRONG_TREND_UP, MarketRegime.STRONG_TREND_DOWN]:
             # En tendance forte, on peut être plus agressif
             if confidence >= 0.75:
                 return 'very_strong'
@@ -563,7 +579,7 @@ class SignalAggregator:
         
         Logique de validation :
         - Signal LONG : validé si la tendance 15m est haussière ou neutre
-        - Signal SHORT : validé si la tendance 15m est baissière ou neutre
+        - Signal sell : validé si la tendance 15m est baissière ou neutre
 
         Args:
             signal: Signal 1m à valider
@@ -600,13 +616,13 @@ class SignalAggregator:
             if len(recent_prices) < 5:
                 return True
             
-            ema_short = self._calculate_ema(recent_prices[-5:], 5)
+            ema_sell = self._calculate_ema(recent_prices[-5:], 5)
             ema_long = self._calculate_ema(recent_prices, min(20, len(recent_prices)))
             
             # Déterminer la tendance 15m
-            if ema_short > ema_long * 1.001:  # Tendance haussière (0.1% de marge)
+            if ema_sell > ema_long * 1.001:  # Tendance haussière (0.1% de marge)
                 trend_15m = "BULLISH"
-            elif ema_short < ema_long * 0.999:  # Tendance baissière (0.1% de marge)
+            elif ema_sell < ema_long * 0.999:  # Tendance baissière (0.1% de marge)
                 trend_15m = "BEARISH"
             else:
                 trend_15m = "NEUTRAL"
@@ -615,8 +631,8 @@ class SignalAggregator:
             if side == "LONG" and trend_15m == "BEARISH":
                 logger.info(f"Signal LONG {symbol} rejeté : tendance 15m baissière")
                 return False
-            elif side == "SHORT" and trend_15m == "BULLISH":
-                logger.info(f"Signal SHORT {symbol} rejeté : tendance 15m haussière")
+            elif side == "sell" and trend_15m == "BULLISH":
+                logger.info(f"Signal sell {symbol} rejeté : tendance 15m haussière")
                 return False
             
             # Validation additionnelle : RSI 15m
@@ -625,8 +641,8 @@ class SignalAggregator:
                 if side == "LONG" and rsi_15m > 75:
                     logger.info(f"Signal LONG {symbol} rejeté : RSI 15m surachat ({rsi_15m})")
                     return False
-                elif side == "SHORT" and rsi_15m < 25:
-                    logger.info(f"Signal SHORT {symbol} rejeté : RSI 15m survente ({rsi_15m})")
+                elif side == "sell" and rsi_15m < 25:
+                    logger.info(f"Signal sell {symbol} rejeté : RSI 15m survente ({rsi_15m})")
                     return False
 
             logger.debug(f"Signal {side} {symbol} validé par tendance 15m {trend_15m}")
@@ -705,7 +721,7 @@ class EnhancedSignalAggregator(SignalAggregator):
                 # Pénaliser si RSI contradictoire
                 if side == 'LONG' and rsi > 70:
                     correlation_score *= 0.7
-                elif side == 'SHORT' and rsi < 30:
+                elif side == 'sell' and rsi < 30:
                     correlation_score *= 0.7
         
         # Vérifier la cohérence des stops

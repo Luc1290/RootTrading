@@ -133,7 +133,7 @@ def run_strategy_optimization(tuner: StrategyTuner) -> None:
     strategies_to_tune = [
         {"name": "rsi", "param_ranges": {"window": (7, 21), "overbought": (65, 85), "oversold": (15, 35)}},
         {"name": "bollinger", "param_ranges": {"window": (10, 30), "num_std": (1.5, 3.0)}},
-        {"name": "ema_cross", "param_ranges": {"short_window": (3, 10), "long_window": (15, 30)}},
+        {"name": "ema_cross", "param_ranges": {"sell_window": (3, 10), "long_window": (15, 30)}},
     ]
     
     # Liste des symboles pour l'optimisation

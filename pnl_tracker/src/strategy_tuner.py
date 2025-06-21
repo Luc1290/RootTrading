@@ -546,7 +546,7 @@ class StrategyTuner:
                         else:
                             take_profit = entry_price * 1.10  # 10% par défaut
 
-                    elif signal.side == OrderSide.SHORT and in_position and position_type == "LONG":
+                    elif signal.side == OrderSide.sell and in_position and position_type == "LONG":
                         # Fermer une position longue
                         exit_price = data['close']
                         exit_time = datetime.fromtimestamp(data['start_time'] / 1000)
@@ -575,7 +575,7 @@ class StrategyTuner:
                         entry_time = None
                         position_type = None
 
-                    elif signal.side == OrderSide.SHORT and not in_position:
+                    elif signal.side == OrderSide.sell and not in_position:
                         # Ouvrir une position courte (si autorisé)
                         # Note: Pour certains systèmes, les positions courtes ne sont pas autorisées
                         # Dans ce cas, ignorer ce signal

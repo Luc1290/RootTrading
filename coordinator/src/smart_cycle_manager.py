@@ -162,7 +162,7 @@ class SmartCycleManager:
         
         Args:
             symbol: Symbole à chercher
-            side: Side du signal (LONG/SHORT)
+            side: Side du signal (LONG/sell)
             existing_cycles: Liste des cycles existants
             
         Returns:
@@ -171,13 +171,13 @@ class SmartCycleManager:
         for cycle in existing_cycles:
             # LOGIQUE CORRECTE basée sur l'analyse du code :
             # waiting_sell = position LONG ouverte (a acheté, attend de vendre)
-            # waiting_buy = position SHORT ouverte (a vendu, attend de racheter)
+            # waiting_buy = position sell ouverte (a vendu, attend de racheter)
             cycle_status = cycle.get('status')
             
             if cycle_status == 'waiting_sell':
                 cycle_side = "LONG"  # Position LONG ouverte
             elif cycle_status == 'waiting_buy': 
-                cycle_side = "SHORT"  # Position SHORT ouverte
+                cycle_side = "sell"  # Position sell ouverte
             else:
                 continue  # Ignorer les autres statuts
 
@@ -372,7 +372,7 @@ class SmartCycleManager:
             discount_pct = (1.0 - confidence) * 2.0  # Entre 0% et 2% de discount
             entry_price = current_price * (1 - discount_pct / 100)
         else:
-            # Pour un SHORT, plus la confiance est haute, plus on accepte de vendre proche du prix actuel  
+            # Pour un sell, plus la confiance est haute, plus on accepte de vendre proche du prix actuel  
             premium_pct = (1.0 - confidence) * 2.0   # Entre 0% et 2% de premium
             entry_price = current_price * (1 + premium_pct / 100)
         
@@ -481,12 +481,12 @@ class SmartCycleManager:
             
             # 4. Déterminer le côté correct pour le renforcement
             # Si waiting_sell → position LONG → besoin d'un ordre LONG pour renforcer
-            # Si waiting_buy → position SHORT → besoin d'un ordre SHORT pour renforcer
+            # Si waiting_buy → position sell → besoin d'un ordre sell pour renforcer
             cycle_status = cycle.get('status', '')
             if cycle_status == 'waiting_sell':
                 reinforce_side = "LONG"  # Acheter plus pour une position longue
             elif cycle_status == 'waiting_buy':
-                reinforce_side = "SHORT"  # Vendre plus pour une position courte
+                reinforce_side = "sell"  # Vendre plus pour une position courte
             else:
                 self.logger.error(f"Status de cycle invalide pour renforcement: {cycle_status}")
                 return False
@@ -637,7 +637,7 @@ class SmartCycleManager:
             exposure = {
                 'total_positions': len(cycles),
                 'by_symbol': {},
-                'by_side': {'LONG': 0, 'SHORT': 0},
+                'by_side': {'LONG': 0, 'sell': 0},
                 'total_value_usd': 0
             }
             
@@ -651,7 +651,7 @@ class SmartCycleManager:
                 if status in ['waiting_sell', 'active_sell']:
                     side = 'LONG'
                 else:
-                    side = 'SHORT'
+                    side = 'sell'
                 
                 # Calculer la valeur en USD (approximative)
                 position_value = quantity * entry_price
@@ -662,7 +662,7 @@ class SmartCycleManager:
                         'count': 0,
                         'total_value': 0,
                         'LONG': 0,
-                        'SHORT': 0
+                        'sell': 0
                     }
                 
                 exposure['by_symbol'][symbol]['count'] += 1
@@ -691,7 +691,7 @@ class SmartCycleManager:
         
         Args:
             symbol: Symbole concerné
-            side: Côté de la position (LONG/SHORT)
+            side: Côté de la position (LONG/sell)
             
         Returns:
             Tuple (allowed, reason)
@@ -715,15 +715,15 @@ class SmartCycleManager:
         if symbol_data.get('concentration_pct', 0) >= max_concentration:
             return False, f"Concentration excessive: {symbol_data['concentration_pct']:.1f}% sur {symbol}"
         
-        # Règle 4: Équilibre LONG/SHORT
+        # Règle 4: Équilibre LONG/sell
         long_count = exposure.get('by_side', {}).get('LONG', 0)
-        short_count = exposure.get('by_side', {}).get('SHORT', 0)
+        sell_count = exposure.get('by_side', {}).get('sell', 0)
         
         # Si déséquilibre important, favoriser le côté opposé
-        if side == 'LONG' and long_count > short_count * 2:
-            return False, f"Déséquilibre LONG/SHORT: {long_count} LONG vs {short_count} SHORT"
-        elif side == 'SHORT' and short_count > long_count * 2:
-            return False, f"Déséquilibre SHORT/LONG: {short_count} SHORT vs {long_count} LONG"
+        if side == 'LONG' and long_count > sell_count * 2:
+            return False, f"Déséquilibre LONG/sell: {long_count} LONG vs {sell_count} sell"
+        elif side == 'sell' and sell_count > long_count * 2:
+            return False, f"Déséquilibre sell/LONG: {sell_count} sell vs {long_count} LONG"
         
         return True, "Position autorisée"
     

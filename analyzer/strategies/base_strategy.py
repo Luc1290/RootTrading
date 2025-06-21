@@ -166,7 +166,7 @@ class BaseStrategy(ABC):
         Crée un objet signal standardisé.
         
         Args:
-            side: Côté de l'ordre (LONG ou SHORT)
+            side: Côté de l'ordre (LONG ou sell)
             price: Prix actuel
             confidence: Niveau de confiance (0.0 à 1.0)
             metadata: Métadonnées supplémentaires spécifiques à la stratégie
@@ -239,7 +239,7 @@ class BaseStrategy(ABC):
         
         Args:
             entry_price: Prix d'entrée
-            side: Côté du trade (LONG ou SHORT)
+            side: Côté du trade (LONG ou sell)
             atr_percent: ATR en pourcentage (si None, calculé automatiquement)
             
         Returns:
@@ -270,7 +270,7 @@ class BaseStrategy(ABC):
         # Calculer le prix de stop
         if side == OrderSide.LONG:
             stop_price = entry_price * (1 - stop_distance_percent / 100)
-        else:  # SHORT
+        else:  # sell
             stop_price = entry_price * (1 + stop_distance_percent / 100)
         
         return {

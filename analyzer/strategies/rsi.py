@@ -262,7 +262,7 @@ class RSIStrategy(BaseStrategy):
                     return None
             return OrderSide.LONG
         
-        # Setup SHORT: RSI en zone surachat avec momentum favorable  
+        # Setup sell: RSI en zone surachat avec momentum favorable  
         elif current_rsi >= self.overbought_threshold:
             # Vérifier que ce n'est pas un breakout en cours
             if len(rsi_values) >= 5:
@@ -270,7 +270,7 @@ class RSIStrategy(BaseStrategy):
                 # Si RSI monte trop vite (>20 points en 5 périodes), attendre ralentissement
                 if rsi_momentum > 20:
                     return None
-            return OrderSide.SHORT
+            return OrderSide.sell
         
         return None
     
@@ -307,8 +307,8 @@ class RSIStrategy(BaseStrategy):
                 
                 return min(0.95, score)
             
-            else:  # SHORT
-                # Pour SHORT: chercher momentum baissier naissant
+            else:  # sell
+                # Pour sell: chercher momentum baissier naissant
                 score = 0.5  # Base
                 
                 if roc_5 < 2:  # Prix pas en montée folle
@@ -381,7 +381,7 @@ class RSIStrategy(BaseStrategy):
                 else:
                     return 0.7
             
-            else:  # SHORT
+            else:  # sell
                 # Chercher confluence avec résistance
                 recent_highs_sorted = sorted(recent_highs, reverse=True)
                 potential_resistance = recent_highs_sorted[:3]  # 3 plus hauts récents
@@ -436,7 +436,7 @@ class RSIStrategy(BaseStrategy):
                 else:
                     return 0.7
             
-            else:  # SHORT
+            else:  # sell
                 # Divergence bearish: prix fait plus haut, RSI fait plus bas
                 price_trend = np.polyfit(range(len(recent_prices)), recent_prices, 1)[0]
                 rsi_trend = np.polyfit(range(len(recent_rsi)), recent_rsi, 1)[0]
@@ -482,7 +482,7 @@ class RSIStrategy(BaseStrategy):
                 else:
                     return 0.5   # Contre tendance
             
-            else:  # SHORT
+            else:  # sell
                 if current_price < trend_21 and trend_21 < trend_50:
                     return 0.9   # Tendance alignée
                 elif current_price < trend_50:
@@ -520,7 +520,7 @@ class RSIStrategy(BaseStrategy):
                 else:
                     return 0.6
             
-            else:  # SHORT
+            else:  # sell
                 if rsi_volatility > 15:
                     threshold = 65  # Seuil élargi
                 else:

@@ -107,7 +107,7 @@ class AdvancedFiltersMixin:
                 else:
                     return 0.5   # Contre tendance
             
-            else:  # SHORT
+            else:  # sell
                 if current_price < trend_21 and trend_21 < trend_50:
                     return 0.9   # Tendance alignée
                 elif current_price < trend_50:
@@ -169,7 +169,7 @@ class AdvancedFiltersMixin:
                 else:
                     return 0.7   # Support distant
             
-            else:  # SHORT
+            else:  # sell
                 if not pivot_highs:
                     return 0.6
                 
@@ -217,7 +217,7 @@ class AdvancedFiltersMixin:
                 else:  # Zone surachat
                     return 0.5
             
-            else:  # SHORT
+            else:  # sell
                 if current_rsi > 65:  # Zone surachat
                     return 0.9
                 elif current_rsi > 50:  # Zone neutre haute

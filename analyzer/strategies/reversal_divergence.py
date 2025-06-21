@@ -243,7 +243,7 @@ class ReversalDivergenceStrategy(BaseStrategy, AdvancedFiltersMixin):
                     
                     return {
                         "type": "bearish",
-                        "side": OrderSide.SHORT,
+                        "side": OrderSide.sell,
                         "price": current_price,
                         "confidence": 0.75 + (score / 4),  # Confiance entre 0.75 et 1.0 (augmentée)
                         "last_price_high": float(last_price_high),

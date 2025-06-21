@@ -558,7 +558,7 @@ class CycleManager:
             # Garder le prix de référence pour les calculs (validation des fonds, target price, etc.)
             reference_price = price
 
-            # Vérifier le solde avant d'exécuter l'ordre (pour LONG et SHORT)
+            # Vérifier le solde avant d'exécuter l'ordre (pour LONG et sell)
             if not self.demo_mode:
                 # Extraire la base currency et quote currency
                 if symbol.endswith('USDC'):
@@ -615,8 +615,8 @@ class CycleManager:
                         
                         return None
                         
-                elif side == OrderSide.SHORT:
-                    # Pour SHORT: vérifier qu'on a assez de base currency à vendre
+                elif side == OrderSide.sell:
+                    # Pour sell: vérifier qu'on a assez de base currency à vendre
                     available_balance = balances.get(base_currency, {}).get('free', 0)
                     logger.info(f"💰 Balance {base_currency}: {available_balance}")
                     
@@ -624,7 +624,7 @@ class CycleManager:
                     required_quantity = quantity * 1.001  # 0.1% de marge pour les frais
                     
                     if available_balance < required_quantity:
-                        logger.error(f"❌ Solde {base_currency} insuffisant pour SHORT: {available_balance:.8f} < {required_quantity:.8f}")
+                        logger.error(f"❌ Solde {base_currency} insuffisant pour sell: {available_balance:.8f} < {required_quantity:.8f}")
 
                         # Créer le cycle avec un statut FAILED pour la traçabilité
                         cycle.status = CycleStatus.FAILED
@@ -754,7 +754,7 @@ class CycleManager:
                     cycle.metadata['executed_quantity'] = float(execution.quantity)
                 # Après un ordre MARKET d'entrée, on attend l'ordre de sortie
                 # LONG -> on a acheté, on attend de vendre -> WAITING_SELL
-                # SHORT -> on a vendu, on attend de racheter -> WAITING_BUY
+                # sell -> on a vendu, on attend de racheter -> WAITING_BUY
                 cycle.status = CycleStatus.WAITING_SELL if side == OrderSide.LONG else CycleStatus.WAITING_BUY
                 cycle.confirmed = True
                 cycle.updated_at = datetime.now()
@@ -866,12 +866,12 @@ class CycleManager:
             
             # Déterminer le côté de l'ordre de sortie (inverse de l'entrée)
             if cycle.status in [CycleStatus.WAITING_BUY, CycleStatus.ACTIVE_BUY]:
-                # Position SHORT → fermer par LONG
-                # Position SHORT → fermer par LONG
+                # Position sell → fermer par LONG
+                # Position sell → fermer par LONG
                 exit_side = OrderSide.LONG
             else:  # WAITING_SELL ou ACTIVE_SELL
-                # Position LONG → fermer par SHORT
-                exit_side = OrderSide.SHORT
+                # Position LONG → fermer par sell
+                exit_side = OrderSide.sell
 
             # Si il y a un ordre de sortie existant, vérifier son statut avant de l'annuler
             # Ne pas essayer d'annuler si le cycle est en WAITING_SELL/BUY car l'ordre n'existe pas sur Binance
@@ -892,7 +892,7 @@ class CycleManager:
                             entry_value = cycle.entry_price * actual_quantity
                             exit_value = order_status.price * actual_quantity
                             
-                            if exit_side == OrderSide.SHORT:
+                            if exit_side == OrderSide.sell:
                                 profit_loss = exit_value - entry_value
                             else:
                                 profit_loss = entry_value - exit_value
@@ -961,7 +961,7 @@ class CycleManager:
             # Vérifier les soldes disponibles avant de créer l'ordre
             balances = self.binance_executor.get_account_balances()
             
-            if exit_side == OrderSide.SHORT:
+            if exit_side == OrderSide.sell:
                 # Pour vendre, on a besoin de la devise de base (ex: BTC pour BTCUSDC)
                 base_asset = cycle.symbol[:-4] if cycle.symbol.endswith('USDC') else cycle.symbol[:-3]
                 available = balances.get(base_asset, {}).get('free', 0)
@@ -1017,9 +1017,9 @@ class CycleManager:
             # Si c'est un stop loss, utiliser un ID différent mais plus court
             if is_stop_loss:
                 # Utiliser les 6 derniers caractères du cycle_id + "s" + timestamp court (6 chiffres)
-                short_cycle_id = cycle_id[-6:]
-                short_timestamp = str(int(time.time()))[-6:]
-                client_order_id = f"exit_{short_cycle_id}_s{short_timestamp}"
+                sell_cycle_id = cycle_id[-6:]
+                sell_timestamp = str(int(time.time()))[-6:]
+                client_order_id = f"exit_{sell_cycle_id}_s{sell_timestamp}"
             else:
                 client_order_id = f"exit_{cycle_id}"
             
@@ -1090,7 +1090,7 @@ class CycleManager:
             entry_value = cycle.entry_price * actual_entry_quantity
             exit_value = execution.price * execution.quantity
 
-            if exit_side == OrderSide.SHORT:
+            if exit_side == OrderSide.sell:
                 # Si on vend à découvert, profit = entrée - sortie
                 profit_loss = entry_value - exit_value
             else:
@@ -1133,7 +1133,7 @@ class CycleManager:
     
     def partial_sell_cycle(self, cycle_id: str, percentage: float, price: float, reason: str = "take_profit") -> bool:
         """
-        Effectue une fermeture partielle d'un cycle (vente partielle LONG ou rachat partiel SHORT).
+        Effectue une fermeture partielle d'un cycle (vente partielle LONG ou rachat partiel sell).
         
         Args:
             cycle_id: ID du cycle
@@ -1161,13 +1161,13 @@ class CycleManager:
             
             # Déterminer le côté de la fermeture partielle selon la position
             if cycle.status in [CycleStatus.WAITING_SELL, CycleStatus.ACTIVE_SELL]:
-                # Position LONG ouverte → fermeture partielle par VENTE (SHORT)
-                partial_side = OrderSide.SHORT
+                # Position LONG ouverte → fermeture partielle par VENTE (sell)
+                partial_side = OrderSide.sell
                 position_type = "LONG"
             else:  # WAITING_BUY ou ACTIVE_BUY
-                # Position SHORT ouverte → fermeture partielle par RACHAT (LONG)
+                # Position sell ouverte → fermeture partielle par RACHAT (LONG)
                 partial_side = OrderSide.LONG
-                position_type = "SHORT"
+                position_type = "sell"
             
             # Calculer la quantité à fermer
             total_quantity = cycle.metadata.get('executed_quantity', cycle.quantity)

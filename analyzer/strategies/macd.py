@@ -352,14 +352,14 @@ class MACDStrategy(BaseStrategy):
                 if hist_momentum > 0:  # Histogram s'améliore
                     return OrderSide.LONG
         
-        # Setup SHORT: MACD croise en dessous du signal OU histogram devient négatif
+        # Setup sell: MACD croise en dessous du signal OU histogram devient négatif
         elif ((prev_macd >= prev_signal and current_macd < current_signal) or  # Croisement classique
               (prev_hist >= 0 and current_hist < 0 and current_macd < current_signal)):  # Histogram breakdown
             # Vérifier que ce n'est pas un faux signal
             if len(histogram) >= 5:
                 hist_momentum = histogram.iloc[-1] - histogram.iloc[-5]
                 if hist_momentum < 0:  # Histogram se détériore
-                    return OrderSide.SHORT
+                    return OrderSide.sell
         
         return None
     
@@ -390,7 +390,7 @@ class MACDStrategy(BaseStrategy):
                 
                 return min(0.95, score)
             
-            else:  # SHORT
+            else:  # sell
                 score = 0.5  # Base
                 
                 if current_hist < 0:  # Histogram négatif
@@ -493,7 +493,7 @@ class MACDStrategy(BaseStrategy):
                 else:
                     return 0.7
             
-            else:  # SHORT
+            else:  # sell
                 # Divergence bearish: prix fait plus haut, MACD fait plus bas
                 price_trend = np.polyfit(range(len(recent_prices)), recent_prices, 1)[0]
                 macd_trend = np.polyfit(range(len(recent_macd)), recent_macd, 1)[0]
@@ -535,7 +535,7 @@ class MACDStrategy(BaseStrategy):
                 else:
                     return 0.5   # Contre tendance
             
-            else:  # SHORT
+            else:  # sell
                 if current_price < current_ema_20 and current_ema_20 < current_ema_50:
                     return 0.9   # Forte tendance baissière
                 elif current_price < current_ema_50:
@@ -562,7 +562,7 @@ class MACDStrategy(BaseStrategy):
                 else:
                     return 0.7   # Encore négatif
             
-            else:  # SHORT
+            else:  # sell
                 if current_macd < 0:
                     return 0.9   # MACD déjà négatif = momentum baissier confirmé
                 elif current_macd < 0.001:  # Proche de zéro
