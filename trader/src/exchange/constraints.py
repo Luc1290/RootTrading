@@ -34,6 +34,8 @@ class BinanceSymbolConstraints:
             "BTCUSDC": 0.00001,   # minQty selon Binance
             "ETHUSDC": 0.0001,    # minQty selon Binance
             "ETHBTC": 0.0001,     # minQty selon Binance
+            "SOLUSDC": 0.001,     # minQty selon Binance
+            "XRPUSDC": 0.1,       # minQty selon Binance
         }
         
         # Pas de quantité par défaut (step size) pour les symboles (fallback)
@@ -41,6 +43,8 @@ class BinanceSymbolConstraints:
             "BTCUSDC": 0.00001,   # stepSize selon Binance (5 décimales)
             "ETHUSDC": 0.0001,    # stepSize selon Binance (4 décimales)
             "ETHBTC": 0.0001,     # stepSize selon Binance (4 décimales)
+            "SOLUSDC": 0.001,     # stepSize selon Binance (3 décimales)
+            "XRPUSDC": 0.1,       # stepSize selon Binance (1 décimale)
         }
         
         # Valeur minimale des ordres par défaut (min notional) (fallback)
@@ -48,13 +52,17 @@ class BinanceSymbolConstraints:
             "BTCUSDC": 10.0,
             "ETHUSDC": 10.0,
             "ETHBTC": 0.0001,     # 0.0001 BTC ≈ 10 USDC, pas 10 BTC !
+            "SOLUSDC": 10.0,      # 10 USDC minimum
+            "XRPUSDC": 10.0,      # 10 USDC minimum
         }
         
         # Précision des prix par défaut (fallback)
         self.default_price_precisions = {
             "BTCUSDC": 2,  # 2 décimales (ex: 50000.25)
             "ETHUSDC": 2,  # 2 décimales (ex: 3000.50)
-            "ETHBTC": 5,   # 5 décimales (ex: 0.02402)
+            "ETHBTC": 6,   # 6 décimales (ex: 0.024002)
+            "SOLUSDC": 2,  # 2 décimales (ex: 147.25)
+            "XRPUSDC": 4,  # 4 décimales (ex: 2.2145)
         }
         
         logger.info(f"✅ Contraintes de symbole initialisées avec {len(self.symbol_info)} symboles en temps réel")

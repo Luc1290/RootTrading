@@ -333,11 +333,12 @@ class SmartCycleManager:
         Returns:
             Pourcentage d'allocation (1-20%)
         """
+        import os
         base_allocations = {
-            SignalStrength.WEAK: 3.0,
-            SignalStrength.MODERATE: 6.0,
-            SignalStrength.STRONG: 10.0,
-            SignalStrength.VERY_STRONG: 15.0
+            SignalStrength.WEAK: float(os.getenv('ALLOCATION_WEAK_PCT', 15.0)),
+            SignalStrength.MODERATE: float(os.getenv('ALLOCATION_MODERATE_PCT', 25.0)),
+            SignalStrength.STRONG: float(os.getenv('ALLOCATION_STRONG_PCT', 35.0)),
+            SignalStrength.VERY_STRONG: float(os.getenv('ALLOCATION_VERY_STRONG_PCT', 50.0))
         }
         
         base_pct = base_allocations.get(strength, 5.0)
@@ -347,8 +348,8 @@ class SmartCycleManager:
         
         final_pct = base_pct * confidence_multiplier
         
-        # Limiter entre 1% et 20%
-        return min(20.0, max(1.0, final_pct))
+        # Limiter entre 1% et 100% (permet d'utiliser les nouveaux pourcentages élevés)
+        return min(100.0, max(1.0, final_pct))
     
     def _calculate_smart_entry_price(self, signal: StrategySignal, current_price: float, confidence: float) -> float:
         """

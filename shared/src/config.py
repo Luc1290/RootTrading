@@ -36,26 +36,28 @@ DB_MAX_CONNECTIONS = int(os.getenv("DB_MAX_CONNECTIONS", "50"))
 
 # Paramètres de trading
 # Paramètres de trading
-DEFAULT_SYMBOL = os.getenv("SYMBOL", "BTCUSDC")
-SYMBOLS = os.getenv("SYMBOLS", "BTCUSDC,ETHUSDC").split(",")
+DEFAULT_SYMBOL = os.getenv("SYMBOL", "SOLUSDC")
+SYMBOLS = os.getenv("SYMBOLS", "SOLUSDC,XRPUSDC").split(",")
 INTERVAL = os.getenv("INTERVAL", "1m")
 VALIDATION_INTERVAL = os.getenv("VALIDATION_INTERVAL", "15m")
 TRADING_MODE = os.getenv("TRADING_MODE", "demo")  # 'demo' ou 'live'
 
 # Quantités individuelles par symbole (doivent correspondre aux SYMBOLS)
-TRADE_QUANTITY_BTCUSDC = float(os.getenv("TRADE_QUANTITY_BTC", 0.0005))  # Min: 0.00001
-TRADE_QUANTITY_ETHUSDC = float(os.getenv("TRADE_QUANTITY_ETH", 0.01))   # Min: 0.01
-TRADE_QUANTITY_ETHBTC  = float(os.getenv("TRADE_QUANTITY_ETHBTC", 0.01))   # Min: 0.001 ETH, min notional: 0.0001 BTC
+TRADE_QUANTITY_SOLUSDC = float(os.getenv("TRADE_QUANTITY_SOLUSDC", 0.17))  # ~25$ par trade
+TRADE_QUANTITY_XRPUSDC = float(os.getenv("TRADE_QUANTITY_XRPUSDC", 11.0))   # ~24$ par trade
+TRADE_QUANTITY_SOL = float(os.getenv("TRADE_QUANTITY_SOL", 0.17))   # Pour compatibilité
+TRADE_QUANTITY_XRP = float(os.getenv("TRADE_QUANTITY_XRP", 11.0))   # Pour compatibilité
 
 # Dictionnaire centralisé
 TRADE_QUANTITIES = {
-    "BTCUSDC": TRADE_QUANTITY_BTCUSDC,
-    "ETHUSDC": TRADE_QUANTITY_ETHUSDC,
-    "ETHBTC":  TRADE_QUANTITY_ETHBTC,
+    "SOLUSDC": TRADE_QUANTITY_SOLUSDC,
+    "XRPUSDC": TRADE_QUANTITY_XRPUSDC,
+    "SOL": TRADE_QUANTITY_SOL,
+    "XRP": TRADE_QUANTITY_XRP,    
 }
 
 # Valeur par défaut utilisée par compatibilité
-TRADE_QUANTITY = TRADE_QUANTITIES.get(DEFAULT_SYMBOL, TRADE_QUANTITY_BTCUSDC)
+TRADE_QUANTITY = TRADE_QUANTITIES.get(DEFAULT_SYMBOL, TRADE_QUANTITY_SOLUSDC)
 
 
 # Paramètres des stratégies
