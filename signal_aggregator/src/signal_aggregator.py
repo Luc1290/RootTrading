@@ -618,12 +618,12 @@ class SignalAggregator:
             
             # EMA 3 vs EMA 10 pour validation scalping plus rapide
             ema_short = self._calculate_ema(recent_prices[-3:], 3)
-            ema_BUY = self._calculate_ema(recent_prices, min(10, len(recent_prices)))
+            ema_long = self._calculate_ema(recent_prices, min(10, len(recent_prices)))
             
             # Déterminer la tendance 5m (MODE SCALPING - seuils plus serrés)
-            if ema_short > ema_BUY * 1.0005:  # Tendance haussière (0.05% de marge pour scalping)
+            if ema_short > ema_long * 1.0005:  # Tendance haussière (0.05% de marge pour scalping)
                 trend_5m = "BULLISH"
-            elif ema_short < ema_BUY * 0.9995:  # Tendance baissière (0.05% de marge pour scalping)
+            elif ema_short < ema_long * 0.9995:  # Tendance baissière (0.05% de marge pour scalping)
                 trend_5m = "BEARISH"
             else:
                 trend_5m = "NEUTRAL"
