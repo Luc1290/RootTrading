@@ -54,20 +54,20 @@ class StopManagerPure:
             Instance TrailingStop
         """
         # Déterminer le side basé sur la logique correcte
-        # waiting_sell = position LONG ouverte (a acheté, attend de vendre)
-        # waiting_buy = position sell ouverte (a vendu, attend de racheter)
+        # waiting_SELL = position BUY ouverte (a acheté, attend de vendre)
+        # waiting_buy = position SELL ouverte (a vendu, attend de racheter)
         if cycle.status == CycleStatus.WAITING_SELL:
-            side = Side.LONG  # Position longue ouverte
+            side = Side.BUY  # Position BUYue ouverte
         elif cycle.status == CycleStatus.WAITING_BUY:
-            side = Side.sell  # Position courte ouverte
+            side = Side.SELL  # Position courte ouverte
         elif cycle.status == CycleStatus.ACTIVE_BUY:
-            side = Side.LONG   # En cours d'achat pour position longue
+            side = Side.BUY   # En cours d'achat pour position BUYue
         elif cycle.status == CycleStatus.ACTIVE_SELL:
-            side = Side.sell  # En cours de vente pour position courte
+            side = Side.SELL  # En cours de vente pour position courte
         else:
             # Fallback : essayer de déduire du contexte
-            logger.warning(f"⚠️ Statut {cycle.status} non reconnu pour {cycle.id}, assume LONG par défaut")
-            side = Side.LONG
+            logger.warning(f"⚠️ Statut {cycle.status} non reconnu pour {cycle.id}, assume BUY par défaut")
+            side = Side.BUY
         
         # Créer le trailing stop
         ts = TrailingStop(
@@ -88,24 +88,24 @@ class StopManagerPure:
                    f"entry_price={cycle.entry_price:.6f}, max_price={cycle.max_price:.6f}, "
                    f"min_price={cycle.min_price:.6f}")
         
-        if side == Side.LONG and cycle.max_price and cycle.max_price > cycle.entry_price:
-            # Position LONG : restaurer le max_price et recalculer le stop
+        if side == Side.BUY and cycle.max_price and cycle.max_price > cycle.entry_price:
+            # Position BUY : restaurer le max_price et recalculer le stop
             ts.max_price = cycle.max_price
             new_stop = ts._calc_stop(cycle.max_price)
             if new_stop > ts.stop_price:
                 ts.stop_price = new_stop
                 restored = True
-                logger.info(f"🔄 État TrailingStop LONG restauré pour {cycle.id}: "
+                logger.info(f"🔄 État TrailingStop BUY restauré pour {cycle.id}: "
                            f"max_price={cycle.max_price:.6f}, stop={ts.stop_price:.6f}")
                 
-        elif side == Side.sell and cycle.min_price and cycle.min_price < cycle.entry_price:
-            # Position sell : restaurer le min_price et recalculer le stop  
+        elif side == Side.SELL and cycle.min_price and cycle.min_price < cycle.entry_price:
+            # Position SELL : restaurer le min_price et recalculer le stop  
             ts.min_price = cycle.min_price
             new_stop = ts._calc_stop(cycle.min_price)
             if new_stop < ts.stop_price:
                 ts.stop_price = new_stop
                 restored = True
-                logger.info(f"🔄 État TrailingStop sell restauré pour {cycle.id}: "
+                logger.info(f"🔄 État TrailingStop SELL restauré pour {cycle.id}: "
                            f"min_price={cycle.min_price:.6f}, stop={ts.stop_price:.6f}")
         
         if not restored:
@@ -116,7 +116,7 @@ class StopManagerPure:
         self.trailing_stops[cycle.id] = ts
         
         # Initialiser le GainProtector pour ce cycle
-        side_str = "LONG" if side == Side.LONG else "sell"
+        side_str = "BUY" if side == Side.BUY else "SELL"
         self.gain_protector.initialize_cycle(
             cycle_id=cycle.id,
             entry_price=cycle.entry_price,
@@ -130,7 +130,7 @@ class StopManagerPure:
         
         # Pour les restaurations, aussi mettre à jour les extremes
         if restored:
-            if side == Side.LONG:
+            if side == Side.BUY:
                 cycle.max_price = ts.max_price
             else:
                 cycle.min_price = ts.min_price
@@ -139,7 +139,7 @@ class StopManagerPure:
         
         return ts
 
-    def process_price_update(self, symbol: str, price: float, close_cycle_callback: Callable[[str, Optional[float]], bool], partial_sell_callback: Optional[Callable[[str, float, float, str], bool]] = None) -> None:
+    def process_price_update(self, symbol: str, price: float, close_cycle_callback: Callable[[str, Optional[float]], bool], partial_SELL_callback: Optional[Callable[[str, float, float, str], bool]] = None) -> None:
         """
         Traite une mise à jour de prix - VERSION PURE avec GainProtector.
         Utilise le TrailingStop + protection intelligente des gains.
@@ -148,14 +148,14 @@ class StopManagerPure:
             symbol: Symbole mis à jour
             price: Nouveau prix
             close_cycle_callback: Fonction de rappel pour fermer un cycle
-            partial_sell_callback: Fonction de rappel pour les ventes partielles (cycle_id, percentage, price, reason)
+            partial_SELL_callback: Fonction de rappel pour les ventes partielles (cycle_id, percentage, price, reason)
         """
         # Récupérer les cycles actifs pour ce symbole
         cycles = self.repository.get_active_cycles(symbol=symbol)
         
         with self.price_locks:
             stops_to_trigger = []
-            partial_sells_to_execute = []
+            partial_SELLs_to_execute = []
             
             for cycle in cycles:
                 # Vérifier si on a un TrailingStop pour ce cycle
@@ -170,15 +170,15 @@ class StopManagerPure:
                 protection_actions = self.gain_protector.update_and_check_protections(cycle.id, price)
                 
                 for action in protection_actions:
-                    if action['action'] == 'sell_partial':
-                        partial_sells_to_execute.append({
+                    if action['action'] == 'SELL_partial':
+                        partial_SELLs_to_execute.append({
                             'cycle_id': cycle.id,
                             'action': action,
                             'price': price
                         })
                         logger.info(f"💰 Take profit partiel {action['percentage']}% pour cycle {cycle.id} à {price}")
                     
-                    elif action['action'] in ['sell_all', 'cover_all']:
+                    elif action['action'] in ['SELL_all', 'cover_all']:
                         stops_to_trigger.append(cycle.id)
                         logger.info(f"🚨 {action['reason']} pour cycle {cycle.id}: fermeture complète à {price}")
                         continue  # Pas besoin de vérifier le trailing stop
@@ -192,7 +192,7 @@ class StopManagerPure:
                         logger.info(f"🛡️ Stop déplacé à {new_stop} pour cycle {cycle.id} ({action['reason']})")
                 
                 # 2. Si pas d'action de fermeture complète, vérifier le trailing stop normal
-                if cycle.id not in [item['cycle_id'] for item in partial_sells_to_execute if item['action']['action'] in ['sell_all', 'cover_all']]:
+                if cycle.id not in [item['cycle_id'] for item in partial_SELLs_to_execute if item['action']['action'] in ['SELL_all', 'cover_all']]:
                     stop_hit = ts.update(price)
                     
                     if stop_hit:
@@ -207,8 +207,8 @@ class StopManagerPure:
                         if ts.stop_price != cycle.stop_price:
                             old_stop = cycle.stop_price
                             cycle.stop_price = ts.stop_price
-                            cycle.max_price = ts.max_price if ts.side == Side.LONG else cycle.max_price
-                            cycle.min_price = ts.min_price if ts.side == Side.sell else cycle.min_price
+                            cycle.max_price = ts.max_price if ts.side == Side.BUY else cycle.max_price
+                            cycle.min_price = ts.min_price if ts.side == Side.SELL else cycle.min_price
                             
                             self.repository.save_cycle(cycle)
                             
@@ -216,21 +216,21 @@ class StopManagerPure:
                                        f"{old_stop:.6f} → {ts.stop_price:.6f}")
             
             # Exécuter les ventes partielles
-            for partial_sell in partial_sells_to_execute:
-                if partial_sell_callback:
-                    action = partial_sell['action']
-                    success = partial_sell_callback(
-                        partial_sell['cycle_id'],
+            for partial_SELL in partial_SELLs_to_execute:
+                if partial_SELL_callback:
+                    action = partial_SELL['action']
+                    success = partial_SELL_callback(
+                        partial_SELL['cycle_id'],
                         action['percentage'],
-                        partial_sell['price'],
+                        partial_SELL['price'],
                         action['reason']
                     )
                     if success:
-                        logger.info(f"✅ Vente partielle {action['percentage']}% exécutée pour cycle {partial_sell['cycle_id']}")
+                        logger.info(f"✅ Vente partielle {action['percentage']}% exécutée pour cycle {partial_SELL['cycle_id']}")
                     else:
-                        logger.error(f"❌ Échec vente partielle pour cycle {partial_sell['cycle_id']}")
+                        logger.error(f"❌ Échec vente partielle pour cycle {partial_SELL['cycle_id']}")
                 else:
-                    logger.warning(f"⚠️ Vente partielle demandée mais callback non fourni: {partial_sell}")
+                    logger.warning(f"⚠️ Vente partielle demandée mais callback non fourni: {partial_SELL}")
             
             # Déclencher les stops en dehors du verrou
             for cycle_id in stops_to_trigger:

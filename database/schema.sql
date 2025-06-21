@@ -14,7 +14,7 @@ SET default_text_search_config = 'pg_catalog.english';
 CREATE TABLE IF NOT EXISTS trade_executions (
     order_id VARCHAR(50) PRIMARY KEY,
     symbol VARCHAR(20) NOT NULL,
-    side VARCHAR(10) NOT NULL CHECK (side IN ('LONG', 'sell')),
+    side VARCHAR(10) NOT NULL CHECK (side IN ('BUY', 'SELL')),
     status VARCHAR(20) NOT NULL CHECK (status IN ('NEW', 'PARTIALLY_FILLED', 'FILLED', 'CANCELED', 'REJECTED', 'EXPIRED', 'PENDING_CANCEL')),
     price NUMERIC(16, 8) NOT NULL,
     quantity NUMERIC(16, 8) NOT NULL,
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS trade_cycles (
     symbol VARCHAR(20) NOT NULL,
     strategy VARCHAR(50) NOT NULL,
     -- Statuts en minuscules pour cohérence avec les énumérations Python
-    status VARCHAR(20) NOT NULL CHECK (status IN ('initiating', 'waiting_buy', 'active_buy', 'waiting_sell', 'active_sell', 'completed', 'canceled', 'failed')),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('initiating', 'waiting_buy', 'active_buy', 'waiting_SELL', 'active_SELL', 'completed', 'canceled', 'failed')),
     entry_order_id VARCHAR(50),
     exit_order_id VARCHAR(50),
     entry_price NUMERIC(16, 8),
@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS trading_signals (
     id SERIAL PRIMARY KEY,
     strategy VARCHAR(50) NOT NULL,
     symbol VARCHAR(20) NOT NULL,
-    side VARCHAR(10) NOT NULL CHECK (side IN ('LONG', 'sell')),
+    side VARCHAR(10) NOT NULL CHECK (side IN ('BUY', 'SELL')),
     timestamp TIMESTAMP NOT NULL,
     price NUMERIC(16, 8) NOT NULL,
     confidence NUMERIC(5, 4),
@@ -353,9 +353,9 @@ SELECT
     CASE 
         WHEN tc.entry_price IS NOT NULL AND lp.price IS NOT NULL THEN
             CASE 
-                WHEN tc.status LIKE '%LONG%' THEN 
+                WHEN tc.status LIKE '%BUY%' THEN 
                     (lp.price - tc.entry_price) / tc.entry_price * 100
-                WHEN tc.status LIKE '%sell%' THEN 
+                WHEN tc.status LIKE '%SELL%' THEN 
                     (tc.entry_price - lp.price) / tc.entry_price * 100
                 ELSE NULL
             END
@@ -479,14 +479,14 @@ DECLARE
     phantom_count INTEGER := 0;
     details_json JSONB := '{}';
 BEGIN
-    -- Marquer les cycles active_sell sans exit_order_id comme canceled
+    -- Marquer les cycles active_SELL sans exit_order_id comme canceled
     UPDATE trade_cycles 
     SET 
         status = 'canceled', 
         updated_at = NOW(),
         metadata = COALESCE(metadata, '{}') || '{"cancel_reason": "phantom_cycle_cleanup", "cleanup_timestamp": "' || NOW()::text || '"}'
     WHERE 
-        status = 'active_sell' 
+        status = 'active_SELL' 
         AND exit_order_id IS NULL;
     
     GET DIAGNOSTICS phantom_count = ROW_COUNT;
@@ -713,7 +713,7 @@ ON CONFLICT (symbol) DO UPDATE SET
 -- Insérer les configurations de stratégies par défaut
 INSERT INTO strategy_configs (name, mode, symbols, params, max_simultaneous_trades, enabled) VALUES
 ('RSI_Strategy', 'active', '["BTCUSDC", "ETHUSDC"]', '{"window": 14, "overbought": 70, "oversold": 30}', 3, true),
-('EMA_Cross_Strategy', 'active', '["BTCUSDC", "ETHUSDC"]', '{"sell_window": 5, "long_window": 20}', 2, true),
+('EMA_Cross_Strategy', 'active', '["BTCUSDC", "ETHUSDC"]', '{"SELL_window": 5, "BUY_window": 20}', 2, true),
 ('Bollinger_Bands_Strategy', 'monitoring', '["BTCUSDC", "ETHUSDC"]', '{"window": 20, "std_dev": 2.0}', 2, false),
 ('Ride_or_React_Strategy', 'active', '["BTCUSDC", "ETHUSDC", "ETHBTC"]', '{"thresholds": {"1h": 0.8, "3h": 2.5, "6h": 3.6, "12h": 5.1, "24h": 7.8}}', 1, true)
 ON CONFLICT (name) DO UPDATE SET

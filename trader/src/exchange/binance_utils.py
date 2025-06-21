@@ -261,10 +261,10 @@ class BinanceUtils:
         # Convertir side en string si c'est un enum
         side_str = order.side.value if hasattr(order.side, 'value') else str(order.side)
         
-        # Convertir LONG/sell vers BUY/SELL pour Binance
-        if side_str == "LONG":
+        # Convertir BUY/SELL vers BUY/SELL pour Binance
+        if side_str == "BUY":
             side = "BUY"
-        elif side_str == "sell":
+        elif side_str == "SELL":
             side = "SELL"
         else:
             # Compatibilité avec l'ancien système BUY/SELL (si présent)
@@ -361,14 +361,14 @@ class BinanceUtils:
         # Pour les ordres non encore exécutés, utiliser origQty au lieu de executedQty
         quantity = float(data['executedQty']) if float(data.get('executedQty', 0)) > 0 else float(data.get('origQty', 0))
         
-        # Convertir BUY/SELL de Binance vers LONG/sell pour notre enum
+        # Convertir BUY/SELL de Binance vers BUY/SELL pour notre enum
         binance_side = data['side']
         if binance_side == "BUY":
-            side = OrderSide.LONG
+            side = OrderSide.BUY
         elif binance_side == "SELL":
-            side = OrderSide.sell
+            side = OrderSide.SELL
         else:
-            # Compatibilité au cas où la valeur serait déjà LONG/sell
+            # Compatibilité au cas où la valeur serait déjà BUY/SELL
             # ou fallback pour des valeurs inattendues
             try:
                 side = OrderSide(binance_side)
@@ -435,14 +435,14 @@ class BinanceUtils:
                 if float(order_response.get('executedQty', 0)) > 0 else 0
             )
             
-            # Convertir BUY/SELL de Binance vers LONG/sell pour notre enum
+            # Convertir BUY/SELL de Binance vers BUY/SELL pour notre enum
             binance_side = order_response['side']
             if binance_side == "BUY":
-                side = OrderSide.LONG
+                side = OrderSide.BUY
             elif binance_side == "SELL":
-                side = OrderSide.sell
+                side = OrderSide.SELL
             else:
-                # Compatibilité au cas où la valeur serait déjà LONG/sell
+                # Compatibilité au cas où la valeur serait déjà BUY/SELL
                 # ou fallback pour des valeurs inattendues
                 try:
                     side = OrderSide(binance_side)

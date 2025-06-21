@@ -1,7 +1,7 @@
 """
 Trailing-stop "pur" : un seul filet de sécurité.
-- LONG  : suit le plus-haut (max) et se place en dessous.
-- sell : suit le plus-bas  (min)  et se place au-dessus.
+- BUY  : suit le plus-haut (max) et se place en dessous.
+- SELL : suit le plus-bas  (min)  et se place au-dessus.
 """
 import logging
 from enum import Enum, auto
@@ -10,14 +10,14 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 class Side(Enum):
-    LONG = auto()
-    sell = auto()
+    BUY = auto()
+    SELL = auto()
 
 class TrailingStop:
     """
     Trailing-stop "pur" : un seul filet de sécurité.
-    - LONG  : suit le plus-haut (max) et se place en dessous.
-    - sell : suit le plus-bas  (min)  et se place au-dessus.
+    - BUY  : suit le plus-haut (max) et se place en dessous.
+    - SELL : suit le plus-bas  (min)  et se place au-dessus.
     """
 
     def __init__(self, side: Side, entry_price: float, stop_pct: float = 1.5):
@@ -25,7 +25,7 @@ class TrailingStop:
         Initialise le trailing stop.
         
         Args:
-            side: LONG ou sell
+            side: BUY ou SELL
             entry_price: Prix d'entrée
             stop_pct: Pourcentage de retracement toléré (défaut: 1.5% en mode scalping)
         """
@@ -34,8 +34,8 @@ class TrailingStop:
         self.stop_pct = stop_pct
         
         # Extrêmes favorables
-        self.max_price = entry_price  # pour LONG
-        self.min_price = entry_price  # pour sell
+        self.max_price = entry_price  # pour BUY
+        self.min_price = entry_price  # pour SELL
         
         # Stop initial
         self.stop_price = self._calc_stop(entry_price)
@@ -45,9 +45,9 @@ class TrailingStop:
 
     def _calc_stop(self, ref_price: float) -> float:
         """Calcule le stop par rapport à l'extrême favorable."""
-        if self.side == Side.LONG:
+        if self.side == Side.BUY:
             return ref_price * (1 - self.stop_pct / 100)
-        else:  # sell
+        else:  # SELL
             return ref_price * (1 + self.stop_pct / 100)
 
     def update(self, price: float) -> bool:
@@ -63,7 +63,7 @@ class TrailingStop:
         old_stop = self.stop_price
         stop_hit = False
         
-        if self.side == Side.LONG:
+        if self.side == Side.BUY:
             # Nouveau record à la hausse ?
             if price > self.max_price:
                 self.max_price = price
@@ -72,22 +72,22 @@ class TrailingStop:
                 # Le stop ne peut que monter (jamais redescendre)
                 if new_stop > self.stop_price:
                     self.stop_price = new_stop
-                    logger.debug(f"📈 Stop LONG mis à jour: {old_stop:.6f} → {self.stop_price:.6f} "
+                    logger.debug(f"📈 Stop BUY mis à jour: {old_stop:.6f} → {self.stop_price:.6f} "
                                f"(nouveau max: {self.max_price:.6f})")
             
             # Stop déclenché ?
             stop_hit = price <= self.stop_price
             
-        else:  # sell
+        else:  # SELL
             # Nouveau record à la baisse ?
             if price < self.min_price:
                 self.min_price = price
                 new_stop = self._calc_stop(self.min_price)
                 
-                # Le stop ne peut que descendre (pour protéger plus de profit) pour sell
+                # Le stop ne peut que descendre (pour protéger plus de profit) pour SELL
                 if new_stop < self.stop_price:
                     self.stop_price = new_stop
-                    logger.debug(f"📈 Stop sell mis à jour: {old_stop:.6f} → {self.stop_price:.6f} "
+                    logger.debug(f"📈 Stop SELL mis à jour: {old_stop:.6f} → {self.stop_price:.6f} "
                                f"(nouveau min: {self.min_price:.6f})")
             
             # Stop déclenché ?
@@ -102,9 +102,9 @@ class TrailingStop:
 
     def _calculate_profit_pct(self, exit_price: float) -> float:
         """Calcule le pourcentage de profit/perte."""
-        if self.side == Side.LONG:
+        if self.side == Side.BUY:
             return ((exit_price - self.entry_price) / self.entry_price) * 100
-        else:  # sell
+        else:  # SELL
             return ((self.entry_price - exit_price) / self.entry_price) * 100
 
     def get_profit_if_exit_now(self, current_price: float) -> float:
@@ -120,23 +120,23 @@ class TrailingStop:
             'stop_pct': self.stop_pct,
             'max_price': self.max_price,
             'min_price': self.min_price,
-            'extreme_price': self.max_price if self.side == Side.LONG else self.min_price
+            'extreme_price': self.max_price if self.side == Side.BUY else self.min_price
         }
 
     def __str__(self) -> str:
         """Représentation string du trailing stop."""
-        extreme = self.max_price if self.side == Side.LONG else self.min_price
+        extreme = self.max_price if self.side == Side.BUY else self.min_price
         return (f"TrailingStop({self.side.name}, entry={self.entry_price:.6f}, "
                f"stop={self.stop_price:.6f}, extreme={extreme:.6f})")
 
 
 # Exemple d'utilisation pour tests
 if __name__ == "__main__":
-    # Test LONG
-    ts = TrailingStop(Side.LONG, entry_price=100.0, stop_pct=3.0)
+    # Test BUY
+    ts = TrailingStop(Side.BUY, entry_price=100.0, stop_pct=3.0)
     prices = [101, 104, 107, 105, 103, 102]  # flux de prix fictif
     
-    print("=== Test LONG ===")
+    print("=== Test BUY ===")
     for p in prices:
         hit = ts.update(p)
         status = ts.get_status()
@@ -146,15 +146,15 @@ if __name__ == "__main__":
         if hit:
             break
     
-    print("\n=== Test sell ===")
-    # Test sell
-    ts_sell = TrailingStop(Side.sell, entry_price=100.0, stop_pct=3.0)
-    prices_sell = [99, 96, 93, 95, 97, 98]
+    print("\n=== Test SELL ===")
+    # Test SELL
+    ts_SELL = TrailingStop(Side.SELL, entry_price=100.0, stop_pct=3.0)
+    prices_SELL = [99, 96, 93, 95, 97, 98]
     
-    for p in prices_sell:
-        hit = ts_sell.update(p)
-        status = ts_sell.get_status()
-        profit = ts_sell.get_profit_if_exit_now(p)
+    for p in prices_SELL:
+        hit = ts_SELL.update(p)
+        status = ts_SELL.get_status()
+        profit = ts_SELL.get_profit_if_exit_now(p)
         print(f"Prix {p:6.6f} | Stop {status['stop_price']:6.6f} | "
               f"Profit {profit:+5.1f}% | {'EXIT!' if hit else 'Hold'}")
         if hit:

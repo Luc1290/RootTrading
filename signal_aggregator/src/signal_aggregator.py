@@ -63,19 +63,19 @@ class SignalAggregator:
             # Convert 'side' to 'side' for compatibility
             if 'side' in signal and 'side' not in signal:
                 side = signal['side']
-                if side in ['LONG', 'long']:
-                    signal['side'] = 'LONG'
-                elif side in ['sell', 'sell']:
-                    signal['side'] = 'sell'
+                if side in ['BUY', 'BUY']:
+                    signal['side'] = 'BUY'
+                elif side in ['SELL', 'SELL']:
+                    signal['side'] = 'SELL'
                 else:
                     logger.warning(f"Unknown side value: {side}")
                     return None
             
-            # NOUVEAU: Validation multi-timeframe (DÉSACTIVÉE EN MODE SCALPING pour plus de signaux)
-            # En mode scalping, on privilégie la réactivité sur la sécurité multi-timeframe
-            # if not await self._validate_signal_with_higher_timeframe(signal):
-            #     logger.info(f"Signal {strategy} {signal['side']} sur {symbol} rejeté par validation 15m")
-            #     return None
+            # NOUVEAU: Validation multi-timeframe avec 5m (RÉACTIVÉE pour scalping optimisé)
+            # Validation 5m plus rapide que 15m, gardant la qualité sans sacrifier la réactivité
+            if not await self._validate_signal_with_higher_timeframe(signal):
+                logger.info(f"Signal {strategy} {signal['side']} sur {symbol} rejeté par validation 5m")
+                return None
             
             # Handle timestamp conversion
             timestamp_str = signal.get('timestamp', signal.get('created_at'))
@@ -175,8 +175,8 @@ class SignalAggregator:
         """Aggregate multiple signals into a single decision"""
 
         # Group signals by side
-        long_signals = []
-        sell_signals = []
+        BUY_signals = []
+        SELL_signals = []
 
         for signal in signals:
             strategy = signal['strategy']
@@ -196,10 +196,10 @@ class SignalAggregator:
 
             # Get side (handle both 'side' and 'side' keys)
             side = signal.get('side', signal.get('side'))
-            if side in ['LONG', 'long']:
-                side = 'LONG'
-            elif side in ['sell', 'sell']:
-                side = 'sell'
+            if side in ['BUY', 'BUY']:
+                side = 'BUY'
+            elif side in ['SELL', 'SELL']:
+                side = 'SELL'
 
             # Weighted signal
             weighted_signal = {
@@ -210,31 +210,31 @@ class SignalAggregator:
                 'score': confidence * weight
             }
 
-            if side == 'LONG':
-                long_signals.append(weighted_signal)
-            elif side == 'sell':
-                sell_signals.append(weighted_signal)
+            if side == 'BUY':
+                BUY_signals.append(weighted_signal)
+            elif side == 'SELL':
+                SELL_signals.append(weighted_signal)
 
         # Calculate total scores
-        long_score = sum(s['score'] for s in long_signals)
-        sell_score = sum(s['score'] for s in sell_signals)
+        BUY_score = sum(s['score'] for s in BUY_signals)
+        SELL_score = sum(s['score'] for s in SELL_signals)
 
         # Determine side
-        if long_score > sell_score and long_score >= self.min_vote_threshold:
-            side = 'LONG'
-            confidence = long_score / (long_score + sell_score)
-            contributing_strategies = [s['strategy'] for s in long_signals]
-        elif sell_score > long_score and sell_score >= self.min_vote_threshold:
-            side = 'sell'
-            confidence = sell_score / (long_score + sell_score)
-            contributing_strategies = [s['strategy'] for s in sell_signals]
+        if BUY_score > SELL_score and BUY_score >= self.min_vote_threshold:
+            side = 'BUY'
+            confidence = BUY_score / (BUY_score + SELL_score)
+            contributing_strategies = [s['strategy'] for s in BUY_signals]
+        elif SELL_score > BUY_score and SELL_score >= self.min_vote_threshold:
+            side = 'SELL'
+            confidence = SELL_score / (BUY_score + SELL_score)
+            contributing_strategies = [s['strategy'] for s in SELL_signals]
         else:
             # No clear signal
-            logger.debug(f"No clear signal for {symbol}: long={long_score:.2f}, sell={sell_score:.2f}")
+            logger.debug(f"No clear signal for {symbol}: BUY={BUY_score:.2f}, SELL={SELL_score:.2f}")
             return None
             
         # Calculate averaged stop loss (plus de take profit avec TrailingStop pur)
-        relevant_signals = long_signals if side == 'LONG' else sell_signals
+        relevant_signals = BUY_signals if side == 'BUY' else SELL_signals
 
         total_weight = sum(s['weight'] for s in relevant_signals)
         if total_weight == 0:
@@ -291,8 +291,8 @@ class SignalAggregator:
             'stop_loss': stop_loss,
             'trailing_delta': trailing_delta,  # NOUVEAU: Trailing stop activé
             'contributing_strategies': contributing_strategies,
-            'long_score': long_score,
-            'sell_score': sell_score,
+            'BUY_score': BUY_score,
+            'SELL_score': SELL_score,
             'metadata': {
                 'aggregated': True,
                 'contributing_strategies': contributing_strategies,
@@ -311,8 +311,8 @@ class SignalAggregator:
         regime_weights = self.enhanced_regime_detector.get_strategy_weights_for_regime(regime)
         
         # Group signals by side
-        long_signals = []
-        sell_signals = []
+        BUY_signals = []
+        SELL_signals = []
 
         for signal in signals:
             strategy = signal['strategy']
@@ -333,10 +333,10 @@ class SignalAggregator:
 
             # Get side (handle both 'side' and 'side' keys)
             side = signal.get('side', signal.get('side'))
-            if side in ['LONG', 'long']:
-                side = 'LONG'
-            elif side in ['sell', 'sell']:
-                side = 'sell'
+            if side in ['BUY', 'BUY']:
+                side = 'BUY'
+            elif side in ['SELL', 'SELL']:
+                side = 'SELL'
 
             # Enhanced weighted signal with regime adaptation
             weighted_signal = {
@@ -349,32 +349,32 @@ class SignalAggregator:
                 'score': confidence * combined_weight
             }
 
-            if side == 'LONG':
-                long_signals.append(weighted_signal)
-            elif side == 'sell':
-                sell_signals.append(weighted_signal)
+            if side == 'BUY':
+                BUY_signals.append(weighted_signal)
+            elif side == 'SELL':
+                SELL_signals.append(weighted_signal)
 
         # Calculate total scores
-        long_score = sum(s['score'] for s in long_signals)
-        sell_score = sum(s['score'] for s in sell_signals)
+        BUY_score = sum(s['score'] for s in BUY_signals)
+        SELL_score = sum(s['score'] for s in SELL_signals)
 
         # Enhanced decision logic based on regime
         min_threshold = self._get_regime_threshold(regime)
         
         # Determine side
-        if long_score > sell_score and long_score >= min_threshold:
-            side = 'LONG'
-            confidence = long_score / (long_score + sell_score)
-            contributing_strategies = [s['strategy'] for s in long_signals]
-            relevant_signals = long_signals
-        elif sell_score > long_score and sell_score >= min_threshold:
-            side = 'sell'
-            confidence = sell_score / (long_score + sell_score)
-            contributing_strategies = [s['strategy'] for s in sell_signals]
-            relevant_signals = sell_signals
+        if BUY_score > SELL_score and BUY_score >= min_threshold:
+            side = 'BUY'
+            confidence = BUY_score / (BUY_score + SELL_score)
+            contributing_strategies = [s['strategy'] for s in BUY_signals]
+            relevant_signals = BUY_signals
+        elif SELL_score > BUY_score and SELL_score >= min_threshold:
+            side = 'SELL'
+            confidence = SELL_score / (BUY_score + SELL_score)
+            contributing_strategies = [s['strategy'] for s in SELL_signals]
+            relevant_signals = SELL_signals
         else:
             # No clear signal
-            logger.debug(f"No clear signal for {symbol} in {regime.value}: long={long_score:.2f}, sell={sell_score:.2f}")
+            logger.debug(f"No clear signal for {symbol} in {regime.value}: BUY={BUY_score:.2f}, SELL={SELL_score:.2f}")
             return None
             
         # Calculate averaged stop loss
@@ -434,8 +434,8 @@ class SignalAggregator:
             'stop_loss': stop_loss,
             'trailing_delta': trailing_delta,
             'contributing_strategies': contributing_strategies,
-            'long_score': long_score,
-            'sell_score': sell_score,
+            'BUY_score': BUY_score,
+            'SELL_score': SELL_score,
             'regime_analysis': {
                 'regime': regime.value,
                 'metrics': regime_metrics,
@@ -578,8 +578,8 @@ class SignalAggregator:
         Valide un signal 1m avec le contexte 15m pour éviter les faux signaux.
         
         Logique de validation :
-        - Signal LONG : validé si la tendance 15m est haussière ou neutre
-        - Signal sell : validé si la tendance 15m est baissière ou neutre
+        - Signal BUY : validé si la tendance 15m est haussière ou neutre
+        - Signal SELL : validé si la tendance 15m est baissière ou neutre
 
         Args:
             signal: Signal 1m à valider
@@ -591,61 +591,62 @@ class SignalAggregator:
             symbol = signal['symbol']
             side = signal['side']
 
-            # Récupérer les données 15m récentes depuis Redis
-            market_data_key = f"market_data:{symbol}:15m"
-            data_15m = self.redis.get(market_data_key)
+            # Récupérer les données 5m récentes depuis Redis (MODE SCALPING)
+            market_data_key = f"market_data:{symbol}:5m"
+            data_5m = self.redis.get(market_data_key)
             
-            if not data_15m:
-                # Si pas de données 15m, on accepte le signal (mode dégradé)
-                logger.warning(f"Pas de données 15m pour {symbol}, validation en mode dégradé")
+            if not data_5m:
+                # Si pas de données 5m, on accepte le signal (mode dégradé)
+                logger.warning(f"Pas de données 5m pour {symbol}, validation en mode dégradé")
                 return True
             
             # Le RedisClient parse automatiquement les données JSON
-            if not isinstance(data_15m, dict):
-                logger.warning(f"Données 15m invalides pour {symbol}: type {type(data_15m)}")
+            if not isinstance(data_5m, dict):
+                logger.warning(f"Données 5m invalides pour {symbol}: type {type(data_5m)}")
                 return True
             
-            # Calculer la tendance 15m avec une EMA simple
-            prices = data_15m.get('prices', [])
-            if len(prices) < 10:
-                # Pas assez de données pour une tendance fiable
+            # Calculer la tendance 5m avec une EMA simple (MODE SCALPING)
+            prices = data_5m.get('prices', [])
+            if len(prices) < 5:
+                # Pas assez de données pour une tendance fiable (seuil réduit pour scalping)
                 return True
             
-            # EMA courte (5 périodes) vs EMA longue (20 périodes) sur 15m
-            recent_prices = prices[-20:] if len(prices) >= 20 else prices
+            # EMA courte (3 périodes) vs EMA BUYue (10 périodes) sur 5m (plus réactif)
+            recent_prices = prices[-10:] if len(prices) >= 10 else prices
             if len(recent_prices) < 5:
                 return True
             
-            ema_sell = self._calculate_ema(recent_prices[-5:], 5)
-            ema_long = self._calculate_ema(recent_prices, min(20, len(recent_prices)))
+            # EMA 3 vs EMA 10 pour validation scalping plus rapide
+            ema_short = self._calculate_ema(recent_prices[-3:], 3)
+            ema_BUY = self._calculate_ema(recent_prices, min(10, len(recent_prices)))
             
-            # Déterminer la tendance 15m
-            if ema_sell > ema_long * 1.001:  # Tendance haussière (0.1% de marge)
-                trend_15m = "BULLISH"
-            elif ema_sell < ema_long * 0.999:  # Tendance baissière (0.1% de marge)
-                trend_15m = "BEARISH"
+            # Déterminer la tendance 5m (MODE SCALPING - seuils plus serrés)
+            if ema_short > ema_BUY * 1.0005:  # Tendance haussière (0.05% de marge pour scalping)
+                trend_5m = "BULLISH"
+            elif ema_short < ema_BUY * 0.9995:  # Tendance baissière (0.05% de marge pour scalping)
+                trend_5m = "BEARISH"
             else:
-                trend_15m = "NEUTRAL"
+                trend_5m = "NEUTRAL"
             
             # Règles de validation
-            if side == "LONG" and trend_15m == "BEARISH":
-                logger.info(f"Signal LONG {symbol} rejeté : tendance 15m baissière")
+            if side == "BUY" and trend_5m == "BEARISH":
+                logger.info(f"Signal BUY {symbol} rejeté : tendance 5m baissière")
                 return False
-            elif side == "sell" and trend_15m == "BULLISH":
-                logger.info(f"Signal sell {symbol} rejeté : tendance 15m haussière")
+            elif side == "SELL" and trend_5m == "BULLISH":
+                logger.info(f"Signal SELL {symbol} rejeté : tendance 5m haussière")
                 return False
             
-            # Validation additionnelle : RSI 15m
-            rsi_15m = data_15m.get('rsi_14')
-            if rsi_15m:
-                if side == "LONG" and rsi_15m > 75:
-                    logger.info(f"Signal LONG {symbol} rejeté : RSI 15m surachat ({rsi_15m})")
+            # Validation additionnelle : RSI 5m (MODE SCALPING - seuils ajustés)
+            rsi_5m = data_5m.get('rsi_14')
+            if rsi_5m:
+                if side == "BUY" and rsi_5m > 80:  # Seuil plus élevé pour scalping
+                    logger.info(f"Signal BUY {symbol} rejeté : RSI 5m surachat ({rsi_5m})")
                     return False
-                elif side == "sell" and rsi_15m < 25:
-                    logger.info(f"Signal sell {symbol} rejeté : RSI 15m survente ({rsi_15m})")
+                elif side == "SELL" and rsi_5m < 20:  # Seuil plus bas pour scalping
+                    logger.info(f"Signal SELL {symbol} rejeté : RSI 5m survente ({rsi_5m})")
                     return False
 
-            logger.debug(f"Signal {side} {symbol} validé par tendance 15m {trend_15m}")
+            logger.debug(f"Signal {side} {symbol} validé par tendance 5m {trend_5m}")
             return True
             
         except Exception as e:
@@ -719,9 +720,9 @@ class EnhancedSignalAggregator(SignalAggregator):
                 side = signal.get('side', signal.get('side'))
                 
                 # Pénaliser si RSI contradictoire
-                if side == 'LONG' and rsi > 70:
+                if side == 'BUY' and rsi > 70:
                     correlation_score *= 0.7
-                elif side == 'sell' and rsi < 30:
+                elif side == 'SELL' and rsi < 30:
                     correlation_score *= 0.7
         
         # Vérifier la cohérence des stops

@@ -5,8 +5,8 @@ from enum import Enum, auto
 
 class OrderSide(str, Enum):
     """Type d'ordre: achat ou vente."""
-    LONG = "LONG"
-    SELL = "sell"
+    BUY = "BUY"
+    SELL = "SELL"
 
 class OrderType(str, Enum):
     """Type d'ordre sur l'exchange."""
@@ -38,8 +38,8 @@ class CycleStatus(str, Enum):
     INITIATING = "initiating"            # Cycle en cours d'initialisation
     WAITING_BUY = "waiting_buy"          # En attente d'achat
     ACTIVE_BUY = "active_buy"            # Achat en cours
-    WAITING_SELL = "waiting_sell"        # En attente de vente
-    ACTIVE_SELL = "active_sell"          # Vente en cours
+    WAITING_SELL = "waiting_SELL"        # En attente de vente
+    ACTIVE_SELL = "active_SELL"          # Vente en cours
     COMPLETED = "completed"              # Cycle terminé avec succès
     CANCELED = "canceled"                # Cycle annulé
     FAILED = "failed"                    # Cycle échoué

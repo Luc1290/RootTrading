@@ -235,8 +235,8 @@ class SignalHandler:
         signal_side_str = signal.side.value if hasattr(signal.side, 'value') else str(signal.side)
         
         # Mapper signal vers position réelle
-        signal_position = "LONG" if signal_side_str == "LONG" else "sell"
-        opposite_position = "sell" if signal_position == "LONG" else "LONG"
+        signal_position = "BUY" if signal_side_str == "BUY" else "SELL"
+        opposite_position = "SELL" if signal_position == "BUY" else "BUY"
         
         # NOUVEAU: Filtre stratégique - Évaluer si le signal mérite d'être traité
         if not self._should_process_signal_strategically(signal, signal_position, opposite_position):
@@ -304,8 +304,8 @@ class SignalHandler:
         
         Args:
             signal: Signal à évaluer
-            signal_position: Position que le signal veut prendre (LONG/sell)
-            opposite_position: Position opposée (sell/LONG)
+            signal_position: Position que le signal veut prendre (BUY/SELL)
+            opposite_position: Position opposée (SELL/BUY)
             
         Returns:
             True si le signal doit être traité, False s'il doit être ignoré
@@ -365,7 +365,7 @@ class SignalHandler:
         
         Args:
             symbol: Symbole concerné
-            position: Position à évaluer (LONG/sell)
+            position: Position à évaluer (BUY/SELL)
             
         Returns:
             Score de conviction entre 0 et 1
@@ -379,7 +379,7 @@ class SignalHandler:
         # Pour l'instant on utilise une valeur fixe
         performance_factor = 0.5
         
-        # 3. Durée des positions (plus c'est long, plus on est convaincu)
+        # 3. Durée des positions (plus c'est BUY, plus on est convaincu)
         # Pour l'instant on utilise une valeur fixe
         duration_factor = 0.6
         
@@ -402,7 +402,7 @@ class SignalHandler:
         
         Args:
             symbol: Symbole concerné
-            position: Position à évaluer (LONG/sell)
+            position: Position à évaluer (BUY/SELL)
             
         Returns:
             Score de cohérence entre 0 et 1
@@ -420,7 +420,7 @@ class SignalHandler:
             return 0.5
         
         # Compter les signaux cohérents avec la position
-        expected_side = OrderSide.LONG if position == "LONG" else OrderSide.sell
+        expected_side = OrderSide.BUY if position == "BUY" else OrderSide.SELL
         coherent_signals = sum(1 for s in recent_signals if s.side == expected_side)
         
         coherence = coherent_signals / len(recent_signals)
@@ -508,17 +508,17 @@ class SignalHandler:
                 # Déterminer le côté de la POSITION RÉELLE (pas du prochain ordre)
                 status = cycle.get('status', '')
                 if status in ['waiting_buy', 'active_buy']:
-                    # waiting_buy = position sell (va racheter pour fermer)
-                    side = 'sell'
-                elif status in ['waiting_sell', 'active_sell']:
-                    # waiting_sell = position LONG (va vendre pour fermer)
-                    side = 'LONG'
+                    # waiting_buy = position SELL (va racheter pour fermer)
+                    side = 'SELL'
+                elif status in ['waiting_SELL', 'active_SELL']:
+                    # waiting_SELL = position BUY (va vendre pour fermer)
+                    side = 'BUY'
                 else:
                     continue  # Ignorer les autres statuts
                 
                 if symbol:
                     if symbol not in self.active_cycles_cache:
-                        self.active_cycles_cache[symbol] = {'LONG': 0, 'sell': 0}
+                        self.active_cycles_cache[symbol] = {'BUY': 0, 'SELL': 0}
                     
                     self.active_cycles_cache[symbol][side] = self.active_cycles_cache[symbol].get(side, 0) + 1
             
@@ -534,7 +534,7 @@ class SignalHandler:
         
         Args:
             symbol: Symbole concerné (ex: BTCUSDC)
-            side: Position à fermer (LONG ou sell)
+            side: Position à fermer (BUY ou SELL)
             
         Returns:
             True si toutes les positions ont été fermées avec succès
@@ -567,10 +567,10 @@ class SignalHandler:
                 status = cycle.get('status', '')
                 cycle_position = None
                 
-                if status in ['waiting_sell', 'active_sell']:
-                    cycle_position = 'LONG'  # Position longue en attente/en cours de vente
+                if status in ['waiting_SELL', 'active_SELL']:
+                    cycle_position = 'BUY'  # Position BUYue en attente/en cours de vente
                 elif status in ['waiting_buy', 'active_buy']:
-                    cycle_position = 'sell'  # Position courte en attente/en cours de rachat
+                    cycle_position = 'SELL'  # Position courte en attente/en cours de rachat
                 
                 if cycle_position == side:
                     cycles_to_close.append(cycle)
@@ -623,7 +623,7 @@ class SignalHandler:
         
         Args:
             symbol: Symbole du trade
-            side: Côté du trade (LONG/sell)
+            side: Côté du trade (BUY/SELL)
             
         Returns:
             True si on peut créer un nouveau cycle
@@ -688,34 +688,34 @@ class SignalHandler:
         logger.info(f"🔍 Analyse de {len(signals)} signaux pour {symbol}")
         
         # Séparer les signaux par côté
-        LONG_signals = [s for s in signals if s.side == OrderSide.LONG]
-        sell_signals = [s for s in signals if s.side == OrderSide.sell]
+        BUY_signals = [s for s in signals if s.side == OrderSide.BUY]
+        SELL_signals = [s for s in signals if s.side == OrderSide.SELL]
 
         # Cas 1: Signaux contradictoires
-        if LONG_signals and sell_signals:
+        if BUY_signals and SELL_signals:
             logger.warning(f"⚠️ Signaux contradictoires détectés pour {symbol}: "
-                         f"{len(LONG_signals)} LONG vs {len(sell_signals)} sell")
+                         f"{len(BUY_signals)} BUY vs {len(SELL_signals)} SELL")
             
             # Calculer les scores moyens
-            long_score = self._calculate_signal_score(LONG_signals)
-            sell_score = self._calculate_signal_score(sell_signals)
+            BUY_score = self._calculate_signal_score(BUY_signals)
+            SELL_score = self._calculate_signal_score(SELL_signals)
             
             # Si la différence est significative, suivre le plus fort
-            if abs(long_score - sell_score) > self.contradiction_threshold:
-                if long_score > sell_score:
-                    self._process_long_signals(symbol, LONG_signals)
+            if abs(BUY_score - SELL_score) > self.contradiction_threshold:
+                if BUY_score > SELL_score:
+                    self._process_BUY_signals(symbol, BUY_signals)
                 else:
-                    self._process_sell_signals(symbol, sell_signals)
+                    self._process_SELL_signals(symbol, SELL_signals)
             else:
                 logger.info(f"🤷 Signaux trop contradictoires, aucune action pour {symbol}")
         
-        # Cas 2: Signaux unanimes LONG
-        elif LONG_signals:
-            self._process_long_signals(symbol, LONG_signals)
+        # Cas 2: Signaux unanimes BUY
+        elif BUY_signals:
+            self._process_BUY_signals(symbol, BUY_signals)
 
-        # Cas 3: Signaux unanimes sell
-        elif sell_signals:
-            self._process_sell_signals(symbol, sell_signals)
+        # Cas 3: Signaux unanimes SELL
+        elif SELL_signals:
+            self._process_SELL_signals(symbol, SELL_signals)
 
     def _calculate_signal_score(self, signals: List[StrategySignal]) -> float:
         """
@@ -748,17 +748,17 @@ class SignalHandler:
         
         return total_score / total_weight if total_weight > 0 else 0.0
     
-    def _process_long_signals(self, symbol: str, signals: List[StrategySignal]) -> None:
+    def _process_BUY_signals(self, symbol: str, signals: List[StrategySignal]) -> None:
         """
-        Traite un groupe de signaux LONG.
+        Traite un groupe de signaux BUY.
         
         Args:
             symbol: Symbole
-            signals: Signaux LONG
+            signals: Signaux BUY
         """
         # Vérifier si on peut créer un nouveau cycle
-        if not self._can_create_new_cycle(symbol, "LONG"):
-            logger.warning(f"❌ Impossible de créer plus de cycles LONG pour {symbol}")
+        if not self._can_create_new_cycle(symbol, "BUY"):
+            logger.warning(f"❌ Impossible de créer plus de cycles BUY pour {symbol}")
             return
         
         # Choisir le meilleur signal ou créer un signal composite
@@ -772,17 +772,17 @@ class SignalHandler:
         # Ajouter à la file de traitement normale
         self.signal_queue.put(best_signal)
 
-    def _process_sell_signals(self, symbol: str, signals: List[StrategySignal]) -> None:
+    def _process_SELL_signals(self, symbol: str, signals: List[StrategySignal]) -> None:
         """
-        Traite un groupe de signaux sell.
+        Traite un groupe de signaux SELL.
         
         Args:
             symbol: Symbole
-            signals: Signaux sell
+            signals: Signaux SELL
         """
         # Vérifier si on peut créer un nouveau cycle
-        if not self._can_create_new_cycle(symbol, "sell"):
-            logger.warning(f"❌ Impossible de créer plus de cycles sell pour {symbol}")
+        if not self._can_create_new_cycle(symbol, "SELL"):
+            logger.warning(f"❌ Impossible de créer plus de cycles SELL pour {symbol}")
             return
         
         # Choisir le meilleur signal
@@ -850,7 +850,7 @@ class SignalHandler:
             if action == 'wait_for_reversal':
                 action = 'no_trading'
             
-            if action not in ['normal_trading', 'no_trading', 'buy_only', 'sell_only']:
+            if action not in ['normal_trading', 'no_trading', 'buy_only', 'SELL_only']:
                 logger.warning(f"Action de filtrage inconnue: {action}, utilisation de 'normal_trading' par défaut")
                 action = 'normal_trading'
             
@@ -933,8 +933,8 @@ class SignalHandler:
         
         # En mode "ride", filtrer certains signaux contre-tendance
         if filter_info.get('mode') == 'ride':
-            # Si dans une tendance haussière forte, filtrer les signaux sell (sauf très forts)
-            if signal.side == OrderSide.sell and signal.strength != SignalStrength.VERY_STRONG:
+            # Si dans une tendance haussière forte, filtrer les signaux SELL (sauf très forts)
+            if signal.side == OrderSide.SELL and signal.strength != SignalStrength.VERY_STRONG:
                 logger.info(f"🔍 Signal {signal.side} filtré: marché en mode RIDE pour {signal.symbol}")
                 return True
         # En mode "react", aucun filtrage supplémentaire n'est nécessaire
@@ -949,12 +949,12 @@ class SignalHandler:
                 return True
             
             # Si l'action est "buy_only", filtrer les signaux de vente
-            elif action == 'buy_only' and signal.side == OrderSide.sell:
+            elif action == 'buy_only' and signal.side == OrderSide.SELL:
                 logger.info(f"🔍 Signal {signal.side} filtré: seuls les achats sont autorisés pour {signal.symbol}")
                 return True
             
-            # Si l'action est "sell_only", filtrer les signaux d'achat
-            elif action == 'sell_only' and signal.side == OrderSide.LONG:
+            # Si l'action est "SELL_only", filtrer les signaux d'achat
+            elif action == 'SELL_only' and signal.side == OrderSide.BUY:
                 logger.info(f"🔍 Signal {signal.side} filtré: seules les ventes sont autorisées pour {signal.symbol}")
                 return True
         
@@ -1183,13 +1183,13 @@ class SignalHandler:
             # Déterminer l'actif et le montant nécessaire selon le côté de l'ordre
             base_asset = self._get_base_asset(signal.symbol)
             
-            if signal.side == OrderSide.LONG:
-                # LONG : On achète donc on a besoin de l'actif de cotation (quote asset)
+            if signal.side == OrderSide.BUY:
+                # BUY : On achète donc on a besoin de l'actif de cotation (quote asset)
                 required_asset = quote_asset
                 required_amount = trade_amount
-                logger.info(f"LONG {signal.symbol}: Besoin de {required_amount:.6f} {required_asset}")
-            else:  # OrderSide.sell
-                # sell : On vend donc on a besoin de l'actif de base (base asset)
+                logger.info(f"BUY {signal.symbol}: Besoin de {required_amount:.6f} {required_asset}")
+            else:  # OrderSide.SELL
+                # SELL : On vend donc on a besoin de l'actif de base (base asset)
                 required_asset = base_asset
                 # Calculer la quantité d'actif de base nécessaire
                 if signal.symbol.endswith("BTC"):
@@ -1199,7 +1199,7 @@ class SignalHandler:
                     # Pour les paires USDC, calculer la quantité d'actif de base
                     quantity = trade_amount / signal.price
                 required_amount = quantity
-                logger.info(f"sell {signal.symbol}: Besoin de {required_amount:.6f} {required_asset}")
+                logger.info(f"SELL {signal.symbol}: Besoin de {required_amount:.6f} {required_asset}")
 
             # Vérifier directement les balances Binance
             try:
@@ -1250,7 +1250,7 @@ class SignalHandler:
                     f"{self.trader_api_url}/order",
                     method="POST",
                     json_data=order_data,
-                    timeout=10.0  # Timeout plus long pour la création de l'ordre
+                    timeout=10.0  # Timeout plus BUY pour la création de l'ordre
                 )
                 
                 if not result:
@@ -1572,8 +1572,8 @@ class SignalHandler:
                     balances[asset] = {'binance_free': 0, 'binance_total': 0, 'portfolio_available': 0}
             
             # Déterminer quelle balance est critique selon le type de trade
-            if signal.side == OrderSide.LONG:
-                # LONG: On achète, on a besoin de quote_asset (ex: BTC pour ETHBTC)
+            if signal.side == OrderSide.BUY:
+                # BUY: On achète, on a besoin de quote_asset (ex: BTC pour ETHBTC)
                 critical_asset = quote_asset
                 critical_balance = balances[quote_asset]['binance_free']
                 
@@ -1588,8 +1588,8 @@ class SignalHandler:
                         'details': balances
                     }
                 
-            else:  # OrderSide.sell
-                # sell: On vend, on a besoin de base_asset (ex: ETH pour ETHBTC)
+            else:  # OrderSide.SELL
+                # SELL: On vend, on a besoin de base_asset (ex: ETH pour ETHBTC)
                 critical_asset = base_asset
                 critical_balance = balances[base_asset]['binance_free']
                 
@@ -1605,17 +1605,17 @@ class SignalHandler:
             
             # Si on arrive ici, les balances sont suffisantes
             # NOUVEAU: Utiliser toujours les balances Binance réelles pour être cohérent
-            if signal.side == OrderSide.LONG:
-                # LONG: on a besoin de quote_asset, utiliser sa balance Binance réelle
+            if signal.side == OrderSide.BUY:
+                # BUY: on a besoin de quote_asset, utiliser sa balance Binance réelle
                 constraining_balance = balances[quote_asset]['binance_free'] * 0.95  # 5% de marge de sécurité
-                self.logger.info(f"💡 LONG {signal.symbol}: balance contraignante basée sur {quote_asset}: "
+                self.logger.info(f"💡 BUY {signal.symbol}: balance contraignante basée sur {quote_asset}: "
                                f"{balances[quote_asset]['binance_free']:.6f} * 0.95 = {constraining_balance:.6f} {quote_asset}")
-            else:  # OrderSide.sell
-                # sell: on a besoin de base_asset, calculer l'équivalent en quote_asset
+            else:  # OrderSide.SELL
+                # SELL: on a besoin de base_asset, calculer l'équivalent en quote_asset
                 available_base = balances[base_asset]['binance_free']
                 # Convertir la quantité de base disponible en valeur quote (avec marge de sécurité)
                 constraining_balance = available_base * signal.price * 0.9  # 10% de marge
-                self.logger.info(f"💡 sell {signal.symbol}: balance contraignante basée sur {base_asset}: "
+                self.logger.info(f"💡 SELL {signal.symbol}: balance contraignante basée sur {base_asset}: "
                                f"{available_base:.6f} * {signal.price:.6f} * 0.9 = {constraining_balance:.6f} {quote_asset}")
             
             self.logger.info(f"✅ Balances suffisantes pour {signal.side} {signal.symbol}: "
@@ -1778,12 +1778,12 @@ class SignalHandler:
             original_signal = decision.signal if decision.signal else signal
             
             # Déterminer le side basé sur la side désirée
-            # Si on veut une position LONG → signal LONG (acheter pour avoir l'actif)
-            # Si on veut une position sell → signal sell (vendre pour ne plus avoir l'actif)
+            # Si on veut une position BUY → signal BUY (acheter pour avoir l'actif)
+            # Si on veut une position SELL → signal SELL (vendre pour ne plus avoir l'actif)
             if original_signal and hasattr(original_signal, 'side'):
                 side = original_signal.side.value if hasattr(original_signal.side, 'value') else str(original_signal.side)
             else:
-                side = "LONG"  # Par défaut
+                side = "BUY"  # Par défaut
             
             # Préparer les données du cycle
             order_data = {

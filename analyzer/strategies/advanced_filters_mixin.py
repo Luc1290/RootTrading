@@ -99,7 +99,7 @@ class AdvancedFiltersMixin:
             trend_21 = ema_21[-1]
             trend_50 = ema_50[-1]
             
-            if signal_side == OrderSide.LONG:
+            if signal_side == OrderSide.BUY:
                 if current_price > trend_21 and trend_21 > trend_50:
                     return 0.9   # Tendance alignée
                 elif current_price > trend_50:
@@ -107,7 +107,7 @@ class AdvancedFiltersMixin:
                 else:
                     return 0.5   # Contre tendance
             
-            else:  # sell
+            else:  # SELL
                 if current_price < trend_21 and trend_21 < trend_50:
                     return 0.9   # Tendance alignée
                 elif current_price < trend_50:
@@ -150,7 +150,7 @@ class AdvancedFiltersMixin:
                     recent_lows[i] < recent_lows[i+1] and recent_lows[i] < recent_lows[i+2]):
                     pivot_lows.append(recent_lows[i])
             
-            if signal_side == OrderSide.LONG:
+            if signal_side == OrderSide.BUY:
                 if not pivot_lows:
                     return 0.6
                 
@@ -169,7 +169,7 @@ class AdvancedFiltersMixin:
                 else:
                     return 0.7   # Support distant
             
-            else:  # sell
+            else:  # SELL
                 if not pivot_highs:
                     return 0.6
                 
@@ -207,7 +207,7 @@ class AdvancedFiltersMixin:
             
             current_rsi = rsi[-1]
             
-            if signal_side == OrderSide.LONG:
+            if signal_side == OrderSide.BUY:
                 if current_rsi < 35:  # Zone survente
                     return 0.9
                 elif current_rsi < 50:  # Zone neutre basse
@@ -217,7 +217,7 @@ class AdvancedFiltersMixin:
                 else:  # Zone surachat
                     return 0.5
             
-            else:  # sell
+            else:  # SELL
                 if current_rsi > 65:  # Zone surachat
                     return 0.9
                 elif current_rsi > 50:  # Zone neutre haute

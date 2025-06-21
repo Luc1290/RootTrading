@@ -250,9 +250,9 @@ class CycleManager:
             for cycle in all_cycles.values():
                 status_str = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
                 # Vérifier tous les statuts actifs qui devraient avoir des ordres sur Binance
-                if status_str in ['waiting_buy', 'waiting_sell', 'active_buy', 'active_sell']:
-                    # Cas spécial : cycles en waiting_buy/waiting_sell avec entry_order_id (trailing stop)
-                    if status_str in ['waiting_buy', 'waiting_sell'] and cycle.entry_order_id and not cycle.exit_price:
+                if status_str in ['waiting_buy', 'waiting_SELL', 'active_buy', 'active_SELL']:
+                    # Cas spécial : cycles en waiting_buy/waiting_SELL avec entry_order_id (trailing stop)
+                    if status_str in ['waiting_buy', 'waiting_SELL'] and cycle.entry_order_id and not cycle.exit_price:
                         logger.debug(f"✅ Cycle {cycle.id} en {status_str} avec trailing stop")
                         continue
                     # Pour ces cycles, vérifier le bon ordre selon le statut
@@ -374,7 +374,7 @@ class CycleManager:
             logger.error(f"❌ Erreur lors du nettoyage intelligent des ordres orphelins: {str(e)}")
 
     def _cleanup_inactive_cycles(self):
-        """Nettoie les cycles inactifs qui sont restés en mémoire trop longtemps."""
+        """Nettoie les cycles inactifs qui sont restés en mémoire trop BUYtemps."""
         now = datetime.now()
         cycles_to_remove = []
         
@@ -440,7 +440,7 @@ class CycleManager:
                     status_str = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
                     
                     # Vérifier si le cycle devrait avoir des ordres actifs
-                    if status_str in ['waiting_buy', 'waiting_sell', 'active_buy', 'active_sell']:
+                    if status_str in ['waiting_buy', 'waiting_SELL', 'active_buy', 'active_SELL']:
                         # NOUVEAU: Avec no-exit-order, vérifier seulement les cycles en phase d'entrée
                         if cycle.entry_order_id and not cycle.exit_price:
                             # Vérifier si ordre d'entrée existe et n'est pas FILLED
@@ -558,7 +558,7 @@ class CycleManager:
             # Garder le prix de référence pour les calculs (validation des fonds, target price, etc.)
             reference_price = price
 
-            # Vérifier le solde avant d'exécuter l'ordre (pour LONG et sell)
+            # Vérifier le solde avant d'exécuter l'ordre (pour BUY et SELL)
             if not self.demo_mode:
                 # Extraire la base currency et quote currency
                 if symbol.endswith('USDC'):
@@ -576,8 +576,8 @@ class CycleManager:
                 balances = self.binance_executor.utils.fetch_account_balances(self.binance_executor.time_offset)
                 logger.info(f"🔍 Balances Binance récupérées: {balances}")
                 
-                if side == OrderSide.LONG:
-                    # Pour LONG: vérifier qu'on a assez de quote currency
+                if side == OrderSide.BUY:
+                    # Pour BUY: vérifier qu'on a assez de quote currency
                     available_balance = balances.get(quote_currency, {}).get('free', 0)
                     logger.info(f"💰 Balance {quote_currency}: {available_balance}")
                     
@@ -587,7 +587,7 @@ class CycleManager:
                     total_cost = reference_price * quantity * slippage_margin * fee_margin
                     
                     if available_balance < total_cost:
-                        logger.error(f"❌ Solde {quote_currency} insuffisant pour LONG: {available_balance:.8f} < {total_cost:.8f}")
+                        logger.error(f"❌ Solde {quote_currency} insuffisant pour BUY: {available_balance:.8f} < {total_cost:.8f}")
 
                         # Créer le cycle avec un statut FAILED pour la traçabilité
                         cycle.status = CycleStatus.FAILED
@@ -615,8 +615,8 @@ class CycleManager:
                         
                         return None
                         
-                elif side == OrderSide.sell:
-                    # Pour sell: vérifier qu'on a assez de base currency à vendre
+                elif side == OrderSide.SELL:
+                    # Pour SELL: vérifier qu'on a assez de base currency à vendre
                     available_balance = balances.get(base_currency, {}).get('free', 0)
                     logger.info(f"💰 Balance {base_currency}: {available_balance}")
                     
@@ -624,7 +624,7 @@ class CycleManager:
                     required_quantity = quantity * 1.001  # 0.1% de marge pour les frais
                     
                     if available_balance < required_quantity:
-                        logger.error(f"❌ Solde {base_currency} insuffisant pour sell: {available_balance:.8f} < {required_quantity:.8f}")
+                        logger.error(f"❌ Solde {base_currency} insuffisant pour SELL: {available_balance:.8f} < {required_quantity:.8f}")
 
                         # Créer le cycle avec un statut FAILED pour la traçabilité
                         cycle.status = CycleStatus.FAILED
@@ -753,9 +753,9 @@ class CycleManager:
                     logger.info(f"📊 Quantité ajustée: {cycle.quantity} → {execution.quantity}")
                     cycle.metadata['executed_quantity'] = float(execution.quantity)
                 # Après un ordre MARKET d'entrée, on attend l'ordre de sortie
-                # LONG -> on a acheté, on attend de vendre -> WAITING_SELL
-                # sell -> on a vendu, on attend de racheter -> WAITING_BUY
-                cycle.status = CycleStatus.WAITING_SELL if side == OrderSide.LONG else CycleStatus.WAITING_BUY
+                # BUY -> on a acheté, on attend de vendre -> WAITING_SELL
+                # SELL -> on a vendu, on attend de racheter -> WAITING_BUY
+                cycle.status = CycleStatus.WAITING_SELL if side == OrderSide.BUY else CycleStatus.WAITING_BUY
                 cycle.confirmed = True
                 cycle.updated_at = datetime.now()
                 self.active_cycles[cycle_id] = cycle
@@ -866,12 +866,12 @@ class CycleManager:
             
             # Déterminer le côté de l'ordre de sortie (inverse de l'entrée)
             if cycle.status in [CycleStatus.WAITING_BUY, CycleStatus.ACTIVE_BUY]:
-                # Position sell → fermer par LONG
-                # Position sell → fermer par LONG
-                exit_side = OrderSide.LONG
+                # Position SELL → fermer par BUY
+                # Position SELL → fermer par BUY
+                exit_side = OrderSide.BUY
             else:  # WAITING_SELL ou ACTIVE_SELL
-                # Position LONG → fermer par sell
-                exit_side = OrderSide.sell
+                # Position BUY → fermer par SELL
+                exit_side = OrderSide.SELL
 
             # Si il y a un ordre de sortie existant, vérifier son statut avant de l'annuler
             # Ne pas essayer d'annuler si le cycle est en WAITING_SELL/BUY car l'ordre n'existe pas sur Binance
@@ -892,7 +892,7 @@ class CycleManager:
                             entry_value = cycle.entry_price * actual_quantity
                             exit_value = order_status.price * actual_quantity
                             
-                            if exit_side == OrderSide.sell:
+                            if exit_side == OrderSide.SELL:
                                 profit_loss = exit_value - entry_value
                             else:
                                 profit_loss = entry_value - exit_value
@@ -961,7 +961,7 @@ class CycleManager:
             # Vérifier les soldes disponibles avant de créer l'ordre
             balances = self.binance_executor.get_account_balances()
             
-            if exit_side == OrderSide.sell:
+            if exit_side == OrderSide.SELL:
                 # Pour vendre, on a besoin de la devise de base (ex: BTC pour BTCUSDC)
                 base_asset = cycle.symbol[:-4] if cycle.symbol.endswith('USDC') else cycle.symbol[:-3]
                 available = balances.get(base_asset, {}).get('free', 0)
@@ -1017,9 +1017,9 @@ class CycleManager:
             # Si c'est un stop loss, utiliser un ID différent mais plus court
             if is_stop_loss:
                 # Utiliser les 6 derniers caractères du cycle_id + "s" + timestamp court (6 chiffres)
-                sell_cycle_id = cycle_id[-6:]
-                sell_timestamp = str(int(time.time()))[-6:]
-                client_order_id = f"exit_{sell_cycle_id}_s{sell_timestamp}"
+                SELL_cycle_id = cycle_id[-6:]
+                SELL_timestamp = str(int(time.time()))[-6:]
+                client_order_id = f"exit_{SELL_cycle_id}_s{SELL_timestamp}"
             else:
                 client_order_id = f"exit_{cycle_id}"
             
@@ -1090,7 +1090,7 @@ class CycleManager:
             entry_value = cycle.entry_price * actual_entry_quantity
             exit_value = execution.price * execution.quantity
 
-            if exit_side == OrderSide.sell:
+            if exit_side == OrderSide.SELL:
                 # Si on vend à découvert, profit = entrée - sortie
                 profit_loss = entry_value - exit_value
             else:
@@ -1131,9 +1131,9 @@ class CycleManager:
             logger.error(f"❌ Erreur lors de la fermeture du cycle {cycle_id}: {str(e)}")
             return False
     
-    def partial_sell_cycle(self, cycle_id: str, percentage: float, price: float, reason: str = "take_profit") -> bool:
+    def partial_SELL_cycle(self, cycle_id: str, percentage: float, price: float, reason: str = "take_profit") -> bool:
         """
-        Effectue une fermeture partielle d'un cycle (vente partielle LONG ou rachat partiel sell).
+        Effectue une fermeture partielle d'un cycle (vente partielle BUY ou rachat partiel SELL).
         
         Args:
             cycle_id: ID du cycle
@@ -1161,13 +1161,13 @@ class CycleManager:
             
             # Déterminer le côté de la fermeture partielle selon la position
             if cycle.status in [CycleStatus.WAITING_SELL, CycleStatus.ACTIVE_SELL]:
-                # Position LONG ouverte → fermeture partielle par VENTE (sell)
-                partial_side = OrderSide.sell
-                position_type = "LONG"
+                # Position BUY ouverte → fermeture partielle par VENTE (SELL)
+                partial_side = OrderSide.SELL
+                position_type = "BUY"
             else:  # WAITING_BUY ou ACTIVE_BUY
-                # Position sell ouverte → fermeture partielle par RACHAT (LONG)
-                partial_side = OrderSide.LONG
-                position_type = "sell"
+                # Position SELL ouverte → fermeture partielle par RACHAT (BUY)
+                partial_side = OrderSide.BUY
+                position_type = "SELL"
             
             # Calculer la quantité à fermer
             total_quantity = cycle.metadata.get('executed_quantity', cycle.quantity)
@@ -1204,10 +1204,10 @@ class CycleManager:
             
             with self.cycles_lock:
                 # Mettre à jour les métadonnées du cycle
-                if 'partial_sells' not in cycle.metadata:
-                    cycle.metadata['partial_sells'] = []
+                if 'partial_SELLs' not in cycle.metadata:
+                    cycle.metadata['partial_SELLs'] = []
                 
-                cycle.metadata['partial_sells'].append({
+                cycle.metadata['partial_SELLs'].append({
                     'timestamp': datetime.now().isoformat(),
                     'percentage': percentage,
                     'quantity': execution.quantity,
@@ -1411,12 +1411,12 @@ class CycleManager:
         def close_cycle_by_stop(cycle_id: str, exit_price: Optional[float] = None) -> bool:
             return self.close_cycle(cycle_id, exit_price, is_stop_loss=True)
         
-        # Créer un wrapper pour partial_sell_cycle
-        def partial_sell_by_protection(cycle_id: str, percentage: float, price: float, reason: str) -> bool:
-            return self.partial_sell_cycle(cycle_id, percentage, price, reason)
+        # Créer un wrapper pour partial_SELL_cycle
+        def partial_SELL_by_protection(cycle_id: str, percentage: float, price: float, reason: str) -> bool:
+            return self.partial_SELL_cycle(cycle_id, percentage, price, reason)
         
         # Déléguer au StopManagerPure avec les deux wrappers
-        self.stop_manager.process_price_update(symbol, price, close_cycle_by_stop, partial_sell_by_protection)
+        self.stop_manager.process_price_update(symbol, price, close_cycle_by_stop, partial_SELL_by_protection)
         
     def _cleanup_cycle_orders(self, cycle: TradeCycle) -> None:
         """

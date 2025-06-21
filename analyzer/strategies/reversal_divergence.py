@@ -190,7 +190,7 @@ class ReversalDivergenceStrategy(BaseStrategy, AdvancedFiltersMixin):
                     
                     return {
                         "type": "bullish",
-                        "side": OrderSide.LONG,
+                        "side": OrderSide.BUY,
                         "price": current_price,
                         "confidence": 0.75 + (score / 4),  # Confiance entre 0.75 et 1.0 (augmentée)
                         "last_price_low": float(last_price_low),
@@ -243,7 +243,7 @@ class ReversalDivergenceStrategy(BaseStrategy, AdvancedFiltersMixin):
                     
                     return {
                         "type": "bearish",
-                        "side": OrderSide.sell,
+                        "side": OrderSide.SELL,
                         "price": current_price,
                         "confidence": 0.75 + (score / 4),  # Confiance entre 0.75 et 1.0 (augmentée)
                         "last_price_high": float(last_price_high),
@@ -291,6 +291,6 @@ class ReversalDivergenceStrategy(BaseStrategy, AdvancedFiltersMixin):
         
         # Log du signal
         logger.info(f"🔄 [Divergence] Signal {side.value} sur {self.symbol}: "
-                   f"divergence {'haussière' if side == OrderSide.LONG else 'baissière'} détectée (confiance: {confidence:.2f})")
+                   f"divergence {'haussière' if side == OrderSide.BUY else 'baissière'} détectée (confiance: {confidence:.2f})")
 
         return signal

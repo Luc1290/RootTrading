@@ -35,11 +35,11 @@ DB_MIN_CONNECTIONS = int(os.getenv("DB_MIN_CONNECTIONS", "1"))
 DB_MAX_CONNECTIONS = int(os.getenv("DB_MAX_CONNECTIONS", "50"))
 
 # Paramètres de trading
-# Paramètres de trading
 DEFAULT_SYMBOL = os.getenv("SYMBOL", "SOLUSDC")
 SYMBOLS = os.getenv("SYMBOLS", "SOLUSDC,XRPUSDC").split(",")
 INTERVAL = os.getenv("INTERVAL", "1m")
-VALIDATION_INTERVAL = os.getenv("VALIDATION_INTERVAL", "15m")
+VALIDATION_INTERVAL = os.getenv("VALIDATION_INTERVAL", "5m")  # Changé pour scalping
+SCALPING_INTERVALS = os.getenv("SCALPING_INTERVALS", "1m,3m,5m").split(",")  # Multi-timeframes
 TRADING_MODE = os.getenv("TRADING_MODE", "demo")  # 'demo' ou 'live'
 
 # Quantités individuelles par symbole (doivent correspondre aux SYMBOLS)
@@ -68,8 +68,8 @@ STRATEGY_PARAMS = {
         "oversold": int(os.getenv("RSI_OVERSOLD", 30)),
     },
     "ema_cross": {
-        "sell_window": int(os.getenv("sell_WINDOW", 5)),
-        "long_window": int(os.getenv("LONG_WINDOW", 20)),
+        "SELL_window": int(os.getenv("SELL_WINDOW", 5)),
+        "BUY_window": int(os.getenv("BUY_WINDOW", 20)),
     },
     "bollinger": {
         "window": int(os.getenv("BB_WINDOW", 20)),

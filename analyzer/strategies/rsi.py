@@ -252,7 +252,7 @@ class RSIStrategy(BaseStrategy):
         
         prev_rsi = rsi_values[-2]
         
-        # Setup LONG: RSI en zone survente avec momentum favorable
+        # Setup BUY: RSI en zone survente avec momentum favorable
         if current_rsi <= self.oversold_threshold:
             # Vérifier que ce n'est pas un couteau qui tombe
             if len(rsi_values) >= 5:
@@ -260,9 +260,9 @@ class RSIStrategy(BaseStrategy):
                 # Si RSI chute trop vite (>20 points en 5 périodes), attendre stabilisation
                 if rsi_momentum < -20:
                     return None
-            return OrderSide.LONG
+            return OrderSide.BUY
         
-        # Setup sell: RSI en zone surachat avec momentum favorable  
+        # Setup SELL: RSI en zone surachat avec momentum favorable  
         elif current_rsi >= self.overbought_threshold:
             # Vérifier que ce n'est pas un breakout en cours
             if len(rsi_values) >= 5:
@@ -270,7 +270,7 @@ class RSIStrategy(BaseStrategy):
                 # Si RSI monte trop vite (>20 points en 5 périodes), attendre ralentissement
                 if rsi_momentum > 20:
                     return None
-            return OrderSide.sell
+            return OrderSide.SELL
         
         return None
     
@@ -294,8 +294,8 @@ class RSIStrategy(BaseStrategy):
             else:
                 current_macd = 0
             
-            if signal_side == OrderSide.LONG:
-                # Pour LONG: chercher momentum haussier naissant
+            if signal_side == OrderSide.BUY:
+                # Pour BUY: chercher momentum haussier naissant
                 score = 0.5  # Base
                 
                 if roc_5 > -2:  # Prix pas en chute libre
@@ -307,8 +307,8 @@ class RSIStrategy(BaseStrategy):
                 
                 return min(0.95, score)
             
-            else:  # sell
-                # Pour sell: chercher momentum baissier naissant
+            else:  # SELL
+                # Pour SELL: chercher momentum baissier naissant
                 score = 0.5  # Base
                 
                 if roc_5 < 2:  # Prix pas en montée folle
@@ -364,7 +364,7 @@ class RSIStrategy(BaseStrategy):
             recent_highs = highs[-recent_period:]
             recent_lows = lows[-recent_period:]
             
-            if signal_side == OrderSide.LONG:
+            if signal_side == OrderSide.BUY:
                 # Chercher confluence avec support
                 recent_lows_sorted = sorted(recent_lows)
                 potential_support = recent_lows_sorted[:3]  # 3 plus bas récents
@@ -381,7 +381,7 @@ class RSIStrategy(BaseStrategy):
                 else:
                     return 0.7
             
-            else:  # sell
+            else:  # SELL
                 # Chercher confluence avec résistance
                 recent_highs_sorted = sorted(recent_highs, reverse=True)
                 potential_resistance = recent_highs_sorted[:3]  # 3 plus hauts récents
@@ -424,7 +424,7 @@ class RSIStrategy(BaseStrategy):
             recent_prices = recent_prices[valid_mask]
             recent_rsi = recent_rsi[valid_mask]
             
-            if signal_side == OrderSide.LONG:
+            if signal_side == OrderSide.BUY:
                 # Divergence bullish: prix fait plus bas, RSI fait plus haut
                 price_trend = np.polyfit(range(len(recent_prices)), recent_prices, 1)[0]
                 rsi_trend = np.polyfit(range(len(recent_rsi)), recent_rsi, 1)[0]
@@ -436,7 +436,7 @@ class RSIStrategy(BaseStrategy):
                 else:
                     return 0.7
             
-            else:  # sell
+            else:  # SELL
                 # Divergence bearish: prix fait plus haut, RSI fait plus bas
                 price_trend = np.polyfit(range(len(recent_prices)), recent_prices, 1)[0]
                 rsi_trend = np.polyfit(range(len(recent_rsi)), recent_rsi, 1)[0]
@@ -474,7 +474,7 @@ class RSIStrategy(BaseStrategy):
             trend_21 = ema_21[-1]
             trend_50 = ema_50[-1]
             
-            if signal_side == OrderSide.LONG:
+            if signal_side == OrderSide.BUY:
                 if current_price > trend_21 and trend_21 > trend_50:
                     return 0.9   # Tendance alignée
                 elif current_price > trend_50:
@@ -482,7 +482,7 @@ class RSIStrategy(BaseStrategy):
                 else:
                     return 0.5   # Contre tendance
             
-            else:  # sell
+            else:  # SELL
                 if current_price < trend_21 and trend_21 < trend_50:
                     return 0.9   # Tendance alignée
                 elif current_price < trend_50:
@@ -505,7 +505,7 @@ class RSIStrategy(BaseStrategy):
             # Analyse de la volatilité RSI
             rsi_volatility = np.std(rsi_values[-20:])
             
-            if signal_side == OrderSide.LONG:
+            if signal_side == OrderSide.BUY:
                 # En haute volatilité, accepter des RSI moins extrêmes
                 if rsi_volatility > 15:  # RSI très volatile
                     threshold = 35  # Seuil élargi
@@ -520,7 +520,7 @@ class RSIStrategy(BaseStrategy):
                 else:
                     return 0.6
             
-            else:  # sell
+            else:  # SELL
                 if rsi_volatility > 15:
                     threshold = 65  # Seuil élargi
                 else:

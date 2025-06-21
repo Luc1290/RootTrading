@@ -215,7 +215,7 @@ def create_order():
     Exemple de requête:
     {
         "symbol": "BTCUSDC",
-        "side": "LONG",  # ou "sell"
+        "side": "BUY",  # ou "SELL"
         "quantity": 0.001,
         "price": 50000  # optionnel
     }
@@ -479,7 +479,7 @@ def reload_active_cycles():
 @routes_bp.route('/cycles/cleanup', methods=['POST'])
 def cleanup_stuck_cycles():
     """
-    Nettoie les cycles bloqués (active_sell sans ordre de sortie, etc.).
+    Nettoie les cycles bloqués (active_SELL sans ordre de sortie, etc.).
     
     Body JSON optionnel:
     {
@@ -507,7 +507,7 @@ def cleanup_stuck_cycles():
         now = datetime.now()
         
         for cycle in cycles:
-            # Vérifier les cycles bloqués depuis trop longtemps (sans exit_order_id car géré par StopManager)
+            # Vérifier les cycles bloqués depuis trop BUYtemps (sans exit_order_id car géré par StopManager)
             if cycle.status in [CycleStatus.ACTIVE_SELL, CycleStatus.WAITING_SELL]:
                 time_since_update = now - cycle.updated_at
                 
@@ -640,7 +640,7 @@ def diagnostic_binance_signature():
     timestamp = int(time.time() * 1000)
     test_params = {
         "symbol": "BTCUSDC",
-        "side": "LONG",
+        "side": "BUY",
         "type": "LIMIT",
         "quantity": "0.00100",
         "price": "30000.00",
@@ -759,11 +759,11 @@ def check_balance_for_order():
                 "message": "Paramètres manquants: symbol, side, quantity, price requis"
             }), 400
         
-        # Seulement vérifier pour les ordres LONG
-        if side.upper() != 'LONG':
+        # Seulement vérifier pour les ordres BUY
+        if side.upper() != 'BUY':
             return jsonify({
                 "success": True,
-                "message": "Vérification non nécessaire pour les ordres sell",
+                "message": "Vérification non nécessaire pour les ordres SELL",
                 "sufficient": True
             })
         

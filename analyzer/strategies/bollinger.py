@@ -245,7 +245,7 @@ class BollingerStrategy(BaseStrategy):
         current_lower = lower[-1]
         current_middle = middle[-1]
         
-        # Setup LONG: Prix près/sous la bande basse avec rebond potentiel
+        # Setup BUY: Prix près/sous la bande basse avec rebond potentiel
         if current_price <= current_lower * 1.003:  # Marge de 0.3%
             # Vérifier si ce n'est pas un couteau qui tombe
             recent_prices = prices[-5:] if len(prices) >= 5 else prices
@@ -253,16 +253,16 @@ class BollingerStrategy(BaseStrategy):
                 # Le prix doit montrer des signes de stabilisation
                 price_momentum = (recent_prices[-1] - recent_prices[-3]) / recent_prices[-3]
                 if price_momentum > -0.02:  # Pas de chute > 2% sur 3 périodes
-                    return OrderSide.LONG
+                    return OrderSide.BUY
         
-        # Setup sell: Prix près/au-dessus de la bande haute avec rejet potentiel
+        # Setup SELL: Prix près/au-dessus de la bande haute avec rejet potentiel
         elif current_price >= current_upper * 0.997:  # Marge de 0.3%
             # Vérifier les signes de rejet
             recent_highs = [prices[i] for i in range(max(0, len(prices)-3), len(prices))]
             if len(recent_highs) >= 2:
                 # Prix doit montrer des signes de plafonnement
                 if max(recent_highs) - current_price < current_price * 0.005:  # Dans les 0.5% du plus haut
-                    return OrderSide.sell
+                    return OrderSide.SELL
         
         return None
     
@@ -320,7 +320,7 @@ class BollingerStrategy(BaseStrategy):
             recent_prices = recent_prices[valid_mask]
             recent_rsi = recent_rsi[valid_mask]
             
-            if signal_side == OrderSide.LONG:
+            if signal_side == OrderSide.BUY:
                 # Chercher divergence bullish: prix fait des plus bas, RSI des plus hauts
                 price_min_idx = np.argmin(recent_prices[-10:])
                 rsi_in_price_min_zone = recent_rsi[-10:][price_min_idx]
@@ -335,7 +335,7 @@ class BollingerStrategy(BaseStrategy):
                 else:
                     return 0.6
             
-            else:  # sell
+            else:  # SELL
                 # Chercher divergence bearish: prix fait des plus hauts, RSI des plus bas
                 price_max_idx = np.argmax(recent_prices[-10:])
                 rsi_in_price_max_zone = recent_rsi[-10:][price_max_idx]
@@ -386,7 +386,7 @@ class BollingerStrategy(BaseStrategy):
                     recent_lows[i] < recent_lows[i+1] and recent_lows[i] < recent_lows[i+2]):
                     pivot_lows.append(recent_lows[i])
             
-            if signal_side == OrderSide.LONG:
+            if signal_side == OrderSide.BUY:
                 # Chercher confluence avec support
                 if not pivot_lows:
                     return 0.6
@@ -408,7 +408,7 @@ class BollingerStrategy(BaseStrategy):
                 else:
                     return 0.6   # Support lointain
             
-            else:  # sell
+            else:  # SELL
                 # Chercher confluence avec résistance
                 if not pivot_highs:
                     return 0.6
@@ -467,14 +467,14 @@ class BollingerStrategy(BaseStrategy):
                 trend_strength = 0
             
             # Score selon l'alignement avec la tendance
-            if signal_side == OrderSide.LONG:
+            if signal_side == OrderSide.BUY:
                 if trend_direction == "BULLISH":
                     return min(0.95, 0.8 + trend_strength * 10)  # Aligné avec tendance
                 elif trend_direction == "NEUTRAL":
                     return 0.7  # Neutre
                 else:
                     return 0.4  # Contre tendance
-            else:  # sell
+            else:  # SELL
                 if trend_direction == "BEARISH":
                     return min(0.95, 0.8 + trend_strength * 10)
                 elif trend_direction == "NEUTRAL":
@@ -590,7 +590,7 @@ class BollingerStrategy(BaseStrategy):
         """
         Calcule la distance du prix par rapport à la bande pertinente.
         """
-        if side == OrderSide.LONG:
+        if side == OrderSide.BUY:
             return ((lower[-1] - price) / price * 100) if price > 0 else 0
         else:
             return ((price - upper[-1]) / price * 100) if price > 0 else 0

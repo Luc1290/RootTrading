@@ -162,7 +162,7 @@ class SmartCycleManager:
         
         Args:
             symbol: Symbole à chercher
-            side: Side du signal (LONG/sell)
+            side: Side du signal (BUY/SELL)
             existing_cycles: Liste des cycles existants
             
         Returns:
@@ -170,14 +170,14 @@ class SmartCycleManager:
         """
         for cycle in existing_cycles:
             # LOGIQUE CORRECTE basée sur l'analyse du code :
-            # waiting_sell = position LONG ouverte (a acheté, attend de vendre)
-            # waiting_buy = position sell ouverte (a vendu, attend de racheter)
+            # waiting_SELL = position BUY ouverte (a acheté, attend de vendre)
+            # waiting_buy = position SELL ouverte (a vendu, attend de racheter)
             cycle_status = cycle.get('status')
             
-            if cycle_status == 'waiting_sell':
-                cycle_side = "LONG"  # Position LONG ouverte
+            if cycle_status == 'waiting_SELL':
+                cycle_side = "BUY"  # Position BUY ouverte
             elif cycle_status == 'waiting_buy': 
-                cycle_side = "sell"  # Position sell ouverte
+                cycle_side = "SELL"  # Position SELL ouverte
             else:
                 continue  # Ignorer les autres statuts
 
@@ -261,7 +261,7 @@ class SmartCycleManager:
         
         # Calculer la performance actuelle
         side_str = signal.side.value if hasattr(signal.side, 'value') else str(signal.side)
-        if side_str == "LONG":
+        if side_str == "BUY":
             price_change_pct = ((current_price - entry_price) / entry_price) * 100
         else:
             price_change_pct = ((entry_price - current_price) / entry_price) * 100
@@ -367,12 +367,12 @@ class SmartCycleManager:
         # Si confiance faible → Prix plus conservateur
         
         side_str = signal.side.value if hasattr(signal.side, 'value') else str(signal.side)
-        if side_str == "BUY" or side_str == "LONG":
-            # Pour un LONG, plus la confiance est haute, plus on accepte d'acheter proche du prix actuel
+        if side_str == "BUY" or side_str == "BUY":
+            # Pour un BUY, plus la confiance est haute, plus on accepte d'acheter proche du prix actuel
             discount_pct = (1.0 - confidence) * 2.0  # Entre 0% et 2% de discount
             entry_price = current_price * (1 - discount_pct / 100)
         else:
-            # Pour un sell, plus la confiance est haute, plus on accepte de vendre proche du prix actuel  
+            # Pour un SELL, plus la confiance est haute, plus on accepte de vendre proche du prix actuel  
             premium_pct = (1.0 - confidence) * 2.0   # Entre 0% et 2% de premium
             entry_price = current_price * (1 + premium_pct / 100)
         
@@ -480,13 +480,13 @@ class SmartCycleManager:
             new_avg_price = total_cost / new_total_quantity
             
             # 4. Déterminer le côté correct pour le renforcement
-            # Si waiting_sell → position LONG → besoin d'un ordre LONG pour renforcer
-            # Si waiting_buy → position sell → besoin d'un ordre sell pour renforcer
+            # Si waiting_SELL → position BUY → besoin d'un ordre BUY pour renforcer
+            # Si waiting_buy → position SELL → besoin d'un ordre SELL pour renforcer
             cycle_status = cycle.get('status', '')
-            if cycle_status == 'waiting_sell':
-                reinforce_side = "LONG"  # Acheter plus pour une position longue
+            if cycle_status == 'waiting_SELL':
+                reinforce_side = "BUY"  # Acheter plus pour une position BUYue
             elif cycle_status == 'waiting_buy':
-                reinforce_side = "sell"  # Vendre plus pour une position courte
+                reinforce_side = "SELL"  # Vendre plus pour une position courte
             else:
                 self.logger.error(f"Status de cycle invalide pour renforcement: {cycle_status}")
                 return False
@@ -637,7 +637,7 @@ class SmartCycleManager:
             exposure = {
                 'total_positions': len(cycles),
                 'by_symbol': {},
-                'by_side': {'LONG': 0, 'sell': 0},
+                'by_side': {'BUY': 0, 'SELL': 0},
                 'total_value_usd': 0
             }
             
@@ -648,10 +648,10 @@ class SmartCycleManager:
                 status = cycle.get('status', '')
                 
                 # Déterminer le côté de la position
-                if status in ['waiting_sell', 'active_sell']:
-                    side = 'LONG'
+                if status in ['waiting_SELL', 'active_SELL']:
+                    side = 'BUY'
                 else:
-                    side = 'sell'
+                    side = 'SELL'
                 
                 # Calculer la valeur en USD (approximative)
                 position_value = quantity * entry_price
@@ -661,8 +661,8 @@ class SmartCycleManager:
                     exposure['by_symbol'][symbol] = {
                         'count': 0,
                         'total_value': 0,
-                        'LONG': 0,
-                        'sell': 0
+                        'BUY': 0,
+                        'SELL': 0
                     }
                 
                 exposure['by_symbol'][symbol]['count'] += 1
@@ -691,7 +691,7 @@ class SmartCycleManager:
         
         Args:
             symbol: Symbole concerné
-            side: Côté de la position (LONG/sell)
+            side: Côté de la position (BUY/SELL)
             
         Returns:
             Tuple (allowed, reason)
@@ -715,15 +715,15 @@ class SmartCycleManager:
         if symbol_data.get('concentration_pct', 0) >= max_concentration:
             return False, f"Concentration excessive: {symbol_data['concentration_pct']:.1f}% sur {symbol}"
         
-        # Règle 4: Équilibre LONG/sell
-        long_count = exposure.get('by_side', {}).get('LONG', 0)
-        sell_count = exposure.get('by_side', {}).get('sell', 0)
+        # Règle 4: Équilibre BUY/SELL
+        BUY_count = exposure.get('by_side', {}).get('BUY', 0)
+        SELL_count = exposure.get('by_side', {}).get('SELL', 0)
         
         # Si déséquilibre important, favoriser le côté opposé
-        if side == 'LONG' and long_count > sell_count * 2:
-            return False, f"Déséquilibre LONG/sell: {long_count} LONG vs {sell_count} sell"
-        elif side == 'sell' and sell_count > long_count * 2:
-            return False, f"Déséquilibre sell/LONG: {sell_count} sell vs {long_count} LONG"
+        if side == 'BUY' and BUY_count > SELL_count * 2:
+            return False, f"Déséquilibre BUY/SELL: {BUY_count} BUY vs {SELL_count} SELL"
+        elif side == 'SELL' and SELL_count > BUY_count * 2:
+            return False, f"Déséquilibre SELL/BUY: {SELL_count} SELL vs {BUY_count} BUY"
         
         return True, "Position autorisée"
     

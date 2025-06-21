@@ -89,7 +89,7 @@ class GainProtector:
         Args:
             cycle_id: ID unique du cycle
             entry_price: Prix d'entrée
-            side: LONG ou sell
+            side: BUY ou SELL
             quantity: Quantité initiale
         """
         self.cycle_states[cycle_id] = {
@@ -101,7 +101,7 @@ class GainProtector:
             'max_gain_reached': 0.0,
             'levels_triggered': set(),
             'trailing_active': False,
-            'trailing_high': entry_price if side == 'LONG' else entry_price,
+            'trailing_high': entry_price if side == 'BUY' else entry_price,
             'break_even_set': False,
             'created_at': time.time()
         }
@@ -117,7 +117,7 @@ class GainProtector:
             current_price: Prix actuel
             
         Returns:
-            Liste des actions à exécuter: [{'action': 'sell_partial', 'percentage': 30, ...}, ...]
+            Liste des actions à exécuter: [{'action': 'SELL_partial', 'percentage': 30, ...}, ...]
         """
         if cycle_id not in self.cycle_states:
             self.logger.warning(f"Cycle {cycle_id} non initialisé dans GainProtector")
@@ -127,9 +127,9 @@ class GainProtector:
         actions = []
         
         # Calculer le gain actuel
-        if state['side'] == 'LONG':
+        if state['side'] == 'BUY':
             gain_pct = ((current_price - state['entry_price']) / state['entry_price']) * 100
-        else:  # sell
+        else:  # SELL
             gain_pct = ((state['entry_price'] - current_price) / state['entry_price']) * 100
         
         # Mettre à jour le gain maximum
@@ -137,10 +137,10 @@ class GainProtector:
             state['max_gain_reached'] = gain_pct
             
             # Mettre à jour le trailing high/low
-            if state['side'] == 'LONG':
+            if state['side'] == 'BUY':
                 state['trailing_high'] = max(state['trailing_high'], current_price)
-            else: # sell
-                # Pour un sell, on suit le plus bas
+            else: # SELL
+                # Pour un SELL, on suit le plus bas
                 state['trailing_high'] = min(state['trailing_high'], current_price)
         
         # Vérifier chaque niveau de protection
@@ -177,17 +177,17 @@ class GainProtector:
         
         # Take profit partiel si configuré
         if target.take_profit_percentage > 0:
-            sell_quantity = (state['remaining_quantity'] * target.take_profit_percentage) / 100
+            SELL_quantity = (state['remaining_quantity'] * target.take_profit_percentage) / 100
             actions.append({
-                'action': 'sell_partial',
-                'quantity': sell_quantity,
+                'action': 'SELL_partial',
+                'quantity': SELL_quantity,
                 'percentage': target.take_profit_percentage,
                 'reason': f'take_profit_level_{level}',
                 'price': current_price
             })
             
             # Mettre à jour la quantité restante
-            state['remaining_quantity'] -= sell_quantity
+            state['remaining_quantity'] -= SELL_quantity
             
             self.logger.info(f"💰 Take profit {target.take_profit_percentage}% au niveau {level} - Reste: {state['remaining_quantity']:.6f}")
         
@@ -230,22 +230,22 @@ class GainProtector:
         
         trailing_distance = state['trailing_distance']
 
-        if state['side'] == 'LONG':
-            # Pour un LONG, vérifier si le prix a baissé de X% depuis le high
+        if state['side'] == 'BUY':
+            # Pour un BUY, vérifier si le prix a baissé de X% depuis le high
             price_drop_pct = ((state['trailing_high'] - current_price) / state['trailing_high']) * 100
             
             if price_drop_pct >= trailing_distance:
                 self.logger.info(f"🚨 Trailing stop déclenché pour cycle {cycle_id}: baisse de {price_drop_pct:.2f}% depuis {state['trailing_high']}")
                 
                 return {
-                    'action': 'sell_all',
+                    'action': 'SELL_all',
                     'reason': 'trailing_stop_triggered',
                     'price': current_price,
                     'trailing_high': state['trailing_high'],
                     'drop_percentage': price_drop_pct
                 }
-        else:  # sell
-            # Pour un sell, vérifier si le prix a monté de X% depuis le low
+        else:  # SELL
+            # Pour un SELL, vérifier si le prix a monté de X% depuis le low
             price_rise_pct = ((current_price - state['trailing_high']) / state['trailing_high']) * 100
             
             if price_rise_pct >= trailing_distance:
@@ -268,16 +268,16 @@ class GainProtector:
         Args:
             entry_price: Prix d'entrée
             stop_percentage: Pourcentage de stop (positif = profit, négatif = perte)
-            side: LONG ou sell
+            side: BUY ou SELL
 
         Returns:
             Prix de stop calculé
         """
-        if side == 'LONG':
-            # Pour un LONG, stop_percentage positif = stop plus haut que l'entrée
+        if side == 'BUY':
+            # Pour un BUY, stop_percentage positif = stop plus haut que l'entrée
             return entry_price * (1 + stop_percentage / 100)
-        else:  # sell
-            # Pour un sell, stop_percentage positif = stop plus bas que l'entrée
+        else:  # SELL
+            # Pour un SELL, stop_percentage positif = stop plus bas que l'entrée
             return entry_price * (1 - stop_percentage / 100)
     
     def get_cycle_status(self, cycle_id: str) -> Optional[Dict]:

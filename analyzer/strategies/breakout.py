@@ -170,7 +170,7 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
                     
                     return {
                         "type": "bullish",
-                        "side": OrderSide.LONG,
+                        "side": OrderSide.BUY,
                         "price": last_close,
                         "support": support,
                         "resistance": resistance,
@@ -204,7 +204,7 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
                     
                     return {
                         "type": "bearish",
-                        "side": OrderSide.sell,
+                        "side": OrderSide.SELL,
                         "price": last_close,
                         "support": support,
                         "resistance": resistance,
@@ -340,7 +340,7 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
             # Breakout haussier
             if current_price > resistance * 1.002:  # 0.2% au-dessus
                 return {
-                    'side': OrderSide.LONG,
+                    'side': OrderSide.BUY,
                     'level': resistance,
                     'duration': lookback,
                     'height_pct': (resistance - support) / support * 100
@@ -349,7 +349,7 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
             # Breakout baissier
             elif current_price < support * 0.998:  # 0.2% en dessous
                 return {
-                    'side': OrderSide.sell,
+                    'side': OrderSide.SELL,
                     'level': support,
                     'duration': lookback,
                     'height_pct': (resistance - support) / support * 100
@@ -369,7 +369,7 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
             current_price = df['close'].iloc[-1]
             level = breakout_info['level']
             
-            if breakout_info['side'] == OrderSide.LONG:
+            if breakout_info['side'] == OrderSide.BUY:
                 penetration = (current_price - level) / level * 100
             else:
                 penetration = (level - current_price) / level * 100
