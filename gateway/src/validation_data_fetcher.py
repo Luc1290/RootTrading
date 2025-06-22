@@ -50,8 +50,8 @@ class ValidationDataFetcher:
                     await self._fetch_and_store_validation_data(symbol)
                 
                 # Attendre avant la prochaine mise à jour
-                # Pour 15m, on met à jour toutes les 5 minutes
-                await asyncio.sleep(300)  # 5 minutes
+                # Pour 5m, on met à jour toutes les 30 secondes
+                await asyncio.sleep(30)  # 30 secondes entre chaque récupération
                 
             except Exception as e:
                 logger.error(f"❌ Erreur dans la boucle ValidationDataFetcher: {e}")
@@ -81,10 +81,10 @@ class ValidationDataFetcher:
             validation_data = self._process_klines(klines)
             
             # Stocker dans Redis
-            redis_key = f"market_data:{symbol}:15m"
+            redis_key = f"market_data:{symbol}:{self.interval}"
             self._store_in_redis(redis_key, validation_data)
             
-            logger.debug(f"✅ Données 15m mises à jour pour {symbol}")
+            logger.debug(f"✅ Données {self.interval} mises à jour pour {symbol}")
             
         except Exception as e:
             logger.error(f"❌ Erreur lors de la mise à jour des données {symbol}: {e}")
