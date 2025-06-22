@@ -38,8 +38,8 @@ class CycleStatus(str, Enum):
     INITIATING = "initiating"            # Cycle en cours d'initialisation
     WAITING_BUY = "waiting_buy"          # En attente d'achat
     ACTIVE_BUY = "active_buy"            # Achat en cours
-    WAITING_SELL = "waiting_SELL"        # En attente de vente
-    ACTIVE_SELL = "active_SELL"          # Vente en cours
+    WAITING_SELL = "waiting_sell"        # En attente de vente
+    ACTIVE_SELL = "active_sell"          # Vente en cours
     COMPLETED = "completed"              # Cycle terminé avec succès
     CANCELED = "canceled"                # Cycle annulé
     FAILED = "failed"                    # Cycle échoué

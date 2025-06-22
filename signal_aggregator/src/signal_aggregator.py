@@ -915,6 +915,37 @@ class EnhancedSignalAggregator(SignalAggregator):
         # Validations de base
         if not await self._apply_market_context_filters(signal):
             return None
+            
+        # NOUVEAU: Vérifier le niveau de danger du marché
+        symbol = signal['symbol']
+        danger_level = await self.regime_detector.get_danger_level(symbol)
+        
+        # Logique anti-piège à rebond
+        if danger_level >= 7.0:
+            # Marché dangereux: bloquer les nouveaux LONG/BUY
+            side = signal.get('side', signal.get('side'))
+            if side in ['BUY', 'LONG']:
+                logger.info(f"🚫 Signal BUY bloqué pour {symbol}: danger level {danger_level:.1f} (anti-piège à rebond)")
+                return None
+            # Les SELL/SHORT passent en marché dangereux
+            logger.info(f"⚠️ Signal SELL autorisé malgré danger {danger_level:.1f} pour {symbol}")
+            
+        elif danger_level >= 5.0:
+            # Marché en alerte: réduire la confiance et augmenter les seuils
+            signal['confidence'] = signal.get('confidence', 0.5) * 0.8
+            logger.info(f"⚠️ Confiance réduite pour {symbol}: danger level {danger_level:.1f}")
+            
+        # NOUVEAU: Vérifier si on est en période de récupération
+        if await self.regime_detector.is_in_recovery(symbol):
+            side = signal.get('side', signal.get('side'))
+            if side in ['BUY', 'LONG']:
+                # Exiger une confirmation TRÈS forte pour réentrer après une crise
+                min_confidence_recovery = 0.85
+                if signal.get('confidence', 0) < min_confidence_recovery:
+                    logger.info(f"🛡️ Signal BUY rejeté en période de récupération: "
+                               f"confiance {signal.get('confidence', 0):.2f} < {min_confidence_recovery}")
+                    return None
+                logger.info(f"✅ Signal BUY accepté en récupération avec forte confiance: {signal.get('confidence', 0):.2f}")
         
         # Vérifier si on est en transition de régime
         if await self._check_regime_transition(signal['symbol']):
@@ -938,9 +969,36 @@ class EnhancedSignalAggregator(SignalAggregator):
             # Ajuster la confiance finale
             aggregated['confidence'] *= correlation_score
             
-            # Ajouter les métriques de corrélation
+            # NOUVEAU: Ajuster la taille de position selon le danger et la récupération
             if 'metadata' not in aggregated:
                 aggregated['metadata'] = {}
+                
+            # Logique d'accumulation progressive
+            if await self.regime_detector.is_in_recovery(symbol):
+                # Période de récupération: accumulation progressive
+                recovery_time = await self._get_recovery_duration(symbol)
+                
+                if recovery_time < 300:  # < 5 minutes depuis la sortie de danger
+                    size_multiplier = 0.3  # Commencer petit (30%)
+                    accumulation_phase = "initial"
+                elif recovery_time < 600:  # < 10 minutes
+                    size_multiplier = 0.6  # Augmenter progressivement (60%)
+                    accumulation_phase = "progressive"
+                else:
+                    size_multiplier = 1.0  # Retour à la normale
+                    accumulation_phase = "complete"
+                    
+                aggregated['metadata']['accumulation_phase'] = accumulation_phase
+                aggregated['metadata']['suggested_size_multiplier'] = size_multiplier
+                logger.info(f"📈 Accumulation {accumulation_phase}: taille {size_multiplier:.0%} pour {symbol}")
+                
+            elif danger_level >= 5.0:
+                # Réduire la taille suggérée en marché dangereux
+                size_multiplier = max(0.3, 1.0 - (danger_level / 10.0))
+                aggregated['metadata']['suggested_size_multiplier'] = size_multiplier
+                aggregated['metadata']['danger_level'] = danger_level
+                logger.info(f"📉 Taille de position réduite à {size_multiplier:.1%} pour danger {danger_level:.1f}")
+            
             aggregated['metadata']['correlation_score'] = correlation_score
             aggregated['metadata']['enhanced_filtering'] = True
             
@@ -948,3 +1006,35 @@ class EnhancedSignalAggregator(SignalAggregator):
             await self._track_signal_accuracy(aggregated)
         
         return aggregated
+    
+    async def _get_recovery_duration(self, symbol: str) -> float:
+        """Get the duration since entering recovery period"""
+        try:
+            # Get danger history to find when we exited danger
+            history_key = f"danger_history:{symbol}"
+            history = []
+            
+            # Try to get recent history
+            try:
+                for i in range(20):  # Check last 20 entries
+                    entry = self.redis.lindex(history_key, i)
+                    if entry:
+                        history.append(json.loads(entry))
+            except:
+                pass
+                
+            # Find when we exited danger zone
+            exit_time = None
+            for i, entry in enumerate(history):
+                if entry['level'] < 5.0 and i > 0 and history[i-1]['level'] >= 7.0:
+                    exit_time = datetime.fromisoformat(entry['timestamp'])
+                    break
+                    
+            if exit_time:
+                duration = (datetime.now() - exit_time).total_seconds()
+                return duration
+                
+        except Exception as e:
+            logger.error(f"Error calculating recovery duration: {e}")
+            
+        return 0  # Default to start of recovery

@@ -170,11 +170,11 @@ class SmartCycleManager:
         """
         for cycle in existing_cycles:
             # LOGIQUE CORRECTE basée sur l'analyse du code :
-            # waiting_SELL = position BUY ouverte (a acheté, attend de vendre)
+            # waiting_sell = position BUY ouverte (a acheté, attend de vendre)
             # waiting_buy = position SELL ouverte (a vendu, attend de racheter)
             cycle_status = cycle.get('status')
             
-            if cycle_status == 'waiting_SELL':
+            if cycle_status == 'waiting_sell':
                 cycle_side = "BUY"  # Position BUY ouverte
             elif cycle_status == 'waiting_buy': 
                 cycle_side = "SELL"  # Position SELL ouverte
@@ -480,10 +480,10 @@ class SmartCycleManager:
             new_avg_price = total_cost / new_total_quantity
             
             # 4. Déterminer le côté correct pour le renforcement
-            # Si waiting_SELL → position BUY → besoin d'un ordre BUY pour renforcer
+            # Si waiting_sell → position BUY → besoin d'un ordre BUY pour renforcer
             # Si waiting_buy → position SELL → besoin d'un ordre SELL pour renforcer
             cycle_status = cycle.get('status', '')
-            if cycle_status == 'waiting_SELL':
+            if cycle_status == 'waiting_sell':
                 reinforce_side = "BUY"  # Acheter plus pour une position BUYue
             elif cycle_status == 'waiting_buy':
                 reinforce_side = "SELL"  # Vendre plus pour une position courte
@@ -648,7 +648,7 @@ class SmartCycleManager:
                 status = cycle.get('status', '')
                 
                 # Déterminer le côté de la position
-                if status in ['waiting_SELL', 'active_SELL']:
+                if status in ['waiting_sell', 'active_sell']:
                     side = 'BUY'
                 else:
                     side = 'SELL'

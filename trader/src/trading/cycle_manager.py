@@ -250,9 +250,9 @@ class CycleManager:
             for cycle in all_cycles.values():
                 status_str = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
                 # Vérifier tous les statuts actifs qui devraient avoir des ordres sur Binance
-                if status_str in ['waiting_buy', 'waiting_SELL', 'active_buy', 'active_SELL']:
-                    # Cas spécial : cycles en waiting_buy/waiting_SELL avec entry_order_id (trailing stop)
-                    if status_str in ['waiting_buy', 'waiting_SELL'] and cycle.entry_order_id and not cycle.exit_price:
+                if status_str in ['waiting_buy', 'waiting_sell', 'active_buy', 'active_sell']:
+                    # Cas spécial : cycles en waiting_buy/waiting_sell avec entry_order_id (trailing stop)
+                    if status_str in ['waiting_buy', 'waiting_sell'] and cycle.entry_order_id and not cycle.exit_price:
                         logger.debug(f"✅ Cycle {cycle.id} en {status_str} avec trailing stop")
                         continue
                     # Pour ces cycles, vérifier le bon ordre selon le statut
@@ -440,7 +440,7 @@ class CycleManager:
                     status_str = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
                     
                     # Vérifier si le cycle devrait avoir des ordres actifs
-                    if status_str in ['waiting_buy', 'waiting_SELL', 'active_buy', 'active_SELL']:
+                    if status_str in ['waiting_buy', 'waiting_sell', 'active_buy', 'active_sell']:
                         # NOUVEAU: Avec no-exit-order, vérifier seulement les cycles en phase d'entrée
                         if cycle.entry_order_id and not cycle.exit_price:
                             # Vérifier si ordre d'entrée existe et n'est pas FILLED
@@ -475,7 +475,22 @@ class CycleManager:
                             if fresh_cycle:
                                 cycle = fresh_cycle
                             
-                            logger.warning(f"👻 Cycle {cycle_id} en statut {status_str} sans ordre Binance correspondant")
+                            # CORRECTION: Vérifier si l'ordre d'entrée a été exécuté avec succès avant de marquer comme fantôme
+                            if cycle.entry_price and cycle.entry_price > 0:
+                                logger.info(f"✅ Cycle {cycle_id} a un prix d'entrée ({cycle.entry_price}), ordre exécuté - pas un fantôme")
+                                continue
+                            
+                            # Vérifier dans l'historique des trades
+                            try:
+                                trades = self.binance_executor.utils.get_my_trades(cycle.symbol, limit=100)
+                                order_executed = any(trade.get('orderId') == int(cycle.entry_order_id) for trade in trades if trade.get('orderId'))
+                                if order_executed:
+                                    logger.info(f"✅ Cycle {cycle_id} ordre d'entrée trouvé dans historique - pas un fantôme")
+                                    continue
+                            except Exception as e:
+                                logger.warning(f"⚠️ Impossible de vérifier l'historique des trades pour {cycle_id}: {e}")
+                            
+                            logger.warning(f"👻 Cycle {cycle_id} en statut {status_str} sans ordre Binance correspondant ni preuve d'exécution")
                             cycles_to_fail.append(cycle)
             
             # Marquer les cycles fantômes comme failed
@@ -753,7 +768,7 @@ class CycleManager:
                     logger.info(f"📊 Quantité ajustée: {cycle.quantity} → {execution.quantity}")
                     cycle.metadata['executed_quantity'] = float(execution.quantity)
                 # Après un ordre MARKET d'entrée, on attend l'ordre de sortie
-                # BUY -> on a acheté, on attend de vendre -> WAITING_SELL
+                # BUY -> on a acheté, on attend de vendre -> waiting_sell
                 # SELL -> on a vendu, on attend de racheter -> WAITING_BUY
                 cycle.status = CycleStatus.WAITING_SELL if side == OrderSide.BUY else CycleStatus.WAITING_BUY
                 cycle.confirmed = True
@@ -865,13 +880,12 @@ class CycleManager:
                 return False
             
             # Déterminer le côté de l'ordre de sortie (inverse de l'entrée)
-            if cycle.status in [CycleStatus.WAITING_BUY, CycleStatus.ACTIVE_BUY]:
-                # Position SELL → fermer par BUY
-                # Position SELL → fermer par BUY
-                exit_side = OrderSide.BUY
-            else:  # WAITING_SELL ou ACTIVE_SELL
+            if cycle.status in [CycleStatus.WAITING_SELL, CycleStatus.ACTIVE_SELL]:
                 # Position BUY → fermer par SELL
                 exit_side = OrderSide.SELL
+            else:  # WAITING_BUY ou ACTIVE_BUY
+                # Position SELL → fermer par BUY
+                exit_side = OrderSide.BUY
 
             # Si il y a un ordre de sortie existant, vérifier son statut avant de l'annuler
             # Ne pas essayer d'annuler si le cycle est en WAITING_SELL/BUY car l'ordre n'existe pas sur Binance
@@ -1067,7 +1081,7 @@ class CycleManager:
                 with self.cycles_lock:
                     cycle.exit_order_id = execution.order_id
                     cycle.exit_price = execution.price  # Prix cible, pas le prix d'exécution
-                    # Le statut reste WAITING_SELL ou WAITING_BUY car on attend que l'ordre LIMIT soit exécuté
+                    # Le statut reste waiting_sell ou WAITING_BUY car on attend que l'ordre LIMIT soit exécuté
                     # Ne pas changer le statut ici, il sera changé quand l'ordre sera FILLED
                     cycle.updated_at = datetime.now()
                 
@@ -1091,10 +1105,10 @@ class CycleManager:
             exit_value = execution.price * execution.quantity
 
             if exit_side == OrderSide.SELL:
-                # Si on vend à découvert, profit = entrée - sortie
-                profit_loss = entry_value - exit_value
+                # Position BUY fermée par SELL, profit = sortie - entrée
+                profit_loss = exit_value - entry_value
             else:
-                # Si on achète (pour clôturer une vente), profit = entrée - sortie
+                # Position SELL fermée par BUY, profit = entrée - sortie
                 profit_loss = entry_value - exit_value
             
             # Calculer le pourcentage de profit/perte

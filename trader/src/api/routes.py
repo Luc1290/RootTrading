@@ -479,7 +479,7 @@ def reload_active_cycles():
 @routes_bp.route('/cycles/cleanup', methods=['POST'])
 def cleanup_stuck_cycles():
     """
-    Nettoie les cycles bloqués (active_SELL sans ordre de sortie, etc.).
+    Nettoie les cycles bloqués (active_sell sans ordre de sortie, etc.).
     
     Body JSON optionnel:
     {
@@ -507,7 +507,7 @@ def cleanup_stuck_cycles():
         now = datetime.now()
         
         for cycle in cycles:
-            # Vérifier les cycles bloqués depuis trop BUYtemps (sans exit_order_id car géré par StopManager)
+            # Vérifier les cycles bloqués depuis trop longtemps (sans exit_order_id car géré par StopManager)
             if cycle.status in [CycleStatus.ACTIVE_SELL, CycleStatus.WAITING_SELL]:
                 time_since_update = now - cycle.updated_at
                 

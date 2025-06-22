@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS trade_cycles (
     symbol VARCHAR(20) NOT NULL,
     strategy VARCHAR(50) NOT NULL,
     -- Statuts en minuscules pour cohérence avec les énumérations Python
-    status VARCHAR(20) NOT NULL CHECK (status IN ('initiating', 'waiting_buy', 'active_buy', 'waiting_SELL', 'active_SELL', 'completed', 'canceled', 'failed')),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('initiating', 'waiting_buy', 'active_buy', 'waiting_sell', 'active_sell', 'completed', 'canceled', 'failed')),
     entry_order_id VARCHAR(50),
     exit_order_id VARCHAR(50),
     entry_price NUMERIC(16, 8),
@@ -479,14 +479,14 @@ DECLARE
     phantom_count INTEGER := 0;
     details_json JSONB := '{}';
 BEGIN
-    -- Marquer les cycles active_SELL sans exit_order_id comme canceled
+    -- Marquer les cycles active_sell sans exit_order_id comme canceled
     UPDATE trade_cycles 
     SET 
         status = 'canceled', 
         updated_at = NOW(),
         metadata = COALESCE(metadata, '{}') || '{"cancel_reason": "phantom_cycle_cleanup", "cleanup_timestamp": "' || NOW()::text || '"}'
     WHERE 
-        status = 'active_SELL' 
+        status = 'active_sell' 
         AND exit_order_id IS NULL;
     
     GET DIAGNOSTICS phantom_count = ROW_COUNT;

@@ -510,8 +510,8 @@ class SignalHandler:
                 if status in ['waiting_buy', 'active_buy']:
                     # waiting_buy = position SELL (va racheter pour fermer)
                     side = 'SELL'
-                elif status in ['waiting_SELL', 'active_SELL']:
-                    # waiting_SELL = position BUY (va vendre pour fermer)
+                elif status in ['waiting_sell', 'active_sell']:
+                    # waiting_sell = position BUY (va vendre pour fermer)
                     side = 'BUY'
                 else:
                     continue  # Ignorer les autres statuts
@@ -567,7 +567,7 @@ class SignalHandler:
                 status = cycle.get('status', '')
                 cycle_position = None
                 
-                if status in ['waiting_SELL', 'active_SELL']:
+                if status in ['waiting_sell', 'active_sell']:
                     cycle_position = 'BUY'  # Position BUYue en attente/en cours de vente
                 elif status in ['waiting_buy', 'active_buy']:
                     cycle_position = 'SELL'  # Position courte en attente/en cours de rachat
@@ -1179,6 +1179,14 @@ class SignalHandler:
         try:
             # Calculer le montant à trader
             trade_amount, quote_asset = self._calculate_trade_amount(signal)
+            
+            # NOUVEAU: Appliquer le multiplicateur de taille suggéré (danger level)
+            size_multiplier = signal.metadata.get('suggested_size_multiplier', 1.0)
+            if size_multiplier < 1.0:
+                original_amount = trade_amount
+                trade_amount *= size_multiplier
+                logger.info(f"📉 Taille réduite de {original_amount:.2f} à {trade_amount:.2f} {quote_asset} "
+                           f"(multiplicateur: {size_multiplier:.1%}, danger: {signal.metadata.get('danger_level', 'N/A')})")
     
             # Déterminer l'actif et le montant nécessaire selon le côté de l'ordre
             base_asset = self._get_base_asset(signal.symbol)

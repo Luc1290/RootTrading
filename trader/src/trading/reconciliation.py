@@ -216,14 +216,31 @@ class ExchangeReconciliation:
         # Vérifier l'état de l'ordre d'entrée sur Binance
         entry_execution = self.binance_executor.get_order_status(cycle.symbol, cycle.entry_order_id)
         
-        # Si l'ordre d'entrée n'existe pas sur Binance, le marquer comme échoué
+        # CORRECTION: Ne pas marquer FAILED si l'ordre d'entrée a déjà été exécuté avec succès
         if not entry_execution and not self.binance_executor.demo_mode:
-            logger.error(f"❌ Ordre d'entrée {cycle.entry_order_id} non trouvé sur Binance, cycle {cycle.id} marqué comme FAILED")
+            # Vérifier si le cycle a déjà un prix d'entrée (ordre exécuté avec succès)
+            if cycle.entry_price and cycle.entry_price > 0:
+                logger.info(f"✅ Ordre d'entrée {cycle.entry_order_id} déjà exécuté (prix: {cycle.entry_price}), cycle {cycle.id} valide")
+                # L'ordre a été exécuté avec succès, continuer normalement
+                return False
+            
+            # Vérifier l'historique des trades pour confirmer l'exécution
+            try:
+                trades = self.binance_executor.utils.get_my_trades(cycle.symbol, limit=100)
+                order_executed = any(trade.get('orderId') == int(cycle.entry_order_id) for trade in trades if trade.get('orderId'))
+                if order_executed:
+                    logger.info(f"✅ Ordre d'entrée {cycle.entry_order_id} trouvé dans l'historique des trades, cycle {cycle.id} valide")
+                    return False
+            except Exception as e:
+                logger.warning(f"⚠️ Impossible de vérifier l'historique des trades: {e}")
+            
+            # Seulement maintenant, marquer comme échoué si aucune preuve d'exécution
+            logger.error(f"❌ Ordre d'entrée {cycle.entry_order_id} non trouvé sur Binance et pas de preuve d'exécution, cycle {cycle.id} marqué comme FAILED")
             cycle.status = CycleStatus.FAILED
             cycle.updated_at = datetime.now()
             if not hasattr(cycle, 'metadata'):
                 cycle.metadata = {}
-            cycle.metadata['fail_reason'] = "Ordre d'entrée non trouvé sur Binance"
+            cycle.metadata['fail_reason'] = "Ordre d'entrée non trouvé sur Binance et pas de preuve d'exécution"
             self.repository.save_cycle(cycle)
             return True
         

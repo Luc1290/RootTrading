@@ -718,3 +718,41 @@ class BinanceUtils:
                 }
             }
             return default_info
+    
+    def get_my_trades(self, symbol: str, limit: int = 100, time_offset: int = 0) -> List[Dict[str, Any]]:
+        """
+        Récupère l'historique des trades pour un symbole.
+        
+        Args:
+            symbol: Symbole (ex: 'BTCUSDC')
+            limit: Nombre maximum de trades à récupérer (max 1000)
+            time_offset: Décalage temporel
+            
+        Returns:
+            Liste des trades ou liste vide en cas d'erreur
+        """
+        try:
+            trades_url = f"{self.BASE_URL}{self.API_V3}/myTrades"
+            timestamp = int(time.time() * 1000) + time_offset
+            
+            params = {
+                "symbol": symbol,
+                "limit": min(limit, 1000),  # Binance limite à 1000
+                "timestamp": timestamp
+            }
+            
+            # Générer la signature
+            params["signature"] = self.generate_signature(params)
+            
+            # Envoyer la requête
+            response = self.session.get(trades_url, params=params)
+            response.raise_for_status()
+            
+            # Retourner les trades
+            trades = response.json()
+            logger.debug(f"📈 Récupéré {len(trades)} trades pour {symbol}")
+            return trades
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la récupération des trades: {str(e)}")
+            return []
