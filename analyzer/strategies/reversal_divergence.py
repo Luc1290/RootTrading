@@ -117,7 +117,7 @@ class ReversalDivergenceStrategy(BaseStrategy, AdvancedFiltersMixin):
     
     def _check_divergence(self, df: pd.DataFrame) -> Optional[Dict[str, Any]]:
         """
-        Détecte les divergences entre le prix et le RSI.
+        Détecte les divergences entre le prix et le RSI avec validation de tendance.
         
         Args:
             df: DataFrame avec les données de prix
@@ -127,6 +127,11 @@ class ReversalDivergenceStrategy(BaseStrategy, AdvancedFiltersMixin):
         """
         if df.shape[0] < self.lookback:
             return None
+        
+        # NOUVEAU: Validation de tendance avant de générer le signal
+        trend_alignment = self._validate_trend_alignment_for_signal(df)
+        if trend_alignment is None:
+            return None  # Pas assez de données pour valider la tendance
         
         # Ne considérer que les N derniers chandeliers
         recent_df = df.iloc[-self.lookback:]
@@ -167,6 +172,11 @@ class ReversalDivergenceStrategy(BaseStrategy, AdvancedFiltersMixin):
                 
                 # Divergence haussière: prix fait un plus bas plus bas, RSI fait un plus bas plus haut
                 if last_price_low < prev_price_low and last_rsi_low > prev_rsi_low:
+                    # NOUVEAU: Ne générer divergence BUY que si tendance n'est pas fortement baissière
+                    if trend_alignment in ["STRONG_BEARISH", "WEAK_BEARISH"]:
+                        logger.debug(f"[Divergence] {self.symbol}: Divergence BUY supprimée - tendance {trend_alignment}")
+                        return None
+                    
                     # Calculer le pourcentage de divergence
                     price_percent_change = (last_price_low - prev_price_low) / prev_price_low * 100
                     rsi_percent_change = (last_rsi_low - prev_rsi_low) / prev_rsi_low * 100
@@ -220,6 +230,11 @@ class ReversalDivergenceStrategy(BaseStrategy, AdvancedFiltersMixin):
                 
                 # Divergence baissière: prix fait un plus haut plus haut, RSI fait un plus haut plus bas
                 if last_price_high > prev_price_high and last_rsi_high < prev_rsi_high:
+                    # NOUVEAU: Ne générer divergence SELL que si tendance n'est pas fortement haussière
+                    if trend_alignment in ["STRONG_BULLISH", "WEAK_BULLISH"]:
+                        logger.debug(f"[Divergence] {self.symbol}: Divergence SELL supprimée - tendance {trend_alignment}")
+                        return None
+                    
                     # Calculer le pourcentage de divergence
                     price_percent_change = (last_price_high - prev_price_high) / prev_price_high * 100
                     rsi_percent_change = (last_rsi_high - prev_rsi_high) / prev_rsi_high * 100
@@ -294,3 +309,41 @@ class ReversalDivergenceStrategy(BaseStrategy, AdvancedFiltersMixin):
                    f"divergence {'haussière' if side == OrderSide.BUY else 'baissière'} détectée (confiance: {confidence:.2f})")
 
         return signal
+    
+    def _validate_trend_alignment_for_signal(self, df: pd.DataFrame) -> Optional[str]:
+        """
+        Valide la tendance actuelle pour déterminer si un signal est approprié.
+        Utilise la même logique que le signal_aggregator pour cohérence.
+        """
+        try:
+            if df is None or len(df) < 50:
+                return None
+            
+            prices = df['close'].values
+            
+            # Calculer EMA 21 vs EMA 50 (harmonisé avec signal_aggregator)
+            ema_21 = talib.EMA(prices, timeperiod=21)
+            ema_50 = talib.EMA(prices, timeperiod=50)
+            
+            if np.isnan(ema_21[-1]) or np.isnan(ema_50[-1]):
+                return None
+            
+            current_price = prices[-1]
+            trend_21 = ema_21[-1]
+            trend_50 = ema_50[-1]
+            
+            # Classification sophistiquée de la tendance (même logique que signal_aggregator)
+            if trend_21 > trend_50 * 1.015:  # +1.5% = forte haussière
+                return "STRONG_BULLISH"
+            elif trend_21 > trend_50 * 1.005:  # +0.5% = faible haussière
+                return "WEAK_BULLISH"
+            elif trend_21 < trend_50 * 0.985:  # -1.5% = forte baissière
+                return "STRONG_BEARISH"
+            elif trend_21 < trend_50 * 0.995:  # -0.5% = faible baissière
+                return "WEAK_BEARISH"
+            else:
+                return "NEUTRAL"
+                
+        except Exception as e:
+            logger.warning(f"Erreur validation tendance: {e}")
+            return None

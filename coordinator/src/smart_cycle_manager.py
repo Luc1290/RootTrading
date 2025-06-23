@@ -391,13 +391,13 @@ class SmartCycleManager:
     
     def _get_min_amount(self, currency: str) -> float:
         """Retourne le montant minimum pour une devise"""
-        minimums = {'USDC': 10.0, 'BTC': 0.0001, 'ETH': 0.003}
-        return minimums.get(currency, 10.0)
+        minimums = {'USDC': 20.0, 'BTC': 0.0001, 'ETH': 0.003}
+        return minimums.get(currency, 20.0)
     
     def _apply_amount_limits(self, amount: float, currency: str) -> float:
         """Applique les limites min/max sur un montant"""
         limits = {
-            'USDC': {'min': 10.0, 'max': 500.0},
+            'USDC': {'min': 20.0, 'max': 250.0},
             'BTC': {'min': 0.0001, 'max': 0.01},
             'ETH': {'min': 0.003, 'max': 0.2}
         }

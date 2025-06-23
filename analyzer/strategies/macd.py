@@ -331,7 +331,7 @@ class MACDStrategy(BaseStrategy):
     def _detect_macd_setup(self, macd_line: pd.Series, signal_line: pd.Series, 
                           histogram: pd.Series) -> Optional[OrderSide]:
         """
-        Détecte le setup MACD de base avec logique sophistiquée.
+        Détecte le setup MACD de base avec logique sophistiquée ET validation de tendance.
         """
         if len(macd_line) < 3 or len(signal_line) < 3:
             return None
@@ -343,22 +343,35 @@ class MACDStrategy(BaseStrategy):
         current_hist = histogram.iloc[-1]
         prev_hist = histogram.iloc[-2]
         
-        # Setup BUY: MACD croise au-dessus du signal OU histogram devient positif
+        # NOUVEAU: Validation de tendance avant de générer le signal
+        trend_alignment = self._validate_trend_alignment_for_signal()
+        if trend_alignment is None:
+            return None  # Pas assez de données pour valider la tendance
+        
+        # Setup BUY: MACD croise au-dessus du signal OU histogram devient positif ET tendance compatible
         if ((prev_macd <= prev_signal and current_macd > current_signal) or  # Croisement classique
             (prev_hist <= 0 and current_hist > 0 and current_macd > current_signal)):  # Histogram breakout
             # Vérifier que ce n'est pas un faux signal
             if len(histogram) >= 5:
                 hist_momentum = histogram.iloc[-1] - histogram.iloc[-5]
                 if hist_momentum > 0:  # Histogram s'améliore
+                    # NOUVEAU: Ne BUY que si tendance n'est pas fortement baissière
+                    if trend_alignment in ["STRONG_BEARISH", "WEAK_BEARISH"]:
+                        logger.debug(f"[MACD] {self.symbol}: BUY signal supprimé - tendance {trend_alignment}")
+                        return None
                     return OrderSide.BUY
         
-        # Setup SELL: MACD croise en dessous du signal OU histogram devient négatif
+        # Setup SELL: MACD croise en dessous du signal OU histogram devient négatif ET tendance compatible
         elif ((prev_macd >= prev_signal and current_macd < current_signal) or  # Croisement classique
               (prev_hist >= 0 and current_hist < 0 and current_macd < current_signal)):  # Histogram breakdown
             # Vérifier que ce n'est pas un faux signal
             if len(histogram) >= 5:
                 hist_momentum = histogram.iloc[-1] - histogram.iloc[-5]
                 if hist_momentum < 0:  # Histogram se détériore
+                    # NOUVEAU: Ne SELL que si tendance n'est pas fortement haussière
+                    if trend_alignment in ["STRONG_BULLISH", "WEAK_BULLISH"]:
+                        logger.debug(f"[MACD] {self.symbol}: SELL signal supprimé - tendance {trend_alignment}")
+                        return None
                     return OrderSide.SELL
         
         return None
@@ -519,16 +532,16 @@ class MACDStrategy(BaseStrategy):
             
             prices = df['close']
             
-            # EMA 20 vs EMA 50 pour tendance
-            ema_20 = prices.ewm(span=20).mean()
+            # HARMONISATION: EMA 21 vs EMA 50 pour cohérence avec les autres stratégies
+            ema_21 = prices.ewm(span=21).mean()
             ema_50 = prices.ewm(span=50).mean()
             
             current_price = prices.iloc[-1]
-            current_ema_20 = ema_20.iloc[-1]
+            current_ema_21 = ema_21.iloc[-1]
             current_ema_50 = ema_50.iloc[-1]
             
             if signal_side == OrderSide.BUY:
-                if current_price > current_ema_20 and current_ema_20 > current_ema_50:
+                if current_price > current_ema_21 and current_ema_21 > current_ema_50:
                     return 0.9   # Forte tendance haussière
                 elif current_price > current_ema_50:
                     return 0.8   # Tendance modérée
@@ -536,7 +549,7 @@ class MACDStrategy(BaseStrategy):
                     return 0.5   # Contre tendance
             
             else:  # SELL
-                if current_price < current_ema_20 and current_ema_20 < current_ema_50:
+                if current_price < current_ema_21 and current_ema_21 < current_ema_50:
                     return 0.9   # Forte tendance baissière
                 elif current_price < current_ema_50:
                     return 0.8   # Tendance modérée
@@ -612,6 +625,42 @@ class MACDStrategy(BaseStrategy):
             return "falling"
         else:
             return "flat"
+    
+    def _validate_trend_alignment_for_signal(self) -> Optional[str]:
+        """
+        Valide la tendance actuelle pour déterminer si un signal est approprié.
+        Utilise la même logique que le signal_aggregator pour cohérence.
+        """
+        try:
+            df = self.get_data_as_dataframe()
+            if df is None or len(df) < 50:
+                return None
+            
+            prices = df['close']
+            
+            # Calculer EMA 21 vs EMA 50 (harmonisé avec signal_aggregator)
+            ema_21 = prices.ewm(span=21).mean()
+            ema_50 = prices.ewm(span=50).mean()
+            
+            current_price = prices.iloc[-1]
+            trend_21 = ema_21.iloc[-1]
+            trend_50 = ema_50.iloc[-1]
+            
+            # Classification sophistiquée de la tendance (même logique que signal_aggregator)
+            if trend_21 > trend_50 * 1.015:  # +1.5% = forte haussière
+                return "STRONG_BULLISH"
+            elif trend_21 > trend_50 * 1.005:  # +0.5% = faible haussière
+                return "WEAK_BULLISH"
+            elif trend_21 < trend_50 * 0.985:  # -1.5% = forte baissière
+                return "STRONG_BEARISH"
+            elif trend_21 < trend_50 * 0.995:  # -0.5% = faible baissière
+                return "WEAK_BEARISH"
+            else:
+                return "NEUTRAL"
+                
+        except Exception as e:
+            logger.warning(f"Erreur validation tendance: {e}")
+            return None
     
     def _get_histogram_trend(self, histogram: pd.Series) -> str:
         """Retourne la tendance de l'histogram."""

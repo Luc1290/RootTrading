@@ -245,14 +245,19 @@ class RSIStrategy(BaseStrategy):
     
     def _detect_rsi_setup(self, rsi_values: np.ndarray, current_rsi: float) -> Optional[OrderSide]:
         """
-        Détecte le setup RSI de base avec logique sophistiquée.
+        Détecte le setup RSI de base avec logique sophistiquée ET validation de tendance.
         """
         if len(rsi_values) < 3:
             return None
         
         prev_rsi = rsi_values[-2]
         
-        # Setup BUY: RSI en zone survente avec momentum favorable
+        # NOUVEAU: Validation de tendance avant de générer le signal
+        trend_alignment = self._validate_trend_alignment_for_signal()
+        if trend_alignment is None:
+            return None  # Pas assez de données pour valider la tendance
+        
+        # Setup BUY: RSI en zone survente avec momentum favorable ET tendance compatible
         if current_rsi <= self.oversold_threshold:
             # Vérifier que ce n'est pas un couteau qui tombe
             if len(rsi_values) >= 5:
@@ -260,9 +265,15 @@ class RSIStrategy(BaseStrategy):
                 # Si RSI chute trop vite (>20 points en 5 périodes), attendre stabilisation
                 if rsi_momentum < -20:
                     return None
+            
+            # NOUVEAU: Ne BUY que si tendance n'est pas fortement baissière
+            if trend_alignment in ["STRONG_BEARISH", "WEAK_BEARISH"]:
+                logger.debug(f"[RSI] {self.symbol}: BUY signal supprimé - tendance {trend_alignment}")
+                return None
+            
             return OrderSide.BUY
         
-        # Setup SELL: RSI en zone surachat avec momentum favorable  
+        # Setup SELL: RSI en zone surachat avec momentum favorable ET tendance compatible
         elif current_rsi >= self.overbought_threshold:
             # Vérifier que ce n'est pas un breakout en cours
             if len(rsi_values) >= 5:
@@ -270,6 +281,12 @@ class RSIStrategy(BaseStrategy):
                 # Si RSI monte trop vite (>20 points en 5 périodes), attendre ralentissement
                 if rsi_momentum > 20:
                     return None
+            
+            # NOUVEAU: Ne SELL que si tendance n'est pas fortement haussière
+            if trend_alignment in ["STRONG_BULLISH", "WEAK_BULLISH"]:
+                logger.debug(f"[RSI] {self.symbol}: SELL signal supprimé - tendance {trend_alignment}")
+                return None
+            
             return OrderSide.SELL
         
         return None
@@ -576,6 +593,46 @@ class RSIStrategy(BaseStrategy):
             return "overbought"
         else:
             return "neutral"
+    
+    def _validate_trend_alignment_for_signal(self) -> Optional[str]:
+        """
+        Valide la tendance actuelle pour déterminer si un signal est approprié.
+        Utilise la même logique que le signal_aggregator pour cohérence.
+        """
+        try:
+            df = self.get_data_as_dataframe()
+            if df is None or len(df) < 50:
+                return None
+            
+            prices = df['close'].values
+            
+            # Calculer EMA 21 vs EMA 50 (harmonisé avec signal_aggregator)
+            import talib
+            ema_21 = talib.EMA(prices, timeperiod=21)
+            ema_50 = talib.EMA(prices, timeperiod=50)
+            
+            if np.isnan(ema_21[-1]) or np.isnan(ema_50[-1]):
+                return None
+            
+            current_price = prices[-1]
+            trend_21 = ema_21[-1]
+            trend_50 = ema_50[-1]
+            
+            # Classification sophistiquée de la tendance (même logique que signal_aggregator)
+            if trend_21 > trend_50 * 1.015:  # +1.5% = forte haussière
+                return "STRONG_BULLISH"
+            elif trend_21 > trend_50 * 1.005:  # +0.5% = faible haussière
+                return "WEAK_BULLISH"
+            elif trend_21 < trend_50 * 0.985:  # -1.5% = forte baissière
+                return "STRONG_BEARISH"
+            elif trend_21 < trend_50 * 0.995:  # -0.5% = faible baissière
+                return "WEAK_BEARISH"
+            else:
+                return "NEUTRAL"
+                
+        except Exception as e:
+            logger.warning(f"Erreur validation tendance: {e}")
+            return None
     
     def _get_rsi_trend(self, rsi_values: np.ndarray) -> str:
         """Retourne la tendance RSI."""

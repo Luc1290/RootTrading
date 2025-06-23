@@ -253,7 +253,7 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
     
     def _detect_ema_setup(self, short_ema: np.ndarray, long_ema: np.ndarray, prices: np.ndarray) -> Optional[OrderSide]:
         """
-        Détecte le setup EMA de base avec logique sophistiquée.
+        Détecte le setup EMA de base avec logique sophistiquée ET validation de tendance.
         """
         if len(short_ema) < 3 or len(long_ema) < 3:
             return None
@@ -261,6 +261,11 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
         current_short = short_ema[-1]
         current_long = long_ema[-1]
         current_price = prices[-1]
+        
+        # NOUVEAU: Validation de tendance avant de générer le signal
+        trend_alignment = self._validate_trend_alignment_for_signal()
+        if trend_alignment is None:
+            return None  # Pas assez de données pour valider la tendance
         
         # Détecter la direction de la tendance
         is_uptrend = current_short > current_long
@@ -270,16 +275,24 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
         price_to_short_pct = (current_price - current_short) / current_short * 100
         price_to_long_pct = (current_price - current_long) / current_long * 100
         
-        # Setup BUY: Pullback dans tendance haussière
+        # Setup BUY: Pullback dans tendance haussière ET tendance compatible
         if is_uptrend and price_to_short_pct < -0.3:  # Prix sous EMA courte
             # Vérifier que ce n'est pas un breakdown
             if current_price > current_long * 0.98:  # Pas trop loin de l'EMA longue
+                # NOUVEAU: Ne BUY que si tendance n'est pas fortement baissière
+                if trend_alignment in ["STRONG_BEARISH", "WEAK_BEARISH"]:
+                    logger.debug(f"[EMA Cross] {self.symbol}: BUY signal supprimé - tendance {trend_alignment}")
+                    return None
                 return OrderSide.BUY
         
-        # Setup SELL: Rebond dans tendance baissière
+        # Setup SELL: Rebond dans tendance baissière ET tendance compatible
         elif is_downtrend and price_to_short_pct > 0.3:  # Prix au-dessus EMA courte
             # Vérifier que ce n'est pas un breakout
             if current_price < current_long * 1.02:  # Pas trop loin de l'EMA longue
+                # NOUVEAU: Ne SELL que si tendance n'est pas fortement haussière
+                if trend_alignment in ["STRONG_BULLISH", "WEAK_BULLISH"]:
+                    logger.debug(f"[EMA Cross] {self.symbol}: SELL signal supprimé - tendance {trend_alignment}")
+                    return None
                 return OrderSide.SELL
         
         return None
@@ -370,3 +383,42 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
         except Exception as e:
             logger.warning(f"Erreur validation pullback: {e}")
             return 0.7
+    
+    def _validate_trend_alignment_for_signal(self) -> Optional[str]:
+        """
+        Valide la tendance actuelle pour déterminer si un signal est approprié.
+        Utilise la même logique que le signal_aggregator pour cohérence.
+        """
+        try:
+            df = self.get_data_as_dataframe()
+            if df is None or len(df) < 50:
+                return None
+            
+            prices = df['close'].values
+            
+            # Calculer EMA 21 vs EMA 50 (harmonisé avec signal_aggregator)
+            ema_21 = talib.EMA(prices, timeperiod=21)
+            ema_50 = talib.EMA(prices, timeperiod=50)
+            
+            if np.isnan(ema_21[-1]) or np.isnan(ema_50[-1]):
+                return None
+            
+            current_price = prices[-1]
+            trend_21 = ema_21[-1]
+            trend_50 = ema_50[-1]
+            
+            # Classification sophistiquée de la tendance (même logique que signal_aggregator)
+            if trend_21 > trend_50 * 1.015:  # +1.5% = forte haussière
+                return "STRONG_BULLISH"
+            elif trend_21 > trend_50 * 1.005:  # +0.5% = faible haussière
+                return "WEAK_BULLISH"
+            elif trend_21 < trend_50 * 0.985:  # -1.5% = forte baissière
+                return "STRONG_BEARISH"
+            elif trend_21 < trend_50 * 0.995:  # -0.5% = faible baissière
+                return "WEAK_BEARISH"
+            else:
+                return "NEUTRAL"
+                
+        except Exception as e:
+            logger.warning(f"Erreur validation tendance: {e}")
+            return None

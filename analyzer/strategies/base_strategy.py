@@ -279,6 +279,52 @@ class BaseStrategy(ABC):
             "stop_distance_percent": stop_distance_percent
         }
     
+    def _validate_trend_alignment_for_signal(self) -> Optional[str]:
+        """
+        Valide la tendance actuelle pour déterminer si un signal est approprié.
+        Utilise la même logique que le signal_aggregator pour cohérence.
+        Méthode commune disponible pour toutes les stratégies.
+        """
+        try:
+            df = self.get_data_as_dataframe()
+            if df is None or len(df) < 50:
+                return None
+            
+            prices = df['close'].values
+            
+            # Calculer EMA 21 vs EMA 50 (harmonisé avec signal_aggregator)
+            def ema(data, period):
+                """Calcul EMA simple sans dépendance externe."""
+                alpha = 2 / (period + 1)
+                ema_values = np.zeros_like(data)
+                ema_values[0] = data[0]
+                for i in range(1, len(data)):
+                    ema_values[i] = alpha * data[i] + (1 - alpha) * ema_values[i-1]
+                return ema_values
+            
+            ema_21 = ema(prices, 21)
+            ema_50 = ema(prices, 50)
+            
+            current_price = prices[-1]
+            trend_21 = ema_21[-1]
+            trend_50 = ema_50[-1]
+            
+            # Classification sophistiquée de la tendance (même logique que signal_aggregator)
+            if trend_21 > trend_50 * 1.015:  # +1.5% = forte haussière
+                return "STRONG_BULLISH"
+            elif trend_21 > trend_50 * 1.005:  # +0.5% = faible haussière
+                return "WEAK_BULLISH"
+            elif trend_21 < trend_50 * 0.985:  # -1.5% = forte baissière
+                return "STRONG_BEARISH"
+            elif trend_21 < trend_50 * 0.995:  # -0.5% = faible baissière
+                return "WEAK_BEARISH"
+            else:
+                return "NEUTRAL"
+                
+        except Exception as e:
+            logger.warning(f"Erreur validation tendance: {e}")
+            return None
+    
     def __str__(self) -> str:
         """Représentation sous forme de chaîne de la stratégie."""
         return f"{self.name} Strategy ({self.symbol})"

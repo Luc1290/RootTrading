@@ -605,35 +605,98 @@ class SignalAggregator:
                 logger.warning(f"Données 5m invalides pour {symbol}: type {type(data_5m)}")
                 return True
             
+            # CORRECTION: Vérifier la fraîcheur des données 5m
+            last_update = data_5m.get('last_update')
+            if last_update:
+                from datetime import datetime, timezone
+                try:
+                    if isinstance(last_update, str):
+                        update_time = datetime.fromisoformat(last_update.replace('Z', '+00:00'))
+                    else:
+                        update_time = datetime.fromtimestamp(last_update, tz=timezone.utc)
+                    
+                    age_seconds = (datetime.now(timezone.utc) - update_time).total_seconds()
+                    if age_seconds > 120:  # Plus de 2 minutes = données stales
+                        logger.warning(f"Données 5m trop anciennes pour {symbol} ({age_seconds:.0f}s), bypass validation")
+                        return True
+                except Exception as e:
+                    logger.warning(f"Erreur parsing timestamp 5m pour {symbol}: {e}")
+                    return True
+            
             # Calculer la tendance 5m avec une EMA simple (MODE SCALPING)
             prices = data_5m.get('prices', [])
             if len(prices) < 5:
                 # Pas assez de données pour une tendance fiable (seuil réduit pour scalping)
                 return True
             
-            # EMA courte (3 périodes) vs EMA BUYue (10 périodes) sur 5m (plus réactif)
-            recent_prices = prices[-10:] if len(prices) >= 10 else prices
-            if len(recent_prices) < 5:
-                return True
+            # HARMONISATION: EMA 21 vs EMA 50 pour cohérence avec les stratégies
+            if len(prices) < 50:
+                return True  # Pas assez de données pour EMA 50
             
-            # EMA 3 vs EMA 10 pour validation scalping plus rapide
-            ema_short = self._calculate_ema(recent_prices[-3:], 3)
-            ema_long = self._calculate_ema(recent_prices, min(10, len(recent_prices)))
+            # Utiliser les mêmes EMAs que les stratégies : 21 vs 50 périodes
+            ema_21 = self._calculate_ema(prices[-21:], 21)
+            ema_50 = self._calculate_ema(prices[-50:], 50)
             
-            # Déterminer la tendance 5m (MODE SCALPING - seuils plus serrés)
-            if ema_short > ema_long * 1.0005:  # Tendance haussière (0.05% de marge pour scalping)
-                trend_5m = "BULLISH"
-            elif ema_short < ema_long * 0.9995:  # Tendance baissière (0.05% de marge pour scalping)
-                trend_5m = "BEARISH"
+            # LOGIQUE SOPHISTIQUÉE : Analyser la force et le momentum de la tendance
+            current_price = prices[-1] if prices else 0
+            
+            # Calculer la vélocité des EMAs (momentum)
+            if len(prices) >= 55:  # Besoin de données pour calculer la vélocité
+                ema_21_prev = self._calculate_ema(prices[-26:-5], 21)  # EMA21 il y a 5 périodes
+                ema_50_prev = self._calculate_ema(prices[-55:-5], 50)  # EMA50 il y a 5 périodes
+                ema_21_velocity = (ema_21 - ema_21_prev) / ema_21_prev if ema_21_prev > 0 else 0
+                ema_50_velocity = (ema_50 - ema_50_prev) / ema_50_prev if ema_50_prev > 0 else 0
+            else:
+                ema_21_velocity = 0
+                ema_50_velocity = 0
+            
+            # Calculer la force de la tendance
+            trend_strength = abs(ema_21 - ema_50) / ema_50 if ema_50 > 0 else 0
+            
+            # Classification sophistiquée de la tendance
+            if ema_21 > ema_50 * 1.015:  # +1.5% = forte haussière
+                trend_5m = "STRONG_BULLISH"
+            elif ema_21 > ema_50 * 1.005:  # +0.5% = faible haussière
+                trend_5m = "WEAK_BULLISH"
+            elif ema_21 < ema_50 * 0.985:  # -1.5% = forte baissière  
+                trend_5m = "STRONG_BEARISH"
+            elif ema_21 < ema_50 * 0.995:  # -0.5% = faible baissière
+                trend_5m = "WEAK_BEARISH"
             else:
                 trend_5m = "NEUTRAL"
             
-            # Règles de validation
-            if side == "BUY" and trend_5m == "BEARISH":
-                logger.info(f"Signal BUY {symbol} rejeté : tendance 5m baissière")
-                return False
-            elif side == "SELL" and trend_5m == "BULLISH":
-                logger.info(f"Signal SELL {symbol} rejeté : tendance 5m haussière")
+            # Détecter si la tendance s'affaiblit (divergence)
+            trend_weakening = False
+            if trend_5m in ["STRONG_BULLISH", "WEAK_BULLISH"] and ema_21_velocity < 0:
+                trend_weakening = True  # Tendance haussière qui ralentit
+            elif trend_5m in ["STRONG_BEARISH", "WEAK_BEARISH"] and ema_21_velocity > 0:
+                trend_weakening = True  # Tendance baissière qui ralentit
+            
+            # DEBUG: Log détaillé pour comprendre les rejets
+            logger.info(f"🔍 {symbol} | Prix={current_price:.4f} | EMA21={ema_21:.4f} | EMA50={ema_50:.4f} | Tendance={trend_5m} | Signal={side} | Velocity21={ema_21_velocity*100:.2f}% | Weakening={trend_weakening}")
+            
+            # LOGIQUE SOPHISTIQUÉE DE VALIDATION
+            rejection_reason = None
+            
+            if side == "BUY":
+                # Éviter d'acheter dans une forte montée (risque de sommet)
+                if trend_5m == "STRONG_BULLISH" and not trend_weakening:
+                    rejection_reason = "forte tendance haussière en cours, risque de sommet"
+                # Éviter d'acheter un crash violent (couteau qui tombe)
+                elif trend_5m == "STRONG_BEARISH" and ema_21_velocity < -0.01:  # Accélération baissière > 1%
+                    rejection_reason = "crash violent en cours, éviter le couteau qui tombe"
+                    
+            elif side == "SELL":
+                # Éviter de vendre dans une forte baisse (risque de creux)  
+                if trend_5m == "STRONG_BEARISH" and not trend_weakening:
+                    rejection_reason = "forte tendance baissière en cours, risque de creux"
+                # Éviter de vendre une pump violente (FOMO manqué)
+                elif trend_5m == "STRONG_BULLISH" and ema_21_velocity > 0.01:  # Accélération haussière > 1%
+                    rejection_reason = "pump violent en cours, éviter de rater la montée"
+            
+            # Appliquer le rejet si raison trouvée
+            if rejection_reason:
+                logger.info(f"Signal {side} {symbol} rejeté : {rejection_reason}")
                 return False
             
             # Validation additionnelle : RSI 5m (MODE SCALPING - seuils ajustés)

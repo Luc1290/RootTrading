@@ -264,15 +264,22 @@ class RideOrReactStrategy(BaseStrategy, AdvancedFiltersMixin):
         if self.last_evaluation_time and (now - self.last_evaluation_time).total_seconds() < 900:
             return None
         
+        # NOUVEAU: Validation de tendance pour les stratégies adaptatives
+        trend_alignment = self._validate_trend_alignment_for_signal()
+        if trend_alignment is None:
+            return None  # Pas assez de données pour valider la tendance
+        
         # Évaluer les conditions de marché
         market_condition = self._evaluate_market_condition()
+        market_condition['trend_alignment'] = trend_alignment  # Ajouter l'info de tendance
+        
         self.current_market_condition = market_condition
         self.current_mode = market_condition["mode"]
         self.last_evaluation_time = now
         
         # Loguer le changement de mode si pertinent
         logger.info(f"🌊 [Ride or React] {self.symbol}: Mode={self.current_mode}, "
-                   f"1h={market_condition['1h_change']:.2f}%, "
+                   f"Tendance={trend_alignment}, 1h={market_condition['1h_change']:.2f}%, "
                    f"24h={market_condition['24h_change']:.2f}%")
         
         # Créer un signal informatif (non tradable) pour le Coordinator
@@ -337,3 +344,48 @@ class RideOrReactStrategy(BaseStrategy, AdvancedFiltersMixin):
             "ride" ou "react"
         """
         return self.current_mode
+    
+    def _validate_trend_alignment_for_signal(self) -> Optional[str]:
+        """
+        Valide la tendance actuelle pour déterminer si un signal est approprié.
+        Utilise la même logique que le signal_aggregator pour cohérence.
+        """
+        try:
+            df = self.get_data_as_dataframe()
+            if df is None or len(df) < 50:
+                return None
+            
+            prices = df['close'].values
+            
+            # Calculer EMA 21 vs EMA 50 (harmonisé avec signal_aggregator)
+            # Utilisation directe de numpy pour éviter les dépendances
+            def ema(data, period):
+                alpha = 2 / (period + 1)
+                ema_values = np.zeros_like(data)
+                ema_values[0] = data[0]
+                for i in range(1, len(data)):
+                    ema_values[i] = alpha * data[i] + (1 - alpha) * ema_values[i-1]
+                return ema_values
+            
+            ema_21 = ema(prices, 21)
+            ema_50 = ema(prices, 50)
+            
+            current_price = prices[-1]
+            trend_21 = ema_21[-1]
+            trend_50 = ema_50[-1]
+            
+            # Classification sophistiquée de la tendance (même logique que signal_aggregator)
+            if trend_21 > trend_50 * 1.015:  # +1.5% = forte haussière
+                return "STRONG_BULLISH"
+            elif trend_21 > trend_50 * 1.005:  # +0.5% = faible haussière
+                return "WEAK_BULLISH"
+            elif trend_21 < trend_50 * 0.985:  # -1.5% = forte baissière
+                return "STRONG_BEARISH"
+            elif trend_21 < trend_50 * 0.995:  # -0.5% = faible baissière
+                return "WEAK_BEARISH"
+            else:
+                return "NEUTRAL"
+                
+        except Exception as e:
+            logger.warning(f"Erreur validation tendance: {e}")
+            return None

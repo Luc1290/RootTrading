@@ -99,17 +99,21 @@ class AdvancedFiltersMixin:
             trend_21 = ema_21[-1]
             trend_50 = ema_50[-1]
             
+            # HARMONISATION: Ajouter vérification de seuil comme dans le signal_aggregator
+            ema_trend_bullish = trend_21 > trend_50 * 1.005  # Seuil 0.5%
+            ema_trend_bearish = trend_21 < trend_50 * 0.995  # Seuil 0.5%
+            
             if signal_side == OrderSide.BUY:
-                if current_price > trend_21 and trend_21 > trend_50:
-                    return 0.9   # Tendance alignée
+                if current_price > trend_21 and ema_trend_bullish:
+                    return 0.9   # Tendance alignée avec seuil
                 elif current_price > trend_50:
                     return 0.8   # Tendance modérée
                 else:
                     return 0.5   # Contre tendance
             
             else:  # SELL
-                if current_price < trend_21 and trend_21 < trend_50:
-                    return 0.9   # Tendance alignée
+                if current_price < trend_21 and ema_trend_bearish:
+                    return 0.9   # Tendance alignée avec seuil
                 elif current_price < trend_50:
                     return 0.8   # Tendance modérée
                 else:

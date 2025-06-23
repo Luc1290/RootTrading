@@ -237,7 +237,7 @@ class BollingerStrategy(BaseStrategy):
     def _detect_bollinger_setup(self, prices: np.ndarray, upper: np.ndarray, 
                                middle: np.ndarray, lower: np.ndarray) -> Optional[OrderSide]:
         """
-        Détecte le setup de base Bollinger avec logique sophistiquée.
+        Détecte le setup de base Bollinger avec logique sophistiquée ET validation de tendance.
         """
         current_price = prices[-1]
         prev_price = prices[-2] if len(prices) > 1 else current_price
@@ -245,7 +245,12 @@ class BollingerStrategy(BaseStrategy):
         current_lower = lower[-1]
         current_middle = middle[-1]
         
-        # Setup BUY: Prix près/sous la bande basse avec rebond potentiel
+        # NOUVEAU: Validation de tendance avant de générer le signal
+        trend_alignment = self._validate_trend_alignment_for_signal()
+        if trend_alignment is None:
+            return None  # Pas assez de données pour valider la tendance
+        
+        # Setup BUY: Prix près/sous la bande basse avec rebond potentiel ET tendance compatible
         if current_price <= current_lower * 1.003:  # Marge de 0.3%
             # Vérifier si ce n'est pas un couteau qui tombe
             recent_prices = prices[-5:] if len(prices) >= 5 else prices
@@ -253,15 +258,23 @@ class BollingerStrategy(BaseStrategy):
                 # Le prix doit montrer des signes de stabilisation
                 price_momentum = (recent_prices[-1] - recent_prices[-3]) / recent_prices[-3]
                 if price_momentum > -0.02:  # Pas de chute > 2% sur 3 périodes
+                    # NOUVEAU: Ne BUY que si tendance n'est pas fortement baissière
+                    if trend_alignment in ["STRONG_BEARISH", "WEAK_BEARISH"]:
+                        logger.debug(f"[Bollinger] {self.symbol}: BUY signal supprimé - tendance {trend_alignment}")
+                        return None
                     return OrderSide.BUY
         
-        # Setup SELL: Prix près/au-dessus de la bande haute avec rejet potentiel
+        # Setup SELL: Prix près/au-dessus de la bande haute avec rejet potentiel ET tendance compatible
         elif current_price >= current_upper * 0.997:  # Marge de 0.3%
             # Vérifier les signes de rejet
             recent_highs = [prices[i] for i in range(max(0, len(prices)-3), len(prices))]
             if len(recent_highs) >= 2:
                 # Prix doit montrer des signes de plafonnement
                 if max(recent_highs) - current_price < current_price * 0.005:  # Dans les 0.5% du plus haut
+                    # NOUVEAU: Ne SELL que si tendance n'est pas fortement haussière
+                    if trend_alignment in ["STRONG_BULLISH", "WEAK_BULLISH"]:
+                        logger.debug(f"[Bollinger] {self.symbol}: SELL signal supprimé - tendance {trend_alignment}")
+                        return None
                     return OrderSide.SELL
         
         return None
@@ -435,52 +448,37 @@ class BollingerStrategy(BaseStrategy):
     
     def _analyze_higher_timeframe_trend(self, signal_side: OrderSide) -> float:
         """
-        Analyse la tendance du timeframe supérieur (simulé avec EMA longue).
+        Analyse la tendance du timeframe supérieur avec la nouvelle logique harmonisée.
         """
         try:
-            df = self.get_data_as_dataframe()
-            if df is None or len(df) < 100:
-                return 0.7  # Score neutre
-            
-            prices = df['close'].values
-            
-            # Utiliser des EMA pour simuler différents timeframes
-            ema_50 = talib.EMA(prices, timeperiod=50)
-            ema_100 = talib.EMA(prices, timeperiod=100)
-            
-            if np.isnan(ema_50[-1]) or np.isnan(ema_100[-1]):
-                return 0.7
-            
-            current_price = prices[-1]
-            trend_50 = ema_50[-1]
-            trend_100 = ema_100[-1]
-            
-            # Déterminer la tendance supérieure
-            if trend_50 > trend_100 * 1.01:  # Tendance haussière forte
-                trend_direction = "BULLISH"
-                trend_strength = (trend_50 - trend_100) / trend_100
-            elif trend_50 < trend_100 * 0.99:  # Tendance baissière forte
-                trend_direction = "BEARISH" 
-                trend_strength = (trend_100 - trend_50) / trend_100
-            else:
-                trend_direction = "NEUTRAL"
-                trend_strength = 0
+            # Utiliser la méthode harmonisée de validation de tendance
+            trend_alignment = self._validate_trend_alignment_for_signal()
+            if trend_alignment is None:
+                return 0.7  # Score neutre si pas assez de données
             
             # Score selon l'alignement avec la tendance
             if signal_side == OrderSide.BUY:
-                if trend_direction == "BULLISH":
-                    return min(0.95, 0.8 + trend_strength * 10)  # Aligné avec tendance
-                elif trend_direction == "NEUTRAL":
-                    return 0.7  # Neutre
-                else:
-                    return 0.4  # Contre tendance
+                if trend_alignment == "STRONG_BULLISH":
+                    return 0.95  # Forte tendance alignée
+                elif trend_alignment == "WEAK_BULLISH":
+                    return 0.85  # Tendance alignée
+                elif trend_alignment == "NEUTRAL":
+                    return 0.75  # Neutre
+                elif trend_alignment == "WEAK_BEARISH":
+                    return 0.4   # Contre tendance faible
+                else:  # STRONG_BEARISH
+                    return 0.2   # Forte contre tendance
             else:  # SELL
-                if trend_direction == "BEARISH":
-                    return min(0.95, 0.8 + trend_strength * 10)
-                elif trend_direction == "NEUTRAL":
-                    return 0.7
-                else:
-                    return 0.4
+                if trend_alignment == "STRONG_BEARISH":
+                    return 0.95  # Forte tendance alignée
+                elif trend_alignment == "WEAK_BEARISH":
+                    return 0.85  # Tendance alignée
+                elif trend_alignment == "NEUTRAL":
+                    return 0.75  # Neutre
+                elif trend_alignment == "WEAK_BULLISH":
+                    return 0.4   # Contre tendance faible
+                else:  # STRONG_BULLISH
+                    return 0.2   # Forte contre tendance
                     
         except Exception as e:
             logger.warning(f"Erreur analyse tendance supérieure: {e}")
@@ -584,6 +582,45 @@ class BollingerStrategy(BaseStrategy):
         
         # Normaliser entre 0 et 1
         return max(0.0, min(1.0, composite))
+    
+    def _validate_trend_alignment_for_signal(self) -> Optional[str]:
+        """
+        Valide la tendance actuelle pour déterminer si un signal est approprié.
+        Utilise la même logique que le signal_aggregator pour cohérence.
+        """
+        try:
+            df = self.get_data_as_dataframe()
+            if df is None or len(df) < 50:
+                return None
+            
+            prices = df['close'].values
+            
+            # Calculer EMA 21 vs EMA 50 (harmonisé avec signal_aggregator)
+            ema_21 = talib.EMA(prices, timeperiod=21)
+            ema_50 = talib.EMA(prices, timeperiod=50)
+            
+            if np.isnan(ema_21[-1]) or np.isnan(ema_50[-1]):
+                return None
+            
+            current_price = prices[-1]
+            trend_21 = ema_21[-1]
+            trend_50 = ema_50[-1]
+            
+            # Classification sophistiquée de la tendance (même logique que signal_aggregator)
+            if trend_21 > trend_50 * 1.015:  # +1.5% = forte haussière
+                return "STRONG_BULLISH"
+            elif trend_21 > trend_50 * 1.005:  # +0.5% = faible haussière
+                return "WEAK_BULLISH"
+            elif trend_21 < trend_50 * 0.985:  # -1.5% = forte baissière
+                return "STRONG_BEARISH"
+            elif trend_21 < trend_50 * 0.995:  # -0.5% = faible baissière
+                return "WEAK_BEARISH"
+            else:
+                return "NEUTRAL"
+                
+        except Exception as e:
+            logger.warning(f"Erreur validation tendance: {e}")
+            return None
     
     def _calculate_band_distance(self, price: float, upper: np.ndarray, 
                                 lower: np.ndarray, side: OrderSide) -> float:
