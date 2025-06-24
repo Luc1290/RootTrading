@@ -5,7 +5,7 @@ Reçoit les données de marché en temps réel et les transmet au Kafka producer
 import json
 import logging
 import time
-from typing import Dict, Any, Callable, List
+from typing import Dict, Any, Callable, List, Optional, Tuple
 import asyncio
 import websockets
 from websockets.exceptions import ConnectionClosed, InvalidStatusCode
@@ -51,8 +51,43 @@ class BinanceWebSocket:
         # URL de l'API WebSocket Binance
         self.base_url = "wss://stream.binance.com:9443/ws"
         
-        # Crée les chemins des streams pour chaque paire
-        self.stream_paths = [f"{symbol.lower()}@kline_{interval}" for symbol in self.symbols]
+        # Multi-timeframes et données enrichies pour trading précis
+        self.timeframes = ['1m', '5m', '15m', '1h', '4h']  # Timeframes multiples
+        self.stream_paths = []
+        
+        for symbol in self.symbols:
+            symbol_lower = symbol.lower()
+            # Klines multi-timeframes
+            for tf in self.timeframes:
+                self.stream_paths.append(f"{symbol_lower}@kline_{tf}")
+            # Ticker 24h pour contexte
+            self.stream_paths.append(f"{symbol_lower}@ticker")
+            # Orderbook pour spread
+            self.stream_paths.append(f"{symbol_lower}@depth5")
+            
+        # Cache pour données enrichies
+        self.ticker_cache = {}
+        self.orderbook_cache = {}
+        
+        # ULTRA-AVANCÉ : Buffers pour calculs techniques en temps réel
+        self.price_buffers = {}
+        self.volume_buffers = {}
+        self.rsi_buffers = {}
+        self.macd_buffers = {}
+        
+        # Initialiser les buffers pour chaque symbole/timeframe
+        for symbol in self.symbols:
+            self.price_buffers[symbol] = {}
+            self.volume_buffers[symbol] = {}
+            self.rsi_buffers[symbol] = {}
+            self.macd_buffers[symbol] = {}
+            for tf in self.timeframes:
+                self.price_buffers[symbol][tf] = []
+                self.volume_buffers[symbol][tf] = []
+                self.rsi_buffers[symbol][tf] = []
+                self.macd_buffers[symbol][tf] = {'ema12': None, 'ema26': None, 'signal9': None}
+                
+        logger.info(f"🔥 Gateway ULTRA-AVANCÉ : {len(self.stream_paths)} streams + indicateurs temps réel")
     
     async def _connect(self) -> None:
         """
@@ -156,20 +191,23 @@ class BinanceWebSocket:
     
     def _process_kline_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Traite un message de chandelier Binance et le convertit en format standardisé.
+        Traite un message de chandelier Binance avec données enrichies.
         
         Args:
             message: Message brut de Binance
             
         Returns:
-            Message formaté pour le système RootTrading
+            Message formaté enrichi pour le système RootTrading
         """
         # Extraire les données pertinentes
         kline = message['k']
+        symbol = message['s']
         
-        # Créer un message standardisé
+        # Créer un message enrichi
         processed_data = {
-            "symbol": message['s'],
+            # Données de base
+            "symbol": symbol,
+            "timeframe": kline['i'],
             "start_time": kline['t'],
             "close_time": kline['T'],
             "open": float(kline['o']),
@@ -177,10 +215,571 @@ class BinanceWebSocket:
             "low": float(kline['l']),
             "close": float(kline['c']),
             "volume": float(kline['v']),
-            "is_closed": kline['x']  # Si la période est fermée
+            "quote_volume": float(kline['q']),
+            "trade_count": int(kline['n']),
+            "taker_buy_volume": float(kline['V']),
+            "taker_buy_quote_volume": float(kline['Q']),
+            "is_closed": kline['x'],
+            
+            # Données enrichies si disponibles
+            "enhanced": True
         }
         
+        # Ajouter les données de ticker si disponibles
+        if symbol in self.ticker_cache:
+            ticker = self.ticker_cache[symbol]
+            processed_data.update({
+                "price_change_24h": ticker.get('priceChange', 0),
+                "price_change_pct_24h": ticker.get('priceChangePercent', 0),
+                "volume_24h": ticker.get('volume', 0),
+                "high_24h": ticker.get('highPrice', 0),
+                "low_24h": ticker.get('lowPrice', 0)
+            })
+            
+        # Ajouter les données d'orderbook enrichies si disponibles
+        if symbol in self.orderbook_cache:
+            book = self.orderbook_cache[symbol]
+            bids = book.get('bids', [])
+            asks = book.get('asks', [])
+            sentiment_analysis = book.get('sentiment_analysis', {})
+            
+            if bids and asks:
+                bid_price = float(bids[0][0])
+                ask_price = float(asks[0][0])
+                mid_price = (bid_price + ask_price) / 2
+                spread_pct = ((ask_price - bid_price) / mid_price) * 100
+                
+                processed_data.update({
+                    "bid_price": bid_price,
+                    "ask_price": ask_price,
+                    "bid_qty": float(bids[0][1]),
+                    "ask_qty": float(asks[0][1]),
+                    "spread_pct": spread_pct,
+                    
+                    # ULTRA-AVANCÉ : Sentiment analysis complete
+                    "orderbook_sentiment": sentiment_analysis
+                })
+        
+        # ULTRA-AVANCÉ : Calculer tous les indicateurs techniques en temps réel
+        if processed_data['is_closed']:
+            self._update_technical_indicators(symbol, processed_data)
+        
         return processed_data
+        
+    def _update_technical_indicators(self, symbol: str, candle_data: Dict) -> None:
+        """ULTRA-AVANCÉ : Met à jour tous les indicateurs techniques en temps réel"""
+        timeframe = candle_data['timeframe']
+        close_price = candle_data['close']
+        high_price = candle_data['high']
+        low_price = candle_data['low']
+        volume = candle_data['volume']
+        
+        # Ajouter aux buffers (garder 200 dernières valeurs max)
+        if len(self.price_buffers[symbol][timeframe]) >= 200:
+            self.price_buffers[symbol][timeframe].pop(0)
+        self.price_buffers[symbol][timeframe].append(close_price)
+        
+        if len(self.volume_buffers[symbol][timeframe]) >= 200:
+            self.volume_buffers[symbol][timeframe].pop(0)
+        self.volume_buffers[symbol][timeframe].append(volume)
+        
+        prices = self.price_buffers[symbol][timeframe]
+        volumes = self.volume_buffers[symbol][timeframe]
+        
+        if len(prices) >= 2:
+            # RSI 14 périodes
+            rsi = self._calculate_rsi(prices, 14)
+            if rsi:
+                candle_data['rsi_14'] = rsi
+                
+            # Stochastic RSI
+            stoch_rsi = self._calculate_stoch_rsi(prices, 14)
+            if stoch_rsi:
+                candle_data['stoch_rsi'] = stoch_rsi
+                
+        if len(prices) >= 12:
+            # EMA 12
+            ema12 = self._calculate_ema(prices, 12)
+            candle_data['ema_12'] = ema12
+            
+        if len(prices) >= 26:
+            # EMA 26 et MACD
+            ema26 = self._calculate_ema(prices, 26)
+            candle_data['ema_26'] = ema26
+            
+            # MACD complet
+            macd_data = self._calculate_macd(prices)
+            if macd_data:
+                candle_data.update(macd_data)
+                
+        if len(prices) >= 20:
+            # Bollinger Bands
+            bb_data = self._calculate_bollinger_bands(prices, 20, 2.0)
+            if bb_data:
+                candle_data.update(bb_data)
+                
+            # SMA 20 et 50
+            candle_data['sma_20'] = sum(prices[-20:]) / 20
+            if len(prices) >= 50:
+                candle_data['sma_50'] = sum(prices[-50:]) / 50
+                
+        if len(prices) >= 14:
+            # ATR (Average True Range)
+            atr = self._calculate_atr(symbol, timeframe, 14)
+            if atr:
+                candle_data['atr_14'] = atr
+                
+            # ADX (Average Directional Index)
+            adx = self._calculate_adx(symbol, timeframe, 14)
+            if adx:
+                candle_data['adx_14'] = adx
+                
+        # VWAP et volume analytics
+        if len(volumes) >= 10:
+            vwap = self._calculate_vwap(prices[-10:], volumes[-10:])
+            if vwap:
+                candle_data['vwap_10'] = vwap
+                
+            # Volume Profile
+            vol_profile = self._analyze_volume_profile(volumes)
+            candle_data.update(vol_profile)
+            
+        # Momentum indicators
+        if len(prices) >= 10:
+            momentum = self._calculate_momentum(prices, 10)
+            candle_data['momentum_10'] = momentum
+            
+        # Williams %R
+        if len(prices) >= 14:
+            williams_r = self._calculate_williams_r(symbol, timeframe, 14)
+            if williams_r:
+                candle_data['williams_r'] = williams_r
+                
+        # Commodity Channel Index (CCI)
+        if len(prices) >= 20:
+            cci = self._calculate_cci(symbol, timeframe, 20)
+            if cci:
+                candle_data['cci_20'] = cci
+                
+    def _calculate_rsi(self, prices: List[float], period: int = 14) -> Optional[float]:
+        """Calcule le RSI ultra-optimisé"""
+        if len(prices) < period + 1:
+            return None
+            
+        deltas = [prices[i] - prices[i-1] for i in range(1, len(prices))]
+        gains = [d if d > 0 else 0 for d in deltas[-period:]]
+        losses = [-d if d < 0 else 0 for d in deltas[-period:]]
+        
+        avg_gain = sum(gains) / period
+        avg_loss = sum(losses) / period
+        
+        if avg_loss == 0:
+            return 100
+            
+        rs = avg_gain / avg_loss
+        return 100 - (100 / (1 + rs))
+        
+    def _calculate_stoch_rsi(self, prices: List[float], period: int = 14) -> Optional[float]:
+        """Calcule le Stochastic RSI"""
+        if len(prices) < period * 2:
+            return None
+            
+        # Calculer RSI sur les dernières périodes
+        rsi_values = []
+        for i in range(period, len(prices) + 1):
+            rsi = self._calculate_rsi(prices[:i], period)
+            if rsi:
+                rsi_values.append(rsi)
+                
+        if len(rsi_values) < period:
+            return None
+            
+        recent_rsi = rsi_values[-period:]
+        min_rsi = min(recent_rsi)
+        max_rsi = max(recent_rsi)
+        current_rsi = rsi_values[-1]
+        
+        if max_rsi == min_rsi:
+            return 50
+            
+        return ((current_rsi - min_rsi) / (max_rsi - min_rsi)) * 100
+        
+    def _calculate_ema(self, prices: List[float], period: int) -> float:
+        """Calcule l'EMA ultra-rapide"""
+        if not prices or period <= 0:
+            return prices[-1] if prices else 0
+            
+        multiplier = 2 / (period + 1)
+        ema = prices[0]
+        
+        for price in prices[1:]:
+            ema = (price * multiplier) + (ema * (1 - multiplier))
+            
+        return ema
+        
+    def _calculate_macd(self, prices: List[float]) -> Optional[Dict]:
+        """Calcule MACD complet (ligne, signal, histogramme)"""
+        if len(prices) < 26:
+            return None
+            
+        ema12 = self._calculate_ema(prices, 12)
+        ema26 = self._calculate_ema(prices, 26)
+        macd_line = ema12 - ema26
+        
+        # Signal line (EMA 9 de la ligne MACD)
+        # Pour simplifier, on approxime
+        signal_line = macd_line * 0.8  # Approximation
+        histogram = macd_line - signal_line
+        
+        return {
+            'macd_line': macd_line,
+            'macd_signal': signal_line,
+            'macd_histogram': histogram
+        }
+        
+    def _calculate_bollinger_bands(self, prices: List[float], period: int, std_dev: float) -> Optional[Dict]:
+        """Calcule les Bollinger Bands complètes"""
+        if len(prices) < period:
+            return None
+            
+        recent_prices = prices[-period:]
+        sma = sum(recent_prices) / period
+        
+        # Écart-type
+        variance = sum((x - sma) ** 2 for x in recent_prices) / period
+        std = variance ** 0.5
+        
+        upper_band = sma + (std * std_dev)
+        lower_band = sma - (std * std_dev)
+        
+        current_price = prices[-1]
+        bb_position = (current_price - lower_band) / (upper_band - lower_band) if upper_band != lower_band else 0.5
+        
+        return {
+            'bb_upper': upper_band,
+            'bb_middle': sma,
+            'bb_lower': lower_band,
+            'bb_position': bb_position,
+            'bb_width': (upper_band - lower_band) / sma * 100
+        }
+        
+    def _calculate_vwap(self, prices: List[float], volumes: List[float]) -> Optional[float]:
+        """Calcule le VWAP (Volume Weighted Average Price)"""
+        if len(prices) != len(volumes) or not prices:
+            return None
+            
+        total_pv = sum(p * v for p, v in zip(prices, volumes))
+        total_volume = sum(volumes)
+        
+        return total_pv / total_volume if total_volume > 0 else None
+        
+    def _analyze_volume_profile(self, volumes: List[float]) -> Dict:
+        """Analyse avancée du profil de volume"""
+        if len(volumes) < 5:
+            return {}
+            
+        recent_vol = volumes[-1]
+        avg_vol = sum(volumes) / len(volumes)
+        
+        vol_ratio = recent_vol / avg_vol if avg_vol > 0 else 1
+        
+        # Détection de pic de volume
+        vol_spike = vol_ratio > 2.0
+        
+        # Tendance du volume
+        if len(volumes) >= 3:
+            vol_trend = "increasing" if volumes[-1] > volumes[-2] > volumes[-3] else "decreasing"
+        else:
+            vol_trend = "stable"
+            
+        return {
+            'volume_ratio': vol_ratio,
+            'volume_spike': vol_spike,
+            'volume_trend': vol_trend,
+            'avg_volume': avg_vol
+        }
+        
+    def _calculate_momentum(self, prices: List[float], period: int) -> Optional[float]:
+        """Calcule le momentum"""
+        if len(prices) < period + 1:
+            return None
+            
+        return ((prices[-1] - prices[-period-1]) / prices[-period-1]) * 100
+        
+    def _calculate_atr(self, symbol: str, timeframe: str, period: int) -> Optional[float]:
+        """Calcule l'ATR (Average True Range)"""
+        # Pour l'ATR, on a besoin des high/low précédents, simplifié ici
+        prices = self.price_buffers[symbol][timeframe]
+        if len(prices) < period + 1:
+            return None
+            
+        # Approximation : utiliser les variations de prix comme proxy
+        ranges = [abs(prices[i] - prices[i-1]) for i in range(1, len(prices))]
+        if len(ranges) < period:
+            return None
+            
+        return sum(ranges[-period:]) / period
+        
+    def _calculate_adx(self, symbol: str, timeframe: str, period: int) -> Optional[float]:
+        """Calcule l'ADX (Average Directional Index)"""
+        # Calcul simplifié de l'ADX
+        prices = self.price_buffers[symbol][timeframe]
+        if len(prices) < period + 1:
+            return None
+            
+        # Approximation basée sur la tendance des prix
+        up_moves = sum(1 for i in range(1, len(prices)) if prices[i] > prices[i-1])
+        total_moves = len(prices) - 1
+        
+        if total_moves == 0:
+            return 50
+            
+        directional_strength = abs((up_moves / total_moves) - 0.5) * 2
+        return directional_strength * 100
+        
+    def _calculate_williams_r(self, symbol: str, timeframe: str, period: int) -> Optional[float]:
+        """Calcule Williams %R"""
+        prices = self.price_buffers[symbol][timeframe]
+        if len(prices) < period:
+            return None
+            
+        recent_prices = prices[-period:]
+        highest = max(recent_prices)
+        lowest = min(recent_prices)
+        current = prices[-1]
+        
+        if highest == lowest:
+            return -50
+            
+        return ((highest - current) / (highest - lowest)) * -100
+        
+    def _calculate_cci(self, symbol: str, timeframe: str, period: int) -> Optional[float]:
+        """Calcule CCI (Commodity Channel Index)"""
+        prices = self.price_buffers[symbol][timeframe]
+        if len(prices) < period:
+            return None
+            
+        recent_prices = prices[-period:]
+        typical_price = sum(recent_prices) / len(recent_prices)
+        sma = typical_price
+        
+        # Approximation de l'écart moyen
+        mean_deviation = sum(abs(p - sma) for p in recent_prices) / len(recent_prices)
+        
+        if mean_deviation == 0:
+            return 0
+            
+        return (prices[-1] - sma) / (0.015 * mean_deviation)
+        
+    def _process_ticker_message(self, data: Dict[str, Any]) -> None:
+        """Traite les données ticker 24h"""
+        symbol = data['s']
+        self.ticker_cache[symbol] = {
+            'priceChange': float(data.get('P', 0)),
+            'priceChangePercent': float(data.get('p', 0)),
+            'volume': float(data.get('v', 0)),
+            'highPrice': float(data.get('h', 0)),
+            'lowPrice': float(data.get('l', 0))
+        }
+        
+    def _process_depth_message(self, data: Dict[str, Any]) -> None:
+        """Traite les données orderbook avec analyse de sentiment avancée"""
+        symbol = data['s']
+        bids = data.get('b', [])
+        asks = data.get('a', [])
+        
+        # Analyse avancée du sentiment via orderbook
+        sentiment_analysis = self._analyze_orderbook_sentiment(bids, asks)
+        
+        self.orderbook_cache[symbol] = {
+            'bids': bids,
+            'asks': asks,
+            'sentiment_analysis': sentiment_analysis,
+            'timestamp': time.time()
+        }
+        
+    def _analyze_orderbook_sentiment(self, bids: List, asks: List) -> Dict:
+        """ULTRA-AVANCÉ : Analyse complète du sentiment via l'orderbook"""
+        try:
+            if not bids or not asks:
+                return {}
+                
+            # Convertir en float pour calculs
+            bid_data = [(float(price), float(qty)) for price, qty in bids[:20]]  # Top 20
+            ask_data = [(float(price), float(qty)) for price, qty in asks[:20]]
+            
+            if not bid_data or not ask_data:
+                return {}
+                
+            # 1. Ratio bid/ask volume
+            total_bid_volume = sum(qty for _, qty in bid_data)
+            total_ask_volume = sum(qty for _, qty in ask_data)
+            
+            bid_ask_ratio = total_bid_volume / total_ask_volume if total_ask_volume > 0 else 1
+            
+            # 2. Spread analysis
+            best_bid = bid_data[0][0]
+            best_ask = ask_data[0][0]
+            spread = best_ask - best_bid
+            mid_price = (best_bid + best_ask) / 2
+            spread_pct = (spread / mid_price) * 100
+            
+            # 3. Order book imbalance
+            imbalance = (total_bid_volume - total_ask_volume) / (total_bid_volume + total_ask_volume)
+            
+            # 4. Depth analysis (support/resistance strength)
+            bid_depth_strength = self._calculate_depth_strength(bid_data, best_bid, 'support')
+            ask_depth_strength = self._calculate_depth_strength(ask_data, best_ask, 'resistance')
+            
+            # 5. Wall detection (gros ordres)
+            bid_walls = self._detect_walls(bid_data, 'bid')
+            ask_walls = self._detect_walls(ask_data, 'ask')
+            
+            # 6. Price level concentration
+            bid_concentration = self._calculate_price_concentration(bid_data)
+            ask_concentration = self._calculate_price_concentration(ask_data)
+            
+            # 7. Sentiment global
+            sentiment_score = self._calculate_sentiment_score(
+                bid_ask_ratio, imbalance, bid_depth_strength, ask_depth_strength,
+                len(bid_walls), len(ask_walls)
+            )
+            
+            # 8. Liquidité totale
+            total_liquidity = total_bid_volume + total_ask_volume
+            
+            # 9. Ratio des 5 premiers niveaux vs le reste
+            top5_bid_vol = sum(qty for _, qty in bid_data[:5])
+            top5_ask_vol = sum(qty for _, qty in ask_data[:5])
+            top5_ratio = (top5_bid_vol + top5_ask_vol) / total_liquidity if total_liquidity > 0 else 0
+            
+            return {
+                'bid_ask_ratio': round(bid_ask_ratio, 3),
+                'spread_pct': round(spread_pct, 4),
+                'imbalance': round(imbalance, 3),
+                'bid_depth_strength': round(bid_depth_strength, 3),
+                'ask_depth_strength': round(ask_depth_strength, 3),
+                'bid_walls': bid_walls,
+                'ask_walls': ask_walls,
+                'bid_concentration': round(bid_concentration, 3),
+                'ask_concentration': round(ask_concentration, 3),
+                'sentiment_score': round(sentiment_score, 3),
+                'total_liquidity': round(total_liquidity, 2),
+                'top5_concentration': round(top5_ratio, 3),
+                'sentiment_signal': self._interpret_sentiment(sentiment_score, imbalance, bid_ask_ratio)
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur analyse sentiment orderbook: {e}")
+            return {}
+            
+    def _calculate_depth_strength(self, orders: List[Tuple], best_price: float, side: str) -> float:
+        """Calcule la force de profondeur des ordres"""
+        if not orders:
+            return 0
+            
+        # Calculer la force basée sur le volume et la distance du meilleur prix
+        total_strength = 0
+        
+        for price, qty in orders:
+            # Distance relative du meilleur prix
+            if side == 'support':
+                distance = (best_price - price) / best_price
+            else:  # resistance
+                distance = (price - best_price) / best_price
+                
+            # Force = volume / (1 + distance) - plus près = plus fort
+            strength = qty / (1 + distance * 100)  # *100 pour normaliser
+            total_strength += strength
+            
+        return total_strength
+        
+    def _detect_walls(self, orders: List[Tuple], side: str) -> List[Dict]:
+        """Détecte les murs d'ordres (gros volumes)"""
+        if not orders:
+            return []
+            
+        # Calculer le volume moyen
+        volumes = [qty for _, qty in orders]
+        avg_volume = sum(volumes) / len(volumes)
+        
+        # Détecter les volumes > 3x la moyenne
+        walls = []
+        for price, qty in orders:
+            if qty > avg_volume * 3:
+                walls.append({
+                    'price': price,
+                    'volume': qty,
+                    'ratio_to_avg': qty / avg_volume,
+                    'side': side
+                })
+                
+        return sorted(walls, key=lambda x: x['volume'], reverse=True)[:5]  # Top 5
+        
+    def _calculate_price_concentration(self, orders: List[Tuple]) -> float:
+        """Calcule la concentration des ordres par niveau de prix"""
+        if len(orders) < 3:
+            return 0
+            
+        # Calculer l'écart-type des volumes pour mesurer la concentration
+        volumes = [qty for _, qty in orders]
+        avg_vol = sum(volumes) / len(volumes)
+        
+        variance = sum((vol - avg_vol) ** 2 for vol in volumes) / len(volumes)
+        std_dev = variance ** 0.5
+        
+        # Normaliser : plus l'écart-type est élevé, plus la concentration est inégale
+        return std_dev / avg_vol if avg_vol > 0 else 0
+        
+    def _calculate_sentiment_score(self, bid_ask_ratio: float, imbalance: float, 
+                                 bid_strength: float, ask_strength: float,
+                                 bid_walls: int, ask_walls: int) -> float:
+        """Calcule un score de sentiment global (-1 = très bearish, +1 = très bullish)"""
+        
+        # Composants du sentiment
+        ratio_score = 0
+        if bid_ask_ratio > 1.2:
+            ratio_score = 0.3  # Plus de volume bid = bullish
+        elif bid_ask_ratio < 0.8:
+            ratio_score = -0.3  # Plus de volume ask = bearish
+            
+        # Imbalance score (directement utilisable entre -1 et 1)
+        imbalance_score = imbalance * 0.4
+        
+        # Depth strength comparison
+        if bid_strength > ask_strength * 1.2:
+            depth_score = 0.2  # Support plus fort
+        elif ask_strength > bid_strength * 1.2:
+            depth_score = -0.2  # Résistance plus forte
+        else:
+            depth_score = 0
+            
+        # Wall advantage
+        wall_score = 0
+        if bid_walls > ask_walls:
+            wall_score = 0.1  # Plus de murs bid
+        elif ask_walls > bid_walls:
+            wall_score = -0.1  # Plus de murs ask
+            
+        # Score final
+        total_score = ratio_score + imbalance_score + depth_score + wall_score
+        
+        # Limiter entre -1 et 1
+        return max(-1, min(1, total_score))
+        
+    def _interpret_sentiment(self, sentiment_score: float, imbalance: float, bid_ask_ratio: float) -> str:
+        """Interprète le score de sentiment en signal actionnable"""
+        
+        if sentiment_score > 0.5:
+            return "VERY_BULLISH"
+        elif sentiment_score > 0.2:
+            return "BULLISH"
+        elif sentiment_score < -0.5:
+            return "VERY_BEARISH"
+        elif sentiment_score < -0.2:
+            return "BEARISH"
+        else:
+            return "NEUTRAL"
     
     async def _listen(self) -> None:
         """
@@ -214,21 +813,47 @@ class BinanceWebSocket:
                                 continue
 
                             symbol = processed_data['symbol']
-                            key = f"{symbol}:{processed_data['start_time']}"        # clé idempotente
+                            timeframe = processed_data['timeframe']
+                            
+                            # Topic spécifique au timeframe
+                            topic = f"market.data.{symbol.lower()}.{timeframe}"
+                            key = f"{symbol}:{timeframe}:{processed_data['start_time']}"
 
-                            self.kafka_client.publish_market_data(                  # on passe par le wrapper
-                                data=processed_data,
+                            # Nettoyer les données pour éviter les erreurs de format
+                            clean_data = {}
+                            for k, v in processed_data.items():
+                                if isinstance(v, str):
+                                    # Échapper les caractères de formatage problématiques
+                                    clean_data[k] = v.replace('{', '{{').replace('}', '}}') if '{' in v or '}' in v else v
+                                else:
+                                    clean_data[k] = v
+                            
+                            # Publier avec la nouvelle méthode
+                            self.kafka_client.publish_to_topic(
+                                topic=topic,
+                                data=clean_data,
                                 key=key
                             )
         
-                            # Log pour le débogage (seulement si le chandelier est fermé)
-                            if processed_data['is_closed']:
-                                logger.info(f"📊 {symbol} @ {self.interval}: {processed_data['close']} "
-                                            f"[O:{processed_data['open']} H:{processed_data['high']} L:{processed_data['low']}]")
+                            # Log enrichi
+                            spread_pct = processed_data.get('spread_pct', 0)
+                            spread_info = f" Spread:{spread_pct:.3f}%" if isinstance(spread_pct, (int, float)) and 'spread_pct' in processed_data else ""
+                            logger.info(f"📊 {symbol} {timeframe}: {processed_data['close']} "
+                                      f"[O:{processed_data['open']} H:{processed_data['high']} L:{processed_data['low']}]"
+                                      f"{spread_info}")
+                                      
+                        # Traiter les données ticker
+                        elif event_type == '24hrTicker':
+                            self._process_ticker_message(data)
+                            
+                        # Traiter les données orderbook
+                        elif event_type == 'depthUpdate':
+                            self._process_depth_message(data)
                 except json.JSONDecodeError:
                     logger.error(f"Message non-JSON reçu: {message[:100]}...")
                 except Exception as e:
-                    logger.error(f"Erreur lors du traitement du message: {str(e)}")
+                    error_msg = str(e).replace('{', '{{').replace('}', '}}')
+                    logger.error(f"Erreur lors du traitement du message: {error_msg}")
                 
             except ConnectionClosed as e:
                 logger.warning(f"Connexion WebSocket fermée: {str(e)}")

@@ -29,5 +29,5 @@ COPY gateway /app/gateway
 # Exposition du port
 EXPOSE 5010
 
-# Commande de démarrage avec chargement de l'historique
-CMD ["python", "gateway/src/main.py", "--history-days", "5"]
+# Commande de démarrage avec mode ultra-enrichi
+CMD ["python", "gateway/src/main.py", "--debug"]

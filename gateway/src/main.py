@@ -16,9 +16,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 
 from binance_ws import BinanceWebSocket
 from kafka_producer import get_producer
-from historical_data_fetcher import HistoricalDataFetcher
-from validation_data_fetcher import ValidationDataFetcher
-from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY, SYMBOLS, INTERVAL, VALIDATION_INTERVAL
+from ultra_data_fetcher import UltraDataFetcher
+from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY, SYMBOLS, INTERVAL
 
 # Configuration du logging
 logging.basicConfig(
@@ -133,17 +132,16 @@ async def shutdown(signal_type, loop):
 
 def parse_arguments():
     """Parse les arguments de ligne de commande."""
-    parser = argparse.ArgumentParser(description='Gateway RootTrading')
+    parser = argparse.ArgumentParser(description='Gateway RootTrading Ultra-Enrichi')
     parser.add_argument(
-        '--history-days', 
-        type=int, 
-        default=5, 
-        help='Nombre de jours d\'historique à récupérer au démarrage'
+        '--skip-init', 
+        action='store_true', 
+        help='Ignorer l\'initialisation des données ultra-enrichies'
     )
     parser.add_argument(
-        '--skip-history', 
+        '--debug', 
         action='store_true', 
-        help='Ignorer le chargement de l\'historique'
+        help='Activer le mode debug pour plus de logs'
     )
     return parser.parse_args()
 
@@ -167,44 +165,41 @@ async def main():
     producer = get_producer()
     
     try:
-        # Charger les données historiques au démarrage si demandé
-        if not args.skip_history:
-            history_days = args.history_days
-            logger.info(f"🕒 Chargement de l'historique des {history_days} derniers jours...")
+        # Initialiser les données ultra-enrichies au démarrage si demandé
+        if not args.skip_init:
+            logger.info(f"🔥 Initialisation des données ultra-enrichies multi-timeframes...")
             
-            # Créer et exécuter le récupérateur de données historiques
-            data_fetcher = HistoricalDataFetcher(kafka_producer=producer)
-            klines_count = await data_fetcher.fetch_and_publish_history(
-                symbols=SYMBOLS,
-                interval=INTERVAL,
-                days_back=history_days
-            )
+            # Créer l'UltraDataFetcher pour l'initialisation
+            init_fetcher = UltraDataFetcher()
             
-            if klines_count > 0:
-                logger.info(f"✅ {klines_count} chandeliers historiques chargés avec succès")
-            else:
-                logger.warning("⚠️ Aucun chandelier historique n'a pu être chargé")
+            # Exécuter un cycle d'initialisation pour remplir les caches Redis
+            try:
+                await init_fetcher._fetch_initialization_data()
+                logger.info(f"✅ Données ultra-enrichies initialisées avec succès")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur lors de l'initialisation: {e}")
         else:
-            logger.info("⏩ Chargement de l'historique ignoré")
+            logger.info("⏩ Initialisation des données ultra-enrichies ignorée")
         
         # Créer le client WebSocket Binance
         ws_client = BinanceWebSocket(symbols=SYMBOLS, interval=INTERVAL)
         
-        # Créer le service de validation des données 15m
-        validation_fetcher = ValidationDataFetcher()
+        # Créer le service ultra-enrichi multi-timeframes
+        ultra_fetcher = UltraDataFetcher()
         
         # Démarrer les services en parallèle
+        logger.info("🚀 Démarrage WebSocket + UltraDataFetcher")
         await asyncio.gather(
             ws_client.start(),
-            validation_fetcher.start()
+            ultra_fetcher.start()
         )
     except Exception as e:
         logger.error(f"❌ Erreur critique dans le Gateway: {str(e)}")
     finally:
         if ws_client:
             await ws_client.stop()
-        if validation_fetcher:
-            await validation_fetcher.stop()
+        if ultra_fetcher:
+            await ultra_fetcher.stop()
         
         # Arrêter le serveur HTTP
         await http_runner.cleanup()

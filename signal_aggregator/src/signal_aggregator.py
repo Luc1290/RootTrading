@@ -55,10 +55,14 @@ class SignalAggregator:
         self.min_confidence_threshold = 0.55  # Compromis : filtre le bruit mais garde la fréquence
         
     async def process_signal(self, signal: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Process a raw signal and return aggregated decision with multi-timeframe validation"""
+        """Process a raw signal and return aggregated decision with ultra-confluent validation"""
         try:
             symbol = signal['symbol']
             strategy = signal['strategy']
+            
+            # NOUVEAU: Gestion des signaux ultra-confluents avec scoring
+            is_ultra_confluent = signal.get('metadata', {}).get('ultra_confluence', False)
+            signal_score = signal.get('metadata', {}).get('total_score')
             
             # Convert 'side' to 'side' for compatibility
             if 'side' in signal and 'side' not in signal:
@@ -69,6 +73,23 @@ class SignalAggregator:
                     signal['side'] = 'SELL'
                 else:
                     logger.warning(f"Unknown side value: {side}")
+                    return None
+                    
+            # NOUVEAU: Traitement prioritaire pour signaux ultra-confluents de haute qualité
+            if is_ultra_confluent and signal_score:
+                logger.info(f"🔥 Signal ULTRA-CONFLUENT {strategy} {signal['side']} {symbol}: score={signal_score:.1f}")
+                
+                # Signaux de qualité institutionnelle (95+) passent avec traitement express
+                if signal_score >= 95:
+                    logger.info(f"⭐ SIGNAL INSTITUTIONNEL accepté directement: {symbol} score={signal_score:.1f}")
+                    return await self._process_institutional_signal(signal)
+                # Signaux excellents (85+) ont priorité mais validation allégée
+                elif signal_score >= 85:
+                    logger.info(f"✨ SIGNAL EXCELLENT priorité haute: {symbol} score={signal_score:.1f}")
+                    return await self._process_excellent_signal(signal)
+                # Signaux faibles (<50) sont rejetés immédiatement
+                elif signal_score < 50:
+                    logger.info(f"❌ Signal ultra-confluent rejeté (score faible): {symbol} score={signal_score:.1f}")
                     return None
             
             # NOUVEAU: Validation multi-timeframe avec 5m (RÉACTIVÉE pour scalping optimisé)
@@ -107,6 +128,34 @@ class SignalAggregator:
             # Check if we have enough signals to make a decision - MODE SCALPING (1 signal suffit)
             if len(self.signal_buffer[symbol]) < 1:
                 return None  # Wait for more signals
+                
+            # NOUVEAU: Vérifier l'ADX pour filtrer les signaux en marché RANGE (adapté aux signaux scorés)
+            adx_value = await self._get_current_adx(symbol)
+            if adx_value is not None and adx_value < 25:
+                # Marché en RANGE, filtrer selon le score pour les signaux ultra-confluents
+                if is_ultra_confluent and signal_score:
+                    # Pour signaux scorés: accepter si score >= 75 même en RANGE
+                    if signal_score < 75:
+                        logger.info(f"🚫 Signal ultra-confluent rejeté en RANGE (ADX={adx_value:.1f}): "
+                                   f"{signal['strategy']} {signal['side']} {symbol} score={signal_score:.1f} < 75")
+                        return None
+                    else:
+                        logger.info(f"✅ Signal ultra-confluent accepté malgré RANGE (ADX={adx_value:.1f}): "
+                                   f"{symbol} score={signal_score:.1f} >= 75")
+                else:
+                    # Pour signaux classiques: logique d'origine
+                    signal_strength = signal.get('strength', 'moderate')
+                    signal_confidence = signal.get('confidence', 0.5)
+                    
+                    # En RANGE, on ne prend que les signaux très forts
+                    if signal_strength not in ['strong', 'very_strong'] or signal_confidence < 0.7:
+                        logger.info(f"🚫 Signal rejeté en marché RANGE (ADX={adx_value:.1f}): "
+                                   f"{signal['strategy']} {signal['side']} {symbol} "
+                                   f"force={signal_strength}, confiance={signal_confidence:.2f}")
+                        return None
+                    else:
+                        logger.info(f"✅ Signal fort accepté malgré RANGE (ADX={adx_value:.1f}): "
+                                   f"{signal['strategy']} {signal['side']} {symbol}")
                 
             # Get market regime (enhanced if available, sinon fallback)
             if self.enhanced_regime_detector:
@@ -157,6 +206,138 @@ class SignalAggregator:
             logger.error(f"Error processing signal: {e}")
             return None
             
+    async def _process_institutional_signal(self, signal: Dict[str, Any]) -> Dict[str, Any]:
+        """Traitement express pour signaux de qualité institutionnelle (95+ points)"""
+        try:
+            symbol = signal['symbol']
+            metadata = signal.get('metadata', {})
+            
+            # Traitement express - validation minimale
+            current_price = signal['price']
+            confidence = min(signal.get('confidence', 0.9), 1.0)  # Cap à 1.0
+            
+            # Force basée sur le score
+            score = metadata.get('total_score', 95)
+            if score >= 98:
+                strength = 'very_strong'
+            else:
+                strength = 'strong'
+                
+            # Utiliser les niveaux de prix calculés par ultra-confluence
+            price_levels = metadata.get('price_levels', {})
+            stop_loss = price_levels.get('stop_loss', current_price * 0.975)  # Stop plus serré pour signaux premium
+            
+            # Métadonnées enrichies
+            enhanced_metadata = {
+                'aggregated': True,
+                'institutional_grade': True,
+                'ultra_confluence': True,
+                'total_score': score,
+                'quality': metadata.get('quality', 'institutional'),
+                'confirmation_count': metadata.get('confirmation_count', 0),
+                'express_processing': True,
+                'timeframes_analyzed': metadata.get('timeframes_analyzed', []),
+                'stop_price': stop_loss,
+                'trailing_delta': 2.0,  # Trailing plus serré pour signaux premium
+                'recommended_size_multiplier': 1.2  # Taille légèrement augmentée
+            }
+            
+            result = {
+                'symbol': symbol,
+                'side': signal['side'],
+                'price': current_price,
+                'strategy': 'UltraConfluence_Institutional',
+                'confidence': confidence,
+                'strength': strength,
+                'stop_loss': stop_loss,
+                'trailing_delta': 2.0,
+                'contributing_strategies': ['UltraConfluence'],
+                'metadata': enhanced_metadata
+            }
+            
+            logger.info(f"⭐ Signal INSTITUTIONNEL traité: {symbol} {signal['side']} @ {current_price:.4f} (score={score:.1f})")
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur traitement signal institutionnel: {e}")
+            return None
+            
+    async def _process_excellent_signal(self, signal: Dict[str, Any]) -> Dict[str, Any]:
+        """Traitement prioritaire pour signaux excellents (85+ points)"""
+        try:
+            symbol = signal['symbol']
+            metadata = signal.get('metadata', {})
+            
+            # Validation légère mais présente
+            if await self._is_in_cooldown(symbol):
+                logger.debug(f"Signal excellent {symbol} en cooldown, ignoré")
+                return None
+                
+            # Vérification ADX allégée pour signaux excellents
+            adx_value = await self._get_current_adx(symbol)
+            score = metadata.get('total_score', 85)
+            
+            if adx_value and adx_value < 20 and score < 90:  # Seuil ADX plus strict seulement pour scores < 90
+                logger.info(f"Signal excellent rejeté: ADX trop faible ({adx_value:.1f}) pour score {score:.1f}")
+                return None
+                
+            current_price = signal['price']
+            confidence = signal.get('confidence', 0.85)
+            
+            # Ajuster la confiance basée sur le score
+            confidence_boost = min((score - 85) / 15 * 0.1, 0.1)  # Max 10% boost
+            confidence = min(confidence + confidence_boost, 1.0)
+            
+            # Force basée sur le score et la confluence
+            confirmation_count = metadata.get('confirmation_count', 0)
+            if score >= 90 and confirmation_count >= 15:
+                strength = 'very_strong'
+            elif score >= 85:
+                strength = 'strong'
+            else:
+                strength = 'moderate'
+                
+            # Prix et stop loss optimisés
+            price_levels = metadata.get('price_levels', {})
+            stop_loss = price_levels.get('stop_loss', current_price * 0.98)  # Stop modéré
+            
+            enhanced_metadata = {
+                'aggregated': True,
+                'excellent_grade': True,
+                'ultra_confluence': True,
+                'total_score': score,
+                'quality': metadata.get('quality', 'excellent'),
+                'confirmation_count': confirmation_count,
+                'priority_processing': True,
+                'timeframes_analyzed': metadata.get('timeframes_analyzed', []),
+                'stop_price': stop_loss,
+                'trailing_delta': 2.5,
+                'recommended_size_multiplier': 1.1
+            }
+            
+            result = {
+                'symbol': symbol,
+                'side': signal['side'],
+                'price': current_price,
+                'strategy': 'UltraConfluence_Excellent',
+                'confidence': confidence,
+                'strength': strength,
+                'stop_loss': stop_loss,
+                'trailing_delta': 2.5,
+                'contributing_strategies': ['UltraConfluence'],
+                'metadata': enhanced_metadata
+            }
+            
+            # Définir cooldown court pour signaux excellents
+            await self.set_cooldown(symbol, 60)  # 1 minute seulement
+            
+            logger.info(f"✨ Signal EXCELLENT traité: {symbol} {signal['side']} @ {current_price:.4f} (score={score:.1f})")
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur traitement signal excellent: {e}")
+            return None
+            
     def _get_signal_timestamp(self, signal: Dict[str, Any]) -> datetime:
         """Extract timestamp from signal with multiple format support"""
         timestamp_str = signal.get('timestamp', signal.get('created_at'))
@@ -189,9 +370,21 @@ class SignalAggregator:
             # Get strategy weight based on performance
             weight = await self.performance_tracker.get_strategy_weight(strategy)
             
-            # Apply confidence threshold
+            # Apply confidence threshold with enhanced filtering for mixed signals
             confidence = signal.get('confidence', 0.5)
-            if confidence < self.min_confidence_threshold:
+            signal_is_ultra_confluent = signal.get('metadata', {}).get('ultra_confluence', False)
+            signal_score = signal.get('metadata', {}).get('total_score')
+            
+            # NOUVEAU: Seuils adaptatifs selon le type de signal
+            if signal_is_ultra_confluent and signal_score:
+                # Signaux ultra-confluents : seuil plus strict
+                min_threshold = 0.7
+            else:
+                # Signaux classiques : seuil standard
+                min_threshold = self.min_confidence_threshold
+                
+            if confidence < min_threshold:
+                logger.debug(f"Signal {strategy} filtré: confidence {confidence:.2f} < {min_threshold:.2f}")
                 continue
 
             # Get side (handle both 'side' and 'side' keys)
@@ -215,9 +408,20 @@ class SignalAggregator:
             elif side == 'SELL':
                 SELL_signals.append(weighted_signal)
 
-        # Calculate total scores
+        # Calculate total scores with quality tracking
         BUY_score = sum(s['score'] for s in BUY_signals)
         SELL_score = sum(s['score'] for s in SELL_signals)
+        
+        # Log signal quality breakdown for debugging
+        if BUY_signals or SELL_signals:
+            ultra_buy = [s for s in BUY_signals if s.get('signal_type') == 'ultra_confluent']
+            classic_buy = [s for s in BUY_signals if s.get('signal_type') == 'classic']
+            ultra_sell = [s for s in SELL_signals if s.get('signal_type') == 'ultra_confluent']
+            classic_sell = [s for s in SELL_signals if s.get('signal_type') == 'classic']
+            
+            logger.debug(f"📊 {symbol} signaux: "
+                        f"BUY ultra={len(ultra_buy)} classic={len(classic_buy)} "
+                        f"SELL ultra={len(ultra_sell)} classic={len(classic_sell)}")
 
         # Determine side
         if BUY_score > SELL_score and BUY_score >= self.min_vote_threshold:
@@ -263,11 +467,12 @@ class SignalAggregator:
         main_strategy = contributing_strategies[0] if contributing_strategies else 'SignalAggregator'
         
         # Déterminer la force du signal basée sur la confiance
-        if confidence >= 0.8:
+        # MODIFIÉ: Seuils ajustés pour éviter l'amplification artificielle
+        if confidence >= 0.9:  # Augmenté de 0.8 à 0.9
             strength = 'very_strong'
-        elif confidence >= 0.6:
+        elif confidence >= 0.75:  # Augmenté de 0.6 à 0.75
             strength = 'strong'
-        elif confidence >= 0.4:
+        elif confidence >= 0.5:  # Augmenté de 0.4 à 0.5
             strength = 'moderate'
         else:
             strength = 'weak'
@@ -338,15 +543,33 @@ class SignalAggregator:
             elif side in ['SELL', 'SELL']:
                 side = 'SELL'
 
-            # Enhanced weighted signal with regime adaptation
+            # Enhanced weighted signal with quality boost for ultra-confluent signals
+            quality_boost = 1.0
+            signal_is_ultra_confluent = signal.get('metadata', {}).get('ultra_confluence', False)
+            signal_score = signal.get('metadata', {}).get('total_score')
+            
+            if signal_is_ultra_confluent and signal_score:
+                # Boost basé sur le score ultra-confluent
+                if signal_score >= 90:
+                    quality_boost = 1.5  # +50% de poids
+                elif signal_score >= 80:
+                    quality_boost = 1.3  # +30% de poids
+                elif signal_score >= 70:
+                    quality_boost = 1.2  # +20% de poids
+                    
+            final_combined_weight = combined_weight * quality_boost
+            
             weighted_signal = {
                 'strategy': strategy,
                 'side': side,
                 'confidence': confidence,
                 'performance_weight': performance_weight,
                 'regime_weight': regime_weight,
-                'combined_weight': combined_weight,
-                'score': confidence * combined_weight
+                'quality_boost': quality_boost,
+                'combined_weight': final_combined_weight,
+                'score': confidence * final_combined_weight,
+                'signal_type': 'ultra_confluent' if signal_is_ultra_confluent else 'classic',
+                'signal_score': signal_score
             }
 
             if side == 'BUY':
@@ -513,24 +736,25 @@ class SignalAggregator:
     
     def _determine_signal_strength(self, confidence: float, regime: Any) -> str:
         """Détermine la force du signal basée sur la confiance et le régime"""
+        # MODIFIÉ: Seuils ajustés pour éviter l'amplification artificielle
         # Ajustement des seuils selon le régime
         if MarketRegime is not None and regime in [MarketRegime.STRONG_TREND_UP, MarketRegime.STRONG_TREND_DOWN]:
-            # En tendance forte, on peut être plus agressif
-            if confidence >= 0.75:
+            # En tendance forte, seuils légèrement réduits mais restent élevés
+            if confidence >= 0.85:  # Augmenté de 0.75 à 0.85
                 return 'very_strong'
-            elif confidence >= 0.6:
+            elif confidence >= 0.7:  # Augmenté de 0.6 à 0.7
                 return 'strong'
-            elif confidence >= 0.45:
+            elif confidence >= 0.55:  # Augmenté de 0.45 à 0.55
                 return 'moderate'
             else:
                 return 'weak'
         else:
             # Régimes moins favorables, seuils plus stricts
-            if confidence >= 0.8:
+            if confidence >= 0.9:  # Augmenté de 0.8 à 0.9
                 return 'very_strong'
-            elif confidence >= 0.65:
+            elif confidence >= 0.75:  # Augmenté de 0.65 à 0.75
                 return 'strong'
-            elif confidence >= 0.5:
+            elif confidence >= 0.55:  # Augmenté de 0.5 à 0.55
                 return 'moderate'
             else:
                 return 'weak'
@@ -728,6 +952,42 @@ class SignalAggregator:
             ema = (price * multiplier) + (ema * (1 - multiplier))
         
         return ema
+    
+    async def _get_current_adx(self, symbol: str) -> Optional[float]:
+        """
+        Récupère la valeur ADX actuelle depuis Redis
+        
+        Args:
+            symbol: Symbole concerné
+            
+        Returns:
+            Valeur ADX ou None si non disponible
+        """
+        try:
+            # Essayer d'abord les données 1m (plus récentes)
+            market_data_key = f"market_data:{symbol}:1m"
+            data_1m = self.redis.get(market_data_key)
+            
+            if data_1m and isinstance(data_1m, dict):
+                adx = data_1m.get('adx_14')
+                if adx is not None:
+                    return float(adx)
+            
+            # Fallback sur les données 5m
+            market_data_key_5m = f"market_data:{symbol}:5m"
+            data_5m = self.redis.get(market_data_key_5m)
+            
+            if data_5m and isinstance(data_5m, dict):
+                adx = data_5m.get('adx_14')
+                if adx is not None:
+                    return float(adx)
+                    
+            logger.debug(f"ADX non disponible pour {symbol}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Erreur récupération ADX pour {symbol}: {e}")
+            return None
 
 
 class EnhancedSignalAggregator(SignalAggregator):

@@ -64,7 +64,34 @@ class KafkaProducer:
                 # Ajouter un nouveau log pour les mises à jour en cours
                 logger.info(f"🔄 Mis à jour sur {topic}: prix actuel {data['close']}")
         except Exception as e:
-            logger.error(f"❌ Erreur lors de la publication sur Kafka: {str(e)}")
+            error_msg = str(e).replace('{', '{{').replace('}', '}}')
+            logger.error(f"❌ Erreur lors de la publication sur Kafka: {error_msg}")
+    
+    def publish_to_topic(self, topic: str, data: Dict[str, Any], key: Optional[str] = None) -> None:
+        """
+        Publie des données sur un topic Kafka spécifique (pour le gateway enrichi).
+        
+        Args:
+            topic: Nom du topic Kafka
+            data: Données à publier
+            key: Clé pour le partitionnement
+        """
+        try:
+            self.client.produce(topic=topic, message=data, key=key)
+            
+            if data.get('enhanced') and data.get('is_closed', False):
+                symbol = data.get('symbol', 'N/A')
+                timeframe = data.get('timeframe', 'N/A')
+                price = data.get('close', 'N/A')
+                rsi = data.get('rsi_14', 'N/A')
+                spread = data.get('spread_pct', 'N/A')
+                
+                rsi_str = f"{rsi:.1f}" if isinstance(rsi, (int, float)) else str(rsi)
+                spread_str = f"{spread:.3f}" if isinstance(spread, (int, float)) else str(spread)
+                logger.info(f"📊 Enhanced {symbol} {timeframe}: {price} [RSI:{rsi_str} Spread:{spread_str}%]")
+                          
+        except Exception as e:
+            logger.error(f"❌ Erreur publication topic {topic}: {e}")
     
     def publish_account_data(self, data: Dict[str, Any], data_type: str) -> None:
         """
@@ -80,7 +107,8 @@ class KafkaProducer:
             self.client.produce(topic=topic, message=data)
             logger.info(f"💰 Publié données de compte sur {topic}")
         except Exception as e:
-            logger.error(f"❌ Erreur lors de la publication des données de compte: {str(e)}")
+            error_msg = str(e).replace('{', '{{').replace('}', '}}')
+            logger.error(f"❌ Erreur lors de la publication des données de compte: {error_msg}")
     
     def flush(self) -> None:
         """

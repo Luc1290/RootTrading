@@ -219,12 +219,17 @@ class DispatcherService:
             # Construire la liste des topics à suivre
             self.topics = []
             
-            # Topics de données de marché pour chaque symbole
+            # Topics de données de marché multi-timeframes pour chaque symbole
+            timeframes = ['1m', '5m', '15m', '1h', '4h']
             for symbol in self.symbols:
+                # Topics multi-timeframes
+                for tf in timeframes:
+                    self.topics.append(f"market.data.{symbol.lower()}.{tf}")
+                # Garder aussi l'ancien format pour compatibilité
                 self.topics.append(f"market.data.{symbol.lower()}")
             
             # Autres topics à suivre
-            self.topics.extend(["signals", "executions", "orders"])
+            self.topics.extend(["signals", "executions", "orders", "analyzer.signals"])
             
             logger.info(f"Abonnement aux topics Kafka: {', '.join(self.topics)}")
             

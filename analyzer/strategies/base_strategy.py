@@ -260,10 +260,11 @@ class BaseStrategy(ABC):
             atr_multiplier = 1.2
         
         # Distance de base pour le stop
+        # MODIFIÉ: Augmentation du stop loss pour éviter les sorties prématurées
         if 'BTC' in self.symbol:
-            base_stop_mult = 1.5
+            base_stop_mult = 2.0  # Augmenté de 1.5 à 2.0 pour BTC
         else:
-            base_stop_mult = 2.5
+            base_stop_mult = 3.0  # Augmenté de 2.5 à 3.0 pour les altcoins
         
         stop_distance_percent = atr_percent * atr_multiplier * base_stop_mult
         

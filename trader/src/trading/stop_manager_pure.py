@@ -20,16 +20,16 @@ logger = logging.getLogger(__name__)
 class StopManagerPure:
     """
     Gestionnaire de stops PURE.
-    Utilise uniquement un trailing stop à 1.5% - pas de target adaptatif. Mode SCALPING.
+    Utilise uniquement un trailing stop à 2.5% - pas de target adaptatif. MODIFIÉ pour éviter fausses sorties.
     """
     
-    def __init__(self, cycle_repository: CycleRepository, default_stop_pct: float = 1.5):
+    def __init__(self, cycle_repository: CycleRepository, default_stop_pct: float = 2.5):
         """
         Initialise le gestionnaire de stops pure.
         
         Args:
             cycle_repository: Repository pour les cycles
-            default_stop_pct: Pourcentage de stop par défaut (1.5% en mode scalping)
+            default_stop_pct: Pourcentage de stop par défaut (2.5% - augmenté pour éviter les fausses sorties)
         """
         self.repository = cycle_repository
         self.price_locks = RLock()
@@ -41,7 +41,7 @@ class StopManagerPure:
         # Intégration du GainProtector
         self.gain_protector = GainProtector()
         
-        logger.info(f"✅ StopManagerPure initialisé (stop par défaut: {default_stop_pct}% - MODE SCALPING) avec GainProtector")
+        logger.info(f"✅ StopManagerPure initialisé (stop par défaut: {default_stop_pct}% - MODIFIÉ pour éviter fausses sorties) avec GainProtector")
     
     def initialize_trailing_stop(self, cycle: TradeCycle) -> TrailingStop:
         """

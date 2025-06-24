@@ -118,6 +118,17 @@ class SignalHandler:
         self.recent_signals_history = {}  # {symbol: [(signal, timestamp)]}
         self.history_window = 30.0  # Garder 30 secondes d'historique
         
+        # NOUVEAU: Tracking des retournements pour éviter les retournements rapides
+        self.last_reversal_time = {}  # {symbol: timestamp}
+        self.reversal_cooldown_minutes = 30  # Bloquer les retournements < 30 minutes
+        
+        # NOUVEAU: Tracking des pertes consécutives pour pause automatique
+        self.consecutive_losses = 0
+        self.max_consecutive_losses = 3
+        self.trading_paused = False
+        self.pause_until = None
+        self.pause_duration_minutes = 60  # Pause d'1 heure après 3 pertes
+        
         # Thread pour l'agrégation périodique
         self.aggregation_thread = None
         
@@ -246,24 +257,48 @@ class SignalHandler:
         existing_opposite = self.active_cycles_cache.get(signal.symbol, {}).get(opposite_position, 0)
         existing_same = self.active_cycles_cache.get(signal.symbol, {}).get(signal_position, 0)
         
-        # Cas 1: Signal opposé à des positions existantes
-        # NOTE: Si _should_process_signal_strategically a retourné True,
-        # c'est qu'on a décidé d'accepter le retournement (signal très fort)
-        # Dans ce cas, on devrait fermer les positions opposées, pas bloquer le signal
+        # Cas 1: Signal opposé à des positions existantes avec logique ultra-avancée
         if existing_opposite > 0:
             # Calculer la force du signal pour décider
             signal_strength_score = self._get_signal_strength_score(signal)
+            metadata = getattr(signal, 'metadata', {}) or {}
+            is_ultra_confluent = metadata.get('ultra_confluence', False)
+            signal_score = metadata.get('total_score')
             
-            if signal_strength_score >= 0.85:  # Signal très fort accepté par le filtre stratégique
-                logger.info(f"🔄 RETOURNEMENT ACCEPTÉ: Signal {signal_position} très fort ({signal_strength_score:.2f}) "
-                           f"va fermer {existing_opposite} positions {opposite_position} sur {signal.symbol}")
+            # Seuils adaptatifs selon le type de signal
+            if is_ultra_confluent and signal_score:
+                # Signaux ultra-confluents : seuils plus permissifs
+                if signal_score >= 95:  # Institutionnel
+                    threshold = 0.80  # Plus permissif pour signaux premium
+                    logger.info(f"🏛️ Signal INSTITUTIONNEL: seuil retournement abaissé à {threshold:.2f}")
+                elif signal_score >= 85:  # Excellent  
+                    threshold = 0.83
+                    logger.info(f"⭐ Signal EXCELLENT: seuil retournement abaissé à {threshold:.2f}")
+                elif signal_score >= 75:  # Très bon
+                    threshold = 0.85
+                else:
+                    threshold = 0.87  # Plus strict pour signaux moyens
+            else:
+                # Signaux classiques : seuil standard
+                threshold = 0.85
+            
+            if signal_strength_score >= threshold:
+                if is_ultra_confluent and signal_score:
+                    logger.info(f"🔄 RETOURNEMENT ULTRA-CONFLUENT ACCEPTÉ: {signal.symbol} {signal_position} "
+                               f"score={signal_score:.1f} force={signal_strength_score:.3f} >= {threshold:.2f} "
+                               f"va fermer {existing_opposite} positions {opposite_position}")
+                else:
+                    logger.info(f"🔄 RETOURNEMENT ACCEPTÉ: Signal {signal_position} fort ({signal_strength_score:.3f}) "
+                               f"va fermer {existing_opposite} positions {opposite_position} sur {signal.symbol}")
+                
                 # Fermer les positions opposées avant de créer la nouvelle
                 self._close_opposite_positions(signal.symbol, opposite_position)
                 # Le signal continuera pour créer la nouvelle position
             else:
                 # Signal pas assez fort, on bloque
-                logger.warning(f"🚫 BLOQUÉ: Signal {signal_position} contradictoire avec {existing_opposite} "
-                             f"positions {opposite_position} sur {signal.symbol} - Force insuffisante: {signal_strength_score:.2f}")
+                signal_type = f"ultra-confluent (score={signal_score:.1f})" if is_ultra_confluent else "classique"
+                logger.warning(f"🚫 BLOQUÉ: Signal {signal_type} {signal_position} contradictoire avec {existing_opposite} "
+                             f"positions {opposite_position} sur {signal.symbol} - Force {signal_strength_score:.3f} < {threshold:.2f}")
                 return
         
         # Cas 2: Vérifier si on peut ajouter à la position existante
@@ -326,6 +361,16 @@ class SignalHandler:
         
         # Cas 3: Signal contradictoire - appliquer filtre stratégique
         if existing_opposite > 0:
+            # NOUVEAU: Vérifier le temps depuis le dernier retournement
+            current_time = time.time()
+            if signal.symbol in self.last_reversal_time:
+                time_since_reversal = (current_time - self.last_reversal_time[signal.symbol]) / 60.0  # en minutes
+                if time_since_reversal < self.reversal_cooldown_minutes:
+                    logger.info(f"🚫 RETOURNEMENT BLOQUÉ: {signal.symbol} - "
+                               f"Seulement {time_since_reversal:.1f} minutes depuis le dernier retournement "
+                               f"(minimum: {self.reversal_cooldown_minutes} minutes)")
+                    return False
+            
             # Calculer la "conviction" du portefeuille sur la position opposée
             portfolio_conviction = self._calculate_portfolio_conviction(signal.symbol, opposite_position)
             
@@ -348,11 +393,15 @@ class SignalHandler:
                 else:
                     logger.info(f"⚠️ Signal {signal_position} fort accepté - "
                                f"Conviction portfolio faible sur {opposite_position}")
+                    # Enregistrer le temps du retournement
+                    self.last_reversal_time[signal.symbol] = current_time
                     return True
                     
             else:  # Signal très fort (>= 0.85)
                 logger.info(f"🔄 Signal {signal_position} TRÈS FORT ({signal_strength_score:.2f}) - "
                            f"Retournement stratégique accepté malgré {existing_opposite} positions {opposite_position}")
+                # Enregistrer le temps du retournement
+                self.last_reversal_time[signal.symbol] = current_time
                 return True
         
         # Cas 4: Autres cas (ne devrait pas arriver)
@@ -428,7 +477,7 @@ class SignalHandler:
     
     def _get_signal_strength_score(self, signal: StrategySignal) -> float:
         """
-        Convertit la force du signal en score numérique.
+        Convertit la force du signal en score numérique avec support ultra-confluent.
         
         Args:
             signal: Signal à évaluer
@@ -436,7 +485,57 @@ class SignalHandler:
         Returns:
             Score entre 0 et 1
         """
-        # Mapping des forces de signal
+        # NOUVEAU: Vérifier si c'est un signal ultra-confluent avec scoring
+        metadata = getattr(signal, 'metadata', {}) or {}
+        is_ultra_confluent = metadata.get('ultra_confluence', False)
+        signal_score = metadata.get('total_score')
+        
+        # Traitement prioritaire pour signaux ultra-confluents avec scoring
+        if is_ultra_confluent and signal_score is not None:
+            # Conversion du score 100 points vers 0-1
+            base_score = min(signal_score / 100.0, 1.0)
+            
+            # Bonus pour qualité institutionnelle
+            if signal_score >= 95:
+                quality_bonus = 0.05  # +5% pour qualité institutionnelle
+                logger.info(f"⭐ Signal INSTITUTIONNEL détecté: score={signal_score:.1f} -> {base_score + quality_bonus:.3f}")
+            elif signal_score >= 85:
+                quality_bonus = 0.03  # +3% pour excellent
+                logger.info(f"✨ Signal EXCELLENT détecté: score={signal_score:.1f} -> {base_score + quality_bonus:.3f}")
+            elif signal_score >= 75:
+                quality_bonus = 0.02  # +2% pour très bon
+                logger.info(f"🎯 Signal TRÈS BON détecté: score={signal_score:.1f} -> {base_score + quality_bonus:.3f}")
+            else:
+                quality_bonus = 0.0
+                
+            # Bonus pour nombre de confirmations
+            confirmation_count = metadata.get('confirmation_count', 0)
+            if confirmation_count >= 18:
+                confirmation_bonus = 0.03  # +3% pour confluence exceptionnelle
+            elif confirmation_count >= 15:
+                confirmation_bonus = 0.02  # +2% pour forte confluence
+            elif confirmation_count >= 12:
+                confirmation_bonus = 0.01  # +1% pour bonne confluence
+            else:
+                confirmation_bonus = 0.0
+                
+            # Bonus pour analyse multi-timeframe
+            timeframes_analyzed = metadata.get('timeframes_analyzed', [])
+            if len(timeframes_analyzed) >= 4:
+                mtf_bonus = 0.02  # +2% pour analyse 4+ timeframes
+            elif len(timeframes_analyzed) >= 3:
+                mtf_bonus = 0.01  # +1% pour analyse 3+ timeframes
+            else:
+                mtf_bonus = 0.0
+                
+            final_score = min(base_score + quality_bonus + confirmation_bonus + mtf_bonus, 1.0)
+            
+            logger.debug(f"🔥 Score ultra-confluent {signal.symbol}: base={base_score:.3f} + qualité={quality_bonus:.3f} + "
+                        f"confirmations={confirmation_bonus:.3f} + MTF={mtf_bonus:.3f} = {final_score:.3f}")
+            
+            return final_score
+        
+        # Traitement classique pour anciens signaux
         strength_scores = {
             SignalStrength.VERY_WEAK: 0.2,
             SignalStrength.WEAK: 0.4,
@@ -463,6 +562,16 @@ class SignalHandler:
             except (IndexError, ValueError):
                 # Si on ne peut pas parser le nombre, bonus par défaut
                 base_score = min(base_score + 0.10, 1.0)
+        
+        # Gestion des nouvelles stratégies premium
+        elif signal.strategy in ['UltraConfluence_Institutional', 'UltraConfluence_Excellent']:
+            # Signaux premium traités directement par signal aggregator
+            if signal.strategy == 'UltraConfluence_Institutional':
+                base_score = min(base_score + 0.20, 1.0)  # +20% pour institutionnel
+                logger.info(f"⭐ Stratégie INSTITUTIONNELLE détectée: {signal.symbol} -> score={base_score:.3f}")
+            else:
+                base_score = min(base_score + 0.15, 1.0)  # +15% pour excellent
+                logger.info(f"✨ Stratégie EXCELLENTE détectée: {signal.symbol} -> score={base_score:.3f}")
         
         # Bonus/malus selon la confidence
         if hasattr(signal, 'confidence') and signal.confidence is not None:
@@ -719,7 +828,7 @@ class SignalHandler:
 
     def _calculate_signal_score(self, signals: List[StrategySignal]) -> float:
         """
-        Calcule un score pondéré pour un groupe de signaux.
+        Calcule un score pondéré pour un groupe de signaux avec support ultra-confluent.
         
         Args:
             signals: Liste de signaux
@@ -734,15 +843,39 @@ class SignalHandler:
         total_weight = 0.0
         
         for signal in signals:
-            # Pondération basée sur la force et la confiance
-            strength_weight = {
-                SignalStrength.WEAK: 0.25,
-                SignalStrength.MODERATE: 0.5,
-                SignalStrength.STRONG: 0.75,
-                SignalStrength.VERY_STRONG: 1.0
-            }.get(signal.strength, 0.5)
+            # NOUVEAU: Vérifier si c'est un signal ultra-confluent
+            metadata = getattr(signal, 'metadata', {}) or {}
+            is_ultra_confluent = metadata.get('ultra_confluence', False)
+            signal_score = metadata.get('total_score')
             
-            weight = strength_weight * signal.confidence
+            if is_ultra_confluent and signal_score is not None:
+                # Utiliser directement le score ultra-confluent (0-100 -> 0-1)
+                base_weight = signal_score / 100.0
+                
+                # Bonus pour qualité
+                if signal_score >= 95:
+                    quality_multiplier = 1.3  # +30% pour institutionnel
+                elif signal_score >= 85:
+                    quality_multiplier = 1.2  # +20% pour excellent
+                elif signal_score >= 75:
+                    quality_multiplier = 1.1  # +10% pour très bon
+                else:
+                    quality_multiplier = 1.0
+                    
+                weight = base_weight * quality_multiplier
+                logger.debug(f"🔥 Signal ultra-confluent {signal.symbol}: score={signal_score:.1f} -> poids={weight:.3f}")
+                
+            else:
+                # Pondération classique basée sur la force et la confiance
+                strength_weight = {
+                    SignalStrength.WEAK: 0.25,
+                    SignalStrength.MODERATE: 0.5,
+                    SignalStrength.STRONG: 0.75,
+                    SignalStrength.VERY_STRONG: 1.0
+                }.get(signal.strength, 0.5)
+                
+                weight = strength_weight * signal.confidence
+            
             total_score += weight
             total_weight += 1
         
@@ -761,13 +894,32 @@ class SignalHandler:
             logger.warning(f"❌ Impossible de créer plus de cycles BUY pour {symbol}")
             return
         
-        # Choisir le meilleur signal ou créer un signal composite
+        # Choisir le meilleur signal avec logique ultra-avancée
         best_signal = self._select_best_signal(signals)
         
-        # Si plus de 3 stratégies sont d'accord et signal très fort, possibilité de double position
-        if len(signals) >= 3 and best_signal.strength == SignalStrength.VERY_STRONG:
-            logger.info(f"🚀 Signal de consensus fort détecté pour {symbol} ({len(signals)} stratégies)")
-            # On pourrait créer 2 positions ici si vraiment fort
+        # NOUVEAU: Logique avancée pour signaux de consensus ultra-forts
+        metadata = getattr(best_signal, 'metadata', {}) or {}
+        is_ultra_confluent = metadata.get('ultra_confluence', False)
+        signal_score = metadata.get('total_score')
+        
+        # Double position pour signaux exceptionnels
+        should_double = False
+        if is_ultra_confluent and signal_score and signal_score >= 95:
+            # Signaux institutionnels : considérer le double
+            should_double = True
+            reason = f"signal institutionnel (score={signal_score:.1f})"
+        elif len(signals) >= 3 and best_signal.strength == SignalStrength.VERY_STRONG:
+            # Consensus classique très fort
+            should_double = True  
+            reason = f"consensus classique fort ({len(signals)} stratégies)"
+            
+        if should_double:
+            logger.info(f"🚀 Signal de consensus ULTRA-FORT détecté pour {symbol}: {reason}")
+            # Marquer pour traitement spécial (double position potentielle)
+            if not best_signal.metadata:
+                best_signal.metadata = {}
+            best_signal.metadata['ultra_strong_consensus'] = True
+            best_signal.metadata['double_position_candidate'] = True
         
         # Ajouter à la file de traitement normale
         self.signal_queue.put(best_signal)
@@ -785,7 +937,7 @@ class SignalHandler:
             logger.warning(f"❌ Impossible de créer plus de cycles SELL pour {symbol}")
             return
         
-        # Choisir le meilleur signal
+        # Choisir le meilleur signal avec logique ultra-avancée
         best_signal = self._select_best_signal(signals)
         
         # Ajouter à la file de traitement normale
@@ -793,7 +945,7 @@ class SignalHandler:
     
     def _select_best_signal(self, signals: List[StrategySignal]) -> StrategySignal:
         """
-        Sélectionne le meilleur signal parmi une liste.
+        Sélectionne le meilleur signal parmi une liste avec priorité ultra-confluente.
         
         Args:
             signals: Liste de signaux
@@ -803,25 +955,85 @@ class SignalHandler:
         """
         if not signals:
             return None
+            
+        # NOUVEAU: Priorité absolue aux signaux ultra-confluents de haute qualité
+        ultra_confluent_signals = []
+        classic_signals = []
         
-        # Trier par force puis par confiance
-        sorted_signals = sorted(
-            signals,
-            key=lambda s: (s.strength.value if hasattr(s.strength, 'value') else str(s.strength), s.confidence),
-            reverse=True
-        )
+        for signal in signals:
+            metadata = getattr(signal, 'metadata', {}) or {}
+            is_ultra_confluent = metadata.get('ultra_confluence', False)
+            signal_score = metadata.get('total_score')
+            
+            if is_ultra_confluent and signal_score is not None:
+                ultra_confluent_signals.append((signal, signal_score))
+            else:
+                classic_signals.append(signal)
         
-        best = sorted_signals[0]
+        # Si on a des signaux ultra-confluents, prioriser par score
+        if ultra_confluent_signals:
+            # Trier par score décroissant
+            ultra_confluent_signals.sort(key=lambda x: x[1], reverse=True)
+            best_ultra, best_score = ultra_confluent_signals[0]
+            
+            # Si le meilleur ultra-confluent est de qualité excellente+, le prendre directement
+            if best_score >= 85:
+                logger.info(f"⭐ Signal ultra-confluent sélectionné: {best_ultra.symbol} score={best_score:.1f} "
+                           f"(priorité sur {len(classic_signals)} signaux classiques)")
+                best = best_ultra
+            else:
+                # Sinon comparer avec les signaux classiques
+                all_signals = [signal for signal, _ in ultra_confluent_signals] + classic_signals
+                best = self._compare_signals_by_strength_and_confidence(all_signals)
+        else:
+            # Pas de signaux ultra-confluents, utiliser la logique classique
+            best = self._compare_signals_by_strength_and_confidence(classic_signals)
         
-        # Enrichir les métadonnées avec les infos d'agrégation
+        # Enrichir les métadonnées avec les infos d'agrégation et de sélection
         if not best.metadata:
             best.metadata = {}
         
         best.metadata['aggregated_count'] = len(signals)
         best.metadata['strategies'] = [s.strategy for s in signals]
         best.metadata['consensus_score'] = self._calculate_signal_score(signals)
+        best.metadata['selection_reason'] = self._get_selection_reason(best, signals)
+        
+        # Log de la sélection pour debugging
+        ultra_count = len(ultra_confluent_signals)
+        classic_count = len(classic_signals)
+        logger.debug(f"🎯 Sélection signal {best.symbol}: {best.strategy} parmi {ultra_count} ultra-confluents + {classic_count} classiques")
         
         return best
+        
+    def _compare_signals_by_strength_and_confidence(self, signals: List[StrategySignal]) -> StrategySignal:
+        """
+        Compare les signaux par force et confiance (logique classique).
+        """
+        sorted_signals = sorted(
+            signals,
+            key=lambda s: (s.strength.value if hasattr(s.strength, 'value') else str(s.strength), s.confidence),
+            reverse=True
+        )
+        return sorted_signals[0]
+        
+    def _get_selection_reason(self, selected_signal: StrategySignal, all_signals: List[StrategySignal]) -> str:
+        """
+        Génère une explication de pourquoi ce signal a été sélectionné.
+        """
+        metadata = getattr(selected_signal, 'metadata', {}) or {}
+        is_ultra_confluent = metadata.get('ultra_confluence', False)
+        signal_score = metadata.get('total_score')
+        
+        if is_ultra_confluent and signal_score is not None:
+            quality = metadata.get('quality', 'unknown')
+            confirmation_count = metadata.get('confirmation_count', 0)
+            return f"Ultra-confluent {quality} (score={signal_score:.1f}, {confirmation_count} confirmations)"
+        elif selected_signal.strategy.startswith('UltraConfluence_'):
+            return f"Stratégie premium {selected_signal.strategy}"
+        elif selected_signal.strategy.startswith('Aggregated_'):
+            return f"Signal agrégé {selected_signal.strategy} (force={selected_signal.strength}, conf={selected_signal.confidence:.2f})"
+        else:
+            return f"Signal classique {selected_signal.strategy} (force={selected_signal.strength}, conf={selected_signal.confidence:.2f})"
     
     def _update_market_filters(self, signal: StrategySignal) -> None:
         """
@@ -1446,6 +1658,30 @@ class SignalHandler:
         
         logger.info(f"💰 Cycle fermé: {cycle_id} ({symbol}) - P&L: {profit_loss:.2f}")
         
+        # NOUVEAU: Tracker les pertes consécutives
+        if profit_loss < 0:
+            self.consecutive_losses += 1
+            logger.warning(f"📉 Perte enregistrée ({self.consecutive_losses}/{self.max_consecutive_losses})")
+            
+            # Vérifier si on doit mettre en pause
+            if self.consecutive_losses >= self.max_consecutive_losses:
+                self.trading_paused = True
+                self.pause_until = time.time() + (self.pause_duration_minutes * 60)
+                logger.error(f"🛑 PAUSE TRADING: {self.consecutive_losses} pertes consécutives. "
+                           f"Reprise dans {self.pause_duration_minutes} minutes.")
+                
+                # Publier la pause sur Redis pour informer les autres services
+                self.redis_client.publish("roottrading:trading:paused", {
+                    "reason": f"{self.consecutive_losses} pertes consécutives",
+                    "pause_until": self.pause_until,
+                    "timestamp": time.time()
+                })
+        else:
+            # Réinitialiser le compteur si profit
+            if self.consecutive_losses > 0:
+                logger.info(f"✅ Profit réalisé, réinitialisation du compteur de pertes")
+            self.consecutive_losses = 0
+        
         # Mettre à jour le cache du sync monitor
         if hasattr(self, 'sync_monitor') and self.sync_monitor:
             self.sync_monitor.remove_cycle_from_cache(cycle_id)
@@ -1704,6 +1940,20 @@ class SignalHandler:
             SmartCycleDecision ou None
         """
         try:
+            # NOUVEAU: Vérifier si le trading est en pause
+            if self.trading_paused:
+                current_time = time.time()
+                if self.pause_until and current_time < self.pause_until:
+                    remaining_minutes = (self.pause_until - current_time) / 60
+                    logger.warning(f"🛑 TRADING EN PAUSE: encore {remaining_minutes:.1f} minutes "
+                                 f"(raison: {self.consecutive_losses} pertes consécutives)")
+                    return None
+                else:
+                    # La pause est terminée
+                    self.trading_paused = False
+                    self.pause_until = None
+                    logger.info("✅ Reprise du trading après pause")
+            
             # Récupérer le prix actuel
             current_price = signal.price
             

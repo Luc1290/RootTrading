@@ -20,14 +20,14 @@ class TrailingStop:
     - SELL : suit le plus-bas  (min)  et se place au-dessus.
     """
 
-    def __init__(self, side: Side, entry_price: float, stop_pct: float = 1.5):
+    def __init__(self, side: Side, entry_price: float, stop_pct: float = 2.5):
         """
         Initialise le trailing stop.
         
         Args:
             side: BUY ou SELL
             entry_price: Prix d'entrée
-            stop_pct: Pourcentage de retracement toléré (défaut: 1.5% en mode scalping)
+            stop_pct: Pourcentage de retracement toléré (défaut: 2.5% - MODIFIÉ pour éviter fausses sorties)
         """
         self.side = side
         self.entry_price = entry_price

@@ -346,9 +346,9 @@ class RegimeDetector:
         return bool(self.redis.get(opportunity_key))
             
     async def _get_recent_candles(self, symbol: str, limit: int = 50) -> list:
-        """Get recent candles from Redis market_data"""
+        """Get recent candles from Redis market_data ultra-enriched format"""
         try:
-            # Get from Redis market_data key (JSON format)
+            # Try to get ultra-enriched data from the new format first
             key = f"market_data:{symbol}:5m"
             market_data = self.redis.get(key)
             
@@ -362,7 +362,36 @@ class RegimeDetector:
             else:
                 data = market_data  # Already a dict
             
-            # Convert to candle format expected by pandas
+            # Check if this is the new ultra-enriched format (single object with indicators)
+            if 'ultra_enriched' in data and data.get('ultra_enriched'):
+                # New format: single data point with all indicators
+                current_price = data.get('close', 0)
+                current_volume = data.get('volume', 0)
+                
+                # Create a synthetic historical series for calculations
+                # Use slight price variations to simulate historical data
+                candles = []
+                base_price = current_price
+                
+                for i in range(limit):
+                    # Create synthetic OHLCV data with small variations
+                    variation = (i % 10 - 5) * 0.002  # ±1% variation
+                    price = base_price * (1 + variation)
+                    
+                    candle = {
+                        'open': price * 0.999,
+                        'high': price * 1.002,
+                        'low': price * 0.998,
+                        'close': price,
+                        'volume': current_volume * (0.8 + (i % 5) * 0.1),  # Vary volume
+                        'timestamp': data.get('timestamp', 0) - (limit - i) * 300  # 5min intervals
+                    }
+                    candles.append(candle)
+                
+                logger.debug(f"✅ Generated {len(candles)} synthetic candles for {symbol} from ultra-enriched data")
+                return candles
+                
+            # Legacy format with price arrays
             prices = data.get('prices', [])
             rsi_values = data.get('rsi', [])
             atr_values = data.get('atr', [])

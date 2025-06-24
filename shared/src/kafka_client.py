@@ -205,7 +205,8 @@ class KafkaClientPool:
             logger.info(f"✅ Producteur Kafka créé pour {self.broker}")
             return producer
         except KafkaException as e:
-            logger.error(f"❌ Erreur lors de la création du producteur Kafka: {str(e)}")
+            error_msg = str(e).replace('{', '{{').replace('}', '}}')
+            logger.error(f"❌ Erreur lors de la création du producteur Kafka: {error_msg}")
             raise
     
     def _create_consumer(self, topics: List[str], group_id: Optional[str] = None) -> Consumer:
@@ -407,7 +408,13 @@ class KafkaClientPool:
         
         # Convertir le dictionnaire en JSON si nécessaire
         if isinstance(message, dict):
-            message = json.dumps(message)
+            try:
+                message = json.dumps(message)
+            except Exception as e:
+                logger.error(f"❌ Erreur JSON serialization: {str(e)}")
+                # Log le contenu problématique pour déboguer
+                logger.error(f"Message data: {type(message)} = {str(message)[:500]}...")
+                raise
         
         # Sérialiser la clé et la valeur
         serialized_key = key.encode('utf-8') if key else None
@@ -443,7 +450,8 @@ class KafkaClientPool:
             )
         
         except Exception as e:
-            logger.error(f"❌ Erreur lors de la production du message: {str(e)}")
+            error_msg = str(e).replace('{', '{{').replace('}', '}}')
+            logger.error(f"❌ Erreur lors de la production du message: {error_msg}")
             self.metrics.record_delivery_failure()
             raise
     
