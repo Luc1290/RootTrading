@@ -266,6 +266,9 @@ class CycleRepository:
             # Le trigger normalisera automatiquement en minuscules, mais on le fait aussi ici par sécurité
             status = status.lower()
             
+            # Convertir le side en chaîne
+            side = cycle.side.value if hasattr(cycle, 'side') and hasattr(cycle.side, 'value') else str(getattr(cycle, 'side', 'BUY'))
+            
             # Vérifier l'existence de l'attribut 'confirmed'
             confirmed = getattr(cycle, 'confirmed', False)
             # CORRECTION: Si le cycle a un entry_order_id, il doit être confirmé
@@ -285,6 +288,7 @@ class CycleRepository:
                     symbol = %s,
                     strategy = %s,
                     status = %s,
+                    side = %s,
                     confirmed = %s,
                     entry_order_id = %s,
                     exit_order_id = %s,
@@ -309,6 +313,7 @@ class CycleRepository:
                     cycle.symbol,
                     cycle.strategy,
                     status,
+                    side,
                     confirmed,
                     cycle.entry_order_id,
                     cycle.exit_order_id,
@@ -331,11 +336,11 @@ class CycleRepository:
             else:
                 query = """
                 INSERT INTO trade_cycles
-                (id, symbol, strategy, status, confirmed, entry_order_id, exit_order_id,
+                (id, symbol, strategy, status, side, confirmed, entry_order_id, exit_order_id,
                 entry_price, exit_price, quantity, stop_price,
                 trailing_delta, min_price, max_price, profit_loss, profit_loss_percent, created_at,
                 updated_at, completed_at, demo, metadata)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                 """
                 
                 params = (
@@ -343,6 +348,7 @@ class CycleRepository:
                     cycle.symbol,
                     cycle.strategy,
                     status,
+                    side,
                     confirmed,
                     cycle.entry_order_id,
                     cycle.exit_order_id,
@@ -388,7 +394,7 @@ class CycleRepository:
         try:
             with DBContextManager() as cursor:
                 cursor.execute(
-                    "SELECT id, symbol, strategy, status, confirmed, entry_order_id, exit_order_id, entry_price, exit_price, quantity, stop_price, trailing_delta, min_price, max_price, profit_loss, profit_loss_percent, created_at, updated_at, completed_at, demo, metadata FROM trade_cycles WHERE id = %s",
+                    "SELECT id, symbol, strategy, status, side, confirmed, entry_order_id, exit_order_id, entry_price, exit_price, quantity, stop_price, trailing_delta, min_price, max_price, profit_loss, profit_loss_percent, created_at, updated_at, completed_at, demo, metadata FROM trade_cycles WHERE id = %s",
                     (cycle_id,)
                 )
                 
@@ -444,7 +450,7 @@ class CycleRepository:
             # Exécuter la requête - IMPORTANT: auto_transaction=False
             with DBContextManager(auto_transaction=False) as cursor:
                 query = f"""
-                SELECT id, symbol, strategy, status, confirmed, entry_order_id, exit_order_id,
+                SELECT id, symbol, strategy, status, side, confirmed, entry_order_id, exit_order_id,
                        entry_price, exit_price, quantity, stop_price,
                        trailing_delta, min_price, max_price, profit_loss, profit_loss_percent,
                        created_at, updated_at, completed_at, demo, metadata
@@ -534,12 +540,17 @@ class CycleRepository:
         status = parse_cycle_status(status_value)
         if status_value != status.value:
             logger.info(f"Statut normalisé: '{status_value}' -> '{status.value}'")
+        
+        # Convertir le side en OrderSide enum
+        side_value = cycle_data.get('side', 'BUY')  # Défaut BUY pour compatibilité
+        side = OrderSide.BUY if side_value == 'BUY' else OrderSide.SELL
             
         return TradeCycle(
             id=cycle_data['id'],
             symbol=cycle_data['symbol'],
             strategy=cycle_data['strategy'],
             status=status,
+            side=side,
             entry_order_id=cycle_data['entry_order_id'],
             exit_order_id=cycle_data['exit_order_id'],
             entry_price=float(cycle_data['entry_price']) if cycle_data['entry_price'] else None,
@@ -555,5 +566,6 @@ class CycleRepository:
             updated_at=cycle_data['updated_at'],
             completed_at=cycle_data['completed_at'],
             confirmed=cycle_data['confirmed'],
-            demo=cycle_data['demo']
+            demo=cycle_data['demo'],
+            metadata=cycle_data.get('metadata', {})
         )

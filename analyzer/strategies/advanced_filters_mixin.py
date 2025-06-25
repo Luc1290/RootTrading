@@ -78,6 +78,81 @@ class AdvancedFiltersMixin:
             logger.warning(f"Erreur analyse ATR: {e}")
             return 0.7
     
+    def _analyze_adx_trend_strength_common(self, df: pd.DataFrame, min_adx_threshold: float = 20.0) -> Dict[str, Any]:
+        """
+        Analyse la force de tendance via l'ADX et détermine si les stratégies de tendance doivent être actives.
+        
+        Args:
+            df: DataFrame avec OHLCV
+            min_adx_threshold: Seuil minimum ADX pour considérer une tendance (défaut: 20)
+            
+        Returns:
+            Dict avec adx_value, is_trending, confidence_score
+        """
+        try:
+            if len(df) < 30:
+                return {
+                    'adx_value': None,
+                    'is_trending': False,
+                    'confidence_score': 0.5,
+                    'disable_trend_strategies': True,
+                    'reason': 'insufficient_data'
+                }
+            
+            # Calculer ADX
+            high = df['high'].values
+            low = df['low'].values
+            close = df['close'].values
+            
+            adx = talib.ADX(high, low, close, timeperiod=14)
+            
+            if np.isnan(adx[-1]):
+                return {
+                    'adx_value': None,
+                    'is_trending': False,
+                    'confidence_score': 0.5,
+                    'disable_trend_strategies': True,
+                    'reason': 'adx_calculation_failed'
+                }
+            
+            current_adx = adx[-1]
+            
+            # Déterminer si on est en tendance
+            is_trending = current_adx >= min_adx_threshold
+            disable_trend_strategies = current_adx < min_adx_threshold
+            
+            # Calculer un score de confiance basé sur l'ADX
+            if current_adx >= 40:
+                confidence_score = 0.95  # Tendance très forte
+            elif current_adx >= 30:
+                confidence_score = 0.85  # Tendance forte
+            elif current_adx >= min_adx_threshold:
+                confidence_score = 0.75  # Tendance modérée
+            else:
+                confidence_score = 0.3   # Pas de tendance (range)
+            
+            reason = f"adx_{current_adx:.1f}_{'trending' if is_trending else 'ranging'}"
+            
+            logger.debug(f"📊 ADX Analysis: {current_adx:.1f} - {'Trending' if is_trending else 'Ranging'} (threshold: {min_adx_threshold})")
+            
+            return {
+                'adx_value': current_adx,
+                'is_trending': is_trending,
+                'confidence_score': confidence_score,
+                'disable_trend_strategies': disable_trend_strategies,
+                'reason': reason
+            }
+            
+        except Exception as e:
+            logger.warning(f"Erreur analyse ADX: {e}")
+            return {
+                'adx_value': None,
+                'is_trending': False,
+                'confidence_score': 0.5,
+                'disable_trend_strategies': True,
+                'reason': f'error_{str(e)[:20]}'
+            }
+    
     def _analyze_trend_alignment_common(self, df: pd.DataFrame, signal_side: OrderSide) -> float:
         """
         Analyse de tendance uniforme via EMA.

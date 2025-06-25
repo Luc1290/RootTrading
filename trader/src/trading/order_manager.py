@@ -66,7 +66,7 @@ class OrderManager:
         self.reconciliation_service = ExchangeReconciliation(
             cycle_repository=self.cycle_manager.repository,
             binance_executor=self.binance_executor,
-            reconciliation_interval=60,  # Réconciliation toutes les 1 minute
+            reconciliation_interval=300,  # Réconciliation toutes les 5 minutes
             cycle_manager=self.cycle_manager  # Passer le cycle_manager pour nettoyer le cache
         )
         

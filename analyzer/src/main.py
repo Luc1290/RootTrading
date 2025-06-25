@@ -37,7 +37,7 @@ class AnalyzerService:
     Service principal Analyzer qui gère l'API REST et le cycle de vie du gestionnaire d'analyse.
     """
     
-    def __init__(self, symbols=None, use_threads=False, max_workers=None, port=5001):
+    def __init__(self, symbols=None, use_threads=False, max_workers=None, port=5012):
         """
         Initialise le service Analyzer.
         
@@ -65,6 +65,7 @@ class AnalyzerService:
         self.app.route('/health', methods=['GET'])(self.health_check)
         self.app.route('/diagnostic', methods=['GET'])(self.diagnostic)
         self.app.route('/strategies', methods=['GET'])(self.list_strategies)
+        self.app.route('/api/indicators/<symbol>', methods=['GET'])(self.get_indicators)
     
     def health_check(self):
         """
@@ -135,6 +136,55 @@ class AnalyzerService:
             logger.error(f"Erreur lors de la récupération des stratégies: {str(e)}")
             return jsonify({
                 "error": f"Failed to retrieve strategies: {str(e)}"
+            }), 500
+    
+    def get_indicators(self, symbol):
+        """
+        Retourne les indicateurs techniques pour un symbole donné.
+        """
+        if not self.manager:
+            return jsonify({
+                "error": "Analyzer manager not running"
+            }), 503
+        
+        # Vérifier que le symbole est supporté
+        if symbol not in self.symbols:
+            return jsonify({
+                "error": f"Symbol {symbol} not supported",
+                "supported_symbols": self.symbols
+            }), 400
+        
+        try:
+            # Pour l'instant, on calcule l'ATR de base
+            # TODO: Récupérer les données réelles et calculer l'ATR
+            
+            # Valeurs par défaut basées sur les symboles courants
+            atr_defaults = {
+                "BTCUSDC": 1500.0,  # ~3% de 50000
+                "ETHUSDC": 100.0,   # ~3% de 3000  
+                "SOLUSDC": 5.0,     # ~3% de 150
+                "XRPUSDC": 0.08,    # ~3% de 2.5
+                "ADAUSDC": 0.03,    # ~3% de 1.0
+            }
+            
+            atr_value = atr_defaults.get(symbol, 2.5)  # Fallback 2.5% générique
+            
+            return jsonify({
+                "symbol": symbol,
+                "timestamp": time.time(),
+                "atr": atr_value,
+                "indicators": {
+                    "atr": atr_value,
+                    "atr_period": 14,
+                    "calculated_method": "default_fallback"
+                },
+                "note": "Using default ATR values - real calculation will be implemented later"
+            })
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération des indicateurs pour {symbol}: {str(e)}")
+            return jsonify({
+                "error": f"Failed to retrieve indicators for {symbol}: {str(e)}"
             }), 500
     
     def start(self):

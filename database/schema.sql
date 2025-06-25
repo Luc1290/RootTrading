@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS trade_cycles (
     strategy VARCHAR(50) NOT NULL,
     -- Statuts en minuscules pour cohérence avec les énumérations Python
     status VARCHAR(20) NOT NULL CHECK (status IN ('initiating', 'waiting_buy', 'active_buy', 'waiting_sell', 'active_sell', 'completed', 'canceled', 'failed')),
+    -- Direction du cycle: BUY (position longue) ou SELL (position courte)
+    side VARCHAR(4) NOT NULL CHECK (side IN ('BUY', 'SELL')),
     entry_order_id VARCHAR(50),
     exit_order_id VARCHAR(50),
     entry_price NUMERIC(16, 8),
@@ -65,6 +67,8 @@ CREATE TABLE IF NOT EXISTS trade_cycles (
 -- Index optimisés pour les cycles
 CREATE INDEX IF NOT EXISTS trade_cycles_symbol_idx ON trade_cycles(symbol);
 CREATE INDEX IF NOT EXISTS trade_cycles_strategy_idx ON trade_cycles(strategy);
+CREATE INDEX IF NOT EXISTS trade_cycles_side_idx ON trade_cycles(side);
+CREATE INDEX IF NOT EXISTS trade_cycles_symbol_side_status_idx ON trade_cycles(symbol, side, status);
 CREATE INDEX IF NOT EXISTS trade_cycles_status_idx ON trade_cycles(status);
 CREATE INDEX IF NOT EXISTS trade_cycles_created_at_idx ON trade_cycles(created_at);
 CREATE INDEX IF NOT EXISTS trade_cycles_completed_at_idx ON trade_cycles(completed_at);

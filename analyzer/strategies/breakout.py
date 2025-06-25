@@ -264,6 +264,15 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
         # 5. FILTRE TREND ALIGNMENT (direction générale)
         trend_score = self._analyze_trend_alignment_common(df, signal_side)
         
+        # 5.5. FILTRE ADX - DÉSACTIVATION EN RANGE (évite pollution logs)
+        adx_analysis = self._analyze_adx_trend_strength_common(df, min_adx_threshold=20.0)
+        if adx_analysis['disable_trend_strategies']:
+            logger.debug(f"[Breakout] {self.symbol}: Signal rejeté - ADX trop faible pour breakout "
+                       f"(ADX: {adx_analysis['adx_value']:.1f} < 20, {adx_analysis['reason']})")
+            return None
+        
+        adx_score = adx_analysis['confidence_score']
+        
         # 6. FILTRE ATR ENVIRONMENT (environnement volatilité)
         atr_score = self._analyze_atr_environment_common(df)
         
@@ -273,14 +282,16 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
             'false_breakout': false_breakout_score,
             'retest': retest_score,
             'trend': trend_score,
+            'adx': adx_score,
             'atr': atr_score
         }
         
         weights = {
-            'volume': 0.30,        # Volume crucial pour breakouts
+            'volume': 0.25,        # Volume crucial pour breakouts
             'false_breakout': 0.25, # Éviter faux signaux
-            'retest': 0.20,        # Validation niveau
+            'retest': 0.15,        # Validation niveau
             'trend': 0.15,         # Direction générale
+            'adx': 0.10,          # Force de tendance
             'atr': 0.10           # Environnement
         }
         
@@ -307,6 +318,9 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
             'false_breakout_score': false_breakout_score,
             'retest_score': retest_score,
             'trend_score': trend_score,
+            'adx_score': adx_score,
+            'adx_value': adx_analysis['adx_value'],
+            'is_trending': adx_analysis['is_trending'],
             'atr_score': atr_score,
             'breakout_strength': self._calculate_breakout_strength(breakout_info)
         })
@@ -353,7 +367,7 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
                     'side': OrderSide.BUY,
                     'level': resistance,
                     'duration': lookback,
-                    'height_pct': (resistance - support) / support * 100
+                    'height_pct': (resistance - support) / support * 100 if support != 0 else 0
                 }
             
             # Breakout baissier ET tendance compatible
@@ -367,7 +381,7 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
                     'side': OrderSide.SELL,
                     'level': support,
                     'duration': lookback,
-                    'height_pct': (resistance - support) / support * 100
+                    'height_pct': (resistance - support) / support * 100 if support != 0 else 0
                 }
             
             return None
@@ -385,9 +399,9 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
             level = breakout_info['level']
             
             if breakout_info['side'] == OrderSide.BUY:
-                penetration = (current_price - level) / level * 100
+                penetration = (current_price - level) / level * 100 if level != 0 else 0
             else:
-                penetration = (level - current_price) / level * 100
+                penetration = (level - current_price) / level * 100 if level != 0 else 0
             
             if penetration > 1.0:  # Breakout > 1%
                 score += 0.2

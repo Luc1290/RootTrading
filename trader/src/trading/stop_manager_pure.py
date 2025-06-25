@@ -3,8 +3,12 @@
 Gestionnaire de stops PURE - Trailing Stop seulement, pas de target adaptatif.
 Utilise la classe TrailingStop pour une logique simple et robuste.
 Intègre le GainProtector pour la sécurisation intelligente des gains.
+Version adaptative basée sur l'ATR pour des stops plus intelligents.
 """
 import logging
+import requests
+import time
+from datetime import datetime
 from typing import Dict, List, Any, Optional, Union, Callable
 from threading import RLock
 
@@ -23,25 +27,105 @@ class StopManagerPure:
     Utilise uniquement un trailing stop à 2.5% - pas de target adaptatif. MODIFIÉ pour éviter fausses sorties.
     """
     
-    def __init__(self, cycle_repository: CycleRepository, default_stop_pct: float = 2.5):
+    def __init__(self, cycle_repository: CycleRepository, default_stop_pct: float = 2.5, atr_multiplier: float = 1.5, min_stop_pct: float = 2.0, analyzer_url: str = "http://analyzer:5012"):
         """
         Initialise le gestionnaire de stops pure.
         
         Args:
             cycle_repository: Repository pour les cycles
-            default_stop_pct: Pourcentage de stop par défaut (2.5% - augmenté pour éviter les fausses sorties)
+            default_stop_pct: Pourcentage de stop par défaut (2.5% - fallback si pas d'ATR)
+            atr_multiplier: Multiplicateur ATR pour calcul adaptatif (défaut: 1.5)
+            min_stop_pct: Pourcentage minimum de stop (défaut: 2.0%)
+            analyzer_url: URL du service analyzer pour récupérer l'ATR
         """
         self.repository = cycle_repository
         self.price_locks = RLock()
         self.default_stop_pct = default_stop_pct
+        self.atr_multiplier = atr_multiplier
+        self.min_stop_pct = min_stop_pct
+        self.analyzer_url = analyzer_url
         
         # Cache des TrailingStop par cycle_id
         self.trailing_stops: Dict[str, TrailingStop] = {}
         
+        # Cache ATR pour éviter les appels répétés
+        self.atr_cache: Dict[str, Dict[str, Any]] = {}  # {symbol: {atr: float, timestamp: float, price_moves: int}}
+        self.atr_cache_ttl = 30  # 30 secondes pour scalping
+        self.atr_force_update_moves = 20  # Force update après 20 mouvements de prix
+        
         # Intégration du GainProtector
         self.gain_protector = GainProtector()
         
-        logger.info(f"✅ StopManagerPure initialisé (stop par défaut: {default_stop_pct}% - MODIFIÉ pour éviter fausses sorties) avec GainProtector")
+        logger.info(f"✅ StopManagerPure initialisé (stop défaut: {default_stop_pct}%, ATR: {atr_multiplier}x, min: {min_stop_pct}%) avec GainProtector")
+    
+    def _get_current_atr(self, symbol: str, force_update: bool = False) -> Optional[float]:
+        """
+        Récupère l'ATR actuel pour un symbole depuis l'analyzer.
+        
+        Args:
+            symbol: Symbole (ex: 'BTCUSDC')
+            force_update: Force la mise à jour même si en cache
+            
+        Returns:
+            Valeur ATR ou None si indisponible
+        """
+        current_time = time.time()
+        
+        # Vérifier le cache d'abord (sauf si force_update)
+        if not force_update and symbol in self.atr_cache:
+            cache_entry = self.atr_cache[symbol]
+            time_since_cache = current_time - cache_entry['timestamp']
+            price_moves = cache_entry.get('price_moves', 0)
+            
+            # Utiliser le cache si dans les temps ET pas trop de mouvements
+            if (time_since_cache < self.atr_cache_ttl and 
+                price_moves < self.atr_force_update_moves):
+                logger.debug(f"📊 ATR cache hit pour {symbol}: {cache_entry['atr']:.6f} (moves: {price_moves})")
+                return cache_entry['atr']
+            elif price_moves >= self.atr_force_update_moves:
+                logger.debug(f"📊 ATR force update pour {symbol} après {price_moves} mouvements")
+        
+        # Cache expiré ou inexistant, récupérer depuis l'analyzer
+        try:
+            # Construire l'URL pour récupérer l'ATR
+            url = f"{self.analyzer_url}/api/indicators/{symbol}"
+            
+            response = requests.get(url, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Chercher l'ATR dans la réponse
+                atr_value = None
+                if 'atr' in data:
+                    atr_value = data['atr']
+                elif 'indicators' in data and 'atr' in data['indicators']:
+                    atr_value = data['indicators']['atr']
+                elif 'technical_analysis' in data:
+                    # Peut-être dans une structure plus complexe
+                    ta_data = data['technical_analysis']
+                    if 'atr' in ta_data:
+                        atr_value = ta_data['atr']
+                
+                if atr_value is not None:
+                    # Mettre en cache avec compteur de mouvements remis à zéro
+                    self.atr_cache[symbol] = {
+                        'atr': atr_value,
+                        'timestamp': current_time,
+                        'price_moves': 0
+                    }
+                    logger.debug(f"📊 ATR récupéré depuis analyzer pour {symbol}: {atr_value:.6f}")
+                    return atr_value
+                else:
+                    logger.warning(f"⚠️ ATR non trouvé dans la réponse analyzer pour {symbol}: {data}")
+            else:
+                logger.warning(f"⚠️ Erreur HTTP {response.status_code} lors de la récupération ATR pour {symbol}")
+                
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"⚠️ Erreur réseau lors de la récupération ATR pour {symbol}: {e}")
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur inattendue lors de la récupération ATR pour {symbol}: {e}")
+        
+        return None
     
     def initialize_trailing_stop(self, cycle: TradeCycle) -> TrailingStop:
         """
@@ -53,28 +137,57 @@ class StopManagerPure:
         Returns:
             Instance TrailingStop
         """
-        # Déterminer le side basé sur la logique correcte
-        # waiting_SELL = position BUY ouverte (a acheté, attend de vendre)
-        # waiting_buy = position SELL ouverte (a vendu, attend de racheter)
-        if cycle.status == CycleStatus.WAITING_SELL:
-            side = Side.BUY  # Position BUYue ouverte
-        elif cycle.status == CycleStatus.WAITING_BUY:
-            side = Side.SELL  # Position courte ouverte
-        elif cycle.status == CycleStatus.ACTIVE_BUY:
-            side = Side.BUY   # En cours d'achat pour position BUYue
-        elif cycle.status == CycleStatus.ACTIVE_SELL:
-            side = Side.SELL  # En cours de vente pour position courte
+        # Utiliser le side directement depuis le cycle (plus fiable)
+        if hasattr(cycle, 'side') and cycle.side:
+            # Convertir OrderSide vers Side
+            side = Side.BUY if cycle.side == OrderSide.BUY else Side.SELL
         else:
-            # Fallback : essayer de déduire du contexte
-            logger.warning(f"⚠️ Statut {cycle.status} non reconnu pour {cycle.id}, assume BUY par défaut")
-            side = Side.BUY
+            # Fallback : déduire depuis le statut (pour compatibilité avec anciens cycles)
+            if cycle.status == CycleStatus.WAITING_SELL:
+                side = Side.BUY  # Position BUY ouverte (a acheté, attend de vendre)
+            elif cycle.status == CycleStatus.WAITING_BUY:
+                side = Side.SELL  # Position courte ouverte (a vendu, attend de racheter)
+            elif cycle.status == CycleStatus.ACTIVE_BUY:
+                side = Side.BUY   # En cours d'achat pour position longue
+            elif cycle.status == CycleStatus.ACTIVE_SELL:
+                side = Side.SELL  # En cours de vente pour position courte
+            else:
+                # Fallback : essayer de déduire du contexte
+                logger.warning(f"⚠️ Statut {cycle.status} non reconnu pour {cycle.id}, assume BUY par défaut")
+                side = Side.BUY
         
-        # Créer le trailing stop
+        # Restaurer les paramètres ATR depuis les métadonnées si disponibles
+        atr_config = None
+        if cycle.metadata and 'atr_config' in cycle.metadata:
+            atr_config = cycle.metadata['atr_config']
+            logger.debug(f"🔄 Configuration ATR restaurée depuis DB pour {cycle.id}: {atr_config}")
+        
+        # Récupérer l'ATR actuel pour ce symbole (priorité sur celui en cache)
+        current_atr = self._get_current_atr(cycle.symbol)
+        
+        # Utiliser ATR restauré si pas de nouveau disponible
+        if current_atr is None and atr_config and atr_config.get('atr_value'):
+            current_atr = atr_config['atr_value']
+            logger.info(f"📊 ATR restauré depuis DB pour {cycle.symbol}: {current_atr:.6f}")
+        
+        # Créer le trailing stop avec paramètres ATR (restaurés ou par défaut)
+        atr_multiplier = atr_config.get('atr_multiplier', self.atr_multiplier) if atr_config else self.atr_multiplier
+        min_stop_pct = atr_config.get('min_stop_pct', self.min_stop_pct) if atr_config else self.min_stop_pct
+        
         ts = TrailingStop(
             side=side,
             entry_price=cycle.entry_price,
-            stop_pct=self.default_stop_pct
+            stop_pct=self.default_stop_pct,
+            atr_multiplier=atr_multiplier,
+            min_stop_pct=min_stop_pct
         )
+        
+        # Appliquer l'ATR si disponible
+        if current_atr is not None:
+            ts.update_atr(current_atr)
+            logger.info(f"🧮 ATR appliqué pour {cycle.symbol}: {current_atr:.6f} (multiplier: {atr_multiplier}x)")
+        else:
+            logger.info(f"⚠️ ATR indisponible pour {cycle.symbol}, utilisation stop fixe: {self.default_stop_pct}%")
         
         # CORRECTION: Restaurer l'état du TrailingStop après redémarrage
         # Si le cycle a des min_price/max_price sauvegardés différents du prix d'entrée,
@@ -135,6 +248,20 @@ class StopManagerPure:
             else:
                 cycle.min_price = ts.min_price
         
+        # Sauvegarder les métadonnées ATR dans le cycle
+        if cycle.metadata is None:
+            cycle.metadata = {}
+        
+        cycle.metadata['atr_config'] = {
+            'atr_value': ts.current_atr,
+            'atr_multiplier': ts.atr_multiplier,
+            'min_stop_pct': ts.min_stop_pct,
+            'is_atr_based': ts.current_atr is not None,
+            'effective_stop_pct': ts._get_effective_stop_percentage(ts.stop_price) if hasattr(ts, '_get_effective_stop_percentage') else None,
+            'stop_calculation_method': 'atr_adaptive' if ts.current_atr is not None else 'fixed_percentage',
+            'last_updated': datetime.now().isoformat()
+        }
+        
         self.repository.save_cycle(cycle)
         
         return ts
@@ -165,6 +292,23 @@ class StopManagerPure:
                     self.initialize_trailing_stop(cycle)
                 
                 ts = self.trailing_stops[cycle.id]
+                
+                # Incrémenter le compteur de mouvements pour ce symbole
+                if cycle.symbol in self.atr_cache:
+                    self.atr_cache[cycle.symbol]['price_moves'] += 1
+                
+                # Déterminer si on doit forcer la mise à jour ATR
+                force_atr_update = False
+                if cycle.symbol in self.atr_cache:
+                    moves = self.atr_cache[cycle.symbol]['price_moves']
+                    if moves >= self.atr_force_update_moves:
+                        force_atr_update = True
+                
+                # Mettre à jour l'ATR (30s max OU après 20 mouvements)
+                current_atr = self._get_current_atr(cycle.symbol, force_update=force_atr_update)
+                if current_atr is not None and current_atr != ts.current_atr:
+                    ts.update_atr(current_atr)
+                    logger.debug(f"📊 ATR mis à jour pour cycle {cycle.id}: {current_atr:.6f}")
                 
                 # 1. Vérifier les protections de gains AVANT le trailing stop
                 protection_actions = self.gain_protector.update_and_check_protections(cycle.id, price)
@@ -204,11 +348,26 @@ class StopManagerPure:
                                    f"profit: {profit:+.6f}%")
                     else:
                         # Mettre à jour le cycle avec le nouveau stop_price
-                        if ts.stop_price != cycle.stop_price:
+                        if ts.stop_price != cycle.stop_price or current_atr != ts.current_atr:
                             old_stop = cycle.stop_price
                             cycle.stop_price = ts.stop_price
                             cycle.max_price = ts.max_price if ts.side == Side.BUY else cycle.max_price
                             cycle.min_price = ts.min_price if ts.side == Side.SELL else cycle.min_price
+                            
+                            # Mettre à jour les métadonnées ATR si changement
+                            if current_atr != ts.current_atr or cycle.metadata is None or 'atr_config' not in cycle.metadata:
+                                if cycle.metadata is None:
+                                    cycle.metadata = {}
+                                
+                                cycle.metadata['atr_config'] = {
+                                    'atr_value': ts.current_atr,
+                                    'atr_multiplier': ts.atr_multiplier,
+                                    'min_stop_pct': ts.min_stop_pct,
+                                    'is_atr_based': ts.current_atr is not None,
+                                    'effective_stop_pct': ts._get_effective_stop_percentage(price),
+                                    'stop_calculation_method': 'atr_adaptive' if ts.current_atr is not None else 'fixed_percentage',
+                                    'last_updated': datetime.now().isoformat()
+                                }
                             
                             self.repository.save_cycle(cycle)
                             
@@ -304,8 +463,32 @@ class StopManagerPure:
         Returns:
             Statistiques du stop manager
         """
+        # Compter les stops basés sur ATR vs fixes
+        atr_based_count = sum(1 for ts in self.trailing_stops.values() if ts.current_atr is not None)
+        fixed_count = len(self.trailing_stops) - atr_based_count
+        
+        # Stats par symbole
+        atr_stats = {}
+        for symbol, cache_data in self.atr_cache.items():
+            current_time = time.time()
+            age_seconds = current_time - cache_data['timestamp']
+            atr_stats[symbol] = {
+                'atr': cache_data['atr'],
+                'age_seconds': age_seconds,
+                'price_moves': cache_data.get('price_moves', 0),
+                'needs_update': age_seconds > self.atr_cache_ttl or cache_data.get('price_moves', 0) >= self.atr_force_update_moves
+            }
+        
         return {
             'active_trailing_stops': len(self.trailing_stops),
             'default_stop_pct': self.default_stop_pct,
+            'atr_multiplier': self.atr_multiplier,
+            'min_stop_pct': self.min_stop_pct,
+            'atr_based_stops': atr_based_count,
+            'fixed_stops': fixed_count,
+            'atr_cache_ttl': self.atr_cache_ttl,
+            'atr_force_update_moves': self.atr_force_update_moves,
+            'atr_cache_entries': len(self.atr_cache),
+            'atr_stats_by_symbol': atr_stats,
             'cycles': list(self.trailing_stops.keys())
         }

@@ -46,7 +46,7 @@ COPY shared /app/shared
 COPY analyzer /app/analyzer
 
 # Expose port
-EXPOSE 5001
+EXPOSE 5012
 
 # Start command
 CMD ["python", "analyzer/src/main.py"]

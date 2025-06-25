@@ -84,6 +84,7 @@ class TradeCycle(BaseModel):
     symbol: str
     strategy: str
     status: CycleStatus
+    side: OrderSide  # Direction du cycle: BUY (position longue) ou SELL (position courte)
     entry_order_id: Optional[str] = None
     exit_order_id: Optional[str] = None
     entry_price: Optional[float] = None

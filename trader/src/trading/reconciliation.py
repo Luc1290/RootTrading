@@ -36,14 +36,14 @@ class ExchangeReconciliation:
     """
     
     def __init__(self, cycle_repository: CycleRepository, binance_executor: BinanceExecutor, 
-                 reconciliation_interval: int = 90, cycle_manager=None):
+                 reconciliation_interval: int = 300, cycle_manager=None):
         """
         Initialise le service de réconciliation.
         
         Args:
             cycle_repository: Référentiel de cycles de trading
             binance_executor: Exécuteur Binance pour vérifier l'état des ordres
-            reconciliation_interval: Intervalle entre les réconciliations en secondes (défaut: 1 minute 30s)
+            reconciliation_interval: Intervalle entre les réconciliations en secondes (défaut: 5 minutes)
             cycle_manager: Gestionnaire de cycles pour mettre à jour le cache mémoire
         """
         self.repository = cycle_repository
@@ -128,7 +128,9 @@ class ExchangeReconciliation:
         try:
             # Récupérer tous les cycles actifs
             active_cycles = self.repository.get_active_cycles()
-            logger.info(f"🔄 Début de la réconciliation pour {len(active_cycles)} cycles actifs")
+            # Log uniquement si debug activé ou s'il y a beaucoup de cycles
+            if logger.isEnabledFor(logging.DEBUG) or len(active_cycles) > 5:
+                logger.debug(f"🔄 Début de la réconciliation pour {len(active_cycles)} cycles actifs")
             
             # Réinitialiser les statistiques pour cette exécution
             cycles_checked = 0
@@ -164,7 +166,11 @@ class ExchangeReconciliation:
             self.stats["orphan_orders_cleaned"] = orphans_cleaned
             self.stats["last_run_duration"] = time.time() - start_time
             
-            logger.info(f"✅ Réconciliation terminée: {cycles_reconciled}/{cycles_checked} cycles mis à jour ({cycles_failed} échecs, {orphans_cleaned} ordres orphelins nettoyés)")
+            # Ne logger en INFO que s'il y a eu des changements significatifs
+            if cycles_reconciled > 0 or cycles_failed > 0 or orphans_cleaned > 0:
+                logger.info(f"✅ Réconciliation terminée: {cycles_reconciled}/{cycles_checked} cycles mis à jour ({cycles_failed} échecs, {orphans_cleaned} ordres orphelins nettoyés)")
+            # else:
+            #     logger.debug(f"✅ Réconciliation terminée: {cycles_reconciled}/{cycles_checked} cycles mis à jour")
             
         except Exception as e:
             logger.error(f"❌ Erreur lors de la réconciliation des cycles: {str(e)}")
@@ -344,7 +350,7 @@ class ExchangeReconciliation:
         orphans_cleaned = 0
         
         try:
-            logger.info("🔍 Recherche des ordres orphelins...")
+            # Recherche silencieuse des ordres orphelins
             
             # Récupérer tous les cycles récents (dernières 48h) qui sont terminés/annulés
             # Exclure les cycles démo pour éviter de vérifier leurs ordres sur Binance
@@ -372,7 +378,9 @@ class ExchangeReconciliation:
                         'status': row[4]
                     })
             
-            logger.info(f"📊 {len(completed_cycles)} cycles terminés avec ordre de sortie trouvés")
+            # Ne logger que s'il y a potentiellement des orphelins
+            if len(completed_cycles) > 0 and logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"📊 {len(completed_cycles)} cycles terminés avec ordre de sortie trouvés")
             
             # Pour chaque cycle terminé, vérifier si l'ordre de sortie est toujours ouvert
             for cycle_data in completed_cycles:
@@ -420,7 +428,8 @@ class ExchangeReconciliation:
             if orphans_cleaned > 0:
                 logger.info(f"🧹 {orphans_cleaned} ordres orphelins nettoyés")
             else:
-                logger.info("✅ Aucun ordre orphelin trouvé")
+                # Pas de log pour les cas normaux sans orphelins
+                pass
                 
         except Exception as e:
             logger.error(f"❌ Erreur lors du nettoyage des ordres orphelins: {str(e)}")

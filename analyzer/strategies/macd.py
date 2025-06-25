@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from analyzer.strategies.base_strategy import BaseStrategy
+from analyzer.strategies.advanced_filters_mixin import AdvancedFiltersMixin
 from shared.src.enums import OrderSide, SignalStrength
 from shared.src.schemas import StrategySignal, MarketData
 from shared.src.config import STRATEGY_PARAMS
@@ -17,7 +18,7 @@ from shared.src.config import STRATEGY_PARAMS
 # Configuration du logging
 logger = logging.getLogger(__name__)
 
-class MACDStrategy(BaseStrategy):
+class MACDStrategy(BaseStrategy, AdvancedFiltersMixin):
     """
     Stratégie de trading basée sur le MACD.
     
@@ -281,13 +282,22 @@ class MACDStrategy(BaseStrategy):
             # 6. FILTRE TREND ALIGNMENT (tendance supérieure)
             trend_score = self._analyze_trend_alignment(df, signal_side)
             
+            # 6.5. FILTRE ADX - DÉSACTIVATION EN RANGE (évite pollution logs)
+            adx_analysis = self._analyze_adx_trend_strength_common(df, min_adx_threshold=20.0)
+            if adx_analysis['disable_trend_strategies']:
+                logger.debug(f"[MACD] {self.symbol}: Signal rejeté - ADX trop faible pour tendance "
+                           f"(ADX: {adx_analysis['adx_value']:.1f} < 20, {adx_analysis['reason']})")
+                return None
+            
+            adx_score = adx_analysis['confidence_score']
+            
             # 7. FILTRE ZERO LINE CONTEXT (position par rapport à ligne zéro)
             zero_line_score = self._analyze_zero_line_context(macd_line, signal_side)
             
             # === CALCUL DE CONFIANCE COMPOSITE ===
             confidence = self._calculate_composite_confidence(
                 histogram_score, volume_score, breakout_score,
-                divergence_score, trend_score, zero_line_score
+                divergence_score, trend_score, adx_score, zero_line_score
             )
             
             # Seuil minimum de confiance pour éviter le trading aléatoire
@@ -313,6 +323,9 @@ class MACDStrategy(BaseStrategy):
                 'breakout_score': breakout_score,
                 'divergence_score': divergence_score,
                 'trend_score': trend_score,
+                'adx_score': adx_score,
+                'adx_value': adx_analysis['adx_value'],
+                'is_trending': adx_analysis['is_trending'],
                 'zero_line_score': zero_line_score,
                 'macd_trend': self._get_macd_trend(macd_line),
                 'histogram_trend': self._get_histogram_trend(histogram)

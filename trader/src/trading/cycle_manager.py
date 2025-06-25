@@ -560,6 +560,7 @@ class CycleManager:
                 symbol=symbol,
                 strategy=strategy,
                 status=CycleStatus.INITIATING,
+                side=side,  # Ajouter le side au cycle
                 entry_price=None,
                 quantity=quantity,
                 stop_price=stop_price,

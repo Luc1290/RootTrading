@@ -20,18 +20,23 @@ class TrailingStop:
     - SELL : suit le plus-bas  (min)  et se place au-dessus.
     """
 
-    def __init__(self, side: Side, entry_price: float, stop_pct: float = 2.5):
+    def __init__(self, side: Side, entry_price: float, stop_pct: float = 2.5, atr_multiplier: float = 1.5, min_stop_pct: float = 2.0):
         """
         Initialise le trailing stop.
         
         Args:
             side: BUY ou SELL
             entry_price: Prix d'entrée
-            stop_pct: Pourcentage de retracement toléré (défaut: 2.5% - MODIFIÉ pour éviter fausses sorties)
+            stop_pct: Pourcentage de retracement toléré (défaut: 2.5% - utilisé si pas d'ATR)
+            atr_multiplier: Multiplicateur ATR pour calcul adaptatif (défaut: 1.5)
+            min_stop_pct: Pourcentage minimum de stop (défaut: 2.0%)
         """
         self.side = side
         self.entry_price = entry_price
         self.stop_pct = stop_pct
+        self.atr_multiplier = atr_multiplier
+        self.min_stop_pct = min_stop_pct
+        self.current_atr = None  # Sera mis à jour via update_atr()
         
         # Extrêmes favorables
         self.max_price = entry_price  # pour BUY
@@ -41,14 +46,31 @@ class TrailingStop:
         self.stop_price = self._calc_stop(entry_price)
         
         logger.info(f"🎯 TrailingStop créé: {side.name} @ {entry_price:.6f}, "
-                   f"stop initial @ {self.stop_price:.6f} (-{stop_pct}%)")
+                   f"stop initial @ {self.stop_price:.6f} (stop_pct: {stop_pct}%, ATR: {atr_multiplier}x)")
 
     def _calc_stop(self, ref_price: float) -> float:
-        """Calcule le stop par rapport à l'extrême favorable."""
+        """Calcule le stop par rapport à l'extrême favorable en utilisant l'ATR si disponible."""
+        # Calculer le pourcentage de stop adaptatif basé sur ATR
+        effective_stop_pct = self._get_effective_stop_percentage(ref_price)
+        
         if self.side == Side.BUY:
-            return ref_price * (1 - self.stop_pct / 100)
+            return ref_price * (1 - effective_stop_pct / 100)
         else:  # SELL
-            return ref_price * (1 + self.stop_pct / 100)
+            return ref_price * (1 + effective_stop_pct / 100)
+    
+    def _get_effective_stop_percentage(self, ref_price: float) -> float:
+        """Calcule le pourcentage de stop effectif basé sur ATR ou valeur fixe."""
+        if self.current_atr is not None and self.current_atr > 0:
+            # Calcul ATR-based: max(ATR * multiplier / prix * 100, min_stop_pct)
+            atr_stop_pct = (self.current_atr * self.atr_multiplier / ref_price) * 100
+            effective_pct = max(atr_stop_pct, self.min_stop_pct)
+            logger.debug(f"🧮 Stop ATR-based: {atr_stop_pct:.2f}% → effectif: {effective_pct:.2f}% "
+                        f"(ATR: {self.current_atr:.6f}, prix: {ref_price:.6f})")
+            return effective_pct
+        else:
+            # Fallback sur pourcentage fixe
+            logger.debug(f"🧮 Stop fixe: {self.stop_pct:.2f}% (pas d'ATR disponible)")
+            return self.stop_pct
 
     def update(self, price: float) -> bool:
         """
@@ -99,6 +121,19 @@ class TrailingStop:
                        f"Profit: {profit_pct:+.2f}%")
         
         return stop_hit
+    
+    def update_atr(self, atr_value: float):
+        """
+        Met à jour la valeur ATR pour les calculs adaptatifs.
+        
+        Args:
+            atr_value: Nouvelle valeur ATR (Average True Range)
+        """
+        old_atr = self.current_atr
+        self.current_atr = atr_value
+        
+        if old_atr != atr_value:
+            logger.debug(f"📊 ATR mis à jour: {old_atr} → {atr_value:.6f}")
 
     def _calculate_profit_pct(self, exit_price: float) -> float:
         """Calcule le pourcentage de profit/perte."""
@@ -120,7 +155,11 @@ class TrailingStop:
             'stop_pct': self.stop_pct,
             'max_price': self.max_price,
             'min_price': self.min_price,
-            'extreme_price': self.max_price if self.side == Side.BUY else self.min_price
+            'extreme_price': self.max_price if self.side == Side.BUY else self.min_price,
+            'current_atr': self.current_atr,
+            'atr_multiplier': self.atr_multiplier,
+            'min_stop_pct': self.min_stop_pct,
+            'is_atr_based': self.current_atr is not None
         }
 
     def __str__(self) -> str:

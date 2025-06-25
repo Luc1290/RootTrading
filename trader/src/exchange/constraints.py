@@ -7,6 +7,7 @@ import logging
 import math
 from typing import Dict, Any, Optional
 from decimal import Decimal, getcontext, ROUND_DOWN
+from .symbol_cache import SymbolConstraintsCache
 
 # Configuration de la précision décimale
 getcontext().prec = 28
@@ -20,14 +21,16 @@ class BinanceSymbolConstraints:
     Fournit des méthodes pour vérifier et ajuster les quantités et prix.
     """
     
-    def __init__(self, symbol_info: Optional[Dict[str, Dict[str, Any]]] = None):
+    def __init__(self, symbol_info: Optional[Dict[str, Dict[str, Any]]] = None, cache_ttl: int = 600):
         """
         Initialise les contraintes de symbole avec des valeurs par défaut.
         
         Args:
             symbol_info: Informations de symboles obtenues depuis fetch_exchange_info()
+            cache_ttl: Durée de vie du cache en secondes (défaut: 10 min)
         """
         self.symbol_info = symbol_info or {}
+        self.cache = SymbolConstraintsCache(ttl_seconds=cache_ttl)
         
         # Quantité minimale par défaut pour les symboles (fallback si pas de données en temps réel)
         self.default_min_quantities = {
@@ -65,7 +68,51 @@ class BinanceSymbolConstraints:
             "XRPUSDC": 4,  # 4 décimales (ex: 2.2145)
         }
         
-        logger.info(f"✅ Contraintes de symbole initialisées avec {len(self.symbol_info)} symboles en temps réel")
+        logger.info(f"✅ Contraintes de symbole initialisées avec {len(self.symbol_info)} symboles en temps réel et cache TTL {cache_ttl}s")
+    
+    def _get_cached_or_fetch_constraints(self, symbol: str) -> Dict[str, Any]:
+        """
+        Récupère les contraintes depuis le cache ou les calcule et les met en cache.
+        
+        Args:
+            symbol: Symbole (ex: 'BTCUSDC')
+            
+        Returns:
+            Dictionnaire avec les contraintes du symbole
+        """
+        # Essayer de récupérer depuis le cache
+        cached_constraints = self.cache.get(symbol)
+        if cached_constraints is not None:
+            return cached_constraints
+        
+        # Pas en cache, calculer les contraintes
+        constraints = {}
+        
+        # Récupérer depuis symbol_info si disponible, sinon utiliser les defaults
+        if symbol in self.symbol_info:
+            symbol_data = self.symbol_info[symbol]
+            constraints['min_qty'] = symbol_data.get('min_qty', self.default_min_quantities.get(symbol, 0.001))
+            constraints['step_size'] = symbol_data.get('step_size', self.default_step_sizes.get(symbol, 0.0001))
+            constraints['min_notional'] = symbol_data.get('min_notional', self.default_min_notionals.get(symbol, 10.0))
+            constraints['tick_size'] = symbol_data.get('tick_size')
+        else:
+            # Utiliser les valeurs par défaut
+            constraints['min_qty'] = self.default_min_quantities.get(symbol, 0.001)
+            constraints['step_size'] = self.default_step_sizes.get(symbol, 0.0001)
+            constraints['min_notional'] = self.default_min_notionals.get(symbol, 10.0)
+            constraints['tick_size'] = None
+        
+        # Calculer la précision des prix
+        if constraints['tick_size'] and constraints['tick_size'] > 0:
+            constraints['price_precision'] = max(0, -int(math.floor(math.log10(constraints['tick_size']))))
+        else:
+            constraints['price_precision'] = self.default_price_precisions.get(symbol, 2)
+        
+        # Mettre en cache
+        self.cache.set(symbol, constraints)
+        
+        logger.debug(f"📊 Contraintes calculées et mises en cache pour {symbol}: {constraints}")
+        return constraints
     
     def get_min_qty(self, symbol: str) -> float:
         """
@@ -77,11 +124,8 @@ class BinanceSymbolConstraints:
         Returns:
             Quantité minimale
         """
-        # Utiliser les données en temps réel si disponibles
-        if symbol in self.symbol_info and 'min_qty' in self.symbol_info[symbol]:
-            return self.symbol_info[symbol]['min_qty']
-        # Sinon, utiliser les valeurs par défaut
-        return self.default_min_quantities.get(symbol, 0.001)
+        constraints = self._get_cached_or_fetch_constraints(symbol)
+        return constraints['min_qty']
     
     def get_step_size(self, symbol: str) -> float:
         """
@@ -93,11 +137,8 @@ class BinanceSymbolConstraints:
         Returns:
             Pas de quantité
         """
-        # Utiliser les données en temps réel si disponibles
-        if symbol in self.symbol_info and 'step_size' in self.symbol_info[symbol]:
-            return self.symbol_info[symbol]['step_size']
-        # Sinon, utiliser les valeurs par défaut
-        return self.default_step_sizes.get(symbol, 0.0001)
+        constraints = self._get_cached_or_fetch_constraints(symbol)
+        return constraints['step_size']
     
     def get_min_notional(self, symbol: str) -> float:
         """
@@ -109,11 +150,8 @@ class BinanceSymbolConstraints:
         Returns:
             Valeur minimale de l'ordre
         """
-        # Utiliser les données en temps réel si disponibles
-        if symbol in self.symbol_info and 'min_notional' in self.symbol_info[symbol]:
-            return self.symbol_info[symbol]['min_notional']
-        # Sinon, utiliser les valeurs par défaut
-        return self.default_min_notionals.get(symbol, 10.0)
+        constraints = self._get_cached_or_fetch_constraints(symbol)
+        return constraints['min_notional']
     
     def get_price_precision(self, symbol: str) -> int:
         """
@@ -125,16 +163,8 @@ class BinanceSymbolConstraints:
         Returns:
             Nombre de décimales pour les prix
         """
-        # Pour la précision des prix, calculer depuis tick_size si disponible
-        if symbol in self.symbol_info and 'tick_size' in self.symbol_info[symbol]:
-            tick_size = self.symbol_info[symbol]['tick_size']
-            # Calculer le nombre de décimales depuis tick_size
-            # Ex: 0.01 -> 2 décimales, 0.001 -> 3 décimales
-            import math
-            if tick_size > 0:
-                return max(0, -int(math.floor(math.log10(tick_size))))
-        # Sinon, utiliser les valeurs par défaut
-        return self.default_price_precisions.get(symbol, 2)
+        constraints = self._get_cached_or_fetch_constraints(symbol)
+        return constraints['price_precision']
     
     def truncate_quantity(self, symbol: str, quantity: float) -> float:
         """
@@ -263,3 +293,37 @@ class BinanceSymbolConstraints:
         
         logger.info(f"Quantité minimale calculée pour {symbol} @ {price}: {rounded_qty} (min_qty: {min_qty}, notional min: {notional_min_qty})")
         return rounded_qty
+    
+    def invalidate_cache(self, symbol: str) -> bool:
+        """
+        Invalide le cache pour un symbole spécifique.
+        
+        Args:
+            symbol: Symbole à invalider
+            
+        Returns:
+            True si une entrée était présente, False sinon
+        """
+        return self.cache.invalidate(symbol)
+    
+    def clear_cache(self) -> None:
+        """Vide complètement le cache des contraintes."""
+        self.cache.clear()
+    
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """
+        Retourne les statistiques du cache.
+        
+        Returns:
+            Statistiques détaillées du cache
+        """
+        return self.cache.get_stats()
+    
+    def cleanup_expired_cache(self) -> int:
+        """
+        Nettoie les entrées expirées du cache.
+        
+        Returns:
+            Nombre d'entrées supprimées
+        """
+        return self.cache.cleanup_expired()
