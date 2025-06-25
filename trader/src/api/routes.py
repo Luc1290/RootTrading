@@ -310,6 +310,156 @@ def close_cycle(cycle_id):
         logger.error(f"❌ Erreur lors de la fermeture du cycle: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@routes_bp.route('/reinforce', methods=['POST'])
+def reinforce_cycle():
+    """
+    Renforce un cycle existant (DCA - Dollar Cost Averaging).
+    
+    Exemple de requête:
+    {
+        "cycle_id": "cycle_12345",
+        "symbol": "BTCUSDC",
+        "side": "BUY",
+        "quantity": 0.001,
+        "price": 50000,  # optionnel
+        "metadata": {
+            "reinforce_reason": "Prix favorable",
+            "confidence": 0.8
+        }
+    }
+    """
+    order_manager = current_app.config['ORDER_MANAGER']
+    
+    if not order_manager:
+        return jsonify({"error": "OrderManager non initialisé"}), 500
+    
+    try:
+        data = request.json
+        
+        # Valider les paramètres requis
+        if not all(k in data for k in ["cycle_id", "symbol", "side", "quantity"]):
+            return jsonify({"error": "Paramètres manquants. Requis: cycle_id, symbol, side, quantity"}), 400
+        
+        cycle_id = data["cycle_id"]
+        symbol = data["symbol"]
+        side = OrderSide(data["side"])
+        quantity = float(data["quantity"])
+        price = float(data["price"]) if "price" in data else None
+        metadata = data.get("metadata", {})
+        
+        # Récupérer le cycle existant
+        cycle = order_manager.cycle_manager.get_cycle(cycle_id)
+        if not cycle:
+            return jsonify({"error": f"Cycle {cycle_id} non trouvé"}), 404
+        
+        # Vérifier que le cycle est dans un état approprié
+        if cycle.status not in [CycleStatus.WAITING_SELL, CycleStatus.ACTIVE]:
+            return jsonify({
+                "error": f"Le cycle {cycle_id} n'est pas dans un état permettant le renforcement (état actuel: {cycle.status.value})"
+            }), 400
+        
+        # Vérifier que les paramètres correspondent au cycle
+        if cycle.symbol != symbol:
+            return jsonify({"error": f"Le symbole {symbol} ne correspond pas au cycle (symbole du cycle: {cycle.symbol})"}), 400
+        
+        if cycle.side != side:
+            return jsonify({"error": f"Le side {side.value} ne correspond pas au cycle (side du cycle: {cycle.side.value})"}), 400
+        
+        # Créer un nouvel ordre pour renforcer la position
+        # Utiliser la même stratégie que le cycle original avec le suffixe "_DCA"
+        strategy = f"{cycle.strategy}_DCA"
+        
+        # Créer l'ordre de renforcement
+        result = order_manager.binance_executor.create_order(
+            symbol=symbol,
+            side=side,
+            quantity=quantity,
+            price=price,
+            order_type="LIMIT" if price else "MARKET"
+        )
+        
+        if result.get('success'):
+            order_id = result.get('orderId')
+            
+            # Mettre à jour le cycle avec les nouvelles informations
+            # Calculer le nouveau prix moyen et la nouvelle quantité
+            old_value = cycle.entry_price * cycle.quantity
+            new_value = (price if price else result.get('fills', [{}])[0].get('price', 0)) * quantity
+            new_quantity = cycle.quantity + quantity
+            new_avg_price = (old_value + new_value) / new_quantity if new_quantity > 0 else 0
+            
+            # Mettre à jour le cycle dans la base de données
+            order_manager.cycle_manager.update_cycle_reinforcement(
+                cycle_id=cycle_id,
+                additional_quantity=quantity,
+                new_avg_price=new_avg_price,
+                reinforce_order_id=order_id,
+                metadata=metadata
+            )
+            
+            logger.info(f"✅ Cycle {cycle_id} renforcé avec {quantity} unités. Nouveau prix moyen: {new_avg_price}")
+            
+            return jsonify({
+                "success": True,
+                "cycle_id": cycle_id,
+                "reinforce_order_id": order_id,
+                "original_entry_price": cycle.entry_price,
+                "original_quantity": cycle.quantity,
+                "additional_quantity": quantity,
+                "new_avg_price": new_avg_price,
+                "new_total_quantity": new_quantity
+            }), 200
+        else:
+            return jsonify({
+                "error": f"Échec de la création de l'ordre de renforcement: {result.get('error', 'Erreur inconnue')}"
+            }), 400
+    
+    except Exception as e:
+        logger.error(f"❌ Erreur lors du renforcement du cycle: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@routes_bp.route('/cycles/<cycle_id>', methods=['GET'])
+def get_cycle_details(cycle_id):
+    """
+    Récupère les détails d'un cycle spécifique.
+    """
+    order_manager = current_app.config['ORDER_MANAGER']
+    
+    if not order_manager:
+        return jsonify({"error": "OrderManager non initialisé"}), 500
+    
+    try:
+        cycle = order_manager.cycle_manager.get_cycle(cycle_id)
+        
+        if not cycle:
+            return jsonify({"error": f"Cycle {cycle_id} non trouvé"}), 404
+        
+        # Construire la réponse avec les détails du cycle
+        return jsonify({
+            "status": "success",
+            "data": {
+                "id": cycle.id,
+                "symbol": cycle.symbol,
+                "strategy": cycle.strategy,
+                "status": cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status),
+                "side": cycle.side.value if hasattr(cycle.side, 'value') else str(cycle.side),
+                "entry_price": cycle.entry_price,
+                "exit_price": cycle.exit_price,
+                "quantity": cycle.quantity,
+                "stop_price": cycle.stop_price,
+                "profit_loss": cycle.profit_loss,
+                "profit_loss_percent": cycle.profit_loss_percent,
+                "created_at": cycle.created_at.isoformat() if cycle.created_at else None,
+                "updated_at": cycle.updated_at.isoformat() if cycle.updated_at else None,
+                "completed_at": cycle.completed_at.isoformat() if cycle.completed_at else None,
+                "metadata": cycle.metadata
+            }
+        })
+    
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la récupération du cycle: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 # ============================================================================
 # Routes de configuration
 # ============================================================================

@@ -7,6 +7,7 @@ import logging
 import time
 import uuid
 import os
+import json
 from typing import Dict, List, Any, Optional, Union
 from datetime import datetime, timezone
 import threading
@@ -1412,6 +1413,89 @@ class CycleManager:
             cycles = [c for c in cycles if c.strategy == strategy]
         
         return cycles
+    
+    def update_cycle_reinforcement(self, cycle_id: str, additional_quantity: float, 
+                                 new_avg_price: float, reinforce_order_id: str, 
+                                 metadata: Dict[str, Any] = None) -> bool:
+        """
+        Met à jour un cycle après un renforcement (DCA).
+        
+        Args:
+            cycle_id: ID du cycle à mettre à jour
+            additional_quantity: Quantité supplémentaire ajoutée
+            new_avg_price: Nouveau prix moyen après renforcement
+            reinforce_order_id: ID de l'ordre de renforcement
+            metadata: Métadonnées supplémentaires
+            
+        Returns:
+            True si succès, False sinon
+        """
+        try:
+            with self.cycles_lock:
+                cycle = self.active_cycles.get(cycle_id)
+                if not cycle:
+                    logger.error(f"❌ Cycle {cycle_id} non trouvé dans les cycles actifs")
+                    return False
+                
+                # Mettre à jour les métadonnées
+                if not cycle.metadata:
+                    cycle.metadata = {}
+                
+                # Ajouter l'historique de renforcement
+                if 'reinforcements' not in cycle.metadata:
+                    cycle.metadata['reinforcements'] = []
+                
+                cycle.metadata['reinforcements'].append({
+                    'order_id': reinforce_order_id,
+                    'quantity': additional_quantity,
+                    'price': new_avg_price,
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'metadata': metadata
+                })
+                
+                # Mettre à jour la quantité et le prix moyen
+                old_quantity = cycle.quantity
+                cycle.quantity += additional_quantity
+                cycle.entry_price = new_avg_price
+                
+                # Sauvegarder en base de données
+                with transaction(self.db_url) as tx:
+                    tx.execute("""
+                        UPDATE trade_cycles 
+                        SET quantity = %s, 
+                            entry_price = %s, 
+                            metadata = %s,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                    """, (cycle.quantity, cycle.entry_price, 
+                         json.dumps(cycle.metadata) if cycle.metadata else '{}', 
+                         cycle_id))
+                    
+                    # Ajouter une entrée dans trade_executions pour tracer le renforcement
+                    tx.execute("""
+                        INSERT INTO trade_executions 
+                        (id, cycle_id, order_id, side, symbol, price, quantity, 
+                         commission, commission_asset, status, timestamp, metadata)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, 0, 'USDC', %s, %s, %s)
+                    """, (
+                        f"exec_{uuid.uuid4().hex[:16]}",
+                        cycle_id,
+                        reinforce_order_id,
+                        cycle.side.value,
+                        cycle.symbol,
+                        new_avg_price,
+                        additional_quantity,
+                        'FILLED',
+                        datetime.now(timezone.utc),
+                        json.dumps({'type': 'reinforcement', 'original_metadata': metadata})
+                    ))
+                
+                logger.info(f"✅ Cycle {cycle_id} renforcé: {old_quantity:.8f} + {additional_quantity:.8f} = {cycle.quantity:.8f} @ {new_avg_price:.8f}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la mise à jour du renforcement: {str(e)}")
+            return False
     
     def process_price_update(self, symbol: str, price: float) -> None:
         """

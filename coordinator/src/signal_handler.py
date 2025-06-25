@@ -2087,9 +2087,65 @@ class SignalHandler:
         Returns:
             True si succès, False sinon
         """
-        # TODO: Implémenter le renforcement de cycle
-        self.logger.warning(f"⚠️ Renforcement de cycle pas encore implémenté: {decision.existing_cycle_id}")
-        return False
+        try:
+            # Récupérer le cycle existant
+            response = self._make_request_with_retry(
+                f"{self.trader_api_url}/cycles/{decision.existing_cycle_id}",
+                method="GET",
+                timeout=5.0
+            )
+            
+            if not response or response.get('status') != 'success':
+                self.logger.error(f"❌ Impossible de récupérer le cycle: {decision.existing_cycle_id}")
+                return False
+            
+            existing_cycle = response.get('data')
+            if not existing_cycle:
+                self.logger.error(f"❌ Cycle non trouvé: {decision.existing_cycle_id}")
+                return False
+            
+            # Vérifier que le cycle est dans un état qui permet le renforcement
+            if existing_cycle.get('status') not in ['waiting_sell', 'active']:
+                self.logger.warning(f"⚠️ Cycle {decision.existing_cycle_id} dans un état incompatible: {existing_cycle.get('status')}")
+                return False
+            
+            # Calculer la quantité supplémentaire
+            additional_quantity = decision.amount / decision.price_target if decision.price_target else decision.amount
+            
+            # Préparer la commande de renforcement
+            reinforce_data = {
+                "cycle_id": decision.existing_cycle_id,
+                "symbol": decision.symbol,
+                "side": existing_cycle.get('side', 'BUY'),
+                "quantity": additional_quantity,
+                "price": decision.price_target or 0,
+                "action": "reinforce",
+                "metadata": {
+                    "reinforce_reason": decision.reason,
+                    "confidence": decision.confidence,
+                    "existing_entry_price": existing_cycle.get('entry_price'),
+                    "existing_quantity": existing_cycle.get('quantity')
+                }
+            }
+            
+            # Envoyer la commande de renforcement au trader
+            result = self._make_request_with_retry(
+                f"{self.trader_api_url}/reinforce",
+                method="POST",
+                json_data=reinforce_data,
+                timeout=10.0
+            )
+            
+            if result and result.get('success'):
+                self.logger.info(f"✅ Cycle {decision.existing_cycle_id} renforcé avec {additional_quantity:.8f} unités")
+                return True
+            else:
+                self.logger.error(f"❌ Échec du renforcement: {result}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"❌ Erreur lors du renforcement du cycle: {str(e)}")
+            return False
     
     def _reduce_cycle_position(self, decision) -> bool:
         """
