@@ -17,7 +17,7 @@ from urllib.parse import urljoin
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
-from coordinator.src.signal_handler import SignalHandler
+from coordinator.src.signal_handler_refactored import SignalHandler
 from coordinator.src.cycle_sync_monitor import CycleSyncMonitor
 
 # Configuration du logging

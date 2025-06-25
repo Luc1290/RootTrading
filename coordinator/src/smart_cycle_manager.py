@@ -149,7 +149,26 @@ class SmartCycleManager:
                 base_confidence += alignment_bonus
         
         # Malus si signal récent (moins de 2 minutes)
-        signal_age = time.time() - signal.timestamp.timestamp()
+        current_time = time.time()
+        
+        # Gérer différents formats de timestamp
+        if hasattr(signal.timestamp, 'timestamp'):
+            # datetime object
+            signal_time = signal.timestamp.timestamp()
+        elif isinstance(signal.timestamp, (int, float)):
+            # Unix timestamp
+            signal_time = signal.timestamp
+            if signal_time > 1e12:  # Si en millisecondes
+                signal_time = signal_time / 1000.0
+        else:
+            # String - essayer de parser
+            try:
+                from datetime import datetime
+                signal_time = datetime.fromisoformat(str(signal.timestamp).replace('Z', '+00:00')).timestamp()
+            except:
+                signal_time = current_time
+                
+        signal_age = current_time - signal_time
         if signal_age < 120:  # Moins de 2 minutes
             freshness_malus = 0.1
             base_confidence -= freshness_malus
