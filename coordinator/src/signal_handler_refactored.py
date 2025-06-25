@@ -101,7 +101,15 @@ class SignalHandler:
         try:
             self.stats["signals_received"] += 1
             
-            # Parser le signal
+            # Parser le signal avec conversion des enums
+            # Convertir les strings en enums si nécessaire
+            if 'side' in data and isinstance(data['side'], str):
+                from shared.src.enums import OrderSide
+                data['side'] = OrderSide(data['side'])
+            if 'strength' in data and isinstance(data['strength'], str):
+                from shared.src.enums import SignalStrength
+                data['strength'] = SignalStrength(data['strength'])
+            
             signal = StrategySignal(**data)
             
             # IMPORTANT: Vérifier si le signal vient du signal_aggregator
@@ -178,9 +186,10 @@ class SignalHandler:
                 return
                 
             # 2. Récupérer les données nécessaires pour SmartCycleManager
-            current_price = self._get_current_price(signal.symbol)
-            if not current_price:
-                self.logger.error(f"Impossible d'obtenir le prix pour {signal.symbol}")
+            # Utiliser le prix du signal (comme l'ancien code)
+            current_price = signal.price
+            if not current_price or current_price <= 0:
+                self.logger.error(f"Prix invalide dans le signal pour {signal.symbol}: {current_price}")
                 return
                 
             # 3. Récupérer toutes les balances et vérifier la faisabilité
@@ -330,7 +339,7 @@ class SignalHandler:
             # Préparer les données de l'ordre avec format original
             order_data = {
                 "symbol": signal.symbol,
-                "side": signal.side.value,
+                "side": signal.side.value if hasattr(signal.side, 'value') else str(signal.side),
                 "quantity": quantity,
                 "price": signal.price,
                 "strategy": signal.strategy,
@@ -447,18 +456,6 @@ class SignalHandler:
         self.logger.warning("Fermeture pas encore implémentée")
         return False
         
-    def _get_current_price(self, symbol: str) -> Optional[float]:
-        """
-        Récupère le prix actuel d'un symbole.
-        
-        Args:
-            symbol: Symbole à récupérer
-            
-        Returns:
-            Prix actuel ou None
-        """
-        prices = self.service_client.get_current_prices([symbol])
-        return prices.get(symbol)
         
     def _get_quote_asset(self, symbol: str) -> str:
         """

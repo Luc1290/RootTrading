@@ -348,14 +348,23 @@ class StopManagerPure:
                                    f"profit: {profit:+.6f}%")
                     else:
                         # Mettre à jour le cycle avec le nouveau stop_price
-                        if ts.stop_price != cycle.stop_price or current_atr != ts.current_atr:
+                        stop_price_changed = ts.stop_price != cycle.stop_price
+                        atr_changed = current_atr != ts.current_atr
+                        
+                        # Calculer si le changement de stop est significatif (> 0.01%)
+                        significant_stop_change = False
+                        if stop_price_changed and cycle.stop_price and cycle.stop_price > 0:
+                            change_pct = abs(ts.stop_price - cycle.stop_price) / cycle.stop_price * 100
+                            significant_stop_change = change_pct > 0.01  # Plus de 0.01%
+                        
+                        if stop_price_changed or atr_changed:
                             old_stop = cycle.stop_price
                             cycle.stop_price = ts.stop_price
                             cycle.max_price = ts.max_price if ts.side == Side.BUY else cycle.max_price
                             cycle.min_price = ts.min_price if ts.side == Side.SELL else cycle.min_price
                             
                             # Mettre à jour les métadonnées ATR si changement
-                            if current_atr != ts.current_atr or cycle.metadata is None or 'atr_config' not in cycle.metadata:
+                            if atr_changed or cycle.metadata is None or 'atr_config' not in cycle.metadata:
                                 if cycle.metadata is None:
                                     cycle.metadata = {}
                                 
@@ -369,7 +378,9 @@ class StopManagerPure:
                                     'last_updated': datetime.now().isoformat()
                                 }
                             
-                            self.repository.save_cycle(cycle)
+                            # OPTIMIZATION: Ne sauvegarder en DB que pour les changements significatifs
+                            if significant_stop_change or atr_changed:
+                                self.repository.save_cycle(cycle)
                             
                             logger.debug(f"📈 Stop trailing mis à jour pour cycle {cycle.id}: "
                                        f"{old_stop:.6f} → {ts.stop_price:.6f}")

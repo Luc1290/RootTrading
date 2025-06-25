@@ -14,6 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 
 from shared.src.config import KAFKA_TOPIC_MARKET_DATA, KAFKA_BROKER
 from shared.src.kafka_client import KafkaClient
+from shared.src.redis_client import RedisClient
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -33,7 +34,8 @@ class KafkaProducer:
             broker: Adresse du broker Kafka (host:port)
         """
         self.client = KafkaClient(broker=broker)
-        logger.info(f"✅ Producteur Kafka initialisé pour {broker}")
+        self.redis_client = RedisClient()
+        logger.info(f"✅ Producteur Kafka+Redis initialisé pour {broker}")
     
     def publish_market_data(self, data: Dict[str, Any], key: Optional[str] = None) -> None:
         """
@@ -54,15 +56,19 @@ class KafkaProducer:
             # Utiliser le symbole comme clé si non fournie
             message_key = key or symbol
             
-            # Publier le message
+            # Publier le message sur Kafka
             self.client.produce(topic=topic, message=data, key=message_key)
+            
+            # Publier sur Redis avec le même format que Kafka
+            redis_channel = f"roottrading:market:data:{symbol}:{data.get('timeframe', '1m')}"
+            self.redis_client.publish(redis_channel, data)
             
             # Log pour le débogage (uniquement pour les chandeliers fermés)
             if data.get('is_closed', False):
-                logger.info(f"📊 Publié sur {topic}: {data['close']} [O:{data['open']} H:{data['high']} L:{data['low']}]")
+                logger.info(f"📊 Publié sur Kafka+Redis {symbol.upper()}: {data['close']} [O:{data['open']} H:{data['high']} L:{data['low']}]")
             else:
-                # Ajouter un nouveau log pour les mises à jour en cours
-                logger.info(f"🔄 Mis à jour sur {topic}: prix actuel {data['close']}")
+                # Log plus discret pour les mises à jour en cours
+                logger.debug(f"🔄 Mis à jour sur Redis {symbol.upper()}: prix actuel {data['close']}")
         except Exception as e:
             error_msg = str(e).replace('{', '{{').replace('}', '}}')
             logger.error(f"❌ Erreur lors de la publication sur Kafka: {error_msg}")

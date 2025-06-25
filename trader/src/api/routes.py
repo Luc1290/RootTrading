@@ -107,6 +107,42 @@ def diagnostic():
     return jsonify(diagnostic_info)
 
 # ============================================================================
+# Routes des prix
+# ============================================================================
+
+@routes_bp.route('/prices', methods=['GET'])
+def get_prices():
+    """
+    Récupère les prix actuels pour les symboles demandés.
+    Query params:
+        - symbols: Symboles séparés par des virgules (ex: BTCUSDC,ETHUSDC)
+    """
+    order_manager = current_app.config['ORDER_MANAGER']
+    
+    if not order_manager:
+        return jsonify({"error": "OrderManager non initialisé"}), 500
+    
+    symbols_param = request.args.get('symbols', '')
+    if not symbols_param:
+        return jsonify({"error": "Paramètre 'symbols' requis"}), 400
+    
+    symbols = [s.strip() for s in symbols_param.split(',')]
+    
+    # Récupérer les prix depuis le price monitor
+    prices = {}
+    for symbol in symbols:
+        if hasattr(order_manager, 'price_monitor') and order_manager.price_monitor:
+            with order_manager.price_monitor.price_lock:
+                price = order_manager.price_monitor.last_prices.get(symbol)
+                if price:
+                    prices[symbol] = price
+    
+    if not prices:
+        return jsonify({"error": f"Aucun prix disponible pour {symbols}"}), 404
+    
+    return jsonify(prices)
+
+# ============================================================================
 # Routes des ordres
 # ============================================================================
 

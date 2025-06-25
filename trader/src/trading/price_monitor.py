@@ -31,8 +31,8 @@ class PriceMonitor:
         self.price_update_callback = price_update_callback
         self.redis_client = RedisClient()
         
-        # Configuration des canaux Redis pour les mises à jour de prix
-        self.price_channels = [f"roottrading:market:data:{symbol.lower()}" for symbol in self.symbols]
+        # Configuration des canaux Redis pour les mises à jour de prix (1m timeframe)
+        self.price_channels = [f"roottrading:market:data:{symbol.lower()}:1m" for symbol in self.symbols]
         
         # Dictionnaire des derniers prix
         self.last_prices: Dict[str, float] = {}

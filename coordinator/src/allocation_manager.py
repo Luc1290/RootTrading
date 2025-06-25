@@ -34,7 +34,11 @@ class AllocationManager:
             'USDC': float(os.getenv('MIN_TRADE_USDC', 10.0)),
             'BTC': float(os.getenv('MIN_TRADE_BTC', 0.0001)),
             'ETH': float(os.getenv('MIN_TRADE_ETH', 0.003)),
-            'BNB': float(os.getenv('MIN_TRADE_BNB', 0.02))
+            'BNB': float(os.getenv('MIN_TRADE_BNB', 0.02)),
+            'SOL': float(os.getenv('MIN_TRADE_SOL', 0.1)),
+            'XRP': float(os.getenv('MIN_TRADE_XRP', 10.0)),
+            'ADA': float(os.getenv('MIN_TRADE_ADA', 20.0)),
+            'DOT': float(os.getenv('MIN_TRADE_DOT', 1.0))
         }
         
         # Montants maximum par devise
@@ -42,7 +46,11 @@ class AllocationManager:
             'USDC': float(os.getenv('MAX_TRADE_USDC', 250.0)),
             'BTC': float(os.getenv('MAX_TRADE_BTC', 0.005)),
             'ETH': float(os.getenv('MAX_TRADE_ETH', 0.13)),
-            'BNB': float(os.getenv('MAX_TRADE_BNB', 2.0))
+            'BNB': float(os.getenv('MAX_TRADE_BNB', 2.0)),
+            'SOL': float(os.getenv('MAX_TRADE_SOL', 2.0)),
+            'XRP': float(os.getenv('MAX_TRADE_XRP', 200.0)),
+            'ADA': float(os.getenv('MAX_TRADE_ADA', 400.0)),
+            'DOT': float(os.getenv('MAX_TRADE_DOT', 20.0))
         }
         
         # Marges de sécurité pour éviter les échecs d'ordres
@@ -73,7 +81,8 @@ class AllocationManager:
         
         # Appliquer les limites min/max
         min_amount = self.min_amounts.get(quote_asset, 10.0)
-        max_amount = self.max_amounts.get(quote_asset, 100.0)
+        # Ne pas limiter à 100, utiliser le montant calculé si disponible
+        max_amount = self.max_amounts.get(quote_asset, calculated_amount)
         
         final_amount = max(min_amount, min(calculated_amount, max_amount))
         
@@ -98,7 +107,8 @@ class AllocationManager:
             Dict avec constraining_balance et details
         """
         try:
-            if signal.side == OrderSide.BUY:
+            signal_side = signal.side if hasattr(signal.side, 'value') else OrderSide(signal.side) if isinstance(signal.side, str) else signal.side
+            if signal_side == OrderSide.BUY:
                 # BUY: besoin de quote_asset
                 available_quote = balances[quote_asset]['binance_free']
                 constraining_balance = available_quote * self.safety_margins['BUY']
@@ -123,7 +133,7 @@ class AllocationManager:
                 'details': {
                     'base_available': balances[base_asset]['binance_free'],
                     'quote_available': balances[quote_asset]['binance_free'],
-                    'safety_margin': self.safety_margins[signal.side.value]
+                    'safety_margin': self.safety_margins[signal.side.value if hasattr(signal.side, 'value') else str(signal.side)]
                 }
             }
             

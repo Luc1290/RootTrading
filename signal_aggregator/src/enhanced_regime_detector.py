@@ -335,6 +335,103 @@ class EnhancedRegimeDetector:
             'RSI', 'Divergence', 'Ride_or_React'
         ]})
     
+    async def get_danger_level(self, symbol: str) -> float:
+        """
+        Calculate market risk/opportunity level from 0 to 10 based on Enhanced metrics
+        0-2: Excellent opportunity (strong trends, low volatility)
+        3-4: Good opportunity (weak trends, moderate conditions)
+        5-6: Neutral (range markets, balanced risk/opportunity)  
+        7-8: Risky (high volatility, uncertain direction)
+        9-10: Very dangerous (extreme conditions, avoid new positions)
+        """
+        try:
+            # Get cached danger level first
+            cache_key = f"enhanced_danger:{symbol}"
+            try:
+                cached = await self.redis.get(cache_key)
+                if cached:
+                    return float(cached)
+            except:
+                pass  # Continue without cache if Redis fails
+                
+            # Calculate danger level based on current regime and metrics
+            regime, metrics = await self.get_detailed_regime(symbol)
+            danger_level = self._calculate_danger_from_regime(regime, metrics)
+            
+            # Cache for 1 minute
+            try:
+                await self.redis.set(cache_key, str(danger_level), expiration=60)
+            except:
+                pass  # Continue without cache if Redis fails
+            
+            return danger_level
+            
+        except Exception as e:
+            logger.error(f"Error getting danger level for {symbol}: {e}")
+            return 5.0  # Default to medium danger
+    
+    def _calculate_danger_from_regime(self, regime: MarketRegime, metrics: Dict[str, float]) -> float:
+        """Calculate danger level based on Enhanced regime and metrics"""
+        
+        # Base danger level by regime type
+        regime_danger = {
+            MarketRegime.STRONG_TREND_UP: 1.0,      # Lowest danger - strong uptrend
+            MarketRegime.TREND_UP: 2.0,             # Low danger - clear uptrend  
+            MarketRegime.WEAK_TREND_UP: 3.5,        # Moderate danger - weak trend
+            MarketRegime.RANGE_TIGHT: 4.0,          # Neutral - tight range
+            MarketRegime.RANGE_VOLATILE: 6.5,       # Higher danger - volatile range
+            MarketRegime.WEAK_TREND_DOWN: 7.0,      # Risky - weak downtrend
+            MarketRegime.TREND_DOWN: 8.0,           # High danger - clear downtrend
+            MarketRegime.STRONG_TREND_DOWN: 9.0     # Very dangerous - strong downtrend
+        }
+        
+        base_danger = regime_danger.get(regime, 5.0)
+        
+        # Adjust based on volatility (BB width)
+        bb_width = metrics.get('bb_width_pct', 2.0)
+        if bb_width > 5.0:  # Very high volatility
+            base_danger += 1.5
+        elif bb_width > 3.0:  # High volatility  
+            base_danger += 1.0
+        elif bb_width < 1.0:  # Very low volatility
+            base_danger -= 0.5
+            
+        # Adjust based on RSI extremes
+        rsi = metrics.get('rsi', 50)
+        if rsi < 20 or rsi > 80:  # Extreme oversold/overbought
+            base_danger += 1.0
+        elif rsi < 30 or rsi > 70:  # Moderately oversold/overbought
+            base_danger += 0.5
+            
+        # Adjust based on trend strength (ADX)
+        adx = metrics.get('adx', 25)
+        if adx > 50:  # Very strong trend - reduce danger if trend up
+            if regime in [MarketRegime.STRONG_TREND_UP, MarketRegime.TREND_UP]:
+                base_danger -= 0.5
+            else:  # Strong downtrend - increase danger
+                base_danger += 0.5
+        elif adx < 15:  # Very weak trend - increase danger (choppy)
+            base_danger += 1.0
+            
+        # Cap between 0 and 10
+        return max(0.0, min(10.0, base_danger))
+
+    async def is_in_recovery(self, symbol: str) -> bool:
+        """Check if symbol is in recovery period after danger"""
+        try:
+            recovery_key = f"recovery_period:{symbol}"
+            return bool(await self.redis.get(recovery_key))
+        except:
+            return False
+        
+    async def is_opportunity_period(self, symbol: str) -> bool:
+        """Check if symbol is in excellent opportunity period"""
+        try:
+            opportunity_key = f"opportunity_period:{symbol}"
+            return bool(await self.redis.get(opportunity_key))
+        except:
+            return False
+
     async def _get_recent_candles(self, symbol: str, limit: int = 100) -> list:
         """Récupère les chandeliers récents depuis Redis"""
         try:

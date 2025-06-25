@@ -132,7 +132,7 @@ class SignalProcessor:
                 position_counts["SELL"] += 1
                 
         # Vérifier la limite pour la position du signal
-        signal_position = signal.side.value
+        signal_position = signal.side.value if hasattr(signal.side, 'value') else str(signal.side)
         current_count = position_counts.get(signal_position, 0)
         
         if current_count >= self.max_cycles_per_symbol_side:
@@ -160,7 +160,7 @@ class SignalProcessor:
         # Vérifier les signaux récents du même côté
         recent_same_side = [
             s for s, t in self.recent_signals_history[signal.symbol]
-            if s.side == signal.side and current_time - t < 10.0
+            if (s.side.value if hasattr(s.side, 'value') else str(s.side)) == (signal.side.value if hasattr(signal.side, 'value') else str(signal.side)) and current_time - t < 10.0
         ]
         
         # Ajouter le signal actuel à l'historique
@@ -197,13 +197,47 @@ class SignalProcessor:
         Returns:
             Dict avec can_trade et reason
         """
-        # Utiliser l'amount du signal ou un montant par défaut
-        amount = signal.metadata.get("amount", 100.0) if signal.metadata else 100.0
+        # NE PAS utiliser un montant fixe pour la vérification
+        # La vérification réelle avec le montant dynamique sera faite dans signal_handler
+        # via AllocationManager. Ici on vérifie juste qu'il y a une balance minimum
+        
+        # Montants minimums par devise pour la vérification basique
+        min_amounts = {
+            'USDC': 10.0,
+            'BTC': 0.0001,
+            'ETH': 0.003,
+            'BNB': 0.02,
+            'SOL': 0.1,
+            'XRP': 10.0,
+            'ADA': 20.0,
+            'DOT': 1.0
+        }
+        
+        # Déterminer quelle devise on a besoin selon le côté
+        if signal.side == OrderSide.BUY or (hasattr(signal.side, 'value') and signal.side.value == 'BUY'):
+            # Pour BUY, on a besoin de la devise de quote (USDC, BTC, etc.)
+            quote_asset = 'USDC'  # Par défaut
+            if signal.symbol.endswith('USDT'):
+                quote_asset = 'USDT'
+            elif signal.symbol.endswith('BTC'):
+                quote_asset = 'BTC'
+            elif signal.symbol.endswith('ETH'):
+                quote_asset = 'ETH'
+            
+            # Utiliser le montant minimum pour la vérification basique
+            min_amount = min_amounts.get(quote_asset, 10.0)
+        else:
+            # Pour SELL, on a besoin de la devise de base (SOL, BTC, ETH, etc.)
+            # Extraire l'actif de base du symbole
+            base_asset = signal.symbol.replace('USDC', '').replace('USDT', '').replace('BTC', '').replace('ETH', '')
+            
+            # Utiliser le montant minimum pour l'actif de base
+            min_amount = min_amounts.get(base_asset, 0.1)
         
         return self.service_client.check_balance_for_trade(
             symbol=signal.symbol,
-            side=signal.side.value,
-            amount=amount
+            side=signal.side.value if hasattr(signal.side, 'value') else str(signal.side),
+            amount=min_amount
         )
         
     def should_process_signal_strategically(self, signal: StrategySignal,
@@ -222,7 +256,7 @@ class SignalProcessor:
         position_counts = {"BUY": 0, "SELL": 0}
         opposite_cycles = []
         
-        signal_position = signal.side.value
+        signal_position = signal.side.value if hasattr(signal.side, 'value') else str(signal.side)
         opposite_position = "SELL" if signal_position == "BUY" else "BUY"
         
         for cycle in active_cycles:
@@ -359,7 +393,7 @@ class SignalProcessor:
         for signal, timestamp in recent_signals:
             if current_time - timestamp < 600:  # 10 minutes
                 total_recent += 1
-                if signal.side.value == position:
+                if (signal.side.value if hasattr(signal.side, 'value') else str(signal.side)) == position:
                     matching_signals += 1
                     
         if total_recent == 0:

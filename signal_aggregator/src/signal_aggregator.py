@@ -17,9 +17,9 @@ else:
 
 try:
     from enhanced_regime_detector import EnhancedRegimeDetector, MarketRegime
-except ImportError:
+except ImportError as e:
     # Fallback si import échoue
-    logger.warning("Enhanced regime detector non disponible, utilisation du mode standard")
+    logger.warning(f"Enhanced regime detector non disponible ({e}), utilisation du mode standard")
     EnhancedRegimeDetector = None
     MarketRegime = None
 
@@ -42,8 +42,10 @@ class SignalAggregator:
         # Nouveau détecteur de régime amélioré (si disponible)
         if EnhancedRegimeDetector:
             self.enhanced_regime_detector = EnhancedRegimeDetector(redis_client)
+            logger.info("✅ Enhanced Regime Detector activé")
         else:
             self.enhanced_regime_detector = None
+            logger.warning("⚠️ Enhanced Regime Detector non disponible, utilisation du détecteur classique")
         
         # Signal buffer for aggregation
         self.signal_buffer = defaultdict(list)
@@ -129,37 +131,17 @@ class SignalAggregator:
             if len(self.signal_buffer[symbol]) < 1:
                 return None  # Wait for more signals
                 
-            # NOUVEAU: Vérifier l'ADX pour filtrer les signaux en marché RANGE (adapté aux signaux scorés)
-            adx_value = await self._get_current_adx(symbol)
-            if adx_value is not None and adx_value < 25:
-                # Marché en RANGE, filtrer selon le score pour les signaux ultra-confluents
-                if is_ultra_confluent and signal_score:
-                    # Pour signaux scorés: accepter si score >= 75 même en RANGE
-                    if signal_score < 75:
-                        logger.info(f"🚫 Signal ultra-confluent rejeté en RANGE (ADX={adx_value:.1f}): "
-                                   f"{signal['strategy']} {signal['side']} {symbol} score={signal_score:.1f} < 75")
-                        return None
-                    else:
-                        logger.info(f"✅ Signal ultra-confluent accepté malgré RANGE (ADX={adx_value:.1f}): "
-                                   f"{symbol} score={signal_score:.1f} >= 75")
-                else:
-                    # Pour signaux classiques: logique d'origine
-                    signal_strength = signal.get('strength', 'moderate')
-                    signal_confidence = signal.get('confidence', 0.5)
-                    
-                    # En RANGE, on ne prend que les signaux très forts
-                    if signal_strength not in ['strong', 'very_strong'] or signal_confidence < 0.7:
-                        logger.info(f"🚫 Signal rejeté en marché RANGE (ADX={adx_value:.1f}): "
-                                   f"{signal['strategy']} {signal['side']} {symbol} "
-                                   f"force={signal_strength}, confiance={signal_confidence:.2f}")
-                        return None
-                    else:
-                        logger.info(f"✅ Signal fort accepté malgré RANGE (ADX={adx_value:.1f}): "
-                                   f"{signal['strategy']} {signal['side']} {symbol}")
-                
-            # Get market regime (enhanced if available, sinon fallback)
+            # Get market regime FIRST pour filtrage intelligent (enhanced if available, sinon fallback)
             if self.enhanced_regime_detector:
                 regime, regime_metrics = await self.enhanced_regime_detector.get_detailed_regime(symbol)
+                
+                # NOUVEAU: Filtrage intelligent basé sur les régimes Enhanced
+                signal_filtered = await self._apply_enhanced_regime_filtering(
+                    signal, regime, regime_metrics, is_ultra_confluent, signal_score
+                )
+                if not signal_filtered:
+                    return None  # Signal rejeté par le filtrage intelligent
+                
                 # Calculate aggregated signal with regime-adaptive weights
                 aggregated = await self._aggregate_signals_enhanced(
                     symbol, 
@@ -1226,110 +1208,6 @@ class EnhancedSignalAggregator(SignalAggregator):
             # Fallback pour RedisClientPool customisé
             self.redis.set(signal_key, json.dumps(signal_data), expiration=3600)
     
-    async def process_signal_enhanced(self, signal: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """
-        Version améliorée du traitement de signal avec plus de validations
-        """
-        # Si mode dégradé, utiliser le processus standard
-        if not self.enhanced_mode:
-            logger.debug("Mode dégradé: utilisation du process_signal standard")
-            return await self.process_signal(signal)
-        
-        # Validations de base
-        if not await self._apply_market_context_filters(signal):
-            return None
-            
-        # NOUVEAU: Vérifier le niveau de danger du marché
-        symbol = signal['symbol']
-        danger_level = await self.regime_detector.get_danger_level(symbol)
-        
-        # Logique anti-piège à rebond
-        if danger_level >= 7.0:
-            # Marché dangereux: bloquer les nouveaux LONG/BUY
-            side = signal.get('side', signal.get('side'))
-            if side in ['BUY', 'LONG']:
-                logger.info(f"🚫 Signal BUY bloqué pour {symbol}: danger level {danger_level:.1f} (anti-piège à rebond)")
-                return None
-            # Les SELL/SHORT passent en marché dangereux
-            logger.info(f"⚠️ Signal SELL autorisé malgré danger {danger_level:.1f} pour {symbol}")
-            
-        elif danger_level >= 5.0:
-            # Marché en alerte: réduire la confiance et augmenter les seuils
-            signal['confidence'] = signal.get('confidence', 0.5) * 0.8
-            logger.info(f"⚠️ Confiance réduite pour {symbol}: danger level {danger_level:.1f}")
-            
-        # NOUVEAU: Vérifier si on est en période de récupération
-        if await self.regime_detector.is_in_recovery(symbol):
-            side = signal.get('side', signal.get('side'))
-            if side in ['BUY', 'LONG']:
-                # Exiger une confirmation TRÈS forte pour réentrer après une crise
-                min_confidence_recovery = 0.85
-                if signal.get('confidence', 0) < min_confidence_recovery:
-                    logger.info(f"🛡️ Signal BUY rejeté en période de récupération: "
-                               f"confiance {signal.get('confidence', 0):.2f} < {min_confidence_recovery}")
-                    return None
-                logger.info(f"✅ Signal BUY accepté en récupération avec forte confiance: {signal.get('confidence', 0):.2f}")
-        
-        # Vérifier si on est en transition de régime
-        if await self._check_regime_transition(signal['symbol']):
-            # Augmenter le seuil de confiance pendant les transitions
-            signal['confidence'] = signal.get('confidence', 0.5) * 0.8
-            logger.info(f"Confiance réduite pour {signal['symbol']}: transition de régime")
-        
-        # Processus normal d'agrégation
-        aggregated = await self.process_signal(signal)
-        
-        if aggregated:
-            # Validation supplémentaire de corrélation
-            correlation_score = await self._validate_signal_correlation(
-                self.signal_buffer[signal['symbol']]
-            )
-            
-            if correlation_score < self.correlation_threshold:
-                logger.info(f"Signal rejeté: faible corrélation ({correlation_score:.2f})")
-                return None
-            
-            # Ajuster la confiance finale
-            aggregated['confidence'] *= correlation_score
-            
-            # NOUVEAU: Ajuster la taille de position selon le danger et la récupération
-            if 'metadata' not in aggregated:
-                aggregated['metadata'] = {}
-                
-            # Logique d'accumulation progressive
-            if await self.regime_detector.is_in_recovery(symbol):
-                # Période de récupération: accumulation progressive
-                recovery_time = await self._get_recovery_duration(symbol)
-                
-                if recovery_time < 300:  # < 5 minutes depuis la sortie de danger
-                    size_multiplier = 0.3  # Commencer petit (30%)
-                    accumulation_phase = "initial"
-                elif recovery_time < 600:  # < 10 minutes
-                    size_multiplier = 0.6  # Augmenter progressivement (60%)
-                    accumulation_phase = "progressive"
-                else:
-                    size_multiplier = 1.0  # Retour à la normale
-                    accumulation_phase = "complete"
-                    
-                aggregated['metadata']['accumulation_phase'] = accumulation_phase
-                aggregated['metadata']['suggested_size_multiplier'] = size_multiplier
-                logger.info(f"📈 Accumulation {accumulation_phase}: taille {size_multiplier:.0%} pour {symbol}")
-                
-            elif danger_level >= 5.0:
-                # Réduire la taille suggérée en marché dangereux
-                size_multiplier = max(0.3, 1.0 - (danger_level / 10.0))
-                aggregated['metadata']['suggested_size_multiplier'] = size_multiplier
-                aggregated['metadata']['danger_level'] = danger_level
-                logger.info(f"📉 Taille de position réduite à {size_multiplier:.1%} pour danger {danger_level:.1f}")
-            
-            aggregated['metadata']['correlation_score'] = correlation_score
-            aggregated['metadata']['enhanced_filtering'] = True
-            
-            # Tracker pour analyse future
-            await self._track_signal_accuracy(aggregated)
-        
-        return aggregated
-    
     async def _get_recovery_duration(self, symbol: str) -> float:
         """Get the duration since entering recovery period"""
         try:
@@ -1361,3 +1239,106 @@ class EnhancedSignalAggregator(SignalAggregator):
             logger.error(f"Error calculating recovery duration: {e}")
             
         return 0  # Default to start of recovery
+    
+    async def _apply_enhanced_regime_filtering(self, signal: Dict[str, Any], regime, regime_metrics: Dict[str, float], 
+                                             is_ultra_confluent: bool, signal_score: Optional[float]) -> bool:
+        """
+        Applique un filtrage intelligent basé sur les régimes Enhanced.
+        
+        Args:
+            signal: Signal à filtrer
+            regime: Régime Enhanced détecté
+            regime_metrics: Métriques du régime
+            is_ultra_confluent: Si le signal est ultra-confluent
+            signal_score: Score du signal (si disponible)
+            
+        Returns:
+            True si le signal doit être accepté, False sinon
+        """
+        try:
+            symbol = signal['symbol']
+            signal_strength = signal.get('strength', 'moderate')
+            signal_confidence = signal.get('confidence', 0.5)
+            strategy = signal.get('strategy', 'Unknown')
+            side = signal.get('side', 'UNKNOWN')
+            
+            # Seuils adaptatifs selon le régime Enhanced
+            if regime.name == 'STRONG_TREND_UP':
+                # Tendance forte haussière: accepter presque tout
+                min_confidence = 0.4
+                required_strength = ['weak', 'moderate', 'strong', 'very_strong']
+                logger.debug(f"💪 {regime.name}: seuils assouplis pour {symbol}")
+                
+            elif regime.name == 'TREND_UP':
+                # Tendance haussière: seuils modérés
+                min_confidence = 0.5
+                required_strength = ['moderate', 'strong', 'very_strong']
+                logger.debug(f"📈 {regime.name}: seuils modérés pour {symbol}")
+                
+            elif regime.name == 'WEAK_TREND_UP':
+                # Tendance faible: plus sélectif
+                min_confidence = 0.65
+                required_strength = ['strong', 'very_strong']
+                logger.debug(f"📊 {regime.name}: seuils stricts pour {symbol}")
+                
+            elif regime.name == 'RANGE_TIGHT':
+                # Range serré: très sélectif, signaux de qualité uniquement
+                min_confidence = 0.75
+                required_strength = ['very_strong']
+                logger.debug(f"🔒 {regime.name}: seuils très stricts pour {symbol}")
+                
+            elif regime.name == 'RANGE_VOLATILE':
+                # Range volatil: sélectif mais moins que tight
+                min_confidence = 0.7
+                required_strength = ['strong', 'very_strong']
+                logger.debug(f"⚡ {regime.name}: seuils stricts pour {symbol}")
+                
+            elif regime.name in ['WEAK_TREND_DOWN', 'TREND_DOWN', 'STRONG_TREND_DOWN']:
+                # Tendances baissières: favoriser les SELL, bloquer les BUY faibles
+                if side == 'BUY':
+                    min_confidence = 0.8  # Très strict pour les BUY en downtrend
+                    required_strength = ['very_strong']
+                else:  # SELL
+                    min_confidence = 0.5  # Plus permissif pour les SELL
+                    required_strength = ['moderate', 'strong', 'very_strong']
+                logger.debug(f"📉 {regime.name}: adaptation BUY/SELL pour {symbol}")
+                
+            else:
+                # Régime inconnu ou UNDEFINED: seuils par défaut
+                min_confidence = 0.6
+                required_strength = ['strong', 'very_strong']
+                logger.debug(f"❓ {regime.name}: seuils par défaut pour {symbol}")
+            
+            # Exception pour signaux ultra-confluents de haute qualité
+            if is_ultra_confluent and signal_score:
+                if signal_score >= 85:
+                    # Signaux excellents: réduire les seuils
+                    min_confidence *= 0.8
+                    if 'moderate' not in required_strength:
+                        required_strength.append('moderate')
+                    logger.info(f"⭐ Signal ultra-confluent excellent (score={signal_score:.1f}): seuils réduits pour {symbol}")
+                elif signal_score >= 75:
+                    # Signaux très bons: réduire modérément
+                    min_confidence *= 0.9
+                    logger.info(f"✨ Signal ultra-confluent très bon (score={signal_score:.1f}): seuils ajustés pour {symbol}")
+            
+            # Appliquer les filtres
+            if signal_confidence < min_confidence:
+                logger.info(f"🚫 Signal rejeté en {regime.name}: confiance {signal_confidence:.2f} < {min_confidence:.2f} "
+                           f"pour {strategy} {side} {symbol}")
+                return False
+                
+            if signal_strength not in required_strength:
+                logger.info(f"🚫 Signal rejeté en {regime.name}: force '{signal_strength}' insuffisante "
+                           f"(requis: {required_strength}) pour {strategy} {side} {symbol}")
+                return False
+            
+            # Signal accepté
+            adx = regime_metrics.get('adx', 0)
+            logger.info(f"✅ Signal accepté en {regime.name} (ADX={adx:.1f}): "
+                       f"{strategy} {side} {symbol} force={signal_strength} confiance={signal_confidence:.2f}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Erreur dans le filtrage Enhanced: {e}")
+            return True  # En cas d'erreur, laisser passer le signal

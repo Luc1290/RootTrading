@@ -602,17 +602,18 @@ class MACDStrategy(BaseStrategy, AdvancedFiltersMixin):
     
     def _calculate_composite_confidence(self, histogram_score: float, volume_score: float,
                                        breakout_score: float, divergence_score: float,
-                                       trend_score: float, zero_line_score: float) -> float:
+                                       trend_score: float, adx_score: float, zero_line_score: float) -> float:
         """
         Calcule la confiance composite basée sur tous les filtres.
         """
         weights = {
             'histogram': 0.25,     # Momentum MACD crucial
-            'volume': 0.20,        # Volume important
-            'breakout': 0.20,      # Validation breakout
+            'volume': 0.18,        # Volume important
+            'breakout': 0.18,      # Validation breakout
             'divergence': 0.15,    # Divergences
-            'trend': 0.10,         # Tendance générale
-            'zero_line': 0.10      # Position zero line
+            'trend': 0.09,         # Tendance générale
+            'adx': 0.08,           # Force de tendance ADX
+            'zero_line': 0.07      # Position zero line
         }
         
         composite = (
@@ -621,6 +622,7 @@ class MACDStrategy(BaseStrategy, AdvancedFiltersMixin):
             breakout_score * weights['breakout'] +
             divergence_score * weights['divergence'] +
             trend_score * weights['trend'] +
+            adx_score * weights['adx'] +
             zero_line_score * weights['zero_line']
         )
         

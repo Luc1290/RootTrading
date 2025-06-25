@@ -57,7 +57,8 @@ class MarketFilter:
         if self._is_filter_outdated(signal.symbol):
             logger.warning(f"Informations de filtrage obsolètes pour {signal.symbol}")
             # En mode de secours, filtrer uniquement les signaux faibles
-            if signal.strength == SignalStrength.WEAK:
+            signal_strength = signal.strength if hasattr(signal.strength, 'value') else SignalStrength(signal.strength) if isinstance(signal.strength, str) else signal.strength
+            if signal_strength == SignalStrength.WEAK:
                 logger.info(f"Signal {signal.side} filtré en mode de secours (force insuffisante)")
                 return True
             return False
@@ -110,7 +111,9 @@ class MarketFilter:
         
         # En mode "ride", filtrer les signaux contre-tendance faibles
         if mode == 'ride':
-            if signal.side == OrderSide.SELL and signal.strength != SignalStrength.VERY_STRONG:
+            signal_side = signal.side if hasattr(signal.side, 'value') else OrderSide(signal.side) if isinstance(signal.side, str) else signal.side
+            signal_strength = signal.strength if hasattr(signal.strength, 'value') else SignalStrength(signal.strength) if isinstance(signal.strength, str) else signal.strength
+            if signal_side == OrderSide.SELL and signal_strength != SignalStrength.VERY_STRONG:
                 logger.info(f"🔍 Signal {signal.side} filtré: marché en mode RIDE pour {signal.symbol}")
                 return True
                 
@@ -121,11 +124,11 @@ class MarketFilter:
             logger.info(f"🔍 Signal {signal.side} filtré: action 'no_trading' active pour {signal.symbol}")
             return True
             
-        elif action == 'buy_only' and signal.side == OrderSide.SELL:
+        elif action == 'buy_only' and (signal.side if hasattr(signal.side, 'value') else OrderSide(signal.side) if isinstance(signal.side, str) else signal.side) == OrderSide.SELL:
             logger.info(f"🔍 Signal {signal.side} filtré: seuls les achats autorisés pour {signal.symbol}")
             return True
             
-        elif action == 'sell_only' and signal.side == OrderSide.BUY:
+        elif action == 'sell_only' and (signal.side if hasattr(signal.side, 'value') else OrderSide(signal.side) if isinstance(signal.side, str) else signal.side) == OrderSide.BUY:
             logger.info(f"🔍 Signal {signal.side} filtré: seules les ventes autorisées pour {signal.symbol}")
             return True
             

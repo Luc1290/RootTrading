@@ -168,8 +168,13 @@ class ServiceClient:
         params = {"symbol": symbol} if symbol else None
         response = self._make_request("trader", "/cycles", params=params)
         
-        if response and response.get("status") == "success":
-            cycles = response.get("data", {}).get("cycles", [])
+        if response:
+            if "cycles" in response:
+                cycles = response["cycles"]
+            elif "data" in response and "cycles" in response["data"]:
+                cycles = response["data"]["cycles"]
+            else:
+                cycles = response if isinstance(response, list) else []
             # Mettre en cache
             self._cache[cache_key] = cycles
             self._cache_ttl[cache_key] = time.time()
@@ -244,8 +249,9 @@ class ServiceClient:
         response = self._make_request("trader", "/prices", 
                                     params={"symbols": ",".join(symbols)})
         
-        if response and response.get("status") == "success":
-            return response.get("data", {}).get("prices", {})
+        # Le endpoint /prices retourne directement les prix {symbol: price}
+        if response:
+            return response
             
         return {}
     
@@ -263,8 +269,8 @@ class ServiceClient:
         """
         response = self._make_request("portfolio", f"/balance/{asset}")
         
-        if response and response.get("status") == "success":
-            return response.get("data", {}).get("free", 0.0)
+        if response and "free" in response:
+            return response.get("free", 0.0)
             
         return None
     
@@ -284,18 +290,18 @@ class ServiceClient:
         
         response = self._make_request("portfolio", "/summary")
         
-        if response and response.get("status") == "success":
-            summary = response.get("data", {})
-            self._cache[cache_key] = summary
+        if response:
+            self._cache[cache_key] = response
             self._cache_ttl[cache_key] = time.time()
-            return summary
+            return response
             
         return {}
     
     def check_balance_for_trade(self, symbol: str, side: str, amount: float) -> Dict[str, Any]:
         """
         Vérifie si les balances sont suffisantes pour un trade.
-        
+        Utilise les endpoints existants du portfolio pour vérifier.
+
         Args:
             symbol: Symbole de trading
             side: BUY ou SELL
@@ -304,21 +310,38 @@ class ServiceClient:
         Returns:
             Dict avec can_trade, available_balance, required_amount
         """
-        response = self._make_request(
-            "portfolio", 
-            "/check-balance",
-            method="POST",
-            json_data={
-                "symbol": symbol,
-                "side": side,
-                "amount": amount
-            }
-        )
-        
-        if response and response.get("status") == "success":
-            return response.get("data", {})
+        try:
+            # Récupérer toutes les balances
+            all_balances = self.get_all_balances()
+            if not all_balances:
+                return {"can_trade": False, "reason": "Impossible de récupérer les balances"}
             
-        return {"can_trade": False, "reason": "Service indisponible"}
+            # Déterminer l'asset nécessaire
+            if side.upper() == "BUY":
+                # Pour BUY, on a besoin de l'asset de quote (USDC généralement)
+                required_asset = "USDC" if symbol.endswith("USDC") else "USDT"
+                required_amount = amount
+            else:
+                # Pour SELL, on a besoin de l'asset de base
+                required_asset = symbol.replace("USDC", "").replace("USDT", "")
+                required_amount = amount
+            
+            # Vérifier la balance disponible
+            available_balance = all_balances.get(required_asset, {}).get("binance_free", 0.0)
+            
+            can_trade = available_balance >= required_amount
+            
+            return {
+                "can_trade": can_trade,
+                "available_balance": available_balance,
+                "required_amount": required_amount,
+                "required_asset": required_asset,
+                "reason": "Balance suffisante" if can_trade else f"Balance insuffisante: {available_balance} < {required_amount} {required_asset}"
+            }
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la vérification de balance: {str(e)}")
+            return {"can_trade": False, "reason": f"Erreur: {str(e)}"}
         
     def get_all_balances(self) -> Dict[str, Dict[str, float]]:
         """
@@ -329,8 +352,19 @@ class ServiceClient:
         """
         response = self._make_request("portfolio", "/balances")
         
-        if response and response.get("status") == "success":
-            return response.get("data", {}).get("balances", {})
+        if response:
+            # Response is a list of balance objects, convert to dict
+            if isinstance(response, list):
+                balances = {}
+                for balance in response:
+                    if isinstance(balance, dict) and "asset" in balance:
+                        asset = balance["asset"]
+                        balances[asset] = {
+                            "binance_free": balance.get("free", 0.0),
+                            "portfolio_free": balance.get("free", 0.0)
+                        }
+                return balances
+            return response
             
         return {}
     

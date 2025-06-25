@@ -6,8 +6,9 @@ import os
 from typing import Dict, List, Optional
 from datetime import datetime, timezone
 
-# Ajouter le chemin vers les modules partagés
+# Ajouter le chemin vers les modules partagés et src
 sys.path.insert(0, '/app')
+sys.path.insert(0, '/app/src')
 
 from signal_aggregator import SignalAggregator, EnhancedSignalAggregator
 from regime_detector import RegimeDetector
@@ -52,7 +53,15 @@ class SignalAggregatorService:
             self.redis = RedisClient()
             
             # Initialize components
-            self.regime_detector = RegimeDetector(self.redis)
+            try:
+                from enhanced_regime_detector import EnhancedRegimeDetector
+                self.regime_detector = EnhancedRegimeDetector(self.redis)
+                logger.info("✅ Utilisation d'Enhanced Regime Detector comme détecteur principal")
+            except ImportError:
+                from regime_detector import RegimeDetector
+                self.regime_detector = RegimeDetector(self.redis)
+                logger.warning("⚠️ Enhanced Regime Detector non disponible, utilisation du classique")
+                
             self.performance_tracker = PerformanceTracker(self.redis)
             # Utiliser la version améliorée avec filtres intelligents
             self.aggregator = EnhancedSignalAggregator(
@@ -78,10 +87,16 @@ class SignalAggregatorService:
             self.running = True
             
             # Start processing
-            await asyncio.gather(
-                self.update_regimes(),
-                self.update_performance_metrics()
-            )
+            # Note: Enhanced Regime Detector calcule à la demande, pas besoin de tâche périodique
+            if hasattr(self.regime_detector, 'update_all_regimes'):
+                # Seulement pour le détecteur classique
+                await asyncio.gather(
+                    self.update_regimes(),
+                    self.update_performance_metrics()
+                )
+            else:
+                # Enhanced detector: seulement les métriques de performance
+                await self.update_performance_metrics()
             
         except Exception as e:
             logger.error(f"Failed to start service: {e}")
@@ -99,7 +114,7 @@ class SignalAggregatorService:
             
             try:
                 # Utiliser la méthode améliorée avec filtres intelligents
-                aggregated = loop.run_until_complete(self.aggregator.process_signal_enhanced(message))
+                aggregated = loop.run_until_complete(self.aggregator.process_signal(message))
                 
                 if aggregated:
                     # Publish filtered signal on Kafka
