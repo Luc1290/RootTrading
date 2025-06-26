@@ -432,47 +432,101 @@ class EnhancedRegimeDetector:
         except:
             return False
 
+    def set_market_data_accumulator(self, accumulator) -> None:
+        """Définit l'accumulateur de données de marché"""
+        self.market_data_accumulator = accumulator
+
     async def _get_recent_candles(self, symbol: str, limit: int = 100) -> list:
-        """Récupère les chandeliers récents depuis Redis"""
+        """Récupère les données de marché historiques depuis l'accumulateur"""
         try:
-            # Clé pour les chandeliers 1m
-            key = f"candles:1m:{symbol}"
+            # Utiliser l'accumulateur si disponible
+            if hasattr(self, 'market_data_accumulator') and self.market_data_accumulator:
+                history = self.market_data_accumulator.get_history(symbol, limit)
+                if len(history) >= 10:  # Minimum 10 points pour calculer un régime
+                    logger.info(f"📊 Utilisation historique accumulé pour {symbol}: {len(history)} points")
+                    return history
+                else:
+                    logger.warning(f"⚠️ Historique insuffisant pour {symbol}: {len(history)} points (min: 10)")
             
-            # Récupérer depuis Redis avec fallback pour différents types de clients
+            # Fallback : récupérer les données enrichies actuelles de différentes timeframes
+            timeframes = ['1m', '5m', '15m', '1h']
+            all_data = []
+            
+            for tf in timeframes:
+                key = f"market_data:{symbol}:{tf}"
+                data = self.redis.get(key)
+                if data:
+                    parsed = json.loads(data) if isinstance(data, str) else data
+                    if isinstance(parsed, dict) and 'ultra_enriched' in parsed:
+                        # Convertir les données enrichies en format OHLCV simulé
+                        synthetic_candle = {
+                            'timestamp': parsed.get('timestamp', 0),
+                            'open': parsed.get('close', 0),  # Utiliser close comme open (approximation)
+                            'high': parsed.get('close', 0),
+                            'low': parsed.get('close', 0),
+                            'close': parsed.get('close', 0),
+                            'volume': parsed.get('volume', 0),
+                            'timeframe': tf,
+                            # Ajouter tous les indicateurs techniques déjà calculés
+                            'rsi_14': parsed.get('rsi_14', 50),
+                            'macd_line': parsed.get('macd_line', 0),
+                            'macd_signal': parsed.get('macd_signal', 0),
+                            'macd_histogram': parsed.get('macd_histogram', 0),
+                            'ema_12': parsed.get('ema_12', parsed.get('close', 0)),
+                            'ema_26': parsed.get('ema_26', parsed.get('close', 0)),
+                            'ema_50': parsed.get('ema_50', parsed.get('close', 0)),
+                            'sma_20': parsed.get('sma_20', parsed.get('close', 0)),
+                            'sma_50': parsed.get('sma_50', parsed.get('close', 0)),
+                            'bb_upper': parsed.get('bb_upper', parsed.get('close', 0)),
+                            'bb_middle': parsed.get('bb_middle', parsed.get('close', 0)),
+                            'bb_lower': parsed.get('bb_lower', parsed.get('close', 0)),
+                            'bb_position': parsed.get('bb_position', 0.5),
+                            'adx_14': parsed.get('adx_14', 25),
+                            'atr_14': parsed.get('atr_14', 0),
+                            'williams_r': parsed.get('williams_r', -50),
+                            'cci_20': parsed.get('cci_20', 0),
+                            'vwap_10': parsed.get('vwap_10', parsed.get('close', 0)),
+                            'momentum_10': parsed.get('momentum_10', 0),
+                            'volume_ratio': parsed.get('volume_ratio', 1),
+                            'volume_spike': parsed.get('volume_spike', False),
+                            'volume_trend': parsed.get('volume_trend', 'stable')
+                        }
+                        all_data.append(synthetic_candle)
+            
+            # Si on a des données, les retourner, sinon essayer l'ancienne méthode
+            if all_data:
+                # Trier par timestamp et prendre les plus récents
+                all_data.sort(key=lambda x: x['timestamp'])
+                logger.warning(f"⚠️ Utilisation données synthétiques pour {symbol}: {len(all_data)} points")
+                return all_data[-limit:] if len(all_data) > limit else all_data
+            
+            # Fallback vers l'ancienne méthode si pas de données enrichies
+            key = f"candles:1m:{symbol}"
             try:
-                # Essayer zrange d'abord (sorted sets)
                 candles_data = self.redis.zrange(key, -limit, -1)
             except AttributeError:
-                # Fallback pour RedisClientPool customisé
                 candles_data = self.redis.get(key)
                 if candles_data:
                     if isinstance(candles_data, str):
                         candles_data = json.loads(candles_data)
                     if isinstance(candles_data, list):
-                        candles_data = candles_data[-limit:]  # Prendre les derniers
+                        candles_data = candles_data[-limit:]
                     else:
                         candles_data = []
                 else:
                     candles_data = []
             
-            if not candles_data:
-                # Fallback sur une clé simple
-                candles_data = self.redis.get(f"market_data:{symbol}:1m")
-                if candles_data:
-                    parsed = json.loads(candles_data) if isinstance(candles_data, str) else candles_data
-                    return parsed[-limit:] if isinstance(parsed, list) else []
-                return []
+            if candles_data:
+                candles = []
+                for candle_str in candles_data:
+                    if isinstance(candle_str, str):
+                        candles.append(json.loads(candle_str))
+                    else:
+                        candles.append(candle_str)
+                return candles
             
-            # Parser les chandeliers
-            candles = []
-            for candle_str in candles_data:
-                if isinstance(candle_str, str):
-                    candles.append(json.loads(candle_str))
-                else:
-                    candles.append(candle_str)
-                    
-            return candles
+            return []
             
         except Exception as e:
-            logger.error(f"Erreur récupération chandeliers: {e}")
+            logger.error(f"Erreur récupération données de marché: {e}")
             return []

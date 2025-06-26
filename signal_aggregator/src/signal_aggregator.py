@@ -2,9 +2,10 @@
 import logging
 from typing import Dict, List, Optional, Any, TYPE_CHECKING, Union
 from datetime import datetime, timedelta, timezone
-from collections import defaultdict
+from collections import defaultdict, deque
 import json
 import numpy as np
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,47 @@ except ImportError as e:
     MarketRegime = None
 
 
+class MarketDataAccumulator:
+    """Accumule les données de marché pour construire un historique"""
+    
+    def __init__(self, max_history: int = 200):
+        self.max_history = max_history
+        self.data_history = defaultdict(lambda: deque(maxlen=max_history))
+        self.last_update = defaultdict(float)
+    
+    def add_market_data(self, symbol: str, data: Dict[str, Any]) -> None:
+        """Ajoute des données de marché à l'historique"""
+        try:
+            timestamp = data.get('timestamp', time.time())
+            
+            # Éviter les doublons (même timestamp)
+            if timestamp <= self.last_update[symbol]:
+                return
+                
+            # Enrichir les données avec timestamp normalisé
+            enriched_data = data.copy()
+            enriched_data['timestamp'] = timestamp
+            enriched_data['datetime'] = datetime.fromtimestamp(timestamp)
+            
+            # Ajouter à l'historique
+            self.data_history[symbol].append(enriched_data)
+            self.last_update[symbol] = timestamp
+            
+        except Exception as e:
+            logger.error(f"Erreur ajout données historiques {symbol}: {e}")
+    
+    def get_history(self, symbol: str, limit: int = None) -> List[Dict[str, Any]]:
+        """Récupère l'historique des données pour un symbole"""
+        history = list(self.data_history[symbol])
+        if limit and len(history) > limit:
+            return history[-limit:]
+        return history
+    
+    def get_history_count(self, symbol: str) -> int:
+        """Retourne le nombre de points historiques disponibles"""
+        return len(self.data_history[symbol])
+
+
 class SignalAggregator:
     """Aggregates multiple strategy signals and resolves conflicts"""
     
@@ -39,10 +81,15 @@ class SignalAggregator:
         self.regime_detector = regime_detector
         self.performance_tracker = performance_tracker
         
+        # Accumulateur de données de marché pour construire l'historique
+        self.market_data_accumulator = MarketDataAccumulator(max_history=200)
+        
         # Nouveau détecteur de régime amélioré (si disponible)
         if EnhancedRegimeDetector:
             self.enhanced_regime_detector = EnhancedRegimeDetector(redis_client)
-            logger.info("✅ Enhanced Regime Detector activé")
+            # Connecter l'accumulateur au détecteur
+            self.enhanced_regime_detector.set_market_data_accumulator(self.market_data_accumulator)
+            logger.info("✅ Enhanced Regime Detector activé avec accumulateur historique")
         else:
             self.enhanced_regime_detector = None
             logger.warning("⚠️ Enhanced Regime Detector non disponible, utilisation du détecteur classique")
@@ -56,11 +103,40 @@ class SignalAggregator:
         self.min_vote_threshold = 0.35  # Réduit de 0.5 à 0.35
         self.min_confidence_threshold = 0.55  # Compromis : filtre le bruit mais garde la fréquence
         
+    async def _update_market_data_history(self, symbol: str) -> None:
+        """Met à jour l'historique des données de marché pour un symbole"""
+        try:
+            # Récupérer les données actuelles depuis Redis
+            key = f"market_data:{symbol}:1m"
+            data = self.redis.get(key)
+            if data:
+                parsed = json.loads(data) if isinstance(data, str) else data
+                if isinstance(parsed, dict) and 'ultra_enriched' in parsed:
+                    # Ajouter les valeurs OHLC manquantes si nécessaires
+                    if 'open' not in parsed:
+                        close_price = parsed.get('close', 0)
+                        parsed['open'] = close_price
+                        parsed['high'] = close_price * 1.001  # +0.1%
+                        parsed['low'] = close_price * 0.999   # -0.1%
+                    
+                    # Ajouter à l'accumulateur
+                    self.market_data_accumulator.add_market_data(symbol, parsed)
+                    
+                    count = self.market_data_accumulator.get_history_count(symbol)
+                    if count % 10 == 0:  # Log tous les 10 points
+                        logger.info(f"📈 Historique {symbol}: {count} points accumulés")
+                        
+        except Exception as e:
+            logger.error(f"Erreur mise à jour historique {symbol}: {e}")
+
     async def process_signal(self, signal: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Process a raw signal and return aggregated decision with ultra-confluent validation"""
         try:
             symbol = signal['symbol']
             strategy = signal['strategy']
+            
+            # Mettre à jour l'historique des données de marché
+            await self._update_market_data_history(symbol)
             
             # NOUVEAU: Gestion des signaux ultra-confluents avec scoring
             is_ultra_confluent = signal.get('metadata', {}).get('ultra_confluence', False)

@@ -16,6 +16,7 @@ from flask import Flask, jsonify, request
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
 from shared.src.config import SYMBOLS, LOG_LEVEL
+from shared.src.redis_client import RedisClient
 
 from analyzer.src.multiproc_manager import AnalyzerManager
 
@@ -141,6 +142,7 @@ class AnalyzerService:
     def get_indicators(self, symbol):
         """
         Retourne les indicateurs techniques pour un symbole donné.
+        Utilise les données réelles depuis Redis ou les stratégies actives.
         """
         if not self.manager:
             return jsonify({
@@ -155,30 +157,68 @@ class AnalyzerService:
             }), 400
         
         try:
-            # Pour l'instant, on calcule l'ATR de base
-            # TODO: Récupérer les données réelles et calculer l'ATR
+            # 1. Essayer de récupérer l'ATR depuis Redis (données enrichies du Gateway)
+            redis_client = RedisClient()
+            atr_value = None
+            data_source = None
             
-            # Valeurs par défaut basées sur les symboles courants
-            atr_defaults = {
-                "BTCUSDC": 1500.0,  # ~3% de 50000
-                "ETHUSDC": 100.0,   # ~3% de 3000  
-                "SOLUSDC": 5.0,     # ~3% de 150
-                "XRPUSDC": 0.08,    # ~3% de 2.5
-                "ADAUSDC": 0.03,    # ~3% de 1.0
-            }
+            # Vérifier les différents timeframes dans Redis
+            for timeframe in ['1m', '5m', '15m', '1h']:
+                try:
+                    key = f"market_data:{symbol}:{timeframe}"
+                    data = redis_client.get(key)
+                    if data and isinstance(data, dict) and 'atr_14' in data:
+                        atr_value = data['atr_14']
+                        data_source = f"redis_{timeframe}"
+                        timestamp = data.get('timestamp', time.time())
+                        logger.info(f"ATR récupéré depuis Redis {timeframe} pour {symbol}: {atr_value}")
+                        break
+                except Exception as e:
+                    logger.debug(f"Erreur accès Redis {timeframe} pour {symbol}: {str(e)}")
+                    continue
             
-            atr_value = atr_defaults.get(symbol, 2.5)  # Fallback 2.5% générique
+            # 2. Fallback: essayer de calculer depuis les stratégies actives
+            if atr_value is None and self.manager and hasattr(self.manager, 'strategy_loader'):
+                try:
+                    strategy_loader = self.manager.strategy_loader
+                    if hasattr(strategy_loader, 'strategies'):
+                        for strategy in strategy_loader.strategies:
+                            if (hasattr(strategy, 'symbol') and strategy.symbol == symbol and 
+                                hasattr(strategy, 'data_buffer') and len(strategy.data_buffer) >= 14):
+                                if hasattr(strategy, 'calculate_atr'):
+                                    atr_value = strategy.calculate_atr()
+                                    data_source = "strategy_calculation"
+                                    timestamp = time.time()
+                                    logger.info(f"ATR calculé depuis stratégie pour {symbol}: {atr_value}")
+                                    break
+                except Exception as e:
+                    logger.debug(f"Erreur calcul ATR depuis stratégie pour {symbol}: {str(e)}")
+            
+            # 3. Fallback final: valeurs par défaut avec avertissement
+            if atr_value is None:
+                atr_defaults = {
+                    "BTCUSDC": 1500.0,  # ~3% de 50000
+                    "ETHUSDC": 100.0,   # ~3% de 3000  
+                    "SOLUSDC": 5.0,     # ~3% de 150
+                    "XRPUSDC": 0.08,    # ~3% de 2.5
+                    "ADAUSDC": 0.03,    # ~3% de 1.0
+                }
+                atr_value = atr_defaults.get(symbol, 2.5)
+                data_source = "default_fallback"
+                timestamp = time.time()
+                logger.warning(f"Utilisation de valeurs ATR par défaut pour {symbol}: {atr_value}")
             
             return jsonify({
                 "symbol": symbol,
-                "timestamp": time.time(),
+                "timestamp": timestamp,
                 "atr": atr_value,
                 "indicators": {
                     "atr": atr_value,
                     "atr_period": 14,
-                    "calculated_method": "default_fallback"
+                    "data_source": data_source,
+                    "calculated_method": "real_data" if data_source != "default_fallback" else "default_fallback"
                 },
-                "note": "Using default ATR values - real calculation will be implemented later"
+                "status": "success" if data_source != "default_fallback" else "fallback_used"
             })
             
         except Exception as e:

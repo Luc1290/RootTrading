@@ -236,6 +236,26 @@ class ServiceClient:
         else:
             return {"success": False, "error": "Service indisponible"}
     
+    def close_cycle(self, cycle_id: str, close_data: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Ferme un cycle existant via le trader.
+        
+        Args:
+            cycle_id: ID du cycle à fermer
+            close_data: Données de fermeture (reason, price optionnel)
+            
+        Returns:
+            Résultat de la fermeture
+        """
+        endpoint = f"/close/{cycle_id}"
+        
+        response = self._make_request("trader", endpoint, method="POST", json_data=close_data or {})
+        
+        if response:
+            return response
+        else:
+            return {"success": False, "error": "Service indisponible"}
+    
     def get_current_prices(self, symbols: List[str]) -> Dict[str, float]:
         """
         Récupère les prix actuels depuis le trader.

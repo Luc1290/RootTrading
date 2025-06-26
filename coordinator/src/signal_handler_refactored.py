@@ -452,9 +452,38 @@ class SignalHandler:
         Returns:
             True si succès
         """
-        # TODO: Implémenter la fermeture via l'API du trader
-        self.logger.warning("Fermeture pas encore implémentée")
-        return False
+        try:
+            # Vérifier que nous avons un cycle_id
+            if not hasattr(decision, 'existing_cycle_id') or not decision.existing_cycle_id:
+                self.logger.error("Pas de cycle_id pour la fermeture")
+                return False
+            
+            # Préparer les données pour l'API
+            close_data = {
+                "reason": getattr(decision, 'reason', 'Fermeture par SmartCycleManager')
+            }
+            
+            # Si un prix cible est spécifié, l'ajouter
+            if hasattr(decision, 'price_target') and decision.price_target:
+                close_data["price"] = decision.price_target
+            
+            # Appeler l'API de fermeture du trader
+            result = self.service_client.close_cycle(
+                cycle_id=decision.existing_cycle_id,
+                close_data=close_data
+            )
+            
+            if result and result.get('success'):
+                self.logger.info(f"✅ Cycle {decision.existing_cycle_id} fermé: {decision.reason}")
+                return True
+            else:
+                error_msg = result.get('error', 'Erreur inconnue') if result else 'Aucune réponse'
+                self.logger.error(f"❌ Échec fermeture cycle {decision.existing_cycle_id}: {error_msg}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"❌ Erreur fermeture cycle: {str(e)}")
+            return False
         
         
     def _get_quote_asset(self, symbol: str) -> str:
