@@ -995,7 +995,9 @@ class CycleManager:
             else:
                 # Pour acheter, on a besoin de la devise de cotation (ex: USDC pour BTCUSDC)
                 quote_asset = cycle.symbol[-4:] if cycle.symbol.endswith('USDC') else cycle.symbol[-3:]
-                required_amount = cycle.quantity * (exit_price or cycle.entry_price)
+                # Utiliser la quantité réellement exécutée (après ventes partielles)
+                exit_quantity = cycle.metadata.get('executed_quantity', cycle.quantity) if cycle.metadata else cycle.quantity
+                required_amount = exit_quantity * (exit_price or cycle.entry_price)
                 available = balances.get(quote_asset, {}).get('free', 0)
                 
                 if available < required_amount:

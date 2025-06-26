@@ -99,9 +99,25 @@ class SignalAggregator:
         self.last_signal_time = {}
         self.cooldown_period = timedelta(minutes=1)  # Réduit à 1 minute pour mode scalping
         
-        # Voting thresholds - MODE SCALPING (équilibré : fréquence vs qualité)
-        self.min_vote_threshold = 0.35  # Réduit de 0.5 à 0.35
-        self.min_confidence_threshold = 0.55  # Compromis : filtre le bruit mais garde la fréquence
+        # Voting thresholds adaptatifs selon le régime
+        self.min_vote_threshold = 0.35  # Base pour régimes favorables
+        self.min_confidence_threshold = 0.55  # Base pour tous régimes
+        
+        # Seuils spéciaux pour RANGE_TIGHT (plus permissifs)
+        self.range_tight_vote_threshold = 0.25  # Plus bas pour RANGE_TIGHT
+        self.range_tight_confidence_threshold = 0.50  # Plus bas pour RANGE_TIGHT
+        
+        # Monitoring stats
+        try:
+            from .monitoring_stats import SignalMonitoringStats
+            self.monitoring_stats = SignalMonitoringStats(redis_client)
+        except ImportError:
+            # Fallback pour import relatif
+            import sys
+            import os
+            sys.path.append(os.path.dirname(__file__))
+            from monitoring_stats import SignalMonitoringStats
+            self.monitoring_stats = SignalMonitoringStats(redis_client)
         
     async def _update_market_data_history(self, symbol: str) -> None:
         """Met à jour l'historique des données de marché pour un symbole"""
@@ -135,6 +151,9 @@ class SignalAggregator:
             symbol = signal['symbol']
             strategy = signal['strategy']
             
+            # Normalize strategy name by removing '_Strategy' suffix
+            strategy = strategy.replace('_Strategy', '')
+            
             # Mettre à jour l'historique des données de marché
             await self._update_market_data_history(symbol)
             
@@ -144,10 +163,14 @@ class SignalAggregator:
             
             # Convert 'side' to 'side' for compatibility
             if 'side' in signal and 'side' not in signal:
-                side = signal['side']
-                if side in ['BUY', 'BUY']:
+                signal['side'] = signal.pop('side')
+            
+            # Normalize side value
+            if 'side' in signal:
+                side = signal['side'].upper()
+                if side in ('BUY', 'LONG'):
                     signal['side'] = 'BUY'
-                elif side in ['SELL', 'SELL']:
+                elif side in ('SELL', 'SHORT'):
                     signal['side'] = 'SELL'
                 else:
                     logger.warning(f"Unknown side value: {side}")
@@ -235,6 +258,9 @@ class SignalAggregator:
                 )
             
             if aggregated:
+                # Store source signals count before clearing buffer
+                source_signals_count = len(self.signal_buffer[symbol])
+                
                 # Clear buffer after successful aggregation
                 self.signal_buffer[symbol].clear()
                 self.last_signal_time[symbol] = timestamp
@@ -246,14 +272,14 @@ class SignalAggregator:
                         'regime': regime.value,
                         'regime_metrics': regime_metrics,
                         'timestamp': timestamp.isoformat(),
-                        'source_signals': len(self.signal_buffer[symbol])
+                        'source_signals': source_signals_count
                     })
                 else:
                     aggregated.update({
                         'aggregation_method': 'weighted_vote',
                         'regime': regime,
                         'timestamp': timestamp.isoformat(),
-                        'source_signals': len(self.signal_buffer[symbol])
+                        'source_signals': source_signals_count
                     })
                 
                 return aggregated
@@ -463,8 +489,24 @@ class SignalAggregator:
 
             if side == 'BUY':
                 BUY_signals.append(weighted_signal)
+                # Enregistrer l'acceptation dans les stats
+                self.monitoring_stats.record_signal_decision(
+                    strategy=strategy,
+                    regime=regime.name if hasattr(regime, 'name') else str(regime),
+                    symbol=symbol,
+                    accepted=True,
+                    confidence=confidence
+                )
             elif side == 'SELL':
                 SELL_signals.append(weighted_signal)
+                # Enregistrer l'acceptation dans les stats
+                self.monitoring_stats.record_signal_decision(
+                    strategy=strategy,
+                    regime=regime.name if hasattr(regime, 'name') else str(regime),
+                    symbol=symbol,
+                    accepted=True,
+                    confidence=confidence
+                )
 
         # Calculate total scores with quality tracking
         BUY_score = sum(s['score'] for s in BUY_signals)
@@ -589,9 +631,26 @@ class SignalAggregator:
             # Combined weight (performance * regime adaptation)
             combined_weight = performance_weight * regime_weight
             
-            # Apply confidence threshold
+            # Apply adaptive confidence threshold based on regime
             confidence = signal.get('confidence', 0.5)
-            if confidence < self.min_confidence_threshold:
+            confidence_threshold = self.min_confidence_threshold
+            
+            # Seuils adaptatifs pour certains régimes
+            if hasattr(regime, 'name') and regime.name == 'RANGE_TIGHT':
+                confidence_threshold = self.range_tight_confidence_threshold
+                logger.debug(f"📊 Seuil RANGE_TIGHT adaptatif: {confidence_threshold} pour {strategy}")
+            
+            if confidence < confidence_threshold:
+                logger.debug(f"Signal {strategy} rejeté: confiance {confidence:.2f} < {confidence_threshold:.2f}")
+                # Enregistrer le rejet dans les stats
+                self.monitoring_stats.record_signal_decision(
+                    strategy=strategy,
+                    regime=regime.name if hasattr(regime, 'name') else str(regime),
+                    symbol=symbol,
+                    accepted=False,
+                    confidence=confidence,
+                    reason=f"confiance {confidence:.2f} < {confidence_threshold:.2f}"
+                )
                 continue
 
             # Get side (handle both 'side' and 'side' keys)
@@ -632,8 +691,24 @@ class SignalAggregator:
 
             if side == 'BUY':
                 BUY_signals.append(weighted_signal)
+                # Enregistrer l'acceptation dans les stats
+                self.monitoring_stats.record_signal_decision(
+                    strategy=strategy,
+                    regime=regime.name if hasattr(regime, 'name') else str(regime),
+                    symbol=symbol,
+                    accepted=True,
+                    confidence=confidence
+                )
             elif side == 'SELL':
                 SELL_signals.append(weighted_signal)
+                # Enregistrer l'acceptation dans les stats
+                self.monitoring_stats.record_signal_decision(
+                    strategy=strategy,
+                    regime=regime.name if hasattr(regime, 'name') else str(regime),
+                    symbol=symbol,
+                    accepted=True,
+                    confidence=confidence
+                )
 
         # Calculate total scores
         BUY_score = sum(s['score'] for s in BUY_signals)
@@ -641,6 +716,11 @@ class SignalAggregator:
 
         # Enhanced decision logic based on regime
         min_threshold = self._get_regime_threshold(regime)
+        
+        # Adapter le seuil de vote pour RANGE_TIGHT
+        if hasattr(regime, 'name') and regime.name == 'RANGE_TIGHT':
+            min_threshold = self.range_tight_vote_threshold
+            logger.debug(f"📊 Seuil de vote RANGE_TIGHT adaptatif: {min_threshold}")
         
         # Determine side
         if BUY_score > SELL_score and BUY_score >= min_threshold:
@@ -687,6 +767,9 @@ class SignalAggregator:
         
         # Create main strategy name from contributing strategies
         main_strategy = contributing_strategies[0] if contributing_strategies else 'SignalAggregator'
+        
+        # Performance-based adaptive boost
+        confidence = self._apply_performance_boost(confidence, contributing_strategies)
         
         # Regime-adaptive confidence boost
         confidence = self._apply_regime_confidence_boost(confidence, regime, regime_metrics)
@@ -788,34 +871,64 @@ class SignalAggregator:
             if regime == MarketRegime.UNDEFINED:
                 confidence *= 0.9
             elif regime in [MarketRegime.RANGE_VOLATILE]:
-                confidence *= 0.95
+                # Ne pas pénaliser les stratégies de mean-reversion en range
+                strategy = getattr(self, '_current_strategy', '')
+                if strategy in self.STRATEGY_GROUPS.get('mean_reversion', []):
+                    # Boost léger pour mean-reversion en range volatile
+                    confidence *= 1.02
+                else:
+                    confidence *= 0.95
         
         return min(1.0, confidence)  # Cap à 1.0
     
+    def _apply_performance_boost(self, confidence: float, contributing_strategies: List[str]) -> float:
+        """Applique un boost adaptatif basé sur la performance des stratégies"""
+        if not hasattr(self, 'performance_tracker') or not self.performance_tracker:
+            return confidence
+        
+        try:
+            boost_factor = 1.0
+            
+            for strategy in contributing_strategies:
+                # Obtenir le poids de performance (1.0 = neutre, >1.0 = surperformance)
+                performance_weight = self.performance_tracker.get_weight(strategy)
+                
+                if performance_weight > 1.1:  # Plus de 10% au-dessus du benchmark
+                    # Boost progressif selon la surperformance
+                    individual_boost = 1.0 + (performance_weight - 1.0) * 0.2  # Max +20% pour 2x performance
+                    boost_factor *= individual_boost
+                    logger.debug(f"🚀 Boost performance pour {strategy}: {performance_weight:.2f} -> boost {individual_boost:.2f}")
+                
+                elif performance_weight < 0.9:  # Plus de 10% en-dessous du benchmark
+                    # Malus modéré pour sous-performance
+                    individual_malus = max(0.95, 1.0 - (1.0 - performance_weight) * 0.1)  # Max -5%
+                    boost_factor *= individual_malus
+                    logger.debug(f"📉 Malus performance pour {strategy}: {performance_weight:.2f} -> malus {individual_malus:.2f}")
+            
+            # Limiter le boost total
+            boost_factor = min(1.15, max(0.95, boost_factor))  # Entre -5% et +15%
+            
+            if boost_factor != 1.0:
+                logger.info(f"📊 Boost performance global: {boost_factor:.2f} pour {contributing_strategies}")
+            
+            return confidence * boost_factor
+            
+        except Exception as e:
+            logger.error(f"Erreur dans boost performance: {e}")
+            return confidence
+    
     def _determine_signal_strength(self, confidence: float, regime: Any) -> str:
         """Détermine la force du signal basée sur la confiance et le régime"""
-        # MODIFIÉ: Seuils ajustés pour éviter l'amplification artificielle
-        # Ajustement des seuils selon le régime
-        if MarketRegime is not None and regime in [MarketRegime.STRONG_TREND_UP, MarketRegime.STRONG_TREND_DOWN]:
-            # En tendance forte, seuils légèrement réduits mais restent élevés
-            if confidence >= 0.85:  # Augmenté de 0.75 à 0.85
-                return 'very_strong'
-            elif confidence >= 0.7:  # Augmenté de 0.6 à 0.7
-                return 'strong'
-            elif confidence >= 0.55:  # Augmenté de 0.45 à 0.55
-                return 'moderate'
-            else:
-                return 'weak'
+        # Seuils standardisés alignés avec analyzer
+        # moderate ≥ 0.55, strong ≥ 0.75, very_strong ≥ 0.9
+        if confidence >= 0.9:
+            return 'very_strong'
+        elif confidence >= 0.75:
+            return 'strong'
+        elif confidence >= 0.55:
+            return 'moderate'
         else:
-            # Régimes moins favorables, seuils plus stricts
-            if confidence >= 0.9:  # Augmenté de 0.8 à 0.9
-                return 'very_strong'
-            elif confidence >= 0.75:  # Augmenté de 0.65 à 0.75
-                return 'strong'
-            elif confidence >= 0.55:  # Augmenté de 0.5 à 0.55
-                return 'moderate'
-            else:
-                return 'weak'
+            return 'weak'
         
     def _is_strategy_active(self, strategy: str, regime: str) -> bool:
         """Check if a strategy should be active in current regime"""
@@ -824,13 +937,21 @@ class SignalAggregator:
         if strategy in self.STRATEGY_GROUPS['adaptive']:
             return True
             
-        # In trending markets, use trend strategies
-        if regime == 'TREND':
+        # Handle enhanced regime codes
+        if regime.startswith('STRONG_TREND') or regime.startswith('TREND'):
             return strategy in self.STRATEGY_GROUPS['trend']
             
-        # In ranging markets, use mean reversion strategies
-        elif regime == 'RANGE':
+        # Handle range regimes (RANGE_TIGHT, RANGE_VOLATILE, etc.)
+        elif regime.startswith('RANGE'):
             return strategy in self.STRATEGY_GROUPS['mean_reversion']
+            
+        # Handle other enhanced regimes
+        elif regime in ['BREAKOUT_UP', 'BREAKOUT_DOWN']:
+            # Breakout regimes favor trend strategies
+            return strategy in self.STRATEGY_GROUPS['trend']
+        elif regime == 'VOLATILE':
+            # In volatile markets, adaptive strategies work best
+            return strategy in self.STRATEGY_GROUPS['adaptive']
             
         # In undefined regime, all strategies are active
         return True
@@ -1358,10 +1479,17 @@ class EnhancedSignalAggregator(SignalAggregator):
                 logger.debug(f"📊 {regime.name}: seuils stricts pour {symbol}")
                 
             elif regime.name == 'RANGE_TIGHT':
-                # Range serré: très sélectif, signaux de qualité uniquement
-                min_confidence = 0.75
-                required_strength = ['very_strong']
-                logger.debug(f"🔒 {regime.name}: seuils très stricts pour {symbol}")
+                # Range serré: adapté selon le type de stratégie
+                if strategy in self.STRATEGY_GROUPS.get('mean_reversion', []):
+                    # Assouplir pour stratégies de mean-reversion
+                    min_confidence = 0.7
+                    required_strength = ['strong', 'very_strong']
+                    logger.debug(f"🔒 {regime.name}: seuils assouplis pour mean-reversion {symbol}")
+                else:
+                    # Très sélectif pour autres stratégies
+                    min_confidence = 0.75
+                    required_strength = ['very_strong']
+                    logger.debug(f"🔒 {regime.name}: seuils très stricts pour {symbol}")
                 
             elif regime.name == 'RANGE_VOLATILE':
                 # Range volatil: sélectif mais moins que tight
