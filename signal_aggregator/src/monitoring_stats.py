@@ -37,7 +37,11 @@ class SignalMonitoringStats:
         try:
             data = self.redis.get("signal_monitoring_stats")
             if data:
-                stats_data = json.loads(data)
+                # Redis peut retourner un dict ou une string selon la config
+                if isinstance(data, str):
+                    stats_data = json.loads(data)
+                else:
+                    stats_data = data
                 
                 # Reconstruire les compteurs
                 for regime, strategies in stats_data.get('accepted', {}).items():

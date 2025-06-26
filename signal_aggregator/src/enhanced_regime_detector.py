@@ -201,29 +201,44 @@ class EnhancedRegimeDetector:
         # Tendance directionnelle
         is_bullish = plus_di > minus_di
         
-        # Force de la tendance basée sur ADX et autres facteurs
-        if adx >= self.adx_strong_trend:
-            # Tendance très forte
-            if is_bullish and roc > self.momentum_strong:
-                return MarketRegime.STRONG_TREND_UP
-            elif not is_bullish and roc < -self.momentum_strong:
-                return MarketRegime.STRONG_TREND_DOWN
-                
-        if adx >= self.adx_trend:
-            # Tendance normale
-            if is_bullish:
-                return MarketRegime.TREND_UP
-            else:
-                return MarketRegime.TREND_DOWN
-                
+        # PRIORITÉ À L'ADX - Si ADX > 30, c'est TOUJOURS une tendance
+        if adx >= 30:  # Seuil critique pour éviter faux RANGE_TIGHT
+            # Force de la tendance basée sur ADX
+            if adx >= self.adx_strong_trend:
+                # Tendance très forte
+                if is_bullish and roc > self.momentum_strong:
+                    return MarketRegime.STRONG_TREND_UP
+                elif not is_bullish and roc < -self.momentum_strong:
+                    return MarketRegime.STRONG_TREND_DOWN
+                # Tendance forte mais momentum modéré
+                elif is_bullish:
+                    return MarketRegime.TREND_UP
+                else:
+                    return MarketRegime.TREND_DOWN
+                    
+            elif adx >= self.adx_trend:
+                # Tendance normale
+                if is_bullish:
+                    return MarketRegime.TREND_UP
+                else:
+                    return MarketRegime.TREND_DOWN
+                    
+            else:  # ADX entre 30 et adx_trend (35)
+                # Tendance émergente
+                if is_bullish:
+                    return MarketRegime.WEAK_TREND_UP
+                else:
+                    return MarketRegime.WEAK_TREND_DOWN
+        
+        # ADX < 30 : vérifier d'autres critères pour range vs weak trend
         if adx >= self.adx_weak_trend:
-            # Tendance faible
-            if is_bullish:
+            # Tendance faible possible
+            if trend_angle > 5 or roc > 5:
                 return MarketRegime.WEAK_TREND_UP
-            else:
+            elif trend_angle < -5 or roc < -5:
                 return MarketRegime.WEAK_TREND_DOWN
                 
-        # Marché en range
+        # Marché en range seulement si ADX < 30
         if bb_width < self.bb_squeeze_tight:
             return MarketRegime.RANGE_TIGHT
         elif bb_width > self.bb_expansion:
