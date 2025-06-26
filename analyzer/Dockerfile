@@ -39,6 +39,9 @@ RUN pip install --no-cache-dir -r /app/requirements-shared.txt && \
 # Install TA-Lib Python wrapper separately with NumPy already installed
 RUN pip install --no-cache-dir ta-lib==0.4.24
 
+# Install pandas-ta for advanced indicators
+RUN pip install --no-cache-dir pandas-ta==0.3.14b0
+
 # Copy shared modules
 COPY shared /app/shared
 

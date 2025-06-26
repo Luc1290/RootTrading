@@ -37,6 +37,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Import des optimisations après la configuration du logger
+try:
+    from analyzer.src.indicators.vectorized_indicators import VectorizedIndicators
+    from analyzer.src.indicators.indicator_cache import indicator_cache
+    from analyzer.src.concurrent_analyzer import ConcurrentAnalyzer
+    OPTIMIZATIONS_AVAILABLE = True
+    logger.info("✅ Optimisations analyzer chargées: cache, vectorisation, concurrence")
+except ImportError as e:
+    OPTIMIZATIONS_AVAILABLE = False
+    logger.warning(f"⚠️ Optimisations analyzer non disponibles: {e}")
+
 class AnalyzerManager:
     """
     Gestionnaire de processus pour l'analyzer.
@@ -85,6 +96,16 @@ class AnalyzerManager:
              
         # Créer le chargeur de stratégies
         self.strategy_loader = get_strategy_loader()
+        
+        # Initialiser l'analyseur concurrent si disponible
+        if OPTIMIZATIONS_AVAILABLE:
+            self.concurrent_analyzer = ConcurrentAnalyzer(
+                self.strategy_loader,
+                max_workers=min(4, self.max_workers)
+            )
+            logger.info("✅ Analyseur concurrent initialisé")
+        else:
+            self.concurrent_analyzer = None
         
         # Événement d'arrêt
         self.stop_event = mp.Event() if not use_threads else threading.Event()
@@ -233,9 +254,14 @@ class AnalyzerManager:
                         local_strategy_loader = get_strategy_loader()
                         logger.info("Loader de stratégies local créé dans le processus d'analyse")
                 
-                    # Analyser les données directement dans ce processus
+                    # Analyser les données avec optimisations si disponibles
                     try:
-                        signals = local_strategy_loader.process_market_data(analysis_data)
+                        if OPTIMIZATIONS_AVAILABLE and hasattr(self, 'concurrent_analyzer'):
+                            # Utiliser l'analyse optimisée avec vectorisation
+                            signals = self._process_with_optimizations(analysis_data, local_strategy_loader)
+                        else:
+                            # Méthode classique
+                            signals = local_strategy_loader.process_market_data(analysis_data)
                     
                         # Si des signaux sont générés, les convertir en dictionnaires et les envoyer
                         if signals:
@@ -302,6 +328,51 @@ class AnalyzerManager:
         """
         # Ajouter à la file d'attente d'analyse
         self.data_queue.put(data)
+    
+    def _process_with_optimizations(self, analysis_data, strategy_loader):
+        """
+        Traitement optimisé avec vectorisation et cache
+        """
+        try:
+            import pandas as pd
+            
+            # Extraire les données OHLCV
+            symbol = analysis_data['symbol']
+            ohlcv_data = analysis_data.get('ohlcv_data', [])
+            
+            if not ohlcv_data or len(ohlcv_data) < 50:
+                # Pas assez de données pour l'analyse vectorisée
+                return strategy_loader.process_market_data(analysis_data)
+            
+            # Convertir en DataFrame
+            df = pd.DataFrame(ohlcv_data)
+            
+            # Calcul vectorisé des indicateurs avec cache
+            if OPTIMIZATIONS_AVAILABLE:
+                indicators = VectorizedIndicators.compute_all_indicators(df, symbol)
+                logger.debug(f"📊 Calcul vectorisé de {len(indicators)} indicateurs pour {symbol}")
+                
+                # Utiliser les indicateurs pré-calculés pour accélérer les stratégies
+                enhanced_data = analysis_data.copy()
+                enhanced_data['precomputed_indicators'] = indicators
+                
+                # Traitement accéléré
+                signals = strategy_loader.process_market_data(enhanced_data)
+                
+                # Log des performances du cache
+                if hasattr(indicator_cache, 'get_stats'):
+                    stats = indicator_cache.get_stats()
+                    if stats['hits'] + stats['misses'] > 0:
+                        logger.debug(f"📈 Cache hit rate: {stats['hit_rate']:.1%} ({stats['hits']}/{stats['hits'] + stats['misses']})")
+                
+                return signals
+            else:
+                return strategy_loader.process_market_data(analysis_data)
+                
+        except Exception as e:
+            logger.error(f"Erreur traitement optimisé pour {analysis_data.get('symbol', 'unknown')}: {e}")
+            # Fallback vers méthode classique
+            return strategy_loader.process_market_data(analysis_data)
       
     def start(self):
         """

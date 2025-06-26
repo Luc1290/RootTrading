@@ -309,7 +309,10 @@ class SignalAggregator:
                 
             # Utiliser les niveaux de prix calculés par ultra-confluence
             price_levels = metadata.get('price_levels', {})
-            stop_loss = price_levels.get('stop_loss', current_price * 0.975)  # Stop plus serré pour signaux premium
+            # Stop-loss correct selon le side: SELL stop au dessus, BUY stop en dessous
+            side = signal.get('side', 'BUY')
+            default_stop = current_price * (1.025 if side == 'SELL' else 0.975)
+            stop_loss = price_levels.get('stop_loss', default_stop)  # Stop plus serré pour signaux premium
             
             # Métadonnées enrichies
             enhanced_metadata = {
@@ -325,6 +328,9 @@ class SignalAggregator:
                 'trailing_delta': 2.0,  # Trailing plus serré pour signaux premium
                 'recommended_size_multiplier': 1.2  # Taille légèrement augmentée
             }
+            
+            # Log pour debug stop-loss
+            logger.info(f"🎯 Signal institutionnel {side} {symbol}: entry={current_price:.4f}, stop={stop_loss:.4f}")
             
             result = {
                 'symbol': symbol,
@@ -383,7 +389,10 @@ class SignalAggregator:
                 
             # Prix et stop loss optimisés
             price_levels = metadata.get('price_levels', {})
-            stop_loss = price_levels.get('stop_loss', current_price * 0.98)  # Stop modéré
+            # Stop-loss correct selon le side: SELL stop au dessus, BUY stop en dessous
+            side = signal.get('side', 'BUY')
+            default_stop = current_price * (1.02 if side == 'SELL' else 0.98)
+            stop_loss = price_levels.get('stop_loss', default_stop)  # Stop modéré
             
             enhanced_metadata = {
                 'aggregated': True,
@@ -398,6 +407,9 @@ class SignalAggregator:
                 'trailing_delta': 2.5,
                 'recommended_size_multiplier': 1.1
             }
+            
+            # Log pour debug stop-loss
+            logger.info(f"🎯 Signal excellent {side} {symbol}: entry={current_price:.4f}, stop={stop_loss:.4f}")
             
             result = {
                 'symbol': symbol,
@@ -554,7 +566,9 @@ class SignalAggregator:
                 
                 # Extract stop_price from metadata (plus de target_price avec TrailingStop pur)
                 metadata = signal.get('metadata', {})
-                stop_price = metadata.get('stop_price', signal.get('stop_loss', signal['price'] * 0.998))
+                # Stop-loss correct selon le side: SELL stop au dessus, BUY stop en dessous
+                default_stop = signal['price'] * (1.002 if side == 'SELL' else 0.998)
+                stop_price = metadata.get('stop_price', signal.get('stop_loss', default_stop))
                 
                 stop_loss_sum += stop_price * weight
                 
@@ -756,7 +770,9 @@ class SignalAggregator:
                     
                     # Extract stop_price from metadata
                     metadata = signal.get('metadata', {})
-                    stop_price = metadata.get('stop_price', signal.get('stop_loss', signal['price'] * 0.998))
+                    # Stop-loss correct selon le side: SELL stop au dessus, BUY stop en dessous
+                    default_stop = signal['price'] * (1.002 if side == 'SELL' else 0.998)
+                    stop_price = metadata.get('stop_price', signal.get('stop_loss', default_stop))
                     
                     stop_loss_sum += stop_price * weight
                 
@@ -872,12 +888,8 @@ class SignalAggregator:
                 confidence *= 0.9
             elif regime in [MarketRegime.RANGE_VOLATILE]:
                 # Ne pas pénaliser les stratégies de mean-reversion en range
-                strategy = getattr(self, '_current_strategy', '')
-                if strategy in self.STRATEGY_GROUPS.get('mean_reversion', []):
-                    # Boost léger pour mean-reversion en range volatile
-                    confidence *= 1.02
-                else:
-                    confidence *= 0.95
+                # Note: cette logique est maintenant dans _apply_enhanced_regime_filtering
+                confidence *= 0.95
         
         return min(1.0, confidence)  # Cap à 1.0
     
@@ -891,7 +903,7 @@ class SignalAggregator:
             
             for strategy in contributing_strategies:
                 # Obtenir le poids de performance (1.0 = neutre, >1.0 = surperformance)
-                performance_weight = self.performance_tracker.get_weight(strategy)
+                performance_weight = self.performance_tracker.get_strategy_weight(strategy)
                 
                 if performance_weight > 1.1:  # Plus de 10% au-dessus du benchmark
                     # Boost progressif selon la surperformance
@@ -1457,6 +1469,8 @@ class EnhancedSignalAggregator(SignalAggregator):
             signal_strength = signal.get('strength', 'moderate')
             signal_confidence = signal.get('confidence', 0.5)
             strategy = signal.get('strategy', 'Unknown')
+            # Normaliser le nom de stratégie (retirer _Strategy)
+            strategy = strategy.replace('_Strategy', '')
             side = signal.get('side', 'UNKNOWN')
             
             # Seuils adaptatifs selon le régime Enhanced

@@ -106,16 +106,23 @@ class EnhancedRegimeDetector:
             df['close'] = df['close'].astype(float)
             df['volume'] = df['volume'].astype(float)
             
-            # 1. ADX pour la force de tendance
-            adx_indicator = ta.trend.ADXIndicator(
-                high=df['high'],
-                low=df['low'],
-                close=df['close'],
-                window=14
-            )
-            current_adx = adx_indicator.adx().iloc[-1]
-            plus_di = adx_indicator.adx_pos().iloc[-1]
-            minus_di = adx_indicator.adx_neg().iloc[-1]
+            # 1. ADX pour la force de tendance - utiliser l'ADX déjà calculé si disponible
+            if 'adx_14' in df.columns and not df['adx_14'].isna().all():
+                current_adx = df['adx_14'].iloc[-1]
+                # Estimer plus_di et minus_di si nécessaire (optionnel pour la logique actuelle)
+                plus_di = 25.0  # Valeur par défaut
+                minus_di = 25.0  # Valeur par défaut
+            else:
+                # Fallback: calculer ADX si pas disponible dans les données enrichies
+                adx_indicator = ta.trend.ADXIndicator(
+                    high=df['high'],
+                    low=df['low'],
+                    close=df['close'],
+                    window=14
+                )
+                current_adx = adx_indicator.adx().iloc[-1]
+                plus_di = adx_indicator.adx_pos().iloc[-1]
+                minus_di = adx_indicator.adx_neg().iloc[-1]
             
             # 2. Bollinger Bands pour la volatilité
             bb = ta.volatility.BollingerBands(

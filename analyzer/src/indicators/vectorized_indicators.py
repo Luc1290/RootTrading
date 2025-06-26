@@ -97,7 +97,7 @@ class VectorizedIndicators:
             timeperiod=14, high=high[-14:], low=low[-14:]
         )
         
-        # Supertrend avec pandas_ta (si disponible)
+        # Supertrend avec pandas_ta
         try:
             st_df = pd.DataFrame({'high': high, 'low': low, 'close': close})
             supertrend = ta.supertrend(

@@ -3,6 +3,7 @@
 pandas==2.1.0
 # numpy est défini dans requirements-shared.txt
 ta-lib==0.4.28  # Nécessite l'installation de TA-Lib C (https://github.com/TA-Lib/ta-lib-python)
+pandas-ta==0.3.14b0  # Pour les indicateurs techniques avancés
 scikit-learn==1.3.0  # Pour des fonctionnalités avancées d'analyse
 flask==2.3.3
 psutil==5.9.5
