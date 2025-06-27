@@ -71,7 +71,7 @@ class SmartCycleManager:
         self.redis_client = redis_client
         
         # Configuration du renforcement
-        self.min_reinforcement_gap = 1.5  # % minimum de baisse pour renforcer
+        self.min_reinforcement_gap = 0.5  # % minimum de baisse pour renforcer
         self.max_reinforcements = 3       # Max 3 renforcements par cycle
         self.reinforcement_multiplier = 1.5  # Multiplier la position de 1.5x
         

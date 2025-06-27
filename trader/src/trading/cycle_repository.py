@@ -493,7 +493,7 @@ class CycleRepository:
         try:
             with DBContextManager(auto_transaction=False) as cursor:
                 query = """
-                SELECT id, symbol, strategy, status, confirmed, entry_order_id, exit_order_id,
+                SELECT id, symbol, strategy, status, side, confirmed, entry_order_id, exit_order_id,
                        entry_price, exit_price, quantity, stop_price,
                        trailing_delta, min_price, max_price, profit_loss, profit_loss_percent,
                        created_at, updated_at, completed_at, demo, metadata

@@ -278,6 +278,11 @@ class SignalProcessor:
             # Calculer la force du signal pour décider du retournement
             signal_strength = self._calculate_signal_strength_score(signal)
             
+            # Log pour debug
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"🔍 Signal {signal.symbol} {signal.side}: strength={signal.strength}, confidence={getattr(signal, 'confidence', 'N/A')}, metadata={getattr(signal, 'metadata', {})}")
+            
             # Seuils adaptés selon le type de signal
             threshold = 0.85  # Seuil par défaut
             
@@ -289,7 +294,13 @@ class SignalProcessor:
                     threshold = 0.80  # Légèrement plus permissif pour excellents
                     
             if signal_strength >= threshold:
-                return True, f"Retournement accepté (force: {signal_strength:.2f})"
+                # Fermer les cycles opposés avant d'accepter le nouveau signal
+                try:
+                    self._close_opposite_cycles(opposite_cycles, signal)
+                    return True, f"Retournement accepté (force: {signal_strength:.2f}) - positions opposées fermées"
+                except Exception as e:
+                    logger.error(f"❌ Échec fermeture cycles opposés: {str(e)}")
+                    return False, f"Retournement rejeté - impossible de fermer cycles opposés: {str(e)}"
             else:
                 return False, f"Signal trop faible pour retournement (force: {signal_strength:.2f})"
                 
@@ -319,7 +330,8 @@ class SignalProcessor:
         }
         
         base_score = strength_weights.get(signal.strength, 0.5)
-        return base_score * signal.confidence
+        confidence = getattr(signal, 'confidence', None) or 1.0  # Défaut à 1.0 si None
+        return base_score * confidence
         
     def calculate_portfolio_conviction(self, symbol: str, position: str, 
                                       active_cycles: List[Dict]) -> float:
@@ -400,6 +412,64 @@ class SignalProcessor:
             return 0.5
             
         return matching_signals / total_recent
+
+    def _close_opposite_cycles(self, opposite_cycles: List[Dict], signal: StrategySignal) -> None:
+        """
+        Ferme les cycles opposés avant d'ouvrir une nouvelle position.
+        
+        Args:
+            opposite_cycles: Liste des cycles opposés à fermer
+            signal: Signal qui justifie la fermeture
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        for cycle in opposite_cycles:
+            cycle_id = cycle.get('id')
+            cycle_status = cycle.get('status', '')
+            if not cycle_id:
+                continue
+                
+            # Vérifier si le cycle peut être fermé
+            if cycle_status in ['completed', 'canceled', 'failed']:
+                logger.info(f"🔍 Cycle {cycle_id} déjà fermé (statut: {cycle_status}), ignoré")
+                continue
+                
+            try:
+                # Préparer les données de fermeture
+                close_data = {
+                    "reason": f"Fermeture pour retournement - Signal {signal.strategy} force {self._calculate_signal_strength_score(signal):.2f}",
+                    "price": signal.price  # Fermer au prix du signal
+                }
+                
+                # Fermeture comptable via l'API
+                result = self.service_client.close_cycle_accounting(
+                    cycle_id, 
+                    signal.price, 
+                    f"Retournement vers {signal.side} - Signal {signal.strategy}"
+                )
+                
+                # Vérifier le succès de la fermeture comptable
+                success = False
+                if result:
+                    # Vérifier les différents indicateurs de succès
+                    if result.get('success') is True:
+                        success = True
+                    elif result.get('status') in ['closed_accounting', 'already_closed']:
+                        success = True
+                    elif 'error' not in result and result.get('cycle_id'):
+                        success = True
+                
+                if success:
+                    logger.info(f"✅ Cycle opposé {cycle_id} fermé pour retournement")
+                else:
+                    error_msg = result.get('error', 'Erreur inconnue') if result else 'Aucune réponse'
+                    logger.warning(f"⚠️ Échec fermeture cycle opposé {cycle_id}: {error_msg}")
+                    # Ne pas traiter le signal si on n'a pas pu fermer les cycles opposés
+                    raise Exception(f"Impossible de fermer le cycle opposé {cycle_id}: {error_msg}")
+                    
+            except Exception as e:
+                logger.error(f"❌ Erreur fermeture cycle opposé {cycle_id}: {str(e)}")
 
     def get_metrics(self) -> Dict[str, Any]:
         """

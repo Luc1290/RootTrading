@@ -1,6 +1,6 @@
 -- Schéma de base de données complet pour RootTrading
--- Version 1.0.9.0.2 - Inclut toutes les améliorations et corrections
--- Date: 23 Mai 2025
+-- Version 1.0.9.0.3 - Inclut support renforcement DCA et prévention hedging
+-- Date: 27 Juin 2025
 
 -- Activer les extensions nécessaires
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS trade_executions (
     timestamp TIMESTAMP NOT NULL,
     cycle_id VARCHAR(50),
     demo BOOLEAN NOT NULL DEFAULT FALSE,
+    id VARCHAR(50),  -- Colonne id optionnelle pour compatibilité
+    metadata JSONB,  -- Métadonnées pour traçabilité (renforcements, etc.)
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
@@ -34,6 +36,10 @@ CREATE INDEX IF NOT EXISTS trade_executions_cycle_id_idx ON trade_executions(cyc
 CREATE INDEX IF NOT EXISTS trade_executions_timestamp_idx ON trade_executions(timestamp);
 CREATE INDEX IF NOT EXISTS trade_executions_symbol_idx ON trade_executions(symbol);
 CREATE INDEX IF NOT EXISTS trade_executions_status_idx ON trade_executions(status);
+-- Index GIN pour les recherches dans les métadonnées JSON des exécutions
+CREATE INDEX IF NOT EXISTS trade_executions_metadata_idx ON trade_executions USING GIN (metadata);
+-- Index optionnel pour la colonne id si utilisée
+CREATE INDEX IF NOT EXISTS trade_executions_id_idx ON trade_executions(id) WHERE id IS NOT NULL;
 
 -- Table des cycles de trading (avec tous les champs requis)
 CREATE TABLE IF NOT EXISTS trade_cycles (

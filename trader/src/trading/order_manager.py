@@ -319,11 +319,8 @@ class OrderManager:
                 "symbol": cycle.symbol,
                 "strategy": cycle.strategy,
                 "status": cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status),
-                # Vérification robuste du statut pour déterminer côté (insensible à la casse)
-                "side": "BUY" if (
-                    hasattr(cycle.status, 'value') and cycle.status.value.lower() in ['active_BUY', 'waiting_BUY'] or
-                    isinstance(cycle.status, str) and cycle.status.lower() in ['active_BUY', 'waiting_BUY']
-                ) else "SELL",
+                # Utiliser directement le side du cycle depuis la base de données
+                "side": cycle.side.value if hasattr(cycle.side, 'value') else str(cycle.side),
                 "entry_price": cycle.entry_price,
                 "current_price": self.last_prices.get(cycle.symbol),
                 "quantity": cycle.quantity,

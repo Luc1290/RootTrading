@@ -192,6 +192,15 @@ class SignalHandler:
                 self.logger.error(f"Prix invalide dans le signal pour {signal.symbol}: {current_price}")
                 return
                 
+            # 2.5 Vérifier la stratégie (retournement de position)
+            existing_cycles = self.service_client.get_active_cycles(signal.symbol)
+            self.logger.info(f"🔍 Vérification stratégique pour {signal.symbol} {signal.side} - {len(existing_cycles)} cycles existants")
+            should_process, strategy_reason = self.signal_processor.should_process_signal_strategically(signal, existing_cycles)
+            self.logger.info(f"🔍 Résultat vérification stratégique: {should_process} - {strategy_reason}")
+            if not should_process:
+                self.logger.warning(f"Signal rejeté stratégiquement: {strategy_reason}")
+                return
+                
             # 3. Récupérer toutes les balances et vérifier la faisabilité
             base_asset = self._get_base_asset(signal.symbol)
             quote_asset = self._get_quote_asset(signal.symbol)
@@ -215,8 +224,7 @@ class SignalHandler:
                 
             available_balance = feasibility['constraining_balance']
                 
-            # 4. Récupérer les cycles existants
-            existing_cycles = self.service_client.get_active_cycles(signal.symbol)
+            # 4. Les cycles existants ont déjà été récupérés plus haut
             
             # 5. Utiliser SmartCycleManager pour décider de l'action
             decision = self.smart_cycle_manager.analyze_signal(
@@ -327,14 +335,23 @@ class SignalHandler:
                     self.logger.info(f"📉 Taille réduite de {original_amount:.2f} à {trade_amount:.2f} {quote_asset} "
                                    f"(multiplicateur: {size_multiplier:.1%}, danger: {signal.metadata.get('danger_level', 'N/A')})")
             
-            # Convertir le montant en quantité
+            # Calculer la position nette si nécessaire
+            existing_cycles = self.service_client.get_active_cycles(signal.symbol)
+            opposite_cycles = [cycle for cycle in existing_cycles if self._is_opposite_position(cycle, signal)]
+            
+            # Convertir le montant en quantité de base
             if signal.symbol.endswith("BTC"):
-                # Pour les paires BTC, calcul spécial
                 quantity = trade_amount / signal.price
                 self.logger.debug(f"📊 Calcul quantité {signal.symbol}: {trade_amount:.6f} BTC / {signal.price:.6f} = {quantity:.6f}")
             else:
-                # Pour les paires USDC, calcul direct
                 quantity = trade_amount / signal.price
+            
+            # Ajouter les quantités des cycles opposés pour position nette
+            if opposite_cycles:
+                opposite_quantity = sum(cycle.get('quantity', 0) for cycle in opposite_cycles)
+                net_quantity = quantity + opposite_quantity
+                self.logger.info(f"💰 Position nette calculée: {quantity:.6f} + {opposite_quantity:.6f} = {net_quantity:.6f}")
+                quantity = net_quantity
 
             # Préparer les données de l'ordre avec format original
             order_data = {
@@ -430,11 +447,11 @@ class SignalHandler:
                 metadata=metadata
             )
             
-            if result.get('success'):
+            if result and (result.get('success') or result.get('cycle_id')):
                 self.logger.info(f"✅ Cycle {decision.existing_cycle_id} renforcé avec {quantity:.8f} unités")
                 return True
             else:
-                error_msg = result.get('error', 'Erreur inconnue')
+                error_msg = result.get('error', 'Erreur inconnue') if result else 'Service indisponible'
                 self.logger.error(f"❌ Échec du renforcement: {error_msg}")
                 return False
                 
@@ -526,6 +543,32 @@ class SignalHandler:
         else:
             # Fallback: prendre tout sauf les 4 derniers caractères
             return symbol[:-4]
+    
+    def _is_opposite_position(self, cycle: Dict, signal) -> bool:
+        """
+        Vérifie si un cycle est en position opposée au signal.
+        
+        Args:
+            cycle: Données du cycle
+            signal: Signal de trading
+            
+        Returns:
+            True si position opposée
+        """
+        if cycle.get("symbol") != signal.symbol:
+            return False
+            
+        cycle_status = cycle.get("status", "")
+        signal_side = signal.side.value if hasattr(signal.side, 'value') else str(signal.side)
+        
+        # Cycle BUY actif + Signal SELL = position opposée
+        if cycle_status in ["waiting_sell", "active_sell"] and signal_side == "SELL":
+            return True
+        # Cycle SELL actif + Signal BUY = position opposée  
+        elif cycle_status in ["waiting_buy", "active_buy"] and signal_side == "BUY":
+            return True
+            
+        return False
         
     def start(self) -> None:
         """

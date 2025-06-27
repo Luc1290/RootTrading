@@ -12,7 +12,7 @@ from flask import request, jsonify, Blueprint, current_app
 import requests
 
 from shared.src.config import BINANCE_SECRET_KEY, TRADING_MODE
-from shared.src.enums import OrderSide, CycleStatus
+from shared.src.enums import OrderSide, CycleStatus, OrderStatus
 from shared.src.db_pool import get_db_metrics
 
 # Configuration du logging
@@ -334,8 +334,27 @@ def close_cycle(cycle_id):
         data = request.json or {}
         price = float(data["price"]) if "price" in data else None
         
-        # Fermer le cycle
-        success = order_manager.cycle_manager.close_cycle(cycle_id, price)
+        # Vérifier d'abord si le cycle existe
+        cycle = order_manager.cycle_manager.get_cycle(cycle_id)
+        if not cycle:
+            logger.warning(f"⚠️ Tentative de fermeture d'un cycle inexistant: {cycle_id}")
+            return jsonify({
+                "error": f"Cycle {cycle_id} not found",
+                "cycle_id": cycle_id,
+                "status": "not_found"
+            }), 404
+        
+        # Vérifier si le cycle est déjà fermé
+        if cycle.status in [CycleStatus.COMPLETED, CycleStatus.CANCELED, CycleStatus.FAILED]:
+            logger.info(f"✅ Cycle {cycle_id} déjà fermé avec le statut {cycle.status}")
+            return jsonify({
+                "status": "already_closed", 
+                "cycle_id": cycle_id,
+                "cycle_status": cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
+            }), 200
+        
+        # Fermer le cycle avec ordre MARKET pour fermeture immédiate
+        success = order_manager.cycle_manager.close_cycle(cycle_id, price, force_market=True)
         
         if success:
             return jsonify({"status": "closed", "cycle_id": cycle_id}), 200
@@ -344,6 +363,61 @@ def close_cycle(cycle_id):
     
     except Exception as e:
         logger.error(f"❌ Erreur lors de la fermeture du cycle: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@routes_bp.route('/close_accounting/<cycle_id>', methods=['POST'])
+def close_cycle_accounting(cycle_id):
+    """
+    Ferme un cycle de manière comptable sans ordre réel.
+    
+    Exemple de requête:
+    {
+        "price": 141.46,  # prix obligatoire pour le P&L
+        "reason": "Retournement BUY"  # optionnel
+    }
+    """
+    order_manager = current_app.config['ORDER_MANAGER']
+    
+    if not order_manager:
+        return jsonify({"error": "OrderManager non initialisé"}), 500
+    
+    try:
+        data = request.json or {}
+        price = float(data.get("price")) if data.get("price") else None
+        reason = data.get("reason", "Fermeture comptable via API")
+        
+        if not price:
+            return jsonify({"error": "Prix obligatoire pour fermeture comptable"}), 400
+        
+        # Vérifier d'abord si le cycle existe
+        cycle = order_manager.cycle_manager.get_cycle(cycle_id)
+        if not cycle:
+            logger.warning(f"⚠️ Tentative de fermeture comptable d'un cycle inexistant: {cycle_id}")
+            return jsonify({
+                "error": f"Cycle {cycle_id} not found",
+                "cycle_id": cycle_id,
+                "status": "not_found"
+            }), 404
+        
+        # Vérifier si le cycle est déjà fermé
+        if cycle.status in [CycleStatus.COMPLETED, CycleStatus.CANCELED, CycleStatus.FAILED]:
+            logger.info(f"✅ Cycle {cycle_id} déjà fermé avec le statut {cycle.status}")
+            return jsonify({
+                "status": "already_closed", 
+                "cycle_id": cycle_id,
+                "cycle_status": cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
+            }), 200
+        
+        # Fermer comptablement
+        success = order_manager.cycle_manager.close_cycle_accounting(cycle_id, price, reason)
+        
+        if success:
+            return jsonify({"status": "closed_accounting", "cycle_id": cycle_id}), 200
+        else:
+            return jsonify({"error": f"Impossible de fermer comptablement le cycle {cycle_id}"}), 400
+    
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la fermeture comptable: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @routes_bp.route('/reinforce', methods=['POST'])
@@ -389,66 +463,86 @@ def reinforce_cycle():
             return jsonify({"error": f"Cycle {cycle_id} non trouvé"}), 404
         
         # Vérifier que le cycle est dans un état approprié
-        if cycle.status not in [CycleStatus.WAITING_SELL, CycleStatus.ACTIVE]:
+        if cycle.status not in [CycleStatus.WAITING_SELL, CycleStatus.ACTIVE_BUY, CycleStatus.ACTIVE_SELL]:
+            status_str = cycle.status.value if hasattr(cycle.status, 'value') else str(cycle.status)
             return jsonify({
-                "error": f"Le cycle {cycle_id} n'est pas dans un état permettant le renforcement (état actuel: {cycle.status.value})"
+                "error": f"Le cycle {cycle_id} n'est pas dans un état permettant le renforcement (état actuel: {status_str})"
             }), 400
         
         # Vérifier que les paramètres correspondent au cycle
         if cycle.symbol != symbol:
             return jsonify({"error": f"Le symbole {symbol} ne correspond pas au cycle (symbole du cycle: {cycle.symbol})"}), 400
         
-        if cycle.side != side:
-            return jsonify({"error": f"Le side {side.value} ne correspond pas au cycle (side du cycle: {cycle.side.value})"}), 400
+        # Normaliser les sides pour la comparaison
+        cycle_side_str = cycle.side.value if hasattr(cycle.side, 'value') else str(cycle.side)
+        side_str = side.value if hasattr(side, 'value') else str(side)
         
-        # Créer un nouvel ordre pour renforcer la position
-        # Utiliser la même stratégie que le cycle original avec le suffixe "_DCA"
-        strategy = f"{cycle.strategy}_DCA"
+        if cycle_side_str != side_str:
+            return jsonify({"error": f"Le side {side_str} ne correspond pas au cycle (side du cycle: {cycle_side_str})"}), 400
         
-        # Créer l'ordre de renforcement
-        result = order_manager.binance_executor.create_order(
-            symbol=symbol,
-            side=side,
-            quantity=quantity,
-            price=price,
-            order_type="LIMIT" if price else "MARKET"
-        )
-        
-        if result.get('success'):
-            order_id = result.get('orderId')
+        # Pour un renforcement, on doit créer un ordre directement via Binance
+        # et mettre à jour le cycle existant
+        try:
+            # Préparer l'ordre pour Binance avec les mêmes paramètres que les ordres normaux
+            from shared.src.schemas import TradeOrder
+            
+            # Créer l'ordre avec les bons paramètres
+            reinforce_order = TradeOrder(
+                symbol=symbol,
+                side=side,
+                quantity=quantity,
+                price=price,
+                # Limiter à 36 caractères pour Binance
+                client_order_id=f"rf_{cycle_id[-12:]}_{int(time.time() % 1000000)}",
+                strategy=f"{cycle.strategy}_DCA"
+            )
+            
+            # Exécuter directement via BinanceExecutor
+            execution = order_manager.binance_executor.execute_order(reinforce_order)
+            
+            if execution and (execution.status == OrderStatus.FILLED or execution.status == OrderStatus.NEW):
+                order_id = execution.order_id
+                executed_price = execution.price if execution.status == OrderStatus.FILLED else price
             
             # Mettre à jour le cycle avec les nouvelles informations
             # Calculer le nouveau prix moyen et la nouvelle quantité
-            old_value = cycle.entry_price * cycle.quantity
-            new_value = (price if price else result.get('fills', [{}])[0].get('price', 0)) * quantity
-            new_quantity = cycle.quantity + quantity
-            new_avg_price = (old_value + new_value) / new_quantity if new_quantity > 0 else 0
+                old_value = cycle.entry_price * cycle.quantity
+                new_value = (executed_price or price) * quantity
+                new_quantity = cycle.quantity + quantity
+                new_avg_price = (old_value + new_value) / new_quantity if new_quantity > 0 else 0
             
-            # Mettre à jour le cycle dans la base de données
-            order_manager.cycle_manager.update_cycle_reinforcement(
-                cycle_id=cycle_id,
-                additional_quantity=quantity,
-                new_avg_price=new_avg_price,
-                reinforce_order_id=order_id,
-                metadata=metadata
-            )
-            
-            logger.info(f"✅ Cycle {cycle_id} renforcé avec {quantity} unités. Nouveau prix moyen: {new_avg_price}")
-            
-            return jsonify({
-                "success": True,
-                "cycle_id": cycle_id,
-                "reinforce_order_id": order_id,
-                "original_entry_price": cycle.entry_price,
-                "original_quantity": cycle.quantity,
-                "additional_quantity": quantity,
-                "new_avg_price": new_avg_price,
-                "new_total_quantity": new_quantity
-            }), 200
-        else:
-            return jsonify({
-                "error": f"Échec de la création de l'ordre de renforcement: {result.get('error', 'Erreur inconnue')}"
-            }), 400
+                # Mettre à jour le cycle dans la base de données
+                order_manager.cycle_manager.update_cycle_reinforcement(
+                    cycle_id=cycle_id,
+                    additional_quantity=quantity,
+                    new_avg_price=new_avg_price,
+                    reinforce_order_id=order_id,
+                    metadata=metadata
+                )
+                
+                logger.info(f"✅ Cycle {cycle_id} renforcé avec {quantity} unités. Nouveau prix moyen: {new_avg_price}")
+                
+                return jsonify({
+                    "success": True,
+                    "cycle_id": cycle_id,
+                    "reinforce_order_id": order_id,
+                    "original_entry_price": cycle.entry_price,
+                    "original_quantity": cycle.quantity,
+                    "additional_quantity": quantity,
+                    "new_avg_price": new_avg_price,
+                    "new_total_quantity": new_quantity
+                }), 200
+            else:
+                error_msg = "Ordre non exécuté"
+                if execution:
+                    error_msg = f"Ordre en statut {execution.status.value if hasattr(execution.status, 'value') else execution.status}"
+                return jsonify({
+                    "error": f"Échec de la création de l'ordre de renforcement: {error_msg}"
+                }), 400
+                
+        except Exception as reinforce_error:
+            logger.error(f"❌ Erreur lors de l'exécution de l'ordre de renforcement: {str(reinforce_error)}")
+            return jsonify({"error": f"Erreur d'exécution: {str(reinforce_error)}"}), 500
     
     except Exception as e:
         logger.error(f"❌ Erreur lors du renforcement du cycle: {str(e)}")

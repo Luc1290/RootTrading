@@ -841,7 +841,165 @@ class CycleManager:
         except Exception as e:
             logger.warning(f"⚠️ Impossible de publier l'événement de cycle sur Redis: {str(e)}")
     
-    def close_cycle(self, cycle_id: str, exit_price: Optional[float] = None, is_stop_loss: bool = False) -> bool:
+    def close_cycle_accounting(self, cycle_id: str, exit_price: float, reason: str = "Fermeture comptable") -> bool:
+        """
+        Ferme un cycle de manière comptable sans passer d'ordre réel.
+        Utilisé pour les retournements où on calcule la position nette.
+        
+        Args:
+            cycle_id: ID du cycle à fermer
+            exit_price: Prix de sortie pour le calcul du P&L
+            reason: Raison de la fermeture
+            
+        Returns:
+            True si la fermeture a réussi, False sinon
+        """
+        try:
+            # Récupérer le cycle
+            with self.cycles_lock:
+                cycle = self.active_cycles.get(cycle_id)
+                if not cycle:
+                    logger.warning(f"⚠️ Cycle {cycle_id} non trouvé pour fermeture comptable")
+                    return False
+                
+                # Vérifier que le cycle peut être fermé
+                if cycle.status not in [CycleStatus.WAITING_BUY, CycleStatus.ACTIVE_BUY, 
+                                       CycleStatus.WAITING_SELL, CycleStatus.ACTIVE_SELL]:
+                    logger.warning(f"⚠️ Impossible de fermer comptablement le cycle {cycle_id} avec le statut {cycle.status}")
+                    return False
+            
+            # Calculer le P&L théorique
+            actual_quantity = cycle.metadata.get('executed_quantity', cycle.quantity) if cycle.metadata else cycle.quantity
+            entry_value = cycle.entry_price * actual_quantity
+            exit_value = exit_price * actual_quantity
+            
+            # Déterminer le côté pour le calcul du profit
+            if cycle.status in [CycleStatus.WAITING_SELL, CycleStatus.ACTIVE_SELL]:
+                # Position BUY fermée par SELL théorique
+                profit_loss = exit_value - entry_value
+            else:
+                # Position SELL fermée par BUY théorique  
+                profit_loss = entry_value - exit_value
+            
+            profit_loss_percent = (profit_loss / entry_value) * 100
+            
+            # Marquer le cycle comme complété
+            with self.cycles_lock:
+                cycle.status = CycleStatus.COMPLETED
+                cycle.exit_price = exit_price
+                cycle.profit_loss = profit_loss
+                cycle.profit_loss_percent = profit_loss_percent
+                cycle.completed_at = datetime.now()
+                cycle.updated_at = datetime.now()
+                
+                # Ajouter la raison dans les métadonnées
+                if not hasattr(cycle, 'metadata'):
+                    cycle.metadata = {}
+                cycle.metadata['closure_type'] = 'accounting'
+                cycle.metadata['closure_reason'] = reason
+            
+            # Sauvegarder en base
+            self.repository.save_cycle(cycle)
+            
+            # Publier l'événement et nettoyer la mémoire
+            self._publish_cycle_event(cycle, "completed")
+            with self.cycles_lock:
+                self.active_cycles.pop(cycle_id, None)
+            
+            logger.info(f"✅ Cycle {cycle_id} fermé comptablement: P&L = {profit_loss:.4f} ({profit_loss_percent:.2f}%)")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur fermeture comptable cycle {cycle_id}: {str(e)}")
+            return False
+
+    def create_net_position_cycle(self, new_signal_data: Dict, opposite_cycles: List[Dict]) -> Optional[str]:
+        """
+        Crée un cycle avec position nette en fermant comptablement les cycles opposés.
+        
+        Args:
+            new_signal_data: Données du nouveau signal/cycle
+            opposite_cycles: Cycles opposés à fermer comptablement
+            
+        Returns:
+            ID du nouveau cycle créé ou None
+        """
+        try:
+            new_side = new_signal_data['side']
+            new_quantity = new_signal_data['quantity']
+            new_price = new_signal_data['price']
+            symbol = new_signal_data['symbol']
+            
+            logger.info(f"🔄 Calcul position nette pour {symbol}: nouveau {new_side} {new_quantity}")
+            
+            # Calculer la quantité nette
+            opposite_quantity = 0.0
+            for cycle_data in opposite_cycles:
+                cycle_id = cycle_data.get('id')
+                if not cycle_id:
+                    continue
+                    
+                # Récupérer le cycle complet
+                cycle = self.get_cycle(cycle_id)
+                if cycle:
+                    # Utiliser la quantité exécutée si disponible
+                    actual_quantity = cycle.metadata.get('executed_quantity', cycle.quantity) if cycle.metadata else cycle.quantity
+                    opposite_quantity += actual_quantity
+                    
+                    # Fermer comptablement
+                    success = self.close_cycle_accounting(
+                        cycle_id, 
+                        new_price, 
+                        f"Retournement vers {new_side} - fermeture comptable"
+                    )
+                    
+                    if success:
+                        logger.info(f"📝 Cycle opposé {cycle_id} fermé comptablement ({actual_quantity} unités)")
+                    else:
+                        logger.error(f"❌ Échec fermeture comptable {cycle_id}")
+                        return None
+            
+            # Calculer la quantité nette finale
+            if new_side == 'BUY':
+                # BUY nouveau - positions SELL existantes = position nette BUY
+                net_quantity = new_quantity + opposite_quantity
+            else:
+                # SELL nouveau - positions BUY existantes = position nette SELL  
+                net_quantity = new_quantity + opposite_quantity
+                
+            logger.info(f"📊 Position nette calculée: {new_side} {net_quantity} (nouveau: {new_quantity} + opposé: {opposite_quantity})")
+            
+            # Si la quantité nette est trop faible, ne pas créer de cycle
+            min_qty = self.binance_executor.symbol_constraints.get_min_qty(symbol)
+            if net_quantity < min_qty:
+                logger.warning(f"⚠️ Quantité nette {net_quantity} trop faible (min: {min_qty}), pas de nouveau cycle")
+                return "net_position_too_small"
+            
+            # Créer le nouveau cycle avec la quantité nette
+            net_signal_data = new_signal_data.copy()
+            net_signal_data['quantity'] = net_quantity
+            
+            # Ajouter métadonnées pour traçabilité
+            if 'metadata' not in net_signal_data:
+                net_signal_data['metadata'] = {}
+            net_signal_data['metadata']['net_position'] = True
+            net_signal_data['metadata']['original_quantity'] = new_quantity
+            net_signal_data['metadata']['opposite_quantity'] = opposite_quantity
+            net_signal_data['metadata']['closed_cycles'] = [cycle['id'] for cycle in opposite_cycles]
+            
+            # Créer le cycle normalement
+            cycle_id = self.create_cycle_from_signal(net_signal_data)
+            
+            if cycle_id:
+                logger.info(f"✅ Cycle position nette créé: {cycle_id} ({new_side} {net_quantity})")
+            
+            return cycle_id
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur création position nette: {str(e)}")
+            return None
+
+    def close_cycle(self, cycle_id: str, exit_price: Optional[float] = None, is_stop_loss: bool = False, force_market: bool = False) -> bool:
         """
         Ferme un cycle de trading en exécutant l'ordre de sortie.
         
@@ -849,6 +1007,7 @@ class CycleManager:
             cycle_id: ID du cycle à fermer
             exit_price: Prix de sortie (optionnel, sinon au marché)
             is_stop_loss: Si True, indique que c'est un stop loss qui se déclenche
+            force_market: Si True, utilise un ordre MARKET pour fermeture immédiate
             
         Returns:
             True si la fermeture a réussi, False sinon
@@ -1046,11 +1205,19 @@ class CycleManager:
             if exit_quantity != cycle.quantity:
                 logger.debug(f"📊 Utilisation de la quantité exécutée pour la sortie: {exit_quantity} (vs théorique: {cycle.quantity})")
             
+            # Déterminer le type d'ordre et le prix
+            order_price = exit_price
+            if force_market or is_stop_loss:
+                # Pour les fermetures forcées (retournement) ou stop-loss, utiliser MARKET
+                # On garde le prix pour les logs/calculs mais force l'exécution immédiate
+                order_price = None
+                logger.info(f"🚀 Fermeture MARKET forcée pour le cycle {cycle_id} (prix cible: {exit_price})")
+            
             exit_order = TradeOrder(
                 symbol=cycle.symbol,
                 side=exit_side,
                 quantity=exit_quantity,
-                price=exit_price,  # None pour un ordre au marché si stop loss
+                price=order_price,  # None pour un ordre au marché
                 client_order_id=client_order_id,
                 strategy=cycle.strategy,
                 demo=cycle.demo
@@ -1078,22 +1245,39 @@ class CycleManager:
             
             # Vérifier le statut de l'exécution
             if execution.status == OrderStatus.NEW:
-                # L'ordre est créé mais pas encore exécuté
-                logger.info(f"⏳ Ordre de sortie créé pour le cycle {cycle_id}: {execution.order_id} (en attente d'exécution)")
+                # L'ordre est créé mais pas encore exécuté (ordre LIMIT)
+                if force_market:
+                    # Si c'était censé être MARKET mais est en NEW, c'est anormal
+                    logger.warning(f"⚠️ Ordre MARKET pour {cycle_id} en statut NEW: {execution.order_id}")
+                else:
+                    logger.info(f"⏳ Ordre de sortie créé pour le cycle {cycle_id}: {execution.order_id} (en attente d'exécution)")
                 
                 # Mettre à jour le cycle avec l'ordre de sortie en attente
                 with self.cycles_lock:
                     cycle.exit_order_id = execution.order_id
                     cycle.exit_price = execution.price  # Prix cible, pas le prix d'exécution
-                    # Le statut reste waiting_sell ou WAITING_BUY car on attend que l'ordre LIMIT soit exécuté
-                    # Ne pas changer le statut ici, il sera changé quand l'ordre sera FILLED
+                    
+                    if force_market:
+                        # Pour les fermetures forcées, marquer comme COMPLETED immédiatement
+                        cycle.status = CycleStatus.COMPLETED
+                        cycle.completed_at = datetime.now()
+                        logger.info(f"✅ Cycle {cycle_id} marqué COMPLETED pour fermeture forcée")
+                    # Sinon le statut reste waiting_sell ou WAITING_BUY car on attend que l'ordre LIMIT soit exécuté
                     cycle.updated_at = datetime.now()
                 
                 # Sauvegarder le cycle mis à jour
                 self.repository.save_cycle(cycle)
                 self.repository.save_execution(execution, cycle_id)
                 
-                logger.info(f"✅ Ordre de sortie créé pour le cycle {cycle_id}: {execution.order_id}")
+                if force_market:
+                    # Publier l'événement completed et nettoyer la mémoire
+                    self._publish_cycle_event(cycle, "completed")
+                    with self.cycles_lock:
+                        self.active_cycles.pop(cycle_id, None)
+                    logger.info(f"✅ Cycle {cycle_id} fermé immédiatement (fermeture forcée)")
+                else:
+                    logger.info(f"✅ Ordre de sortie créé pour le cycle {cycle_id}: {execution.order_id}")
+                
                 return True
                 
             elif execution.status != OrderStatus.FILLED:
@@ -1461,8 +1645,8 @@ class CycleManager:
                 cycle.entry_price = new_avg_price
                 
                 # Sauvegarder en base de données
-                with transaction(self.db_url) as tx:
-                    tx.execute("""
+                with transaction() as cursor:
+                    cursor.execute("""
                         UPDATE trade_cycles 
                         SET quantity = %s, 
                             entry_price = %s, 
@@ -1474,21 +1658,22 @@ class CycleManager:
                          cycle_id))
                     
                     # Ajouter une entrée dans trade_executions pour tracer le renforcement
-                    tx.execute("""
+                    cursor.execute("""
                         INSERT INTO trade_executions 
-                        (id, cycle_id, order_id, side, symbol, price, quantity, 
-                         commission, commission_asset, status, timestamp, metadata)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, 0, 'USDC', %s, %s, %s)
+                        (cycle_id, order_id, side, symbol, price, quantity, 
+                         quote_quantity, fee, fee_asset, status, timestamp, demo, metadata)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, 0, 'USDC', %s, %s, %s, %s)
                     """, (
-                        f"exec_{uuid.uuid4().hex[:16]}",
                         cycle_id,
                         reinforce_order_id,
-                        cycle.side.value,
+                        cycle.side.value if hasattr(cycle.side, 'value') else str(cycle.side),
                         cycle.symbol,
                         new_avg_price,
                         additional_quantity,
+                        new_avg_price * additional_quantity,  # quote_quantity
                         'FILLED',
                         datetime.now(timezone.utc),
+                        False,  # demo
                         json.dumps({'type': 'reinforcement', 'original_metadata': metadata})
                     ))
                 

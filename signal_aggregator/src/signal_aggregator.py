@@ -583,6 +583,9 @@ class SignalAggregator:
         # NOUVEAU: Volume-based confidence boost (classique)
         confidence = self._apply_volume_boost(confidence, signals)
         
+        # Bonus multi-stratégies
+        confidence = self._apply_multi_strategy_bonus(confidence, contributing_strategies)
+        
         # Déterminer la force du signal basée sur la confiance
         # MODIFIÉ: Seuils ajustés pour éviter l'amplification artificielle
         if confidence >= 0.9:  # Augmenté de 0.8 à 0.9
@@ -691,7 +694,9 @@ class SignalAggregator:
                 elif signal_score >= 70:
                     quality_boost = 1.2  # +20% de poids
                     
-            final_combined_weight = combined_weight * quality_boost
+            # Appliquer le modificateur ADX si présent
+            adx_modifier = signal.get('metadata', {}).get('adx_weight_modifier', 1.0)
+            final_combined_weight = combined_weight * quality_boost * adx_modifier
             
             weighted_signal = {
                 'strategy': strategy,
@@ -795,6 +800,9 @@ class SignalAggregator:
         
         # NOUVEAU: Volume-based confidence boost
         confidence = self._apply_volume_boost(confidence, signals)
+        
+        # Bonus multi-stratégies
+        confidence = self._apply_multi_strategy_bonus(confidence, contributing_strategies)
         
         # Déterminer la force du signal basée sur la confiance et le régime
         strength = self._determine_signal_strength(confidence, regime)
@@ -1517,6 +1525,20 @@ class EnhancedSignalAggregator(SignalAggregator):
                 logger.debug(f"📊 {regime.name}: seuils ASSOUPLIS (0.55) pour {symbol}")
                 
             elif regime.name == 'RANGE_TIGHT':
+                # Gestion spéciale pour ADX très faible (marché plat)
+                adx = regime_metrics.get('adx', 0)
+                if adx <= 5:  # ADX près de 0
+                    # Exiger confirmation volume élevé
+                    volume_ratio = signal.get('metadata', {}).get('volume_ratio', 1.0)
+                    if volume_ratio < 2.0:
+                        logger.info(f"🚫 Signal rejeté en RANGE_TIGHT: ADX={adx:.1f} et volume_ratio={volume_ratio:.1f} < 2.0")
+                        return False
+                    
+                    # Marquer pour réduction de poids 0.5x
+                    signal['metadata'] = signal.get('metadata', {})
+                    signal['metadata']['adx_weight_modifier'] = 0.5
+                    logger.info(f"⚖️ ADX faible ({adx:.1f}): poids réduit à 0.5x pour {symbol}")
+                
                 # Range serré: ASSOUPLI pour mean-reversion
                 if strategy in self.STRATEGY_GROUPS.get('mean_reversion', []):
                     # ASSOUPLI pour stratégies de mean-reversion
@@ -1538,7 +1560,7 @@ class EnhancedSignalAggregator(SignalAggregator):
             elif regime.name in ['WEAK_TREND_DOWN', 'TREND_DOWN', 'STRONG_TREND_DOWN']:
                 # Tendances baissières: favoriser les SELL, bloquer les BUY faibles
                 if side == 'BUY':
-                    min_confidence = 0.85  # Très strict pour les BUY en downtrend
+                    min_confidence = 0.80  # Assoupli de 0.85 à 0.80 pour les BUY en downtrend
                     required_strength = ['very_strong']
                 else:  # SELL
                     min_confidence = 0.7  # Seuil ajusté pour les SELL (0.7 recommandé)
@@ -1668,6 +1690,36 @@ class EnhancedSignalAggregator(SignalAggregator):
         except Exception as e:
             logger.error(f"Erreur dans boost volume: {e}")
             return confidence  # En cas d'erreur, retourner confiance originale
+    
+    def _apply_multi_strategy_bonus(self, confidence: float, contributing_strategies: List[str]) -> float:
+        """
+        Applique un bonus de confiance si plusieurs stratégies convergent
+        
+        Args:
+            confidence: Confiance actuelle
+            contributing_strategies: Liste des stratégies contributrices
+            
+        Returns:
+            Confiance boostée par la convergence multi-stratégies
+        """
+        try:
+            strategy_count = len(contributing_strategies)
+            
+            if strategy_count >= 2:
+                # Bonus +0.05 pour 2+ stratégies alignées
+                bonus = 0.05
+                boosted_confidence = confidence + bonus
+                
+                logger.info(f"🤝 Bonus multi-stratégies: {strategy_count} stratégies -> "
+                           f"{confidence:.3f} + {bonus:.2f} = {boosted_confidence:.3f}")
+                
+                return min(1.0, boosted_confidence)  # Cap à 1.0
+            
+            return confidence
+            
+        except Exception as e:
+            logger.error(f"Erreur dans bonus multi-stratégies: {e}")
+            return confidence
     
     def _extract_volume_summary(self, signals: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
