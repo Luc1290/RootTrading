@@ -604,33 +604,63 @@ class CycleManager:
                     total_cost = reference_price * quantity * slippage_margin * fee_margin
                     
                     if available_balance < total_cost:
-                        logger.error(f"❌ Solde {quote_currency} insuffisant pour BUY: {available_balance:.8f} < {total_cost:.8f}")
-
-                        # Créer le cycle avec un statut FAILED pour la traçabilité
-                        cycle.status = CycleStatus.FAILED
-                        cycle.updated_at = datetime.now()
-                        if not hasattr(cycle, 'metadata'):
-                            cycle.metadata = {}
-                        cycle.metadata['fail_reason'] = f"Solde {quote_currency} insuffisant: {available_balance:.8f} < {total_cost:.8f}"
-
-                        # Sauvegarder le cycle échoué pour la traçabilité
-                        self.repository.save_cycle(cycle)
+                        logger.warning(f"⚠️ Solde {quote_currency} insuffisant pour BUY: {available_balance:.8f} < {total_cost:.8f}")
                         
-                        # Publier l'événement d'échec
-                        self._publish_cycle_event(cycle, "failed")
-                        
-                        # Nettoyer les ordres potentiels sur Binance
-                        self._cleanup_cycle_orders(cycle)
-                        
-                        # Proposer une quantité ajustée si possible
-                        safe_margin = 0.98  # 98% du solde pour couvrir slippage + frais
-                        adjusted_quantity = (available_balance * safe_margin) / reference_price
-                        min_quantity = self.binance_executor.symbol_constraints.get_min_qty(symbol)
-                        
-                        if adjusted_quantity >= min_quantity:
-                            logger.info(f"💡 Quantité ajustée suggérée: {adjusted_quantity:.8f} {base_currency}")
-                        
-                        return None
+                        # Si le solde n'est pas complètement à zéro, ajuster la quantité
+                        if available_balance > 0:
+                            safe_margin = 0.98  # 98% du solde pour couvrir slippage + frais
+                            adjusted_quantity = (available_balance * safe_margin) / reference_price
+                            min_quantity = self.binance_executor.symbol_constraints.get_min_qty(symbol)
+                            
+                            if adjusted_quantity >= min_quantity:
+                                logger.info(f"💡 Ajustement automatique de la quantité: {quantity:.8f} → {adjusted_quantity:.8f} {base_currency}")
+                                quantity = adjusted_quantity
+                                cycle.quantity = adjusted_quantity
+                                cycle.metadata['quantity_adjusted'] = True
+                                cycle.metadata['original_quantity'] = quantity
+                                cycle.metadata['adjustment_reason'] = f"Solde insuffisant: {available_balance:.8f} {quote_currency}"
+                            else:
+                                # Quantité ajustée toujours trop petite
+                                logger.error(f"❌ Solde {quote_currency} insuffisant même après ajustement: {adjusted_quantity:.8f} < {min_quantity:.8f}")
+                                
+                                # Créer le cycle avec un statut FAILED pour la traçabilité
+                                cycle.status = CycleStatus.FAILED
+                                cycle.updated_at = datetime.now()
+                                if not hasattr(cycle, 'metadata'):
+                                    cycle.metadata = {}
+                                cycle.metadata['fail_reason'] = f"Solde {quote_currency} insuffisant même après ajustement: {adjusted_quantity:.8f} < {min_quantity:.8f}"
+                                
+                                # Sauvegarder le cycle échoué pour la traçabilité
+                                self.repository.save_cycle(cycle)
+                                
+                                # Publier l'événement d'échec
+                                self._publish_cycle_event(cycle, "failed")
+                                
+                                # Nettoyer les ordres potentiels sur Binance
+                                self._cleanup_cycle_orders(cycle)
+                                
+                                return None
+                        else:
+                            # Solde complètement à zéro
+                            logger.error(f"❌ Aucun solde {quote_currency} disponible pour BUY")
+                            
+                            # Créer le cycle avec un statut FAILED pour la traçabilité
+                            cycle.status = CycleStatus.FAILED
+                            cycle.updated_at = datetime.now()
+                            if not hasattr(cycle, 'metadata'):
+                                cycle.metadata = {}
+                            cycle.metadata['fail_reason'] = f"Aucun solde {quote_currency} disponible"
+                            
+                            # Sauvegarder le cycle échoué pour la traçabilité
+                            self.repository.save_cycle(cycle)
+                            
+                            # Publier l'événement d'échec
+                            self._publish_cycle_event(cycle, "failed")
+                            
+                            # Nettoyer les ordres potentiels sur Binance
+                            self._cleanup_cycle_orders(cycle)
+                            
+                            return None
                         
                 elif side == OrderSide.SELL:
                     # Pour SELL: vérifier qu'on a assez de base currency à vendre
@@ -641,33 +671,63 @@ class CycleManager:
                     required_quantity = quantity * 1.001  # 0.1% de marge pour les frais
                     
                     if available_balance < required_quantity:
-                        logger.error(f"❌ Solde {base_currency} insuffisant pour SELL: {available_balance:.8f} < {required_quantity:.8f}")
-
-                        # Créer le cycle avec un statut FAILED pour la traçabilité
-                        cycle.status = CycleStatus.FAILED
-                        cycle.updated_at = datetime.now()
-                        if not hasattr(cycle, 'metadata'):
-                            cycle.metadata = {}
-                        cycle.metadata['fail_reason'] = f"Solde {base_currency} insuffisant: {available_balance:.8f} < {required_quantity:.8f}"
+                        logger.warning(f"⚠️ Solde {base_currency} insuffisant pour SELL: {available_balance:.8f} < {required_quantity:.8f}")
                         
-                        # Sauvegarder le cycle échoué pour la traçabilité
-                        self.repository.save_cycle(cycle)
-                        
-                        # Publier l'événement d'échec
-                        self._publish_cycle_event(cycle, "failed")
-                        
-                        # Nettoyer les ordres potentiels sur Binance
-                        self._cleanup_cycle_orders(cycle)
-                        
-                        # Proposer une quantité ajustée si possible
-                        safe_margin = 0.99  # 99% du solde disponible
-                        adjusted_quantity = available_balance * safe_margin
-                        min_quantity = self.binance_executor.symbol_constraints.get_min_qty(symbol)
-                        
-                        if adjusted_quantity >= min_quantity:
-                            logger.info(f"💡 Quantité ajustée suggérée: {adjusted_quantity:.8f} {base_currency}")
-                        
-                        return None
+                        # Si le solde n'est pas complètement à zéro, ajuster la quantité
+                        if available_balance > 0:
+                            safe_margin = 0.99  # 99% du solde disponible
+                            adjusted_quantity = available_balance * safe_margin
+                            min_quantity = self.binance_executor.symbol_constraints.get_min_qty(symbol)
+                            
+                            if adjusted_quantity >= min_quantity:
+                                logger.info(f"💡 Ajustement automatique de la quantité: {quantity:.8f} → {adjusted_quantity:.8f} {base_currency}")
+                                quantity = adjusted_quantity
+                                cycle.quantity = adjusted_quantity
+                                cycle.metadata['quantity_adjusted'] = True
+                                cycle.metadata['original_quantity'] = quantity
+                                cycle.metadata['adjustment_reason'] = f"Solde insuffisant: {available_balance:.8f} {base_currency}"
+                            else:
+                                # Quantité ajustée toujours trop petite
+                                logger.error(f"❌ Solde {base_currency} insuffisant même après ajustement: {adjusted_quantity:.8f} < {min_quantity:.8f}")
+                                
+                                # Créer le cycle avec un statut FAILED pour la traçabilité
+                                cycle.status = CycleStatus.FAILED
+                                cycle.updated_at = datetime.now()
+                                if not hasattr(cycle, 'metadata'):
+                                    cycle.metadata = {}
+                                cycle.metadata['fail_reason'] = f"Solde {base_currency} insuffisant même après ajustement: {adjusted_quantity:.8f} < {min_quantity:.8f}"
+                                
+                                # Sauvegarder le cycle échoué pour la traçabilité
+                                self.repository.save_cycle(cycle)
+                                
+                                # Publier l'événement d'échec
+                                self._publish_cycle_event(cycle, "failed")
+                                
+                                # Nettoyer les ordres potentiels sur Binance
+                                self._cleanup_cycle_orders(cycle)
+                                
+                                return None
+                        else:
+                            # Solde complètement à zéro
+                            logger.error(f"❌ Aucun solde {base_currency} disponible pour SELL")
+                            
+                            # Créer le cycle avec un statut FAILED pour la traçabilité
+                            cycle.status = CycleStatus.FAILED
+                            cycle.updated_at = datetime.now()
+                            if not hasattr(cycle, 'metadata'):
+                                cycle.metadata = {}
+                            cycle.metadata['fail_reason'] = f"Aucun solde {base_currency} disponible"
+                            
+                            # Sauvegarder le cycle échoué pour la traçabilité
+                            self.repository.save_cycle(cycle)
+                            
+                            # Publier l'événement d'échec
+                            self._publish_cycle_event(cycle, "failed")
+                            
+                            # Nettoyer les ordres potentiels sur Binance
+                            self._cleanup_cycle_orders(cycle)
+                            
+                            return None
             
             # Créer l'ordre d'entrée - utiliser MARKET pour exécution immédiate
             # On ne passe pas de prix à l'ordre pour forcer MARKET

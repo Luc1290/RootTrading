@@ -282,6 +282,8 @@ def create_order():
         # Vérifier si c'est un ID ou un message d'erreur
         if isinstance(result, str) and result.startswith("cycle_"):
             return jsonify({"order_id": result, "status": "created"}), 201
+        elif result is None:
+            return jsonify({"error": "Ordre non créé - vérifiez les soldes et paramètres"}), 422
         else:
             return jsonify({"error": str(result)}), 400
     
