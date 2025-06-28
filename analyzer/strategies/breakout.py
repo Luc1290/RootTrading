@@ -303,32 +303,27 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
             return None
         
         # === CONSTRUCTION DU SIGNAL ===
-        signal = self.create_signal(
-            side=signal_side,
-            price=current_price,
-            confidence=confidence
-        )
-        
-        # Ajouter les métadonnées d'analyse
-        signal.metadata.update({
-            'breakout_level': breakout_info.get('level'),
-            'range_duration': breakout_info.get('duration'),
-            'range_height_pct': breakout_info.get('height_pct'),
-            'volume_expansion': volume_score,
-            'false_breakout_score': false_breakout_score,
-            'retest_score': retest_score,
-            'trend_score': trend_score,
-            'adx_score': adx_score,
-            'adx_value': adx_analysis['adx_value'],
-            'is_trending': adx_analysis['is_trending'],
-            'atr_score': atr_score,
-            'breakout_strength': self._calculate_breakout_strength(breakout_info)
-        })
-        
-        precision = 5 if 'BTC' in self.symbol else 3
-        logger.info(f"🎯 [Breakout] {self.symbol}: Signal {signal_side} @ {current_price:.{precision}f} "
-                   f"(confiance: {confidence:.2f}, niveau: {breakout_info.get('level', 'N/A'):.{precision}f}, "
-                   f"scores: V={volume_score:.2f}, FB={false_breakout_score:.2f})")
+        # Utiliser la nouvelle fonction pour créer le signal
+        signal = self._create_breakout_signal(breakout_info)
+
+        if signal:
+            # Ajouter les métadonnées d'analyse
+            signal.metadata.update({
+                'volume_expansion': volume_score,
+                'false_breakout_score': false_breakout_score,
+                'retest_score': retest_score,
+                'trend_score': trend_score,
+                'adx_score': adx_score,
+                'adx_value': adx_analysis['adx_value'],
+                'is_trending': adx_analysis['is_trending'],
+                'atr_score': atr_score,
+                'breakout_strength': self._calculate_breakout_strength(breakout_info)
+            })
+            
+            precision = 5 if 'BTC' in self.symbol else 3
+            logger.info(f"🎯 [Breakout] {self.symbol}: Signal {signal.side} @ {signal.price:.{precision}f} "
+                       f"(confiance: {signal.confidence:.2f}, niveau: {breakout_info.get('level', 'N/A'):.{precision}f}, "
+                       f"scores: V={volume_score:.2f}, FB={false_breakout_score:.2f})")
         
         return signal
     
@@ -385,7 +380,8 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
                 }
             
             return None
-        except:
+        except Exception as e:
+            logger.warning(f"Erreur détection breakout valide: {e}")
             return None
     
     def _detect_false_breakout_patterns(self, df: pd.DataFrame, breakout_info: Dict) -> float:
@@ -409,7 +405,8 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
                 score += 0.1
             
             return min(0.95, score)
-        except:
+        except Exception as e:
+            logger.warning(f"Erreur détection faux breakout: {e}")
             return 0.7
     
     def _validate_retest_opportunity(self, df: pd.DataFrame, breakout_info: Dict) -> float:
@@ -464,38 +461,53 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
         except Exception as e:
             logger.warning(f"Erreur validation tendance: {e}")
             return None
+    
+    def _create_breakout_signal(self, breakout: Dict) -> Optional[Dict]:
+        """
+        Crée un signal de trading basé sur les informations de breakout détecté.
         
-        # Calculer la confiance basée sur la durée du range
-        range_duration = breakout['range_duration']
-        
-        # Plus le range est long, plus la confiance est grande
-        confidence = min(0.75 + (range_duration / 20), 0.98)  # Augmenté de 0.5 à 0.75
-        
-        # Récupérer les informations du breakout
-        side = breakout['side']
-        price = breakout['price']
-        
-        # Créer le signal
-        metadata = {
-            "type": breakout['type'],
-            "support": float(breakout['support']),
-            "resistance": float(breakout['resistance']),
-            "range_duration": int(breakout['range_duration']),
-            "stop_price": float(breakout['stop_price'])
-        }
-        
-        signal = self.create_signal(
-            side=side,
-            price=float(price),
-            confidence=confidence,
-            metadata=metadata
-        )
-        
-        logger.info(f"🚀 [Breakout] Signal {side.value} sur {self.symbol}: "
-                   f"cassure d'un range de {range_duration} chandeliers")
-        
-        # Mettre à jour le timestamp si un signal est généré
-        if signal:
-            self.last_signal_time = datetime.now()
-        
-        return signal
+        Args:
+            breakout: Dictionnaire contenant les informations du breakout
+            
+        Returns:
+            Signal de trading ou None
+        """
+        try:
+            # Calculer la confiance basée sur la durée du range
+            range_duration = breakout['range_duration']
+            
+            # Plus le range est long, plus la confiance est grande
+            confidence = min(0.75 + (range_duration / 20), 0.98)  # Augmenté de 0.5 à 0.75
+            
+            # Récupérer les informations du breakout
+            side = breakout['side']
+            price = breakout['price']
+            
+            # Créer le signal
+            metadata = {
+                "type": breakout['type'],
+                "support": float(breakout['support']),
+                "resistance": float(breakout['resistance']),
+                "range_duration": int(breakout['range_duration']),
+                "stop_price": float(breakout['stop_price'])
+            }
+            
+            signal = self.create_signal(
+                side=side,
+                price=float(price),
+                confidence=confidence,
+                metadata=metadata
+            )
+            
+            logger.info(f"🚀 [Breakout] Signal {side.value} sur {self.symbol}: "
+                       f"cassure d'un range de {range_duration} chandeliers")
+            
+            # Mettre à jour le timestamp si un signal est généré
+            if signal:
+                self.last_signal_time = datetime.now()
+            
+            return signal
+            
+        except Exception as e:
+            logger.warning(f"Erreur création signal breakout: {e}")
+            return None

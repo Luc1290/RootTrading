@@ -282,9 +282,8 @@ class RSIStrategy(BaseStrategy):
                 if rsi_momentum > 20:
                     return None
             
-            # NOUVEAU: Ne SELL que si tendance n'est pas fortement haussière
-            if trend_alignment in ["STRONG_BULLISH", "WEAK_BULLISH"]:
-                logger.debug(f"[RSI] {self.symbol}: SELL signal supprimé - tendance {trend_alignment}")
+            if trend_alignment not in ["STRONG_BEARISH", "WEAK_BEARISH", "NEUTRAL"]:
+                logger.debug(f"[RSI] {self.symbol}: SELL signal supprimé - tendance {trend_alignment} non baissière")
                 return None
             
             return OrderSide.SELL

@@ -278,6 +278,33 @@ class UltraSignalScorer:
                 spread_pct = sentiment.get('spread_pct', 1)
                 if spread_pct < 0.05:  # Spread < 0.05%
                     score += 2
+            
+            # Bonus basé sur les métadonnées du signal
+            if metadata:
+                # Bonus pour breakout fort
+                breakout_strength = metadata.get('breakout_strength', '')
+                if breakout_strength == 'strong':
+                    score += 2
+                elif breakout_strength == 'moderate':
+                    score += 1
+                    
+                # Bonus pour tendance forte
+                if metadata.get('is_trending', False):
+                    adx_value = metadata.get('adx_value', 0)
+                    if adx_value > 40:  # Tendance très forte
+                        score += 2
+                    elif adx_value > 25:  # Tendance forte
+                        score += 1
+                        
+                # Bonus pour expansion volume
+                volume_expansion = metadata.get('volume_expansion', 0)
+                if volume_expansion > 0.8:
+                    score += 1
+                    
+                # Bonus pour faible risque de faux breakout
+                false_breakout_score = metadata.get('false_breakout_score', 0)
+                if false_breakout_score > 0.8:
+                    score += 1
                     
             else:
                 # Pas de données sentiment, score par défaut

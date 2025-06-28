@@ -271,9 +271,8 @@ class BollingerStrategy(BaseStrategy):
             if len(recent_highs) >= 2:
                 # Prix doit montrer des signes de plafonnement
                 if max(recent_highs) - current_price < current_price * 0.005:  # Dans les 0.5% du plus haut
-                    # NOUVEAU: Ne SELL que si tendance n'est pas fortement haussière
-                    if trend_alignment in ["STRONG_BULLISH", "WEAK_BULLISH"]:
-                        logger.debug(f"[Bollinger] {self.symbol}: SELL signal supprimé - tendance {trend_alignment}")
+                    if trend_alignment not in ["STRONG_BEARISH", "WEAK_BEARISH", "NEUTRAL"]:
+                        logger.debug(f"[Bollinger] {self.symbol}: SELL signal supprimé - tendance {trend_alignment} non baissière")
                         return None
                     return OrderSide.SELL
         
