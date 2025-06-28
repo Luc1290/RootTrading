@@ -106,23 +106,21 @@ class EnhancedRegimeDetector:
             df['close'] = df['close'].astype(float)
             df['volume'] = df['volume'].astype(float)
             
-            # 1. ADX pour la force de tendance - utiliser l'ADX déjà calculé si disponible
-            if 'adx_14' in df.columns and not df['adx_14'].isna().all():
-                current_adx = df['adx_14'].iloc[-1]
-                # Estimer plus_di et minus_di si nécessaire (optionnel pour la logique actuelle)
-                plus_di = 25.0  # Valeur par défaut
-                minus_di = 25.0  # Valeur par défaut
-            else:
-                # Fallback: calculer ADX si pas disponible dans les données enrichies
-                adx_indicator = ta.trend.ADXIndicator(
-                    high=df['high'],
-                    low=df['low'],
-                    close=df['close'],
-                    window=14
-                )
-                current_adx = adx_indicator.adx().iloc[-1]
-                plus_di = adx_indicator.adx_pos().iloc[-1]
-                minus_di = adx_indicator.adx_neg().iloc[-1]
+            # 1. ADX pour la force de tendance - TOUJOURS calculer les DI correctement
+            adx_indicator = ta.trend.ADXIndicator(
+                high=df['high'],
+                low=df['low'],
+                close=df['close'],
+                window=14
+            )
+            current_adx = adx_indicator.adx().iloc[-1]
+            plus_di = adx_indicator.adx_pos().iloc[-1]
+            minus_di = adx_indicator.adx_neg().iloc[-1]
+            
+            # Vérifier si les valeurs sont valides
+            if pd.isna(current_adx) or pd.isna(plus_di) or pd.isna(minus_di):
+                logger.warning(f"ADX/DI non valides pour {symbol}: ADX={current_adx}, +DI={plus_di}, -DI={minus_di}")
+                return MarketRegime.UNDEFINED, {}
             
             # 2. Bollinger Bands pour la volatilité
             bb = ta.volatility.BollingerBands(
@@ -179,8 +177,8 @@ class EnhancedRegimeDetector:
             regime = self._determine_regime(metrics)
             
             logger.info(f"Régime {symbol}: {regime.value} | ADX={current_adx:.1f}, "
-                       f"ROC={current_roc:.1f}%, RSI={current_rsi:.1f}, "
-                       f"BB_width={current_bb_width:.3f}")
+                       f"+DI={plus_di:.1f}, -DI={minus_di:.1f}, ROC={current_roc:.1f}%, "
+                       f"RSI={current_rsi:.1f}, Angle={trend_angle:.1f}°")
             
             return regime, metrics
             
@@ -198,8 +196,21 @@ class EnhancedRegimeDetector:
         roc = metrics['roc']
         trend_angle = metrics['trend_angle']
         
-        # Tendance directionnelle
-        is_bullish = plus_di > minus_di
+        # Tendance directionnelle basée sur plusieurs facteurs
+        # Utiliser ROC et trend_angle en plus des DI pour plus de fiabilité
+        di_bullish = plus_di > minus_di
+        roc_bullish = roc > 0
+        angle_bullish = trend_angle > 0
+        
+        # Consensus : au moins 2 indicateurs sur 3 doivent être d'accord
+        bullish_count = sum([di_bullish, roc_bullish, angle_bullish])
+        is_bullish = bullish_count >= 2
+        
+        # Log détaillé pour debug
+        if adx > 30:  # Only log for trending markets
+            logger.info(f"Direction consensus: +DI={plus_di:.1f} vs -DI={minus_di:.1f} ({di_bullish}), "
+                       f"ROC={roc:.1f}% ({roc_bullish}), Angle={trend_angle:.1f}° ({angle_bullish}) "
+                       f"=> Bullish={is_bullish} (score: {bullish_count}/3)")
         
         # PRIORITÉ À L'ADX - Si ADX > 30, c'est TOUJOURS une tendance
         if adx >= 30:  # Seuil critique pour éviter faux RANGE_TIGHT
@@ -464,11 +475,17 @@ class EnhancedRegimeDetector:
             # Utiliser l'accumulateur si disponible
             if hasattr(self, 'market_data_accumulator') and self.market_data_accumulator:
                 history = self.market_data_accumulator.get_history(symbol, limit)
-                if len(history) >= 10:  # Minimum 10 points pour calculer un régime
-                    logger.info(f"📊 Utilisation historique accumulé pour {symbol}: {len(history)} points")
-                    return history
+                if len(history) >= 50:  # Minimum 50 points pour calculer ADX/DI correctement
+                    # Vérifier que nous avons de vraies données OHLCV
+                    sample = history[-1] if history else {}
+                    if all(key in sample for key in ['open', 'high', 'low', 'close']) and \
+                       sample.get('high') != sample.get('low'):  # Vérifier que high != low
+                        logger.info(f"📊 Utilisation historique accumulé pour {symbol}: {len(history)} points")
+                        return history
+                    else:
+                        logger.warning(f"⚠️ Données OHLCV incomplètes dans l'historique pour {symbol}")
                 else:
-                    logger.warning(f"⚠️ Historique insuffisant pour {symbol}: {len(history)} points (min: 10)")
+                    logger.warning(f"⚠️ Historique insuffisant pour {symbol}: {len(history)} points (min: 50)")
             
             # Fallback : récupérer les données enrichies actuelles de différentes timeframes
             timeframes = ['1m', '5m', '15m', '1h']
@@ -480,13 +497,15 @@ class EnhancedRegimeDetector:
                 if data:
                     parsed = json.loads(data) if isinstance(data, str) else data
                     if isinstance(parsed, dict) and 'ultra_enriched' in parsed:
-                        # Convertir les données enrichies en format OHLCV simulé
+                        # Essayer d'obtenir les vraies données OHLCV
+                        # Si disponibles dans les données enrichies
+                        close_price = parsed.get('close', 0)
                         synthetic_candle = {
                             'timestamp': parsed.get('timestamp', 0),
-                            'open': parsed.get('close', 0),  # Utiliser close comme open (approximation)
-                            'high': parsed.get('close', 0),
-                            'low': parsed.get('close', 0),
-                            'close': parsed.get('close', 0),
+                            'open': parsed.get('open', close_price),
+                            'high': parsed.get('high', close_price * 1.001),  # +0.1% si pas disponible
+                            'low': parsed.get('low', close_price * 0.999),    # -0.1% si pas disponible
+                            'close': close_price,
                             'volume': parsed.get('volume', 0),
                             'timeframe': tf,
                             # Ajouter tous les indicateurs techniques déjà calculés
