@@ -284,10 +284,9 @@ class ExchangeReconciliation:
                         if entry_execution:
                             entry_side = entry_execution.side
                         else:
-                            # Fallback: si l'ordre d'entrée n'est pas trouvé, on suppose BUY
-                            # (la plupart des stratégies commencent par acheter)
-                            entry_side = OrderSide.BUY
-                            logger.warning(f"⚠️ Ordre d'entrée non trouvé pour le cycle {cycle.id}, assumé BUY")
+                            # Fallback: utiliser le side du cycle si l'ordre d'entrée n'est pas trouvé
+                            entry_side = cycle.side
+                            logger.warning(f"⚠️ Ordre d'entrée non trouvé pour le cycle {cycle.id}, utilisant le side du cycle: {cycle.side.value}")
 
                         # IMPORTANT: Utiliser la quantité réellement exécutée
                         actual_quantity = cycle.metadata.get('executed_quantity', cycle.quantity) if cycle.metadata else cycle.quantity

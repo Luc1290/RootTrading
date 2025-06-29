@@ -305,8 +305,8 @@ class SmartCycleManager:
                 existing_cycle_id=cycle_id
             )
         
-        # 2. Si gain > 2% et signal faible → RÉDUIRE partiellement
-        elif price_change_pct > 2.0 and confidence < 0.5:
+        # 2. Si gain > 4% et signal faible → RÉDUIRE partiellement
+        elif price_change_pct > 4.0 and confidence < 0.5:
             return SmartCycleDecision(
                 action=CycleAction.REDUCE,
                 symbol=signal.symbol,
@@ -354,10 +354,10 @@ class SmartCycleManager:
         """
         import os
         base_allocations = {
-            SignalStrength.WEAK: float(os.getenv('ALLOCATION_WEAK_PCT', 15.0)),
-            SignalStrength.MODERATE: float(os.getenv('ALLOCATION_MODERATE_PCT', 25.0)),
-            SignalStrength.STRONG: float(os.getenv('ALLOCATION_STRONG_PCT', 35.0)),
-            SignalStrength.VERY_STRONG: float(os.getenv('ALLOCATION_VERY_STRONG_PCT', 50.0))
+            SignalStrength.WEAK: float(os.getenv('ALLOCATION_WEAK_PCT', 20.0)),
+            SignalStrength.MODERATE: float(os.getenv('ALLOCATION_MODERATE_PCT', 35.0)),
+            SignalStrength.STRONG: float(os.getenv('ALLOCATION_STRONG_PCT', 50.0)),
+            SignalStrength.VERY_STRONG: float(os.getenv('ALLOCATION_VERY_STRONG_PCT', 70.0))
         }
         
         base_pct = base_allocations.get(strength, 5.0)
@@ -388,11 +388,11 @@ class SmartCycleManager:
         side_str = signal.side.value if hasattr(signal.side, 'value') else str(signal.side)
         if side_str == "BUY" or side_str == "BUY":
             # Pour un BUY, plus la confiance est haute, plus on accepte d'acheter proche du prix actuel
-            discount_pct = (1.0 - confidence) * 2.0  # Entre 0% et 2% de discount
+            discount_pct = (1.0 - confidence) * 0.5  # Entre 0% et 0.5% de discount
             entry_price = current_price * (1 - discount_pct / 100)
         else:
             # Pour un SELL, plus la confiance est haute, plus on accepte de vendre proche du prix actuel  
-            premium_pct = (1.0 - confidence) * 2.0   # Entre 0% et 2% de premium
+            premium_pct = (1.0 - confidence) * 0.5   # Entre 0% et 0.5% de premium
             entry_price = current_price * (1 + premium_pct / 100)
         
         return entry_price

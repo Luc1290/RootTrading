@@ -46,36 +46,36 @@ class GainProtector:
         
         # Configuration des niveaux de protection - MODE SCALPING
         self.protection_targets = {
-            # Niveau 1: Sécurisation break-even dès +0.5%
+            # Niveau 1: Sécurisation break-even dès +1.0%
             1: ProtectionTarget(
-                gain_threshold=0.5,
+                gain_threshold=1.0,
                 take_profit_percentage=0.0,  # Pas de vente, juste déplacer le stop
                 new_stop_percentage=0.0,     # Stop au break-even
                 trailing_distance=None
             ),
             
-            # Niveau 2: Premier take profit partiel à +1%
+            # Niveau 2: Premier take profit partiel à +4.0%
             2: ProtectionTarget(
-                gain_threshold=1.0,
-                take_profit_percentage=40.0,  # Vendre 40% de la position
-                new_stop_percentage=0.25,     # Stop à +0.25% (sécurisé)
-                trailing_distance=0.5         # Activer trailing à 0.5%
+                gain_threshold=4.0,
+                take_profit_percentage=20.0,  # Vendre 20% de la position
+                new_stop_percentage=2.0,     # Stop à +2.0% (sécurisé)
+                trailing_distance=1.5         # Activer trailing à 1.5%
             ),
             
-            # Niveau 3: Deuxième take profit à +1.5%
+            # Niveau 3: Deuxième take profit à +6.0%
             3: ProtectionTarget(
-                gain_threshold=1.5,
-                take_profit_percentage=40.0,  # Vendre 40% supplémentaire
-                new_stop_percentage=0.75,     # Stop à +0.75%
-                trailing_distance=0.3         # Trailing plus serré
+                gain_threshold=6.0,
+                take_profit_percentage=20.0,  # Vendre 20% supplémentaire
+                new_stop_percentage=3.5,     # Stop à +3.5%
+                trailing_distance=1.0         # Trailing plus serré
             ),
             
-            # Niveau 4: Protection finale à +2%
+            # Niveau 4: Protection finale à +8.0%
             4: ProtectionTarget(
-                gain_threshold=2.0,
+                gain_threshold=8.0,
                 take_profit_percentage=0.0,   # Garder le reste
-                new_stop_percentage=1.25,     # Stop à +1.25%
-                trailing_distance=0.25        # Trailing très serré
+                new_stop_percentage=5.0,     # Stop à +5.0%
+                trailing_distance=0.75        # Trailing très serré
             )
         }
         

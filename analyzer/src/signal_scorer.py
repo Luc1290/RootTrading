@@ -502,7 +502,7 @@ class UltraSignalScorer:
         if quality in [SignalQuality.INSTITUTIONAL, SignalQuality.EXCELLENT]:
             return "SIGNAL PREMIUM - Exécution recommandée avec position normale"
         elif quality == SignalQuality.VERY_GOOD:
-            return "SIGNAL DE QUALITÉ - Exécution recommandée avec position réduite"
+            return "SIGNAL DE QUALITÉ - Exécution recommandée avec position normale"
         elif quality == SignalQuality.GOOD:
             return "SIGNAL CORRECT - Exécution avec prudence et position minimale"
         elif quality == SignalQuality.FAIR:
