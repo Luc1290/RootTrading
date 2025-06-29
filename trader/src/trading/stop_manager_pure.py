@@ -347,6 +347,25 @@ class StopManagerPure:
                                    f"prix {price:.6f} ≤ stop {ts.stop_price:.6f}, "
                                    f"profit: {profit:+.6f}%")
                     else:
+                        # CORRECTION: Toujours mettre à jour les extremes de prix
+                        extremes_updated = False
+                        
+                        # Mettre à jour max_price pour les positions BUY
+                        if ts.side == Side.BUY:
+                            if cycle.max_price is None or ts.max_price > cycle.max_price:
+                                old_max = cycle.max_price
+                                cycle.max_price = ts.max_price
+                                extremes_updated = True
+                                logger.debug(f"📈 Nouveau max_price pour cycle {cycle.id}: {old_max} → {ts.max_price:.6f}")
+                        
+                        # Mettre à jour min_price pour les positions SELL  
+                        if ts.side == Side.SELL:
+                            if cycle.min_price is None or ts.min_price < cycle.min_price:
+                                old_min = cycle.min_price
+                                cycle.min_price = ts.min_price
+                                extremes_updated = True
+                                logger.debug(f"📉 Nouveau min_price pour cycle {cycle.id}: {old_min} → {ts.min_price:.6f}")
+                        
                         # Mettre à jour le cycle avec le nouveau stop_price
                         stop_price_changed = ts.stop_price != cycle.stop_price
                         atr_changed = current_atr != ts.current_atr
@@ -357,11 +376,9 @@ class StopManagerPure:
                             change_pct = abs(ts.stop_price - cycle.stop_price) / cycle.stop_price * 100
                             significant_stop_change = change_pct > 0.01  # Plus de 0.01%
                         
-                        if stop_price_changed or atr_changed:
+                        if stop_price_changed or atr_changed or extremes_updated:
                             old_stop = cycle.stop_price
                             cycle.stop_price = ts.stop_price
-                            cycle.max_price = ts.max_price if ts.side == Side.BUY else cycle.max_price
-                            cycle.min_price = ts.min_price if ts.side == Side.SELL else cycle.min_price
                             
                             # Mettre à jour les métadonnées ATR si changement
                             if atr_changed or cycle.metadata is None or 'atr_config' not in cycle.metadata:
@@ -378,8 +395,8 @@ class StopManagerPure:
                                     'last_updated': datetime.now().isoformat()
                                 }
                             
-                            # OPTIMIZATION: Ne sauvegarder en DB que pour les changements significatifs
-                            if significant_stop_change or atr_changed:
+                            # CORRECTION: Sauvegarder en DB si les extremes ou stops changent significativement
+                            if significant_stop_change or atr_changed or extremes_updated:
                                 self.repository.save_cycle(cycle)
                             
                             logger.debug(f"📈 Stop trailing mis à jour pour cycle {cycle.id}: "

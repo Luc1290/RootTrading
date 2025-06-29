@@ -566,7 +566,7 @@ class SignalAggregator:
                 
                 # Extract stop_price from metadata (plus de target_price avec TrailingStop pur)
                 metadata = signal.get('metadata', {})
-                # Stop-loss correct selon le side: SELL stop au dessus, BUY stop en dessous
+                # Stop-loss correct selon le side: BUY stop en dessous, SELL stop au dessus
                 default_stop = signal['price'] * (1.002 if side == 'SELL' else 0.998)
                 stop_price = metadata.get('stop_price', signal.get('stop_loss', default_stop))
                 
@@ -778,7 +778,7 @@ class SignalAggregator:
                     
                     # Extract stop_price from metadata
                     metadata = signal.get('metadata', {})
-                    # Stop-loss correct selon le side: SELL stop au dessus, BUY stop en dessous
+                    # Stop-loss correct selon le side: BUY stop en dessous, SELL stop au dessus
                     default_stop = signal['price'] * (1.002 if side == 'SELL' else 0.998)
                     stop_price = metadata.get('stop_price', signal.get('stop_loss', default_stop))
                     

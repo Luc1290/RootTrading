@@ -203,12 +203,12 @@ class SignalProcessor:
         
         # Montants minimums par devise pour la vérification basique
         min_amounts = {
-            'USDC': 10.0,
+            'USDC': 10.0,  # Aligné avec MIN_TRADE_USDC dans .env
             'BTC': 0.0001,
             'ETH': 0.003,
             'BNB': 0.02,
-            'SOL': 0.1,
-            'XRP': 10.0,
+            'SOL': 0.10,   # Aligné avec MIN_TRADE_SOL dans .env
+            'XRP': 7.0,    # Aligné avec MIN_TRADE_XRP dans .env
             'ADA': 20.0,
             'DOT': 1.0
         }

@@ -3,7 +3,11 @@
     "allow": [
       "Bash(sudo apt install:*)",
       "Bash(docker exec:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(docker-compose exec postgres psql:*)",
+      "Bash(awk:*)",
+      "Bash(docker logs:*)",
+      "Bash(find:*)"
     ],
     "deny": []
   }
