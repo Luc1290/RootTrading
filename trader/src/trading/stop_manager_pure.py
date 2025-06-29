@@ -27,15 +27,15 @@ class StopManagerPure:
     Utilise uniquement un trailing stop à 2.5% - pas de target adaptatif. MODIFIÉ pour éviter fausses sorties.
     """
     
-    def __init__(self, cycle_repository: CycleRepository, default_stop_pct: float = 2.5, atr_multiplier: float = 1.5, min_stop_pct: float = 2.0, analyzer_url: str = "http://analyzer:5012"):
+    def __init__(self, cycle_repository: CycleRepository, default_stop_pct: float = 8.0, atr_multiplier: float = 3.0, min_stop_pct: float = 6.0, analyzer_url: str = "http://analyzer:5012"):
         """
         Initialise le gestionnaire de stops pure.
         
         Args:
             cycle_repository: Repository pour les cycles
-            default_stop_pct: Pourcentage de stop par défaut (2.5% - fallback si pas d'ATR)
-            atr_multiplier: Multiplicateur ATR pour calcul adaptatif (défaut: 1.5)
-            min_stop_pct: Pourcentage minimum de stop (défaut: 2.0%)
+            default_stop_pct: Pourcentage de stop par défaut (8.0% - fallback si pas d'ATR)
+            atr_multiplier: Multiplicateur ATR pour calcul adaptatif (défaut: 3.0)
+            min_stop_pct: Pourcentage minimum de stop (défaut: 6.0%)
             analyzer_url: URL du service analyzer pour récupérer l'ATR
         """
         self.repository = cycle_repository
@@ -56,7 +56,7 @@ class StopManagerPure:
         # Intégration du GainProtector
         self.gain_protector = GainProtector()
         
-        logger.info(f"✅ StopManagerPure initialisé (stop défaut: {default_stop_pct}%, ATR: {atr_multiplier}x, min: {min_stop_pct}%) avec GainProtector")
+        logger.info(f"✅ StopManagerPure initialisé (stop défaut: {default_stop_pct}%, ATR: {atr_multiplier}x, min: {min_stop_pct}%) avec GainProtector - CRYPTO OPTIMIZED")
     
     def _get_current_atr(self, symbol: str, force_update: bool = False) -> Optional[float]:
         """
