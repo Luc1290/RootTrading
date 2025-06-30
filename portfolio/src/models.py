@@ -820,6 +820,30 @@ class PortfolioModel:
         except Exception as e:
             logger.warning(f"⚠️ Erreur lors du nettoyage des anciens enregistrements: {e}")
     
+    def get_strategy_configs(self, name: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Récupère les configurations de stratégie.
+        
+        Args:
+            name: Filtrer par nom de stratégie
+            
+        Returns:
+            Liste des configurations de stratégie
+        """
+        query = """
+        SELECT name, mode, symbols, params, max_simultaneous_trades, enabled
+        FROM strategy_configs
+        WHERE 1=1
+        """
+        params = []
+        
+        if name:
+            query += " AND name = %s"
+            params.append(name)
+            
+        result = self.db.execute_query(query, tuple(params), fetch_all=True)
+        return result or []
+
     def close(self) -> None:
         """
         Ferme la connexion à la base de données.

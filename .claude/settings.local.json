@@ -8,7 +8,10 @@
       "Bash(awk:*)",
       "Bash(docker logs:*)",
       "Bash(find:*)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(ls:*)",
+      "Bash(docker-compose logs:*)",
+      "Bash(docker stats:*)"
     ],
     "deny": []
   }

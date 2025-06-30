@@ -586,6 +586,28 @@ async def get_symbol_performance(
     
     return {"data": performance}
 
+@app.get("/strategy_configs", response_model=List[Dict[str, Any]])
+async def get_strategy_configs(
+    name: Optional[str] = Query(None, description="Filtrer par nom de stratégie"),
+    portfolio: PortfolioModel = Depends(get_portfolio_model),
+    response: Response = None
+):
+    """
+    Récupère les configurations de stratégie.
+    
+    Args:
+        name: Filtrer par nom de stratégie
+        
+    Returns:
+        Liste des configurations de stratégie
+    """
+    configs = portfolio.get_strategy_configs(name=name)
+    
+    if response:
+        response.headers["Cache-Control"] = "public, max-age=60"
+        
+    return configs
+
 @app.post("/balances/update", status_code=200)
 async def update_balance_manually(
     balances: List[ManualBalanceUpdateRequest],

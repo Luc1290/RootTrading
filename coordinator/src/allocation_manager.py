@@ -67,7 +67,7 @@ class AllocationManager:
         
         Args:
             signal: Signal de trading
-            available_balance: Balance disponible
+            available_balance: Balance disponible (déjà avec marge de sécurité appliquée)
             quote_asset: Actif de quote (USDC, BTC, etc.)
             
         Returns:
@@ -76,15 +76,16 @@ class AllocationManager:
         # Récupérer le pourcentage d'allocation selon la force
         base_percentage = self.allocation_percentages.get(signal.strength, 5.0)
         
-        # Calculer le montant basé sur le pourcentage
+        # Calculer le montant basé sur le pourcentage de la balance contraignante
+        # La balance contraignante a déjà la marge de sécurité appliquée
         calculated_amount = available_balance * (base_percentage / 100.0)
         
         # Appliquer les limites min/max
         min_amount = self.min_amounts.get(quote_asset, 10.0)
-        # Ne pas limiter à 100, utiliser le montant calculé si disponible
-        max_amount = self.max_amounts.get(quote_asset, calculated_amount)
+        max_amount = self.max_amounts.get(quote_asset, float('inf'))
         
-        final_amount = max(min_amount, min(calculated_amount, max_amount))
+        # S'assurer que le montant ne dépasse pas la balance disponible
+        final_amount = max(min_amount, min(calculated_amount, max_amount, available_balance))
         
         logger.info(f"Allocation dynamique {signal.symbol}: {base_percentage}% de "
                    f"{available_balance:.8f} {quote_asset} = {final_amount:.6f} {quote_asset}")
