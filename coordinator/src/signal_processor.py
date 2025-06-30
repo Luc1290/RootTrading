@@ -23,7 +23,7 @@ class SignalProcessor:
     
     def __init__(self, service_client: ServiceClient, 
                  max_cycles_per_symbol_side: int = 3,
-                 signal_expiry_seconds: float = 10.0):
+                 signal_expiry_seconds: float = 60.0):  # SWING CRYPTO: 60s vs 10s
         """
         Initialise le processeur de signaux.
         
@@ -160,14 +160,14 @@ class SignalProcessor:
         # Vérifier les signaux récents du même côté
         recent_same_side = [
             s for s, t in self.recent_signals_history[signal.symbol]
-            if (s.side.value if hasattr(s.side, 'value') else str(s.side)) == (signal.side.value if hasattr(signal.side, 'value') else str(signal.side)) and current_time - t < 10.0
+            if (s.side.value if hasattr(s.side, 'value') else str(s.side)) == (signal.side.value if hasattr(signal.side, 'value') else str(signal.side)) and current_time - t < 30.0  # SWING: 30s fenêtre
         ]
         
         # Ajouter le signal actuel à l'historique
         self.recent_signals_history[signal.symbol].append((signal, current_time))
         
-        # Si plus de 2 signaux similaires en 10 secondes, c'est du spam
-        return len(recent_same_side) > 2
+        # Si plus de 5 signaux similaires en 30 secondes, c'est du spam - SWING CRYPTO
+        return len(recent_same_side) > 5  # SWING: plus tolérant (était 2)
         
     def _clean_signal_history(self):
         """

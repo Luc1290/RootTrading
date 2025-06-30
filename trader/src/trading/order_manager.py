@@ -266,8 +266,8 @@ class OrderManager:
             
             # Calculer le stop par défaut si non spécifié (plus de target avec TrailingStop pur)
             if stop_price is None:
-                # Par défaut: -2% pour BUY, +2% pour SELL
-                stop_price = price * 0.98 if side == OrderSide.BUY else price * 1.02
+                # Par défaut: -8% pour BUY, +8% pour SELL - CRYPTO OPTIMIZED
+                stop_price = price * 0.92 if side == OrderSide.BUY else price * 1.08
                 logger.info(f"Stop loss calculé automatiquement: {stop_price:.8f}")
                 
             # Créer un cycle avec TrailingStop pur (plus de target_price)

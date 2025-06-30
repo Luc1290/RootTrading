@@ -97,15 +97,15 @@ class SignalAggregator:
         # Signal buffer for aggregation
         self.signal_buffer = defaultdict(list)
         self.last_signal_time = {}
-        self.cooldown_period = timedelta(minutes=1)  # Réduit à 1 minute pour mode scalping
+        self.cooldown_period = timedelta(minutes=5)  # SWING CRYPTO: cooldown plus long
         
-        # Voting thresholds adaptatifs selon le régime
-        self.min_vote_threshold = 0.35  # Base pour régimes favorables
-        self.min_confidence_threshold = 0.55  # Base pour tous régimes
+        # Voting thresholds adaptatifs - SWING CRYPTO OPTIMIZED (sélectif)
+        self.min_vote_threshold = 0.40  # Plus sélectif pour swing (était 0.25)
+        self.min_confidence_threshold = 0.65  # Plus sélectif pour swing (était 0.45)
         
-        # Seuils spéciaux pour RANGE_TIGHT (plus permissifs)
-        self.range_tight_vote_threshold = 0.25  # Plus bas pour RANGE_TIGHT
-        self.range_tight_confidence_threshold = 0.50  # Plus bas pour RANGE_TIGHT
+        # Seuils spéciaux pour RANGE_TIGHT - SWING CRYPTO (très sélectif)
+        self.range_tight_vote_threshold = 0.35  # Plus sélectif swing (était 0.20)
+        self.range_tight_confidence_threshold = 0.60  # Plus sélectif swing (était 0.40)
         
         # Monitoring stats
         try:
@@ -193,10 +193,10 @@ class SignalAggregator:
                     logger.info(f"❌ Signal ultra-confluent rejeté (score faible): {symbol} score={signal_score:.1f}")
                     return None
             
-            # NOUVEAU: Validation multi-timeframe avec 5m (RÉACTIVÉE pour scalping optimisé)
-            # Validation 5m plus rapide que 15m, gardant la qualité sans sacrifier la réactivité
+            # NOUVEAU: Validation multi-timeframe avec 15m (SWING CRYPTO)
+            # Validation 15m pour swing trading, filtrage plus strict
             if not await self._validate_signal_with_higher_timeframe(signal):
-                logger.info(f"Signal {strategy} {signal['side']} sur {symbol} rejeté par validation 5m")
+                logger.info(f"Signal {strategy} {signal['side']} sur {symbol} rejeté par validation 15m swing")
                 return None
             
             # Handle timestamp conversion
@@ -566,8 +566,8 @@ class SignalAggregator:
                 
                 # Extract stop_price from metadata (plus de target_price avec TrailingStop pur)
                 metadata = signal.get('metadata', {})
-                # Stop-loss correct selon le side: BUY stop en dessous, SELL stop au dessus
-                default_stop = signal['price'] * (1.002 if side == 'SELL' else 0.998)
+                # Stop-loss correct selon le side: BUY stop en dessous, SELL stop au dessus - CRYPTO OPTIMIZED
+                default_stop = signal['price'] * (1.08 if side == 'SELL' else 0.92)  # 8% crypto stops (était 0.2%!)
                 stop_price = metadata.get('stop_price', signal.get('stop_loss', default_stop))
                 
                 stop_loss_sum += stop_price * weight
@@ -586,13 +586,12 @@ class SignalAggregator:
         # Bonus multi-stratégies
         confidence = self._apply_multi_strategy_bonus(confidence, contributing_strategies)
         
-        # Déterminer la force du signal basée sur la confiance
-        # MODIFIÉ: Seuils ajustés pour éviter l'amplification artificielle
-        if confidence >= 0.9:  # Augmenté de 0.8 à 0.9
+        # Déterminer la force du signal basée sur la confiance - SWING CRYPTO (plus strict)
+        if confidence >= 0.85:  # SWING: Très strict pour very_strong
             strength = 'very_strong'
-        elif confidence >= 0.75:  # Augmenté de 0.6 à 0.75
+        elif confidence >= 0.70:  # SWING: Strict pour strong
             strength = 'strong'
-        elif confidence >= 0.5:  # Augmenté de 0.4 à 0.5
+        elif confidence >= 0.55:  # SWING: Plus strict pour moderate
             strength = 'moderate'
         else:
             strength = 'weak'
@@ -601,9 +600,9 @@ class SignalAggregator:
         trailing_delta = 3.0
         
         # Validation supplémentaire pour Aggregated_1 (une seule stratégie)
-        # MODE SCALPING: Seuil réduit pour les signaux uniques pour plus de trades
-        if len(contributing_strategies) == 1 and confidence < 0.55:
-            logger.info(f"Signal Aggregated_1 rejeté pour {symbol}: confiance {confidence:.2f} < 0.55 (mode scalping)")
+        # MODE SWING: Seuil élevé pour les signaux uniques (plus sélectif)
+        if len(contributing_strategies) == 1 and confidence < 0.70:
+            logger.info(f"Signal Aggregated_1 rejeté pour {symbol}: confiance {confidence:.2f} < 0.70 (mode swing)")
             return None
         
         return {
@@ -778,8 +777,8 @@ class SignalAggregator:
                     
                     # Extract stop_price from metadata
                     metadata = signal.get('metadata', {})
-                    # Stop-loss correct selon le side: BUY stop en dessous, SELL stop au dessus
-                    default_stop = signal['price'] * (1.002 if side == 'SELL' else 0.998)
+                    # Stop-loss correct selon le side: BUY stop en dessous, SELL stop au dessus - CRYPTO OPTIMIZED
+                    default_stop = signal['price'] * (1.08 if side == 'SELL' else 0.92)  # 8% crypto stops (était 0.2%!)
                     stop_price = metadata.get('stop_price', signal.get('stop_loss', default_stop))
                     
                     stop_loss_sum += stop_price * weight
@@ -815,8 +814,8 @@ class SignalAggregator:
                        f"en {regime.name} pour {symbol}")
             # Force sera validée comme acceptable plus tard
         
-        # Trailing stop fixe à 3% pour système pur
-        trailing_delta = 3.0
+        # Trailing stop fixe à 8% pour système crypto pur
+        trailing_delta = 8.0  # Crypto optimized (était 3.0%)
         
         # Validation renforcée pour les signaux uniques selon le régime
         if len(contributing_strategies) == 1:
@@ -1038,13 +1037,13 @@ class SignalAggregator:
             symbol = signal['symbol']
             side = signal['side']
 
-            # Récupérer les données 5m récentes depuis Redis (MODE SCALPING)
-            market_data_key = f"market_data:{symbol}:5m"
+            # Récupérer les données 15m récentes depuis Redis (MODE SWING CRYPTO)
+            market_data_key = f"market_data:{symbol}:15m"
             data_5m = self.redis.get(market_data_key)
             
             if not data_5m:
-                # Si pas de données 5m, on accepte le signal (mode dégradé)
-                logger.warning(f"Pas de données 5m pour {symbol}, validation en mode dégradé")
+                # Si pas de données 15m, on accepte le signal (mode dégradé)
+                logger.warning(f"Pas de données 15m pour {symbol}, validation swing en mode dégradé")
                 return True
             
             # Le RedisClient parse automatiquement les données JSON

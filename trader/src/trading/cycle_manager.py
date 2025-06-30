@@ -859,7 +859,7 @@ class CycleManager:
                 logger.info(f"🎯 TrailingStop initialisé immédiatement pour le cycle {cycle_id}")
             except Exception as e:
                 logger.warning(f"⚠️ Échec d'initialisation immédiate du trailing stop pour {cycle_id}: {str(e)}")
-                logger.info(f"🎯 Cycle créé - StopManagerPure gère le trailing stop à 3% (initialisation différée)")
+                logger.info(f"🎯 Cycle créé - StopManagerPure gère le trailing stop à 8% (initialisation différée)")
             
             return cycle
 

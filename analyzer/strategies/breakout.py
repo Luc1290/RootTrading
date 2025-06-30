@@ -42,8 +42,8 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
         
         # Paramètres de la stratégie
         self.min_range_candles = self.params.get('min_range_candles', 5)  # Minimum de chandeliers pour un range
-        self.max_range_percent = self.params.get('max_range_percent', 3.0)  # % max pour considérer comme consolidation
-        self.breakout_threshold = self.params.get('breakout_threshold', 0.5)  # % au-dessus/en-dessous pour confirmer
+        self.max_range_percent = self.params.get('max_range_percent', 5.0)  # % max pour consolidation (crypto: 3.0→5.0)
+        self.breakout_threshold = self.params.get('breakout_threshold', 1.2)  # % cassure crypto (était 0.5)
         self.max_lookback = self.params.get('max_lookback', 50)  # Nombre max de chandeliers à analyser
         
         # Etat de la stratégie
@@ -351,8 +351,8 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
             resistance = np.max(recent_highs[:-1])  # Exclure la bougie actuelle
             support = np.min(recent_lows[:-1])
             
-            # Breakout haussier ET tendance compatible
-            if current_price > resistance * 1.002:  # 0.2% au-dessus
+            # Breakout haussier ET tendance compatible - CRYPTO OPTIMIZED
+            if current_price > resistance * 1.012:  # 1.2% au-dessus (crypto breakout threshold)
                 # NOUVEAU: Ne faire de breakout BUY que si tendance n'est pas fortement baissière
                 if trend_alignment in ["STRONG_BEARISH", "WEAK_BEARISH"]:
                     logger.debug(f"[Breakout] {self.symbol}: BUY breakout supprimé - tendance {trend_alignment}")
@@ -365,8 +365,8 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
                     'height_pct': (resistance - support) / support * 100 if support != 0 else 0
                 }
             
-            # Breakout baissier ET tendance compatible
-            elif current_price < support * 0.998:  # 0.2% en dessous
+            # Breakout baissier ET tendance compatible - CRYPTO OPTIMIZED  
+            elif current_price < support * 0.988:  # 1.2% en dessous (crypto breakdown threshold)
                 # NOUVEAU: Ne faire de breakout SELL que si tendance n'est pas fortement haussière
                 if trend_alignment in ["STRONG_BULLISH", "WEAK_BULLISH"]:
                     logger.debug(f"[Breakout] {self.symbol}: SELL breakout supprimé - tendance {trend_alignment}")
