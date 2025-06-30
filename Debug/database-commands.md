@@ -1,3 +1,70 @@
+# Database Commands - RootTrading
+
+## Cycle Management
+
+### Check cycle statuses
+```bash
+docker exec roottrading-db-1 psql -U postgres -d trading -c "SELECT status, COUNT(*) FROM trade_cycles GROUP BY status;"
+```
+
+### View active cycles
+```bash
+docker exec roottrading-db-1 psql -U postgres -d trading -c "
+SELECT id, symbol, side, entry_price, min_price, max_price, 
+ROUND(((max_price - entry_price) / entry_price * 100)::numeric, 2) as max_gain_pct,
+status, DATE_TRUNC('minute', created_at) as created 
+FROM trade_cycles WHERE status IN ('waiting_buy', 'waiting_sell');"
+```
+
+### Clean up terminated cycles
+```bash
+# Remove completed, failed, and canceled cycles
+docker exec roottrading-db-1 psql -U postgres -d trading -c "DELETE FROM trade_cycles WHERE status IN ('completed', 'failed', 'canceled');"
+```
+
+### Performance analysis
+```bash
+# View best performing completed cycles
+docker exec roottrading-db-1 psql -U postgres -d trading -c "
+SELECT symbol, side, entry_price, max_price, min_price,
+ROUND(((max_price - entry_price) / entry_price * 100)::numeric, 2) as max_gain_pct
+FROM trade_cycles WHERE status = 'completed' 
+ORDER BY max_gain_pct DESC LIMIT 10;"
+```
+
+## Container Management
+
+### List all containers
+```bash
+docker ps
+```
+
+### Access database directly
+```bash
+docker exec roottrading-db-1 psql -U postgres -d trading
+```
+
+### List all tables
+```bash
+docker exec roottrading-db-1 psql -U postgres -d trading -c "\dt"
+```
+
+## Logs Monitoring
+
+### Trader logs (price updates)
+```bash
+docker logs roottrading-trader-1 --tail 100 | grep "Prix.*USDC"
+```
+
+### Coordinator logs (signals)
+```bash
+docker logs roottrading-coordinator-1 --tail 100 | grep -E "Signal.*BUY|Signal.*SELL"
+```
+
+### Gateway logs (market data)
+```bash
+docker logs roottrading-gateway-1 --tail 50 | grep "SOLUSDC.*1m:"
+```
 # Guide de Debug RootTrading
 
 ## Commandes Base de Données Essentielles
@@ -112,3 +179,7 @@ docker logs roottrading-trader-1 --tail 200 | grep -E "Stop.*mis à jour.*150\.|
 docker logs roottrading-trader-1 --tail 100 | grep "Prix SOLUSDC:"
 docker logs roottrading-trader-1 --tail 100 | grep "Prix XRPUSDC:"
 ```
+
+
+---
+*Database maintenance commands for RootTrading project*
