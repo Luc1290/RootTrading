@@ -50,7 +50,8 @@ class KafkaProducer:
             return
         
         symbol = data['symbol'].lower()
-        topic = f"{KAFKA_TOPIC_MARKET_DATA}.{symbol}"
+        timeframe = data.get('timeframe', '1m')
+        topic = f"{KAFKA_TOPIC_MARKET_DATA}.{symbol}.{timeframe}"
         
         try:
             # Utiliser le symbole comme clé si non fournie

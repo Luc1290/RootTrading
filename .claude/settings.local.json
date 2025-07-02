@@ -14,7 +14,10 @@
       "Bash(docker stats:*)",
       "Bash(mkdir:*)",
       "Bash(echo:*)",
-      "Bash(docker-compose exec:*)"
+      "Bash(docker-compose exec:*)",
+      "Bash(docker cp:*)",
+      "Bash(python3:*)",
+      "Bash(PGPASSWORD=postgres psql -h db -p 5432 -U postgres -d trading -c \"\nSELECT COUNT(*) as total_count \nFROM market_data \nWHERE symbol = ''SOLUSDC'';\n\")"
     ],
     "deny": []
   }

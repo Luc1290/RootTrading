@@ -78,11 +78,14 @@ class BollingerStrategy(BaseStrategy):
         """
         # Utiliser le module partagé pour calculer les bandes de Bollinger
         try:
-            upper, middle, lower = calculate_bollinger_bands(
+            bb_result = calculate_bollinger_bands(
                 prices, 
-                window=self.window,
-                num_std=self.num_std
+                period=self.window,
+                std_dev=self.num_std
             )
+            upper = bb_result.get('bb_upper')
+            middle = bb_result.get('bb_middle')
+            lower = bb_result.get('bb_lower')
             return upper, middle, lower
         except Exception as e:
             logger.error(f"Erreur lors du calcul des bandes de Bollinger: {str(e)}")
@@ -153,9 +156,10 @@ class BollingerStrategy(BaseStrategy):
         
         # Obtenir les dernières valeurs
         current_price = prices[-1]
-        current_upper = upper[-1]
-        current_lower = lower[-1]
-        current_middle = middle[-1]
+        # upper, lower, middle sont déjà des valeurs float (dernière valeur)
+        current_upper = upper
+        current_lower = lower
+        current_middle = middle
         
         # Loguer les valeurs actuelles
         precision = 5 if 'BTC' in self.symbol else 3
@@ -169,7 +173,7 @@ class BollingerStrategy(BaseStrategy):
         # === NOUVEAU SYSTÈME DE FILTRES SOPHISTIQUES ===
         
         # 1. FILTRE SETUP DE BASE BOLLINGER
-        signal_side = self._detect_bollinger_setup(prices, upper, middle, lower)
+        signal_side = self._detect_bollinger_setup(prices, current_upper, current_middle, current_lower)
         if signal_side is None:
             return None
         
@@ -189,10 +193,13 @@ class BollingerStrategy(BaseStrategy):
         trend_score = self._analyze_higher_timeframe_trend(signal_side)
         
         # 6. FILTRE VOLATILITÉ (environnement de marché)
-        volatility_score = self._analyze_volatility_environment(upper, middle, lower)
+        # Simplification temporaire: score fixe car on n'a pas l'historique complet
+        volatility_score = 0.7
         
         # 7. FILTRE SQUEEZE DETECTION (éviter les faux signaux en range)
-        squeeze_score = self._detect_bollinger_squeeze(upper, middle, lower)
+        # Simplification temporaire: calcul basé sur la largeur actuelle seulement
+        band_width_pct = ((current_upper - current_lower) / current_middle) * 100 if current_middle > 0 else 0
+        squeeze_score = 1.0 if band_width_pct > 2.0 else 0.5
         
         # === CALCUL DE CONFIANCE COMPOSITE ===
         confidence = self._calculate_composite_confidence(
@@ -222,7 +229,7 @@ class BollingerStrategy(BaseStrategy):
             'volatility_score': volatility_score,
             'squeeze_score': squeeze_score,
             'band_width_pct': ((current_upper - current_lower) / current_middle) * 100,
-            'price_distance_from_band': self._calculate_band_distance(current_price, upper, lower, signal_side)
+            'price_distance_from_band': self._calculate_band_distance(current_price, current_upper, current_lower, signal_side)
         })
         
         logger.info(f"🎯 [Bollinger] {self.symbol}: Signal {signal_side} @ {current_price:.{precision}f} "
@@ -231,16 +238,13 @@ class BollingerStrategy(BaseStrategy):
         
         return signal
     
-    def _detect_bollinger_setup(self, prices: np.ndarray, upper: np.ndarray, 
-                               middle: np.ndarray, lower: np.ndarray) -> Optional[OrderSide]:
+    def _detect_bollinger_setup(self, prices: np.ndarray, current_upper: float, 
+                               current_middle: float, current_lower: float) -> Optional[OrderSide]:
         """
         Détecte le setup de base Bollinger avec logique sophistiquée ET validation de tendance.
         """
         current_price = prices[-1]
         prev_price = prices[-2] if len(prices) > 1 else current_price
-        current_upper = upper[-1]
-        current_lower = lower[-1]
-        current_middle = middle[-1]
         
         # NOUVEAU: Validation de tendance avant de générer le signal
         trend_alignment = self._validate_trend_alignment_for_signal()
@@ -592,15 +596,15 @@ class BollingerStrategy(BaseStrategy):
             prices = df['close'].values
             
             # Calculer EMA 21 vs EMA 50 (harmonisé avec signal_aggregator)
-            ema_21 = calculate_ema(prices, window=21)
-            ema_50 = calculate_ema(prices, window=50)
+            ema_21 = calculate_ema(prices, period=21)
+            ema_50 = calculate_ema(prices, period=50)
             
-            if np.isnan(ema_21[-1]) or np.isnan(ema_50[-1]):
+            if ema_21 is None or ema_50 is None or np.isnan(ema_21) or np.isnan(ema_50):
                 return None
             
             current_price = prices[-1]
-            trend_21 = ema_21[-1]
-            trend_50 = ema_50[-1]
+            trend_21 = ema_21
+            trend_50 = ema_50
             
             # Classification sophistiquée de la tendance (même logique que signal_aggregator)
             if trend_21 > trend_50 * 1.015:  # +1.5% = forte haussière
@@ -618,12 +622,12 @@ class BollingerStrategy(BaseStrategy):
             logger.warning(f"Erreur validation tendance: {e}")
             return None
     
-    def _calculate_band_distance(self, price: float, upper: np.ndarray, 
-                                lower: np.ndarray, side: OrderSide) -> float:
+    def _calculate_band_distance(self, price: float, upper: float, 
+                                lower: float, side: OrderSide) -> float:
         """
         Calcule la distance du prix par rapport à la bande pertinente.
         """
         if side == OrderSide.BUY:
-            return ((lower[-1] - price) / price * 100) if price > 0 else 0
+            return ((lower - price) / price * 100) if price > 0 else 0
         else:
-            return ((price - upper[-1]) / price * 100) if price > 0 else 0
+            return ((price - upper) / price * 100) if price > 0 else 0

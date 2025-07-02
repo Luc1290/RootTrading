@@ -43,10 +43,14 @@ class SignalAggregatorService:
         self.performance_tracker = None
         self.running = False
         self.consumer_id = None
+        self.main_loop = None  # Event loop principal qui reste ouvert
         
     async def start(self):
         """Initialize and start the service"""
         try:
+            # Capturer l'event loop principal
+            self.main_loop = asyncio.get_running_loop()
+            logger.info("🔄 Event loop principal capturé")
             logger.info("Starting Signal Aggregator Service...")
             
             # Initialize connections
@@ -112,14 +116,21 @@ class SignalAggregatorService:
         try:
             logger.info(f"📨 Received message from {topic}: {message}")
             
-            # Use asyncio.run for async processing in sync callback
+            # Utiliser le loop principal au lieu de créer des threads/loops séparés
             import asyncio
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            import concurrent.futures
             
             try:
-                # Utiliser la méthode améliorée avec filtres intelligents
-                aggregated = loop.run_until_complete(self.aggregator.process_signal(message))
+                if self.main_loop and not self.main_loop.is_closed():
+                    # Envoyer la coroutine vers le loop principal thread-safe
+                    future = asyncio.run_coroutine_threadsafe(
+                        self.aggregator.process_signal(message), 
+                        self.main_loop
+                    )
+                    aggregated = future.result(timeout=30)  # Timeout de 30s
+                else:
+                    logger.error("❌ Event loop principal non disponible")
+                    return
                 
                 if aggregated:
                     # Publish filtered signal on Kafka
@@ -132,12 +143,14 @@ class SignalAggregatorService:
                     self.redis.publish('roottrading:signals:filtered', json.dumps(aggregated))
                     
                     logger.info(f"✅ Published aggregated signal on Kafka and Redis: {aggregated}")
-            finally:
-                loop.close()
+            except concurrent.futures.TimeoutError:
+                logger.error(f"⏰ Timeout lors du traitement du signal: {message.get('symbol', 'unknown')}")
+            except Exception as e:
+                logger.error(f"❌ Erreur lors du traitement du signal: {e}")
                 
         except Exception as e:
             logger.error(f"❌ Error processing signal: {e}")
-                
+    
     async def update_regimes(self):
         """Periodically update market regime detection"""
         while self.running:

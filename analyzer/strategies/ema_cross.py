@@ -82,8 +82,8 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
         """
         try:
             # Utiliser le module partagé pour calculer les EMAs
-            short_ema = calculate_ema(prices, window=self.short_window)
-            long_ema = calculate_ema(prices, window=self.long_window)
+            short_ema = calculate_ema(prices, period=self.short_window)
+            long_ema = calculate_ema(prices, period=self.long_window)
             return short_ema, long_ema
         except Exception as e:
             logger.error(f"Erreur lors du calcul des EMAs: {str(e)}")
@@ -125,7 +125,8 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
             else:
                 long_ema[i] = (prices[i] * long_alpha) + (long_ema[i-1] * (1 - long_alpha))
         
-        return short_ema, long_ema
+        # Retourner seulement les dernières valeurs (comme calculate_ema)
+        return short_ema[-1], long_ema[-1]
     
     def generate_signal(self) -> Optional[StrategySignal]:
         """
@@ -153,8 +154,9 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
         
         # Obtenir les dernières valeurs
         current_price = prices[-1]
-        current_short_ema = short_ema[-1]
-        current_long_ema = long_ema[-1]
+        # short_ema et long_ema sont déjà des valeurs float (dernière valeur)
+        current_short_ema = short_ema
+        current_long_ema = long_ema
         
         # Loguer les valeurs actuelles
         precision = 5 if 'BTC' in self.symbol else 3
@@ -168,7 +170,7 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
         # === NOUVEAU SYSTÈME DE FILTRES SOPHISTIQUES ===
         
         # 1. FILTRE SETUP EMA DE BASE
-        signal_side = self._detect_ema_setup(short_ema, long_ema, prices)
+        signal_side = self._detect_ema_setup(current_short_ema, current_long_ema, current_price)
         if signal_side is None:
             return None
         
@@ -250,16 +252,10 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
         
         return signal
     
-    def _detect_ema_setup(self, short_ema: np.ndarray, long_ema: np.ndarray, prices: np.ndarray) -> Optional[OrderSide]:
+    def _detect_ema_setup(self, current_short: float, current_long: float, current_price: float) -> Optional[OrderSide]:
         """
         Détecte le setup EMA de base avec logique sophistiquée ET validation de tendance.
         """
-        if len(short_ema) < 3 or len(long_ema) < 3:
-            return None
-        
-        current_short = short_ema[-1]
-        current_long = long_ema[-1]
-        current_price = prices[-1]
         
         # NOUVEAU: Validation de tendance avant de générer le signal
         trend_alignment = self._validate_trend_alignment_for_signal()
@@ -397,15 +393,15 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
             prices = df['close'].values
             
             # Calculer EMA 21 vs EMA 50 (harmonisé avec signal_aggregator)
-            ema_21 = calculate_ema(prices, window=21)
-            ema_50 = calculate_ema(prices, window=50)
+            ema_21 = calculate_ema(prices, period=21)
+            ema_50 = calculate_ema(prices, period=50)
             
-            if np.isnan(ema_21[-1]) or np.isnan(ema_50[-1]):
+            if ema_21 is None or ema_50 is None or np.isnan(ema_21) or np.isnan(ema_50):
                 return None
             
             current_price = prices[-1]
-            trend_21 = ema_21[-1]
-            trend_50 = ema_50[-1]
+            trend_21 = ema_21
+            trend_50 = ema_50
             
             # Classification sophistiquée de la tendance (même logique que signal_aggregator)
             if trend_21 > trend_50 * 1.015:  # +1.5% = forte haussière

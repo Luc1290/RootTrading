@@ -18,8 +18,9 @@ class DatabaseManager:
         self.db_pool: Optional[asyncpg.Pool] = None
         self.db_connection: Optional[asyncpg.Connection] = None  # Connexion unique dédiée
         self.running = False
-        self._db_lock = asyncio.Lock()  # Verrou pour sérialiser les accès DB
+        # Plus besoin de verrou avec le pool et l'event loop unique
         self._db_disabled = False  # Flag pour désactiver la DB en cas de problème persistant
+        self._connection_pool = None  # Pool de connexions pour éviter la concurrence
     
         
     def initialize_sync(self):
@@ -29,28 +30,30 @@ class DatabaseManager:
         return True
     
     async def _async_initialize(self):
-        """Partie asynchrone de l'initialisation - Connexion unique"""
+        """Partie asynchrone de l'initialisation - Pool de connexions"""
         try:
             db_config = get_db_config()
             
-            # Créer une connexion unique dédiée au lieu d'un pool
-            self.db_connection = await asyncpg.connect(
+            # Créer un pool de connexions pour éviter les problèmes de concurrence
+            self._connection_pool = await asyncpg.create_pool(
                 host=db_config['host'],
                 port=db_config['port'],
                 database=db_config['database'],
                 user=db_config['user'],
                 password=db_config['password'],
+                min_size=1,
+                max_size=3,  # Limité pour éviter trop de connexions
                 command_timeout=10,
                 server_settings={
-                    'application_name': 'signal_aggregator_dedicated'
+                    'application_name': 'signal_aggregator_pool'
                 }
             )
-            logger.info("✅ Connexion unique base de données Signal Aggregator initialisée")
+            logger.info("✅ Pool de connexions base de données Signal Aggregator initialisé")
             self.running = True
             return True
         except Exception as e:
-            logger.error(f"❌ Erreur initialisation connexion unique Signal Aggregator: {e}")
-            self.db_connection = None
+            logger.error(f"❌ Erreur initialisation pool Signal Aggregator: {e}")
+            self._connection_pool = None
             return False
     
     async def initialize(self):
@@ -130,7 +133,7 @@ class DatabaseManager:
                 return []
             
             # Initialiser automatiquement si pas encore fait
-            if not self.db_connection or not self.running:
+            if not self._connection_pool or not self.running:
                 logger.info("🔄 Initialisation automatique de la base de données...")
                 init_success = await self._async_initialize()
                 if not init_success:
@@ -142,33 +145,24 @@ class DatabaseManager:
             self._db_disabled = True
             return []
         
-        # Utiliser un verrou pour sérialiser les accès et éviter la concurrence
-        async with self._db_lock:
-            try:
-                # Tentative unique avec le verrou - plus de retry nécessaire pour concurrence
-                return await self._fetch_enriched_data_attempt(symbol, interval, limit, include_indicators)
-            except Exception as e:
-                error_msg = str(e).lower()
-                
-                # Pour les erreurs de connexion, on peut encore faire un retry
-                connection_errors = [
-                    "connection was closed",
-                    "connection does not exist", 
-                    "connection lost",
-                    "connection terminated"
-                ]
-                
-                if any(err in error_msg for err in connection_errors):
-                    logger.warning(f"⚠️ Erreur connexion DB pour {symbol}, tentative de réinitialisation...")
-                    try:
-                        await self._reinitialize_connection()
-                        # Un seul retry après réinitialisation
-                        return await self._fetch_enriched_data_attempt(symbol, interval, limit, include_indicators)
-                    except Exception as retry_error:
-                        logger.error(f"❌ Échec retry après réinitialisation pour {symbol}: {retry_error}")
-                
-                logger.error(f"❌ Erreur récupération données enrichies pour {symbol}: {e}")
-                return []
+        # Le pool de connexions gère automatiquement la concurrence
+        try:
+            return await self._fetch_enriched_data_attempt(symbol, interval, limit, include_indicators)
+        except Exception as e:
+            error_msg = str(e).lower()
+            
+            # Gestion des erreurs de pool fermé
+            if "pool is closing" in error_msg or "pool is closed" in error_msg:
+                logger.warning(f"⚠️ Pool fermé pour {symbol}, tentative de réinitialisation...")
+                try:
+                    await self._async_initialize()
+                    return await self._fetch_enriched_data_attempt(symbol, interval, limit, include_indicators)
+                except Exception as retry_error:
+                    logger.error(f"❌ Échec retry après réinitialisation pour {symbol}: {retry_error}")
+                    return []
+            
+            logger.error(f"❌ Erreur récupération données enrichies pour {symbol}: {e}")
+            return []
     
     async def _fetch_enriched_data_attempt(
         self,
@@ -233,12 +227,18 @@ class DatabaseManager:
                 """
                 params = [symbol, limit]
             
-            # Utilisation directe de la connexion unique dédiée
+            # Utiliser le pool de connexions pour éviter les conflits de concurrence
             try:
-                rows = await self.db_connection.fetch(query, *params)
+                async with self._connection_pool.acquire() as connection:
+                    rows = await connection.fetch(query, *params)
             except asyncio.TimeoutError:
                 logger.warning(f"Timeout requête DB pour {symbol}")
                 return []
+            except Exception as e:
+                if "pool is closing" in str(e).lower():
+                    logger.warning(f"Pool de connexions en cours de fermeture pour {symbol}")
+                    return []
+                raise  # Re-lever les autres erreurs
             
             if not rows:
                 logger.debug(f"Aucune donnée enrichie trouvée pour {symbol}")

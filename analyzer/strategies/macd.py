@@ -94,18 +94,19 @@ class MACDStrategy(BaseStrategy, AdvancedFiltersMixin):
         Returns:
             Tuple (ligne MACD, ligne signal, histogramme)
         """
-        # Utiliser le module partagé pour calculer MACD
-        macd_line, signal_line, histogram = calculate_macd(
-            prices.values,
-            fast_window=self.fast_period,
-            slow_window=self.slow_period,
-            signal_window=self.signal_period
-        )
+        # Calculer MACD manuellement pour avoir toute la série
+        # EMA 12 et 26
+        ema_12 = prices.ewm(span=self.fast_period, adjust=False).mean()
+        ema_26 = prices.ewm(span=self.slow_period, adjust=False).mean()
         
-        # Convertir en Series pandas avec le même index
-        macd_series = pd.Series(macd_line, index=prices.index)
-        signal_series = pd.Series(signal_line, index=prices.index)
-        histogram_series = pd.Series(histogram, index=prices.index)
+        # Ligne MACD
+        macd_series = ema_12 - ema_26
+        
+        # Ligne signal (EMA 9 du MACD)
+        signal_series = macd_series.ewm(span=self.signal_period, adjust=False).mean()
+        
+        # Histogramme
+        histogram_series = macd_series - signal_series
         
         return macd_series, signal_series, histogram_series
     

@@ -72,6 +72,8 @@ class BinanceWebSocket:
         # ULTRA-AVANCÉ : Buffers pour calculs techniques en temps réel
         self.price_buffers = {}
         self.volume_buffers = {}
+        self.high_buffers = {}
+        self.low_buffers = {}
         self.rsi_buffers = {}
         self.macd_buffers = {}
         
@@ -79,11 +81,15 @@ class BinanceWebSocket:
         for symbol in self.symbols:
             self.price_buffers[symbol] = {}
             self.volume_buffers[symbol] = {}
+            self.high_buffers[symbol] = {}
+            self.low_buffers[symbol] = {}
             self.rsi_buffers[symbol] = {}
             self.macd_buffers[symbol] = {}
             for tf in self.timeframes:
                 self.price_buffers[symbol][tf] = []
                 self.volume_buffers[symbol][tf] = []
+                self.high_buffers[symbol][tf] = []
+                self.low_buffers[symbol][tf] = []
                 self.rsi_buffers[symbol][tf] = []
                 self.macd_buffers[symbol][tf] = {'ema12': None, 'ema26': None, 'signal9': None}
                 
@@ -279,6 +285,14 @@ class BinanceWebSocket:
             self.price_buffers[symbol][timeframe].pop(0)
         self.price_buffers[symbol][timeframe].append(close_price)
         
+        if len(self.high_buffers[symbol][timeframe]) >= 200:
+            self.high_buffers[symbol][timeframe].pop(0)
+        self.high_buffers[symbol][timeframe].append(high_price)
+        
+        if len(self.low_buffers[symbol][timeframe]) >= 200:
+            self.low_buffers[symbol][timeframe].pop(0)
+        self.low_buffers[symbol][timeframe].append(low_price)
+        
         if len(self.volume_buffers[symbol][timeframe]) >= 200:
             self.volume_buffers[symbol][timeframe].pop(0)
         self.volume_buffers[symbol][timeframe].append(volume)
@@ -287,10 +301,16 @@ class BinanceWebSocket:
         volumes = self.volume_buffers[symbol][timeframe]
         
         if len(prices) >= 2:
+            # DEBUG: Log temporaire pour vérifier les calculs
+            logger.debug(f"📊 Calcul indicateurs {symbol} {timeframe}: {len(prices)} prix, dernier={close_price}")
+            
             # RSI 14 périodes
             rsi = self._calculate_rsi(prices, 14)
             if rsi:
                 candle_data['rsi_14'] = rsi
+                logger.debug(f"📊 RSI calculé pour {symbol}: {rsi}")
+            else:
+                logger.debug(f"⚠️ RSI non calculé pour {symbol}: besoin de plus de données")
                 
             # Stochastic RSI
             stoch_rsi = self._calculate_stoch_rsi(prices, 14)
@@ -360,6 +380,10 @@ class BinanceWebSocket:
             cci = self._calculate_cci(symbol, timeframe, 20)
             if cci:
                 candle_data['cci_20'] = cci
+        
+        # Marquer les données comme enrichies
+        candle_data['enhanced'] = True
+        candle_data['ultra_enriched'] = True
                 
     def _calculate_rsi(self, prices: List[float], period: int = 14) -> Optional[float]:
         """Calcule le RSI ultra-optimisé"""
@@ -521,21 +545,31 @@ class BinanceWebSocket:
         return sum(ranges[-period:]) / period
         
     def _calculate_adx(self, symbol: str, timeframe: str, period: int) -> Optional[float]:
-        """Calcule l'ADX (Average Directional Index)"""
-        # Calcul simplifié de l'ADX
-        prices = self.price_buffers[symbol][timeframe]
-        if len(prices) < period + 1:
+        """Calcule l'ADX en utilisant le module partagé"""
+        if symbol not in self.high_buffers or symbol not in self.low_buffers:
             return None
             
-        # Approximation basée sur la tendance des prix
-        up_moves = sum(1 for i in range(1, len(prices)) if prices[i] > prices[i-1])
-        total_moves = len(prices) - 1
-        
-        if total_moves == 0:
-            return 50
+        if timeframe not in self.high_buffers[symbol] or timeframe not in self.low_buffers[symbol]:
+            return None
             
-        directional_strength = abs((up_moves / total_moves) - 0.5) * 2
-        return directional_strength * 100
+        highs = self.high_buffers[symbol][timeframe]
+        lows = self.low_buffers[symbol][timeframe]
+        closes = self.price_buffers[symbol][timeframe]
+        
+        if len(highs) < period + 1 or len(lows) < period + 1 or len(closes) < period + 1:
+            return None
+        
+        try:
+            # Utiliser le module partagé pour le calcul ADX
+            from shared.src.technical_indicators import TechnicalIndicators
+            indicators = TechnicalIndicators()
+            
+            adx, plus_di, minus_di = indicators.calculate_adx(highs, lows, closes, period)
+            return adx  # Retourner seulement la valeur ADX
+            
+        except Exception as e:
+            logger.debug(f"Erreur calcul ADX pour {symbol}: {e}")
+            return None
         
     def _calculate_williams_r(self, symbol: str, timeframe: str, period: int) -> Optional[float]:
         """Calcule Williams %R"""
