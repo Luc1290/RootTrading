@@ -123,7 +123,7 @@ class SignalAggregator:
         """Met à jour l'historique des données de marché pour un symbole"""
         try:
             # Récupérer les données actuelles depuis Redis
-            key = f"market_data:{symbol}:1m"
+            key = f"market_data:{symbol}:5m"
             data = self.redis.get(key)
             if data:
                 parsed = json.loads(data) if isinstance(data, str) else data
@@ -232,6 +232,7 @@ class SignalAggregator:
                 
             # Get market regime FIRST pour filtrage intelligent (enhanced if available, sinon fallback)
             if self.enhanced_regime_detector:
+                # Utiliser la version async - le Signal Aggregator s'exécute déjà dans un contexte async
                 regime, regime_metrics = await self.enhanced_regime_detector.get_detailed_regime(symbol)
                 
                 # NOUVEAU: Filtrage intelligent basé sur les régimes Enhanced

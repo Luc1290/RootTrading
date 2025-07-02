@@ -7,7 +7,6 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 import numpy as np
 import pandas as pd
-import talib
 
 # Importer les modules partagés
 import sys
@@ -17,6 +16,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 from shared.src.config import get_strategy_param
 from shared.src.enums import OrderSide
 from shared.src.schemas import StrategySignal
+from shared.src.technical_indicators import calculate_rsi, calculate_ema, calculate_macd
 
 from .base_strategy import BaseStrategy
 
@@ -81,61 +81,17 @@ class RSIStrategy(BaseStrategy):
         Returns:
             Tableau numpy des valeurs RSI
         """
-        # Utiliser TA-Lib pour calculer le RSI
-        try:
-            rsi = talib.RSI(prices, timeperiod=self.rsi_window)
-            return rsi
-        except Exception as e:
-            logger.error(f"Erreur lors du calcul du RSI: {str(e)}")
-            # Implémenter un calcul manuel de secours en cas d'erreur TA-Lib
-            return self._calculate_rsi_manually(prices)
-    
-    def _calculate_rsi_manually(self, prices: np.ndarray) -> np.ndarray:
-        """
-        Calcule le RSI manuellement si TA-Lib n'est pas disponible.
-        
-        Args:
-            prices: Tableau numpy des prix de clôture
-            
-        Returns:
-            Tableau numpy des valeurs RSI
-        """
-        # Calculer les variations de prix
-        deltas = np.diff(prices)
-        
-        # Padding pour maintenir la taille
-        deltas = np.append([0], deltas)
-        
-        # Séparer les variations positives et négatives
-        gains = np.where(deltas > 0, deltas, 0)
-        losses = np.where(deltas < 0, -deltas, 0)
-        
-        # Initialiser les tableaux
-        avg_gains = np.zeros_like(prices)
-        avg_losses = np.zeros_like(prices)
-        
-        # Calculer les moyennes mobiles des gains et pertes
+        # Utiliser le module partagé pour calculer le RSI
+        rsi_values = []
         for i in range(len(prices)):
             if i < self.rsi_window:
-                # Pas assez de données
-                avg_gains[i] = np.nan
-                avg_losses[i] = np.nan
-            elif i == self.rsi_window:
-                # Première moyenne
-                avg_gains[i] = np.mean(gains[1:i+1])
-                avg_losses[i] = np.mean(losses[1:i+1])
+                rsi_values.append(np.nan)
             else:
-                # Moyennes suivantes (formule EMA)
-                avg_gains[i] = (avg_gains[i-1] * (self.rsi_window-1) + gains[i]) / self.rsi_window
-                avg_losses[i] = (avg_losses[i-1] * (self.rsi_window-1) + losses[i]) / self.rsi_window
+                rsi = calculate_rsi(prices[:i+1], self.rsi_window)
+                rsi_values.append(rsi if rsi is not None else np.nan)
         
-        # Calculer le RS (Relative Strength)
-        rs = avg_gains / (avg_losses + 1e-10)  # Éviter la division par zéro
-        
-        # Calculer le RSI
-        rsi = 100 - (100 / (1 + rs))
-        
-        return rsi
+        return np.array(rsi_values)
+    
     
     def generate_signal(self) -> Optional[StrategySignal]:
         """
@@ -305,8 +261,10 @@ class RSIStrategy(BaseStrategy):
             
             # MACD pour confirmation
             if len(prices) >= 26:
-                macd_line, macd_signal, macd_hist = talib.MACD(prices)
-                current_macd = macd_hist[-1] if not np.isnan(macd_hist[-1]) else 0
+                macd_data = calculate_macd(prices)
+                current_macd = macd_data.get('macd_histogram', 0)
+                if current_macd is None:
+                    current_macd = 0
             else:
                 current_macd = 0
             
@@ -480,15 +438,15 @@ class RSIStrategy(BaseStrategy):
             prices = df['close'].values
             
             # EMA 21 vs EMA 50 pour simuler timeframe supérieur
-            ema_21 = talib.EMA(prices, timeperiod=21)
-            ema_50 = talib.EMA(prices, timeperiod=50)
+            ema_21_val = calculate_ema(prices, 21)
+            ema_50_val = calculate_ema(prices, 50)
             
-            if np.isnan(ema_21[-1]) or np.isnan(ema_50[-1]):
+            if ema_21_val is None or ema_50_val is None:
                 return 0.7
             
             current_price = prices[-1]
-            trend_21 = ema_21[-1]
-            trend_50 = ema_50[-1]
+            trend_21 = ema_21_val
+            trend_50 = ema_50_val
             
             if signal_side == OrderSide.BUY:
                 if current_price > trend_21 and trend_21 > trend_50:
@@ -606,16 +564,15 @@ class RSIStrategy(BaseStrategy):
             prices = df['close'].values
             
             # Calculer EMA 21 vs EMA 50 (harmonisé avec signal_aggregator)
-            import talib
-            ema_21 = talib.EMA(prices, timeperiod=21)
-            ema_50 = talib.EMA(prices, timeperiod=50)
+            ema_21_val = calculate_ema(prices, 21)
+            ema_50_val = calculate_ema(prices, 50)
             
-            if np.isnan(ema_21[-1]) or np.isnan(ema_50[-1]):
+            if ema_21_val is None or ema_50_val is None:
                 return None
             
             current_price = prices[-1]
-            trend_21 = ema_21[-1]
-            trend_50 = ema_50[-1]
+            trend_21 = ema_21_val
+            trend_50 = ema_50_val
             
             # Classification sophistiquée de la tendance (même logique que signal_aggregator)
             if trend_21 > trend_50 * 1.015:  # +1.5% = forte haussière

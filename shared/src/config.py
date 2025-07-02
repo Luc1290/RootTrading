@@ -34,6 +34,16 @@ PGPORT = int(os.getenv("PGPORT", 5432))
 DB_MIN_CONNECTIONS = int(os.getenv("DB_MIN_CONNECTIONS", "1"))
 DB_MAX_CONNECTIONS = int(os.getenv("DB_MAX_CONNECTIONS", "50"))
 
+def get_db_config() -> Dict[str, Any]:
+    """Retourne la configuration de la base de données."""
+    return {
+        'host': PGHOST,
+        'port': PGPORT,
+        'database': PGDATABASE,
+        'user': PGUSER,
+        'password': PGPASSWORD
+    }
+
 # Paramètres de trading
 DEFAULT_SYMBOL = os.getenv("SYMBOL", "SOLUSDC")
 SYMBOLS = os.getenv("SYMBOLS", "SOLUSDC,XRPUSDC").split(",")

@@ -133,19 +133,12 @@ class RedisSubscriber:
                             'volume': data.get('volume', 0)
                         }
                         
-                        # Simuler plusieurs points de données historiques en distribuant dans le temps
-                        base_time = int(time.time() * 1000) - (100 * 60 * 1000)  # 100 minutes ago
+                        # *** SUPPRESSION DES DONNÉES SIMULÉES ***
+                        # Au lieu de simuler, on charge les vraies données historiques
+                        logger.info(f"📊 Chargement des vraies données historiques pour {symbol}...")
+                        self._load_real_historical_data(symbol, callback)
                         
-                        for i in range(100):
-                            historical_data = formatted_data.copy()
-                            historical_data['start_time'] = base_time + (i * 60 * 1000)  # 1 minute intervals
-                            # Légère variation des prix pour simuler l'historique
-                            price_variation = (i % 10 - 5) * 0.001  # ±0.5% variation
-                            historical_data['close'] = formatted_data['close'] * (1 + price_variation)
-                            
-                            callback(historical_data)
-                        
-                        logger.info(f"✅ Données historiques chargées pour {symbol} (100 points simulés)")
+                        logger.info(f"✅ Vraies données historiques chargées pour {symbol}")
                     
                 except Exception as e:
                     logger.warning(f"⚠️ Erreur chargement données historiques {symbol}: {e}")
@@ -154,6 +147,96 @@ class RedisSubscriber:
             
         except Exception as e:
             logger.error(f"❌ Erreur générale lors du chargement historique: {e}")
+    
+    def _load_real_historical_data(self, symbol: str, callback: Callable[[Dict[str, Any]], None]) -> None:
+        """
+        Charge les vraies données historiques depuis PostgreSQL pour un symbole.
+        """
+        try:
+            import asyncpg
+            import asyncio
+            from shared.src.config import get_db_config
+            
+            async def load_symbol_data():
+                db_config = get_db_config()
+                conn = None
+                
+                try:
+                    # Connexion à PostgreSQL
+                    conn = await asyncpg.connect(
+                        host=db_config['host'],
+                        port=db_config['port'],
+                        database=db_config['database'],
+                        user=db_config['user'],
+                        password=db_config['password']
+                    )
+                    
+                    # Charger les 100 dernières bougies 1m pour ce symbole
+                    query = """
+                        SELECT time, symbol, open, high, low, close, volume
+                        FROM market_data 
+                        WHERE symbol = $1 
+                        ORDER BY time DESC 
+                        LIMIT 100
+                    """
+                    
+                    rows = await conn.fetch(query, symbol)
+                    
+                    if rows:
+                        # Trier par ordre chronologique (plus ancien en premier)
+                        rows = list(reversed(rows))
+                        
+                        for row in rows:
+                            # Formatter les données pour les stratégies
+                            historical_data = {
+                                'symbol': row['symbol'],
+                                'open': float(row['open']),
+                                'high': float(row['high']),
+                                'low': float(row['low']),
+                                'close': float(row['close']),
+                                'volume': float(row['volume']),
+                                'start_time': int(row['time'].timestamp() * 1000),
+                                'is_closed': True
+                            }
+                            
+                            callback(historical_data)
+                        
+                        logger.info(f"💾 {len(rows)} vraies données historiques chargées pour {symbol}")
+                        return len(rows)
+                    else:
+                        logger.warning(f"⚠️ Aucune donnée historique trouvée pour {symbol} en base")
+                        return 0
+                        
+                except Exception as e:
+                    logger.error(f"❌ Erreur chargement PostgreSQL pour {symbol}: {e}")
+                    return 0
+                finally:
+                    if conn:
+                        await conn.close()
+            
+            # Exécuter le chargement asyncio
+            try:
+                if hasattr(asyncio, 'run'):
+                    count = asyncio.run(load_symbol_data())
+                else:
+                    # Fallback pour Python < 3.7
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        count = loop.run_until_complete(load_symbol_data())
+                    finally:
+                        loop.close()
+                
+                if count > 0:
+                    logger.info(f"✅ {count} vraies données historiques intégrées pour {symbol}")
+                else:
+                    logger.warning(f"⚠️ Aucune donnée historique disponible pour {symbol}")
+                    
+            except Exception as e:
+                logger.error(f"❌ Erreur execution asyncio pour {symbol}: {e}")
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur générale chargement historique {symbol}: {e}")
     
     def start_listening(self, callback: Callable[[Dict[str, Any]], None]) -> None:
         """

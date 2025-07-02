@@ -6,8 +6,6 @@ import logging
 from typing import Dict, Any, Optional, List
 import numpy as np
 import pandas as pd
-import talib
-
 # Importer les modules partagés
 import sys
 import os
@@ -16,6 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 from shared.src.config import get_strategy_param
 from shared.src.enums import OrderSide
 from shared.src.schemas import StrategySignal
+from shared.src.technical_indicators import calculate_ema
 
 from .base_strategy import BaseStrategy
 from .advanced_filters_mixin import AdvancedFiltersMixin
@@ -82,13 +81,13 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
             Tuple (short_ema, long_ema) des valeurs EMA
         """
         try:
-            # Utiliser TA-Lib pour calculer les EMAs
-            short_ema = talib.EMA(prices, timeperiod=self.short_window)
-            long_ema = talib.EMA(prices, timeperiod=self.long_window)
+            # Utiliser le module partagé pour calculer les EMAs
+            short_ema = calculate_ema(prices, window=self.short_window)
+            long_ema = calculate_ema(prices, window=self.long_window)
             return short_ema, long_ema
         except Exception as e:
             logger.error(f"Erreur lors du calcul des EMAs: {str(e)}")
-            # Implémenter un calcul manuel de secours en cas d'erreur TA-Lib
+            # Implémenter un calcul manuel de secours en cas d'erreur
             return self._calculate_emas_manually(prices)
     
     def _calculate_emas_manually(self, prices: np.ndarray) -> tuple:
@@ -309,8 +308,9 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
             low = df['low'].values
             close = df['close'].values
             
-            # Calculer ADX
-            adx = talib.ADX(high, low, close, timeperiod=14)
+            # Calculer ADX manuellement (using advanced_filters_mixin method)
+            adx_result = self._calculate_adx_manually(high, low, close, period=14)
+            adx = adx_result if isinstance(adx_result, np.ndarray) else np.full(len(close), adx_result)
             
             if np.isnan(adx[-1]):
                 return 0.7
@@ -397,8 +397,8 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
             prices = df['close'].values
             
             # Calculer EMA 21 vs EMA 50 (harmonisé avec signal_aggregator)
-            ema_21 = talib.EMA(prices, timeperiod=21)
-            ema_50 = talib.EMA(prices, timeperiod=50)
+            ema_21 = calculate_ema(prices, window=21)
+            ema_50 = calculate_ema(prices, window=50)
             
             if np.isnan(ema_21[-1]) or np.isnan(ema_50[-1]):
                 return None

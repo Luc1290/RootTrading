@@ -14,6 +14,7 @@ from analyzer.strategies.advanced_filters_mixin import AdvancedFiltersMixin
 from shared.src.enums import OrderSide, SignalStrength
 from shared.src.schemas import StrategySignal, MarketData
 from shared.src.config import STRATEGY_PARAMS
+from shared.src.technical_indicators import calculate_macd
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
@@ -93,20 +94,20 @@ class MACDStrategy(BaseStrategy, AdvancedFiltersMixin):
         Returns:
             Tuple (ligne MACD, ligne signal, histogramme)
         """
-        # Calculer les EMAs
-        ema_fast = self.calculate_ema(prices, self.fast_period)
-        ema_slow = self.calculate_ema(prices, self.slow_period)
+        # Utiliser le module partagé pour calculer MACD
+        macd_line, signal_line, histogram = calculate_macd(
+            prices.values,
+            fast_window=self.fast_period,
+            slow_window=self.slow_period,
+            signal_window=self.signal_period
+        )
         
-        # Ligne MACD = EMA rapide - EMA lente
-        macd_line = ema_fast - ema_slow
+        # Convertir en Series pandas avec le même index
+        macd_series = pd.Series(macd_line, index=prices.index)
+        signal_series = pd.Series(signal_line, index=prices.index)
+        histogram_series = pd.Series(histogram, index=prices.index)
         
-        # Ligne signal = EMA de la ligne MACD
-        signal_line = self.calculate_ema(macd_line, self.signal_period)
-        
-        # Histogramme = MACD - Signal
-        histogram = macd_line - signal_line
-        
-        return macd_line, signal_line, histogram
+        return macd_series, signal_series, histogram_series
     
     def detect_crossover(self, macd: pd.Series, signal: pd.Series) -> Optional[str]:
         """

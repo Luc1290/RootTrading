@@ -21,6 +21,7 @@ class ConcurrentAnalyzer:
         self.strategy_loader = strategy_loader
         self.max_workers = max_workers
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
+        self.vectorized_indicators = VectorizedIndicators()
         
     async def analyze_symbols_concurrent(self, symbols_data: Dict[str, pd.DataFrame]) -> Dict[str, List[Any]]:
         """
@@ -64,7 +65,7 @@ class ConcurrentAnalyzer:
         loop = asyncio.get_event_loop()
         indicators = await loop.run_in_executor(
             self.executor,
-            VectorizedIndicators.compute_all_indicators,
+            self.vectorized_indicators.compute_all_indicators,
             df, symbol
         )
         

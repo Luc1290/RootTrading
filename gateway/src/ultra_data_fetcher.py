@@ -17,6 +17,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 
 from shared.src.config import SYMBOLS
 from shared.src.redis_client import RedisClient
+from shared.src.technical_indicators import indicators
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +187,7 @@ class UltraDataFetcher:
     async def _process_ultra_enriched_klines(self, klines: List, symbol: str, timeframe: str) -> Dict:
         """
         Traite les klines avec TOUS les indicateurs ultra-confluents.
-        Compatible avec les attentes d'UltraConfluence.
+        Utilise le module partagé technical_indicators pour les calculs optimisés.
         """
         try:
             # Extraire les prix et volumes
@@ -218,62 +219,34 @@ class UltraDataFetcher:
                 'last_update': time.time()
             }
             
-            # 1. RSI (14 et Stochastic RSI)
+            # **NOUVEAU**: Utiliser le module partagé pour tous les indicateurs
+            logger.debug(f"🔧 Calcul indicateurs avec module partagé pour {symbol} {timeframe}")
+            
+            # Calcul de tous les indicateurs en une fois avec le module partagé
+            calculated_indicators = indicators.calculate_all_indicators(highs, lows, prices, volumes)
+            
+            # Ajouter tous les indicateurs calculés
+            enriched_data.update(calculated_indicators)
+            
+            # Indicateurs additionnels non couverts par le module partagé
             if len(prices) >= 20:
-                enriched_data['rsi_14'] = self._calculate_rsi(prices, 14)
+                # Stochastic RSI (pas dans le module partagé)
                 enriched_data['stoch_rsi'] = self._calculate_stoch_rsi(prices, 14)
-            
-            # 2. MACD complet
-            if len(prices) >= 35:
-                macd_data = self._calculate_macd(prices)
-                enriched_data.update(macd_data)
-            
-            # 3. EMAs multiples
-            if len(prices) >= 50:
-                enriched_data['ema_12'] = self._calculate_ema(prices, 12)
-                enriched_data['ema_26'] = self._calculate_ema(prices, 26)
-                enriched_data['ema_50'] = self._calculate_ema(prices, 50)
-            
-            # 4. SMAs
-            if len(prices) >= 50:
-                enriched_data['sma_20'] = sum(prices[-20:]) / 20
-                enriched_data['sma_50'] = sum(prices[-50:]) / 50
-            
-            # 5. Bollinger Bands
-            if len(prices) >= 20:
-                bb_data = self._calculate_bollinger_bands(prices, 20, 2.0)
-                enriched_data.update(bb_data)
-            
-            # 6. ADX (force de tendance)
-            if len(prices) >= 20:
+                
+                # ADX (sera ajouté au module partagé plus tard)
                 enriched_data['adx_14'] = self._calculate_adx(highs, lows, prices, 14)
-            
-            # 7. ATR (volatilité)
-            if len(prices) >= 14:
-                enriched_data['atr_14'] = self._calculate_atr(highs, lows, prices, 14)
-            
-            # 8. Williams %R
-            if len(prices) >= 14:
+                
+                # Williams %R
                 enriched_data['williams_r'] = self._calculate_williams_r(highs, lows, prices, 14)
-            
-            # 9. CCI (Commodity Channel Index)
-            if len(prices) >= 20:
+                
+                # CCI
                 enriched_data['cci_20'] = self._calculate_cci(highs, lows, prices, 20)
             
-            # 10. VWAP
+            # VWAP
             if len(prices) >= 10:
                 enriched_data['vwap_10'] = self._calculate_vwap(prices[-10:], volumes[-10:])
             
-            # 11. Momentum
-            if len(prices) >= 10:
-                enriched_data['momentum_10'] = self._calculate_momentum(prices, 10)
-            
-            # 12. Volume analysis
-            if len(volumes) >= 20:
-                vol_analysis = self._analyze_volume(volumes)
-                enriched_data.update(vol_analysis)
-            
-            logger.debug(f"✅ {symbol} {timeframe}: {len(enriched_data)} indicateurs calculés")
+            logger.debug(f"✅ {symbol} {timeframe}: {len(enriched_data)} indicateurs calculés (module partagé + additionnels)")
             return enriched_data
             
         except Exception as e:
@@ -692,6 +665,286 @@ class UltraDataFetcher:
             
         except Exception as e:
             logger.error(f"❌ Erreur analyse sentiment: {e}")
+            return {}
+
+    async def load_historical_data(self, days: int = 5) -> None:
+        """
+        Charge les données historiques pour tous les symboles et timeframes.
+        Publie aussi les données sur Kafka pour persistance en DB.
+        
+        Args:
+            days: Nombre de jours d'historique à charger (défaut: 5)
+        """
+        logger.info(f"🔄 Chargement de {days} jours de données historiques...")
+        
+        # Importer le producteur Kafka pour publier les données historiques
+        try:
+            from kafka_producer import get_producer
+            kafka_producer = get_producer()
+        except ImportError:
+            logger.warning("⚠️ Producteur Kafka non disponible, données historiques non persistées en DB")
+            kafka_producer = None
+        
+        # Calculer les limites optimisées pour chaque timeframe (selon besoins des indicateurs)
+        timeframe_limits = {
+            '1m': 180,    # 3 heures (suffisant pour tous les indicateurs)
+            '5m': 288,    # 24 heures (1 jour complet)  
+            '15m': 192,   # 2 jours (48h / 15m = 192 points)
+            '1h': 168,    # 7 jours (168 heures)
+            '4h': 84      # 14 jours (84 * 4h = 14 jours)
+        }
+        
+        total_expected = 0
+        total_loaded = 0
+        total_published = 0
+        
+        for symbol in self.symbols:
+            for timeframe in self.timeframes:
+                expected_count = timeframe_limits[timeframe]
+                total_expected += expected_count
+                
+                try:
+                    # Charger les données historiques avec pagination si nécessaire
+                    historical_data = await self._fetch_historical_klines(
+                        symbol, timeframe, expected_count
+                    )
+                    
+                    if historical_data:
+                        loaded_count = len(historical_data)
+                        total_loaded += loaded_count
+                        
+                        # **NOUVEAU**: Enrichir et publier chaque kline historique sur Kafka
+                        if kafka_producer and historical_data:
+                            try:
+                                # Enrichir toutes les données historiques avec indicateurs techniques
+                                enriched_historical = await self._enrich_historical_batch(
+                                    historical_data, symbol, timeframe
+                                )
+                                
+                                # Publier chaque point enrichi sur Kafka
+                                for enriched_point in enriched_historical:
+                                    try:
+                                        kafka_topic = f"market.data.{symbol.lower()}.{timeframe}"
+                                        kafka_producer.publish_market_data(enriched_point, kafka_topic)
+                                        total_published += 1
+                                        
+                                    except Exception as e:
+                                        logger.warning(f"Erreur publication Kafka point enrichi: {e}")
+                                        
+                                logger.info(f"📊 {symbol} {timeframe}: {len(enriched_historical)} points enrichis publiés")
+                                
+                            except Exception as e:
+                                logger.error(f"❌ Erreur enrichissement historique {symbol} {timeframe}: {e}")
+                        
+                        # Traiter et enrichir la dernière donnée pour Redis (indicateurs actuels)
+                        enriched_data = await self._process_historical_klines(
+                            historical_data, symbol, timeframe
+                        )
+                        
+                        # Stocker dans Redis
+                        redis_key = f"market_data:{symbol}:{timeframe}_history"
+                        await self._store_in_redis(redis_key, enriched_data)
+                        
+                        logger.info(f"📊 {symbol} {timeframe}: {loaded_count}/{expected_count} points chargés")
+                    else:
+                        logger.warning(f"⚠️ Aucune donnée historique pour {symbol} {timeframe}")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Erreur chargement historique {symbol} {timeframe}: {e}")
+        
+        # Attendre que tous les messages Kafka soient envoyés
+        if kafka_producer:
+            kafka_producer.flush()
+            logger.info(f"📤 {total_published} points historiques publiés sur Kafka pour persistance DB")
+        
+        success_rate = (total_loaded / total_expected * 100) if total_expected > 0 else 0
+        logger.info(f"✅ Chargement historique terminé: {total_loaded}/{total_expected} points ({success_rate:.1f}%)")
+    
+    async def _fetch_historical_klines(self, symbol: str, timeframe: str, limit: int) -> List:
+        """
+        Récupère les klines historiques avec pagination pour les gros volumes.
+        Binance limite à 1000 klines par requête.
+        """
+        all_klines = []
+        max_per_request = 1000
+        
+        try:
+            while len(all_klines) < limit:
+                # Calculer combien récupérer dans cette requête
+                remaining = limit - len(all_klines)
+                current_limit = min(remaining, max_per_request)
+                
+                # Calculer l'endTime pour récupérer les données plus anciennes
+                if all_klines:
+                    # Utiliser le timestamp de la première kline comme endTime
+                    end_time = all_klines[0][0] - 1  # -1ms pour éviter les doublons
+                else:
+                    # Première requête, pas d'endTime
+                    end_time = None
+                
+                # Faire la requête
+                batch_klines = await self._fetch_klines_batch(
+                    symbol, timeframe, current_limit, end_time
+                )
+                
+                if not batch_klines:
+                    logger.warning(f"Pas de données reçues pour {symbol} {timeframe}")
+                    break
+                
+                # Ajouter au début (ordre chronologique inverse)
+                all_klines = batch_klines + all_klines
+                
+                # Log de progression
+                logger.debug(f"📊 {symbol} {timeframe}: {len(all_klines)}/{limit} points récupérés")
+                
+                # Pause pour éviter la limite de taux
+                await asyncio.sleep(0.1)
+                
+                # Si on a reçu moins que demandé, on a atteint la fin
+                if len(batch_klines) < current_limit:
+                    break
+            
+            # Trier par timestamp pour être sûr de l'ordre chronologique
+            all_klines.sort(key=lambda x: x[0])
+            
+            logger.info(f"📚 {symbol} {timeframe}: {len(all_klines)} klines historiques récupérées")
+            return all_klines
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération historique {symbol} {timeframe}: {e}")
+            return []
+    
+    async def _fetch_klines_batch(self, symbol: str, timeframe: str, limit: int, end_time: Optional[int] = None) -> List:
+        """Récupère un batch de klines avec gestion de l'endTime"""
+        try:
+            params = {
+                'symbol': symbol,
+                'interval': timeframe,
+                'limit': limit
+            }
+            
+            if end_time:
+                params['endTime'] = end_time
+            
+            url = f"{self.base_url}{self.klines_endpoint}"
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, params=params, timeout=15) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    else:
+                        logger.error(f"❌ API Binance error {response.status} pour {symbol} {timeframe}")
+                        return []
+                        
+        except Exception as e:
+            logger.error(f"❌ Erreur fetch batch {symbol} {timeframe}: {e}")
+            return []
+    
+    async def _enrich_historical_batch(self, klines: List, symbol: str, timeframe: str) -> List[Dict]:
+        """
+        Enrichit les données historiques avec approche vectorisée optimisée.
+        
+        Args:
+            klines: Liste des klines historiques brutes
+            symbol: Symbole de trading
+            timeframe: Timeframe des données
+            
+        Returns:
+            Liste des points enrichis avec indicateurs
+        """
+        enriched_points = []
+        
+        try:
+            logger.info(f"🚀 Enrichissement vectorisé de {len(klines)} points pour {symbol} {timeframe}")
+            
+            # **OPTIMISATION**: Calculer les indicateurs une seule fois pour tout le dataset
+            latest_indicators = {}
+            if len(klines) >= 20:
+                try:
+                    latest_indicators = await self._process_ultra_enriched_klines(klines, symbol, timeframe)
+                    logger.debug(f"Indicateurs calculés pour {symbol} {timeframe}")
+                except Exception as e:
+                    logger.warning(f"Erreur calcul indicateurs pour {symbol} {timeframe}: {e}")
+            
+            # Créer un point enrichi pour chaque kline avec ses vraies valeurs OHLCV
+            for i, kline in enumerate(klines):
+                enriched_point = {
+                    'symbol': symbol,
+                    'interval': timeframe,
+                    'start_time': kline[0],  # Utiliser start_time pour compatibilité avec dispatcher
+                    'open_time': kline[0],
+                    'close_time': kline[6],
+                    'open': float(kline[1]),
+                    'high': float(kline[2]),
+                    'low': float(kline[3]),
+                    'close': float(kline[4]),  # **FIX**: Utiliser la vraie valeur de fermeture de cette kline
+                    'volume': float(kline[5]),
+                    'is_closed': True,
+                    'is_historical': True,
+                    'enhanced': True,
+                    'ultra_enriched': True
+                }
+                
+                # Ajouter les indicateurs seulement aux derniers points (les plus récents ont les meilleurs indicateurs)
+                if i >= len(klines) - 50 and latest_indicators:
+                    for key, value in latest_indicators.items():
+                        if key not in ['symbol', 'timeframe', 'enhanced', 'ultra_enriched', 'close', 'volume', 'timestamp', 'last_update']:
+                            if isinstance(value, (int, float)):
+                                enriched_point[key] = value
+                
+                enriched_points.append(enriched_point)
+            
+            logger.info(f"✨ {symbol} {timeframe}: {len(enriched_points)} points enrichis")
+            return enriched_points
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur enrichissement vectorisé {symbol} {timeframe}: {e}")
+            # En cas d'erreur, retourner au moins les données de base
+            basic_points = []
+            for kline in klines:
+                basic_point = {
+                    'symbol': symbol,
+                    'interval': timeframe,
+                    'start_time': kline[0],  # start_time pour dispatcher
+                    'open_time': kline[0],
+                    'close_time': kline[6],
+                    'open': float(kline[1]),
+                    'high': float(kline[2]),
+                    'low': float(kline[3]),
+                    'close': float(kline[4]),  # **FIX**: Vraie valeur de fermeture
+                    'volume': float(kline[5]),
+                    'is_closed': True,
+                    'is_historical': True
+                }
+                basic_points.append(basic_point)
+            return basic_points
+
+    async def _process_historical_klines(self, klines: List, symbol: str, timeframe: str) -> Dict:
+        """Traite et enrichit un batch de klines historiques"""
+        try:
+            if not klines:
+                return {}
+            
+            # Prendre la dernière kline comme données actuelles (plus récente)
+            latest_kline = klines[-1]
+            
+            # Traiter comme une kline normale pour obtenir les indicateurs
+            enriched_data = await self._process_ultra_enriched_klines(klines, symbol, timeframe)
+            
+            # Ajouter les métadonnées historiques
+            enriched_data.update({
+                'symbol': symbol,
+                'timeframe': timeframe,
+                'historical_count': len(klines),
+                'oldest_timestamp': klines[0][0],
+                'newest_timestamp': klines[-1][0],
+                'is_historical': True
+            })
+            
+            return enriched_data
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur traitement historique {symbol} {timeframe}: {e}")
             return {}
 
 # Point d'entrée pour test standalone

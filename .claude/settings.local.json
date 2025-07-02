@@ -11,7 +11,10 @@
       "Bash(rg:*)",
       "Bash(ls:*)",
       "Bash(docker-compose logs:*)",
-      "Bash(docker stats:*)"
+      "Bash(docker stats:*)",
+      "Bash(mkdir:*)",
+      "Bash(echo:*)",
+      "Bash(docker-compose exec:*)"
     ],
     "deny": []
   }

@@ -7,8 +7,6 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 import numpy as np
 import pandas as pd
-import talib
-
 # Importer les modules partagés
 import sys
 import os
@@ -17,6 +15,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 from shared.src.config import get_strategy_param
 from shared.src.enums import OrderSide
 from shared.src.schemas import StrategySignal
+from shared.src.technical_indicators import calculate_bollinger_bands, calculate_ema
 
 from .base_strategy import BaseStrategy
 
@@ -77,19 +76,17 @@ class BollingerStrategy(BaseStrategy):
         Returns:
             Tuple (upper, middle, lower) des bandes de Bollinger
         """
-        # Utiliser TA-Lib pour calculer les bandes de Bollinger
+        # Utiliser le module partagé pour calculer les bandes de Bollinger
         try:
-            upper, middle, lower = talib.BBANDS(
+            upper, middle, lower = calculate_bollinger_bands(
                 prices, 
-                timeperiod=self.window,
-                nbdevup=self.num_std,
-                nbdevdn=self.num_std,
-                matype=0  # Simple Moving Average
+                window=self.window,
+                num_std=self.num_std
             )
             return upper, middle, lower
         except Exception as e:
             logger.error(f"Erreur lors du calcul des bandes de Bollinger: {str(e)}")
-            # Implémenter un calcul manuel de secours en cas d'erreur TA-Lib
+            # Implémenter un calcul manuel de secours en cas d'erreur
             return self._calculate_bollinger_manually(prices)
     
     def _calculate_bollinger_manually(self, prices: np.ndarray) -> tuple:
@@ -312,8 +309,8 @@ class BollingerStrategy(BaseStrategy):
             if len(prices) < 30:
                 return 0.7  # Score neutre si pas assez de données
             
-            # Calculer RSI
-            rsi = talib.RSI(prices, timeperiod=14)
+            # Calculer RSI avec le calcul manuel depuis advanced_filters_mixin
+            rsi = self._calculate_rsi_manually(prices, period=14)
             if np.all(np.isnan(rsi[-10:])):
                 return 0.7
             
@@ -595,8 +592,8 @@ class BollingerStrategy(BaseStrategy):
             prices = df['close'].values
             
             # Calculer EMA 21 vs EMA 50 (harmonisé avec signal_aggregator)
-            ema_21 = talib.EMA(prices, timeperiod=21)
-            ema_50 = talib.EMA(prices, timeperiod=50)
+            ema_21 = calculate_ema(prices, window=21)
+            ema_50 = calculate_ema(prices, window=50)
             
             if np.isnan(ema_21[-1]) or np.isnan(ema_50[-1]):
                 return None

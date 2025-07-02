@@ -4,8 +4,8 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Optional
 from datetime import datetime, timedelta
-import ta
 import json
+from shared.src.technical_indicators import TechnicalIndicators
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +15,7 @@ class RegimeDetector:
     
     def __init__(self, redis_client):
         self.redis = redis_client
+        self.indicators = TechnicalIndicators()
         
         # ADX thresholds
         self.adx_trend_threshold = 25  # Above this = trending market
@@ -66,34 +67,29 @@ class RegimeDetector:
             df['low'] = df['low'].astype(float)
             df['close'] = df['close'].astype(float)
             
-            # Calculate ADX
-            adx = ta.trend.ADXIndicator(
-                high=df['high'],
-                low=df['low'],
-                close=df['close'],
-                window=14
-            )
-            current_adx = adx.adx().iloc[-1]
+            # Convertir en listes pour les indicateurs
+            highs = df['high'].values.tolist()
+            lows = df['low'].values.tolist()
+            closes = df['close'].values.tolist()
             
-            # Calculate Bollinger Band width
-            bb = ta.volatility.BollingerBands(
-                close=df['close'],
-                window=20,
-                window_dev=2
-            )
-            bb_width = (bb.bollinger_hband() - bb.bollinger_lband()) / bb.bollinger_mavg()
-            current_bb_width = bb_width.iloc[-1]
+            # Calculate ADX using shared module
+            current_adx, _, _ = self.indicators.calculate_adx(highs, lows, closes, 14)
+            if current_adx is None:
+                return "UNDEFINED"
             
-            # Calculate ATR/SMA ratio
-            atr = ta.volatility.AverageTrueRange(
-                high=df['high'],
-                low=df['low'],
-                close=df['close'],
-                window=14
-            )
-            sma = ta.trend.SMAIndicator(close=df['close'], window=20)
-            atr_sma_ratio = atr.average_true_range() / sma.sma_indicator()
-            current_atr_ratio = atr_sma_ratio.iloc[-1]
+            # Calculate Bollinger Band width using shared module
+            bb_data = self.indicators.calculate_bollinger_bands(closes, 20, 2.0)
+            if bb_data['bb_width'] is None:
+                return "UNDEFINED"
+            current_bb_width = bb_data['bb_width']
+            
+            # Calculate ATR/SMA ratio using shared module
+            current_atr = self.indicators.calculate_atr(highs, lows, closes, 14)
+            current_sma = self.indicators.calculate_sma(closes, 20)
+            if current_atr is None or current_sma is None or current_sma == 0:
+                current_atr_ratio = 0.0
+            else:
+                current_atr_ratio = current_atr / current_sma
             
             # Determine regime
             regime_score = 0
@@ -193,25 +189,29 @@ class RegimeDetector:
             elif volatility_24h > self.volatility_danger_threshold * 0.5:
                 danger_score += 1.0
                 
-            # 2. RSI extremes
-            rsi = ta.momentum.RSIIndicator(close=df['close'], window=14)
-            current_rsi = rsi.rsi().iloc[-1]
+            # 2. RSI extremes using shared module
+            current_rsi = self.indicators.calculate_rsi(closes, 14)
+            if current_rsi is None:
+                current_rsi = 50  # Neutral default
             
             if current_rsi < self.rsi_oversold_threshold or current_rsi > self.rsi_overbought_threshold:
                 danger_score += 2.0
             elif current_rsi < 35 or current_rsi > 65:
                 danger_score += 1.0
                 
-            # 3. Price trend (MA direction)
-            ma_25 = ta.trend.SMAIndicator(close=df['close'], window=25).sma_indicator()
-            ma_99 = ta.trend.SMAIndicator(close=df['close'], window=99).sma_indicator()
+            # 3. Price trend (MA direction) using shared module
+            ma_25_current = self.indicators.calculate_sma(closes, 25)
+            ma_99_current = self.indicators.calculate_sma(closes, 99)
             
-            if len(ma_99) > 0:
-                ma_25_current = ma_25.iloc[-1]
-                ma_99_current = ma_99.iloc[-1]
-                ma_25_prev = ma_25.iloc[-10]
-                ma_99_prev = ma_99.iloc[-10]
-                
+            # Pour les valeurs précédentes, utiliser des sous-ensembles
+            if len(closes) > 10:
+                ma_25_prev = self.indicators.calculate_sma(closes[:-10], 25)
+                ma_99_prev = self.indicators.calculate_sma(closes[:-10], 99)
+            else:
+                ma_25_prev = ma_25_current
+                ma_99_prev = ma_99_current
+            
+            if ma_25_current is not None and ma_99_current is not None and ma_25_prev is not None and ma_99_prev is not None:
                 # Bearish divergence = dangerous
                 if ma_25_current < ma_99_current and ma_25_prev > ma_99_prev:
                     danger_score += 2.5

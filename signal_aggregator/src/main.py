@@ -167,8 +167,8 @@ class SignalAggregatorService:
             symbols = ['BTCUSDC', 'ETHUSDC', 'SOLUSDC', 'XRPUSDC']
             
             for symbol in symbols:
-                # Charger les données de marché 1m (timeframe principal)
-                redis_key = f"market_data:{symbol}:1m"
+                # Charger les données de marché 5m (timeframe principal harmonisé)
+                redis_key = f"market_data:{symbol}:5m"
                 
                 try:
                     raw_data = self.redis.get(redis_key)

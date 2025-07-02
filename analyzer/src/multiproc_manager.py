@@ -349,7 +349,8 @@ class AnalyzerManager:
             
             # Calcul vectorisé des indicateurs avec cache
             if OPTIMIZATIONS_AVAILABLE:
-                indicators = VectorizedIndicators.compute_all_indicators(df, symbol)
+                vectorized_calc = VectorizedIndicators()
+                indicators = vectorized_calc.compute_all_indicators(df, symbol)
                 logger.debug(f"📊 Calcul vectorisé de {len(indicators)} indicateurs pour {symbol}")
                 
                 # Utiliser les indicateurs pré-calculés pour accélérer les stratégies

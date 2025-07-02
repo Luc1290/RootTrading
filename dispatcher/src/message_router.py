@@ -11,6 +11,7 @@ from typing import Dict, Any, List, Optional, Tuple
 
 from shared.src.config import SYMBOLS
 from shared.src.redis_client import RedisClient
+from dispatcher.src.database_persister import DatabasePersister
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
@@ -32,6 +33,10 @@ class MessageRouter:
         
         # Client Redis dédié pour les messages haute priorité
         self.high_priority_redis = RedisClient()
+        
+        # Ajout du persister pour sauvegarder en base
+        self.db_persister = DatabasePersister()
+        self.db_persister.start_persister()
         
         # Préfixe pour les canaux Redis
         self.redis_prefix = "roottrading"
@@ -397,6 +402,16 @@ class MessageRouter:
             # Marquer comme vu
             self._dedup_cache[dedup_key] = now
             # ----------------------------------------------------
+            
+            # === PERSISTANCE EN BASE DE DONNÉES ===
+            # Sauvegarder les données de marché en base
+            if topic.startswith("market.data") and self.db_persister:
+                try:
+                    self.db_persister.save_market_data(topic, message)
+                    logger.debug(f"💾 Données sauvées: {topic}")
+                except Exception as e:
+                    logger.error(f"❌ Erreur sauvegarde base: {e}")
+            # =====================================
             
             # Déterminer la priorité si non spécifiée
             if priority is None:

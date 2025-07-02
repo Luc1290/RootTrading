@@ -2,11 +2,12 @@
 import logging
 import pandas as pd
 import numpy as np
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 from datetime import datetime, timedelta
-import ta
 import json
 from enum import Enum
+from shared.src.technical_indicators import TechnicalIndicators
+from db_manager import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,9 @@ class EnhancedRegimeDetector:
     
     def __init__(self, redis_client):
         self.redis = redis_client
+        self.indicators = TechnicalIndicators()
+        self.db_manager = DatabaseManager()
+        self.db_initialized = False
         
         # ADX thresholds (plus nuancés)
         self.adx_no_trend = 20
@@ -50,6 +54,62 @@ class EnhancedRegimeDetector:
         self.volume_surge_multiplier = 2.0
         self.volume_decline_multiplier = 0.5
         
+    def initialize_db_sync(self):
+        """Initialise la connexion à la base de données de manière synchrone"""
+        # Ne pas essayer d'initialiser de manière synchrone - laisser l'initialisation async se faire
+        if not self.db_initialized:
+            logger.info("📋 DB sera initialisée lors du premier accès async")
+            # Marquer comme "prêt" pour l'initialisation différée
+            return True
+        return self.db_initialized
+    
+    async def initialize_db(self):
+        """Version async pour compatibilité"""
+        if not self.db_initialized:
+            self.db_initialized = await self.db_manager.initialize()
+            if self.db_initialized:
+                logger.info("✅ Enhanced Regime Detector: DB connectée pour données enrichies")
+            else:
+                logger.warning("⚠️ Enhanced Regime Detector: Fallback vers Redis")
+        return self.db_initialized
+        
+    def get_detailed_regime_sync(self, symbol: str) -> Tuple[MarketRegime, Dict[str, float]]:
+        """
+        Version synchrone pour obtenir le régime de marché détaillé
+        
+        Returns:
+            Tuple (regime, metrics_dict)
+        """
+        try:
+            # Vérifier le cache d'abord
+            cache_key = f"detailed_regime:{symbol}"
+            cached = self.redis.get(cache_key)
+            
+            if cached:
+                # Handle both string and dict cases
+                if isinstance(cached, str):
+                    regime_data = json.loads(cached)
+                else:
+                    regime_data = cached
+                return MarketRegime(regime_data['regime']), regime_data['metrics']
+            
+            # Calculer si pas en cache (version sync)
+            regime, metrics = self._calculate_detailed_regime_sync(symbol)
+            
+            # Mettre en cache pour 1 minute
+            cache_data = {
+                'regime': regime.value,
+                'metrics': metrics,
+                'timestamp': datetime.now().isoformat()
+            }
+            self.redis.set(cache_key, json.dumps(cache_data), expiration=60)
+            
+            return regime, metrics
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération régime détaillé sync pour {symbol}: {e}")
+            return MarketRegime.UNDEFINED, {}
+
     async def get_detailed_regime(self, symbol: str) -> Tuple[MarketRegime, Dict[str, float]]:
         """
         Obtient le régime de marché détaillé avec les métriques
@@ -91,10 +151,208 @@ class EnhancedRegimeDetector:
             logger.error(f"Erreur détection régime pour {symbol}: {e}")
             return MarketRegime.UNDEFINED, {}
     
+    async def _calculate_detailed_regime_async(self, symbol: str) -> Tuple[MarketRegime, Dict[str, float]]:
+        """Version async pour calculer le régime détaillé avec données enrichies"""
+        try:
+            # Essayer d'utiliser la DB d'abord
+            if await self.initialize_db():
+                return await self._calculate_regime_from_enriched_data_async(symbol)
+            else:
+                # Fallback vers Redis si DB non disponible
+                return self._calculate_regime_from_redis_sync(symbol)
+        except Exception as e:
+            logger.error(f"❌ Erreur calcul régime détaillé pour {symbol}: {e}")
+            return MarketRegime.UNDEFINED, {}
+    
+    async def _calculate_regime_from_enriched_data_async(self, symbol: str) -> Tuple[MarketRegime, Dict[str, float]]:
+        """Calcule le régime en utilisant les données pré-enrichies de la DB (version async)"""
+        try:
+            # Récupérer les données enrichies de manière asynchrone
+            candles = await self.db_manager.get_enriched_market_data(
+                symbol=symbol,
+                interval="5m",  # Standardisé sur 5m
+                limit=100,
+                include_indicators=True
+            )
+            
+            if not candles or len(candles) < 20:
+                logger.warning(f"⚠️ Pas assez de données enrichies pour {symbol}, fallback Redis")
+                return self._calculate_regime_from_redis_sync(symbol)
+            
+            # Extraire les indicateurs pré-calculés
+            latest = candles[-1]
+            
+            # Vérifier la disponibilité des indicateurs essentiels
+            if not all(key in latest for key in ['rsi_14', 'bb_width', 'atr_14']):
+                logger.warning(f"⚠️ Indicateurs manquants dans DB pour {symbol}, fallback Redis")
+                return self._calculate_regime_from_redis_sync(symbol)
+            
+            # Extraire les valeurs des indicateurs
+            current_rsi = latest.get('rsi_14', 50)
+            current_bb_width = latest.get('bb_width', 0.02)
+            current_atr = latest.get('atr_14', 0)
+            current_close = latest.get('close', 0)
+            current_volume = latest.get('volume', 0)
+            volume_ratio = latest.get('volume_ratio', 1.0)
+            
+            # Calculs additionnels si ADX disponible dans DB
+            current_adx = latest.get('adx_14')
+            if current_adx is None:
+                # Calculer ADX si pas disponible
+                close_prices = [c['close'] for c in candles[-14:]]
+                high_prices = [c['high'] for c in candles[-14:]]
+                low_prices = [c['low'] for c in candles[-14:]]
+                current_adx, _, _ = self.indicators.calculate_adx(high_prices, low_prices, close_prices, 14)
+                if current_adx is None:
+                    current_adx = 20  # Valeur par défaut
+            
+            # Détection du régime avec données enrichies
+            regime_score = 0.0
+            confidence = 0.0
+            
+            # 1. ADX - Force de tendance (poids principal)
+            if current_adx > self.adx_strong_trend:
+                regime_score += 3.0
+                confidence += 0.4
+            elif current_adx > self.adx_trend:
+                regime_score += 2.0
+                confidence += 0.3
+            elif current_adx > self.adx_weak_trend:
+                regime_score += 1.0
+                confidence += 0.2
+            elif current_adx < self.adx_no_trend:
+                regime_score -= 1.0
+                confidence += 0.15
+            
+            # 2. Bollinger Bands - Volatilité et compression
+            if current_bb_width < self.bb_squeeze_tight:
+                regime_score -= 2.0  # Compression très serrée = range
+                confidence += 0.3
+            elif current_bb_width < self.bb_squeeze_normal:
+                regime_score -= 1.0  # Compression normale = range modéré
+                confidence += 0.2
+            elif current_bb_width > self.bb_expansion:
+                regime_score += 1.5  # Expansion = tendance
+                confidence += 0.25
+            
+            # 3. Volume - Confirmation de mouvement
+            if volume_ratio > self.volume_surge_multiplier:
+                regime_score += 1.0  # Volume élevé = mouvement significatif
+                confidence += 0.15
+            elif volume_ratio < self.volume_decline_multiplier:
+                regime_score -= 0.5  # Volume faible = range possible
+                confidence += 0.1
+            
+            # 4. ATR/Price ratio - Volatilité normalisée
+            if current_close > 0:
+                atr_ratio = current_atr / current_close
+                if atr_ratio > 0.03:  # 3% volatilité = tendance
+                    regime_score += 1.0
+                    confidence += 0.15
+                elif atr_ratio < 0.01:  # < 1% volatilité = range
+                    regime_score -= 0.5
+                    confidence += 0.1
+            
+            # 5. RSI - Momentum et retournements
+            if 40 <= current_rsi <= 60:
+                # RSI neutre = incertitude ou consolidation
+                regime_score -= 0.5
+                confidence += 0.1
+            elif current_rsi < 30 or current_rsi > 70:
+                # RSI extrême = possibilité de retournement
+                regime_score += 0.5  # Peut être début de tendance
+                confidence += 0.15
+            
+            # Détermination du régime final
+            if regime_score >= 3.0 and confidence >= 0.7:
+                if current_adx > self.adx_strong_trend:
+                    regime = MarketRegime.STRONG_TREND_UP if latest.get('bb_position', 0.5) > 0.6 else MarketRegime.STRONG_TREND_DOWN
+                else:
+                    regime = MarketRegime.TREND_UP if latest.get('bb_position', 0.5) > 0.5 else MarketRegime.TREND_DOWN
+            elif regime_score >= 1.5:
+                regime = MarketRegime.WEAK_TREND_UP if latest.get('bb_position', 0.5) > 0.5 else MarketRegime.WEAK_TREND_DOWN
+            elif regime_score <= -1.5:
+                if current_bb_width < self.bb_squeeze_tight:
+                    regime = MarketRegime.RANGE_TIGHT
+                else:
+                    regime = MarketRegime.RANGE_VOLATILE
+            else:
+                regime = MarketRegime.UNDEFINED
+            
+            # Métriques détaillées
+            metrics = {
+                'adx': current_adx,
+                'rsi': current_rsi,
+                'bb_width': current_bb_width,
+                'bb_position': latest.get('bb_position', 0.5),
+                'atr': current_atr,
+                'volume_ratio': volume_ratio,
+                'regime_score': regime_score,
+                'confidence': confidence,
+                'data_source': 'enriched_db'
+            }
+            
+            logger.info(f"✅ Régime calculé depuis DB enrichie pour {symbol}: {regime.value} "
+                       f"(score={regime_score:.1f}, conf={confidence:.1f}, ADX={current_adx:.1f})")
+            
+            return regime, metrics
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur calcul régime depuis DB enrichie pour {symbol}: {e}")
+            return self._calculate_regime_from_redis_sync(symbol)
+    
+    def _calculate_regime_from_redis_sync(self, symbol: str) -> Tuple[MarketRegime, Dict[str, float]]:
+        """Fallback vers Redis pour calculer le régime (version sync)"""
+        try:
+            # Récupérer les données depuis Redis
+            key = f"market_data:{symbol}:5m"
+            market_data = self.redis.get(key)
+            
+            if not market_data:
+                logger.warning(f"⚠️ Aucune donnée Redis trouvée pour {symbol}")
+                return MarketRegime.UNDEFINED, {'data_source': 'redis_fallback', 'error': 'no_data'}
+            
+            # Parser les données
+            if isinstance(market_data, str):
+                data = json.loads(market_data)
+            else:
+                data = market_data
+            
+            # Utiliser les indicateurs Redis s'ils existent
+            current_rsi = data.get('rsi', 50)
+            current_adx = data.get('adx', 25)
+            current_bb_width = data.get('bb_width', 0.025)
+            
+            # Calcul simplifié du régime
+            if current_adx > 35:
+                regime = MarketRegime.TREND_UP if current_rsi > 50 else MarketRegime.TREND_DOWN
+            elif current_bb_width < 0.015:
+                regime = MarketRegime.RANGE_TIGHT
+            else:
+                regime = MarketRegime.UNDEFINED
+            
+            metrics = {
+                'adx': current_adx,
+                'rsi': current_rsi, 
+                'bb_width': current_bb_width,
+                'data_source': 'redis_fallback'
+            }
+            
+            logger.info(f"📊 Régime calculé depuis Redis pour {symbol}: {regime.value}")
+            return regime, metrics
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur calcul régime depuis Redis pour {symbol}: {e}")
+            return MarketRegime.UNDEFINED, {'data_source': 'error', 'error': str(e)}
+
     async def _calculate_detailed_regime(self, symbol: str) -> Tuple[MarketRegime, Dict[str, float]]:
         """Calcul détaillé du régime avec multiples indicateurs"""
         try:
-            # Récupérer les données
+            # Utiliser la nouvelle logique unifiée
+            return await self._calculate_detailed_regime_async(symbol)
+        except Exception as e:
+            logger.error(f"❌ Erreur calcul régime détaillé pour {symbol}: {e}")
+            # Fallback vers l'ancienne méthode Redis
             candles = await self._get_recent_candles(symbol, limit=100)
             
             if not candles or len(candles) < 50:
@@ -106,43 +364,40 @@ class EnhancedRegimeDetector:
             df['close'] = df['close'].astype(float)
             df['volume'] = df['volume'].astype(float)
             
-            # 1. ADX pour la force de tendance - TOUJOURS calculer les DI correctement
-            adx_indicator = ta.trend.ADXIndicator(
-                high=df['high'],
-                low=df['low'],
-                close=df['close'],
-                window=14
-            )
-            current_adx = adx_indicator.adx().iloc[-1]
-            plus_di = adx_indicator.adx_pos().iloc[-1]
-            minus_di = adx_indicator.adx_neg().iloc[-1]
+            # Convertir en listes pour les indicateurs
+            highs = df['high'].values.tolist()
+            lows = df['low'].values.tolist()
+            closes = df['close'].values.tolist()
+            volumes = df['volume'].values.tolist()
+            
+            # 1. ADX pour la force de tendance
+            current_adx, plus_di, minus_di = self.indicators.calculate_adx(highs, lows, closes, 14)
             
             # Vérifier si les valeurs sont valides
-            if pd.isna(current_adx) or pd.isna(plus_di) or pd.isna(minus_di):
+            if current_adx is None or plus_di is None or minus_di is None:
                 logger.warning(f"ADX/DI non valides pour {symbol}: ADX={current_adx}, +DI={plus_di}, -DI={minus_di}")
                 return MarketRegime.UNDEFINED, {}
             
             # 2. Bollinger Bands pour la volatilité
-            bb = ta.volatility.BollingerBands(
-                close=df['close'],
-                window=20,
-                window_dev=2
-            )
-            bb_width = (bb.bollinger_hband() - bb.bollinger_lband()) / bb.bollinger_mavg()
-            current_bb_width = bb_width.iloc[-1]
-            
-            # Position du prix dans les bandes
-            bb_position = (df['close'].iloc[-1] - bb.bollinger_lband().iloc[-1]) / (
-                bb.bollinger_hband().iloc[-1] - bb.bollinger_lband().iloc[-1]
-            )
+            bb_data = self.indicators.calculate_bollinger_bands(closes, 20, 2.0)
+            if bb_data['bb_upper'] is None or bb_data['bb_lower'] is None or bb_data['bb_middle'] is None:
+                logger.warning(f"Bollinger Bands non valides pour {symbol}")
+                return MarketRegime.UNDEFINED, {}
+                
+            # Calculer la largeur des bandes et la position
+            current_bb_width = bb_data['bb_width']
+            bb_position = bb_data['bb_position']
             
             # 3. RSI pour le momentum
-            rsi = ta.momentum.RSIIndicator(close=df['close'], window=14)
-            current_rsi = rsi.rsi().iloc[-1]
+            current_rsi = self.indicators.calculate_rsi(closes, 14)
+            if current_rsi is None:
+                logger.warning(f"RSI non valide pour {symbol}")
+                return MarketRegime.UNDEFINED, {}
             
             # 4. ROC (Rate of Change) pour le momentum directionnel
-            roc = ta.momentum.ROCIndicator(close=df['close'], window=10)
-            current_roc = roc.roc().iloc[-1]
+            current_roc = self.indicators.calculate_roc(closes, 10)
+            if current_roc is None:
+                current_roc = 0.0
             
             # 5. Volume analysis
             avg_volume = df['volume'].rolling(20).mean().iloc[-1]
@@ -468,6 +723,200 @@ class EnhancedRegimeDetector:
     def set_market_data_accumulator(self, accumulator) -> None:
         """Définit l'accumulateur de données de marché"""
         self.market_data_accumulator = accumulator
+
+    async def _get_enriched_candles_from_db(self, symbol: str, limit: int = 100) -> List[Dict]:
+        """Récupère les données enrichies depuis la base de données"""
+        try:
+            if not self.db_manager or not self.db_initialized:
+                return []
+            
+            # Récupérer les données enrichies avec tous les indicateurs
+            candles = await self.db_manager.get_enriched_market_data(
+                symbol=symbol,
+                interval="5m",  # Standardisé sur 5m pour cohérence système
+                limit=limit,
+                include_indicators=True
+            )
+            
+            if not candles:
+                logger.debug(f"Aucune donnée enrichie trouvée pour {symbol}")
+                return []
+            
+            # Vérifier que les données sont récentes (moins de 5 minutes)
+            is_fresh = await self.db_manager.check_data_freshness(symbol, max_age_minutes=5)
+            if not is_fresh:
+                logger.warning(f"⚠️ Données enrichies {symbol} trop anciennes, utiliser Redis")
+                return []
+            
+            logger.info(f"📊 Données enrichies DB récupérées pour {symbol}: {len(candles)} points")
+            return candles
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération données enrichies {symbol}: {e}")
+            return []
+    
+    async def _calculate_regime_from_enriched_data(self, symbol: str, candles: List[Dict]) -> Tuple[MarketRegime, Dict[str, float]]:
+        """Calcule le régime en utilisant les données pré-enrichies de la DB"""
+        try:
+            if not candles or len(candles) < 50:
+                return MarketRegime.UNDEFINED, {}
+            
+            # Utiliser les indicateurs pré-calculés au lieu de les recalculer
+            latest_candle = candles[-1]
+            
+            # Extraire les indicateurs pré-calculés
+            current_rsi = latest_candle.get('rsi_14')
+            bb_upper = latest_candle.get('bb_upper')
+            bb_lower = latest_candle.get('bb_lower')
+            bb_middle = latest_candle.get('bb_middle')
+            bb_width = latest_candle.get('bb_width')
+            bb_position = latest_candle.get('bb_position')
+            current_close = latest_candle['close']
+            
+            # Calculer les indicateurs manquants (ADX, ROC) avec le module partagé
+            # Extraire les séries de prix pour les calculs manquants
+            highs = [c['high'] for c in candles]
+            lows = [c['low'] for c in candles]
+            closes = [c['close'] for c in candles]
+            volumes = [c['volume'] for c in candles]
+            
+            # ADX et DI (pas encore dans la DB)
+            current_adx, plus_di, minus_di = self.indicators.calculate_adx(highs, lows, closes, 14)
+            
+            # ROC (pas encore dans la DB)
+            current_roc = self.indicators.calculate_roc(closes, 10)
+            if current_roc is None:
+                current_roc = 0.0
+            
+            # Vérifier que nous avons les indicateurs essentiels
+            if current_rsi is None or bb_width is None or current_adx is None:
+                logger.warning(f"⚠️ Indicateurs manquants pour {symbol}, fallback calcul complet")
+                # Fallback vers calcul complet
+                return await self._calculate_regime_from_raw_data(candles)
+            
+            # Volume analysis
+            avg_volume = sum(volumes[-20:]) / min(20, len(volumes)) if volumes else 1.0
+            current_volume = volumes[-1] if volumes else 1.0
+            volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
+            
+            # Trend slope (régression linéaire sur 20 périodes)
+            recent_closes = closes[-20:] if len(closes) >= 20 else closes
+            if len(recent_closes) >= 10:
+                x = np.arange(len(recent_closes))
+                slope, _ = np.polyfit(x, recent_closes, 1)
+                trend_angle = np.degrees(np.arctan(slope / np.mean(recent_closes) * 100))
+            else:
+                trend_angle = 0.0
+            
+            # Analyse des supports/résistances
+            pivot_high_count = self._count_pivots([c['high'] for c in candles[-50:]], is_high=True)
+            pivot_low_count = self._count_pivots([c['low'] for c in candles[-50:]], is_low=True)
+            
+            # Compiler les métriques
+            metrics = {
+                'adx': current_adx,
+                'plus_di': plus_di,
+                'minus_di': minus_di,
+                'bb_width': bb_width,
+                'bb_position': bb_position,
+                'rsi': current_rsi,
+                'roc': current_roc,
+                'volume_ratio': volume_ratio,
+                'trend_angle': trend_angle,
+                'pivot_count': pivot_high_count + pivot_low_count
+            }
+            
+            # Déterminer le régime
+            regime = self._determine_regime(metrics)
+            
+            logger.info(f"📊 Régime {symbol} (DB enrichie): {regime.value} | ADX={current_adx:.1f}, "
+                       f"+DI={plus_di:.1f}, -DI={minus_di:.1f}, ROC={current_roc:.1f}%, "
+                       f"RSI={current_rsi:.1f}, Angle={trend_angle:.1f}°")
+            
+            return regime, metrics
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur calcul régime depuis données enrichies: {e}")
+            return MarketRegime.UNDEFINED, {}
+    
+    async def _calculate_regime_from_raw_data(self, candles: List[Dict]) -> Tuple[MarketRegime, Dict[str, float]]:
+        """Fallback: calcule le régime depuis les données brutes (ancienne méthode)"""
+        try:
+            df = pd.DataFrame(candles)
+            df['high'] = df['high'].astype(float)
+            df['low'] = df['low'].astype(float)
+            df['close'] = df['close'].astype(float)
+            df['volume'] = df['volume'].astype(float)
+            
+            # Convertir en listes pour les indicateurs
+            highs = df['high'].values.tolist()
+            lows = df['low'].values.tolist()
+            closes = df['close'].values.tolist()
+            volumes = df['volume'].values.tolist()
+            
+            # Calculs complets avec le module partagé (ancienne logique)
+            current_adx, plus_di, minus_di = self.indicators.calculate_adx(highs, lows, closes, 14)
+            
+            if current_adx is None or plus_di is None or minus_di is None:
+                logger.warning(f"ADX/DI non valides fallback")
+                return MarketRegime.UNDEFINED, {}
+            
+            bb_data = self.indicators.calculate_bollinger_bands(closes, 20, 2.0)
+            if bb_data['bb_upper'] is None:
+                logger.warning(f"Bollinger Bands non valides fallback")
+                return MarketRegime.UNDEFINED, {}
+                
+            current_bb_width = bb_data['bb_width']
+            bb_position = bb_data['bb_position']
+            
+            current_rsi = self.indicators.calculate_rsi(closes, 14)
+            if current_rsi is None:
+                logger.warning(f"RSI non valide fallback")
+                return MarketRegime.UNDEFINED, {}
+            
+            current_roc = self.indicators.calculate_roc(closes, 10)
+            if current_roc is None:
+                current_roc = 0.0
+            
+            # Volume analysis
+            avg_volume = df['volume'].rolling(20).mean().iloc[-1]
+            current_volume = df['volume'].iloc[-1]
+            volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
+            
+            # Trend slope
+            prices = df['close'].iloc[-20:].values
+            x = np.arange(len(prices))
+            slope, _ = np.polyfit(x, prices, 1)
+            trend_angle = np.degrees(np.arctan(slope / prices.mean() * 100))
+            
+            # Pivots
+            pivot_high_count = self._count_pivots(df['high'].values[-50:], is_high=True)
+            pivot_low_count = self._count_pivots(df['low'].values[-50:], is_low=True)
+            
+            metrics = {
+                'adx': current_adx,
+                'plus_di': plus_di,
+                'minus_di': minus_di,
+                'bb_width': current_bb_width,
+                'bb_position': bb_position,
+                'rsi': current_rsi,
+                'roc': current_roc,
+                'volume_ratio': volume_ratio,
+                'trend_angle': trend_angle,
+                'pivot_count': pivot_high_count + pivot_low_count
+            }
+            
+            regime = self._determine_regime(metrics)
+            
+            logger.info(f"📊 Régime {symbol} (fallback): {regime.value} | ADX={current_adx:.1f}, "
+                       f"+DI={plus_di:.1f}, -DI={minus_di:.1f}, ROC={current_roc:.1f}%, "
+                       f"RSI={current_rsi:.1f}, Angle={trend_angle:.1f}°")
+            
+            return regime, metrics
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur calcul régime fallback: {e}")
+            return MarketRegime.UNDEFINED, {}
 
     async def _get_recent_candles(self, symbol: str, limit: int = 100) -> list:
         """Récupère les données de marché historiques depuis l'accumulateur"""

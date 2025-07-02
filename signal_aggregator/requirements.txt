@@ -1,14 +1,8 @@
-confluent-kafka>=2.3.0
-asyncpg>=0.29.0
-redis>=5.0.0
-pandas>=2.0.0
-numpy>=1.24.0
-ta>=0.10.2
-pandas-ta>=0.3.14b0
-ta-lib==0.4.28  # Nécessite l'installation de TA-Lib C (voir https://github.com/TA-Lib/ta-lib-python)
-pydantic>=2.0.0
-PyYAML>=6.0
+# Requirements pour le service Signal Aggregator
+-r ../requirements-shared.txt
+# confluent-kafka, asyncpg, redis, pandas, numpy, ta-lib, pydantic, PyYAML, python-dotenv maintenant dans requirements-shared.txt
+# ta>=0.10.2  # Remplacé par shared.technical_indicators
+# pandas-ta>=0.3.14b0  # Non nécessaire si on utilise talib
 prometheus-client>=0.19.0
-python-dotenv>=1.0.0
 lz4>=4.0.0
 python-snappy>=0.6.0

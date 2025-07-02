@@ -172,6 +172,15 @@ async def main():
             # Créer l'UltraDataFetcher pour l'initialisation
             init_fetcher = UltraDataFetcher()
             
+            # **NOUVEAU**: Charger 5 jours de données historiques pour tous les timeframes
+            try:
+                logger.info(f"📚 Chargement de 5 jours de données historiques...")
+                await init_fetcher.load_historical_data(days=5)
+                logger.info(f"✅ Données historiques chargées avec succès")
+            except Exception as e:
+                logger.error(f"❌ Erreur chargement données historiques: {e}")
+                logger.warning(f"⚠️ Poursuite sans données historiques complètes")
+            
             # Exécuter un cycle d'initialisation pour remplir les caches Redis
             try:
                 await init_fetcher._fetch_initialization_data()

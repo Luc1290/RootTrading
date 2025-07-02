@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RootTrading - Visualisation</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #1a1a1a;
+            color: #ffffff;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+        }
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+            background-color: #2d2d2d;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .control-group label {
+            font-size: 12px;
+            color: #cccccc;
+        }
+        select, input, button {
+            padding: 8px 12px;
+            border: 1px solid #555;
+            border-radius: 4px;
+            background-color: #3d3d3d;
+            color: #ffffff;
+            font-size: 14px;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .chart-container {
+            margin-bottom: 30px;
+            background-color: #2d2d2d;
+            border-radius: 8px;
+            padding: 15px;
+        }
+        .chart-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #ffffff;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .status.success { background-color: #d4edda; color: #155724; }
+        .status.error { background-color: #f8d7da; color: #721c24; }
+        .status.info { background-color: #d1ecf1; color: #0c5460; }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+        }
+        
+        .websocket-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            z-index: 1000;
+        }
+        .ws-connected { background-color: #28a745; color: white; }
+        .ws-disconnected { background-color: #dc3545; color: white; }
+        .ws-connecting { background-color: #ffc107; color: black; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 RootTrading - Tableau de Bord</h1>
+            <p>Visualisation en temps réel des données de trading</p>
+        </div>
+
+        <div class="websocket-status" id="wsStatus">🔌 Déconnecté</div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="symbolSelect">Symbole</label>
+                <select id="symbolSelect" name="symbolSelect">
+                    <option value="BTCUSDT">BTC/USDT</option>
+                    <option value="ETHUSDT">ETH/USDT</option>
+                    <option value="ADAUSDT">ADA/USDT</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label>Indicateurs</label>
+                <select id="indicatorsSelect" multiple title="Indicateurs">
+                    <option value="sma">SMA</option>
+                    <option value="ema">EMA</option>
+                    <option value="rsi">RSI</option>
+                    <option value="macd">MACD</option>
+                    <option value="bollinger_bands">Bollinger Bands</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label>Période Performance</label>
+                <select id="periodSelect" title="Période Performance">
+                    <option value="1h">1 Heure</option>
+                    <option value="24h" selected>24 Heures</option>
+                    <option value="7d">7 Jours</option>
+                    <option value="30d">30 Jours</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label>Limite données</label>
+                <input type="number" id="limitInput" value="500" min="10" max="1000" title="Limite du nombre de données à afficher" placeholder="Entrez une limite (10-1000)">
+            </div>
+            
+            <button onclick="updateAllCharts()">🔄 Actualiser</button>
+            <button onclick="toggleWebSocket()" id="wsToggle">📡 WebSocket</button>
+        </div>
+
+        <div id="status"></div>
+
+        <div class="grid">
+            <div class="chart-container">
+                <div class="chart-title">📈 Graphique de Marché</div>
+                <div id="marketChart"></div>
+            </div>
+            
+            <div class="chart-container">
+                <div class="chart-title">🎯 Signaux de Trading</div>
+                <div id="signalsChart"></div>
+            </div>
+        </div>
+        
+        <div class="grid">
+            <div class="chart-container">
+                <div class="chart-title">💰 Performance du Portfolio</div>
+                <div id="performanceChart"></div>
+            </div>
+            
+            <div class="chart-container">
+                <div class="chart-title">📊 Indicateurs Techniques</div>
+                <div id="indicatorsChart"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let wsConnected = false;
+        
+        // Configuration Plotly
+        const chartConfig = {
+            responsive: true,
+            displayModeBar: true,
+            modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d'],
+            displaylogo: false
+        };
+        
+        const chartLayout = {
+            paper_bgcolor: '#2d2d2d',
+            plot_bgcolor: '#1a1a1a',
+            font: { color: '#ffffff' },
+            xaxis: { gridcolor: '#444444' },
+            yaxis: { gridcolor: '#444444' },
+            margin: { l: 50, r: 50, t: 30, b: 50 }
+        };
+
+        // Fonctions API
+        async function fetchData(endpoint) {
+            try {
+                const response = await fetch(`/api/${endpoint}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return await response.json();
+            } catch (error) {
+                console.error('Erreur API:', error);
+                showStatus(`Erreur: ${error.message}`, 'error');
+                return null;
+            }
+        }
+
+        function showStatus(message, type = 'info') {
+            const status = document.getElementById('status');
+            status.innerHTML = `<div class="status ${type}">${message}</div>`;
+            setTimeout(() => status.innerHTML = '', 5000);
+        }
+
+        // Graphique de marché (Candlestick)
+        async function updateMarketChart() {
+            const symbol = document.getElementById('symbolSelect').value;
+            const limit = document.getElementById('limitInput').value;
+            
+            const data = await fetchData(`charts/market/${symbol}?limit=${limit}`);
+            if (!data || !data.data) return;
+
+            const trace = {
+                x: data.data.timestamps,
+                open: data.data.open,
+                high: data.data.high,
+                low: data.data.low,
+                close: data.data.close,
+                type: 'candlestick',
+                name: symbol,
+                increasing: { line: { color: '#00ff00' } },
+                decreasing: { line: { color: '#ff0000' } }
+            };
+
+            const layout = {
+                ...chartLayout,
+                title: `${symbol} - Prix`,
+                xaxis: { ...chartLayout.xaxis, title: 'Temps' },
+                yaxis: { ...chartLayout.yaxis, title: 'Prix (USDT)' }
+            };
+
+            Plotly.newPlot('marketChart', [trace], layout, chartConfig);
+        }
+
+        // Graphique des signaux
+        async function updateSignalsChart() {
+            const symbol = document.getElementById('symbolSelect').value;
+            
+            const data = await fetchData(`charts/signals/${symbol}`);
+            if (!data) return;
+
+            const traces = [];
+            
+            // Prix de base
+            if (data.market_data) {
+                traces.push({
+                    x: data.market_data.timestamps,
+                    y: data.market_data.close,
+                    type: 'scatter',
+                    mode: 'lines',
+                    name: 'Prix',
+                    line: { color: '#00bfff', width: 2 }
+                });
+            }
+
+            // Signaux d'achat
+            if (data.signals.buy.length > 0) {
+                traces.push({
+                    x: data.signals.buy.map(s => s.timestamp),
+                    y: data.signals.buy.map(s => s.price),
+                    type: 'scatter',
+                    mode: 'markers',
+                    name: 'Signal Achat',
+                    marker: { color: '#00ff00', size: 10, symbol: 'triangle-up' }
+                });
+            }
+
+            // Signaux de vente
+            if (data.signals.sell.length > 0) {
+                traces.push({
+                    x: data.signals.sell.map(s => s.timestamp),
+                    y: data.signals.sell.map(s => s.price),
+                    type: 'scatter',
+                    mode: 'markers',
+                    name: 'Signal Vente',
+                    marker: { color: '#ff0000', size: 10, symbol: 'triangle-down' }
+                });
+            }
+
+            const layout = {
+                ...chartLayout,
+                title: `${symbol} - Signaux de Trading`,
+                xaxis: { ...chartLayout.xaxis, title: 'Temps' },
+                yaxis: { ...chartLayout.yaxis, title: 'Prix (USDT)' }
+            };
+
+            Plotly.newPlot('signalsChart', traces, layout, chartConfig);
+        }
+
+        // Graphique de performance
+        async function updatePerformanceChart() {
+            const period = document.getElementById('periodSelect').value;
+            
+            const data = await fetchData(`charts/performance?period=${period}&metric=pnl`);
+            if (!data || !data.data) return;
+
+            const trace = {
+                x: data.data.timestamps,
+                y: data.data.values,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'P&L',
+                line: { color: '#ffd700', width: 3 },
+                fill: 'tozeroy',
+                fillcolor: 'rgba(255, 215, 0, 0.1)'
+            };
+
+            const layout = {
+                ...chartLayout,
+                title: `Performance Portfolio (${period})`,
+                xaxis: { ...chartLayout.xaxis, title: 'Temps' },
+                yaxis: { ...chartLayout.yaxis, title: 'P&L (USDT)' }
+            };
+
+            Plotly.newPlot('performanceChart', [trace], layout, chartConfig);
+        }
+
+        // Graphique des indicateurs
+        async function updateIndicatorsChart() {
+            const symbol = document.getElementById('symbolSelect').value;
+            const indicators = Array.from(document.getElementById('indicatorsSelect').selectedOptions)
+                .map(option => option.value).join(',');
+            
+            if (!indicators) return;
+            
+            const data = await fetchData(`charts/indicators/${symbol}?indicators=${indicators}&limit=200`);
+            if (!data) return;
+
+            const traces = [];
+            
+            // Prix de base
+            if (data.market_data) {
+                traces.push({
+                    x: data.market_data.timestamps,
+                    y: data.market_data.close,
+                    type: 'scatter',
+                    mode: 'lines',
+                    name: 'Prix',
+                    line: { color: '#00bfff', width: 2 }
+                });
+            }
+
+            // Indicateurs
+            Object.entries(data.indicators || {}).forEach(([name, values]) => {
+                if (values && values.length > 0) {
+                    traces.push({
+                        x: data.market_data.timestamps,
+                        y: values,
+                        type: 'scatter',
+                        mode: 'lines',
+                        name: name.toUpperCase(),
+                        line: { width: 1 },
+                        opacity: 0.8
+                    });
+                }
+            });
+
+            const layout = {
+                ...chartLayout,
+                title: `${symbol} - Indicateurs Techniques`,
+                xaxis: { ...chartLayout.xaxis, title: 'Temps' },
+                yaxis: { ...chartLayout.yaxis, title: 'Valeur' }
+            };
+
+            Plotly.newPlot('indicatorsChart', traces, layout, chartConfig);
+        }
+
+        // WebSocket
+        function connectWebSocket() {
+            const clientId = 'web_' + Math.random().toString(36).substr(2, 9);
+            ws = new WebSocket(`ws://localhost:5009/ws/charts/${clientId}`);
+            
+            ws.onopen = () => {
+                wsConnected = true;
+                updateWebSocketStatus('connected');
+                
+                // S'abonner aux mises à jour
+                ws.send(JSON.stringify({
+                    action: 'subscribe',
+                    channel: `market:${document.getElementById('symbolSelect').value}:1m`
+                }));
+            };
+            
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                if (message.type === 'update') {
+                    // Traiter les mises à jour en temps réel
+                    console.log('Mise à jour WebSocket:', message);
+                }
+            };
+            
+            ws.onclose = () => {
+                wsConnected = false;
+                updateWebSocketStatus('disconnected');
+            };
+            
+            ws.onerror = () => {
+                updateWebSocketStatus('error');
+            };
+        }
+
+        function updateWebSocketStatus(status) {
+            const statusEl = document.getElementById('wsStatus');
+            const toggleBtn = document.getElementById('wsToggle');
+            
+            switch(status) {
+                case 'connected':
+                    statusEl.textContent = '🟢 Connecté';
+                    statusEl.className = 'websocket-status ws-connected';
+                    toggleBtn.textContent = '📡 Déconnecter';
+                    break;
+                case 'disconnected':
+                    statusEl.textContent = '🔴 Déconnecté';
+                    statusEl.className = 'websocket-status ws-disconnected';
+                    toggleBtn.textContent = '📡 Connecter';
+                    break;
+                case 'connecting':
+                    statusEl.textContent = '🟡 Connexion...';
+                    statusEl.className = 'websocket-status ws-connecting';
+                    break;
+                case 'error':
+                    statusEl.textContent = '❌ Erreur';
+                    statusEl.className = 'websocket-status ws-disconnected';
+                    break;
+            }
+        }
+
+        function toggleWebSocket() {
+            if (wsConnected && ws) {
+                ws.close();
+            } else {
+                updateWebSocketStatus('connecting');
+                connectWebSocket();
+            }
+        }
+
+        // Fonction principale de mise à jour
+        async function updateAllCharts() {
+            showStatus('Mise à jour des graphiques...', 'info');
+            
+            try {
+                await Promise.all([
+                    updateMarketChart(),
+                    updateSignalsChart(),
+                    updatePerformanceChart(),
+                    updateIndicatorsChart()
+                ]);
+                showStatus('Graphiques mis à jour avec succès!', 'success');
+            } catch (error) {
+                showStatus('Erreur lors de la mise à jour', 'error');
+            }
+        }
+
+        // Chargement des symboles disponibles
+        async function loadAvailableSymbols() {
+            const data = await fetchData('available-symbols');
+            if (data && data.symbols) {
+                const select = document.getElementById('symbolSelect');
+                select.innerHTML = '';
+                data.symbols.forEach(symbol => {
+                    const option = new Option(symbol, symbol);
+                    select.appendChild(option);
+                });
+            }
+        }
+
+        // Initialisation
+        document.addEventListener('DOMContentLoaded', async () => {
+            updateWebSocketStatus('disconnected');
+            await loadAvailableSymbols();
+            await updateAllCharts();
+            
+            // Auto-refresh toutes les 30 secondes
+            setInterval(updateAllCharts, 30000);
+        });
+
+        // Événements
+        document.getElementById('symbolSelect').addEventListener('change', updateAllCharts);
+    </script>
+</body>
+</html>

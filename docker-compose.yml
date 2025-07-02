@@ -97,6 +97,8 @@ services:
     build:
       context: .  # Point sur le répertoire racine du projet
       dockerfile: dispatcher/Dockerfile  # Chemin vers le Dockerfile
+    ports:
+      - "5004:5004"
     environment:
       - WAIT_FOR_REDIS=true
       - WAIT_FOR_KAFKA=true
@@ -120,6 +122,8 @@ services:
     build:
       context: .  # Point sur le répertoire racine du projet
       dockerfile: gateway/Dockerfile  # Chemin vers le Dockerfile
+    ports:
+      - "5010:5010"
     environment:
       - WAIT_FOR_REDIS=true
       - WAIT_FOR_KAFKA=true
@@ -144,6 +148,8 @@ services:
     build:
       context: .  # Point sur le répertoire racine du projet
       dockerfile: analyzer/Dockerfile  # Chemin vers le Dockerfile
+    ports:
+      - "5012:5012"
     environment:
       - WAIT_FOR_REDIS=true
       - WAIT_FOR_KAFKA=true
@@ -186,7 +192,7 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8080)); s.close()"]
+      test: ["CMD", "pgrep", "-f", "signal_aggregator"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -241,7 +247,7 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8080)); s.close()"]
+      test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8000)); s.close()"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -255,6 +261,8 @@ services:
     build:
       context: .  # Point sur le répertoire racine du projet
       dockerfile: coordinator/Dockerfile  # Chemin vers le Dockerfile
+    ports:
+      - "5003:5003"
     environment:
       - WAIT_FOR_REDIS=true
       - WAIT_FOR_KAFKA=true
@@ -270,7 +278,38 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8080)); s.close()"]
+      test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 5003)); s.close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - roottrading-net
+
+  visualization:
+    build:
+      context: .
+      dockerfile: visualization/Dockerfile
+    ports:
+      - "5009:5009"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=trading
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - VISUALIZATION_PORT=5009
+    env_file: .env
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5009/health')"]
       interval: 30s
       timeout: 10s
       retries: 3

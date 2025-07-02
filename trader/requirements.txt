@@ -1,11 +1,11 @@
-# trader/requirements.txt
+# Requirements pour le service Trader
+-r ../requirements-shared.txt
+# psycopg2-binary, python-dateutil, pydantic, python-dotenv maintenant dans requirements-shared.txt
+
 # API requirements
 flask==2.3.3
 flask-cors==4.0.0
 Werkzeug==2.3.7
-
-# Database requirements
-psycopg2-binary==2.9.7
 
 # Monitoring requirements
 psutil==5.9.5
@@ -13,13 +13,5 @@ psutil==5.9.5
 # HTTP Requests
 requests==2.31.0
 
-# Date/Time manipulation
-python-dateutil==2.8.2
-
 # Additional utility libraries
 tenacity==8.2.3  # Retrying functionality
-pydantic==2.4.2  # Data validation
-python-dotenv==1.0.0  # Environment variable handling
-
-redis==4.6.0  # Redis client for Python
-numpy==1.24.4  # Numerical operations
