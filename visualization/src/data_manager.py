@@ -20,9 +20,9 @@ class DataManager:
         self.redis_host = os.getenv("REDIS_HOST", "redis")
         self.redis_port = int(os.getenv("REDIS_PORT", "6379"))
         
-        self.postgres_host = os.getenv("POSTGRES_HOST", "postgres")
+        self.postgres_host = os.getenv("POSTGRES_HOST", "db")
         self.postgres_port = int(os.getenv("POSTGRES_PORT", "5432"))
-        self.postgres_db = os.getenv("POSTGRES_DB", "root_trading")
+        self.postgres_db = os.getenv("POSTGRES_DB", "trading")
         self.postgres_user = os.getenv("POSTGRES_USER", "postgres")
         self.postgres_password = os.getenv("POSTGRES_PASSWORD", "postgres")
         
@@ -87,38 +87,97 @@ class DataManager:
         if not self.postgres_pool:
             return []
             
-        query = """
-            SELECT 
-                time as timestamp,
-                open,
-                high,
-                low,
-                close,
-                volume,
-                -- Indicateurs techniques enrichis
-                rsi_14,
-                ema_12,
-                ema_26,
-                ema_50,
-                sma_20,
-                sma_50,
-                macd_line,
-                macd_signal,
-                macd_histogram,
-                bb_upper,
-                bb_middle,
-                bb_lower,
-                bb_position,
-                bb_width,
-                atr_14,
-                momentum_10,
-                volume_ratio,
-                avg_volume_20,
-                enhanced,
-                ultra_enriched
-            FROM market_data
-            WHERE symbol = $1
-        """
+        # Convertir l'intervalle en minutes pour l'agrégation
+        interval_minutes = {
+            "1m": 1,
+            "5m": 5,
+            "15m": 15,
+            "30m": 30,
+            "1h": 60,
+            "4h": 240
+        }.get(interval, 1)
+        
+        if interval_minutes == 1:
+            # Requête directe pour 1m (pas d'agrégation nécessaire)
+            query = """
+                SELECT 
+                    time as timestamp,
+                    open,
+                    high,
+                    low,
+                    close,
+                    volume,
+                    -- Indicateurs techniques enrichis
+                    rsi_14,
+                    ema_12,
+                    ema_26,
+                    ema_50,
+                    sma_20,
+                    sma_50,
+                    macd_line,
+                    macd_signal,
+                    macd_histogram,
+                    bb_upper,
+                    bb_middle,
+                    bb_lower,
+                    bb_position,
+                    bb_width,
+                    atr_14,
+                    momentum_10,
+                    volume_ratio,
+                    avg_volume_20,
+                    enhanced,
+                    ultra_enriched
+                FROM market_data
+                WHERE symbol = $1
+            """
+        else:
+            # Requête avec agrégation simple pour les autres intervalles
+            query = f"""
+                WITH aggregated AS (
+                    SELECT 
+                        date_trunc('hour', time) + 
+                        INTERVAL '{interval_minutes} minutes' * 
+                        FLOOR(EXTRACT(MINUTE FROM time) / {interval_minutes}) as period,
+                        (array_agg(open ORDER BY time))[1] as open,
+                        MAX(high) as high,
+                        MIN(low) as low,
+                        (array_agg(close ORDER BY time DESC))[1] as close,
+                        SUM(volume) as volume,
+                        (array_agg(rsi_14 ORDER BY time DESC NULLS LAST))[1] as rsi_14,
+                        (array_agg(ema_12 ORDER BY time DESC NULLS LAST))[1] as ema_12,
+                        (array_agg(ema_26 ORDER BY time DESC NULLS LAST))[1] as ema_26,
+                        (array_agg(ema_50 ORDER BY time DESC NULLS LAST))[1] as ema_50,
+                        (array_agg(sma_20 ORDER BY time DESC NULLS LAST))[1] as sma_20,
+                        (array_agg(sma_50 ORDER BY time DESC NULLS LAST))[1] as sma_50,
+                        (array_agg(macd_line ORDER BY time DESC NULLS LAST))[1] as macd_line,
+                        (array_agg(macd_signal ORDER BY time DESC NULLS LAST))[1] as macd_signal,
+                        (array_agg(macd_histogram ORDER BY time DESC NULLS LAST))[1] as macd_histogram,
+                        (array_agg(bb_upper ORDER BY time DESC NULLS LAST))[1] as bb_upper,
+                        (array_agg(bb_middle ORDER BY time DESC NULLS LAST))[1] as bb_middle,
+                        (array_agg(bb_lower ORDER BY time DESC NULLS LAST))[1] as bb_lower,
+                        (array_agg(bb_position ORDER BY time DESC NULLS LAST))[1] as bb_position,
+                        (array_agg(bb_width ORDER BY time DESC NULLS LAST))[1] as bb_width,
+                        (array_agg(atr_14 ORDER BY time DESC NULLS LAST))[1] as atr_14,
+                        (array_agg(momentum_10 ORDER BY time DESC NULLS LAST))[1] as momentum_10,
+                        (array_agg(volume_ratio ORDER BY time DESC NULLS LAST))[1] as volume_ratio,
+                        (array_agg(avg_volume_20 ORDER BY time DESC NULLS LAST))[1] as avg_volume_20,
+                        (array_agg(enhanced ORDER BY time DESC NULLS LAST))[1] as enhanced,
+                        (array_agg(ultra_enriched ORDER BY time DESC NULLS LAST))[1] as ultra_enriched
+                    FROM market_data
+                    WHERE symbol = $1
+                    GROUP BY period
+                )
+                SELECT 
+                    period as timestamp,
+                    open, high, low, close, volume,
+                    rsi_14, ema_12, ema_26, ema_50, sma_20, sma_50,
+                    macd_line, macd_signal, macd_histogram,
+                    bb_upper, bb_middle, bb_lower, bb_position, bb_width,
+                    atr_14, momentum_10, volume_ratio, avg_volume_20,
+                    enhanced, ultra_enriched
+                FROM aggregated
+            """
         
         params = [symbol]
         
@@ -130,7 +189,10 @@ class DataManager:
             query += f" AND time <= ${len(params) + 1}"
             params.append(end_time)
             
-        query += " ORDER BY time DESC"
+        if interval_minutes == 1:
+            query += " ORDER BY time DESC"
+        else:
+            query += " ORDER BY period DESC"
         
         if limit:
             query += f" LIMIT ${len(params) + 1}"
@@ -140,38 +202,57 @@ class DataManager:
             async with self.postgres_pool.acquire() as conn:
                 rows = await conn.fetch(query, *params)
                 
-                return [
-                    {
-                        "timestamp": row["timestamp"].isoformat(),
-                        "open": float(row["open"]),
-                        "high": float(row["high"]),
-                        "low": float(row["low"]),
-                        "close": float(row["close"]),
-                        "volume": float(row["volume"]),
-                        # Indicateurs techniques (peuvent être NULL)
-                        "rsi_14": float(row["rsi_14"]) if row["rsi_14"] is not None else None,
-                        "ema_12": float(row["ema_12"]) if row["ema_12"] is not None else None,
-                        "ema_26": float(row["ema_26"]) if row["ema_26"] is not None else None,
-                        "ema_50": float(row["ema_50"]) if row["ema_50"] is not None else None,
-                        "sma_20": float(row["sma_20"]) if row["sma_20"] is not None else None,
-                        "sma_50": float(row["sma_50"]) if row["sma_50"] is not None else None,
-                        "macd_line": float(row["macd_line"]) if row["macd_line"] is not None else None,
-                        "macd_signal": float(row["macd_signal"]) if row["macd_signal"] is not None else None,
-                        "macd_histogram": float(row["macd_histogram"]) if row["macd_histogram"] is not None else None,
-                        "bb_upper": float(row["bb_upper"]) if row["bb_upper"] is not None else None,
-                        "bb_middle": float(row["bb_middle"]) if row["bb_middle"] is not None else None,
-                        "bb_lower": float(row["bb_lower"]) if row["bb_lower"] is not None else None,
-                        "bb_position": float(row["bb_position"]) if row["bb_position"] is not None else None,
-                        "bb_width": float(row["bb_width"]) if row["bb_width"] is not None else None,
-                        "atr_14": float(row["atr_14"]) if row["atr_14"] is not None else None,
-                        "momentum_10": float(row["momentum_10"]) if row["momentum_10"] is not None else None,
-                        "volume_ratio": float(row["volume_ratio"]) if row["volume_ratio"] is not None else None,
-                        "avg_volume_20": float(row["avg_volume_20"]) if row["avg_volume_20"] is not None else None,
-                        "enhanced": row["enhanced"] if row["enhanced"] is not None else False,
-                        "ultra_enriched": row["ultra_enriched"] if row["ultra_enriched"] is not None else False
-                    }
-                    for row in rows
-                ][::-1]  # Reverse to get chronological order
+                # Pour les intervalles > 1m SEULEMENT, ajouter la bougie courante
+                if interval_minutes > 1 and rows:
+                    current_candle = await self._build_current_candle(conn, symbol, interval_minutes)
+                    if current_candle:
+                        # Insérer la bougie courante au début (plus récente)
+                        rows = [current_candle] + list(rows)
+                
+                result_data = []
+                for row in rows:
+                    # Pour les bougies courantes, row est déjà un dict
+                    if isinstance(row, dict):
+                        data_point = row.copy()
+                        if not isinstance(data_point["timestamp"], str):
+                            data_point["timestamp"] = data_point["timestamp"].isoformat()
+                    else:
+                        # Pour les données de la DB, row est un Record
+                        data_point = {
+                            "timestamp": row["timestamp"].isoformat(),
+                            "open": float(row["open"]),
+                            "high": float(row["high"]),
+                            "low": float(row["low"]),
+                            "close": float(row["close"]),
+                            "volume": float(row["volume"]),
+                            # Indicateurs techniques (peuvent être NULL)
+                            "rsi_14": float(row["rsi_14"]) if row["rsi_14"] is not None else None,
+                            "ema_12": float(row["ema_12"]) if row["ema_12"] is not None else None,
+                            "ema_26": float(row["ema_26"]) if row["ema_26"] is not None else None,
+                            "ema_50": float(row["ema_50"]) if row["ema_50"] is not None else None,
+                            "sma_20": float(row["sma_20"]) if row["sma_20"] is not None else None,
+                            "sma_50": float(row["sma_50"]) if row["sma_50"] is not None else None,
+                            "macd_line": float(row["macd_line"]) if row["macd_line"] is not None else None,
+                            "macd_signal": float(row["macd_signal"]) if row["macd_signal"] is not None else None,
+                            "macd_histogram": float(row["macd_histogram"]) if row["macd_histogram"] is not None else None,
+                            "bb_upper": float(row["bb_upper"]) if row["bb_upper"] is not None else None,
+                            "bb_middle": float(row["bb_middle"]) if row["bb_middle"] is not None else None,
+                            "bb_lower": float(row["bb_lower"]) if row["bb_lower"] is not None else None,
+                            "bb_position": float(row["bb_position"]) if row["bb_position"] is not None else None,
+                            "bb_width": float(row["bb_width"]) if row["bb_width"] is not None else None,
+                            "atr_14": float(row["atr_14"]) if row["atr_14"] is not None else None,
+                            "momentum_10": float(row["momentum_10"]) if row["momentum_10"] is not None else None,
+                            "volume_ratio": float(row["volume_ratio"]) if row["volume_ratio"] is not None else None,
+                            "avg_volume_20": float(row["avg_volume_20"]) if row["avg_volume_20"] is not None else None,
+                            "enhanced": row["enhanced"] if row["enhanced"] is not None else False,
+                            "ultra_enriched": row["ultra_enriched"] if row["ultra_enriched"] is not None else False
+                        }
+                    
+                    result_data.append(data_point)
+                
+                # Trier par timestamp pour garantir l'ordre chronologique
+                result_data.sort(key=lambda x: x['timestamp'])
+                return result_data
                 
         except Exception as e:
             logger.error(f"Error fetching market data: {e}")
@@ -225,9 +306,9 @@ class DataManager:
                         "timestamp": row["timestamp"].isoformat(),
                         "strategy": row["strategy"],
                         "signal_type": row["signal_type"],
-                        "strength": float(row["strength"]),
+                        "strength": row["strength"],
                         "price": float(row["price"]),
-                        "metadata": json.loads(row["metadata"]) if row["metadata"] else {}
+                        "metadata": json.loads(row["metadata"]) if isinstance(row["metadata"], str) else row["metadata"] if row["metadata"] else {}
                     }
                     for row in rows
                 ][::-1]
@@ -235,6 +316,94 @@ class DataManager:
         except Exception as e:
             logger.error(f"Error fetching trading signals: {e}")
             return []
+    
+    async def _build_current_candle(self, conn, symbol: str, interval_minutes: int):
+        """Construit la bougie courante en temps réel pour les intervalles > 1m"""
+        from datetime import datetime, timezone
+        
+        try:
+            now = datetime.now(timezone.utc)
+            
+            # Calculer le début de la période courante
+            if interval_minutes == 5:
+                # Pour 5m: 12:00, 12:05, 12:10...
+                period_start_minute = (now.minute // 5) * 5
+            elif interval_minutes == 15:
+                # Pour 15m: 12:00, 12:15, 12:30...
+                period_start_minute = (now.minute // 15) * 15
+            elif interval_minutes == 30:
+                # Pour 30m: 12:00, 12:30...
+                period_start_minute = (now.minute // 30) * 30
+            elif interval_minutes == 60:
+                # Pour 1h: 12:00, 13:00...
+                period_start_minute = 0
+            elif interval_minutes == 240:
+                # Pour 4h: 00:00, 04:00, 08:00...
+                period_start_minute = 0
+                now = now.replace(hour=(now.hour // 4) * 4)
+            else:
+                return None
+            
+            period_start = now.replace(minute=period_start_minute, second=0, microsecond=0)
+            
+            # Récupérer toutes les données 1m depuis le début de la période
+            query = """
+                SELECT time, open, high, low, close, volume,
+                       rsi_14, ema_12, ema_26, ema_50, sma_20, sma_50,
+                       macd_line, macd_signal, macd_histogram,
+                       bb_upper, bb_middle, bb_lower, bb_position, bb_width,
+                       atr_14, momentum_10, volume_ratio, avg_volume_20,
+                       enhanced, ultra_enriched
+                FROM market_data 
+                WHERE symbol = $1 AND time >= $2 
+                ORDER BY time ASC
+            """
+            
+            rows = await conn.fetch(query, symbol, period_start)
+            
+            if not rows:
+                return None
+            
+            # Construire la bougie en cours
+            first_row = rows[0]
+            last_row = rows[-1]
+            
+            current_candle = {
+                "timestamp": period_start,
+                "open": float(first_row["open"]),
+                "high": max(float(row["high"]) for row in rows),
+                "low": min(float(row["low"]) for row in rows),
+                "close": float(last_row["close"]),
+                "volume": sum(float(row["volume"]) for row in rows),
+                # Indicateurs: prendre les dernières valeurs
+                "rsi_14": float(last_row["rsi_14"]) if last_row["rsi_14"] is not None else None,
+                "ema_12": float(last_row["ema_12"]) if last_row["ema_12"] is not None else None,
+                "ema_26": float(last_row["ema_26"]) if last_row["ema_26"] is not None else None,
+                "ema_50": float(last_row["ema_50"]) if last_row["ema_50"] is not None else None,
+                "sma_20": float(last_row["sma_20"]) if last_row["sma_20"] is not None else None,
+                "sma_50": float(last_row["sma_50"]) if last_row["sma_50"] is not None else None,
+                "macd_line": float(last_row["macd_line"]) if last_row["macd_line"] is not None else None,
+                "macd_signal": float(last_row["macd_signal"]) if last_row["macd_signal"] is not None else None,
+                "macd_histogram": float(last_row["macd_histogram"]) if last_row["macd_histogram"] is not None else None,
+                "bb_upper": float(last_row["bb_upper"]) if last_row["bb_upper"] is not None else None,
+                "bb_middle": float(last_row["bb_middle"]) if last_row["bb_middle"] is not None else None,
+                "bb_lower": float(last_row["bb_lower"]) if last_row["bb_lower"] is not None else None,
+                "bb_position": float(last_row["bb_position"]) if last_row["bb_position"] is not None else None,
+                "bb_width": float(last_row["bb_width"]) if last_row["bb_width"] is not None else None,
+                "atr_14": float(last_row["atr_14"]) if last_row["atr_14"] is not None else None,
+                "momentum_10": float(last_row["momentum_10"]) if last_row["momentum_10"] is not None else None,
+                "volume_ratio": float(last_row["volume_ratio"]) if last_row["volume_ratio"] is not None else None,
+                "avg_volume_20": float(last_row["avg_volume_20"]) if last_row["avg_volume_20"] is not None else None,
+                "enhanced": bool(last_row["enhanced"]) if last_row["enhanced"] is not None else False,
+                "ultra_enriched": bool(last_row["ultra_enriched"]) if last_row["ultra_enriched"] is not None else False
+            }
+            
+            logger.info(f"🕯️ Bougie courante {interval_minutes}m construite pour {symbol}: {period_start} -> close={current_candle['close']}")
+            return current_candle
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur construction bougie courante: {e}")
+            return None
             
     async def get_portfolio_performance(
         self,

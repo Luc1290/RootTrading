@@ -15,6 +15,7 @@ sys.path.insert(0, '/app/src')
 from signal_aggregator import SignalAggregator, EnhancedSignalAggregator
 from regime_detector import RegimeDetector
 from performance_tracker import PerformanceTracker
+from db_manager import DatabaseManager
 from shared.src.kafka_client import KafkaClient
 from shared.src.redis_client import RedisClient
 
@@ -41,6 +42,7 @@ class SignalAggregatorService:
         self.aggregator = None
         self.regime_detector = None
         self.performance_tracker = None
+        self.db_manager = None
         self.running = False
         self.consumer_id = None
         self.main_loop = None  # Event loop principal qui reste ouvert
@@ -57,6 +59,10 @@ class SignalAggregatorService:
             self.kafka = KafkaClient()
             
             self.redis = RedisClient()
+            
+            # Initialize database manager
+            self.db_manager = DatabaseManager()
+            await self.db_manager.initialize()
             
             # Initialize components
             try:
@@ -141,6 +147,16 @@ class SignalAggregatorService:
                     # Et publier sur le canal Redis que le coordinator écoute
                     import json
                     self.redis.publish('roottrading:signals:filtered', json.dumps(aggregated))
+                    
+                    # Sauvegarder le signal dans la DB
+                    if self.db_manager and self.main_loop and not self.main_loop.is_closed():
+                        save_future = asyncio.run_coroutine_threadsafe(
+                            self.db_manager.save_signal(aggregated),
+                            self.main_loop
+                        )
+                        saved = save_future.result(timeout=5)
+                        if not saved:
+                            logger.warning("⚠️ Échec de la sauvegarde du signal dans la DB")
                     
                     logger.info(f"✅ Published aggregated signal on Kafka and Redis: {aggregated}")
             except concurrent.futures.TimeoutError:
@@ -229,6 +245,8 @@ class SignalAggregatorService:
             self.kafka.stop_consuming(self.consumer_id)
         if self.redis:
             self.redis.close()
+        if self.db_manager:
+            await self.db_manager.close()
 
 
 async def main():

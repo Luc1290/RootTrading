@@ -5,6 +5,7 @@ Permet de lire les données enrichies stockées par le Gateway/Dispatcher.
 import logging
 import asyncio
 import asyncpg
+import json
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 from shared.src.config import get_db_config
@@ -409,3 +410,64 @@ class DatabaseManager:
         """Version synchrone pour récupérer les données enrichies - DEPRECATED"""
         logger.warning("❗ get_enriched_market_data_sync deprecated - utilisez la version async")
         return []
+    
+    async def save_signal(self, signal: Dict[str, Any]) -> bool:
+        """
+        Sauvegarde un signal dans la base de données.
+        
+        Args:
+            signal: Dictionnaire contenant les informations du signal
+            
+        Returns:
+            True si la sauvegarde a réussi, False sinon
+        """
+        if not self._connection_pool or not self.running:
+            logger.warning("❌ Pool de connexions non disponible pour sauvegarder le signal")
+            return False
+        
+        try:
+            # Extraction des données du signal
+            strategy = signal.get('strategy', 'Unknown')
+            symbol = signal.get('symbol', '')
+            side = signal.get('side', '')
+            timestamp = signal.get('timestamp', datetime.utcnow().isoformat())
+            price = float(signal.get('price', 0))
+            confidence = float(signal.get('confidence', 0))
+            strength = signal.get('strength', 'moderate')
+            metadata = signal.get('metadata', {})
+            
+            # Convertir le timestamp si nécessaire
+            if isinstance(timestamp, str):
+                timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00').replace('+00:00', ''))
+            
+            # Requête d'insertion
+            query = """
+                INSERT INTO trading_signals 
+                (strategy, symbol, side, timestamp, price, confidence, strength, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                RETURNING id
+            """
+            
+            async with self._connection_pool.acquire() as connection:
+                row = await connection.fetchrow(
+                    query,
+                    strategy,
+                    symbol,
+                    side,
+                    timestamp,
+                    price,
+                    confidence,
+                    strength,
+                    json.dumps(metadata) if metadata else '{}'  # Convertir le dict en JSON string
+                )
+                
+                if row:
+                    logger.info(f"✅ Signal sauvegardé dans la DB: ID={row['id']} {strategy} {side} {symbol} @ {price}")
+                    return True
+                else:
+                    logger.error("❌ Échec de la sauvegarde du signal")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la sauvegarde du signal: {e}")
+            return False

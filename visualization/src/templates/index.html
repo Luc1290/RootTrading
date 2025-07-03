@@ -125,22 +125,25 @@
             <div class="control-group">
                 <label for="symbolSelect">Symbole</label>
                 <select id="symbolSelect" name="symbolSelect">
-                    <option value="BTCUSDT">BTC/USDT</option>
-                    <option value="ETHUSDT">ETH/USDT</option>
-                    <option value="ADAUSDT">ADA/USDT</option>
+                    <option value="BTCUSDC">BTC/USDC</option>
+                    <option value="ETHUSDC">ETH/USDC</option>
+                    <option value="SOLUSDC" selected>SOL/USDC</option>
+                    <option value="XRPUSDC">XRP/USDC</option>
                 </select>
             </div>
             
             <div class="control-group">
-                <label>Indicateurs</label>
-                <select id="indicatorsSelect" multiple title="Indicateurs">
-                    <option value="sma">SMA</option>
-                    <option value="ema">EMA</option>
-                    <option value="rsi">RSI</option>
-                    <option value="macd">MACD</option>
-                    <option value="bollinger_bands">Bollinger Bands</option>
+                <label for="intervalSelect">Intervalle</label>
+                <select id="intervalSelect" name="intervalSelect">
+                    <option value="1m" selected>1 minute</option>
+                    <option value="5m">5 minutes</option>
+                    <option value="15m">15 minutes</option>
+                    <option value="30m">30 minutes</option>
+                    <option value="1h">1 heure</option>
+                    <option value="4h">4 heures</option>
                 </select>
             </div>
+            
             
             <div class="control-group">
                 <label>Période Performance</label>
@@ -163,15 +166,29 @@
 
         <div id="status"></div>
 
+        <div class="chart-container">
+            <div class="chart-title">
+                📈 Graphique de Marché 
+                <span id="liveIndicator" style="color: #00ff00; margin-left: 10px;">🔴 LIVE</span>
+                <span id="lastUpdate" style="color: #888; font-size: 12px; margin-left: 10px;"></span>
+            </div>
+            <div id="marketChart" style="height: 600px;"></div>
+        </div>
+        
+        <div class="chart-container">
+            <div class="chart-title">📊 Volume</div>
+            <div id="volumeChart" style="height: 150px;"></div>
+        </div>
+        
         <div class="grid">
             <div class="chart-container">
-                <div class="chart-title">📈 Graphique de Marché</div>
-                <div id="marketChart"></div>
+                <div class="chart-title">📊 RSI (Relative Strength Index)</div>
+                <div id="rsiChart" style="height: 200px;"></div>
             </div>
             
             <div class="chart-container">
-                <div class="chart-title">🎯 Signaux de Trading</div>
-                <div id="signalsChart"></div>
+                <div class="chart-title">📉 MACD</div>
+                <div id="macdChart" style="height: 200px;"></div>
             </div>
         </div>
         
@@ -191,13 +208,30 @@
     <script>
         let ws = null;
         let wsConnected = false;
+        let currentXRange = null;  // Pour stocker la plage x actuelle
         
         // Configuration Plotly
         const chartConfig = {
             responsive: true,
             displayModeBar: true,
-            modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d'],
-            displaylogo: false
+            modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+            modeBarButtonsToAdd: [{
+                name: 'Reset View',
+                icon: Plotly.Icons.home,
+                click: function(gd) {
+                    Plotly.relayout(gd, {
+                        'xaxis.autorange': true,
+                        'yaxis.autorange': true
+                    });
+                }
+            }],
+            displaylogo: false,
+            toImageButtonOptions: {
+                format: 'png',
+                width: 1920,
+                height: 1080,
+                scale: 2
+            }
         };
         
         const chartLayout = {
@@ -231,86 +265,422 @@
         // Graphique de marché (Candlestick)
         async function updateMarketChart() {
             const symbol = document.getElementById('symbolSelect').value;
+            const interval = document.getElementById('intervalSelect').value;
             const limit = document.getElementById('limitInput').value;
             
-            const data = await fetchData(`charts/market/${symbol}?limit=${limit}`);
-            if (!data || !data.data) return;
+            // Récupérer les données de marché
+            const marketData = await fetchData(`charts/market/${symbol}?limit=${limit}&interval=${interval}`);
+            if (!marketData || !marketData.data) return;
 
-            const trace = {
-                x: data.data.timestamps,
-                open: data.data.open,
-                high: data.data.high,
-                low: data.data.low,
-                close: data.data.close,
-                type: 'candlestick',
-                name: symbol,
-                increasing: { line: { color: '#00ff00' } },
-                decreasing: { line: { color: '#ff0000' } }
-            };
-
-            const layout = {
-                ...chartLayout,
-                title: `${symbol} - Prix`,
-                xaxis: { ...chartLayout.xaxis, title: 'Temps' },
-                yaxis: { ...chartLayout.yaxis, title: 'Prix (USDT)' }
-            };
-
-            Plotly.newPlot('marketChart', [trace], layout, chartConfig);
-        }
-
-        // Graphique des signaux
-        async function updateSignalsChart() {
-            const symbol = document.getElementById('symbolSelect').value;
-            
-            const data = await fetchData(`charts/signals/${symbol}`);
-            if (!data) return;
+            // Plus besoin de récupérer les indicateurs pour le graphique principal
 
             const traces = [];
-            
-            // Prix de base
-            if (data.market_data) {
-                traces.push({
-                    x: data.market_data.timestamps,
-                    y: data.market_data.close,
-                    type: 'scatter',
-                    mode: 'lines',
-                    name: 'Prix',
-                    line: { color: '#00bfff', width: 2 }
-                });
-            }
 
-            // Signaux d'achat
-            if (data.signals.buy.length > 0) {
-                traces.push({
-                    x: data.signals.buy.map(s => s.timestamp),
-                    y: data.signals.buy.map(s => s.price),
-                    type: 'scatter',
-                    mode: 'markers',
-                    name: 'Signal Achat',
-                    marker: { color: '#00ff00', size: 10, symbol: 'triangle-up' }
-                });
-            }
+            // Trace principale : Chandeliers
+            traces.push({
+                x: marketData.data.timestamps,
+                open: marketData.data.open,
+                high: marketData.data.high,
+                low: marketData.data.low,
+                close: marketData.data.close,
+                type: 'candlestick',
+                name: symbol,
+                increasing: { 
+                    line: { color: '#26a69a', width: 1 },
+                    fillcolor: '#26a69a'
+                },
+                decreasing: { 
+                    line: { color: '#ef5350', width: 1 },
+                    fillcolor: '#ef5350'
+                },
+                whiskerwidth: 0.8,
+                opacity: 1,
+                hoverinfo: 'x+y',
+                hovertemplate: '<b>%{x}</b><br>' +
+                              'O: %{open:.2f}<br>' +
+                              'H: %{high:.2f}<br>' +
+                              'L: %{low:.2f}<br>' +
+                              'C: %{close:.2f}<br>' +
+                              '<extra></extra>'
+            });
 
-            // Signaux de vente
-            if (data.signals.sell.length > 0) {
-                traces.push({
-                    x: data.signals.sell.map(s => s.timestamp),
-                    y: data.signals.sell.map(s => s.price),
-                    type: 'scatter',
-                    mode: 'markers',
-                    name: 'Signal Vente',
-                    marker: { color: '#ff0000', size: 10, symbol: 'triangle-down' }
-                });
+            // Plus d'indicateurs sur le graphique principal - graphique propre avec seulement chandeliers
+
+            // Ajouter les signaux de trading
+            const signalData = await fetchData(`charts/signals/${symbol}`);
+            if (signalData) {
+                // Signaux d'achat
+                if (signalData.signals.buy.length > 0) {
+                    // Marqueurs pour les signaux BUY
+                    traces.push({
+                        x: signalData.signals.buy.map(s => s.timestamp),
+                        y: signalData.signals.buy.map(s => s.price * 0.995), // Légèrement en dessous du prix
+                        type: 'scatter',
+                        mode: 'markers',
+                        name: 'Signal BUY',
+                        marker: { 
+                            color: '#00ff88', 
+                            size: 20, 
+                            symbol: 'triangle-up',
+                            line: { color: '#000000', width: 1 }
+                        },
+                        hovertemplate: '<b>BUY Signal</b><br>' +
+                                      'Prix: %{y:.2f}<br>' +
+                                      'Stratégie: %{text}<br>' +
+                                      'Heure: %{x}<br>' +
+                                      '<extra></extra>',
+                        text: signalData.signals.buy.map(s => `${s.strategy} (${s.strength})`),
+                    });
+                    
+                    // Lignes verticales pour les signaux BUY
+                    signalData.signals.buy.forEach(signal => {
+                        traces.push({
+                            x: [signal.timestamp, signal.timestamp],
+                            y: [signal.price * 0.99, signal.price * 1.005],
+                            type: 'scatter',
+                            mode: 'lines',
+                            line: { color: '#00ff88', width: 1, dash: 'dot' },
+                            showlegend: false,
+                            hoverinfo: 'skip'
+                        });
+                    });
+                }
+
+                // Signaux de vente
+                if (signalData.signals.sell.length > 0) {
+                    // Marqueurs pour les signaux SELL
+                    traces.push({
+                        x: signalData.signals.sell.map(s => s.timestamp),
+                        y: signalData.signals.sell.map(s => s.price * 1.005), // Légèrement au-dessus du prix
+                        type: 'scatter',
+                        mode: 'markers',
+                        name: 'Signal SELL',
+                        marker: { 
+                            color: '#ff4444', 
+                            size: 20, 
+                            symbol: 'triangle-down',
+                            line: { color: '#000000', width: 1 }
+                        },
+                        hovertemplate: '<b>SELL Signal</b><br>' +
+                                      'Prix: %{y:.2f}<br>' +
+                                      'Stratégie: %{text}<br>' +
+                                      'Heure: %{x}<br>' +
+                                      '<extra></extra>',
+                        text: signalData.signals.sell.map(s => `${s.strategy} (${s.strength})`),
+                    });
+                    
+                    // Lignes verticales pour les signaux SELL
+                    signalData.signals.sell.forEach(signal => {
+                        traces.push({
+                            x: [signal.timestamp, signal.timestamp],
+                            y: [signal.price * 0.995, signal.price * 1.01],
+                            type: 'scatter',
+                            mode: 'lines',
+                            line: { color: '#ff4444', width: 1, dash: 'dot' },
+                            showlegend: false,
+                            hoverinfo: 'skip'
+                        });
+                    });
+                }
             }
 
             const layout = {
                 ...chartLayout,
-                title: `${symbol} - Signaux de Trading`,
-                xaxis: { ...chartLayout.xaxis, title: 'Temps' },
-                yaxis: { ...chartLayout.yaxis, title: 'Prix (USDT)' }
+                title: {
+                    text: `${symbol} - Prix avec Indicateurs et Signaux`,
+                    font: { size: 20 }
+                },
+                xaxis: { 
+                    ...chartLayout.xaxis, 
+                    title: 'Temps',
+                    rangeslider: { visible: false },
+                    type: 'date',
+                    tickformat: '%H:%M:%S',
+                    nticks: 20,
+                    showgrid: true,
+                    gridwidth: 1,
+                    gridcolor: '#333333',
+                    showspikes: true,
+                    spikemode: 'across',
+                    spikethickness: 1,
+                    spikecolor: '#888888'
+                },
+                yaxis: { 
+                    ...chartLayout.yaxis, 
+                    title: 'Prix (USDC)',
+                    side: 'right',
+                    showgrid: true,
+                    gridwidth: 1,
+                    gridcolor: '#333333',
+                    tickformat: '.2f',
+                    showspikes: true,
+                    spikemode: 'across',
+                    spikethickness: 1,
+                    spikecolor: '#888888'
+                },
+                showlegend: true,
+                legend: {
+                    x: 0.02,
+                    y: 0.98,
+                    bgcolor: 'rgba(0,0,0,0.7)',
+                    bordercolor: '#444',
+                    borderwidth: 1,
+                    font: { size: 11 }
+                },
+                hovermode: 'x unified',
+                hoverlabel: {
+                    bgcolor: 'rgba(0,0,0,0.8)',
+                    bordercolor: '#888888',
+                    font: { color: 'white', size: 12 }
+                },
+                height: 600,
+                margin: { l: 10, r: 80, t: 50, b: 50 }
             };
 
-            Plotly.newPlot('signalsChart', traces, layout, chartConfig);
+            Plotly.newPlot('marketChart', traces, layout, chartConfig);
+            
+            // Ajouter l'événement de synchronisation
+            document.getElementById('marketChart').on('plotly_relayout', function(eventdata) {
+                if (eventdata['xaxis.range[0]'] && eventdata['xaxis.range[1]']) {
+                    currentXRange = [eventdata['xaxis.range[0]'], eventdata['xaxis.range[1]']];
+                    synchronizeCharts();
+                }
+            });
+        }
+
+        // Graphique RSI
+        async function updateRSIChart() {
+            const symbol = document.getElementById('symbolSelect').value;
+            const interval = document.getElementById('intervalSelect').value;
+            const limit = document.getElementById('limitInput').value;
+            
+            const data = await fetchData(`charts/indicators/${symbol}?indicators=rsi&limit=${limit}&interval=${interval}`);
+            if (!data || !data.indicators || !data.indicators.rsi) return;
+
+            const traces = [];
+
+            // Ligne RSI
+            traces.push({
+                x: data.market_data.timestamps,
+                y: data.indicators.rsi,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'RSI',
+                line: { color: '#ff9800', width: 2 }
+            });
+
+            // Zones de surachat/survente
+            const timestamps = data.market_data.timestamps;
+            
+            // Zone de surachat (70)
+            traces.push({
+                x: timestamps,
+                y: new Array(timestamps.length).fill(70),
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Surachat',
+                line: { color: '#ff0000', width: 1, dash: 'dash' },
+                showlegend: false
+            });
+
+            // Zone de survente (30)
+            traces.push({
+                x: timestamps,
+                y: new Array(timestamps.length).fill(30),
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Survente',
+                line: { color: '#00ff00', width: 1, dash: 'dash' },
+                showlegend: false
+            });
+
+            // Zone neutre (50)
+            traces.push({
+                x: timestamps,
+                y: new Array(timestamps.length).fill(50),
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Neutre',
+                line: { color: '#888888', width: 1, dash: 'dot' },
+                showlegend: false
+            });
+
+            const layout = {
+                ...chartLayout,
+                height: 200,
+                margin: { l: 50, r: 50, t: 20, b: 30 },
+                xaxis: { 
+                    ...chartLayout.xaxis,
+                    title: '',
+                    showticklabels: false,
+                    range: currentXRange  // Appliquer la plage x actuelle
+                },
+                yaxis: { 
+                    ...chartLayout.yaxis,
+                    title: 'RSI',
+                    range: [0, 100]
+                },
+                shapes: [
+                    // Zone de surachat
+                    {
+                        type: 'rect',
+                        xref: 'paper',
+                        yref: 'y',
+                        x0: 0,
+                        y0: 70,
+                        x1: 1,
+                        y1: 100,
+                        fillcolor: 'rgba(255, 0, 0, 0.1)',
+                        line: { width: 0 }
+                    },
+                    // Zone de survente
+                    {
+                        type: 'rect',
+                        xref: 'paper',
+                        yref: 'y',
+                        x0: 0,
+                        y0: 0,
+                        x1: 1,
+                        y1: 30,
+                        fillcolor: 'rgba(0, 255, 0, 0.1)',
+                        line: { width: 0 }
+                    }
+                ]
+            };
+
+            Plotly.newPlot('rsiChart', traces, layout, chartConfig);
+        }
+
+        // Graphique MACD
+        async function updateMACDChart() {
+            const symbol = document.getElementById('symbolSelect').value;
+            const interval = document.getElementById('intervalSelect').value;
+            const limit = document.getElementById('limitInput').value;
+            
+            const data = await fetchData(`charts/indicators/${symbol}?indicators=macd&limit=${limit}&interval=${interval}`);
+            if (!data || !data.indicators) return;
+
+            const traces = [];
+
+            // Ligne MACD
+            if (data.indicators.macd) {
+                traces.push({
+                    x: data.market_data.timestamps,
+                    y: data.indicators.macd,
+                    type: 'scatter',
+                    mode: 'lines',
+                    name: 'MACD',
+                    line: { color: '#2196f3', width: 2 }
+                });
+            }
+
+            // Ligne de signal
+            if (data.indicators.macd_signal) {
+                traces.push({
+                    x: data.market_data.timestamps,
+                    y: data.indicators.macd_signal,
+                    type: 'scatter',
+                    mode: 'lines',
+                    name: 'Signal',
+                    line: { color: '#ff5722', width: 2 }
+                });
+            }
+
+            // Histogramme
+            if (data.indicators.macd_histogram) {
+                const colors = data.indicators.macd_histogram.map(v => v >= 0 ? '#00ff00' : '#ff0000');
+                traces.push({
+                    x: data.market_data.timestamps,
+                    y: data.indicators.macd_histogram,
+                    type: 'bar',
+                    name: 'Histogramme',
+                    marker: { color: colors },
+                    opacity: 0.7
+                });
+            }
+
+            // Ligne zéro
+            traces.push({
+                x: data.market_data.timestamps,
+                y: new Array(data.market_data.timestamps.length).fill(0),
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Zero',
+                line: { color: '#888888', width: 1, dash: 'dash' },
+                showlegend: false
+            });
+
+            const layout = {
+                ...chartLayout,
+                height: 200,
+                margin: { l: 50, r: 50, t: 20, b: 30 },
+                xaxis: { 
+                    ...chartLayout.xaxis,
+                    title: '',
+                    showticklabels: true,
+                    range: currentXRange  // Appliquer la plage x actuelle
+                },
+                yaxis: { 
+                    ...chartLayout.yaxis,
+                    title: 'MACD'
+                },
+                barmode: 'relative'
+            };
+
+            Plotly.newPlot('macdChart', traces, layout, chartConfig);
+        }
+
+        // Graphique Volume
+        async function updateVolumeChart() {
+            const symbol = document.getElementById('symbolSelect').value;
+            const interval = document.getElementById('intervalSelect').value;
+            const limit = document.getElementById('limitInput').value;
+            
+            const data = await fetchData(`charts/market/${symbol}?limit=${limit}&interval=${interval}`);
+            if (!data || !data.data) return;
+
+            const traces = [];
+
+            // Barres de volume colorées selon le mouvement des prix
+            const volumeColors = data.data.open.map((open, i) => {
+                const close = data.data.close[i];
+                return close >= open ? '#26a69a' : '#ef5350'; // Vert si hausse, rouge si baisse
+            });
+
+            traces.push({
+                x: data.data.timestamps,
+                y: data.data.volume,
+                type: 'bar',
+                name: 'Volume',
+                marker: { 
+                    color: volumeColors,
+                    opacity: 0.7
+                },
+                hovertemplate: '<b>Volume</b><br>' +
+                              'Volume: %{y:,.0f}<br>' +
+                              'Heure: %{x}<br>' +
+                              '<extra></extra>'
+            });
+
+            const layout = {
+                ...chartLayout,
+                height: 150,
+                margin: { l: 50, r: 50, t: 20, b: 30 },
+                xaxis: { 
+                    ...chartLayout.xaxis,
+                    title: '',
+                    showticklabels: false,
+                    range: currentXRange
+                },
+                yaxis: { 
+                    ...chartLayout.yaxis,
+                    title: 'Volume',
+                    tickformat: '.2s' // Format scientifique (K, M, B)
+                },
+                showlegend: false
+            };
+
+            Plotly.newPlot('volumeChart', traces, layout, chartConfig);
         }
 
         // Graphique de performance
@@ -341,54 +711,10 @@
             Plotly.newPlot('performanceChart', [trace], layout, chartConfig);
         }
 
-        // Graphique des indicateurs
+        // Graphique des indicateurs - désactivé
         async function updateIndicatorsChart() {
-            const symbol = document.getElementById('symbolSelect').value;
-            const indicators = Array.from(document.getElementById('indicatorsSelect').selectedOptions)
-                .map(option => option.value).join(',');
-            
-            if (!indicators) return;
-            
-            const data = await fetchData(`charts/indicators/${symbol}?indicators=${indicators}&limit=200`);
-            if (!data) return;
-
-            const traces = [];
-            
-            // Prix de base
-            if (data.market_data) {
-                traces.push({
-                    x: data.market_data.timestamps,
-                    y: data.market_data.close,
-                    type: 'scatter',
-                    mode: 'lines',
-                    name: 'Prix',
-                    line: { color: '#00bfff', width: 2 }
-                });
-            }
-
-            // Indicateurs
-            Object.entries(data.indicators || {}).forEach(([name, values]) => {
-                if (values && values.length > 0) {
-                    traces.push({
-                        x: data.market_data.timestamps,
-                        y: values,
-                        type: 'scatter',
-                        mode: 'lines',
-                        name: name.toUpperCase(),
-                        line: { width: 1 },
-                        opacity: 0.8
-                    });
-                }
-            });
-
-            const layout = {
-                ...chartLayout,
-                title: `${symbol} - Indicateurs Techniques`,
-                xaxis: { ...chartLayout.xaxis, title: 'Temps' },
-                yaxis: { ...chartLayout.yaxis, title: 'Valeur' }
-            };
-
-            Plotly.newPlot('indicatorsChart', traces, layout, chartConfig);
+            // Cette fonction est désactivée car on n'affiche plus les indicateurs sur le graphique principal
+            return;
         }
 
         // WebSocket
@@ -462,17 +788,44 @@
 
         // Fonction principale de mise à jour
         async function updateAllCharts() {
+            const liveIndicator = document.getElementById('liveIndicator');
+            const lastUpdate = document.getElementById('lastUpdate');
+            
+            // Animation de mise à jour
+            if (liveIndicator) {
+                liveIndicator.style.color = '#ffff00';
+                liveIndicator.textContent = '🟡 UPDATING...';
+            }
+            
             showStatus('Mise à jour des graphiques...', 'info');
             
             try {
                 await Promise.all([
                     updateMarketChart(),
-                    updateSignalsChart(),
+                    updateVolumeChart(),
+                    updateRSIChart(),
+                    updateMACDChart(),
                     updatePerformanceChart(),
                     updateIndicatorsChart()
                 ]);
+                
+                // Indicateur de succès
+                if (liveIndicator) {
+                    liveIndicator.style.color = '#00ff00';
+                    liveIndicator.textContent = '🟢 LIVE';
+                }
+                
+                if (lastUpdate) {
+                    lastUpdate.textContent = `Dernière mise à jour: ${new Date().toLocaleTimeString()}`;
+                }
+                
                 showStatus('Graphiques mis à jour avec succès!', 'success');
             } catch (error) {
+                // Indicateur d'erreur
+                if (liveIndicator) {
+                    liveIndicator.style.color = '#ff0000';
+                    liveIndicator.textContent = '🔴 ERROR';
+                }
                 showStatus('Erreur lors de la mise à jour', 'error');
             }
         }
@@ -496,12 +849,42 @@
             await loadAvailableSymbols();
             await updateAllCharts();
             
-            // Auto-refresh toutes les 30 secondes
-            setInterval(updateAllCharts, 30000);
+            // Auto-refresh plus fréquent pour la bougie courante
+            setInterval(updateAllCharts, 10000); // Toutes les 10 secondes
         });
+
+        // Fonction de synchronisation des graphiques
+        function synchronizeCharts() {
+            if (!currentXRange) return;
+            
+            // Synchroniser Volume
+            const volumeChart = document.getElementById('volumeChart');
+            if (volumeChart && volumeChart.layout) {
+                Plotly.relayout('volumeChart', {
+                    'xaxis.range': currentXRange
+                });
+            }
+            
+            // Synchroniser RSI
+            const rsiChart = document.getElementById('rsiChart');
+            if (rsiChart && rsiChart.layout) {
+                Plotly.relayout('rsiChart', {
+                    'xaxis.range': currentXRange
+                });
+            }
+            
+            // Synchroniser MACD
+            const macdChart = document.getElementById('macdChart');
+            if (macdChart && macdChart.layout) {
+                Plotly.relayout('macdChart', {
+                    'xaxis.range': currentXRange
+                });
+            }
+        }
 
         // Événements
         document.getElementById('symbolSelect').addEventListener('change', updateAllCharts);
+        document.getElementById('intervalSelect').addEventListener('change', updateAllCharts);
     </script>
 </body>
 </html>
