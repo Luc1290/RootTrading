@@ -435,16 +435,16 @@ class BreakoutStrategy(BaseStrategy, AdvancedFiltersMixin):
             prices = df['close'].values
             
             # Calculer EMA 21 vs EMA 50 (harmonisé avec signal_aggregator)
-            import talib
-            ema_21 = talib.EMA(prices, timeperiod=21)
-            ema_50 = talib.EMA(prices, timeperiod=50)
+            from shared.src.technical_indicators import calculate_ema
+            ema_21_val = calculate_ema(prices, period=21)
+            ema_50_val = calculate_ema(prices, period=50)
             
-            if np.isnan(ema_21[-1]) or np.isnan(ema_50[-1]):
+            if ema_21_val is None or ema_50_val is None or np.isnan(ema_21_val) or np.isnan(ema_50_val):
                 return None
             
             current_price = prices[-1]
-            trend_21 = ema_21[-1]
-            trend_50 = ema_50[-1]
+            trend_21 = ema_21_val
+            trend_50 = ema_50_val
             
             # Classification sophistiquée de la tendance (même logique que signal_aggregator)
             if trend_21 > trend_50 * 1.015:  # +1.5% = forte haussière

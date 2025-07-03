@@ -97,6 +97,23 @@ class TechnicalIndicators:
         
         return round(float(rsi), 2)
     
+    def _ema_smooth(self, data: np.ndarray, period: int) -> np.ndarray:
+        """
+        Calcule une EMA (Exponential Moving Average) pour le lissage.
+        Utilisé en interne pour divers calculs.
+        """
+        if len(data) < period:
+            return data
+        
+        alpha = 2.0 / (period + 1)
+        ema = np.zeros_like(data)
+        ema[0] = data[0]
+        
+        for i in range(1, len(data)):
+            ema[i] = alpha * data[i] + (1 - alpha) * ema[i-1]
+        
+        return ema
+    
     # =================== EMA ===================
     
     def calculate_ema(self, prices: Union[List[float], np.ndarray, pd.Series], 
@@ -412,6 +429,65 @@ class TechnicalIndicators:
                 return adx_val, plus_di_val, minus_di_val
             except Exception as e:
                 logger.warning(f"Erreur talib ADX: {e}")
+        
+        # Fallback: calcul manuel de l'ADX
+        try:
+            # Calcul du True Range (TR)
+            high_low = highs_array - lows_array
+            high_close = np.abs(highs_array[1:] - closes_array[:-1])
+            low_close = np.abs(lows_array[1:] - closes_array[:-1])
+            
+            # Combine les arrays pour le TR
+            tr = np.zeros(len(highs_array))
+            tr[0] = high_low[0]
+            for i in range(1, len(highs_array)):
+                tr[i] = max(high_low[i], 
+                           abs(highs_array[i] - closes_array[i-1]),
+                           abs(lows_array[i] - closes_array[i-1]))
+            
+            # Calcul du Directional Movement
+            dm_plus = np.zeros(len(highs_array))
+            dm_minus = np.zeros(len(highs_array))
+            
+            for i in range(1, len(highs_array)):
+                up_move = highs_array[i] - highs_array[i-1]
+                down_move = lows_array[i-1] - lows_array[i]
+                
+                if up_move > down_move and up_move > 0:
+                    dm_plus[i] = up_move
+                elif down_move > up_move and down_move > 0:
+                    dm_minus[i] = down_move
+            
+            # Lissage avec EMA
+            atr = self._ema_smooth(tr, period)
+            dm_plus_smooth = self._ema_smooth(dm_plus, period)
+            dm_minus_smooth = self._ema_smooth(dm_minus, period)
+            
+            # Calcul des DI
+            di_plus = np.zeros(len(atr))
+            di_minus = np.zeros(len(atr))
+            
+            for i in range(len(atr)):
+                if atr[i] > 0:
+                    di_plus[i] = (dm_plus_smooth[i] / atr[i]) * 100
+                    di_minus[i] = (dm_minus_smooth[i] / atr[i]) * 100
+            
+            # Calcul du DX
+            dx = np.zeros(len(di_plus))
+            for i in range(len(di_plus)):
+                di_sum = di_plus[i] + di_minus[i]
+                if di_sum > 0:
+                    dx[i] = abs(di_plus[i] - di_minus[i]) / di_sum * 100
+            
+            # Calcul de l'ADX (moyenne lissée du DX)
+            adx = self._ema_smooth(dx, period)
+            
+            # Retourner les dernières valeurs valides
+            if len(adx) > 0 and not np.isnan(adx[-1]):
+                return float(adx[-1]), float(di_plus[-1]), float(di_minus[-1])
+            
+        except Exception as e:
+            logger.warning(f"Erreur calcul manuel ADX: {e}")
                 
         return None, None, None
     

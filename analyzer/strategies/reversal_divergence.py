@@ -81,11 +81,24 @@ class ReversalDivergenceStrategy(BaseStrategy, AdvancedFiltersMixin):
             Tableau des valeurs RSI
         """
         try:
-            # Utiliser TA-Lib pour calculer le RSI
-            return talib.RSI(prices, timeperiod=self.rsi_window)
+            # Utiliser le module partagé pour calculer le RSI
+            from shared.src.technical_indicators import TechnicalIndicators
+            ti = TechnicalIndicators()
+            
+            # Calculer RSI pour toutes les valeurs
+            rsi_series = []
+            for i in range(self.rsi_window, len(prices)):
+                rsi_val = ti.calculate_rsi(prices[:i+1], period=self.rsi_window)
+                rsi_series.append(rsi_val if rsi_val is not None else np.nan)
+            
+            # Remplir le début avec des NaN
+            full_rsi = np.full(len(prices), np.nan)
+            full_rsi[self.rsi_window:] = rsi_series
+            return full_rsi
+            
         except Exception as e:
             logger.error(f"Erreur lors du calcul du RSI: {str(e)}")
-            return np.zeros_like(prices)
+            return np.full(len(prices), np.nan)
     
     def _find_swing_points(self, data: np.ndarray, min_points: int = 3) -> Tuple[List[int], List[int]]:
         """
@@ -322,15 +335,16 @@ class ReversalDivergenceStrategy(BaseStrategy, AdvancedFiltersMixin):
             prices = df['close'].values
             
             # Calculer EMA 21 vs EMA 50 (harmonisé avec signal_aggregator)
-            ema_21 = talib.EMA(prices, timeperiod=21)
-            ema_50 = talib.EMA(prices, timeperiod=50)
+            from shared.src.technical_indicators import calculate_ema
+            ema_21_val = calculate_ema(prices, period=21)
+            ema_50_val = calculate_ema(prices, period=50)
             
-            if np.isnan(ema_21[-1]) or np.isnan(ema_50[-1]):
+            if ema_21_val is None or ema_50_val is None or np.isnan(ema_21_val) or np.isnan(ema_50_val):
                 return None
             
             current_price = prices[-1]
-            trend_21 = ema_21[-1]
-            trend_50 = ema_50[-1]
+            trend_21 = ema_21_val
+            trend_50 = ema_50_val
             
             # Classification sophistiquée de la tendance (même logique que signal_aggregator)
             if trend_21 > trend_50 * 1.015:  # +1.5% = forte haussière

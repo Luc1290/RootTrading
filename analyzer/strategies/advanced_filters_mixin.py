@@ -104,9 +104,11 @@ class AdvancedFiltersMixin:
             low = df['low'].values
             close = df['close'].values
             
-            adx = talib.ADX(high, low, close, timeperiod=14)
+            from shared.src.technical_indicators import calculate_adx
+            adx_result = calculate_adx(high, low, close, period=14)
+            adx_value = adx_result[0] if adx_result[0] is not None else 20.0
             
-            if np.isnan(adx[-1]):
+            if adx_value is None or np.isnan(adx_value):
                 return {
                     'adx_value': None,
                     'is_trending': False,
@@ -115,7 +117,7 @@ class AdvancedFiltersMixin:
                     'reason': 'adx_calculation_failed'
                 }
             
-            current_adx = adx[-1]
+            current_adx = adx_value
             
             # Déterminer si on est en tendance
             is_trending = current_adx >= min_adx_threshold
@@ -164,15 +166,16 @@ class AdvancedFiltersMixin:
             prices = df['close'].values
             
             # EMAs pour tendance
-            ema_21 = talib.EMA(prices, timeperiod=21)
-            ema_50 = talib.EMA(prices, timeperiod=50)
+            from shared.src.technical_indicators import calculate_ema
+            ema_21_val = calculate_ema(prices, period=21)
+            ema_50_val = calculate_ema(prices, period=50)
             
-            if np.isnan(ema_21[-1]) or np.isnan(ema_50[-1]):
+            if ema_21_val is None or ema_50_val is None or np.isnan(ema_21_val) or np.isnan(ema_50_val):
                 return 0.7
             
             current_price = prices[-1]
-            trend_21 = ema_21[-1]
-            trend_50 = ema_50[-1]
+            trend_21 = ema_21_val
+            trend_50 = ema_50_val
             
             # HARMONISATION: Ajouter vérification de seuil comme dans le signal_aggregator
             ema_trend_bullish = trend_21 > trend_50 * 1.005  # Seuil 0.5%
@@ -279,12 +282,13 @@ class AdvancedFiltersMixin:
                 return 0.7
             
             prices = df['close'].values
-            rsi = talib.RSI(prices, timeperiod=14)
+            from shared.src.technical_indicators import calculate_rsi
+            rsi_val = calculate_rsi(prices, period=14)
             
-            if np.isnan(rsi[-1]):
+            if rsi_val is None or np.isnan(rsi_val):
                 return 0.7
             
-            current_rsi = rsi[-1]
+            current_rsi = rsi_val
             
             if signal_side == OrderSide.BUY:
                 if current_rsi < 35:  # Zone survente

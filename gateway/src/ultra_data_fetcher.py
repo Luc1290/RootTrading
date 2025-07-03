@@ -326,35 +326,9 @@ class UltraDataFetcher:
     # (Copies des méthodes de binance_ws.py pour cohérence)
     
     def _calculate_rsi(self, prices: List[float], period: int = 14) -> Optional[float]:
-        """Calcule le RSI"""
-        if len(prices) < period + 1:
-            return None
-        
-        gains = []
-        losses = []
-        
-        for i in range(1, len(prices)):
-            change = prices[i] - prices[i-1]
-            if change > 0:
-                gains.append(change)
-                losses.append(0)
-            else:
-                gains.append(0)
-                losses.append(abs(change))
-        
-        if len(gains) < period:
-            return None
-        
-        avg_gain = sum(gains[-period:]) / period
-        avg_loss = sum(losses[-period:]) / period
-        
-        if avg_loss == 0:
-            return 100
-        
-        rs = avg_gain / avg_loss
-        rsi = 100 - (100 / (1 + rs))
-        
-        return round(rsi, 2)
+        """Calcule le RSI via le module centralisé"""
+        from shared.src.technical_indicators import calculate_rsi
+        return calculate_rsi(prices, period)
     
     def _calculate_stoch_rsi(self, prices: List[float], period: int = 14) -> Optional[float]:
         """Calcule le Stochastic RSI"""
@@ -384,133 +358,59 @@ class UltraDataFetcher:
         return round(stoch_rsi, 2)
     
     def _calculate_ema(self, prices: List[float], period: int) -> float:
-        """Calcule EMA"""
-        if not prices or period <= 0:
-            return prices[-1] if prices else 0
-        
-        multiplier = 2 / (period + 1)
-        ema = prices[0]
-        
-        for price in prices[1:]:
-            ema = (price * multiplier) + (ema * (1 - multiplier))
-        
-        return round(ema, 6)
+        """Calcule EMA via le module centralisé"""
+        from shared.src.technical_indicators import calculate_ema
+        result = calculate_ema(prices, period)
+        return result if result is not None else (prices[-1] if prices else 0)
     
     def _calculate_macd(self, prices: List[float]) -> Dict:
-        """Calcule MACD complet"""
-        if len(prices) < 35:
+        """Calcule MACD complet via le module centralisé"""
+        from shared.src.technical_indicators import calculate_macd
+        
+        result = calculate_macd(prices)
+        if result is None or any(v is None for v in result.values()):
             return {}
-        
-        ema12 = self._calculate_ema(prices, 12)
-        ema26 = self._calculate_ema(prices, 26)
-        macd_line = ema12 - ema26
-        
-        # Signal line (EMA 9 du MACD)
-        macd_values = []
-        for i in range(26, len(prices)):
-            subset = prices[:i+1]
-            if len(subset) >= 26:
-                e12 = self._calculate_ema(subset, 12)
-                e26 = self._calculate_ema(subset, 26)
-                macd_values.append(e12 - e26)
-        
-        if len(macd_values) >= 9:
-            signal_line = self._calculate_ema(macd_values, 9)
-            histogram = macd_line - signal_line
-        else:
-            signal_line = macd_line
-            histogram = 0
-        
+            
         return {
-            'macd_line': round(macd_line, 6),
-            'macd_signal': round(signal_line, 6),
-            'macd_histogram': round(histogram, 6)
+            'macd_line': round(result['macd_line'], 6),
+            'macd_signal': round(result['macd_signal'], 6),
+            'macd_histogram': round(result['macd_histogram'], 6)
         }
     
     def _calculate_bollinger_bands(self, prices: List[float], period: int, std_dev: float) -> Dict:
-        """Calcule les Bollinger Bands"""
-        if len(prices) < period:
+        """Calcule les Bollinger Bands via le module centralisé"""
+        from shared.src.technical_indicators import calculate_bollinger_bands
+        
+        result = calculate_bollinger_bands(prices, period, std_dev)
+        if result is None or any(v is None for v in result.values()):
             return {}
-        
-        sma = sum(prices[-period:]) / period
-        variance = sum((x - sma) ** 2 for x in prices[-period:]) / period
-        std = variance ** 0.5
-        
-        upper_band = sma + (std_dev * std)
-        lower_band = sma - (std_dev * std)
-        
-        # Position dans les bandes (0 = bande basse, 1 = bande haute)
-        current_price = prices[-1]
-        if upper_band != lower_band:
-            bb_position = (current_price - lower_band) / (upper_band - lower_band)
-        else:
-            bb_position = 0.5
-        
+            
         return {
-            'bb_upper': round(upper_band, 6),
-            'bb_middle': round(sma, 6),
-            'bb_lower': round(lower_band, 6),
-            'bb_position': round(bb_position, 3),
-            'bb_width': round(((upper_band - lower_band) / sma) * 100, 2)
+            'bb_upper': round(result['bb_upper'], 6),
+            'bb_middle': round(result['bb_middle'], 6),
+            'bb_lower': round(result['bb_lower'], 6),
+            'bb_position': round(result['bb_position'], 3),
+            'bb_width': round(result['bb_width'], 2)
         }
     
     def _calculate_adx(self, highs: List[float], lows: List[float], closes: List[float], period: int = 14) -> Optional[float]:
-        """Calcule ADX (simplifié)"""
-        if len(closes) < period + 1:
+        """Calcule ADX en utilisant le module partagé"""
+        from shared.src.technical_indicators import calculate_adx
+        
+        try:
+            adx_result = calculate_adx(highs, lows, closes, period)
+            # calculate_adx retourne (ADX, DI+, DI-)
+            adx_value = adx_result[0] if adx_result[0] is not None else None
+            return round(adx_value, 2) if adx_value is not None else None
+        except Exception as e:
+            logger.warning(f"Erreur calcul ADX: {e}")
             return None
-        
-        # Calcul simplifié du momentum directionnel
-        ups = []
-        downs = []
-        
-        for i in range(1, len(closes)):
-            up_move = highs[i] - highs[i-1]
-            down_move = lows[i-1] - lows[i]
-            
-            if up_move > down_move and up_move > 0:
-                ups.append(up_move)
-                downs.append(0)
-            elif down_move > up_move and down_move > 0:
-                ups.append(0)
-                downs.append(down_move)
-            else:
-                ups.append(0)
-                downs.append(0)
-        
-        if len(ups) < period:
-            return None
-        
-        avg_up = sum(ups[-period:]) / period
-        avg_down = sum(downs[-period:]) / period
-        
-        if avg_up + avg_down == 0:
-            return 0
-        
-        # ADX simplifié
-        dx = abs(avg_up - avg_down) / (avg_up + avg_down) * 100
-        
-        return round(dx, 2)
     
     def _calculate_atr(self, highs: List[float], lows: List[float], closes: List[float], period: int = 14) -> Optional[float]:
-        """Calcule ATR"""
-        if len(closes) < period + 1:
-            return None
-        
-        true_ranges = []
-        
-        for i in range(1, len(closes)):
-            high_low = highs[i] - lows[i]
-            high_close = abs(highs[i] - closes[i-1])
-            low_close = abs(lows[i] - closes[i-1])
-            
-            true_range = max(high_low, high_close, low_close)
-            true_ranges.append(true_range)
-        
-        if len(true_ranges) < period:
-            return None
-        
-        atr = sum(true_ranges[-period:]) / period
-        return round(atr, 6)
+        """Calcule ATR via le module centralisé"""
+        from shared.src.technical_indicators import calculate_atr
+        result = calculate_atr(highs, lows, closes, period)
+        return round(result, 6) if result is not None else None
     
     def _calculate_williams_r(self, highs: List[float], lows: List[float], closes: List[float], period: int = 14) -> Optional[float]:
         """Calcule Williams %R"""

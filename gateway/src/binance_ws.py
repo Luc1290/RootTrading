@@ -386,22 +386,9 @@ class BinanceWebSocket:
         candle_data['ultra_enriched'] = True
                 
     def _calculate_rsi(self, prices: List[float], period: int = 14) -> Optional[float]:
-        """Calcule le RSI ultra-optimisé"""
-        if len(prices) < period + 1:
-            return None
-            
-        deltas = [prices[i] - prices[i-1] for i in range(1, len(prices))]
-        gains = [d if d > 0 else 0 for d in deltas[-period:]]
-        losses = [-d if d < 0 else 0 for d in deltas[-period:]]
-        
-        avg_gain = sum(gains) / period
-        avg_loss = sum(losses) / period
-        
-        if avg_loss == 0:
-            return 100
-            
-        rs = avg_gain / avg_loss
-        return 100 - (100 / (1 + rs))
+        """Calcule le RSI via le module centralisé"""
+        from shared.src.technical_indicators import calculate_rsi
+        return calculate_rsi(prices, period)
         
     def _calculate_stoch_rsi(self, prices: List[float], period: int = 14) -> Optional[float]:
         """Calcule le Stochastic RSI"""
@@ -429,62 +416,39 @@ class BinanceWebSocket:
         return ((current_rsi - min_rsi) / (max_rsi - min_rsi)) * 100
         
     def _calculate_ema(self, prices: List[float], period: int) -> float:
-        """Calcule l'EMA ultra-rapide"""
-        if not prices or period <= 0:
-            return prices[-1] if prices else 0
-            
-        multiplier = 2 / (period + 1)
-        ema = prices[0]
-        
-        for price in prices[1:]:
-            ema = (price * multiplier) + (ema * (1 - multiplier))
-            
-        return ema
+        """Calcule l'EMA via le module centralisé"""
+        from shared.src.technical_indicators import calculate_ema
+        result = calculate_ema(prices, period)
+        return result if result is not None else (prices[-1] if prices else 0)
         
     def _calculate_macd(self, prices: List[float]) -> Optional[Dict]:
-        """Calcule MACD complet (ligne, signal, histogramme)"""
-        if len(prices) < 26:
+        """Calcule MACD complet via le module centralisé"""
+        from shared.src.technical_indicators import calculate_macd
+        
+        result = calculate_macd(prices)
+        if result is None or any(v is None for v in result.values()):
             return None
             
-        ema12 = self._calculate_ema(prices, 12)
-        ema26 = self._calculate_ema(prices, 26)
-        macd_line = ema12 - ema26
-        
-        # Signal line (EMA 9 de la ligne MACD)
-        # Pour simplifier, on approxime
-        signal_line = macd_line * 0.8  # Approximation
-        histogram = macd_line - signal_line
-        
         return {
-            'macd_line': macd_line,
-            'macd_signal': signal_line,
-            'macd_histogram': histogram
+            'macd_line': result['macd_line'],
+            'macd_signal': result['macd_signal'],
+            'macd_histogram': result['macd_histogram']
         }
         
     def _calculate_bollinger_bands(self, prices: List[float], period: int, std_dev: float) -> Optional[Dict]:
-        """Calcule les Bollinger Bands complètes"""
-        if len(prices) < period:
+        """Calcule les Bollinger Bands via le module centralisé"""
+        from shared.src.technical_indicators import calculate_bollinger_bands
+        
+        result = calculate_bollinger_bands(prices, period, std_dev)
+        if result is None or any(v is None for v in result.values()):
             return None
             
-        recent_prices = prices[-period:]
-        sma = sum(recent_prices) / period
-        
-        # Écart-type
-        variance = sum((x - sma) ** 2 for x in recent_prices) / period
-        std = variance ** 0.5
-        
-        upper_band = sma + (std * std_dev)
-        lower_band = sma - (std * std_dev)
-        
-        current_price = prices[-1]
-        bb_position = (current_price - lower_band) / (upper_band - lower_band) if upper_band != lower_band else 0.5
-        
         return {
-            'bb_upper': upper_band,
-            'bb_middle': sma,
-            'bb_lower': lower_band,
-            'bb_position': bb_position,
-            'bb_width': (upper_band - lower_band) / sma * 100
+            'bb_upper': result['bb_upper'],
+            'bb_middle': result['bb_middle'], 
+            'bb_lower': result['bb_lower'],
+            'bb_position': result['bb_position'],
+            'bb_width': result['bb_width']
         }
         
     def _calculate_vwap(self, prices: List[float], volumes: List[float]) -> Optional[float]:

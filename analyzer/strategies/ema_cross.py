@@ -305,13 +305,14 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
             close = df['close'].values
             
             # Calculer ADX manuellement (using advanced_filters_mixin method)
-            adx_result = self._calculate_adx_manually(high, low, close, period=14)
-            adx = adx_result if isinstance(adx_result, np.ndarray) else np.full(len(close), adx_result)
+            from shared.src.technical_indicators import calculate_adx
+            adx_result = calculate_adx(high, low, close, period=14)
+            adx_value = adx_result[0] if adx_result[0] is not None else 20.0  # ADX seulement
             
-            if np.isnan(adx[-1]):
+            if adx_value is None or np.isnan(adx_value):
                 return 0.7
             
-            current_adx = adx[-1]
+            current_adx = adx_value
             
             # Score basé sur la force ADX
             if current_adx > 40:

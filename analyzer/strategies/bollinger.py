@@ -156,17 +156,28 @@ class BollingerStrategy(BaseStrategy):
         
         # Obtenir les dernières valeurs
         current_price = prices[-1]
-        # upper, lower, middle sont déjà des valeurs float (dernière valeur)
-        current_upper = upper
-        current_lower = lower
-        current_middle = middle
+        # S'assurer qu'on a bien des valeurs scalaires (et non des tableaux)
+        # car _calculate_bollinger_manually retourne des tableaux
+        if isinstance(upper, np.ndarray):
+            current_upper = float(upper[-1]) if not np.isnan(upper[-1]) else None
+            current_middle = float(middle[-1]) if not np.isnan(middle[-1]) else None
+            current_lower = float(lower[-1]) if not np.isnan(lower[-1]) else None
+        else:
+            current_upper = upper
+            current_lower = lower
+            current_middle = middle
         
+        # Vérifications de base
+        if current_upper is None or current_lower is None or current_middle is None:
+            logger.debug(f"[Bollinger] {self.symbol}: Bandes de Bollinger invalides (None)")
+            return None
+            
         # Loguer les valeurs actuelles
         precision = 5 if 'BTC' in self.symbol else 3
         logger.debug(f"[Bollinger] {self.symbol}: Price={current_price:.{precision}f}, "
                     f"Upper={current_upper:.{precision}f}, Lower={current_lower:.{precision}f}")
         
-        # Vérifications de base
+        # Vérifications supplémentaires
         if np.isnan(current_upper) or np.isnan(current_lower):
             return None
         
@@ -313,16 +324,28 @@ class BollingerStrategy(BaseStrategy):
             if len(prices) < 30:
                 return 0.7  # Score neutre si pas assez de données
             
-            # Calculer RSI avec le calcul manuel depuis advanced_filters_mixin
-            rsi = self._calculate_rsi_manually(prices, period=14)
-            if np.all(np.isnan(rsi[-10:])):
-                return 0.7
+            # Calculer RSI avec le module partagé - on a besoin de l'historique complet
+            from shared.src.technical_indicators import TechnicalIndicators
+            ti = TechnicalIndicators()
             
+            # Calculer RSI pour toutes les valeurs pour analyser les divergences
+            rsi_series = []
+            for i in range(14, len(prices)):  # RSI nécessite au moins 14 valeurs
+                rsi_val = ti.calculate_rsi(prices[:i+1], period=14)
+                rsi_series.append(rsi_val if rsi_val is not None else np.nan)
+            
+            if len(rsi_series) < 10:
+                return 0.7
+                
+            rsi = np.array(rsi_series)
             current_rsi = rsi[-1]
             
+            if np.isnan(current_rsi):
+                return 0.7
+            
             # Analyser les 20 dernières périodes pour les divergences
-            lookback = min(20, len(prices))
-            recent_prices = prices[-lookback:]
+            lookback = min(20, len(rsi))
+            recent_prices = prices[-(lookback+14):-14] if lookback < len(rsi) else prices[14:]
             recent_rsi = rsi[-lookback:]
             
             # Filtrer les NaN

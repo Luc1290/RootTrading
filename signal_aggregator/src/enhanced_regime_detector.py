@@ -198,13 +198,17 @@ class EnhancedRegimeDetector:
             # Calculs additionnels si ADX disponible dans DB
             current_adx = latest.get('adx_14')
             if current_adx is None:
-                # Calculer ADX si pas disponible
-                close_prices = [c['close'] for c in candles[-14:]]
-                high_prices = [c['high'] for c in candles[-14:]]
-                low_prices = [c['low'] for c in candles[-14:]]
-                current_adx, _, _ = self.indicators.calculate_adx(high_prices, low_prices, close_prices, 14)
+                # Calculer ADX si pas disponible - besoin de plus de données
+                required_length = 30  # ADX nécessite au moins 2*14 périodes
+                if len(candles) >= required_length:
+                    close_prices = [c['close'] for c in candles[-required_length:]]
+                    high_prices = [c['high'] for c in candles[-required_length:]]
+                    low_prices = [c['low'] for c in candles[-required_length:]]
+                    current_adx, _, _ = self.indicators.calculate_adx(high_prices, low_prices, close_prices, 14)
+                
                 if current_adx is None:
                     current_adx = 20  # Valeur par défaut
+                    logger.debug(f"ADX calculation failed for {symbol}, using default value 20")
             
             # Détection du régime avec données enrichies
             regime_score = 0.0
