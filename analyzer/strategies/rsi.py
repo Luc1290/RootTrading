@@ -41,8 +41,8 @@ class RSIStrategy(BaseStrategy):
         
         # Paramètres RSI adaptatifs
         self.rsi_window = self.params.get('window', get_strategy_param('rsi', 'window', 14))
-        self.overbought_threshold = self.params.get('overbought', get_strategy_param('rsi', 'overbought', 75))  # Plus strict
-        self.oversold_threshold = self.params.get('oversold', get_strategy_param('rsi', 'oversold', 25))      # Plus strict
+        self.overbought_threshold = self.params.get('overbought', get_strategy_param('rsi', 'overbought', 70))  # Standard
+        self.oversold_threshold = self.params.get('oversold', get_strategy_param('rsi', 'oversold', 30))      # Standard
         
         # Niveaux RSI adaptatifs selon la volatilité
         self.extreme_overbought = 85  # Zone extrême
@@ -71,9 +71,10 @@ class RSIStrategy(BaseStrategy):
         # Besoin d'au moins 2 * la fenêtre RSI pour avoir un calcul fiable
         return max(self.rsi_window * 2, 15)
     
-    def calculate_rsi(self, prices: np.ndarray) -> np.ndarray:
+    def calculate_rsi_series(self, prices: np.ndarray) -> np.ndarray:
         """
         Calcule l'indicateur RSI sur une série de prix.
+        Utilise le module partagé pour cohérence.
         
         Args:
             prices: Tableau numpy des prix de clôture
@@ -81,13 +82,17 @@ class RSIStrategy(BaseStrategy):
         Returns:
             Tableau numpy des valeurs RSI
         """
-        # Utiliser le module partagé pour calculer le RSI
+        # Utiliser le module partagé pour calculer le RSI sur toute la série
+        from shared.src.technical_indicators import TechnicalIndicators
+        ti = TechnicalIndicators()
+        
+        # Calculer RSI pour toute la série
         rsi_values = []
         for i in range(len(prices)):
             if i < self.rsi_window:
                 rsi_values.append(np.nan)
             else:
-                rsi = calculate_rsi(prices[:i+1], self.rsi_window)
+                rsi = ti.calculate_rsi(prices[:i+1], self.rsi_window)
                 rsi_values.append(rsi if rsi is not None else np.nan)
         
         return np.array(rsi_values)
@@ -117,7 +122,7 @@ class RSIStrategy(BaseStrategy):
         volumes = df['volume'].values if 'volume' in df.columns else None
         
         # Calculer les indicateurs
-        rsi_values = self.calculate_rsi(prices)
+        rsi_values = self.calculate_rsi_series(prices)
         current_price = prices[-1]
         current_rsi = rsi_values[-1]
         
@@ -138,13 +143,13 @@ class RSIStrategy(BaseStrategy):
         
         # 2. FILTRE MOMENTUM (confirmation direction)
         momentum_score = self._analyze_momentum_confirmation(df, signal_side)
-        if momentum_score < 0.4:
+        if momentum_score < 0.3:
             logger.debug(f"[RSI] {self.symbol}: Signal rejeté - momentum insuffisant ({momentum_score:.2f})")
             return None
         
         # 3. FILTRE VOLUME (confirmation institutionnelle)
         volume_score = self._analyze_volume_confirmation(volumes) if volumes is not None else 0.7
-        if volume_score < 0.4:
+        if volume_score < 0.3:
             logger.debug(f"[RSI] {self.symbol}: Signal rejeté - volume insuffisant ({volume_score:.2f})")
             return None
         
@@ -167,7 +172,7 @@ class RSIStrategy(BaseStrategy):
         )
         
         # Seuil minimum de confiance pour éviter le trading aléatoire
-        if confidence < 0.65:
+        if confidence < 0.55:
             logger.debug(f"[RSI] {self.symbol}: Signal rejeté - confiance trop faible ({confidence:.2f})")
             return None
         
@@ -238,8 +243,9 @@ class RSIStrategy(BaseStrategy):
                 if rsi_momentum > 20:
                     return None
             
-            if trend_alignment not in ["STRONG_BEARISH", "WEAK_BEARISH", "NEUTRAL"]:
-                logger.debug(f"[RSI] {self.symbol}: SELL signal supprimé - tendance {trend_alignment} non baissière")
+            # SELL seulement si tendance baissière/neutre ou en forte haussière (rejet)
+            if trend_alignment in ["STRONG_BULLISH"]:
+                logger.debug(f"[RSI] {self.symbol}: SELL signal supprimé - tendance {trend_alignment} trop haussière")
                 return None
             
             return OrderSide.SELL

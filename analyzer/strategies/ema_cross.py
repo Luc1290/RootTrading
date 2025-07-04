@@ -176,13 +176,13 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
         
         # 2. FILTRE ADX (force de tendance)
         adx_score = self._analyze_adx_strength(df)
-        if adx_score < 0.4:
+        if adx_score < 0.3:
             logger.debug(f"[EMA Cross] {self.symbol}: Signal rejeté - ADX faible ({adx_score:.2f})")
             return None
         
         # 3. FILTRE VOLUME (confirmation institutionnelle)
         volume_score = self._analyze_volume_confirmation_common(volumes) if volumes is not None else 0.7
-        if volume_score < 0.4:
+        if volume_score < 0.3:
             logger.debug(f"[EMA Cross] {self.symbol}: Signal rejeté - volume insuffisant ({volume_score:.2f})")
             return None
         
@@ -220,7 +220,7 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
         confidence = self._calculate_composite_confidence_common(scores, weights)
         
         # Seuil minimum de confiance
-        if confidence < 0.65:
+        if confidence < 0.55:
             logger.debug(f"[EMA Cross] {self.symbol}: Signal rejeté - confiance trop faible ({confidence:.2f})")
             return None
         
@@ -270,23 +270,23 @@ class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
         price_to_short_pct = (current_price - current_short) / current_short * 100
         price_to_long_pct = (current_price - current_long) / current_long * 100
         
-        # Setup BUY: Pullback dans tendance haussière ET tendance compatible
-        if is_uptrend and price_to_short_pct < -0.3:  # Prix sous EMA courte
-            # Vérifier que ce n'est pas un breakdown
-            if current_price > current_long * 0.98:  # Pas trop loin de l'EMA longue
+        # Setup BUY: Tendance haussière confirmée (EMA courte > EMA longue)
+        if is_uptrend:
+            # Prix proche des EMAs (dans la tendance)
+            if price_to_short_pct > -1.0 and price_to_short_pct < 1.0:  # Prix près EMA courte
                 # NOUVEAU: Ne BUY que si tendance n'est pas fortement baissière
                 if trend_alignment in ["STRONG_BEARISH", "WEAK_BEARISH"]:
                     logger.debug(f"[EMA Cross] {self.symbol}: BUY signal supprimé - tendance {trend_alignment}")
                     return None
                 return OrderSide.BUY
         
-        # Setup SELL: Rebond dans tendance baissière ET tendance compatible
-        elif is_downtrend and price_to_short_pct > 0.3:  # Prix au-dessus EMA courte
-            # Vérifier que ce n'est pas un breakout
-            if current_price < current_long * 1.02:  # Pas trop loin de l'EMA longue
-                # NOUVEAU: Ne SELL que si tendance n'est pas fortement haussière
-                if trend_alignment in ["STRONG_BULLISH", "WEAK_BULLISH"]:
-                    logger.debug(f"[EMA Cross] {self.symbol}: SELL signal supprimé - tendance {trend_alignment}")
+        # Setup SELL: Tendance baissière confirmée (EMA courte < EMA longue)  
+        elif is_downtrend:
+            # Prix proche des EMAs (dans la tendance)
+            if price_to_short_pct > -1.0 and price_to_short_pct < 1.0:  # Prix près EMA courte
+                # NOUVEAU: SELL seulement si tendance baissière/neutre
+                if trend_alignment in ["STRONG_BULLISH"]:
+                    logger.debug(f"[EMA Cross] {self.symbol}: SELL signal supprimé - tendance {trend_alignment} trop haussière")
                     return None
                 return OrderSide.SELL
         

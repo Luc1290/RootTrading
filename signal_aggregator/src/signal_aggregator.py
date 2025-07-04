@@ -219,14 +219,14 @@ class SignalAggregator:
             # Add to buffer
             self.signal_buffer[symbol].append(signal)
             
-            # Clean old signals (keep only last 30 seconds)
-            cutoff_time = timestamp - timedelta(seconds=30)
+            # Clean old signals (keep only last 90 seconds for confluence)
+            cutoff_time = timestamp - timedelta(seconds=90)
             self.signal_buffer[symbol] = [
                 s for s in self.signal_buffer[symbol]
                 if self._get_signal_timestamp(s) > cutoff_time
             ]
             
-            # Check if we have enough signals to make a decision - MODE SCALPING (1 signal suffit)
+            # Check if we have enough signals to make a decision - MODE CONFLUENCE (1+ signaux temporaire)
             if len(self.signal_buffer[symbol]) < 1:
                 return None  # Wait for more signals
                 
@@ -587,12 +587,12 @@ class SignalAggregator:
         # Bonus multi-stratégies
         confidence = self._apply_multi_strategy_bonus(confidence, contributing_strategies)
         
-        # Déterminer la force du signal basée sur la confiance - SWING CRYPTO (plus strict)
-        if confidence >= 0.85:  # SWING: Très strict pour very_strong
+        # Déterminer la force du signal basée sur la confiance - CONFLUENCE CRYPTO (très strict)
+        if confidence >= 0.90:  # CONFLUENCE: Très strict pour very_strong (90%+)
             strength = 'very_strong'
-        elif confidence >= 0.70:  # SWING: Strict pour strong
+        elif confidence >= 0.80:  # CONFLUENCE: Strict pour strong (80%+)
             strength = 'strong'
-        elif confidence >= 0.55:  # SWING: Plus strict pour moderate
+        elif confidence >= 0.70:  # CONFLUENCE: Plus strict pour moderate (70%+)
             strength = 'moderate'
         else:
             strength = 'weak'

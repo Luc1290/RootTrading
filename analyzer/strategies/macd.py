@@ -9,8 +9,8 @@ from typing import Dict, Any, Optional, List, Tuple
 import numpy as np
 import pandas as pd
 
-from analyzer.strategies.base_strategy import BaseStrategy
-from analyzer.strategies.advanced_filters_mixin import AdvancedFiltersMixin
+from .base_strategy import BaseStrategy
+from .advanced_filters_mixin import AdvancedFiltersMixin
 from shared.src.enums import OrderSide, SignalStrength
 from shared.src.schemas import StrategySignal, MarketData
 from shared.src.config import STRATEGY_PARAMS
@@ -84,9 +84,10 @@ class MACDStrategy(BaseStrategy, AdvancedFiltersMixin):
         """
         return prices.ewm(span=period, adjust=False).mean()
     
-    def calculate_macd(self, prices: pd.Series) -> Tuple[pd.Series, pd.Series, pd.Series]:
+    def calculate_macd_series(self, prices: pd.Series) -> Tuple[pd.Series, pd.Series, pd.Series]:
         """
-        Calcule les composants du MACD.
+        Calcule les composants du MACD pour toute la série.
+        Utilise le module partagé pour cohérence.
         
         Args:
             prices: Série de prix
@@ -94,8 +95,10 @@ class MACDStrategy(BaseStrategy, AdvancedFiltersMixin):
         Returns:
             Tuple (ligne MACD, ligne signal, histogramme)
         """
-        # Calculer MACD manuellement pour avoir toute la série
-        # EMA 12 et 26
+        # Utiliser le module partagé pour le dernier point puis étendre la série
+        macd_result = calculate_macd(prices.values)
+        
+        # Si le module partagé retourne juste la dernière valeur, calculer la série complète
         ema_12 = prices.ewm(span=self.fast_period, adjust=False).mean()
         ema_26 = prices.ewm(span=self.slow_period, adjust=False).mean()
         
@@ -238,7 +241,7 @@ class MACDStrategy(BaseStrategy, AdvancedFiltersMixin):
             volumes = df['volume'] if 'volume' in df.columns else None
             
             # Calculer le MACD
-            macd_line, signal_line, histogram = self.calculate_macd(prices)
+            macd_line, signal_line, histogram = self.calculate_macd_series(prices)
             
             # Sauvegarder pour analyse
             self.macd_line = macd_line
