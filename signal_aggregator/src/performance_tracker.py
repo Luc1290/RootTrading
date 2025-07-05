@@ -11,8 +11,9 @@ logger = logging.getLogger(__name__)
 class PerformanceTracker:
     """Tracks strategy performance and calculates dynamic weights"""
     
-    def __init__(self, redis_client):
+    def __init__(self, redis_client, db_pool=None):
         self.redis = redis_client
+        self.db_pool = db_pool
         
         # Performance window
         self.lookback_days = 30
@@ -40,6 +41,10 @@ class PerformanceTracker:
             # Sauvegarder de façon permanente + cache court terme
             self.redis.set(cache_key, str(weight), expiration=300)
             self.redis.set(f"permanent:{cache_key}", str(weight))  # Sauvegarde permanente
+            
+            # Sauvegarder aussi dans la DB si disponible
+            if self.db_pool:
+                self._save_weight_to_db(strategy, weight)
             
             return weight
             
@@ -184,8 +189,12 @@ class PerformanceTracker:
                 # Store in Redis
                 cache_key = f"strategy_weight:{strategy}"
                 # Sauvegarder de façon permanente + cache court terme
-            self.redis.set(cache_key, str(weight), expiration=300)
-            self.redis.set(f"permanent:{cache_key}", str(weight))  # Sauvegarde permanente
+                self.redis.set(cache_key, str(weight), expiration=300)
+                self.redis.set(f"permanent:{cache_key}", str(weight))  # Sauvegarde permanente
+                
+                # Sauvegarder aussi dans la DB si disponible
+                if self.db_pool:
+                    self._save_weight_to_db(strategy, weight)
                 
             logger.info(f"Updated metrics for {len(strategies)} strategies")
             
@@ -209,8 +218,93 @@ class PerformanceTracker:
             # Store in Redis set (simplified)
             self.redis.sadd(trades_key, json.dumps(trade_data))
             
+            # Sauvegarder aussi dans la DB si disponible
+            if self.db_pool:
+                self._save_trade_to_db(trade_data)
+            
             # Update metrics cache
             await self.get_strategy_weight(strategy)
             
         except Exception as e:
             logger.error(f"Error recording trade result: {e}")
+    
+    def _save_weight_to_db(self, strategy: str, weight: float):
+        """Sauvegarde le poids d'une stratégie dans PostgreSQL"""
+        try:
+            # Importer les helpers synchrones
+            import sys
+            import os
+            sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
+            from shared.src.db_pool import execute
+            
+            # Sauvegarder dans strategy_configs table  
+            query = """
+            INSERT INTO strategy_configs (name, mode, symbols, params, created_at)
+            VALUES (%s, 'active', '[]'::jsonb, %s, NOW())
+            ON CONFLICT (name)
+            DO UPDATE SET
+                params = EXCLUDED.params,
+                updated_at = NOW()
+            """
+            
+            config_data = json.dumps({
+                'weight': weight,
+                'last_update': datetime.now().isoformat(),
+                'type': 'performance_weight'
+            })
+            
+            execute(query, (strategy, config_data), auto_transaction=True)
+            logger.debug(f"💾 Sauvegardé poids {strategy}: {weight:.3f} en DB")
+            
+        except Exception as e:
+            logger.error(f"Erreur sauvegarde poids DB: {e}")
+    
+    def _save_trade_to_db(self, trade_data: Dict):
+        """Sauvegarde un résultat de trade dans PostgreSQL"""
+        try:
+            # Importer les helpers synchrones
+            import sys
+            import os
+            sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
+            from shared.src.db_pool import execute
+            
+            # Sauvegarder dans performance_stats table
+            query = """
+            INSERT INTO performance_stats (
+                symbol, strategy, period, start_date, end_date,
+                total_trades, winning_trades, losing_trades,
+                profit_loss_percent, win_rate, created_at
+            ) VALUES (
+                %s, %s, 'daily', CURRENT_DATE, CURRENT_DATE,
+                1, %s, %s, %s, %s, NOW()
+            )
+            ON CONFLICT (symbol, strategy, period, start_date)
+            DO UPDATE SET
+                total_trades = performance_stats.total_trades + 1,
+                winning_trades = performance_stats.winning_trades + EXCLUDED.winning_trades,
+                losing_trades = performance_stats.losing_trades + EXCLUDED.losing_trades,
+                profit_loss_percent = ((performance_stats.profit_loss_percent * performance_stats.total_trades) + EXCLUDED.profit_loss_percent) / (performance_stats.total_trades + 1),
+                win_rate = ((performance_stats.winning_trades + EXCLUDED.winning_trades) * 100.0) / (performance_stats.total_trades + 1),
+                created_at = NOW()
+            """
+            
+            is_win = 1 if trade_data['profit'] > 0 else 0
+            is_loss = 1 if trade_data['profit'] <= 0 else 0
+            
+            execute(
+                query,
+                (
+                    trade_data['symbol'],
+                    trade_data['strategy'],
+                    is_win,
+                    is_loss,
+                    trade_data['profit'],
+                    100.0 if is_win else 0.0  # win_rate pour ce trade
+                ),
+                auto_transaction=True
+            )
+            
+            logger.debug(f"💾 Sauvegardé trade {trade_data['strategy']} en DB")
+            
+        except Exception as e:
+            logger.error(f"Erreur sauvegarde trade DB: {e}")

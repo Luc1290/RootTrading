@@ -920,7 +920,7 @@ def fetch_all(query, params=None, dict_result=True):
     Returns:
         Liste des résultats
     """
-    cursor_factory = DictCursor if dict_result else None
+    cursor_factory = RealDictCursor if dict_result else None
     
     with DBContextManager(auto_transaction=False, cursor_factory=cursor_factory) as cursor:
         cursor.execute(query, params)

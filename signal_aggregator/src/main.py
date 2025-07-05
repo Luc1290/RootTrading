@@ -14,7 +14,7 @@ sys.path.insert(0, '/app')
 sys.path.insert(0, '/app/src')
 
 from signal_aggregator import SignalAggregator, EnhancedSignalAggregator
-from regime_detector import RegimeDetector
+from enhanced_regime_detector import EnhancedRegimeDetector
 from performance_tracker import PerformanceTracker
 from db_manager import DatabaseManager
 from shared.src.kafka_client import KafkaClient
@@ -71,7 +71,7 @@ class SignalAggregatorService:
             self.regime_detector = EnhancedRegimeDetector(self.redis)
             logger.info("✅ Utilisation d'Enhanced Regime Detector comme détecteur principal")
                 
-            self.performance_tracker = PerformanceTracker(self.redis)
+            self.performance_tracker = PerformanceTracker(self.redis, db_pool=self.db_manager._connection_pool)
             # Utiliser la version améliorée avec filtres intelligents et DB
             self.aggregator = EnhancedSignalAggregator(
                 self.redis,

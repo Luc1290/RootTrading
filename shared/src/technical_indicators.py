@@ -857,11 +857,22 @@ class TechnicalIndicators:
                 indicators['stoch_k'] = stoch_k
                 indicators['stoch_d'] = stoch_d
             
-            # ROC
+            # ROC multiple périodes
             indicators['roc_10'] = self.calculate_roc(closes, 10)
+            indicators['roc_20'] = self.calculate_roc(closes, 20)
             
             # OBV
             indicators['obv'] = self.calculate_obv(closes, volumes)
+            
+            # Stochastic RSI
+            indicators['stoch_rsi'] = self.calculate_stoch_rsi(closes, 14)
+            
+            # MFI (Money Flow Index)
+            indicators['mfi_14'] = self.calculate_mfi(highs, lows, closes, volumes, 14)
+            
+            # Indicateurs supplémentaires
+            indicators['trend_angle'] = self.calculate_trend_angle(closes, 10)
+            indicators['pivot_count'] = self.calculate_pivot_count(highs, lows, 5)
             
             # Métriques additionnelles
             if len(closes) >= 10:
@@ -877,6 +888,164 @@ class TechnicalIndicators:
             logger.error(f"❌ Erreur calcul indicateurs: {e}")
             
         return indicators
+    
+    # =================== INDICATEURS ADDITIONNELS ===================
+    
+    def calculate_stoch_rsi(self, prices: Union[List[float], np.ndarray, pd.Series], 
+                           period: Optional[int] = None) -> Optional[float]:
+        """Calcule le Stochastic RSI"""
+        if period is None:
+            period = 14
+            
+        try:
+            if len(prices) < period * 2:
+                return None
+                
+            if self.talib_available:
+                prices_array = self._to_numpy_array(prices)
+                rsi_values = talib.RSI(prices_array, timeperiod=period)
+                if len(rsi_values) < period:
+                    return None
+                stoch_rsi = talib.STOCH(rsi_values, rsi_values, rsi_values, 
+                                     fastk_period=period, slowk_period=3, slowd_period=3)
+                return round(float(stoch_rsi[0][-1]), 4) if not np.isnan(stoch_rsi[0][-1]) else None
+            else:
+                # Fallback manuel
+                rsi_values = []
+                for i in range(period, len(prices)):
+                    rsi = self.calculate_rsi(prices[i-period:i+1], period)
+                    if rsi is not None:
+                        rsi_values.append(rsi)
+                        
+                if len(rsi_values) < period:
+                    return None
+                    
+                recent_rsi = rsi_values[-period:]
+                min_rsi = min(recent_rsi)
+                max_rsi = max(recent_rsi)
+                
+                if max_rsi == min_rsi:
+                    return 50.0
+                    
+                stoch_rsi = ((rsi_values[-1] - min_rsi) / (max_rsi - min_rsi)) * 100
+                return round(stoch_rsi, 4)
+                
+        except Exception as e:
+            logger.error(f"Erreur calcul Stochastic RSI: {e}")
+            return None
+    
+    def calculate_mfi(self, highs: List[float], lows: List[float], 
+                     closes: List[float], volumes: List[float], 
+                     period: Optional[int] = None) -> Optional[float]:
+        """Calcule le Money Flow Index"""
+        if period is None:
+            period = 14
+            
+        try:
+            if len(closes) < period + 1:
+                return None
+                
+            if self.talib_available:
+                highs_array = self._to_numpy_array(highs)
+                lows_array = self._to_numpy_array(lows)  
+                closes_array = self._to_numpy_array(closes)
+                volumes_array = self._to_numpy_array(volumes)
+                
+                mfi = talib.MFI(highs_array, lows_array, closes_array, volumes_array, timeperiod=period)
+                return round(float(mfi[-1]), 4) if not np.isnan(mfi[-1]) else None
+            else:
+                # Fallback manuel
+                money_flows = []
+                for i in range(1, len(closes)):
+                    typical_price = (highs[i] + lows[i] + closes[i]) / 3
+                    prev_typical = (highs[i-1] + lows[i-1] + closes[i-1]) / 3
+                    
+                    money_flow = typical_price * volumes[i]
+                    if typical_price > prev_typical:
+                        money_flows.append((money_flow, 0))  # positive
+                    else:
+                        money_flows.append((0, money_flow))  # negative
+                
+                if len(money_flows) < period:
+                    return None
+                    
+                recent_flows = money_flows[-period:]
+                positive_flow = sum(flow[0] for flow in recent_flows)
+                negative_flow = sum(flow[1] for flow in recent_flows)
+                
+                if negative_flow == 0:
+                    return 100.0
+                    
+                money_ratio = positive_flow / negative_flow
+                mfi = 100 - (100 / (1 + money_ratio))
+                return round(mfi, 4)
+                
+        except Exception as e:
+            logger.error(f"Erreur calcul MFI: {e}")
+            return None
+    
+    def calculate_trend_angle(self, prices: List[float], period: Optional[int] = None) -> Optional[float]:
+        """Calcule l'angle de tendance (régression linéaire)"""
+        if period is None:
+            period = 10
+            
+        try:
+            if len(prices) < period:
+                return None
+                
+            # Régression linéaire sur les derniers points
+            y = np.array(prices[-period:], dtype=float)
+            x = np.arange(len(y))
+            
+            # Calcul de la pente
+            n = len(x)
+            slope = (n * np.sum(x * y) - np.sum(x) * np.sum(y)) / (n * np.sum(x * x) - np.sum(x) ** 2)
+            
+            # Conversion en angle (en degrés)
+            angle = np.degrees(np.arctan(slope))
+            return round(float(angle), 4)
+            
+        except Exception as e:
+            logger.error(f"Erreur calcul trend angle: {e}")
+            return None
+    
+    def calculate_pivot_count(self, highs: List[float], lows: List[float], 
+                             period: Optional[int] = None) -> Optional[int]:
+        """Compte les points pivots (hauts/bas locaux)"""
+        if period is None:
+            period = 5
+            
+        try:
+            if len(highs) < period * 2 + 1:
+                return 0
+                
+            pivot_count = 0
+            
+            # Chercher les pivots hauts
+            for i in range(period, len(highs) - period):
+                is_pivot_high = True
+                for j in range(i - period, i + period + 1):
+                    if j != i and highs[j] >= highs[i]:
+                        is_pivot_high = False
+                        break
+                if is_pivot_high:
+                    pivot_count += 1
+            
+            # Chercher les pivots bas
+            for i in range(period, len(lows) - period):
+                is_pivot_low = True
+                for j in range(i - period, i + period + 1):
+                    if j != i and lows[j] <= lows[i]:
+                        is_pivot_low = False
+                        break
+                if is_pivot_low:
+                    pivot_count += 1
+                    
+            return pivot_count
+            
+        except Exception as e:
+            logger.error(f"Erreur calcul pivot count: {e}")
+            return 0
     
     # =================== MÉTHODES UTILITAIRES ===================
     
@@ -964,3 +1133,8 @@ def calculate_obv(prices: Union[List[float], np.ndarray, pd.Series],
                  volumes: Union[List[float], np.ndarray, pd.Series]) -> Optional[float]:
     """Fonction de convenance pour calculer OBV"""
     return indicators.calculate_obv(prices, volumes)
+
+def calculate_all_indicators(highs: List[float], lows: List[float], 
+                           closes: List[float], volumes: List[float]) -> Dict[str, Any]:
+    """Fonction de convenance pour calculer tous les indicateurs"""
+    return indicators.calculate_all_indicators(highs, lows, closes, volumes)

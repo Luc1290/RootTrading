@@ -75,7 +75,7 @@ class OptimizedAnalyzer:
         """
         try:
             # 1. Récupérer les données enrichies de la DB (OHLCV + indicateurs)
-            enriched_df = await db_indicators.get_optimized_indicators(symbol, limit=200)
+            enriched_df = db_indicators.get_optimized_indicators(symbol, limit=200)
             
             if enriched_df is None or enriched_df.empty:
                 logger.warning(f"⚠️ Pas de données enrichies pour {symbol}")
@@ -151,7 +151,8 @@ class OptimizedAnalyzer:
             if col in df.columns:
                 values = df[col].values
                 # Remplacer les NaN par des valeurs moyennes pour éviter les erreurs
-                if np.isnan(values).any():
+                # Utiliser pd.isna() au lieu de np.isnan() pour compatibilité avec Decimal
+                if pd.isna(values).any():
                     values = pd.Series(values).fillna(method='ffill').fillna(method='bfill').values
                 indicators[col] = values
                 
@@ -295,4 +296,4 @@ class OptimizedAnalyzer:
         """Ferme les ressources"""
         if self.executor:
             self.executor.shutdown(wait=True)
-        await db_indicators.close()
+        db_indicators.close()

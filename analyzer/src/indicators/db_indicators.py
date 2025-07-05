@@ -15,7 +15,7 @@ import sys
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
 
-from shared.src.db_pool import DBPool
+from shared.src.db_pool import DBConnectionPool
 from shared.src.technical_indicators import TechnicalIndicators
 
 logger = logging.getLogger(__name__)
@@ -27,10 +27,10 @@ class DatabaseIndicators:
     """
     
     def __init__(self):
-        self.db_pool = DBPool()
+        self.db_pool = DBConnectionPool.get_instance()
         self.tech_indicators = TechnicalIndicators()
         
-    async def get_enriched_market_data(self, symbol: str, timeframe: str = '1m', 
+    def get_enriched_market_data(self, symbol: str, timeframe: str = '1m', 
                                      limit: int = 200) -> Optional[pd.DataFrame]:
         """
         Récupère les données de marché avec TOUS les indicateurs de la DB
@@ -63,20 +63,43 @@ class DatabaseIndicators:
                 momentum_10, volume_ratio, avg_volume_20,
                 enhanced, ultra_enriched
             FROM market_data 
-            WHERE symbol = $1 
+            WHERE symbol = %s AND enhanced = true
             ORDER BY time DESC 
-            LIMIT $2
+            LIMIT %s
             """
             
-            async with self.db_pool.acquire() as conn:
-                rows = await conn.fetch(query, symbol, limit)
+            from shared.src.db_pool import fetch_all
+            rows = fetch_all(query, (symbol, limit), dict_result=True)
                 
-            if not rows:
+            if not rows or rows is None:
                 logger.warning(f"Aucune donnée trouvée pour {symbol}")
                 return None
                 
             # Convertir en DataFrame et inverser l'ordre (plus ancien -> plus récent)
-            df = pd.DataFrame([dict(row) for row in rows])
+            df = pd.DataFrame(rows)
+            
+            # Vérifier que la colonne 'time' existe
+            if 'time' not in df.columns:
+                logger.error(f"Colonne 'time' manquante pour {symbol}")
+                return None
+                
+            # Convertir les colonnes numériques de Decimal vers float
+            numeric_columns = ['open', 'high', 'low', 'close', 'volume', 
+                             'rsi_14', 'ema_12', 'ema_26', 'ema_50', 'sma_20', 'sma_50',
+                             'macd_line', 'macd_signal', 'macd_histogram',
+                             'bb_upper', 'bb_middle', 'bb_lower', 'bb_position', 'bb_width',
+                             'atr_14', 'adx_14', 'plus_di', 'minus_di',
+                             'stoch_k', 'stoch_d', 'stoch_rsi',
+                             'williams_r', 'cci_20', 'mfi_14', 'vwap_10',
+                             'roc_10', 'roc_20', 'obv',
+                             'trend_angle', 'pivot_count',
+                             'momentum_10', 'volume_ratio', 'avg_volume_20']
+            
+            for col in numeric_columns:
+                if col in df.columns:
+                    # Convertir Decimal vers float explicitement
+                    df[col] = df[col].apply(lambda x: float(x) if x is not None else np.nan)
+                
             df = df.sort_values('time').reset_index(drop=True)
             
             # Convertir time en index datetime
@@ -228,7 +251,7 @@ class DatabaseIndicators:
             
         return calculated
     
-    async def get_optimized_indicators(self, symbol: str, limit: int = 200) -> Optional[pd.DataFrame]:
+    def get_optimized_indicators(self, symbol: str, limit: int = 200) -> Optional[pd.DataFrame]:
         """
         Méthode principale : récupère les indicateurs de la DB et calcule ce qui manque
         
@@ -236,7 +259,7 @@ class DatabaseIndicators:
             DataFrame complet avec tous les indicateurs (DB + calculés)
         """
         # 1. Récupérer les données enrichies de la DB
-        df = await self.get_enriched_market_data(symbol, limit=limit)
+        df = self.get_enriched_market_data(symbol, limit=limit)
         
         if df is None or df.empty:
             logger.warning(f"Impossible de récupérer les données pour {symbol}")
@@ -260,10 +283,10 @@ class DatabaseIndicators:
         
         return df
     
-    async def close(self):
+    def close(self):
         """Ferme les connexions"""
         if self.db_pool:
-            await self.db_pool.close()
+            self.db_pool.close()
 
 # Instance globale pour utilisation dans l'analyzer
 db_indicators = DatabaseIndicators()

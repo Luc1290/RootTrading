@@ -241,44 +241,37 @@ class BayesianStrategyWeights:
     def _load_from_database(self):
         """Charge les performances depuis PostgreSQL"""
         try:
-            import asyncio
+            # Importer les helpers synchrones
+            import sys
+            import os
+            sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
+            from shared.src.db_pool import fetch_all
             
-            async def load_data():
-                async with self.db_pool.acquire() as conn:
-                    # Récupérer les performances depuis performance_stats
-                    # Agrégation des données pour calculer wins/losses
-                    query = """
-                    SELECT 
-                        strategy,
-                        SUM(winning_trades) as total_wins,
-                        SUM(losing_trades) as total_losses, 
-                        SUM(total_trades) as total_signals,
-                        AVG(profit_loss_percent) as avg_return,
-                        MAX(end_date) as last_update
-                    FROM performance_stats 
-                    WHERE period = 'realtime'
-                    GROUP BY strategy
-                    """
-                    rows = await conn.fetch(query)
-                    
-                    for row in rows:
-                        self.performance_data[row['strategy']] = StrategyPerformance(
-                            wins=row['total_wins'] or 0,
-                            losses=row['total_losses'] or 0,
-                            total_signals=row['total_signals'] or 0,
-                            cumulative_return=row['avg_return'] or 0.0,
-                            last_update=row['last_update'] or datetime.now()
-                        )
-                    
-                    logger.info(f"📊 Chargé {len(rows)} stratégies depuis PostgreSQL")
+            # Récupérer les performances depuis performance_stats
+            query = """
+            SELECT 
+                strategy,
+                SUM(winning_trades) as total_wins,
+                SUM(losing_trades) as total_losses, 
+                SUM(total_trades) as total_signals,
+                AVG(profit_loss_percent) as avg_return,
+                MAX(end_date) as last_update
+            FROM performance_stats 
+            WHERE period = 'daily'
+            GROUP BY strategy
+            """
+            rows = fetch_all(query, None, dict_result=True)
             
-            # Exécuter de manière synchrone
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(load_data())
-            finally:
-                loop.close()
+            for row in rows:
+                self.performance_data[row['strategy']] = StrategyPerformance(
+                    wins=row['total_wins'] or 0,
+                    losses=row['total_losses'] or 0,
+                    total_signals=row['total_signals'] or 0,
+                    cumulative_return=row['avg_return'] or 0.0,
+                    last_update=row['last_update'] or datetime.now()
+                )
+            
+            logger.info(f"📊 Chargé {len(rows)} stratégies depuis PostgreSQL")
                 
         except Exception as e:
             logger.error(f"Erreur chargement DB: {e}")
@@ -289,51 +282,48 @@ class BayesianStrategyWeights:
     def _save_to_database(self):
         """Sauvegarde les performances dans PostgreSQL"""
         try:
-            import asyncio
+            # Importer les helpers synchrones
+            import sys
+            import os
+            sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
+            from shared.src.db_pool import execute
             
-            async def save_data():
-                async with self.db_pool.acquire() as conn:
-                    for strategy, perf in self.performance_data.items():
-                        # Insérer/mettre à jour dans performance_stats
-                        # Utiliser période 'realtime' pour les données bayésiennes
-                        query = """
-                        INSERT INTO performance_stats (
-                            symbol, strategy, period, start_date, end_date,
-                            total_trades, winning_trades, losing_trades,
-                            profit_loss_percent, win_rate, created_at
-                        ) VALUES (
-                            'ALL', $1, 'realtime', CURRENT_DATE, CURRENT_DATE,
-                            $2, $3, $4, $5, $6, NOW()
-                        )
-                        ON CONFLICT (symbol, strategy, period, start_date) 
-                        DO UPDATE SET
-                            total_trades = EXCLUDED.total_trades,
-                            winning_trades = EXCLUDED.winning_trades,
-                            losing_trades = EXCLUDED.losing_trades,
-                            profit_loss_percent = EXCLUDED.profit_loss_percent,
-                            win_rate = EXCLUDED.win_rate,
-                            created_at = NOW()
-                        """
-                        
-                        await conn.execute(
-                            query,
-                            strategy,
-                            perf.total_signals,
-                            perf.wins,
-                            perf.losses,
-                            perf.cumulative_return,
-                            perf.win_rate * 100  # Convertir en pourcentage
-                        )
-                    
-                    logger.debug(f"💾 Sauvegardé {len(self.performance_data)} stratégies en DB")
+            for strategy, perf in self.performance_data.items():
+                # Insérer/mettre à jour dans performance_stats
+                # Utiliser période 'realtime' pour les données bayésiennes
+                query = """
+                INSERT INTO performance_stats (
+                    symbol, strategy, period, start_date, end_date,
+                    total_trades, winning_trades, losing_trades,
+                    profit_loss_percent, win_rate, created_at
+                ) VALUES (
+                    'ALL', %s, 'daily', CURRENT_DATE, CURRENT_DATE,
+                    %s, %s, %s, %s, %s, NOW()
+                )
+                ON CONFLICT (symbol, strategy, period, start_date) 
+                DO UPDATE SET
+                    total_trades = EXCLUDED.total_trades,
+                    winning_trades = EXCLUDED.winning_trades,
+                    losing_trades = EXCLUDED.losing_trades,
+                    profit_loss_percent = EXCLUDED.profit_loss_percent,
+                    win_rate = EXCLUDED.win_rate,
+                    created_at = NOW()
+                """
+                
+                execute(
+                    query,
+                    (
+                        strategy,
+                        perf.total_signals,
+                        perf.wins,
+                        perf.losses,
+                        perf.cumulative_return,
+                        perf.win_rate * 100  # Convertir en pourcentage
+                    ),
+                    auto_transaction=True
+                )
             
-            # Exécuter de manière synchrone
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(save_data())
-            finally:
-                loop.close()
+            logger.debug(f"💾 Sauvegardé {len(self.performance_data)} stratégies en DB")
                 
         except Exception as e:
             logger.error(f"Erreur sauvegarde DB: {e}")

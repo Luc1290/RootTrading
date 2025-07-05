@@ -113,7 +113,7 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5004/health').read()"]
-      interval: 30s
+      interval: 180s
       timeout: 10s
       retries: 3
       start_period: 20s
@@ -138,7 +138,7 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5010/health').read()"]
-      interval: 30s
+      interval: 180s
       timeout: 10s
       retries: 3
       start_period: 20s
@@ -163,13 +163,11 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
-      dispatcher:
-        condition: service_healthy
       db:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5012/health').read()"]
-      interval: 30s
+      interval: 180s
       timeout: 10s
       retries: 3
       start_period: 20s
@@ -197,7 +195,7 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5013/health').read()"]
-      interval: 30s
+      interval: 180s
       timeout: 10s
       retries: 3
       start_period: 20s
@@ -226,7 +224,7 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 5002)); s.close()"]
-      interval: 30s
+      interval: 180s
       timeout: 10s
       retries: 3
       start_period: 20s
@@ -252,7 +250,7 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8000)); s.close()"]
-      interval: 30s
+      interval: 180s
       timeout: 10s
       retries: 3
       start_period: 20s
@@ -283,7 +281,7 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 5003)); s.close()"]
-      interval: 30s
+      interval: 180s
       timeout: 10s
       retries: 3
       start_period: 20s
@@ -314,7 +312,7 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5009/health')"]
-      interval: 30s
+      interval: 180s
       timeout: 10s
       retries: 3
       start_period: 20s

@@ -410,15 +410,23 @@ class EnhancedRegimeDetector:
             current_volume = df['volume'].iloc[-1]
             volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
             
-            # 6. Trend slope (régression linéaire sur 20 périodes)
-            prices = df['close'].iloc[-20:].values
-            x = np.arange(len(prices))
-            slope, _ = np.polyfit(x, prices, 1)
-            trend_angle = np.degrees(np.arctan(slope / prices.mean() * 100))
-            
-            # 7. Analyse des supports/résistances
-            pivot_high_count = self._count_pivots(df['high'].values[-50:], is_high=True)
-            pivot_low_count = self._count_pivots(df['low'].values[-50:], is_low=True)
+            # 6. Trend angle et pivot count depuis la DB (si disponibles), sinon calcul local
+            if 'trend_angle' in df.columns and not pd.isna(df['trend_angle'].iloc[-1]):
+                trend_angle = df['trend_angle'].iloc[-1]
+            else:
+                # Fallback: calcul local
+                prices = df['close'].iloc[-20:].values
+                x = np.arange(len(prices))
+                slope, _ = np.polyfit(x, prices, 1)
+                trend_angle = np.degrees(np.arctan(slope / prices.mean() * 100))
+                
+            if 'pivot_count' in df.columns and not pd.isna(df['pivot_count'].iloc[-1]):
+                pivot_count = df['pivot_count'].iloc[-1]
+            else:
+                # Fallback: calcul local
+                pivot_high_count = self._count_pivots_local(df['high'].values[-50:], is_high=True)
+                pivot_low_count = self._count_pivots_local(df['low'].values[-50:], is_low=True)
+                pivot_count = pivot_high_count + pivot_low_count
             
             # Compiler les métriques
             metrics = {
@@ -431,7 +439,7 @@ class EnhancedRegimeDetector:
                 'roc': current_roc,
                 'volume_ratio': volume_ratio,
                 'trend_angle': trend_angle,
-                'pivot_count': pivot_high_count + pivot_low_count
+                'pivot_count': pivot_count
             }
             
             # Déterminer le régime
@@ -524,9 +532,9 @@ class EnhancedRegimeDetector:
             else:
                 return MarketRegime.RANGE_TIGHT
     
-    def _count_pivots(self, data: np.ndarray, window: int = 3, 
-                     is_high: bool = False, is_low: bool = False) -> int:
-        """Compte le nombre de pivots (hauts/bas locaux)"""
+    def _count_pivots_local(self, data: np.ndarray, window: int = 3, 
+                           is_high: bool = False, is_low: bool = False) -> int:
+        """Compte le nombre de pivots (hauts/bas locaux) - fallback local"""
         pivot_count = 0
         
         for i in range(window, len(data) - window):
@@ -805,18 +813,14 @@ class EnhancedRegimeDetector:
             current_volume = volumes[-1] if volumes else 1.0
             volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
             
-            # Trend slope (régression linéaire sur 20 périodes)
-            recent_closes = closes[-20:] if len(closes) >= 20 else closes
-            if len(recent_closes) >= 10:
-                x = np.arange(len(recent_closes))
-                slope, _ = np.polyfit(x, recent_closes, 1)
-                trend_angle = np.degrees(np.arctan(slope / np.mean(recent_closes) * 100))
-            else:
-                trend_angle = 0.0
-            
-            # Analyse des supports/résistances
-            pivot_high_count = self._count_pivots([c['high'] for c in candles[-50:]], is_high=True)
-            pivot_low_count = self._count_pivots([c['low'] for c in candles[-50:]], is_low=True)
+            # Trend angle et pivot count depuis les données enrichies (si disponibles)
+            # Fallback: calcul local si pas disponible
+            trend_angle = 0.0
+            pivot_count = 0
+            if candles and len(candles) > 0:
+                last_candle = candles[-1]
+                trend_angle = last_candle.get('trend_angle', 0.0)
+                pivot_count = last_candle.get('pivot_count', 0)
             
             # Compiler les métriques
             metrics = {
@@ -829,7 +833,7 @@ class EnhancedRegimeDetector:
                 'roc': current_roc,
                 'volume_ratio': volume_ratio,
                 'trend_angle': trend_angle,
-                'pivot_count': pivot_high_count + pivot_low_count
+                'pivot_count': pivot_count
             }
             
             # Déterminer le régime
@@ -889,15 +893,23 @@ class EnhancedRegimeDetector:
             current_volume = df['volume'].iloc[-1]
             volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
             
-            # Trend slope
-            prices = df['close'].iloc[-20:].values
-            x = np.arange(len(prices))
-            slope, _ = np.polyfit(x, prices, 1)
-            trend_angle = np.degrees(np.arctan(slope / prices.mean() * 100))
-            
-            # Pivots
-            pivot_high_count = self._count_pivots(df['high'].values[-50:], is_high=True)
-            pivot_low_count = self._count_pivots(df['low'].values[-50:], is_low=True)
+            # Trend angle et pivot count depuis la DB (si disponibles), sinon calcul local
+            if 'trend_angle' in df.columns and not pd.isna(df['trend_angle'].iloc[-1]):
+                trend_angle = df['trend_angle'].iloc[-1]
+            else:
+                # Fallback: calcul local
+                prices = df['close'].iloc[-20:].values
+                x = np.arange(len(prices))
+                slope, _ = np.polyfit(x, prices, 1)
+                trend_angle = np.degrees(np.arctan(slope / prices.mean() * 100))
+                
+            if 'pivot_count' in df.columns and not pd.isna(df['pivot_count'].iloc[-1]):
+                pivot_count = df['pivot_count'].iloc[-1]
+            else:
+                # Fallback: calcul local
+                pivot_high_count = self._count_pivots_local(df['high'].values[-50:], is_high=True)
+                pivot_low_count = self._count_pivots_local(df['low'].values[-50:], is_low=True)
+                pivot_count = pivot_high_count + pivot_low_count
             
             metrics = {
                 'adx': current_adx,
@@ -909,7 +921,7 @@ class EnhancedRegimeDetector:
                 'roc': current_roc,
                 'volume_ratio': volume_ratio,
                 'trend_angle': trend_angle,
-                'pivot_count': pivot_high_count + pivot_low_count
+                'pivot_count': pivot_count
             }
             
             regime = self._determine_regime(metrics)
