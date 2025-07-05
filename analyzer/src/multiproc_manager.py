@@ -39,14 +39,13 @@ logger = logging.getLogger(__name__)
 
 # Import des optimisations après la configuration du logger
 try:
-    from analyzer.src.indicators.vectorized_indicators import VectorizedIndicators
-    from analyzer.src.indicators.indicator_cache import indicator_cache
-    from analyzer.src.concurrent_analyzer import ConcurrentAnalyzer
+    from analyzer.src.optimized_analyzer import OptimizedAnalyzer
+    from analyzer.src.concurrent_analyzer import ConcurrentAnalyzer  # Fallback
     OPTIMIZATIONS_AVAILABLE = True
-    logger.info("✅ Optimisations analyzer chargées: cache, vectorisation, concurrence")
+    logger.info("✅ Analyzer optimisé chargé: récupération DB + calculs intelligents")
 except ImportError as e:
     OPTIMIZATIONS_AVAILABLE = False
-    logger.warning(f"⚠️ Optimisations analyzer non disponibles: {e}")
+    logger.warning(f"⚠️ Analyzer optimisé non disponible: {e}")
 
 class AnalyzerManager:
     """
@@ -331,48 +330,38 @@ class AnalyzerManager:
     
     def _process_with_optimizations(self, analysis_data, strategy_loader):
         """
-        Traitement optimisé avec vectorisation et cache
+        Traitement optimisé utilisant la base de données pour les indicateurs
         """
         try:
-            import pandas as pd
+            import asyncio
             
-            # Extraire les données OHLCV
+            # Extraire le symbole
             symbol = analysis_data['symbol']
-            ohlcv_data = analysis_data.get('ohlcv_data', [])
             
-            if not ohlcv_data or len(ohlcv_data) < 50:
-                # Pas assez de données pour l'analyse vectorisée
-                return strategy_loader.process_market_data(analysis_data)
+            # Utiliser l'analyzer optimisé qui récupère les données de la DB
+            if not hasattr(self, '_optimized_analyzer'):
+                self._optimized_analyzer = OptimizedAnalyzer(strategy_loader)
+                logger.info("✅ Analyzer optimisé initialisé")
             
-            # Convertir en DataFrame
-            df = pd.DataFrame(ohlcv_data)
+            # Exécuter l'analyse optimisée de manière asynchrone
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             
-            # Calcul vectorisé des indicateurs avec cache
-            if OPTIMIZATIONS_AVAILABLE:
-                vectorized_calc = VectorizedIndicators()
-                indicators = vectorized_calc.compute_all_indicators(df, symbol)
-                logger.debug(f"📊 Calcul vectorisé de {len(indicators)} indicateurs pour {symbol}")
+            try:
+                # Analyser le symbole avec les données de la DB
+                signals = loop.run_until_complete(
+                    self._optimized_analyzer._analyze_symbol_from_db(symbol)
+                )
                 
-                # Utiliser les indicateurs pré-calculés pour accélérer les stratégies
-                enhanced_data = analysis_data.copy()
-                enhanced_data['precomputed_indicators'] = indicators
+                logger.debug(f"🎯 Analyzer optimisé: {len(signals or [])} signaux pour {symbol}")
+                return signals or []
                 
-                # Traitement accéléré
-                signals = strategy_loader.process_market_data(enhanced_data)
-                
-                # Log des performances du cache
-                if hasattr(indicator_cache, 'get_stats'):
-                    stats = indicator_cache.get_stats()
-                    if stats['hits'] + stats['misses'] > 0:
-                        logger.debug(f"📈 Cache hit rate: {stats['hit_rate']:.1%} ({stats['hits']}/{stats['hits'] + stats['misses']})")
-                
-                return signals
-            else:
-                return strategy_loader.process_market_data(analysis_data)
+            finally:
+                loop.close()
                 
         except Exception as e:
-            logger.error(f"Erreur traitement optimisé pour {analysis_data.get('symbol', 'unknown')}: {e}")
-            # Fallback vers méthode classique
+            logger.warning(f"⚠️ Erreur analyzer optimisé pour {symbol}: {e}")
+            # Fallback vers la méthode classique
             return strategy_loader.process_market_data(analysis_data)
       
     def start(self):

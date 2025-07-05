@@ -90,7 +90,17 @@ class StrategyLoader:
         total_strategies = sum(len(strategies) for strategies in self.strategies.values())
         logger.info(f"📊 Total: {total_strategies} stratégies chargées pour {len(self.symbols)} symboles")
     
-    def process_market_data(self, data: Dict[str, Any]) -> List[StrategySignal]:
+    def process_market_data(self, data: Dict[str, Any], indicators: Dict[str, Any] = None) -> List[Dict]:
+        """
+        Traite les données de marché avec les stratégies ultra-précises refactorisées.
+        
+        Args:
+            data: Données de marché OHLCV
+            indicators: Indicateurs pré-calculés de la DB
+            
+        Returns:
+            Liste de signaux sous forme de Dict
+        """
         signals = []
 
         symbol = data.get('symbol')
@@ -101,45 +111,56 @@ class StrategyLoader:
         # Obtenir les stratégies pour ce symbole
         strategies = self.strategies.get(symbol, {})
         if not strategies:
-            logger.info(f"Aucune stratégie trouvée pour le symbole {symbol}")
+            logger.debug(f"Aucune stratégie trouvée pour le symbole {symbol}")
+            return []
+
+        # Créer DataFrame à partir des données de marché
+        import pandas as pd
+        try:
+            # Convertir les données en DataFrame (format attendu par les stratégies)
+            df_data = {
+                'open': [data.get('open', 0)],
+                'high': [data.get('high', 0)],
+                'low': [data.get('low', 0)],
+                'close': [data.get('close', 0)],
+                'volume': [data.get('volume', 0)]
+            }
+            df = pd.DataFrame(df_data)
+            
+            # Utiliser indicateurs fournis ou dict vide
+            indicators_dict = indicators or {}
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur création DataFrame pour {symbol}: {e}")
             return []
 
         for strategy_name, strategy in strategies.items():
             try:
-                # Ajouter les données
-                strategy.add_market_data(data)
-        
-                # Générer un signal si possible
-                signal = strategy.analyze()
-        
-                # Vérifier que le signal est complet avec tous les champs requis
-                if signal:
-                    # Convertir les types NumPy dans les métadonnées du signal
-                    if hasattr(signal, 'metadata') and signal.metadata:
-                        signal.metadata = self._convert_numpy_types(signal.metadata)
+                # Appeler la nouvelle méthode analyze() avec les arguments corrects
+                signal_dict = strategy.analyze(symbol, df, indicators_dict)
+                
+                if signal_dict:
+                    # Convertir types NumPy si nécessaire
+                    signal_dict = self._convert_numpy_types(signal_dict)
                     
-                    # Vérifier également les autres champs qui pourraient contenir des types NumPy
-                    if hasattr(signal, 'confidence') and hasattr(signal.confidence, 'dtype'):
-                        signal.confidence = float(signal.confidence)
-                    
-                    # Vérifier les champs obligatoires
-                    required_fields = ['symbol', 'strategy', 'side', 'timestamp', 'price']
+                    # Valider les champs obligatoires
+                    required_fields = ['strategy', 'symbol', 'side', 'price', 'confidence']
                     missing_fields = [field for field in required_fields 
-                                    if not hasattr(signal, field) or getattr(signal, field) is None]
+                                    if field not in signal_dict or signal_dict[field] is None]
                 
                     if missing_fields:
                         logger.warning(f"❌ Signal incomplet généré par {strategy_name}, " 
                                     f"champs manquants: {missing_fields}")
                     else:
-                        # Le signal est valide, l'ajouter à la liste
-                        signals.append(signal)
-                        logger.info(f"✅ Signal valide ajouté: {signal.side} pour {signal.symbol} @ {signal.price}")
+                        # Signal valide
+                        signals.append(signal_dict)
+                        logger.info(f"✅ Signal ultra-précis: {signal_dict['side'].value} {symbol} @ {signal_dict['price']:.4f} "
+                                  f"({strategy_name}, conf: {signal_dict['confidence']:.2f})")
                     
             except Exception as e:
-                logger.error(f"❌ Erreur lors du traitement de la stratégie {strategy_name}: {str(e)}")
-                # Ajouter plus de détails pour faciliter le débogage
+                logger.error(f"❌ Erreur stratégie {strategy_name} pour {symbol}: {e}")
                 import traceback
-                logger.error(traceback.format_exc())
+                logger.debug(traceback.format_exc())
 
         return signals
     

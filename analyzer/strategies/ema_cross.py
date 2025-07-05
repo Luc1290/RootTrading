@@ -1,421 +1,425 @@
 """
-Stratégie de trading basée sur le croisement de moyennes mobiles exponentielles (EMA).
-Génère des signaux lorsque l'EMA courte croise l'EMA longue.
+Stratégie EMA Cross Ultra-Précise
+Utilise les EMAs pré-calculées de la DB avec validation multi-critères
+pour générer des signaux de crossover de très haute qualité.
 """
 import logging
+from datetime import datetime
 from typing import Dict, Any, Optional, List
 import numpy as np
 import pandas as pd
-# Importer les modules partagés
+
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
-from shared.src.config import get_strategy_param
-from shared.src.enums import OrderSide
-from shared.src.schemas import StrategySignal
-from shared.src.technical_indicators import calculate_ema
+from shared.src.enums import OrderSide, SignalStrength
 
 from .base_strategy import BaseStrategy
-from .advanced_filters_mixin import AdvancedFiltersMixin
 
-# Configuration du logging
 logger = logging.getLogger(__name__)
 
-class EMACrossStrategy(BaseStrategy, AdvancedFiltersMixin):
+class EMACrossStrategy(BaseStrategy):
     """
-    Stratégie basée sur le croisement de moyennes mobiles exponentielles (EMA).
-    Génère des signaux d'achat quand l'EMA courte croise l'EMA longue vers le haut
-    et des signaux de vente quand l'EMA courte croise l'EMA longue vers le bas.
+    Stratégie EMA Cross Ultra-Précise qui utilise les EMAs de la DB
+    avec des filtres sophistiqués pour des signaux de momentum fiables.
+    
+    Critères ultra-stricts :
+    - Croisements EMA 12/26 avec validation de force
+    - Confirmation EMA 50 pour tendance
+    - Analyse momentum et volume
+    - Filtres volatilité et anti-bruit
+    - Détection breakout vs pullback
     """
     
     def __init__(self, symbol: str, params: Dict[str, Any] = None):
-        """
-        Initialise la stratégie EMA Cross.
-        
-        Args:
-            symbol: Symbole de trading (ex: 'BTCUSDC')
-            params: Paramètres spécifiques à la stratégie
-        """
         super().__init__(symbol, params)
         
-        # Paramètres EMA
-        self.short_window = self.params.get('short_window', get_strategy_param('ema_cross', 'short_window', 5))
-        self.long_window = self.params.get('long_window', get_strategy_param('ema_cross', 'long_window', 20))
+        # Paramètres EMA ultra-précis (harmonisés avec MACD)
+        self.ema_fast = 12
+        self.ema_slow = 26
+        self.ema_trend = 50
         
-        # S'assurer que court < long
-        if self.short_window >= self.long_window:
-            logger.warning(f"⚠️ Configuration incorrecte: EMA court ({self.short_window}) >= EMA long ({self.long_window}). Ajustement automatique.")
-            self.short_window = min(self.short_window, self.long_window - 1)
-
-        # Variables pour suivre les tendances
-        self.prev_short_ema = None
-        self.prev_long_ema = None
-
-        logger.info(f"🔧 Stratégie EMA Cross initialisée pour {symbol} "
-                   f"(short={self.short_window}, long={self.long_window})")
+        # Filtres de qualité
+        self.min_crossover_strength = 0.003   # Force minimum 0.3%
+        self.min_momentum_alignment = 0.7     # Score momentum minimum
+        self.min_volume_confirmation = 1.4    # Volume 40% au-dessus moyenne
+        self.max_volatility = 0.08            # Volatilité maximum 8%
+        
+        # Filtres ultra-précis
+        self.min_confidence = 0.78            # Confiance minimum 78%
+        self.trend_confirmation_periods = 5   # Périodes pour confirmation
+        
+        logger.info(f"🎯 EMA Cross Ultra-Précis initialisé pour {symbol}")
 
     @property
     def name(self) -> str:
-        """Nom unique de la stratégie."""
-        return "EMA_Cross_Strategy"
+        return "EMA_Cross_Ultra_Strategy"
     
     def get_min_data_points(self) -> int:
-        """
-        Nombre minimum de points de données nécessaires pour calculer les EMAs.
-        
-        Returns:
-            Nombre minimum de données requises
-        """
-        # Besoin d'au moins 3 * la fenêtre longue pour avoir un calcul fiable
-        return max(self.long_window * 3, 30)
+        return 80  # Minimum pour EMA 50 fiable
     
-    def calculate_emas(self, prices: np.ndarray) -> tuple:
+    def analyze(self, symbol: str, df: pd.DataFrame, indicators: Dict) -> Optional[Dict]:
         """
-        Calcule les EMAs courte et longue sur une série de prix.
-        
-        Args:
-            prices: Tableau numpy des prix de clôture
-            
-        Returns:
-            Tuple (short_ema, long_ema) des valeurs EMA
+        Analyse EMA Cross ultra-précise avec validation complète
         """
         try:
-            # Utiliser le module partagé pour calculer les EMAs
-            short_ema = calculate_ema(prices, period=self.short_window)
-            long_ema = calculate_ema(prices, period=self.long_window)
-            return short_ema, long_ema
-        except Exception as e:
-            logger.error(f"Erreur lors du calcul des EMAs: {str(e)}")
-            # Implémenter un calcul manuel de secours en cas d'erreur
-            return self._calculate_emas_manually(prices)
-    
-    def _calculate_emas_manually(self, prices: np.ndarray) -> tuple:
-        """
-        Calcule les EMAs manuellement si TA-Lib n'est pas disponible.
-        
-        Args:
-            prices: Tableau numpy des prix de clôture
+            if len(df) < self.get_min_data_points():
+                return None
             
-        Returns:
-            Tuple (short_ema, long_ema) des valeurs EMA
-        """
-        # Initialiser les tableaux
-        short_ema = np.zeros_like(prices)
-        long_ema = np.zeros_like(prices)
-        
-        # Calculer les EMAs
-        # Coefficient de lissage
-        short_alpha = 2 / (self.short_window + 1)
-        long_alpha = 2 / (self.long_window + 1)
-        
-        # Pour la première valeur, utiliser la moyenne simple (SMA)
-        for i in range(len(prices)):
-            if i < self.short_window - 1:
-                short_ema[i] = np.nan
-            elif i == self.short_window - 1:
-                short_ema[i] = np.mean(prices[:self.short_window])
-            else:
-                short_ema[i] = (prices[i] * short_alpha) + (short_ema[i-1] * (1 - short_alpha))
+            # 1. Récupérer les EMAs pré-calculées de la DB
+            ema_12 = self._get_current_indicator(indicators, 'ema_12')
+            ema_26 = self._get_current_indicator(indicators, 'ema_26')
+            ema_50 = self._get_current_indicator(indicators, 'ema_50')
+            
+            if None in [ema_12, ema_26, ema_50]:
+                logger.debug(f"❌ {symbol}: EMAs non disponibles")
+                return None
+            
+            current_price = df['close'].iloc[-1]
+            
+            # 2. Analyser les croisements EMA
+            crossover_analysis = self._analyze_ema_crossover(indicators)
+            
+            # 3. Analyser l'alignement de tendance
+            trend_analysis = self._analyze_trend_alignment(ema_12, ema_26, ema_50, current_price)
+            
+            # 4. Analyser le momentum et la force
+            momentum_analysis = self._analyze_momentum_strength(df, indicators)
+            
+            # 5. Analyser le contexte de marché
+            market_context = self._analyze_market_context(df, indicators)
+            
+            # 6. Appliquer les filtres ultra-stricts
+            if not self._passes_ultra_filters(market_context, momentum_analysis):
+                return None
+            
+            # 7. Logique de signal ultra-sélective
+            signal = None
+            
+            # SIGNAL D'ACHAT EMA - Conditions ultra-strictes
+            if (crossover_analysis.get('bullish_crossover') and
+                trend_analysis.get('bullish_alignment') and
+                momentum_analysis.get('strong_bullish_momentum')):
                 
-            if i < self.long_window - 1:
-                long_ema[i] = np.nan
-            elif i == self.long_window - 1:
-                long_ema[i] = np.mean(prices[:self.long_window])
-            else:
-                long_ema[i] = (prices[i] * long_alpha) + (long_ema[i-1] * (1 - long_alpha))
-        
-        # Retourner seulement les dernières valeurs (comme calculate_ema)
-        return short_ema[-1], long_ema[-1]
+                confidence = self._calculate_buy_confidence(
+                    crossover_analysis, trend_analysis, momentum_analysis, market_context
+                )
+                
+                if confidence >= self.min_confidence:
+                    signal = self._create_signal(
+                        symbol, OrderSide.BUY, current_price, confidence,
+                        ema_12, ema_26, ema_50, market_context
+                    )
+            
+            # SIGNAL DE VENTE EMA - Conditions ultra-strictes
+            elif (crossover_analysis.get('bearish_crossover') and
+                  trend_analysis.get('bearish_alignment') and
+                  momentum_analysis.get('strong_bearish_momentum')):
+                
+                confidence = self._calculate_sell_confidence(
+                    crossover_analysis, trend_analysis, momentum_analysis, market_context
+                )
+                
+                if confidence >= self.min_confidence:
+                    signal = self._create_signal(
+                        symbol, OrderSide.SELL, current_price, confidence,
+                        ema_12, ema_26, ema_50, market_context
+                    )
+            
+            if signal:
+                logger.info(f"🎯 EMA Cross {symbol}: {signal['side'].value} @ {current_price:.4f} "
+                          f"(EMAs: {ema_12:.4f}/{ema_26:.4f}/{ema_50:.4f}, conf: {signal['confidence']:.2f})")
+            
+            return signal
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur EMA Cross Strategy {symbol}: {e}")
+            return None
     
-    def generate_signal(self) -> Optional[StrategySignal]:
-        """
-        Génère un signal de trading sophistiqué basé sur le croisement d'EMAs.
-        Utilise des filtres avancés pour éviter les faux signaux.
-        
-        Returns:
-            Signal de trading ou None si aucun signal n'est généré
-        """
-        # Vérifier le cooldown avant de générer un signal
-        if not self.can_generate_signal():
+    def _get_current_indicator(self, indicators: Dict, key: str) -> Optional[float]:
+        """Récupère valeur actuelle d'un indicateur"""
+        value = indicators.get(key)
+        if value is None:
             return None
         
-        # Convertir les données en DataFrame
-        df = self.get_data_as_dataframe()
-        if df is None or len(df) < self.get_min_data_points():
-            return None
-        
-        # Extraire les données nécessaires
-        prices = df['close'].values
-        volumes = df['volume'].values if 'volume' in df.columns else None
-        
-        # Calculer les EMAs
-        short_ema, long_ema = self.calculate_emas(prices)
-        
-        # Obtenir les dernières valeurs
-        current_price = prices[-1]
-        # short_ema et long_ema sont déjà des valeurs float (dernière valeur)
-        current_short_ema = short_ema
-        current_long_ema = long_ema
-        
-        # Loguer les valeurs actuelles
-        precision = 5 if 'BTC' in self.symbol else 3
-        logger.debug(f"[EMA Cross] {self.symbol}: Price={current_price:.{precision}f}, "
-                    f"Short EMA={current_short_ema:.{precision}f}, Long EMA={current_long_ema:.{precision}f}")
-        
-        # Vérifications de base
-        if np.isnan(current_short_ema) or np.isnan(current_long_ema):
-            return None
-        
-        # === NOUVEAU SYSTÈME DE FILTRES SOPHISTIQUES ===
-        
-        # 1. FILTRE SETUP EMA DE BASE
-        signal_side = self._detect_ema_setup(current_short_ema, current_long_ema, current_price)
-        if signal_side is None:
-            return None
-        
-        # 2. FILTRE ADX (force de tendance)
-        adx_score = self._analyze_adx_strength(df)
-        if adx_score < 0.3:
-            logger.debug(f"[EMA Cross] {self.symbol}: Signal rejeté - ADX faible ({adx_score:.2f})")
-            return None
-        
-        # 3. FILTRE VOLUME (confirmation institutionnelle)
-        volume_score = self._analyze_volume_confirmation_common(volumes) if volumes is not None else 0.7
-        if volume_score < 0.3:
-            logger.debug(f"[EMA Cross] {self.symbol}: Signal rejeté - volume insuffisant ({volume_score:.2f})")
-            return None
-        
-        # 4. FILTRE PULLBACK VALIDATION (éviter les faux breakouts)
-        pullback_score = self._validate_pullback_quality(df, signal_side, current_short_ema, current_long_ema)
-        
-        # 5. FILTRE TREND ALIGNMENT (confirmation tendance supérieure)
-        trend_score = self._analyze_trend_alignment_common(df, signal_side)
-        
-        # 6. FILTRE RSI CONFIRMATION (momentum sous-jacent)
-        rsi_score = self._calculate_rsi_confirmation_common(df, signal_side)
-        
-        # 7. FILTRE SUPPORT/RESISTANCE (confluence niveaux)
-        sr_score = self._detect_support_resistance_common(df, current_price, signal_side)
-        
-        # === CALCUL DE CONFIANCE COMPOSITE ===
-        scores = {
-            'adx': adx_score,
-            'volume': volume_score,
-            'pullback': pullback_score,
-            'trend': trend_score,
-            'rsi': rsi_score,
-            'sr': sr_score
-        }
-        
-        weights = {
-            'adx': 0.25,      # Force de tendance cruciale pour EMA
-            'volume': 0.20,   # Confirmation volume
-            'pullback': 0.20, # Qualité du pullback
-            'trend': 0.15,    # Tendance supérieure
-            'rsi': 0.10,      # Momentum
-            'sr': 0.10        # Support/résistance
-        }
-        
-        confidence = self._calculate_composite_confidence_common(scores, weights)
-        
-        # Seuil minimum de confiance
-        if confidence < 0.55:
-            logger.debug(f"[EMA Cross] {self.symbol}: Signal rejeté - confiance trop faible ({confidence:.2f})")
-            return None
-        
-        # === CONSTRUCTION DU SIGNAL ===
-        signal = self.create_signal(
-            side=signal_side,
-            price=current_price,
-            confidence=confidence
-        )
-        
-        # Ajouter les métadonnées d'analyse
-        signal.metadata.update({
-            'short_ema': current_short_ema,
-            'long_ema': current_long_ema,
-            'ema_spread_pct': abs(current_short_ema - current_long_ema) / current_long_ema * 100,
-            'price_to_short_ema_pct': (current_price - current_short_ema) / current_short_ema * 100,
-            'price_to_long_ema_pct': (current_price - current_long_ema) / current_long_ema * 100,
-            'adx_score': adx_score,
-            'volume_score': volume_score,
-            'pullback_score': pullback_score,
-            'trend_score': trend_score,
-            'rsi_score': rsi_score,
-            'sr_score': sr_score
-        })
-        
-        logger.info(f"🎯 [EMA Cross] {self.symbol}: Signal {signal_side} @ {current_price:.{precision}f} "
-                   f"(confiance: {confidence:.2f}, scores: ADX={adx_score:.2f}, V={volume_score:.2f}, "
-                   f"PB={pullback_score:.2f})")
-        
-        return signal
-    
-    def _detect_ema_setup(self, current_short: float, current_long: float, current_price: float) -> Optional[OrderSide]:
-        """
-        Détecte le setup EMA de base avec logique sophistiquée ET validation de tendance.
-        """
-        
-        # NOUVEAU: Validation de tendance avant de générer le signal
-        trend_alignment = self._validate_trend_alignment_for_signal()
-        if trend_alignment is None:
-            return None  # Pas assez de données pour valider la tendance
-        
-        # Détecter la direction de la tendance
-        is_uptrend = current_short > current_long
-        is_downtrend = current_short < current_long
-        
-        # Calculer les distances
-        price_to_short_pct = (current_price - current_short) / current_short * 100
-        price_to_long_pct = (current_price - current_long) / current_long * 100
-        
-        # Setup BUY: Tendance haussière confirmée (EMA courte > EMA longue)
-        if is_uptrend:
-            # Prix proche des EMAs (dans la tendance)
-            if price_to_short_pct > -1.0 and price_to_short_pct < 1.0:  # Prix près EMA courte
-                # NOUVEAU: Ne BUY que si tendance n'est pas fortement baissière
-                if trend_alignment in ["STRONG_BEARISH", "WEAK_BEARISH"]:
-                    logger.debug(f"[EMA Cross] {self.symbol}: BUY signal supprimé - tendance {trend_alignment}")
-                    return None
-                return OrderSide.BUY
-        
-        # Setup SELL: Tendance baissière confirmée (EMA courte < EMA longue)  
-        elif is_downtrend:
-            # Prix proche des EMAs (dans la tendance)
-            if price_to_short_pct > -1.0 and price_to_short_pct < 1.0:  # Prix près EMA courte
-                # NOUVEAU: SELL seulement si tendance baissière/neutre
-                if trend_alignment in ["STRONG_BULLISH"]:
-                    logger.debug(f"[EMA Cross] {self.symbol}: SELL signal supprimé - tendance {trend_alignment} trop haussière")
-                    return None
-                return OrderSide.SELL
+        if isinstance(value, (list, np.ndarray)) and len(value) > 0:
+            return float(value[-1])
+        elif isinstance(value, (int, float)):
+            return float(value)
         
         return None
     
-    def _analyze_adx_strength(self, df: pd.DataFrame) -> float:
-        """
-        Analyse la force de tendance avec ADX.
-        """
-        try:
-            if len(df) < 30:
-                return 0.7
-            
-            high = df['high'].values
-            low = df['low'].values
-            close = df['close'].values
-            
-            # Calculer ADX manuellement (using advanced_filters_mixin method)
-            from shared.src.technical_indicators import calculate_adx
-            adx_result = calculate_adx(high, low, close, period=14)
-            adx_value = adx_result[0] if adx_result[0] is not None else 20.0  # ADX seulement
-            
-            if adx_value is None or np.isnan(adx_value):
-                return 0.7
-            
-            current_adx = adx_value
-            
-            # Score basé sur la force ADX
-            if current_adx > 40:
-                return 0.95  # Tendance très forte
-            elif current_adx > 30:
-                return 0.85  # Tendance forte
-            elif current_adx > 20:
-                return 0.75  # Tendance modérée
-            elif current_adx > 15:
-                return 0.65  # Tendance faible
-            else:
-                return 0.5   # Pas de tendance claire
-                
-        except Exception as e:
-            logger.warning(f"Erreur ADX: {e}")
-            return 0.7
-    
-    def _validate_pullback_quality(self, df: pd.DataFrame, signal_side: OrderSide, 
-                                  short_ema: float, long_ema: float) -> float:
-        """
-        Valide la qualité du pullback/rebond.
-        """
-        try:
-            if len(df) < 10:
-                return 0.7
-            
-            prices = df['close'].values
-            current_price = prices[-1]
-            
-            # Analyser la qualité du mouvement
-            price_volatility = np.std(prices[-10:]) / np.mean(prices[-10:])
-            
-            if signal_side == OrderSide.BUY:
-                # Pour BUY: prix doit être proche de l'EMA longue mais pas en breakdown
-                distance_to_long = abs(current_price - long_ema) / long_ema
-                
-                if distance_to_long < 0.01:  # Très proche EMA longue
-                    score = 0.9
-                elif distance_to_long < 0.02:  # Proche EMA longue
-                    score = 0.8
-                elif current_price > long_ema:  # Au-dessus EMA longue
-                    score = 0.75
-                else:  # En dessous EMA longue
-                    score = 0.6
-            
-            else:  # SELL
-                # Pour SELL: prix doit être proche de l'EMA longue mais pas en breakout
-                distance_to_long = abs(current_price - long_ema) / long_ema
-                
-                if distance_to_long < 0.01:  # Très proche EMA longue
-                    score = 0.9
-                elif distance_to_long < 0.02:  # Proche EMA longue
-                    score = 0.8
-                elif current_price < long_ema:  # En dessous EMA longue
-                    score = 0.75
-                else:  # Au-dessus EMA longue
-                    score = 0.6
-            
-            # Ajuster selon la volatilité
-            if price_volatility > 0.03:  # Haute volatilité
-                score *= 0.9
-            
-            return min(0.95, score)
-            
-        except Exception as e:
-            logger.warning(f"Erreur validation pullback: {e}")
-            return 0.7
-    
-    def _validate_trend_alignment_for_signal(self) -> Optional[str]:
-        """
-        Valide la tendance actuelle pour déterminer si un signal est approprié.
-        Utilise la même logique que le signal_aggregator pour cohérence.
-        """
-        try:
-            df = self.get_data_as_dataframe()
-            if df is None or len(df) < 50:
-                return None
-            
-            prices = df['close'].values
-            
-            # Calculer EMA 21 vs EMA 50 (harmonisé avec signal_aggregator)
-            ema_21 = calculate_ema(prices, period=21)
-            ema_50 = calculate_ema(prices, period=50)
-            
-            if ema_21 is None or ema_50 is None or np.isnan(ema_21) or np.isnan(ema_50):
-                return None
-            
-            current_price = prices[-1]
-            trend_21 = ema_21
-            trend_50 = ema_50
-            
-            # Classification sophistiquée de la tendance (même logique que signal_aggregator)
-            if trend_21 > trend_50 * 1.015:  # +1.5% = forte haussière
-                return "STRONG_BULLISH"
-            elif trend_21 > trend_50 * 1.005:  # +0.5% = faible haussière
-                return "WEAK_BULLISH"
-            elif trend_21 < trend_50 * 0.985:  # -1.5% = forte baissière
-                return "STRONG_BEARISH"
-            elif trend_21 < trend_50 * 0.995:  # -0.5% = faible baissière
-                return "WEAK_BEARISH"
-            else:
-                return "NEUTRAL"
-                
-        except Exception as e:
-            logger.warning(f"Erreur validation tendance: {e}")
+    def _get_indicator_series(self, indicators: Dict, key: str, length: int) -> Optional[np.ndarray]:
+        """Récupère série d'indicateur"""
+        value = indicators.get(key)
+        if value is None:
             return None
+            
+        if isinstance(value, (list, np.ndarray)) and len(value) >= length:
+            return np.array(value[-length:])
+        
+        return None
+    
+    def _analyze_ema_crossover(self, indicators: Dict) -> Dict:
+        """Analyse les croisements EMA avec validation de force"""
+        try:
+            # Récupérer les séries EMA
+            ema_12_series = self._get_indicator_series(indicators, 'ema_12', 3)
+            ema_26_series = self._get_indicator_series(indicators, 'ema_26', 3)
+            
+            if ema_12_series is None or ema_26_series is None or len(ema_12_series) < 3:
+                return {'bullish_crossover': False, 'bearish_crossover': False}
+            
+            # Valeurs actuelles et précédentes
+            current_fast, prev_fast = ema_12_series[-1], ema_12_series[-2]
+            current_slow, prev_slow = ema_26_series[-1], ema_26_series[-2]
+            
+            # Détecter croisements
+            bullish_crossover = (prev_fast <= prev_slow and current_fast > current_slow)
+            bearish_crossover = (prev_fast >= prev_slow and current_fast < current_slow)
+            
+            # Mesurer la force du croisement
+            crossover_gap = abs(current_fast - current_slow)
+            reference_value = max(abs(current_fast), abs(current_slow), 0.001)
+            crossover_strength = crossover_gap / reference_value
+            
+            # Valider la force minimum
+            strong_enough = crossover_strength >= self.min_crossover_strength
+            
+            # Vérifier la persistance (confirmer direction)
+            if len(ema_12_series) >= 3:
+                prev2_fast, prev2_slow = ema_12_series[-3], ema_26_series[-3]
+                direction_persistent = (
+                    (bullish_crossover and current_fast > prev2_fast) or
+                    (bearish_crossover and current_fast < prev2_fast)
+                )
+            else:
+                direction_persistent = True
+            
+            return {
+                'bullish_crossover': bullish_crossover and strong_enough and direction_persistent,
+                'bearish_crossover': bearish_crossover and strong_enough and direction_persistent,
+                'crossover_strength': crossover_strength,
+                'direction_persistent': direction_persistent
+            }
+            
+        except Exception as e:
+            logger.debug(f"Erreur analyse croisement EMA: {e}")
+            return {'bullish_crossover': False, 'bearish_crossover': False}
+    
+    def _analyze_trend_alignment(self, ema_12: float, ema_26: float, ema_50: float, price: float) -> Dict:
+        """Analyse l'alignement des tendances EMA"""
+        try:
+            # Alignement EMA (ordre croissant = haussier)
+            bullish_alignment = (ema_12 > ema_26 > ema_50 and price > ema_12)
+            bearish_alignment = (ema_12 < ema_26 < ema_50 and price < ema_12)
+            
+            # Force de l'alignement
+            fast_slow_gap = abs(ema_12 - ema_26) / ema_26
+            slow_trend_gap = abs(ema_26 - ema_50) / ema_50
+            price_fast_gap = abs(price - ema_12) / ema_12
+            
+            # Score d'alignement
+            alignment_score = 0.5
+            if bullish_alignment:
+                alignment_score += min(0.3, fast_slow_gap * 50)
+                alignment_score += min(0.2, slow_trend_gap * 50)
+            elif bearish_alignment:
+                alignment_score += min(0.3, fast_slow_gap * 50)
+                alignment_score += min(0.2, slow_trend_gap * 50)
+            
+            return {
+                'bullish_alignment': bullish_alignment,
+                'bearish_alignment': bearish_alignment,
+                'alignment_score': min(1.0, alignment_score),
+                'fast_slow_gap': fast_slow_gap,
+                'price_position': 'above' if price > ema_12 else 'below'
+            }
+            
+        except Exception as e:
+            logger.debug(f"Erreur alignement tendance: {e}")
+            return {'bullish_alignment': False, 'bearish_alignment': False}
+    
+    def _analyze_momentum_strength(self, df: pd.DataFrame, indicators: Dict) -> Dict:
+        """Analyse la force du momentum pour EMA"""
+        try:
+            if len(df) < 20:
+                return {'strong_bullish_momentum': False, 'strong_bearish_momentum': False}
+            
+            # RSI pour momentum
+            rsi = self._get_current_indicator(indicators, 'rsi_14')
+            
+            # ADX pour force de tendance
+            adx = self._get_current_indicator(indicators, 'adx')
+            
+            # MACD pour confirmation
+            macd_line = self._get_current_indicator(indicators, 'macd_line')
+            macd_signal = self._get_current_indicator(indicators, 'macd_signal')
+            
+            # Analyse momentum
+            momentum_score = 0.5
+            
+            # RSI momentum
+            if rsi is not None:
+                if 40 <= rsi <= 60:  # Zone neutre favorable
+                    momentum_score += 0.15
+                elif rsi > 60:  # Momentum haussier
+                    momentum_score += 0.1
+                elif rsi < 40:  # Momentum baissier
+                    momentum_score += 0.1
+            
+            # ADX force
+            if adx is not None and adx > 20:
+                momentum_score += min(0.2, adx / 100)
+            
+            # MACD confirmation
+            if macd_line is not None and macd_signal is not None:
+                macd_bullish = macd_line > macd_signal
+                macd_bearish = macd_line < macd_signal
+                momentum_score += 0.1 if (macd_bullish or macd_bearish) else 0
+            
+            # Conditions momentum fort
+            strong_bullish = (
+                momentum_score >= self.min_momentum_alignment and
+                (rsi is None or rsi >= 45) and
+                (macd_line is None or macd_signal is None or macd_line > macd_signal)
+            )
+            
+            strong_bearish = (
+                momentum_score >= self.min_momentum_alignment and
+                (rsi is None or rsi <= 55) and
+                (macd_line is None or macd_signal is None or macd_line < macd_signal)
+            )
+            
+            return {
+                'strong_bullish_momentum': strong_bullish,
+                'strong_bearish_momentum': strong_bearish,
+                'momentum_score': min(1.0, momentum_score),
+                'rsi': rsi,
+                'adx': adx
+            }
+            
+        except Exception as e:
+            logger.debug(f"Erreur analyse momentum: {e}")
+            return {'strong_bullish_momentum': False, 'strong_bearish_momentum': False}
+    
+    def _analyze_market_context(self, df: pd.DataFrame, indicators: Dict) -> Dict:
+        """Analyse contexte marché pour EMA Cross"""
+        try:
+            recent_data = df.tail(20)
+            
+            # Volume
+            current_volume = recent_data['volume'].iloc[-1]
+            avg_volume = recent_data['volume'].mean()
+            volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
+            
+            # Volatilité
+            returns = recent_data['close'].pct_change().dropna()
+            volatility = returns.std()
+            
+            # ATR
+            atr = self._get_current_indicator(indicators, 'atr_14') or 0
+            
+            return {
+                'volume_ratio': volume_ratio,
+                'volatility': volatility,
+                'atr': atr,
+                'is_high_volume': volume_ratio >= self.min_volume_confirmation,
+                'is_stable_volatility': volatility <= self.max_volatility
+            }
+            
+        except Exception:
+            return {'volume_ratio': 1.0, 'volatility': 0.03, 'is_high_volume': False}
+    
+    def _passes_ultra_filters(self, market_context: Dict, momentum_analysis: Dict) -> bool:
+        """Filtres ultra-stricts pour la qualité du signal"""
+        return (
+            # Volume suffisant
+            market_context.get('is_high_volume', False) and
+            # Volatilité contrôlée
+            market_context.get('is_stable_volatility', False) and
+            # Momentum validé
+            (momentum_analysis.get('strong_bullish_momentum') or 
+             momentum_analysis.get('strong_bearish_momentum'))
+        )
+    
+    def _calculate_buy_confidence(self, crossover: Dict, trend: Dict,
+                                momentum: Dict, market: Dict) -> float:
+        """Confiance pour signal d'achat EMA"""
+        confidence = 0.65  # Base élevée
+        
+        # Force du croisement
+        crossover_strength = crossover.get('crossover_strength', 0)
+        confidence += min(0.1, crossover_strength * 30)
+        
+        # Alignement tendance
+        if trend.get('bullish_alignment'):
+            confidence += min(0.1, trend.get('alignment_score', 0) * 0.1)
+        
+        # Momentum
+        momentum_score = momentum.get('momentum_score', 0)
+        confidence += min(0.1, momentum_score * 0.1)
+        
+        # Volume exceptionnel
+        vol_ratio = market.get('volume_ratio', 1)
+        if vol_ratio >= 2.0:
+            confidence += 0.05
+        
+        return min(1.0, confidence)
+    
+    def _calculate_sell_confidence(self, crossover: Dict, trend: Dict,
+                                 momentum: Dict, market: Dict) -> float:
+        """Confiance pour signal de vente EMA"""
+        confidence = 0.65  # Base élevée
+        
+        # Force du croisement
+        crossover_strength = crossover.get('crossover_strength', 0)
+        confidence += min(0.1, crossover_strength * 30)
+        
+        # Alignement tendance
+        if trend.get('bearish_alignment'):
+            confidence += min(0.1, trend.get('alignment_score', 0) * 0.1)
+        
+        # Momentum
+        momentum_score = momentum.get('momentum_score', 0)
+        confidence += min(0.1, momentum_score * 0.1)
+        
+        # Volume exceptionnel
+        vol_ratio = market.get('volume_ratio', 1)
+        if vol_ratio >= 2.0:
+            confidence += 0.05
+        
+        return min(1.0, confidence)
+    
+    def _create_signal(self, symbol: str, side: OrderSide, price: float,
+                      confidence: float, ema_12: float, ema_26: float,
+                      ema_50: float, market: Dict) -> Dict:
+        """Crée signal EMA Cross structuré"""
+        
+        if confidence >= 0.85:
+            strength = SignalStrength.VERY_STRONG
+        elif confidence >= 0.82:
+            strength = SignalStrength.STRONG
+        elif confidence >= 0.78:
+            strength = SignalStrength.MODERATE
+        else:
+            strength = SignalStrength.WEAK
+        
+        return {
+            'strategy': self.name,
+            'symbol': symbol,
+            'side': side,
+            'price': price,
+            'confidence': confidence,
+            'strength': strength,
+            'timestamp': datetime.now(),
+            'metadata': {
+                'ema_12': ema_12,
+                'ema_26': ema_26,
+                'ema_50': ema_50,
+                'volume_ratio': market.get('volume_ratio', 1),
+                'volatility': market.get('volatility', 0),
+                'signal_type': 'ema_cross_ultra_precise'
+            }
+        }

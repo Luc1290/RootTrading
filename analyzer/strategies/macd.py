@@ -1,756 +1,447 @@
 """
-Stratégie de trading basée sur le MACD (Moving Average Convergence Divergence).
-Le MACD est un indicateur de momentum qui montre la relation entre deux moyennes mobiles.
+Stratégie MACD Ultra-Précise
+Utilise les indicateurs MACD pré-calculés de la DB avec filtres avancés
+pour générer des signaux de momentum de très haute qualité.
 """
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional, List, Tuple
-
+from typing import Dict, Any, Optional, List
 import numpy as np
 import pandas as pd
 
-from .base_strategy import BaseStrategy
-from .advanced_filters_mixin import AdvancedFiltersMixin
-from shared.src.enums import OrderSide, SignalStrength
-from shared.src.schemas import StrategySignal, MarketData
-from shared.src.config import STRATEGY_PARAMS
-from shared.src.technical_indicators import calculate_macd
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
-# Configuration du logging
+from shared.src.enums import OrderSide, SignalStrength
+from shared.src.schemas import StrategySignal
+
+from .base_strategy import BaseStrategy
+
 logger = logging.getLogger(__name__)
 
-class MACDStrategy(BaseStrategy, AdvancedFiltersMixin):
+class MACDStrategy(BaseStrategy):
     """
-    Stratégie de trading basée sur le MACD.
+    Stratégie MACD Ultra-Précise qui utilise les indicateurs de la DB
+    avec des filtres sophistiqués pour des signaux de momentum fiables.
     
-    Signaux d'achat:
-    - Croisement haussier: ligne MACD passe au-dessus de la ligne signal
-    - Divergence haussière: prix fait un plus bas, MACD fait un plus haut
-    
-    Signaux de vente:
-    - Croisement baissier: ligne MACD passe en dessous de la ligne signal
-    - Divergence baissière: prix fait un plus haut, MACD fait un plus bas
+    Critères ultra-stricts :
+    - Croisements MACD confirmés par momentum
+    - Divergences MACD/Prix validées
+    - Confirmation volume et volatilité
+    - Histogramme en expansion
+    - Contexte de tendance favorable
     """
     
     def __init__(self, symbol: str, params: Dict[str, Any] = None):
-        """
-        Initialise la stratégie MACD.
-        
-        Args:
-            symbol: Symbole de trading
-            params: Paramètres de la stratégie
-        """
         super().__init__(symbol, params)
         
-        # Charger les paramètres MACD depuis la configuration
-        macd_config = STRATEGY_PARAMS.get('macd', {})
+        # Paramètres MACD ultra-précis
+        self.min_crossover_strength = 0.0002  # Force minimum du croisement
+        self.min_histogram_expansion = 0.0001  # Expansion minimum histogramme
+        self.min_volume_confirmation = 1.5    # Volume 50% au-dessus moyenne
+        self.max_noise_ratio = 0.25           # Ratio bruit/signal maximum
         
-        # Paramètres MACD (priorité: params utilisateur > config > défaut)
-        self.fast_period = self.params.get('fast_period', macd_config.get('fast_period', 12))
-        self.slow_period = self.params.get('slow_period', macd_config.get('slow_period', 26))
-        self.signal_period = self.params.get('signal_period', macd_config.get('signal_period', 9))
+        # Filtres de qualité du marché
+        self.min_volatility = 0.008           # Volatilité minimum pour mouvement
+        self.max_volatility = 0.10            # Volatilité maximum pour stabilité
+        self.min_confidence = 0.80            # Confiance minimum 80%
         
-        # Seuils pour la force du signal
-        self.histogram_threshold = self.params.get('histogram_threshold', 
-                                                  macd_config.get('histogram_threshold', 0.001))  # 0.1%
+        # Divergences
+        self.divergence_lookback = 15
+        self.min_divergence_periods = 6
         
-        # Buffer minimum requis
-        self.buffer_size = max(self.slow_period + self.signal_period + 10, self.buffer_size)
-        
-        # État interne
-        self.macd_line = []
-        self.signal_line = []
-        self.histogram = []
-        self.last_crossover = None
-        
-        logger.info(f"✅ Stratégie MACD initialisée pour {symbol} - "
-                   f"Périodes: {self.fast_period}/{self.slow_period}/{self.signal_period}")
+        logger.info(f"🎯 MACD Ultra-Précis initialisé pour {symbol}")
     
     @property
     def name(self) -> str:
-        """Nom de la stratégie."""
-        return "MACD_Strategy"
+        return "MACD_Ultra_Strategy"
     
-    def calculate_ema(self, prices: pd.Series, period: int) -> pd.Series:
-        """
-        Calcule la moyenne mobile exponentielle.
-        
-        Args:
-            prices: Série de prix
-            period: Période de l'EMA
-            
-        Returns:
-            Série EMA
-        """
-        return prices.ewm(span=period, adjust=False).mean()
+    def get_min_data_points(self) -> int:
+        return 60  # Minimum pour MACD fiable
     
-    def calculate_macd_series(self, prices: pd.Series) -> Tuple[pd.Series, pd.Series, pd.Series]:
+    def analyze(self, symbol: str, df: pd.DataFrame, indicators: Dict) -> Optional[Dict]:
         """
-        Calcule les composants du MACD pour toute la série.
-        Utilise le module partagé pour cohérence.
-        
-        Args:
-            prices: Série de prix
-            
-        Returns:
-            Tuple (ligne MACD, ligne signal, histogramme)
-        """
-        # Utiliser le module partagé pour le dernier point puis étendre la série
-        macd_result = calculate_macd(prices.values)
-        
-        # Si le module partagé retourne juste la dernière valeur, calculer la série complète
-        ema_12 = prices.ewm(span=self.fast_period, adjust=False).mean()
-        ema_26 = prices.ewm(span=self.slow_period, adjust=False).mean()
-        
-        # Ligne MACD
-        macd_series = ema_12 - ema_26
-        
-        # Ligne signal (EMA 9 du MACD)
-        signal_series = macd_series.ewm(span=self.signal_period, adjust=False).mean()
-        
-        # Histogramme
-        histogram_series = macd_series - signal_series
-        
-        return macd_series, signal_series, histogram_series
-    
-    def detect_crossover(self, macd: pd.Series, signal: pd.Series) -> Optional[str]:
-        """
-        Détecte les croisements entre MACD et signal.
-        
-        Args:
-            macd: Ligne MACD
-            signal: Ligne signal
-            
-        Returns:
-            'bullish' pour croisement haussier, 'bearish' pour baissier, None sinon
-        """
-        if len(macd) < 2 or len(signal) < 2:
-            return None
-        
-        # Valeurs actuelles et précédentes
-        macd_current = macd.iloc[-1]
-        macd_prev = macd.iloc[-2]
-        signal_current = signal.iloc[-1]
-        signal_prev = signal.iloc[-2]
-        
-        # Croisement haussier: MACD passe au-dessus du signal
-        if macd_prev <= signal_prev and macd_current > signal_current:
-            return 'bullish'
-        
-        # Croisement baissier: MACD passe en dessous du signal
-        elif macd_prev >= signal_prev and macd_current < signal_current:
-            return 'bearish'
-        
-        return None
-    
-    def detect_divergence(self, prices: pd.Series, macd: pd.Series, window: int = 20) -> Optional[str]:
-        """
-        Détecte les divergences entre prix et MACD.
-        
-        Args:
-            prices: Série de prix
-            macd: Ligne MACD
-            window: Fenêtre pour chercher les extrema
-            
-        Returns:
-            'bullish' ou 'bearish' divergence, None sinon
-        """
-        if len(prices) < window or len(macd) < window:
-            return None
-        
-        # Trouver les plus hauts et plus bas récents
-        price_highs = prices.rolling(window=5).max()
-        price_lows = prices.rolling(window=5).min()
-        macd_highs = macd.rolling(window=5).max()
-        macd_lows = macd.rolling(window=5).min()
-        
-        # Vérifier divergence baissière (prix plus haut, MACD plus bas)
-        if (prices.iloc[-1] > price_highs.iloc[-window:-5].max() and 
-            macd.iloc[-1] < macd_highs.iloc[-window:-5].max()):
-            return 'bearish'
-        
-        # Vérifier divergence haussière (prix plus bas, MACD plus haut)
-        if (prices.iloc[-1] < price_lows.iloc[-window:-5].min() and 
-            macd.iloc[-1] > macd_lows.iloc[-window:-5].min()):
-            return 'bullish'
-        
-        return None
-    
-    def calculate_signal_strength(self, histogram_value: float, crossover: Optional[str], 
-                                divergence: Optional[str]) -> SignalStrength:
-        """
-        Calcule la force du signal basée sur plusieurs facteurs.
-        
-        Args:
-            histogram_value: Valeur actuelle de l'histogramme
-            crossover: Type de croisement détecté
-            divergence: Type de divergence détectée
-            
-        Returns:
-            Force du signal
-        """
-        strength_score = 0
-        
-        # Force de l'histogramme
-        histogram_strength = abs(histogram_value) / self.histogram_threshold
-        if histogram_strength > 3:
-            strength_score += 3
-        elif histogram_strength > 2:
-            strength_score += 2
-        elif histogram_strength > 1:
-            strength_score += 1
-        
-        # Bonus pour croisement
-        if crossover:
-            strength_score += 2
-        
-        # Bonus pour divergence
-        if divergence:
-            strength_score += 3
-        
-        # Convertir en SignalStrength
-        if strength_score >= 6:
-            return SignalStrength.VERY_STRONG
-        elif strength_score >= 4:
-            return SignalStrength.STRONG
-        elif strength_score >= 2:
-            return SignalStrength.MODERATE
-        else:
-            return SignalStrength.WEAK
-    
-    def generate_signal(self) -> Optional[StrategySignal]:
-        """
-        Génère un signal de trading sophistiqué basé sur MACD.
-        Utilise des filtres multi-critères pour éviter les faux signaux.
-        
-        Returns:
-            Signal de trading ou None
+        Analyse MACD ultra-précise avec validation complète
         """
         try:
-            # Vérifier le cooldown avant de générer un signal
-            if not self.can_generate_signal():
+            if len(df) < self.get_min_data_points():
                 return None
+            
+            # 1. Récupérer les indicateurs MACD pré-calculés
+            macd_line = self._get_current_indicator(indicators, 'macd_line')
+            macd_signal = self._get_current_indicator(indicators, 'macd_signal')
+            macd_hist = self._get_current_indicator(indicators, 'macd_histogram')
+            
+            if None in [macd_line, macd_signal, macd_hist]:
+                logger.debug(f"❌ {symbol}: Indicateurs MACD non disponibles")
+                return None
+            
+            current_price = df['close'].iloc[-1]
+            
+            # 2. Analyser les croisements MACD
+            crossover_analysis = self._analyze_macd_crossover(indicators)
+            
+            # 3. Analyser l'expansion de l'histogramme
+            histogram_analysis = self._analyze_histogram_momentum(indicators)
+            
+            # 4. Détecter les divergences MACD/Prix
+            divergence_analysis = self._detect_macd_divergence(df, indicators)
+            
+            # 5. Analyser le contexte de marché
+            market_context = self._analyze_market_context(df, indicators)
+            
+            # 6. Appliquer les filtres de qualité
+            if not self._passes_ultra_filters(market_context, histogram_analysis):
+                return None
+            
+            # 7. Logique de signal ultra-sélective
+            signal = None
+            
+            # SIGNAL D'ACHAT MACD - Conditions ultra-strictes
+            if (crossover_analysis.get('bullish_crossover') and
+                histogram_analysis.get('expanding_bullish') and
+                divergence_analysis.get('bullish_divergence', False)):
                 
-            # Convertir les données en DataFrame
-            df = self.get_data_as_dataframe()
-            if df is None or len(df) < self.buffer_size:
-                return None
+                confidence = self._calculate_buy_confidence(
+                    crossover_analysis, histogram_analysis, divergence_analysis, market_context
+                )
+                
+                if confidence >= self.min_confidence:
+                    signal = self._create_signal(
+                        symbol, OrderSide.BUY, current_price, confidence,
+                        macd_line, macd_signal, macd_hist, market_context
+                    )
             
-            # Extraire les données nécessaires
-            prices = df['close']
-            volumes = df['volume'] if 'volume' in df.columns else None
+            # SIGNAL DE VENTE MACD - Conditions ultra-strictes
+            elif (crossover_analysis.get('bearish_crossover') and
+                  histogram_analysis.get('expanding_bearish') and
+                  divergence_analysis.get('bearish_divergence', False)):
+                
+                confidence = self._calculate_sell_confidence(
+                    crossover_analysis, histogram_analysis, divergence_analysis, market_context
+                )
+                
+                if confidence >= self.min_confidence:
+                    signal = self._create_signal(
+                        symbol, OrderSide.SELL, current_price, confidence,
+                        macd_line, macd_signal, macd_hist, market_context
+                    )
             
-            # Calculer le MACD
-            macd_line, signal_line, histogram = self.calculate_macd_series(prices)
-            
-            # Sauvegarder pour analyse
-            self.macd_line = macd_line
-            self.signal_line = signal_line
-            self.histogram = histogram
-            
-            # Valeurs actuelles
-            current_price = prices.iloc[-1]
-            current_macd = macd_line.iloc[-1]
-            current_signal = signal_line.iloc[-1]
-            current_histogram = histogram.iloc[-1]
-            
-            # Loguer les valeurs actuelles
-            precision = 5 if 'BTC' in self.symbol else 3
-            logger.debug(f"[MACD] {self.symbol}: Price={current_price:.{precision}f}, "
-                        f"MACD={current_macd:.6f}, Signal={current_signal:.6f}, Hist={current_histogram:.6f}")
-            
-            # === NOUVEAU SYSTÈME DE FILTRES SOPHISTIQUES ===
-            
-            # 1. FILTRE SETUP MACD DE BASE
-            signal_side = self._detect_macd_setup(macd_line, signal_line, histogram)
-            if signal_side is None:
-                return None
-            
-            # 2. FILTRE HISTOGRAM MOMENTUM (force du signal)
-            histogram_score = self._analyze_histogram_momentum(histogram, signal_side)
-            if histogram_score < 0.4:
-                logger.debug(f"[MACD] {self.symbol}: Signal rejeté - histogram faible ({histogram_score:.2f})")
-                return None
-            
-            # 3. FILTRE VOLUME CONFIRMATION (validation institutionnelle)
-            volume_score = self._analyze_volume_confirmation(volumes) if volumes is not None else 0.7
-            if volume_score < 0.4:
-                logger.debug(f"[MACD] {self.symbol}: Signal rejeté - volume insuffisant ({volume_score:.2f})")
-                return None
-            
-            # 4. FILTRE BREAKOUT VALIDATION (éviter faux breakouts)
-            breakout_score = self._validate_macd_breakout(macd_line, signal_line, df)
-            
-            # 5. FILTRE DIVERGENCE AVANCÉE (confirmation technique)
-            divergence_score = self._detect_advanced_divergence(df, macd_line, signal_side)
-            
-            # 6. FILTRE TREND ALIGNMENT (tendance supérieure)
-            trend_score = self._analyze_trend_alignment(df, signal_side)
-            
-            # 6.5. FILTRE ADX - DÉSACTIVATION EN RANGE (évite pollution logs)
-            adx_analysis = self._analyze_adx_trend_strength_common(df, min_adx_threshold=20.0)
-            if adx_analysis['disable_trend_strategies']:
-                logger.debug(f"[MACD] {self.symbol}: Signal rejeté - ADX trop faible pour tendance "
-                           f"(ADX: {adx_analysis['adx_value']:.1f} < 20, {adx_analysis['reason']})")
-                return None
-            
-            adx_score = adx_analysis['confidence_score']
-            
-            # 7. FILTRE ZERO LINE CONTEXT (position par rapport à ligne zéro)
-            zero_line_score = self._analyze_zero_line_context(macd_line, signal_side)
-            
-            # === CALCUL DE CONFIANCE COMPOSITE ===
-            confidence = self._calculate_composite_confidence(
-                histogram_score, volume_score, breakout_score,
-                divergence_score, trend_score, adx_score, zero_line_score
-            )
-            
-            # Seuil minimum de confiance pour éviter le trading aléatoire
-            if confidence < 0.65:
-                logger.debug(f"[MACD] {self.symbol}: Signal rejeté - confiance trop faible ({confidence:.2f})")
-                return None
-            
-            # === CONSTRUCTION DU SIGNAL ===
-            signal = self.create_signal(
-                side=signal_side,
-                price=current_price,
-                confidence=confidence
-            )
-            
-            # Ajouter les métadonnées d'analyse
-            signal.metadata.update({
-                'macd_value': current_macd,
-                'signal_value': current_signal,
-                'histogram_value': current_histogram,
-                'macd_above_zero': current_macd > 0,
-                'histogram_score': histogram_score,
-                'volume_score': volume_score,
-                'breakout_score': breakout_score,
-                'divergence_score': divergence_score,
-                'trend_score': trend_score,
-                'adx_score': adx_score,
-                'adx_value': adx_analysis['adx_value'],
-                'is_trending': adx_analysis['is_trending'],
-                'zero_line_score': zero_line_score,
-                'macd_trend': self._get_macd_trend(macd_line),
-                'histogram_trend': self._get_histogram_trend(histogram)
-            })
-            
-            logger.info(f"🎯 [MACD] {self.symbol}: Signal {signal_side} @ {current_price:.{precision}f} "
-                       f"(MACD: {current_macd:.4f}, confiance: {confidence:.2f}, "
-                       f"scores: H={histogram_score:.2f}, V={volume_score:.2f}, B={breakout_score:.2f})")
+            if signal:
+                logger.info(f"🎯 MACD {symbol}: {signal['side'].value} @ {current_price:.4f} "
+                          f"(MACD: {macd_line:.4f}, conf: {signal['confidence']:.2f})")
             
             return signal
             
         except Exception as e:
-            logger.error(f"❌ Erreur dans l'analyse MACD: {str(e)}")
+            logger.error(f"❌ Erreur MACD Strategy {symbol}: {e}")
             return None
     
-    def _detect_macd_setup(self, macd_line: pd.Series, signal_line: pd.Series, 
-                          histogram: pd.Series) -> Optional[OrderSide]:
-        """
-        Détecte le setup MACD de base avec logique sophistiquée ET validation de tendance.
-        """
-        if len(macd_line) < 3 or len(signal_line) < 3:
+    def _get_current_indicator(self, indicators: Dict, key: str) -> Optional[float]:
+        """Récupère la valeur actuelle d'un indicateur"""
+        value = indicators.get(key)
+        if value is None:
             return None
         
-        current_macd = macd_line.iloc[-1]
-        current_signal = signal_line.iloc[-1]
-        prev_macd = macd_line.iloc[-2]
-        prev_signal = signal_line.iloc[-2]
-        current_hist = histogram.iloc[-1]
-        prev_hist = histogram.iloc[-2]
-        
-        # NOUVEAU: Validation de tendance avant de générer le signal
-        trend_alignment = self._validate_trend_alignment_for_signal()
-        if trend_alignment is None:
-            return None  # Pas assez de données pour valider la tendance
-        
-        # Setup BUY: MACD croise au-dessus du signal OU histogram devient positif ET tendance compatible
-        if ((prev_macd <= prev_signal and current_macd > current_signal) or  # Croisement classique
-            (prev_hist <= 0 and current_hist > 0 and current_macd > current_signal)):  # Histogram breakout
-            # Vérifier que ce n'est pas un faux signal
-            if len(histogram) >= 5:
-                hist_momentum = histogram.iloc[-1] - histogram.iloc[-5]
-                if hist_momentum > 0:  # Histogram s'améliore
-                    # NOUVEAU: Ne BUY que si tendance n'est pas fortement baissière
-                    if trend_alignment in ["STRONG_BEARISH", "WEAK_BEARISH"]:
-                        logger.debug(f"[MACD] {self.symbol}: BUY signal supprimé - tendance {trend_alignment}")
-                        return None
-                    return OrderSide.BUY
-        
-        # Setup SELL: MACD croise en dessous du signal OU histogram devient négatif ET tendance compatible
-        elif ((prev_macd >= prev_signal and current_macd < current_signal) or  # Croisement classique
-              (prev_hist >= 0 and current_hist < 0 and current_macd < current_signal)):  # Histogram breakdown
-            # Vérifier que ce n'est pas un faux signal
-            if len(histogram) >= 5:
-                hist_momentum = histogram.iloc[-1] - histogram.iloc[-5]
-                if hist_momentum < 0:  # Histogram se détériore
-                    # NOUVEAU: Ne SELL que si tendance n'est pas fortement haussière
-                    if trend_alignment in ["STRONG_BULLISH", "WEAK_BULLISH"]:
-                        logger.debug(f"[MACD] {self.symbol}: SELL signal supprimé - tendance {trend_alignment}")
-                        return None
-                    return OrderSide.SELL
+        if isinstance(value, (list, np.ndarray)) and len(value) > 0:
+            return float(value[-1])
+        elif isinstance(value, (int, float)):
+            return float(value)
         
         return None
     
-    def _analyze_histogram_momentum(self, histogram: pd.Series, signal_side: OrderSide) -> float:
-        """
-        Analyse le momentum de l'histogram MACD.
-        """
-        try:
-            if len(histogram) < 10:
-                return 0.7
-            
-            current_hist = histogram.iloc[-1]
-            prev_hist = histogram.iloc[-2]
-            hist_change = current_hist - prev_hist
-            
-            # Momentum sur 5 périodes
-            hist_momentum_5 = histogram.iloc[-1] - histogram.iloc[-6] if len(histogram) > 5 else 0
-            
-            if signal_side == OrderSide.BUY:
-                score = 0.5  # Base
-                
-                if current_hist > 0:  # Histogram positif
-                    score += 0.2
-                if hist_change > 0:  # Histogram s'améliore
-                    score += 0.2
-                if hist_momentum_5 > 0:  # Momentum positif sur 5 périodes
-                    score += 0.1
-                
-                return min(0.95, score)
-            
-            else:  # SELL
-                score = 0.5  # Base
-                
-                if current_hist < 0:  # Histogram négatif
-                    score += 0.2
-                if hist_change < 0:  # Histogram se détériore
-                    score += 0.2
-                if hist_momentum_5 < 0:  # Momentum négatif sur 5 périodes
-                    score += 0.1
-                
-                return min(0.95, score)
-                
-        except Exception as e:
-            logger.warning(f"Erreur analyse histogram: {e}")
-            return 0.7
-    
-    def _analyze_volume_confirmation(self, volumes: Optional[pd.Series]) -> float:
-        """
-        Analyse la confirmation par le volume.
-        """
-        if volumes is None or len(volumes) < 10:
-            return 0.7
-        
-        current_volume = volumes.iloc[-1]
-        avg_volume_10 = volumes.iloc[-10:].mean()
-        avg_volume_20 = volumes.iloc[-20:].mean() if len(volumes) >= 20 else avg_volume_10
-        
-        volume_ratio_10 = current_volume / avg_volume_10 if avg_volume_10 > 0 else 1.0
-        volume_ratio_20 = current_volume / avg_volume_20 if avg_volume_20 > 0 else 1.0
-        
-        if volume_ratio_10 > 1.4 and volume_ratio_20 > 1.3:
-            return 0.9   # Très forte expansion
-        elif volume_ratio_10 > 1.2:
-            return 0.8   # Expansion modérée
-        elif volume_ratio_10 > 0.8:
-            return 0.7   # Volume acceptable
-        else:
-            return 0.5   # Volume faible
-    
-    def _validate_macd_breakout(self, macd_line: pd.Series, signal_line: pd.Series, df: pd.DataFrame) -> float:
-        """
-        Valide que le breakout MACD n'est pas un faux signal.
-        """
-        try:
-            if len(macd_line) < 20:
-                return 0.7
-            
-            # Analyser la consolidation précédente
-            recent_macd = macd_line.iloc[-10:]
-            recent_signal = signal_line.iloc[-10:]
-            
-            # Mesurer la volatilité récente du MACD
-            macd_volatility = recent_macd.std()
-            signal_volatility = recent_signal.std()
-            
-            # Un bon breakout suit une période de consolidation
-            consolidation_score = 0.5
-            
-            if macd_volatility < macd_line.iloc[-20:].std() * 0.8:
-                consolidation_score += 0.2  # MACD était consolidé
-            
-            if signal_volatility < signal_line.iloc[-20:].std() * 0.8:
-                consolidation_score += 0.2  # Signal était consolidé
-            
-            # Vérifier l'amplitude du breakout
-            macd_distance = abs(macd_line.iloc[-1] - signal_line.iloc[-1])
-            avg_distance = abs(recent_macd - recent_signal).mean()
-            
-            if macd_distance > avg_distance * 1.5:
-                consolidation_score += 0.1  # Breakout significatif
-            
-            return min(0.95, consolidation_score)
-            
-        except Exception as e:
-            logger.warning(f"Erreur validation breakout: {e}")
-            return 0.7
-    
-    def _detect_advanced_divergence(self, df: pd.DataFrame, macd_line: pd.Series, signal_side: OrderSide) -> float:
-        """
-        Détecte les divergences MACD avancées.
-        """
-        try:
-            if len(df) < 30:
-                return 0.7
-            
-            prices = df['close']
-            lookback = min(20, len(prices))
-            
-            recent_prices = prices.iloc[-lookback:]
-            recent_macd = macd_line.iloc[-lookback:]
-            
-            if signal_side == OrderSide.BUY:
-                # Divergence bullish: prix fait plus bas, MACD fait plus haut
-                price_trend = np.polyfit(range(len(recent_prices)), recent_prices, 1)[0]
-                macd_trend = np.polyfit(range(len(recent_macd)), recent_macd, 1)[0]
-                
-                if price_trend < 0 and macd_trend > 0:
-                    return 0.9   # Forte divergence bullish
-                elif macd_line.iloc[-1] > macd_line.iloc[-10:].mean():
-                    return 0.8   # MACD au-dessus de sa moyenne
-                else:
-                    return 0.7
-            
-            else:  # SELL
-                # Divergence bearish: prix fait plus haut, MACD fait plus bas
-                price_trend = np.polyfit(range(len(recent_prices)), recent_prices, 1)[0]
-                macd_trend = np.polyfit(range(len(recent_macd)), recent_macd, 1)[0]
-                
-                if price_trend > 0 and macd_trend < 0:
-                    return 0.9   # Forte divergence bearish
-                elif macd_line.iloc[-1] < macd_line.iloc[-10:].mean():
-                    return 0.8   # MACD en dessous de sa moyenne
-                else:
-                    return 0.7
-                    
-        except Exception as e:
-            logger.warning(f"Erreur détection divergence: {e}")
-            return 0.7
-    
-    def _analyze_trend_alignment(self, df: pd.DataFrame, signal_side: OrderSide) -> float:
-        """
-        Analyse l'alignement avec la tendance générale.
-        """
-        try:
-            if len(df) < 50:
-                return 0.7
-            
-            prices = df['close']
-            
-            # HARMONISATION: EMA 21 vs EMA 50 pour cohérence avec les autres stratégies
-            ema_21 = prices.ewm(span=21).mean()
-            ema_50 = prices.ewm(span=50).mean()
-            
-            current_price = prices.iloc[-1]
-            current_ema_21 = ema_21.iloc[-1]
-            current_ema_50 = ema_50.iloc[-1]
-            
-            if signal_side == OrderSide.BUY:
-                if current_price > current_ema_21 and current_ema_21 > current_ema_50:
-                    return 0.9   # Forte tendance haussière
-                elif current_price > current_ema_50:
-                    return 0.8   # Tendance modérée
-                else:
-                    return 0.5   # Contre tendance
-            
-            else:  # SELL
-                if current_price < current_ema_21 and current_ema_21 < current_ema_50:
-                    return 0.9   # Forte tendance baissière
-                elif current_price < current_ema_50:
-                    return 0.8   # Tendance modérée
-                else:
-                    return 0.5   # Contre tendance
-                    
-        except Exception as e:
-            logger.warning(f"Erreur analyse tendance: {e}")
-            return 0.7
-    
-    def _analyze_zero_line_context(self, macd_line: pd.Series, signal_side: OrderSide) -> float:
-        """
-        Analyse le contexte par rapport à la ligne zéro MACD.
-        """
-        try:
-            current_macd = macd_line.iloc[-1]
-            
-            if signal_side == OrderSide.BUY:
-                if current_macd > 0:
-                    return 0.9   # MACD déjà positif = momentum haussier confirmé
-                elif current_macd > -0.001:  # Proche de zéro
-                    return 0.8   # Sur le point de devenir positif
-                else:
-                    return 0.7   # Encore négatif
-            
-            else:  # SELL
-                if current_macd < 0:
-                    return 0.9   # MACD déjà négatif = momentum baissier confirmé
-                elif current_macd < 0.001:  # Proche de zéro
-                    return 0.8   # Sur le point de devenir négatif
-                else:
-                    return 0.7   # Encore positif
-                    
-        except Exception as e:
-            logger.warning(f"Erreur analyse zero line: {e}")
-            return 0.7
-    
-    def _calculate_composite_confidence(self, histogram_score: float, volume_score: float,
-                                       breakout_score: float, divergence_score: float,
-                                       trend_score: float, adx_score: float, zero_line_score: float) -> float:
-        """
-        Calcule la confiance composite basée sur tous les filtres.
-        """
-        weights = {
-            'histogram': 0.25,     # Momentum MACD crucial
-            'volume': 0.18,        # Volume important
-            'breakout': 0.18,      # Validation breakout
-            'divergence': 0.15,    # Divergences
-            'trend': 0.09,         # Tendance générale
-            'adx': 0.08,           # Force de tendance ADX
-            'zero_line': 0.07      # Position zero line
-        }
-        
-        composite = (
-            histogram_score * weights['histogram'] +
-            volume_score * weights['volume'] +
-            breakout_score * weights['breakout'] +
-            divergence_score * weights['divergence'] +
-            trend_score * weights['trend'] +
-            adx_score * weights['adx'] +
-            zero_line_score * weights['zero_line']
-        )
-        
-        return max(0.0, min(1.0, composite))
-    
-    def _get_macd_trend(self, macd_line: pd.Series) -> str:
-        """Retourne la tendance MACD."""
-        if len(macd_line) < 3:
-            return "unknown"
-        
-        recent_trend = macd_line.iloc[-1] - macd_line.iloc[-3]
-        if recent_trend > 0.0001:
-            return "rising"
-        elif recent_trend < -0.0001:
-            return "falling"
-        else:
-            return "flat"
-    
-    def _validate_trend_alignment_for_signal(self) -> Optional[str]:
-        """
-        Valide la tendance actuelle pour déterminer si un signal est approprié.
-        Utilise la même logique que le signal_aggregator pour cohérence.
-        """
-        try:
-            df = self.get_data_as_dataframe()
-            if df is None or len(df) < 50:
-                return None
-            
-            prices = df['close']
-            
-            # Calculer EMA 21 vs EMA 50 (harmonisé avec signal_aggregator)
-            ema_21 = prices.ewm(span=21).mean()
-            ema_50 = prices.ewm(span=50).mean()
-            
-            current_price = prices.iloc[-1]
-            trend_21 = ema_21.iloc[-1]
-            trend_50 = ema_50.iloc[-1]
-            
-            # Classification sophistiquée de la tendance (même logique que signal_aggregator)
-            if trend_21 > trend_50 * 1.015:  # +1.5% = forte haussière
-                return "STRONG_BULLISH"
-            elif trend_21 > trend_50 * 1.005:  # +0.5% = faible haussière
-                return "WEAK_BULLISH"
-            elif trend_21 < trend_50 * 0.985:  # -1.5% = forte baissière
-                return "STRONG_BEARISH"
-            elif trend_21 < trend_50 * 0.995:  # -0.5% = faible baissière
-                return "WEAK_BEARISH"
-            else:
-                return "NEUTRAL"
-                
-        except Exception as e:
-            logger.warning(f"Erreur validation tendance: {e}")
+    def _get_indicator_series(self, indicators: Dict, key: str, length: int) -> Optional[np.ndarray]:
+        """Récupère une série d'indicateur"""
+        value = indicators.get(key)
+        if value is None:
             return None
-    
-    def _get_histogram_trend(self, histogram: pd.Series) -> str:
-        """Retourne la tendance de l'histogram."""
-        if len(histogram) < 3:
-            return "unknown"
-        
-        recent_trend = histogram.iloc[-1] - histogram.iloc[-3]
-        if recent_trend > 0.0001:
-            return "improving"
-        elif recent_trend < -0.0001:
-            return "deteriorating"
-        else:
-            return "stable"
-    
-    def _calculate_atr(self, df: pd.DataFrame, period: int = 14) -> float:
-        """
-        Calcule l'Average True Range pour les stops/targets.
-        
-        Args:
-            df: DataFrame avec high, low, close
-            period: Période ATR
             
-        Returns:
-            Valeur ATR
-        """
-        high_low = df['high'] - df['low']
-        high_close = np.abs(df['high'] - df['close'].shift())
-        low_close = np.abs(df['low'] - df['close'].shift())
+        if isinstance(value, (list, np.ndarray)) and len(value) >= length:
+            return np.array(value[-length:])
         
-        ranges = pd.concat([high_low, high_close, low_close], axis=1)
-        true_range = np.max(ranges, axis=1)
-        
-        return true_range.rolling(period).mean().iloc[-1]
+        return None
     
-    def get_min_data_points(self) -> int:
-        """
-        Retourne le nombre minimum de points de données nécessaires.
-        
-        Returns:
-            Nombre minimum de points
-        """
-        return self.buffer_size
+    def _analyze_macd_crossover(self, indicators: Dict) -> Dict:
+        """Analyse les croisements MACD avec validation de force"""
+        try:
+            # Récupérer les séries MACD
+            macd_series = self._get_indicator_series(indicators, 'macd_line', 3)
+            signal_series = self._get_indicator_series(indicators, 'macd_signal', 3)
+            
+            if macd_series is None or signal_series is None or len(macd_series) < 3:
+                return {'bullish_crossover': False, 'bearish_crossover': False}
+            
+            # Valeurs actuelles et précédentes
+            current_macd, prev_macd = macd_series[-1], macd_series[-2]
+            current_signal, prev_signal = signal_series[-1], signal_series[-2]
+            
+            # Détecter croisements
+            bullish_crossover = (prev_macd <= prev_signal and current_macd > current_signal)
+            bearish_crossover = (prev_macd >= prev_signal and current_macd < current_signal)
+            
+            # Mesurer la force du croisement
+            crossover_gap = abs(current_macd - current_signal)
+            max_reference = max(abs(current_macd), abs(current_signal), 0.001)
+            crossover_strength = crossover_gap / max_reference
+            
+            # Valider la force minimum
+            strong_enough = crossover_strength >= self.min_crossover_strength
+            
+            # Vérifier la persistance (pas de faux signal)
+            if len(macd_series) >= 3:
+                prev2_macd, prev2_signal = macd_series[-3], signal_series[-3]
+                direction_consistent = (
+                    (bullish_crossover and current_macd > prev2_macd) or
+                    (bearish_crossover and current_macd < prev2_macd)
+                )
+            else:
+                direction_consistent = True
+            
+            return {
+                'bullish_crossover': bullish_crossover and strong_enough and direction_consistent,
+                'bearish_crossover': bearish_crossover and strong_enough and direction_consistent,
+                'crossover_strength': crossover_strength,
+                'direction_consistent': direction_consistent
+            }
+            
+        except Exception as e:
+            logger.debug(f"Erreur analyse croisement MACD: {e}")
+            return {'bullish_crossover': False, 'bearish_crossover': False}
     
-    def get_state(self) -> Dict[str, Any]:
-        """
-        Retourne l'état actuel de la stratégie.
+    def _analyze_histogram_momentum(self, indicators: Dict) -> Dict:
+        """Analyse l'expansion/contraction de l'histogramme MACD"""
+        try:
+            hist_series = self._get_indicator_series(indicators, 'macd_histogram', 5)
+            if hist_series is None or len(hist_series) < 3:
+                return {'expanding_bullish': False, 'expanding_bearish': False}
+            
+            current_hist = hist_series[-1]
+            prev_hist = hist_series[-2]
+            
+            # Calculer l'expansion
+            hist_change = current_hist - prev_hist
+            expansion_rate = abs(hist_change) / max(abs(prev_hist), 0.0001)
+            
+            # Vérifier expansion minimum
+            sufficient_expansion = expansion_rate >= self.min_histogram_expansion
+            
+            # Direction de l'expansion
+            expanding_bullish = (current_hist > 0 and hist_change > 0 and sufficient_expansion)
+            expanding_bearish = (current_hist < 0 and hist_change < 0 and sufficient_expansion)
+            
+            # Tendance de l'histogramme sur 5 périodes
+            if len(hist_series) >= 5:
+                hist_trend = np.polyfit(range(len(hist_series)), hist_series, 1)[0]
+                trend_bullish = hist_trend > 0
+                trend_bearish = hist_trend < 0
+            else:
+                trend_bullish = trend_bearish = False
+            
+            return {
+                'expanding_bullish': expanding_bullish and trend_bullish,
+                'expanding_bearish': expanding_bearish and trend_bearish,
+                'expansion_rate': expansion_rate,
+                'histogram_trend': hist_trend if len(hist_series) >= 5 else 0
+            }
+            
+        except Exception as e:
+            logger.debug(f"Erreur analyse histogramme: {e}")
+            return {'expanding_bullish': False, 'expanding_bearish': False}
+    
+    def _detect_macd_divergence(self, df: pd.DataFrame, indicators: Dict) -> Dict:
+        """Détecte les divergences MACD/Prix avec validation"""
+        try:
+            if len(df) < self.divergence_lookback + 5:
+                return {'bullish_divergence': False, 'bearish_divergence': False}
+            
+            # Extraire données récentes
+            recent_df = df.tail(self.divergence_lookback)
+            recent_prices = recent_df['close'].values
+            
+            # Récupérer série MACD
+            macd_series = self._get_indicator_series(indicators, 'macd_line', self.divergence_lookback)
+            if macd_series is None:
+                return {'bullish_divergence': False, 'bearish_divergence': False}
+            
+            # Calculer tendances linéaires
+            price_trend = np.polyfit(range(len(recent_prices)), recent_prices, 1)[0]
+            macd_trend = np.polyfit(range(len(macd_series)), macd_series, 1)[0]
+            
+            # Normaliser pour comparaison
+            price_trend_pct = (price_trend / recent_prices[0]) * 100
+            macd_trend_normalized = macd_trend * 1000  # Ajuster échelle
+            
+            # Seuils pour divergences significatives
+            min_price_move = 1.5  # 1.5% mouvement prix minimum
+            min_macd_counter = 0.8  # Mouvement MACD contraire minimum
+            
+            # Détecter divergences
+            bullish_divergence = (
+                price_trend_pct < -min_price_move and 
+                macd_trend_normalized > min_macd_counter
+            )
+            bearish_divergence = (
+                price_trend_pct > min_price_move and 
+                macd_trend_normalized < -min_macd_counter
+            )
+            
+            # Force de la divergence
+            divergence_strength = abs(price_trend_pct + macd_trend_normalized) / 100
+            
+            return {
+                'bullish_divergence': bullish_divergence,
+                'bearish_divergence': bearish_divergence,
+                'strength': min(1.0, divergence_strength),
+                'price_trend_pct': price_trend_pct,
+                'macd_trend': macd_trend_normalized
+            }
+            
+        except Exception as e:
+            logger.debug(f"Erreur divergence MACD: {e}")
+            return {'bullish_divergence': False, 'bearish_divergence': False}
+    
+    def _analyze_market_context(self, df: pd.DataFrame, indicators: Dict) -> Dict:
+        """Analyse le contexte de marché pour MACD"""
+        try:
+            recent_data = df.tail(20)
+            
+            # Volume
+            current_volume = recent_data['volume'].iloc[-1]
+            avg_volume = recent_data['volume'].mean()
+            volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
+            
+            # Volatilité
+            returns = recent_data['close'].pct_change().dropna()
+            volatility = returns.std()
+            
+            # ATR pour contexte
+            atr = self._get_current_indicator(indicators, 'atr_14') or 0
+            
+            # Tendance EMA
+            ema_12 = self._get_current_indicator(indicators, 'ema_12')
+            ema_26 = self._get_current_indicator(indicators, 'ema_26')
+            
+            trend_alignment = None
+            if ema_12 and ema_26:
+                trend_alignment = "bullish" if ema_12 > ema_26 else "bearish"
+            
+            # Ratio signal/bruit
+            price_range = recent_data['high'].max() - recent_data['low'].min()
+            noise_ratio = (atr / price_range) if price_range > 0 else 1.0
+            
+            return {
+                'volume_ratio': volume_ratio,
+                'volatility': volatility,
+                'atr': atr,
+                'trend_alignment': trend_alignment,
+                'noise_ratio': noise_ratio,
+                'is_clean_market': noise_ratio <= self.max_noise_ratio
+            }
+            
+        except Exception as e:
+            logger.debug(f"Erreur contexte marché: {e}")
+            return {'volume_ratio': 1.0, 'volatility': 0.1, 'is_clean_market': False}
+    
+    def _passes_ultra_filters(self, market_context: Dict, histogram_analysis: Dict) -> bool:
+        """Applique les filtres ultra-stricts pour la qualité du signal"""
+        return (
+            # Volume suffisant
+            market_context.get('volume_ratio', 0) >= self.min_volume_confirmation and
+            # Volatilité dans la plage optimale
+            self.min_volatility <= market_context.get('volatility', 0) <= self.max_volatility and
+            # Marché propre (peu de bruit)
+            market_context.get('is_clean_market', False) and
+            # Expansion de l'histogramme
+            (histogram_analysis.get('expanding_bullish') or histogram_analysis.get('expanding_bearish'))
+        )
+    
+    def _calculate_buy_confidence(self, crossover: Dict, histogram: Dict,
+                                divergence: Dict, market: Dict) -> float:
+        """Calcule la confiance pour un signal d'achat MACD"""
+        confidence = 0.65  # Base élevée
         
-        Returns:
-            Dictionnaire contenant l'état
-        """
-        state = {
-            'buffer_size': len(self.data_buffer),
-            'last_signal_time': self.last_signal_time.isoformat() if self.last_signal_time else None,
-            'params': self.params
+        # Force du croisement
+        crossover_strength = crossover.get('crossover_strength', 0)
+        confidence += min(0.15, crossover_strength * 50)
+        
+        # Expansion histogramme
+        expansion_rate = histogram.get('expansion_rate', 0)
+        confidence += min(0.1, expansion_rate * 100)
+        
+        # Divergence
+        if divergence.get('bullish_divergence'):
+            confidence += min(0.1, divergence.get('strength', 0))
+        
+        # Volume exceptionnel
+        vol_ratio = market.get('volume_ratio', 1)
+        if vol_ratio >= 2.0:
+            confidence += 0.05
+        
+        # Alignement de tendance
+        if market.get('trend_alignment') == 'bullish':
+            confidence += 0.05
+        
+        return min(1.0, confidence)
+    
+    def _calculate_sell_confidence(self, crossover: Dict, histogram: Dict,
+                                 divergence: Dict, market: Dict) -> float:
+        """Calcule la confiance pour un signal de vente MACD"""
+        confidence = 0.65  # Base élevée
+        
+        # Force du croisement
+        crossover_strength = crossover.get('crossover_strength', 0)
+        confidence += min(0.15, crossover_strength * 50)
+        
+        # Expansion histogramme
+        expansion_rate = histogram.get('expansion_rate', 0)
+        confidence += min(0.1, expansion_rate * 100)
+        
+        # Divergence
+        if divergence.get('bearish_divergence'):
+            confidence += min(0.1, divergence.get('strength', 0))
+        
+        # Volume exceptionnel
+        vol_ratio = market.get('volume_ratio', 1)
+        if vol_ratio >= 2.0:
+            confidence += 0.05
+        
+        # Alignement de tendance
+        if market.get('trend_alignment') == 'bearish':
+            confidence += 0.05
+        
+        return min(1.0, confidence)
+    
+    def _create_signal(self, symbol: str, side: OrderSide, price: float,
+                      confidence: float, macd_line: float, macd_signal: float,
+                      macd_hist: float, market: Dict) -> Dict:
+        """Crée un signal MACD structuré"""
+        
+        # Déterminer la force
+        if confidence >= 0.9:
+            strength = SignalStrength.VERY_STRONG
+        elif confidence >= 0.85:
+            strength = SignalStrength.STRONG
+        elif confidence >= 0.8:
+            strength = SignalStrength.MODERATE
+        else:
+            strength = SignalStrength.WEAK
+        
+        return {
+            'strategy': self.name,
+            'symbol': symbol,
+            'side': side,
+            'price': price,
+            'confidence': confidence,
+            'strength': strength,
+            'timestamp': datetime.now(),
+            'metadata': {
+                'macd_line': macd_line,
+                'macd_signal': macd_signal,
+                'macd_histogram': macd_hist,
+                'volume_ratio': market.get('volume_ratio', 1),
+                'volatility': market.get('volatility', 0),
+                'trend_alignment': market.get('trend_alignment'),
+                'signal_type': 'macd_ultra_precise'
+            }
         }
-        
-        # Ajouter les valeurs MACD actuelles si disponibles
-        if len(self.macd_line) > 0:
-            state['current_macd'] = float(self.macd_line.iloc[-1])
-            state['current_signal'] = float(self.signal_line.iloc[-1])
-            state['current_histogram'] = float(self.histogram.iloc[-1])
-        
-        return state
-    
-    def reset(self) -> None:
-        """Réinitialise l'état de la stratégie."""
-        self.data_buffer.clear()
-        self.last_signal_time = None
-        self.macd_line = []
-        self.signal_line = []
-        self.histogram = []
-        self.last_crossover = None
-        logger.info(f"Stratégie {self.name} réinitialisée")

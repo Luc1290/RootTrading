@@ -18,7 +18,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 from shared.src.config import SYMBOLS, LOG_LEVEL
 from shared.src.redis_client import RedisClient
 
-from analyzer.src.multiproc_manager import AnalyzerManager
+from analyzer.src.optimized_analyzer import OptimizedAnalyzer
+from analyzer.src.strategy_loader import StrategyLoader
+from analyzer.src.redis_subscriber import RedisSubscriber
 
 # Configuration du logging
 log_level = getattr(logging, LOG_LEVEL.upper(), logging.INFO)
@@ -38,23 +40,24 @@ class AnalyzerService:
     Service principal Analyzer qui gère l'API REST et le cycle de vie du gestionnaire d'analyse.
     """
     
-    def __init__(self, symbols=None, use_threads=False, max_workers=None, port=5012):
+    def __init__(self, symbols=None, port=5012):
         """
-        Initialise le service Analyzer.
+        Initialise le service Analyzer optimisé.
         
         Args:
             symbols: Liste des symboles à analyser
-            use_threads: Utiliser des threads au lieu de processus
-            max_workers: Nombre maximum de workers
             port: Port pour l'API REST
         """
         self.symbols = symbols or SYMBOLS
-        self.use_threads = use_threads
-        self.max_workers = max_workers
         self.port = port
         self.start_time = time.time()
         self.running = False
-        self.manager = None
+        
+        # Composants de l'analyzer optimisé
+        self.strategy_loader = None
+        self.optimized_analyzer = None
+        self.redis_subscriber = None
+        
         self.process = psutil.Process(os.getpid())
         self.app = Flask(__name__)
         self.setup_routes()
@@ -81,26 +84,22 @@ class AnalyzerService:
     
     def diagnostic(self):
         """
-        Point de terminaison pour le diagnostic du service.
+        Point de terminaison pour le diagnostic du service optimisé.
         """
-        if not self.manager:
+        if not self.optimized_analyzer:
             return jsonify({
                 "status": "stopped",
                 "timestamp": time.time(),
                 "uptime": time.time() - self.start_time,
-                "error": "Analyzer manager not running"
+                "error": "Optimized analyzer not running"
             }), 503
             
-        # Vérifier l'état du gestionnaire d'analyse
-        manager_status = {
+        # État de l'analyzer optimisé
+        analyzer_status = {
             "running": self.running,
-            "workers": self.manager.max_workers,
-            "use_threads": self.manager.use_threads,
-            "symbol_groups": len(self.manager.symbol_groups),
-            "queue_sizes": {
-                "data_queue": self.manager.data_queue.qsize() if hasattr(self.manager.data_queue, 'qsize') else 'unknown',
-                "signal_queue": self.manager.signal_queue.qsize() if hasattr(self.manager.signal_queue, 'qsize') else 'unknown'
-            }
+            "strategy_loader_active": self.strategy_loader is not None,
+            "redis_subscriber_active": self.redis_subscriber is not None,
+            "strategies_count": self.strategy_loader.get_strategy_count() if self.strategy_loader else 0
         }
         
         # Construire la réponse
@@ -108,7 +107,8 @@ class AnalyzerService:
             "status": "operational" if self.running else "stopped",
             "timestamp": time.time(),
             "uptime": time.time() - self.start_time,
-            "manager": manager_status,
+            "architecture": "optimized_db_first",
+            "analyzer": analyzer_status,
             "symbols": self.symbols,
             "memory_usage_mb": round(self.process.memory_info().rss / (1024 * 1024), 2),
             "cpu_percent": self.process.cpu_percent(interval=0.1),
@@ -119,19 +119,19 @@ class AnalyzerService:
     
     def list_strategies(self):
         """
-        Liste toutes les stratégies chargées.
+        Liste toutes les stratégies ultra-précises chargées.
         """
-        if not self.manager:
+        if not self.strategy_loader:
             return jsonify({
-                "error": "Analyzer manager not running"
+                "error": "Strategy loader not running"
             }), 503
             
         try:
-            strategy_loader = self.manager.strategy_loader
-            strategies = strategy_loader.get_strategy_list()
+            strategies = self.strategy_loader.get_strategy_list()
             return jsonify({
                 "strategies": strategies,
-                "total_count": strategy_loader.get_strategy_count()
+                "total_count": self.strategy_loader.get_strategy_count(),
+                "architecture": "ultra_precise_db_first"
             })
         except Exception as e:
             logger.error(f"Erreur lors de la récupération des stratégies: {str(e)}")
@@ -141,12 +141,12 @@ class AnalyzerService:
     
     def get_indicators(self, symbol):
         """
-        Retourne les indicateurs techniques pour un symbole donné.
-        Utilise les données réelles depuis Redis ou les stratégies actives.
+        Retourne les indicateurs techniques depuis la DB pour un symbole donné.
+        Architecture DB-first optimisée.
         """
-        if not self.manager:
+        if not self.optimized_analyzer:
             return jsonify({
-                "error": "Analyzer manager not running"
+                "error": "Optimized analyzer not running"
             }), 503
         
         # Vérifier que le symbole est supporté
@@ -157,79 +157,74 @@ class AnalyzerService:
             }), 400
         
         try:
-            # 1. Essayer de récupérer l'ATR depuis Redis (données enrichies du Gateway)
-            redis_client = RedisClient()
-            atr_value = None
-            data_source = None
+            import asyncio
+            from analyzer.src.indicators.db_indicators import db_indicators
             
-            # Vérifier les différents timeframes dans Redis
-            for timeframe in ['1m', '5m', '15m', '1h']:
-                try:
-                    key = f"market_data:{symbol}:{timeframe}"
-                    data = redis_client.get(key)
-                    if data and isinstance(data, dict) and 'atr_14' in data:
-                        atr_value = data['atr_14']
-                        data_source = f"redis_{timeframe}"
-                        timestamp = data.get('timestamp', time.time())
-                        logger.info(f"ATR récupéré depuis Redis {timeframe} pour {symbol}: {atr_value}")
-                        break
-                except Exception as e:
-                    logger.debug(f"Erreur accès Redis {timeframe} pour {symbol}: {str(e)}")
-                    continue
+            # Récupérer les indicateurs depuis la DB
+            async def get_db_indicators():
+                return await db_indicators.get_enriched_market_data(symbol, limit=1)
             
-            # 2. Fallback: essayer de calculer depuis les stratégies actives
-            if atr_value is None and self.manager and hasattr(self.manager, 'strategy_loader'):
-                try:
-                    strategy_loader = self.manager.strategy_loader
-                    if hasattr(strategy_loader, 'strategies'):
-                        for strategy in strategy_loader.strategies:
-                            if (hasattr(strategy, 'symbol') and strategy.symbol == symbol and 
-                                hasattr(strategy, 'data_buffer') and len(strategy.data_buffer) >= 14):
-                                if hasattr(strategy, 'calculate_atr'):
-                                    atr_value = strategy.calculate_atr()
-                                    data_source = "strategy_calculation"
-                                    timestamp = time.time()
-                                    logger.info(f"ATR calculé depuis stratégie pour {symbol}: {atr_value}")
-                                    break
-                except Exception as e:
-                    logger.debug(f"Erreur calcul ATR depuis stratégie pour {symbol}: {str(e)}")
+            # Exécuter l'appel asynchrone
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                df = loop.run_until_complete(get_db_indicators())
+            finally:
+                loop.close()
             
-            # 3. Fallback final: valeurs par défaut avec avertissement
-            if atr_value is None:
-                atr_defaults = {
-                    "BTCUSDC": 1500.0,  # ~3% de 50000
-                    "ETHUSDC": 100.0,   # ~3% de 3000  
-                    "SOLUSDC": 5.0,     # ~3% de 150
-                    "XRPUSDC": 0.08,    # ~3% de 2.5
-                    "ADAUSDC": 0.03,    # ~3% de 1.0
-                }
-                atr_value = atr_defaults.get(symbol, 2.5)
-                data_source = "default_fallback"
-                timestamp = time.time()
-                logger.warning(f"Utilisation de valeurs ATR par défaut pour {symbol}: {atr_value}")
+            if df is None or df.empty:
+                return jsonify({
+                    "error": f"No enriched data found for {symbol}",
+                    "data_source": "database"
+                }), 404
             
-            return jsonify({
+            # Extraire les indicateurs de la dernière chandelle
+            latest = df.iloc[-1]
+            
+            indicators_data = {
                 "symbol": symbol,
-                "timestamp": timestamp,
-                "atr": atr_value,
-                "indicators": {
-                    "atr": atr_value,
-                    "atr_period": 14,
-                    "data_source": data_source,
-                    "calculated_method": "real_data" if data_source != "default_fallback" else "default_fallback"
+                "timestamp": latest.name.isoformat(),
+                "data_source": "postgresql_enriched",
+                "architecture": "db_first_optimized",
+                "ohlcv": {
+                    "open": float(latest['open']),
+                    "high": float(latest['high']),
+                    "low": float(latest['low']),
+                    "close": float(latest['close']),
+                    "volume": float(latest['volume'])
                 },
-                "status": "success" if data_source != "default_fallback" else "fallback_used"
-            })
+                "indicators": {
+                    "rsi_14": float(latest.get('rsi_14', 0)),
+                    "atr_14": float(latest.get('atr_14', 0)),
+                    "adx_14": float(latest.get('adx_14', 0)),
+                    "macd_line": float(latest.get('macd_line', 0)),
+                    "macd_signal": float(latest.get('macd_signal', 0)),
+                    "macd_histogram": float(latest.get('macd_histogram', 0)),
+                    "bb_upper": float(latest.get('bb_upper', 0)),
+                    "bb_middle": float(latest.get('bb_middle', 0)),
+                    "bb_lower": float(latest.get('bb_lower', 0)),
+                    "ema_12": float(latest.get('ema_12', 0)),
+                    "ema_26": float(latest.get('ema_26', 0)),
+                    "ema_50": float(latest.get('ema_50', 0)),
+                    "sma_20": float(latest.get('sma_20', 0)),
+                    "sma_50": float(latest.get('sma_50', 0)),
+                    "stoch_k": float(latest.get('stoch_k', 0)),
+                    "stoch_d": float(latest.get('stoch_d', 0)),
+                    "obv": float(latest.get('obv', 0))
+                }
+            }
+            
+            return jsonify(indicators_data)
             
         except Exception as e:
-            logger.error(f"Erreur lors de la récupération des indicateurs pour {symbol}: {str(e)}")
+            logger.error(f"Erreur lors de la récupération des indicateurs DB pour {symbol}: {str(e)}")
             return jsonify({
-                "error": f"Failed to retrieve indicators for {symbol}: {str(e)}"
+                "error": f"Failed to retrieve DB indicators for {symbol}: {str(e)}"
             }), 500
     
     def start(self):
         """
-        Démarre le service Analyzer.
+        Démarre le service Analyzer optimisé.
         """
         if self.running:
             logger.warning("Le service est déjà en cours d'exécution")
@@ -237,26 +232,81 @@ class AnalyzerService:
             
         self.running = True
         
-        logger.info("🚀 Démarrage du service Analyzer RootTrading...")
-        logger.info(f"Configuration: {len(self.symbols)} symboles, "
-                   f"mode {'threads' if self.use_threads else 'processus'}, "
-                   f"{self.max_workers or 'auto'} workers")
+        logger.info("🚀 Démarrage du service Analyzer RootTrading OPTIMISÉ...")
+        logger.info(f"Configuration: {len(self.symbols)} symboles, architecture DB-first")
         
         try:
-            # Créer et démarrer le gestionnaire d'analyse
-            self.manager = AnalyzerManager(
-                symbols=self.symbols,
-                max_workers=self.max_workers,
-                use_threads=self.use_threads
-            )
-            self.manager.start()
+            # 1. Charger les stratégies ultra-précises
+            self.strategy_loader = StrategyLoader(symbols=self.symbols)
+            logger.info(f"✅ {self.strategy_loader.get_strategy_count()} stratégies ultra-précises chargées")
             
-            logger.info("✅ Service Analyzer démarré et en attente de données")
+            # 2. Créer l'analyzer optimisé
+            self.optimized_analyzer = OptimizedAnalyzer(
+                strategy_loader=self.strategy_loader,
+                max_workers=4
+            )
+            logger.info("✅ Analyzer optimisé initialisé")
+            
+            # 3. Démarrer le subscriber Redis avec callback d'analyse
+            self.redis_subscriber = RedisSubscriber(symbols=self.symbols)
+            self.redis_subscriber.start_listening(self._process_market_data)
+            logger.info("✅ Subscriber Redis démarré")
+            
+            logger.info("✅ Service Analyzer optimisé démarré et en attente de données")
             
         except Exception as e:
-            logger.error(f"❌ Erreur lors du démarrage du gestionnaire: {str(e)}")
+            logger.error(f"❌ Erreur lors du démarrage de l'analyzer optimisé: {str(e)}")
             self.running = False
             raise
+    
+    def _process_market_data(self, data: dict):
+        """
+        Callback pour traiter les données de marché avec l'analyzer optimisé.
+        """
+        try:
+            if not data or not data.get('symbol'):
+                return
+                
+            symbol = data['symbol']
+            
+            # Analyser avec les stratégies en utilisant les données DB
+            import asyncio
+            
+            async def analyze_data():
+                return await self.optimized_analyzer._analyze_symbol_from_db(symbol)
+            
+            # Exécuter l'analyse
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                signals = loop.run_until_complete(analyze_data())
+            finally:
+                loop.close()
+            
+            # Publier les signaux via Redis
+            if signals:
+                for signal_dict in signals:
+                    try:
+                        # Convertir en StrategySignal et publier
+                        from shared.src.schemas import StrategySignal, TradeSide, SignalStrength
+                        
+                        strategy_signal = StrategySignal(
+                            strategy=signal_dict['strategy'],
+                            symbol=signal_dict['symbol'],
+                            side=signal_dict['side'],
+                            price=signal_dict['price'],
+                            confidence=signal_dict['confidence'],
+                            timestamp=signal_dict.get('timestamp'),
+                            strength=signal_dict.get('strength', SignalStrength.MEDIUM)
+                        )
+                        
+                        self.redis_subscriber.publish_signal(strategy_signal)
+                        
+                    except Exception as e:
+                        logger.error(f"❌ Erreur publication signal pour {symbol}: {e}")
+                        
+        except Exception as e:
+            logger.error(f"❌ Erreur traitement données marché: {e}")
     
     def start_api(self, debug=False):
         """
@@ -275,36 +325,37 @@ class AnalyzerService:
     
     def stop(self):
         """
-        Arrête proprement le service Analyzer.
+        Arrête proprement le service Analyzer optimisé.
         """
         if not self.running:
             return
             
-        logger.info("Arrêt du service Analyzer...")
+        logger.info("Arrêt du service Analyzer optimisé...")
         self.running = False
         
-        # Arrêter le gestionnaire proprement
-        if self.manager:
-            self.manager.stop()
-            self.manager = None
+        # Arrêter les composants proprement
+        if self.redis_subscriber:
+            self.redis_subscriber.stop()
+            self.redis_subscriber = None
             
-        logger.info("Service Analyzer terminé")
+        if self.optimized_analyzer:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(self.optimized_analyzer.close())
+            finally:
+                loop.close()
+            self.optimized_analyzer = None
+            
+        self.strategy_loader = None
+            
+        logger.info("Service Analyzer optimisé terminé")
         
 
 def parse_arguments():
     """Parse les arguments de ligne de commande."""
-    parser = argparse.ArgumentParser(description='Analyzer de trading RootTrading')
-    parser.add_argument(
-        '--threads', 
-        action='store_true', 
-        help='Utiliser des threads au lieu de processus'
-    )
-    parser.add_argument(
-        '--workers', 
-        type=int, 
-        default=None, 
-        help='Nombre de workers (processus/threads)'
-    )
+    parser = argparse.ArgumentParser(description='Analyzer de trading RootTrading OPTIMISÉ')
     parser.add_argument(
         '--symbols', 
         type=str, 
@@ -331,7 +382,7 @@ def parse_arguments():
 
 
 def main():
-    """Fonction principale du service Analyzer."""
+    """Fonction principale du service Analyzer OPTIMISÉ."""
     # Parser les arguments
     args = parse_arguments()
     
@@ -341,8 +392,6 @@ def main():
     # Gestionnaire de signaux pour l'arrêt propre
     service = AnalyzerService(
         symbols=symbols,
-        use_threads=args.threads,
-        max_workers=args.workers,
         port=args.port
     )
     

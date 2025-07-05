@@ -1,363 +1,441 @@
 """
-Stratégie de trading basée sur les divergences de prix et d'indicateurs (RSI).
-Détecte les divergences entre le prix et le RSI pour identifier les potentiels retournements.
+Stratégie Reversal Divergence Ultra-Précise
+Utilise les indicateurs RSI et prix de la DB pour détecter les divergences
+avec validation multi-critères pour des signaux de retournement fiables.
 """
 import logging
+from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple
 import numpy as np
 import pandas as pd
-import talib
 
-# Importer les modules partagés
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
-from shared.src.config import get_strategy_param
-from shared.src.enums import OrderSide
-from shared.src.schemas import StrategySignal
+from shared.src.enums import OrderSide, SignalStrength
 
 from .base_strategy import BaseStrategy
-from .advanced_filters_mixin import AdvancedFiltersMixin
-from .strategy_upgrader import wrap_generate_signal
 
-# Configuration du logging
 logger = logging.getLogger(__name__)
 
-class ReversalDivergenceStrategy(BaseStrategy, AdvancedFiltersMixin):
+class ReversalDivergenceStrategy(BaseStrategy):
     """
-    Stratégie basée sur les divergences entre le prix et le RSI.
-    Détecte les moments où le prix fait de nouveaux plus bas (ou plus hauts) 
-    mais le RSI ne confirme pas, indiquant un potentiel retournement.
+    Stratégie Reversal Divergence Ultra-Précise qui utilise les indicateurs de la DB
+    avec détection sophistiquée des divergences prix/RSI pour retournements fiables.
+    
+    Critères ultra-stricts :
+    - Divergences RSI/Prix validées sur pivots confirmés
+    - Analyse force divergence et contexte
+    - Validation momentum et volume
+    - Filtres support/résistance et survente/surachat
+    - Confirmation tendance pour timing optimal
     """
     
     def __init__(self, symbol: str, params: Dict[str, Any] = None):
-        """
-        Initialise la stratégie de divergence.
-        
-        Args:
-            symbol: Symbole de trading (ex: 'BTCUSDC')
-            params: Paramètres spécifiques à la stratégie
-        """
         super().__init__(symbol, params)
         
-        # Paramètres RSI
-        self.rsi_window = self.params.get('rsi_window', 14)
+        # Paramètres divergence ultra-précis
+        self.divergence_lookback = 25             # Périodes pour analyse divergence
+        self.min_pivot_distance = 8               # Distance minimum entre pivots
+        self.min_divergence_strength = 0.15       # Force minimum divergence
+        self.rsi_extreme_oversold = 25            # Zone survente pour divergence haussière
+        self.rsi_extreme_overbought = 75          # Zone surachat pour divergence baissière
         
-        # Paramètres pour la détection des divergences
-        self.lookback = self.params.get('lookback', 20)  # Nombre de chandeliers à analyser
-        self.min_swing_period = self.params.get('min_swing_period', 5)  # Période minimum entre swings
-        self.price_threshold = self.params.get('price_threshold', 0.5)  # % minimum de différence entre prix
+        # Filtres ultra-précis
+        self.min_confidence = 0.76                # Confiance minimum 76%
+        self.min_volume_confirmation = 1.3        # Volume 30% au-dessus moyenne
+        self.pivot_validation_periods = 3         # Périodes pour validation pivot
         
-        logger.info(f"🔧 Stratégie de Divergence initialisée pour {symbol} "
-                   f"(rsi_window={self.rsi_window}, lookback={self.lookback})")
-        
-        # Upgrader automatiquement la méthode generate_signal avec filtres sophistiqués
-        self._original_generate_signal = self.generate_signal
-        self.generate_signal = wrap_generate_signal(self, self._original_generate_signal)
+        logger.info(f"🎯 Reversal Divergence Ultra-Précis initialisé pour {symbol}")
     
     @property
     def name(self) -> str:
-        """Nom unique de la stratégie."""
-        return "Divergence_Strategy"
+        return "Reversal_Divergence_Ultra_Strategy"
     
     def get_min_data_points(self) -> int:
-        """
-        Nombre minimum de points de données nécessaires.
-        
-        Returns:
-            Nombre minimum de données requises
-        """
-        return max(self.lookback * 2, 50)  # Besoin de suffisamment de données pour détecter des patterns
+        return 70  # Minimum pour détection pivots et divergences fiables
     
-    def _calculate_rsi(self, prices: np.ndarray) -> np.ndarray:
+    def analyze(self, symbol: str, df: pd.DataFrame, indicators: Dict) -> Optional[Dict]:
         """
-        Calcule l'indicateur RSI.
-        
-        Args:
-            prices: Tableau des prix de clôture
-            
-        Returns:
-            Tableau des valeurs RSI
+        Analyse divergence ultra-précise avec validation complète
         """
         try:
-            # Utiliser le module partagé pour calculer le RSI
-            from shared.src.technical_indicators import TechnicalIndicators
-            ti = TechnicalIndicators()
+            if len(df) < self.get_min_data_points():
+                return None
             
-            # Calculer RSI pour toutes les valeurs
-            rsi_series = []
-            for i in range(self.rsi_window, len(prices)):
-                rsi_val = ti.calculate_rsi(prices[:i+1], period=self.rsi_window)
-                rsi_series.append(rsi_val if rsi_val is not None else np.nan)
+            current_price = df['close'].iloc[-1]
             
-            # Remplir le début avec des NaN
-            full_rsi = np.full(len(prices), np.nan)
-            full_rsi[self.rsi_window:] = rsi_series
-            return full_rsi
+            # 1. Détecter les divergences RSI/Prix
+            divergence_analysis = self._detect_rsi_price_divergence(df, indicators)
+            if not divergence_analysis.get('valid_divergence'):
+                return None
+            
+            # 2. Valider la force de la divergence
+            strength_analysis = self._analyze_divergence_strength(df, divergence_analysis, indicators)
+            
+            # 3. Analyser le contexte RSI (survente/surachat)
+            rsi_context = self._analyze_rsi_context(indicators, divergence_analysis)
+            
+            # 4. Analyser le contexte de marché
+            market_context = self._analyze_market_context(df, indicators)
+            
+            # 5. Appliquer les filtres ultra-stricts
+            if not self._passes_ultra_filters(strength_analysis, rsi_context, market_context):
+                return None
+            
+            # 6. Logique de signal ultra-sélective
+            signal = None
+            side = divergence_analysis['side']
+            
+            confidence = self._calculate_divergence_confidence(
+                divergence_analysis, strength_analysis, rsi_context, market_context
+            )
+            
+            if confidence >= self.min_confidence:
+                signal = self._create_signal(
+                    symbol, side, current_price, confidence,
+                    divergence_analysis, strength_analysis, market_context
+                )
+            
+            if signal:
+                div_type = divergence_analysis.get('type', 'unknown')
+                logger.info(f"🎯 Divergence {symbol}: {signal['side'].value} @ {current_price:.4f} "
+                          f"(type: {div_type}, conf: {signal['confidence']:.2f})")
+            
+            return signal
             
         except Exception as e:
-            logger.error(f"Erreur lors du calcul du RSI: {str(e)}")
-            return np.full(len(prices), np.nan)
+            logger.error(f"❌ Erreur Reversal Divergence Strategy {symbol}: {e}")
+            return None
     
-    def _find_swing_points(self, data: np.ndarray, min_points: int = 3) -> Tuple[List[int], List[int]]:
-        """
-        Trouve les points de swing (pivots hauts et bas).
-        
-        Args:
-            data: Tableau de valeurs (prix ou RSI)
-            min_points: Nombre minimal de points pour confirmer un pivot
-            
-        Returns:
-            Tuple de (indices_swing_hauts, indices_swing_bas)
-        """
-        highs = []
-        lows = []
-        
-        # Parcourir les données, en ignorant les extrémités
-        for i in range(min_points, len(data) - min_points):
-            # Vérifier si c'est un pivot haut (plus haut que les `min_points` points avant et après)
-            if all(data[i] > data[i-j] for j in range(1, min_points+1)) and \
-               all(data[i] > data[i+j] for j in range(1, min_points+1)):
-                highs.append(i)
-            
-            # Vérifier si c'est un pivot bas (plus bas que les `min_points` points avant et après)
-            if all(data[i] < data[i-j] for j in range(1, min_points+1)) and \
-               all(data[i] < data[i+j] for j in range(1, min_points+1)):
-                lows.append(i)
-        
-        return highs, lows
-    
-    def _check_divergence(self, df: pd.DataFrame) -> Optional[Dict[str, Any]]:
-        """
-        Détecte les divergences entre le prix et le RSI avec validation de tendance.
-        
-        Args:
-            df: DataFrame avec les données de prix
-            
-        Returns:
-            Informations sur la divergence ou None
-        """
-        if df.shape[0] < self.lookback:
+    def _get_current_indicator(self, indicators: Dict, key: str) -> Optional[float]:
+        """Récupère valeur actuelle d'un indicateur"""
+        value = indicators.get(key)
+        if value is None:
             return None
         
-        # NOUVEAU: Validation de tendance avant de générer le signal
-        trend_alignment = self._validate_trend_alignment_for_signal(df)
-        if trend_alignment is None:
-            return None  # Pas assez de données pour valider la tendance
-        
-        # Ne considérer que les N derniers chandeliers
-        recent_df = df.iloc[-self.lookback:]
-        
-        # Extraire les prix de clôture
-        prices = recent_df['close'].values
-        
-        # Calculer le RSI
-        rsi_values = self._calculate_rsi(prices)
-        
-        # Trouver les points de swing pour le prix et le RSI
-        price_highs, price_lows = self._find_swing_points(prices, self.min_swing_period)
-        rsi_highs, rsi_lows = self._find_swing_points(rsi_values, self.min_swing_period)
-        
-        # Convertir les indices relatifs en indices absolus
-        price_highs = [i + len(df) - self.lookback for i in price_highs]
-        price_lows = [i + len(df) - self.lookback for i in price_lows]
-        rsi_highs = [i + len(df) - self.lookback for i in rsi_highs]
-        rsi_lows = [i + len(df) - self.lookback for i in rsi_lows]
-        
-        # Chercher une divergence haussière (prix fait un plus bas plus bas, RSI fait un plus bas plus haut)
-        if len(price_lows) >= 2 and len(rsi_lows) >= 2:
-            # Prendre les deux derniers pivots bas
-            last_price_low_idx, prev_price_low_idx = price_lows[-1], price_lows[-2]
-            last_rsi_low_idx, prev_rsi_low_idx = rsi_lows[-1], rsi_lows[-2]
-            
-            last_price_low = df.iloc[last_price_low_idx]['close']
-            prev_price_low = df.iloc[prev_price_low_idx]['close']
-            
-            # Convertir les indices de prix en indices relatifs pour accéder au RSI
-            last_price_low_rel = last_price_low_idx - (len(df) - self.lookback)
-            prev_price_low_rel = prev_price_low_idx - (len(df) - self.lookback)
-            
-            # Vérifier que les indices sont valides
-            if 0 <= last_price_low_rel < len(rsi_values) and 0 <= prev_price_low_rel < len(rsi_values):
-                last_rsi_low = rsi_values[last_price_low_rel]
-                prev_rsi_low = rsi_values[prev_price_low_rel]
-                
-                # Divergence haussière: prix fait un plus bas plus bas, RSI fait un plus bas plus haut
-                if last_price_low < prev_price_low and last_rsi_low > prev_rsi_low:
-                    # NOUVEAU: Ne générer divergence BUY que si tendance n'est pas fortement baissière
-                    if trend_alignment in ["STRONG_BEARISH", "WEAK_BEARISH"]:
-                        logger.debug(f"[Divergence] {self.symbol}: Divergence BUY supprimée - tendance {trend_alignment}")
-                        return None
-                    
-                    # Calculer le pourcentage de divergence
-                    price_percent_change = (last_price_low - prev_price_low) / prev_price_low * 100
-                    rsi_percent_change = (last_rsi_low - prev_rsi_low) / prev_rsi_low * 100
-                    
-                    # Calculer un score de force basé sur la divergence
-                    score = min(abs(price_percent_change - rsi_percent_change) / 5, 1.0)
-                    
-                    current_price = df.iloc[-1]['close']
-                    
-                    # Utiliser l'ATR pour calculer le stop
-                    atr_percent = self.calculate_atr(df)
-                    
-                    # Calculer le stop basé sur l'ATR
-                    atr_stop_distance = atr_percent / 100
-                    atr_stop = current_price * (1 - atr_stop_distance)
-                    
-                    # Le stop peut être ajusté pour être sous le dernier plus bas
-                    # si c'est plus proche que l'ATR stop
-                    low_stop = last_price_low * 0.995
-                    stop_loss = max(low_stop, atr_stop)
-                    
-                    return {
-                        "type": "bullish",
-                        "side": OrderSide.BUY,
-                        "price": current_price,
-                        "confidence": 0.75 + (score / 4),  # Confiance entre 0.75 et 1.0 (augmentée)
-                        "last_price_low": float(last_price_low),
-                        "prev_price_low": float(prev_price_low),
-                        "last_rsi_low": float(last_rsi_low),
-                        "prev_rsi_low": float(prev_rsi_low),
-                        "stop_price": float(stop_loss)
-                    }
-        
-        # Chercher une divergence baissière (prix fait un plus haut plus haut, RSI fait un plus haut plus bas)
-        if len(price_highs) >= 2 and len(rsi_highs) >= 2:
-            # Prendre les deux derniers pivots hauts
-            last_price_high_idx, prev_price_high_idx = price_highs[-1], price_highs[-2]
-            last_rsi_high_idx, prev_rsi_high_idx = rsi_highs[-1], rsi_highs[-2]
-            
-            last_price_high = df.iloc[last_price_high_idx]['close']
-            prev_price_high = df.iloc[prev_price_high_idx]['close']
-            
-            # Convertir les indices de prix en indices relatifs pour accéder au RSI
-            last_price_high_rel = last_price_high_idx - (len(df) - self.lookback)
-            prev_price_high_rel = prev_price_high_idx - (len(df) - self.lookback)
-            
-            # Vérifier que les indices sont valides
-            if 0 <= last_price_high_rel < len(rsi_values) and 0 <= prev_price_high_rel < len(rsi_values):
-                last_rsi_high = rsi_values[last_price_high_rel]
-                prev_rsi_high = rsi_values[prev_price_high_rel]
-                
-                # Divergence baissière: prix fait un plus haut plus haut, RSI fait un plus haut plus bas
-                if last_price_high > prev_price_high and last_rsi_high < prev_rsi_high:
-                    # NOUVEAU: Ne générer divergence SELL que si tendance n'est pas fortement haussière
-                    if trend_alignment in ["STRONG_BULLISH", "WEAK_BULLISH"]:
-                        logger.debug(f"[Divergence] {self.symbol}: Divergence SELL supprimée - tendance {trend_alignment}")
-                        return None
-                    
-                    # Calculer le pourcentage de divergence
-                    price_percent_change = (last_price_high - prev_price_high) / prev_price_high * 100
-                    rsi_percent_change = (last_rsi_high - prev_rsi_high) / prev_rsi_high * 100
-                    
-                    # Calculer un score de force basé sur la divergence
-                    score = min(abs(price_percent_change - rsi_percent_change) / 5, 1.0)
-                    
-                    current_price = df.iloc[-1]['close']
-                    
-                    # Utiliser l'ATR pour calculer le stop
-                    atr_percent = self.calculate_atr(df)
-                    
-                    # Calculer le stop basé sur l'ATR
-                    atr_stop_distance = atr_percent / 100
-                    atr_stop = current_price * (1 + atr_stop_distance)
-                    
-                    # Le stop peut être ajusté pour être au-dessus du dernier plus haut
-                    # si c'est plus proche que l'ATR stop
-                    high_stop = last_price_high * 1.005
-                    stop_loss = min(high_stop, atr_stop)
-                    
-                    return {
-                        "type": "bearish",
-                        "side": OrderSide.SELL,
-                        "price": current_price,
-                        "confidence": 0.75 + (score / 4),  # Confiance entre 0.75 et 1.0 (augmentée)
-                        "last_price_high": float(last_price_high),
-                        "prev_price_high": float(prev_price_high),
-                        "last_rsi_high": float(last_rsi_high),
-                        "prev_rsi_high": float(prev_rsi_high),
-                        "stop_price": float(stop_loss)
-                    }
+        if isinstance(value, (list, np.ndarray)) and len(value) > 0:
+            return float(value[-1])
+        elif isinstance(value, (int, float)):
+            return float(value)
         
         return None
     
-    def generate_signal(self) -> Optional[StrategySignal]:
-        """
-        Génère un signal de trading basé sur les divergences.
-        
-        Returns:
-            Signal de trading ou None si aucun signal n'est généré
-        """
-        # Convertir les données en DataFrame
-        df = self.get_data_as_dataframe()
-        if df is None or len(df) < self.get_min_data_points():
+    def _get_indicator_series(self, indicators: Dict, key: str, length: int) -> Optional[np.ndarray]:
+        """Récupère série d'indicateur"""
+        value = indicators.get(key)
+        if value is None:
             return None
+            
+        if isinstance(value, (list, np.ndarray)) and len(value) >= length:
+            return np.array(value[-length:])
         
-        # Détecter une divergence
-        divergence = self._check_divergence(df)
-        
-        if not divergence:
-            return None
-        
-        # Créer le signal
-        current_price = divergence['price']
-        side = divergence['side']
-        confidence = divergence['confidence']
-        
-        # Préparer les métadonnées
-        metadata = {k: v for k, v in divergence.items() if k not in ['side', 'price', 'confidence']}
-        
-        # Créer et retourner le signal
-        signal = self.create_signal(
-            side=side,
-            price=current_price,
-            confidence=confidence,
-            metadata=metadata
-        )
-        
-        # Log du signal
-        logger.info(f"🔄 [Divergence] Signal {side.value} sur {self.symbol}: "
-                   f"divergence {'haussière' if side == OrderSide.BUY else 'baissière'} détectée (confiance: {confidence:.2f})")
-
-        return signal
+        return None
     
-    def _validate_trend_alignment_for_signal(self, df: pd.DataFrame) -> Optional[str]:
-        """
-        Valide la tendance actuelle pour déterminer si un signal est approprié.
-        Utilise la même logique que le signal_aggregator pour cohérence.
-        """
+    def _find_pivot_points(self, data: np.ndarray) -> Tuple[List[int], List[int]]:
+        """Trouve pivots hauts et bas avec validation"""
         try:
-            if df is None or len(df) < 50:
-                return None
+            highs = []
+            lows = []
             
-            prices = df['close'].values
-            
-            # Calculer EMA 21 vs EMA 50 (harmonisé avec signal_aggregator)
-            from shared.src.technical_indicators import calculate_ema
-            ema_21_val = calculate_ema(prices, period=21)
-            ema_50_val = calculate_ema(prices, period=50)
-            
-            if ema_21_val is None or ema_50_val is None or np.isnan(ema_21_val) or np.isnan(ema_50_val):
-                return None
-            
-            current_price = prices[-1]
-            trend_21 = ema_21_val
-            trend_50 = ema_50_val
-            
-            # Classification sophistiquée de la tendance (même logique que signal_aggregator)
-            if trend_21 > trend_50 * 1.015:  # +1.5% = forte haussière
-                return "STRONG_BULLISH"
-            elif trend_21 > trend_50 * 1.005:  # +0.5% = faible haussière
-                return "WEAK_BULLISH"
-            elif trend_21 < trend_50 * 0.985:  # -1.5% = forte baissière
-                return "STRONG_BEARISH"
-            elif trend_21 < trend_50 * 0.995:  # -0.5% = faible baissière
-                return "WEAK_BEARISH"
-            else:
-                return "NEUTRAL"
+            # Utiliser distance minimum entre pivots
+            for i in range(self.pivot_validation_periods, len(data) - self.pivot_validation_periods):
+                # Pivot haut
+                is_high = True
+                for j in range(1, self.pivot_validation_periods + 1):
+                    if data[i] <= data[i-j] or data[i] <= data[i+j]:
+                        is_high = False
+                        break
                 
+                if is_high:
+                    # Vérifier distance minimum avec dernier pivot
+                    if not highs or i - highs[-1] >= self.min_pivot_distance:
+                        highs.append(i)
+                
+                # Pivot bas
+                is_low = True
+                for j in range(1, self.pivot_validation_periods + 1):
+                    if data[i] >= data[i-j] or data[i] >= data[i+j]:
+                        is_low = False
+                        break
+                
+                if is_low:
+                    # Vérifier distance minimum avec dernier pivot
+                    if not lows or i - lows[-1] >= self.min_pivot_distance:
+                        lows.append(i)
+            
+            return highs, lows
+            
         except Exception as e:
-            logger.warning(f"Erreur validation tendance: {e}")
-            return None
+            logger.debug(f"Erreur détection pivots: {e}")
+            return [], []
+    
+    def _detect_rsi_price_divergence(self, df: pd.DataFrame, indicators: Dict) -> Dict:
+        """Détecte divergences RSI/Prix avec validation"""
+        try:
+            if len(df) < self.divergence_lookback:
+                return {'valid_divergence': False}
+            
+            # Récupérer RSI de la DB
+            rsi_series = self._get_indicator_series(indicators, 'rsi_14', self.divergence_lookback)
+            if rsi_series is None:
+                return {'valid_divergence': False}
+            
+            # Analyser données récentes
+            recent_data = df.tail(self.divergence_lookback)
+            prices = recent_data['close'].values
+            
+            # Trouver pivots prix et RSI
+            price_highs, price_lows = self._find_pivot_points(prices)
+            rsi_highs, rsi_lows = self._find_pivot_points(rsi_series)
+            
+            # Détecter divergence haussière (prix baisse, RSI monte)
+            if len(price_lows) >= 2 and len(rsi_lows) >= 2:
+                last_price_low_idx, prev_price_low_idx = price_lows[-1], price_lows[-2]
+                
+                last_price_low = prices[last_price_low_idx]
+                prev_price_low = prices[prev_price_low_idx]
+                last_rsi_low = rsi_series[last_price_low_idx]
+                prev_rsi_low = rsi_series[prev_price_low_idx]
+                
+                # Divergence: prix plus bas, RSI plus haut
+                if (last_price_low < prev_price_low * 0.995 and  # Prix vraiment plus bas
+                    last_rsi_low > prev_rsi_low * 1.02):          # RSI vraiment plus haut
+                    
+                    # Vérifier zone de survente
+                    if last_rsi_low <= self.rsi_extreme_oversold:
+                        price_change = (prev_price_low - last_price_low) / prev_price_low
+                        rsi_change = (last_rsi_low - prev_rsi_low) / prev_rsi_low
+                        
+                        return {
+                            'valid_divergence': True,
+                            'type': 'bullish',
+                            'side': OrderSide.BUY,
+                            'price_change': price_change,
+                            'rsi_change': rsi_change,
+                            'last_rsi': last_rsi_low,
+                            'pivot_distance': last_price_low_idx - prev_price_low_idx
+                        }
+            
+            # Détecter divergence baissière (prix monte, RSI baisse)
+            if len(price_highs) >= 2 and len(rsi_highs) >= 2:
+                last_price_high_idx, prev_price_high_idx = price_highs[-1], price_highs[-2]
+                
+                last_price_high = prices[last_price_high_idx]
+                prev_price_high = prices[prev_price_high_idx]
+                last_rsi_high = rsi_series[last_price_high_idx]
+                prev_rsi_high = rsi_series[prev_price_high_idx]
+                
+                # Divergence: prix plus haut, RSI plus bas
+                if (last_price_high > prev_price_high * 1.005 and  # Prix vraiment plus haut
+                    last_rsi_high < prev_rsi_high * 0.98):         # RSI vraiment plus bas
+                    
+                    # Vérifier zone de surachat
+                    if last_rsi_high >= self.rsi_extreme_overbought:
+                        price_change = (last_price_high - prev_price_high) / prev_price_high
+                        rsi_change = (prev_rsi_high - last_rsi_high) / prev_rsi_high
+                        
+                        return {
+                            'valid_divergence': True,
+                            'type': 'bearish',
+                            'side': OrderSide.SELL,
+                            'price_change': price_change,
+                            'rsi_change': rsi_change,
+                            'last_rsi': last_rsi_high,
+                            'pivot_distance': last_price_high_idx - prev_price_high_idx
+                        }
+            
+            return {'valid_divergence': False}
+            
+        except Exception as e:
+            logger.debug(f"Erreur détection divergence: {e}")
+            return {'valid_divergence': False}
+    
+    def _analyze_divergence_strength(self, df: pd.DataFrame, divergence: Dict, indicators: Dict) -> Dict:
+        """Analyse force et qualité de la divergence"""
+        try:
+            if not divergence.get('valid_divergence'):
+                return {'strong_divergence': False, 'strength_score': 0}
+            
+            price_change = abs(divergence.get('price_change', 0))
+            rsi_change = abs(divergence.get('rsi_change', 0))
+            pivot_distance = divergence.get('pivot_distance', 0)
+            
+            # Score de force basé sur amplitude divergence
+            divergence_amplitude = price_change + rsi_change
+            
+            if divergence_amplitude >= 0.08:  # 8%+ total
+                strength_score = 0.9
+            elif divergence_amplitude >= 0.05:  # 5%+ total
+                strength_score = 0.8
+            elif divergence_amplitude >= 0.03:  # 3%+ total
+                strength_score = 0.7
+            else:
+                strength_score = 0.5
+            
+            # Bonus pour distance entre pivots (divergence mature)
+            if pivot_distance >= 15:
+                strength_score += 0.1
+            elif pivot_distance >= 10:
+                strength_score += 0.05
+            
+            # Validation avec autres indicateurs
+            macd_line = self._get_current_indicator(indicators, 'macd_line')
+            macd_signal = self._get_current_indicator(indicators, 'macd_signal')
+            
+            momentum_support = False
+            if macd_line is not None and macd_signal is not None:
+                if divergence['side'] == OrderSide.BUY and macd_line > macd_signal:
+                    momentum_support = True
+                elif divergence['side'] == OrderSide.SELL and macd_line < macd_signal:
+                    momentum_support = True
+            
+            if momentum_support:
+                strength_score += 0.05
+            
+            strong_divergence = (
+                strength_score >= 0.7 and
+                divergence_amplitude >= self.min_divergence_strength
+            )
+            
+            return {
+                'strong_divergence': strong_divergence,
+                'strength_score': min(1.0, strength_score),
+                'divergence_amplitude': divergence_amplitude,
+                'momentum_support': momentum_support
+            }
+            
+        except Exception as e:
+            logger.debug(f"Erreur analyse force divergence: {e}")
+            return {'strong_divergence': False, 'strength_score': 0}
+    
+    def _analyze_rsi_context(self, indicators: Dict, divergence: Dict) -> Dict:
+        """Analyse contexte RSI pour divergence"""
+        try:
+            current_rsi = self._get_current_indicator(indicators, 'rsi_14')
+            if current_rsi is None:
+                return {'favorable_rsi_context': False}
+            
+            div_type = divergence.get('type')
+            last_rsi = divergence.get('last_rsi', current_rsi)
+            
+            # Contexte favorable pour divergence haussière
+            if div_type == 'bullish':
+                favorable = (
+                    last_rsi <= self.rsi_extreme_oversold and
+                    current_rsi <= 35  # Toujours en zone basse
+                )
+                context_score = 0.9 if last_rsi <= 20 else 0.7
+            
+            # Contexte favorable pour divergence baissière
+            elif div_type == 'bearish':
+                favorable = (
+                    last_rsi >= self.rsi_extreme_overbought and
+                    current_rsi >= 65  # Toujours en zone haute
+                )
+                context_score = 0.9 if last_rsi >= 80 else 0.7
+            else:
+                favorable = False
+                context_score = 0.5
+            
+            return {
+                'favorable_rsi_context': favorable,
+                'context_score': context_score,
+                'current_rsi': current_rsi,
+                'rsi_extreme': last_rsi
+            }
+            
+        except Exception as e:
+            logger.debug(f"Erreur contexte RSI: {e}")
+            return {'favorable_rsi_context': False}
+    
+    def _analyze_market_context(self, df: pd.DataFrame, indicators: Dict) -> Dict:
+        """Analyse contexte marché pour divergence"""
+        try:
+            recent_data = df.tail(15)
+            
+            # Volume
+            current_volume = recent_data['volume'].iloc[-1]
+            avg_volume = recent_data['volume'].mean()
+            volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
+            
+            # Volatilité
+            returns = recent_data['close'].pct_change().dropna()
+            volatility = returns.std()
+            
+            return {
+                'volume_ratio': volume_ratio,
+                'volatility': volatility,
+                'high_volume': volume_ratio >= self.min_volume_confirmation,
+                'stable_volatility': volatility <= 0.05
+            }
+            
+        except Exception:
+            return {'volume_ratio': 1.0, 'volatility': 0.03, 'high_volume': False}
+    
+    def _passes_ultra_filters(self, strength: Dict, rsi_context: Dict, market: Dict) -> bool:
+        """Filtres ultra-stricts pour divergence"""
+        return (
+            # Divergence suffisamment forte
+            strength.get('strong_divergence', False) and
+            # Contexte RSI favorable
+            rsi_context.get('favorable_rsi_context', False) and
+            # Volume de confirmation
+            market.get('high_volume', False)
+        )
+    
+    def _calculate_divergence_confidence(self, divergence: Dict, strength: Dict,
+                                       rsi_context: Dict, market: Dict) -> float:
+        """Confiance pour signal divergence"""
+        confidence = 0.65  # Base
+        
+        # Force divergence
+        strength_score = strength.get('strength_score', 0)
+        confidence += min(0.15, strength_score * 0.15)
+        
+        # Contexte RSI
+        context_score = rsi_context.get('context_score', 0)
+        confidence += min(0.1, context_score * 0.1)
+        
+        # Support momentum
+        if strength.get('momentum_support'):
+            confidence += 0.05
+        
+        # Volume de confirmation
+        vol_ratio = market.get('volume_ratio', 1)
+        if vol_ratio >= 1.5:
+            confidence += 0.05
+        
+        return min(1.0, confidence)
+    
+    def _create_signal(self, symbol: str, side: OrderSide, price: float,
+                      confidence: float, divergence: Dict, strength: Dict,
+                      market: Dict) -> Dict:
+        """Crée signal divergence structuré"""
+        
+        if confidence >= 0.85:
+            signal_strength = SignalStrength.VERY_STRONG
+        elif confidence >= 0.80:
+            signal_strength = SignalStrength.STRONG
+        elif confidence >= 0.76:
+            signal_strength = SignalStrength.MODERATE
+        else:
+            signal_strength = SignalStrength.WEAK
+        
+        return {
+            'strategy': self.name,
+            'symbol': symbol,
+            'side': side,
+            'price': price,
+            'confidence': confidence,
+            'strength': signal_strength,
+            'timestamp': datetime.now(),
+            'metadata': {
+                'divergence_type': divergence.get('type', 'unknown'),
+                'divergence_amplitude': strength.get('divergence_amplitude', 0),
+                'rsi_level': divergence.get('last_rsi', 0),
+                'volume_ratio': market.get('volume_ratio', 1),
+                'signal_type': 'reversal_divergence_ultra_precise'
+            }
+        }

@@ -65,14 +65,9 @@ class SignalAggregatorService:
             await self.db_manager.initialize()
             
             # Initialize components
-            try:
-                from enhanced_regime_detector import EnhancedRegimeDetector
-                self.regime_detector = EnhancedRegimeDetector(self.redis)
-                logger.info("✅ Utilisation d'Enhanced Regime Detector comme détecteur principal")
-            except ImportError:
-                from regime_detector import RegimeDetector
-                self.regime_detector = RegimeDetector(self.redis)
-                logger.warning("⚠️ Enhanced Regime Detector non disponible, utilisation du classique")
+            from enhanced_regime_detector import EnhancedRegimeDetector
+            self.regime_detector = EnhancedRegimeDetector(self.redis)
+            logger.info("✅ Utilisation d'Enhanced Regime Detector comme détecteur principal")
                 
             self.performance_tracker = PerformanceTracker(self.redis)
             # Utiliser la version améliorée avec filtres intelligents

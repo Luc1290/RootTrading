@@ -21,7 +21,8 @@
       "Bash(docker compose logs:*)",
       "Bash(chmod:*)",
       "Bash(./debug/monitor_signals.sh:*)",
-      "Bash(bash:*)"
+      "Bash(bash:*)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }

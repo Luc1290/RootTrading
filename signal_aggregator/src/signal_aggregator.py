@@ -16,13 +16,7 @@ if TYPE_CHECKING:
 else:
     MarketRegimeType = Any
 
-try:
-    from enhanced_regime_detector import EnhancedRegimeDetector, MarketRegime
-except ImportError as e:
-    # Fallback si import échoue
-    logger.warning(f"Enhanced regime detector non disponible ({e}), utilisation du mode standard")
-    EnhancedRegimeDetector = None
-    MarketRegime = None
+from enhanced_regime_detector import EnhancedRegimeDetector, MarketRegime
 
 
 class MarketDataAccumulator:
@@ -84,15 +78,11 @@ class SignalAggregator:
         # Accumulateur de données de marché pour construire l'historique
         self.market_data_accumulator = MarketDataAccumulator(max_history=200)
         
-        # Nouveau détecteur de régime amélioré (si disponible)
-        if EnhancedRegimeDetector:
-            self.enhanced_regime_detector = EnhancedRegimeDetector(redis_client)
-            # Connecter l'accumulateur au détecteur
-            self.enhanced_regime_detector.set_market_data_accumulator(self.market_data_accumulator)
-            logger.info("✅ Enhanced Regime Detector activé avec accumulateur historique")
-        else:
-            self.enhanced_regime_detector = None
-            logger.warning("⚠️ Enhanced Regime Detector non disponible, utilisation du détecteur classique")
+        # Nouveau détecteur de régime amélioré
+        self.enhanced_regime_detector = EnhancedRegimeDetector(redis_client)
+        # Connecter l'accumulateur au détecteur
+        self.enhanced_regime_detector.set_market_data_accumulator(self.market_data_accumulator)
+        logger.info("✅ Enhanced Regime Detector activé avec accumulateur historique")
         
         # Signal buffer for aggregation
         self.signal_buffer = defaultdict(list)

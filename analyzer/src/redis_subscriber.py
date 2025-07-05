@@ -19,7 +19,7 @@ from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB, 
 from shared.src.redis_client import RedisClient
 from shared.src.kafka_client import KafkaClient
 from shared.src.schemas import StrategySignal
-from analyzer.src.bar_aggregator import BarAggregator
+# BarAggregator supprimé - architecture DB-first optimisée
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
@@ -41,28 +41,14 @@ class RedisSubscriber:
         self.redis_client = RedisClient()
         self.kafka_client = KafkaClient()
         
-        # Topics Kafka multi-timeframes au lieu de Redis
-        self.timeframes = ['1m', '5m', '15m', '1h', '4h']
-        self.kafka_topics = []
-        for symbol in self.symbols:
-            for tf in self.timeframes:
-                self.kafka_topics.append(f"market.data.{symbol.lower()}.{tf}")
-        
-        # Cache des données par symbole et timeframe
-        self.data_cache = {}
-        for symbol in self.symbols:
-            self.data_cache[symbol] = {}
-            for tf in self.timeframes:
-                self.data_cache[symbol][tf] = []
-        
+        # Signal channel pour publier les signaux
         self.signal_channel = f"{CHANNEL_PREFIX}:analyze:signal"
         
-        # Canaux Redis pour les données de marché (multi-timeframes)
+        # Canaux Redis pour les données de marché 1m (timeframe principal)
         self.market_data_channels = []
         for symbol in self.symbols:
-            for tf in self.timeframes:
-                channel = f"{CHANNEL_PREFIX}:market:data:{symbol.lower()}:{tf}"
-                self.market_data_channels.append(channel)
+            channel = f"{CHANNEL_PREFIX}:market:data:{symbol.lower()}:1m"
+            self.market_data_channels.append(channel)
         
         # File d'attente thread-safe pour les données de marché
         self.market_data_queue = queue.Queue()
@@ -71,9 +57,7 @@ class RedisSubscriber:
         self.processing_thread = None
         self.stop_event = threading.Event()
         
-        logger.info(f"✅ RedisSubscriber enrichi initialisé pour {len(self.kafka_topics)} topics")
-        
-        logger.info(f"✅ RedisSubscriber initialisé pour {len(self.symbols)} symboles: {', '.join(self.symbols)}")
+        logger.info(f"✅ RedisSubscriber DB-first initialisé pour {len(self.symbols)} symboles: {', '.join(self.symbols)}")
     
     def _process_market_data(self, channel: str, data: Dict[str, Any]) -> None:
         """
@@ -103,140 +87,18 @@ class RedisSubscriber:
     
     def _load_historical_data(self, callback: Callable[[Dict[str, Any]], None]) -> None:
         """
-        Charge les données historiques depuis Redis pour initialiser les stratégies.
+        SUPPRIMÉ: Plus besoin de charger des données historiques.
+        L'analyzer optimisé récupère tout depuis la DB via db_indicators.
         """
-        try:
-            logger.info("🔄 Chargement des données historiques depuis Redis...")
-            
-            for symbol in self.symbols:
-                # Charger les données de marché 1m (timeframe principal)
-                redis_key = f"market_data:{symbol}:1m"
-                
-                try:
-                    raw_data = self.redis_client.get(redis_key)
-                    if raw_data:
-                        data = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
-                        
-                        # Formater les données pour les stratégies
-                        formatted_data = {
-                            'symbol': symbol,
-                            'close': data.get('close', 0),
-                            'start_time': int(data.get('timestamp', time.time()) * 1000),
-                            'is_closed': True,
-                            'rsi_14': data.get('rsi_14'),
-                            'macd_line': data.get('macd_line'),
-                            'macd_signal': data.get('macd_signal'),
-                            'bb_upper': data.get('bb_upper'),
-                            'bb_lower': data.get('bb_lower'),
-                            'ema_12': data.get('ema_12'),
-                            'ema_26': data.get('ema_26'),
-                            'volume': data.get('volume', 0)
-                        }
-                        
-                        # *** SUPPRESSION DES DONNÉES SIMULÉES ***
-                        # Au lieu de simuler, on charge les vraies données historiques
-                        logger.info(f"📊 Chargement des vraies données historiques pour {symbol}...")
-                        self._load_real_historical_data(symbol, callback)
-                        
-                        logger.info(f"✅ Vraies données historiques chargées pour {symbol}")
-                    
-                except Exception as e:
-                    logger.warning(f"⚠️ Erreur chargement données historiques {symbol}: {e}")
-            
-            logger.info("✅ Chargement des données historiques terminé")
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur générale lors du chargement historique: {e}")
+        logger.info("🔄 Architecture DB-first: pas de chargement historique Redis nécessaire")
+        logger.info("✅ Analyzer prêt à traiter les données temps réel depuis la DB")
     
     def _load_real_historical_data(self, symbol: str, callback: Callable[[Dict[str, Any]], None]) -> None:
         """
-        Charge les vraies données historiques depuis PostgreSQL pour un symbole.
+        SUPPRIMÉ: Architecture DB-first.
+        L'analyzer récupère directement les données enrichies via db_indicators.
         """
-        try:
-            import asyncpg
-            import asyncio
-            from shared.src.config import get_db_config
-            
-            async def load_symbol_data():
-                db_config = get_db_config()
-                conn = None
-                
-                try:
-                    # Connexion à PostgreSQL
-                    conn = await asyncpg.connect(
-                        host=db_config['host'],
-                        port=db_config['port'],
-                        database=db_config['database'],
-                        user=db_config['user'],
-                        password=db_config['password']
-                    )
-                    
-                    # Charger les 100 dernières bougies 1m pour ce symbole
-                    query = """
-                        SELECT time, symbol, open, high, low, close, volume
-                        FROM market_data 
-                        WHERE symbol = $1 
-                        ORDER BY time DESC 
-                        LIMIT 100
-                    """
-                    
-                    rows = await conn.fetch(query, symbol)
-                    
-                    if rows:
-                        # Trier par ordre chronologique (plus ancien en premier)
-                        rows = list(reversed(rows))
-                        
-                        for row in rows:
-                            # Formatter les données pour les stratégies
-                            historical_data = {
-                                'symbol': row['symbol'],
-                                'open': float(row['open']),
-                                'high': float(row['high']),
-                                'low': float(row['low']),
-                                'close': float(row['close']),
-                                'volume': float(row['volume']),
-                                'start_time': int(row['time'].timestamp() * 1000),
-                                'is_closed': True
-                            }
-                            
-                            callback(historical_data)
-                        
-                        logger.info(f"💾 {len(rows)} vraies données historiques chargées pour {symbol}")
-                        return len(rows)
-                    else:
-                        logger.warning(f"⚠️ Aucune donnée historique trouvée pour {symbol} en base")
-                        return 0
-                        
-                except Exception as e:
-                    logger.error(f"❌ Erreur chargement PostgreSQL pour {symbol}: {e}")
-                    return 0
-                finally:
-                    if conn:
-                        await conn.close()
-            
-            # Exécuter le chargement asyncio
-            try:
-                if hasattr(asyncio, 'run'):
-                    count = asyncio.run(load_symbol_data())
-                else:
-                    # Fallback pour Python < 3.7
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        count = loop.run_until_complete(load_symbol_data())
-                    finally:
-                        loop.close()
-                
-                if count > 0:
-                    logger.info(f"✅ {count} vraies données historiques intégrées pour {symbol}")
-                else:
-                    logger.warning(f"⚠️ Aucune donnée historique disponible pour {symbol}")
-                    
-            except Exception as e:
-                logger.error(f"❌ Erreur execution asyncio pour {symbol}: {e}")
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur générale chargement historique {symbol}: {e}")
+        pass
     
     def start_listening(self, callback: Callable[[Dict[str, Any]], None]) -> None:
         """

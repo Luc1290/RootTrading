@@ -298,92 +298,63 @@ class BinanceWebSocket:
         self.volume_buffers[symbol][timeframe].append(volume)
         
         prices = self.price_buffers[symbol][timeframe]
+        highs = self.high_buffers[symbol][timeframe]
+        lows = self.low_buffers[symbol][timeframe]
         volumes = self.volume_buffers[symbol][timeframe]
         
-        if len(prices) >= 2:
-            # DEBUG: Log temporaire pour vérifier les calculs
-            logger.debug(f"📊 Calcul indicateurs {symbol} {timeframe}: {len(prices)} prix, dernier={close_price}")
+        # Utiliser calculate_all_indicators pour calculer TOUS les indicateurs d'un coup
+        if len(prices) >= 20 and len(highs) >= 20 and len(lows) >= 20 and len(volumes) >= 20:
+            logger.debug(f"📊 Calcul de tous les indicateurs pour {symbol} {timeframe}")
             
-            # RSI 14 périodes
-            rsi = self._calculate_rsi(prices, 14)
-            if rsi:
-                candle_data['rsi_14'] = rsi
-                logger.debug(f"📊 RSI calculé pour {symbol}: {rsi}")
-            else:
-                logger.debug(f"⚠️ RSI non calculé pour {symbol}: besoin de plus de données")
-                
-            # Stochastic RSI
+            # Utiliser la méthode qui calcule tout
+            from shared.src.technical_indicators import indicators
+            all_indicators = indicators.calculate_all_indicators(highs, lows, prices, volumes)
+            
+            # Ajouter tous les indicateurs calculés
+            for indicator_name, value in all_indicators.items():
+                if value is not None:
+                    candle_data[indicator_name] = value
+            
+            logger.debug(f"✅ {len(all_indicators)} indicateurs calculés pour {symbol}")
+            
+            # Calculer aussi les indicateurs custom non inclus dans calculate_all_indicators
+            # Stochastic RSI (pas dans calculate_all_indicators)
             stoch_rsi = self._calculate_stoch_rsi(prices, 14)
             if stoch_rsi:
                 candle_data['stoch_rsi'] = stoch_rsi
                 
-        if len(prices) >= 12:
-            # EMA 12
-            ema12 = self._calculate_ema(prices, 12)
-            candle_data['ema_12'] = ema12
-            
-        if len(prices) >= 26:
-            # EMA 26 et MACD
-            ema26 = self._calculate_ema(prices, 26)
-            candle_data['ema_26'] = ema26
-            
-            # MACD complet
-            macd_data = self._calculate_macd(prices)
-            if macd_data:
-                candle_data.update(macd_data)
-                
-        if len(prices) >= 20:
-            # Bollinger Bands
-            bb_data = self._calculate_bollinger_bands(prices, 20, 2.0)
-            if bb_data:
-                candle_data.update(bb_data)
-                
-            # SMA 20 et 50
-            candle_data['sma_20'] = sum(prices[-20:]) / 20
-            if len(prices) >= 50:
-                candle_data['sma_50'] = sum(prices[-50:]) / 50
-                
-        if len(prices) >= 14:
-            # ATR (Average True Range)
-            atr = self._calculate_atr(symbol, timeframe, 14)
-            if atr:
-                candle_data['atr_14'] = atr
-                
-            # ADX (Average Directional Index)
-            adx = self._calculate_adx(symbol, timeframe, 14)
-            if adx:
-                candle_data['adx_14'] = adx
-                
-        # VWAP et volume analytics
-        if len(volumes) >= 10:
-            vwap = self._calculate_vwap(prices[-10:], volumes[-10:])
-            if vwap:
-                candle_data['vwap_10'] = vwap
-                
-            # Volume Profile
-            vol_profile = self._analyze_volume_profile(volumes)
-            candle_data.update(vol_profile)
-            
-        # Momentum indicators
-        if len(prices) >= 10:
-            momentum = self._calculate_momentum(prices, 10)
-            candle_data['momentum_10'] = momentum
-            
-        # Williams %R
-        if len(prices) >= 14:
+            # VWAP 10 (custom, pas dans calculate_all_indicators)
+            if len(volumes) >= 10:
+                vwap = self._calculate_vwap(prices[-10:], volumes[-10:])
+                if vwap:
+                    candle_data['vwap_10'] = vwap
+                    
+            # Williams %R (custom implementation)
             williams_r = self._calculate_williams_r(symbol, timeframe, 14)
             if williams_r:
                 candle_data['williams_r'] = williams_r
                 
-        # Commodity Channel Index (CCI)
-        if len(prices) >= 20:
+            # CCI 20 (custom implementation)
             cci = self._calculate_cci(symbol, timeframe, 20)
             if cci:
                 candle_data['cci_20'] = cci
-        
-        # Marquer les données comme enrichies
-        candle_data['enhanced'] = True
-        candle_data['ultra_enriched'] = True
+                
+            # Marquer les données comme enrichies
+            candle_data['enhanced'] = True
+            candle_data['ultra_enriched'] = True
+            
+        elif len(prices) >= 14:
+            # Calcul partiel pour avoir au moins RSI et quelques indicateurs de base
+            logger.debug(f"📊 Calcul partiel des indicateurs pour {symbol} {timeframe}")
+            
+            # RSI seul si pas assez de données pour tous les indicateurs
+            rsi = self._calculate_rsi(prices, 14)
+            if rsi:
+                candle_data['rsi_14'] = rsi
+                
+            # Marquer comme partiellement enrichi
+            candle_data['enhanced'] = True
+            candle_data['ultra_enriched'] = False
                 
     def _calculate_rsi(self, prices: List[float], period: int = 14) -> Optional[float]:
         """Calcule le RSI via le module centralisé"""
