@@ -33,18 +33,19 @@ class MarketFilter:
         
     def should_filter_signal(self, signal: StrategySignal) -> bool:
         """
-        Détermine si un signal doit être filtré.
+        Détermine si un signal doit être filtré en utilisant les données enrichies.
+        
+        OPTIMISATION: Utilise les données techniques du signal_aggregator.
         
         Args:
-            signal: Signal à évaluer
+            signal: Signal à évaluer (avec métadonnées techniques)
             
         Returns:
             True si le signal doit être filtré (ignoré), False sinon
         """
-        # Les signaux agrégés sont exemptés du filtrage
+        # NOUVEAU: Filtrage intelligent pour signaux agrégés basé sur leurs métadonnées
         if signal.strategy.startswith("Aggregated_"):
-            logger.info(f"✅ Signal agrégé exempté du filtrage: {signal.strategy}")
-            return False
+            return self._apply_technical_filtering(signal)
             
         # Vérifier si nous avons des informations de filtrage pour ce symbole
         if signal.symbol not in self.market_filters:
@@ -64,7 +65,13 @@ class MarketFilter:
             return False
             
         # Appliquer les règles de filtrage basées sur le mode de marché
-        return self._apply_filter_rules(signal, filter_info)
+        legacy_filter = self._apply_filter_rules(signal, filter_info)
+        
+        # NOUVEAU: Compléter avec filtrage technique si disponible
+        technical_filter = self._apply_technical_filtering(signal)
+        
+        # Combiner les deux filtres (OR logic - filtré si l'un des deux dit oui)
+        return legacy_filter or technical_filter
         
     def update_market_filter(self, symbol: str, filter_data: Dict[str, Any]):
         """
@@ -77,6 +84,85 @@ class MarketFilter:
         filter_data['updated_at'] = time.time()
         self.market_filters[symbol] = filter_data
         logger.info(f"Filtre de marché mis à jour pour {symbol}: {filter_data}")
+    
+    def _apply_technical_filtering(self, signal: StrategySignal) -> bool:
+        """
+        Applique un filtrage basé sur les indicateurs techniques enrichis du signal_aggregator.
+        
+        OPTIMISATION: Réutilise les calculs déjà effectués.
+        
+        Args:
+            signal: Signal avec métadonnées techniques
+            
+        Returns:
+            True si le signal doit être filtré
+        """
+        try:
+            # Vérifier la présence des métadonnées
+            if not hasattr(signal, 'metadata') or not signal.metadata:
+                # Pas de métadonnées = filtrage conservateur
+                signal_strength = getattr(signal, 'strength', None)
+                if signal_strength and str(signal_strength).lower() == 'weak':
+                    logger.info(f"🚫 Signal {signal.side} filtré: force faible sans métadonnées")
+                    return True
+                return False
+            
+            metadata = signal.metadata
+            
+            # 1. Filtrage basé sur le régime Enhanced
+            regime = metadata.get('regime')
+            regime_metrics = metadata.get('regime_metrics', {})
+            
+            if regime == 'UNDEFINED' or regime == 'VOLATILE':
+                # Marché instable: filtrer les signaux faibles (confidence < 0.65 pour crypto)
+                signal_confidence = getattr(signal, 'confidence', 0.5)
+                if signal_confidence < 0.65:  # Seuil crypto pour marché instable
+                    logger.info(f"🚫 Signal {signal.side} filtré: confiance {signal_confidence:.2f} en marché {regime}")
+                    return True
+            
+            # 2. Filtrage basé sur l'ADX (force de tendance)
+            adx = regime_metrics.get('adx')
+            if adx is not None:
+                if adx < 20 and not metadata.get('ultra_confluence'):
+                    logger.info(f"🚫 Signal {signal.side} filtré: ADX trop faible ({adx:.1f}) sans ultra-confluence")
+                    return True
+                elif adx > 70:
+                    # Tendance très forte: risque de retournement
+                    logger.info(f"⚠️ Signal {signal.side} filtré: ADX très élevé ({adx:.1f}) - risque retournement")
+                    return True
+            
+            # 3. Filtrage basé sur le volume
+            volume_analysis = metadata.get('volume_analysis', {})
+            if volume_analysis:
+                avg_volume_ratio = volume_analysis.get('avg_volume_ratio', 1.0)
+                if avg_volume_ratio < 0.8:
+                    logger.info(f"🚫 Signal {signal.side} filtré: volume faible (ratio={avg_volume_ratio:.2f})")
+                    return True
+            
+            # 4. Filtrage par confiance multi-stratégies (CRYPTO OPTIMISÉ)
+            strategy_count = metadata.get('strategy_count', 1)
+            signal_confidence = getattr(signal, 'confidence', 0.5)
+            
+            # Seuils crypto plus stricts
+            if strategy_count == 1 and signal_confidence < 0.75:  # Relevé de 0.8 à 0.75 pour crypto
+                logger.info(f"🚫 Signal {signal.side} filtré: une seule stratégie avec confiance {signal_confidence:.2f}")
+                return True
+            elif strategy_count >= 2 and signal_confidence < 0.55:  # Multi-stratégies : seuil 0.55
+                logger.info(f"🚫 Signal {signal.side} filtré: {strategy_count} stratégies avec confiance {signal_confidence:.2f}")
+                return True
+            
+            # 5. Exception pour signaux institutionnels
+            if metadata.get('institutional_grade') or metadata.get('excellent_grade'):
+                logger.info(f"🎆 Signal {signal.side} exempté du filtrage: qualité institutionnelle/excellente")
+                return False
+            
+            # Signal passé avec succès
+            logger.debug(f"✅ Signal {signal.side} passé le filtrage technique")
+            return False
+            
+        except Exception as e:
+            logger.error(f"Erreur filtrage technique: {e}")
+            return False  # En cas d'erreur, ne pas filtrer
         
     def _is_filter_outdated(self, symbol: str) -> bool:
         """

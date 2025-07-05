@@ -281,7 +281,7 @@ class AnalyzerManager:
                                         'side': side_value,
                                         'timestamp': timestamp_value,
                                         'price': float(signal.price),
-                                        'confidence': float(signal.confidence) if hasattr(signal, 'confidence') else 0.5,
+                                        'confidence': float(signal.confidence) if hasattr(signal, 'confidence') and signal.confidence is not None else 0.5,
                                         'strength': strength_value,
                                         'metadata': dict(signal.metadata) if hasattr(signal, 'metadata') and signal.metadata else {}
                                     }

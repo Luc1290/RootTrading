@@ -796,7 +796,7 @@ class EnhancedRegimeDetector:
             if current_rsi is None or bb_width is None or current_adx is None:
                 logger.warning(f"⚠️ Indicateurs manquants pour {symbol}, fallback calcul complet")
                 # Fallback vers calcul complet
-                return await self._calculate_regime_from_raw_data(candles)
+                return await self._calculate_regime_from_raw_data(candles, symbol)
             
             # Volume analysis
             avg_volume = sum(volumes[-20:]) / min(20, len(volumes)) if volumes else 1.0
@@ -843,7 +843,7 @@ class EnhancedRegimeDetector:
             logger.error(f"❌ Erreur calcul régime depuis données enrichies: {e}")
             return MarketRegime.UNDEFINED, {}
     
-    async def _calculate_regime_from_raw_data(self, candles: List[Dict]) -> Tuple[MarketRegime, Dict[str, float]]:
+    async def _calculate_regime_from_raw_data(self, candles: List[Dict], symbol: str) -> Tuple[MarketRegime, Dict[str, float]]:
         """Fallback: calcule le régime depuis les données brutes (ancienne méthode)"""
         try:
             df = pd.DataFrame(candles)

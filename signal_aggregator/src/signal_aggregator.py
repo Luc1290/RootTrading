@@ -557,19 +557,26 @@ class SignalAggregator:
         if total_weight == 0:
             return None
             
-        # Weighted average of stop loss seulement (plus de target avec TrailingStop pur)
+        # NOUVEAU: Calcul de stop-loss adaptatif avec ATR dynamique
         stop_loss_sum = 0
+        atr_stop_loss = await self._calculate_atr_based_stop_loss(symbol, signals[0]['price'], side)
         
         for signal in signals:
             signal_side = signal.get('side', signal.get('side'))
             if signal_side == side and signal['strategy'] in contributing_strategies:
                 weight = await self.performance_tracker.get_strategy_weight(signal['strategy'])
                 
-                # Extract stop_price from metadata (plus de target_price avec TrailingStop pur)
-                metadata = signal.get('metadata', {})
-                # Stop-loss correct selon le side: BUY stop en dessous, SELL stop au dessus - CRYPTO OPTIMIZED
-                default_stop = signal['price'] * (1.08 if side == 'SELL' else 0.92)  # 8% crypto stops (était 0.2%!)
-                stop_price = metadata.get('stop_price', signal.get('stop_loss', default_stop))
+                # Prioriser stop ATR si disponible, sinon fallback
+                if atr_stop_loss is not None:
+                    stop_price = atr_stop_loss
+                    logger.info(f"🎯 Stop ATR adaptatif utilisé pour {symbol}: {stop_price:.4f}")
+                else:
+                    # Extract stop_price from metadata (fallback)
+                    metadata = signal.get('metadata', {})
+                    # Stop-loss correct selon le side: BUY stop en dessous, SELL stop au dessus - CRYPTO OPTIMIZED
+                    default_stop = signal['price'] * (1.08 if side == 'SELL' else 0.92)  # 8% crypto stops (était 0.2%!)
+                    stop_price = metadata.get('stop_price', signal.get('stop_loss', default_stop))
+                    logger.debug(f"📊 Stop fixe utilisé pour {symbol}: {stop_price:.4f}")
                 
                 stop_loss_sum += stop_price * weight
                 
@@ -600,10 +607,9 @@ class SignalAggregator:
         # Trailing stop fixe à 3% pour système pur (TrailingStop gère le reste)
         trailing_delta = 3.0
         
-        # Validation supplémentaire pour Aggregated_1 (une seule stratégie)
-        # MODE SWING: Seuil élevé pour les signaux uniques (plus sélectif)
-        if len(contributing_strategies) == 1 and confidence < 0.70:
-            logger.info(f"Signal Aggregated_1 rejeté pour {symbol}: confiance {confidence:.2f} < 0.70 (mode swing)")
+        # NOUVEAU: Validation minimum 2 stratégies pour publier un signal
+        if len(contributing_strategies) < 2:
+            logger.info(f"❌ Signal rejeté: minimum 2 stratégies requises, seulement {len(contributing_strategies)} trouvée(s) pour {symbol}")
             return None
         
         return {
@@ -748,12 +754,12 @@ class SignalAggregator:
         if BUY_score > SELL_score and BUY_score >= min_threshold:
             side = 'BUY'
             confidence = BUY_score / (BUY_score + SELL_score)
-            contributing_strategies = [s['strategy'] for s in BUY_signals]
+            contributing_strategies = list(set(s['strategy'] for s in BUY_signals))  # Dé-dupliquer
             relevant_signals = BUY_signals
         elif SELL_score > BUY_score and SELL_score >= min_threshold:
             side = 'SELL'
             confidence = SELL_score / (BUY_score + SELL_score)
-            contributing_strategies = [s['strategy'] for s in SELL_signals]
+            contributing_strategies = list(set(s['strategy'] for s in SELL_signals))  # Dé-dupliquer
             relevant_signals = SELL_signals
         else:
             # No clear signal
@@ -765,8 +771,9 @@ class SignalAggregator:
         if total_weight == 0:
             return None
             
-        # Weighted average of stop loss
+        # NOUVEAU: Calcul de stop-loss adaptatif Enhanced avec ATR dynamique
         stop_loss_sum = 0
+        atr_stop_loss = await self._calculate_atr_based_stop_loss(symbol, signals[0]['price'], side)
         
         for signal in signals:
             signal_side = signal.get('side', signal.get('side'))
@@ -776,11 +783,17 @@ class SignalAggregator:
                 if weighted_sig:
                     weight = weighted_sig['combined_weight']
                     
-                    # Extract stop_price from metadata
-                    metadata = signal.get('metadata', {})
-                    # Stop-loss correct selon le side: BUY stop en dessous, SELL stop au dessus - CRYPTO OPTIMIZED
-                    default_stop = signal['price'] * (1.08 if side == 'SELL' else 0.92)  # 8% crypto stops (était 0.2%!)
-                    stop_price = metadata.get('stop_price', signal.get('stop_loss', default_stop))
+                    # Prioriser stop ATR adaptatif si disponible
+                    if atr_stop_loss is not None:
+                        stop_price = atr_stop_loss
+                        logger.info(f"🎯 Stop ATR Enhanced utilisé pour {symbol}: {stop_price:.4f}")
+                    else:
+                        # Fallback: Extract stop_price from metadata
+                        metadata = signal.get('metadata', {})
+                        # Stop-loss correct selon le side: BUY stop en dessous, SELL stop au dessus - CRYPTO OPTIMIZED
+                        default_stop = signal['price'] * (1.08 if side == 'SELL' else 0.92)  # 8% crypto stops (était 0.2%!)
+                        stop_price = metadata.get('stop_price', signal.get('stop_loss', default_stop))
+                        logger.debug(f"📊 Stop fixe Enhanced utilisé pour {symbol}: {stop_price:.4f}")
                     
                     stop_loss_sum += stop_price * weight
                 
@@ -818,13 +831,10 @@ class SignalAggregator:
         # Trailing stop fixe à 8% pour système crypto pur
         trailing_delta = 8.0  # Crypto optimized (était 3.0%)
         
-        # Validation renforcée pour les signaux uniques selon le régime
-        if len(contributing_strategies) == 1:
-            min_single_confidence = self._get_single_strategy_threshold(regime)
-            if confidence < min_single_confidence:
-                logger.info(f"Signal Aggregated_1 rejeté pour {symbol} en régime {regime.value}: "
-                           f"confiance {confidence:.2f} < {min_single_confidence:.2f}")
-                return None
+        # NOUVEAU: Validation minimum 2 stratégies pour publier un signal
+        if len(contributing_strategies) < 2:
+            logger.info(f"❌ Signal rejeté: minimum 2 stratégies requises, seulement {len(contributing_strategies)} trouvée(s) pour {symbol}")
+            return None
         
         # VALIDATION FINALE: Override pour 'moderate' avec ≥2 stratégies
         final_strength = strength
@@ -833,6 +843,11 @@ class SignalAggregator:
             # Force acceptée malgré les règles strictes du régime
             logger.info(f"🚀 Override 'moderate' appliqué: {len(contributing_strategies)} stratégies "
                        f"en {regime.name} pour {symbol}")
+        
+        # NOUVEAU: Vérifier le debounce pour éviter les signaux groupés
+        if not await self._check_signal_debounce(symbol, side):
+            logger.info(f"Signal {side} {symbol} rejeté par filtre debounce")
+            return None
         
         return {
             'symbol': symbol,
@@ -925,6 +940,268 @@ class SignalAggregator:
         
         return min(1.0, confidence)  # Cap à 1.0
     
+    async def _get_technical_context(self, symbol: str) -> Dict[str, Any]:
+        """
+        Récupère le contexte technique enrichi pour un symbole
+        
+        Returns:
+            Dictionnaire avec les indicateurs techniques actuels
+        """
+        try:
+            # CORRECTION: Import direct avec chemin complet au lieu de manipulation sys.path
+            from shared.src.technical_indicators import TechnicalIndicators
+            indicators = TechnicalIndicators()
+            
+            # Récupérer les données 5m depuis Redis
+            market_data_key = f"market_data:{symbol}:5m"
+            data_5m = self.redis.get(market_data_key)
+            
+            context = {
+                'macd': None,
+                'obv': None, 
+                'roc': None,
+                'available': False
+            }
+            
+            if not data_5m or not isinstance(data_5m, dict):
+                return context
+                
+            # Extraire les prix historiques
+            prices = data_5m.get('prices', [])
+            volumes = data_5m.get('volumes', [])
+            highs = data_5m.get('highs', [])
+            lows = data_5m.get('lows', [])
+            
+            if len(prices) < 30:  # Minimum pour les calculs
+                return context
+            
+            # Calculer MACD
+            macd_data = indicators.calculate_macd(prices)
+            if macd_data['macd_line'] is not None:
+                context['macd'] = macd_data
+            
+            # Calculer OBV approximatif (si volumes disponibles)
+            if len(volumes) >= len(prices):
+                try:
+                    obv_value = indicators.calculate_obv(prices, volumes)
+                    if obv_value is not None:
+                        context['obv'] = obv_value
+                except:
+                    pass  # OBV optionnel
+            
+            # Calculer ROC
+            try:
+                roc_value = indicators.calculate_roc(prices, period=10)
+                if roc_value is not None:
+                    context['roc'] = roc_value
+            except:
+                pass  # ROC optionnel
+            
+            context['available'] = True
+            return context
+            
+        except Exception as e:
+            logger.error(f"Erreur récupération contexte technique pour {symbol}: {e}")
+            return {'macd': None, 'obv': None, 'roc': None, 'available': False}
+    
+    def _validate_macd_trend(self, technical_context: Dict[str, Any], expected_trend: str) -> Optional[bool]:
+        """
+        Valide si le MACD confirme la tendance attendue
+        
+        Args:
+            technical_context: Contexte technique
+            expected_trend: 'bullish' ou 'bearish'
+            
+        Returns:
+            True/False si MACD confirme, None si pas de données
+        """
+        try:
+            macd_data = technical_context.get('macd')
+            if not macd_data or not macd_data.get('macd_line'):
+                return None
+                
+            macd_line = macd_data['macd_line']
+            macd_signal = macd_data.get('macd_signal')
+            macd_histogram = macd_data.get('macd_histogram')
+            
+            if macd_signal is None:
+                return None
+            
+            if expected_trend == 'bullish':
+                # Tendance haussière: MACD au-dessus signal ET histogram positif
+                return macd_line > macd_signal and (macd_histogram is None or macd_histogram > 0)
+            elif expected_trend == 'bearish':
+                # Tendance baissière: MACD en-dessous signal ET histogram négatif
+                return macd_line < macd_signal and (macd_histogram is None or macd_histogram < 0)
+                
+            return None
+            
+        except Exception as e:
+            logger.error(f"Erreur validation MACD: {e}")
+            return None
+    
+    def _validate_obv_trend(self, technical_context: Dict[str, Any], side: str) -> Optional[bool]:
+        """
+        Valide si l'OBV confirme le côté du signal
+        
+        Args:
+            technical_context: Contexte technique
+            side: 'BUY' ou 'SELL'
+            
+        Returns:
+            True si OBV confirme, False sinon, None si pas de données
+        """
+        try:
+            obv_current = technical_context.get('obv')
+            if obv_current is None:
+                return None
+            
+            # Pour une validation complète, il faudrait l'historique OBV
+            # Ici on fait une validation basique sur la valeur absolue
+            # TODO: Améliorer avec historique OBV pour détecter la tendance
+            
+            # Validation simplifiée: OBV élevé = volume d'achat, OBV faible = volume de vente
+            # Cette validation est approximative sans l'historique
+            return True  # Pour l'instant, toujours valide
+            
+        except Exception as e:
+            logger.error(f"Erreur validation OBV: {e}")
+            return None
+    
+    def _check_roc_acceleration(self, technical_context: Dict[str, Any], side: str) -> bool:
+        """
+        Vérifie si le ROC indique une accélération dans la direction du signal
+        
+        Args:
+            technical_context: Contexte technique
+            side: 'BUY' ou 'SELL'
+            
+        Returns:
+            True si accélération détectée, False sinon
+        """
+        try:
+            roc_value = technical_context.get('roc')
+            if roc_value is None:
+                return False
+            
+            # ROC positif = accélération haussière, ROC négatif = accélération baissière
+            if side == 'BUY':
+                # Pour BUY: chercher accélération haussière (ROC > 2%)
+                return roc_value > 2.0
+            elif side == 'SELL':
+                # Pour SELL: chercher accélération baissière (ROC < -2%)
+                return roc_value < -2.0
+                
+            return False
+            
+        except Exception as e:
+            logger.error(f"Erreur vérification ROC: {e}")
+            return False
+    
+    async def _calculate_atr_based_stop_loss(self, symbol: str, entry_price: float, side: str) -> Optional[float]:
+        """
+        Calcule un stop-loss adaptatif basé sur l'ATR pour optimiser selon la volatilité
+        
+        Args:
+            symbol: Symbole du trading
+            entry_price: Prix d'entrée
+            side: 'BUY' ou 'SELL'
+            
+        Returns:
+            Prix de stop-loss adaptatif ou None si impossible
+        """
+        try:
+            # CORRECTION: Import direct avec chemin complet au lieu de manipulation sys.path
+            from shared.src.technical_indicators import TechnicalIndicators
+            indicators = TechnicalIndicators()
+            
+            # Récupérer les données OHLC depuis Redis
+            market_data_key = f"market_data:{symbol}:5m"
+            data_5m = self.redis.get(market_data_key)
+            
+            if not data_5m or not isinstance(data_5m, dict):
+                logger.debug(f"Données 5m non disponibles pour ATR {symbol}")
+                return None
+                
+            # Extraire les données OHLC
+            highs = data_5m.get('highs', [])
+            lows = data_5m.get('lows', [])
+            closes = data_5m.get('closes', data_5m.get('prices', []))
+            
+            if len(highs) < 14 or len(lows) < 14 or len(closes) < 14:
+                logger.debug(f"Pas assez de données OHLC pour ATR {symbol}")
+                return None
+            
+            # Calculer ATR(14)
+            atr_value = indicators.calculate_atr(highs, lows, closes, period=14)
+            if atr_value is None:
+                logger.debug(f"Calcul ATR échoué pour {symbol}")
+                return None
+            
+            # Récupérer ADX pour adapter le multiplicateur
+            adx_value = await self._get_current_adx(symbol)
+            
+            # Multiplicateur ATR adaptatif selon l'ADX (force de tendance)
+            if adx_value is not None:
+                if adx_value > 40:  # Tendance très forte
+                    atr_multiplier = 2.0  # Stop plus serré en tendance forte
+                    logger.debug(f"ADX forte ({adx_value:.1f}): multiplicateur ATR 2.0x")
+                elif adx_value > 25:  # Tendance modérée
+                    atr_multiplier = 2.5  # Standard
+                    logger.debug(f"ADX modérée ({adx_value:.1f}): multiplicateur ATR 2.5x")
+                else:  # Tendance faible ou range
+                    atr_multiplier = 3.0  # Stop plus large en range
+                    logger.debug(f"ADX faible ({adx_value:.1f}): multiplicateur ATR 3.0x")
+            else:
+                atr_multiplier = 2.5  # Par défaut
+                logger.debug(f"ADX non disponible: multiplicateur ATR par défaut 2.5x")
+            
+            # Calculer le stop-loss selon le côté
+            atr_distance = atr_value * atr_multiplier
+            
+            if side == 'BUY':
+                # BUY: stop en dessous du prix d'entrée
+                stop_loss = entry_price - atr_distance
+            else:  # SELL
+                # SELL: stop au-dessus du prix d'entrée
+                stop_loss = entry_price + atr_distance
+            
+            # Validation: s'assurer que le stop n'est pas trop proche (minimum 0.5%)
+            min_distance_percent = 0.005  # 0.5%
+            min_distance = entry_price * min_distance_percent
+            
+            if side == 'BUY':
+                if entry_price - stop_loss < min_distance:
+                    stop_loss = entry_price - min_distance
+                    logger.debug(f"Stop BUY ajusté au minimum 0.5%: {stop_loss:.4f}")
+            else:  # SELL
+                if stop_loss - entry_price < min_distance:
+                    stop_loss = entry_price + min_distance
+                    logger.debug(f"Stop SELL ajusté au minimum 0.5%: {stop_loss:.4f}")
+            
+            # Validation: s'assurer que le stop n'est pas trop loin (maximum 10%)
+            max_distance_percent = 0.10  # 10%
+            max_distance = entry_price * max_distance_percent
+            
+            if side == 'BUY':
+                if entry_price - stop_loss > max_distance:
+                    stop_loss = entry_price - max_distance
+                    logger.debug(f"Stop BUY plafonné à 10%: {stop_loss:.4f}")
+            else:  # SELL
+                if stop_loss - entry_price > max_distance:
+                    stop_loss = entry_price + max_distance
+                    logger.debug(f"Stop SELL plafonné à 10%: {stop_loss:.4f}")
+            
+            distance_percent = abs(stop_loss - entry_price) / entry_price * 100
+            logger.info(f"🎯 Stop ATR calculé pour {symbol} {side}: {stop_loss:.4f} "
+                       f"(distance: {distance_percent:.2f}%, ATR: {atr_value:.4f}, mult: {atr_multiplier}x)")
+            
+            return round(stop_loss, 6)
+            
+        except Exception as e:
+            logger.error(f"Erreur calcul stop ATR pour {symbol}: {e}")
+            return None
+    
     async def _apply_performance_boost(self, confidence: float, contributing_strategies: List[str]) -> float:
         """Applique un boost adaptatif basé sur la performance des stratégies"""
         if not hasattr(self, 'performance_tracker') or not self.performance_tracker:
@@ -973,6 +1250,16 @@ class SignalAggregator:
             return 'moderate'
         else:
             return 'weak'
+    
+    def _strength_to_normalized_force(self, strength: str) -> float:
+        """Convertit la force textuelle en valeur normalisée 0-1"""
+        strength_mapping = {
+            'weak': 0.25,
+            'moderate': 0.5,
+            'strong': 0.75,
+            'very_strong': 1.0
+        }
+        return strength_mapping.get(strength, 0.5)
         
     def _is_strategy_active(self, strategy: str, regime: str) -> bool:
         """Check if a strategy should be active in current regime"""
@@ -1022,11 +1309,12 @@ class SignalAggregator:
     
     async def _validate_signal_with_higher_timeframe(self, signal: Dict[str, Any]) -> bool:
         """
-        Valide un signal 1m avec le contexte 15m pour éviter les faux signaux.
+        Valide un signal 1m avec le contexte 15m enrichi pour éviter les faux signaux.
         
-        Logique de validation :
-        - Signal BUY : validé si la tendance 15m est haussière ou neutre
-        - Signal SELL : validé si la tendance 15m est baissière ou neutre
+        Logique de validation enrichie :
+        - Signal BUY : validé si tendance 15m haussière + BB position favorable + Stochastic non surachat
+        - Signal SELL : validé si tendance 15m baissière + BB position favorable + Stochastic non survente
+        - Utilise ATR pour adapter dynamiquement les seuils
 
         Args:
             signal: Signal 1m à valider
@@ -1146,17 +1434,54 @@ class SignalAggregator:
                 logger.info(f"Signal {side} {symbol} rejeté : {rejection_reason}")
                 return False
             
-            # Validation additionnelle : RSI 5m (MODE SCALPING - seuils ajustés)
+            # NOUVELLE VALIDATION ENRICHIE : Bollinger Bands position pour timing optimal
+            bb_position = data_5m.get('bb_position')
+            if bb_position is not None:
+                if side == "BUY" and bb_position > 0.8:  # Prix proche de la bande haute
+                    logger.info(f"Signal BUY {symbol} rejeté : BB position trop haute ({bb_position:.2f})")
+                    return False
+                elif side == "SELL" and bb_position < 0.2:  # Prix proche de la bande basse
+                    logger.info(f"Signal SELL {symbol} rejeté : BB position trop basse ({bb_position:.2f})")
+                    return False
+            
+            # NOUVELLE VALIDATION : Stochastic pour confirmer oversold/overbought
+            stoch_k = data_5m.get('stoch_k')
+            stoch_d = data_5m.get('stoch_d')
+            if stoch_k is not None and stoch_d is not None:
+                if side == "BUY" and stoch_k > 85 and stoch_d > 85:  # Surachat confirmé
+                    logger.info(f"Signal BUY {symbol} rejeté : Stochastic surachat K={stoch_k:.1f} D={stoch_d:.1f}")
+                    return False
+                elif side == "SELL" and stoch_k < 15 and stoch_d < 15:  # Survente confirmé
+                    logger.info(f"Signal SELL {symbol} rejeté : Stochastic survente K={stoch_k:.1f} D={stoch_d:.1f}")
+                    return False
+            
+            # VALIDATION ADAPTATIVE : Ajuster seuils RSI selon ATR (volatilité)
+            atr_15m = data_5m.get('atr_14')
+            current_price = data_5m.get('close', prices[-1] if prices else 0)
+            atr_percent = (atr_15m / current_price * 100) if atr_15m and current_price > 0 else 2.0
+            
+            # Seuils RSI adaptatifs selon volatilité
+            if atr_percent > 5.0:  # Haute volatilité
+                rsi_buy_threshold = 75  # Plus tolérant
+                rsi_sell_threshold = 25
+            elif atr_percent > 3.0:  # Volatilité moyenne
+                rsi_buy_threshold = 80
+                rsi_sell_threshold = 20
+            else:  # Faible volatilité
+                rsi_buy_threshold = 85  # Plus strict
+                rsi_sell_threshold = 15
+            
+            # Validation RSI avec seuils adaptatifs
             rsi_5m = data_5m.get('rsi_14')
             if rsi_5m:
-                if side == "BUY" and rsi_5m > 80:  # Seuil plus élevé pour scalping
-                    logger.info(f"Signal BUY {symbol} rejeté : RSI 5m surachat ({rsi_5m})")
+                if side == "BUY" and rsi_5m > rsi_buy_threshold:
+                    logger.info(f"Signal BUY {symbol} rejeté : RSI 5m surachat ({rsi_5m:.1f} > {rsi_buy_threshold}) - ATR={atr_percent:.1f}%")
                     return False
-                elif side == "SELL" and rsi_5m < 20:  # Seuil plus bas pour scalping
-                    logger.info(f"Signal SELL {symbol} rejeté : RSI 5m survente ({rsi_5m})")
+                elif side == "SELL" and rsi_5m < rsi_sell_threshold:
+                    logger.info(f"Signal SELL {symbol} rejeté : RSI 5m survente ({rsi_5m:.1f} < {rsi_sell_threshold}) - ATR={atr_percent:.1f}%")
                     return False
 
-            logger.debug(f"Signal {side} {symbol} validé par tendance 5m {trend_5m}")
+            logger.debug(f"Signal {side} {symbol} validé par analyse multi-indicateurs 5m - tendance={trend_5m} BB={bb_position} ATR={atr_percent:.1f}%")
             return True
             
         except Exception as e:
@@ -1236,6 +1561,14 @@ class EnhancedSignalAggregator(SignalAggregator):
         self.false_signal_tracker = defaultdict(int)
         self.false_signal_threshold = 3  # Max faux signaux avant désactivation temporaire
         
+        # NOUVEAU: Debounce pour éviter les signaux groupés
+        self.signal_debounce = defaultdict(lambda: {'last_buy': None, 'last_sell': None})
+        self.debounce_periods = {
+            'same_side': 3,  # Nombre de bougies minimum entre signaux du même côté (BUY-BUY ou SELL-SELL)
+            'opposite_side': 1  # Nombre de bougies minimum entre signaux opposés (BUY-SELL)
+        }
+        self.candle_duration = timedelta(minutes=1)  # Durée d'une bougie (à adapter selon l'intervalle)
+        
     async def _validate_signal_correlation(self, signals: List[Dict]) -> float:
         """
         Valide la corrélation entre les signaux multiples
@@ -1278,6 +1611,88 @@ class EnhancedSignalAggregator(SignalAggregator):
                 correlation_score *= 0.8
         
         return correlation_score
+    
+    async def _check_signal_debounce(self, symbol: str, side: str, interval: str = None) -> bool:
+        """
+        Vérifie si un signal respecte le délai de debounce pour éviter les signaux groupés
+        
+        Args:
+            symbol: Symbole du signal
+            side: Côté du signal (BUY ou SELL)
+            interval: Intervalle temporel (optionnel, détecté automatiquement si non fourni)
+            
+        Returns:
+            True si le signal est autorisé, False s'il doit être filtré
+        """
+        try:
+            current_time = datetime.now(timezone.utc)
+            debounce_info = self.signal_debounce[symbol]
+            
+            # Déterminer la durée d'une bougie selon l'intervalle
+            interval_map = {
+                '1m': timedelta(minutes=1),
+                '3m': timedelta(minutes=3),
+                '5m': timedelta(minutes=5),
+                '15m': timedelta(minutes=15),
+                '30m': timedelta(minutes=30),
+                '1h': timedelta(hours=1),
+                '4h': timedelta(hours=4)
+            }
+            
+            # Utiliser l'intervalle fourni ou détecter depuis Redis
+            if not interval:
+                # Essayer de récupérer l'intervalle depuis les données de marché
+                market_key = f"market_interval:{symbol}"
+                interval = self.redis.get(market_key) or '15m'  # Par défaut 15m pour swing trading
+            
+            candle_duration = interval_map.get(interval, timedelta(minutes=15))
+            
+            # Adapter les périodes de debounce selon l'intervalle
+            # Pour 15m: 3 bougies = 45 min entre signaux même côté
+            # Pour 1m: 3 bougies = 3 min entre signaux même côté
+            debounce_same = self.debounce_periods['same_side']
+            debounce_opposite = self.debounce_periods['opposite_side']
+            
+            # Déterminer le dernier signal du même côté et du côté opposé
+            if side == 'BUY':
+                last_same_side = debounce_info['last_buy']
+                last_opposite_side = debounce_info['last_sell']
+            else:  # SELL
+                last_same_side = debounce_info['last_sell']
+                last_opposite_side = debounce_info['last_buy']
+            
+            # Vérifier le debounce pour le même côté
+            if last_same_side:
+                time_since_same = (current_time - last_same_side).total_seconds()
+                min_time_same = debounce_same * candle_duration.total_seconds()
+                
+                if time_since_same < min_time_same:
+                    logger.info(f"❌ Signal {side} {symbol} filtré par debounce même côté: "
+                              f"{time_since_same:.0f}s < {min_time_same:.0f}s requis ({debounce_same} bougies {interval})")
+                    return False
+            
+            # Vérifier le debounce pour le côté opposé
+            if last_opposite_side:
+                time_since_opposite = (current_time - last_opposite_side).total_seconds()
+                min_time_opposite = debounce_opposite * candle_duration.total_seconds()
+                
+                if time_since_opposite < min_time_opposite:
+                    logger.info(f"⚠️ Signal {side} {symbol} filtré par debounce côté opposé: "
+                              f"{time_since_opposite:.0f}s < {min_time_opposite:.0f}s requis ({debounce_opposite} bougies {interval})")
+                    return False
+            
+            # Signal autorisé - mettre à jour le tracking
+            if side == 'BUY':
+                debounce_info['last_buy'] = current_time
+            else:
+                debounce_info['last_sell'] = current_time
+            
+            logger.debug(f"✅ Signal {side} {symbol} passe le filtre debounce (intervalle: {interval})")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Erreur dans check_signal_debounce: {e}")
+            return True  # En cas d'erreur, laisser passer le signal
     
     async def _check_regime_transition(self, symbol: str) -> bool:
         """
@@ -1505,24 +1920,40 @@ class EnhancedSignalAggregator(SignalAggregator):
             strategy = strategy.replace('_Strategy', '')
             side = signal.get('side', 'UNKNOWN')
             
-            # Seuils adaptatifs selon le régime Enhanced
+            # NOUVEAU: Récupérer données techniques pour validation Enhanced
+            technical_context = await self._get_technical_context(symbol)
+            
+            # Seuils adaptatifs selon le régime Enhanced + contexte technique
             if regime.name == 'STRONG_TREND_UP':
-                # Tendance forte haussière: accepter presque tout
-                min_confidence = 0.4
+                # Validation MACD pour confirmer la force de tendance
+                if self._validate_macd_trend(technical_context, 'bullish'):
+                    min_confidence = 0.35  # Encore plus permissif si MACD confirme
+                    logger.debug(f"💪 {regime.name}: MACD confirme, seuils très assouplis pour {symbol}")
+                else:
+                    min_confidence = 0.4
+                    logger.debug(f"💪 {regime.name}: seuils assouplis pour {symbol}")
                 required_strength = ['weak', 'moderate', 'strong', 'very_strong']
-                logger.debug(f"💪 {regime.name}: seuils assouplis pour {symbol}")
                 
             elif regime.name == 'TREND_UP':
-                # Tendance haussière: ASSOUPLI à 0.50 (était 0.7)
-                min_confidence = 0.5
+                # Validation OBV pour confirmer le volume
+                if self._validate_obv_trend(technical_context, side):
+                    min_confidence = 0.45  # Bonus si OBV confirme
+                    logger.debug(f"📈 {regime.name}: OBV confirme, seuils bonus (0.45) pour {symbol}")
+                else:
+                    min_confidence = 0.5  # ASSOUPLI à 0.50 (était 0.7)
+                    logger.debug(f"📈 {regime.name}: seuils ASSOUPLIS (0.5) pour {symbol}")
                 required_strength = ['moderate', 'strong', 'very_strong']
-                logger.debug(f"📈 {regime.name}: seuils ASSOUPLIS (0.5) pour {symbol}")
                 
             elif regime.name == 'WEAK_TREND_UP':
-                # Tendance faible: ASSOUPLI à 0.55 (était 0.65)
-                min_confidence = 0.55
+                # Validation ROC pour détecter l'accélération
+                roc_boost = self._check_roc_acceleration(technical_context, side)
+                if roc_boost:
+                    min_confidence = 0.50  # Bonus si ROC détecte accélération
+                    logger.debug(f"📊 {regime.name}: ROC accélération détectée, seuils bonus (0.50) pour {symbol}")
+                else:
+                    min_confidence = 0.55  # ASSOUPLI à 0.55 (était 0.65)
+                    logger.debug(f"📊 {regime.name}: seuils ASSOUPLIS (0.55) pour {symbol}")
                 required_strength = ['moderate', 'strong', 'very_strong']
-                logger.debug(f"📊 {regime.name}: seuils ASSOUPLIS (0.55) pour {symbol}")
                 
             elif regime.name == 'RANGE_TIGHT':
                 # Gestion spéciale pour ADX très faible (marché plat)

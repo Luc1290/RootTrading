@@ -323,11 +323,14 @@ class MessageRouter:
         # Traitement spécialisé pour signaux avec scoring
         elif is_signal_data:
             # Valider les champs de signal
-            if 'confidence' in transformed and not isinstance(transformed['confidence'], (int, float)):
-                try:
-                    transformed['confidence'] = float(transformed['confidence'])
-                except (ValueError, TypeError):
+            if 'confidence' in transformed:
+                if transformed['confidence'] is None:
                     transformed['confidence'] = 0.5
+                elif not isinstance(transformed['confidence'], (int, float)):
+                    try:
+                        transformed['confidence'] = float(transformed['confidence'])
+                    except (ValueError, TypeError):
+                        transformed['confidence'] = 0.5
                     
             # Traitement des métadonnées ultra-confluentes
             if 'metadata' in transformed and isinstance(transformed['metadata'], dict):
@@ -367,8 +370,8 @@ class MessageRouter:
             symbol = transformed.get('symbol')
             side = transformed.get('side')
             score = transformed.get('metadata', {}).get('total_score')
-            conf_count = transformed.get('confirmation_count', 0)
-            logger.info(f"🎯 SIGNAL {symbol}: {side} score={score:.1f} conf={conf_count}" if score else f"🎯 SIGNAL {symbol}: {side} conf={conf_count}")
+            confidence = transformed.get('confidence', 0)
+            logger.info(f"🎯 SIGNAL {symbol}: {side} score={score:.1f} conf={confidence:.2f}" if score else f"🎯 SIGNAL {symbol}: {side} conf={confidence:.2f}")
         
         return transformed
     

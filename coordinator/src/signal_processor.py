@@ -49,10 +49,12 @@ class SignalProcessor:
         
     def validate_signal(self, signal: StrategySignal) -> Tuple[bool, str]:
         """
-        Valide un signal selon plusieurs critères.
+        Valide un signal selon plusieurs critères enrichis.
+        
+        NOUVEAU: Utilise les données techniques du signal_aggregator au lieu de recalculer.
         
         Args:
-            signal: Signal à valider
+            signal: Signal à valider (avec métadonnées enrichies)
             
         Returns:
             Tuple (is_valid, reason)
@@ -92,8 +94,15 @@ class SignalProcessor:
             self.metrics["signals_rejected"] += 1
             return False, "Limite de cycles atteinte"
             
-        # 3. Vérifier l'anti-spam (sauf pour signaux agrégés)
-        if not signal.strategy.startswith("Aggregated_"):
+        # 3. NOUVEAU: Validation technique enrichie pour signaux agrégés
+        if signal.strategy.startswith("Aggregated_"):
+            validation_result = self._validate_aggregated_signal_quality(signal)
+            if not validation_result[0]:
+                self.metrics["signals_rejected"] += 1
+                return validation_result
+        
+        # 4. Vérifier l'anti-spam (sauf pour signaux agrégés)
+        elif not signal.strategy.startswith("Aggregated_"):
             if self._is_spam_signal(signal):
                 self.metrics["signals_rejected"] += 1
                 return False, "Trop de signaux récents similaires"
@@ -106,6 +115,87 @@ class SignalProcessor:
             
         self.metrics["signals_processed"] += 1
         return True, "Signal valide"
+    
+    def _validate_aggregated_signal_quality(self, signal: StrategySignal) -> Tuple[bool, str]:
+        """
+        Valide la qualité d'un signal agrégé en utilisant ses métadonnées techniques.
+        
+        OPTIMISATION: Réutilise les calculs du signal_aggregator au lieu de recalculer.
+        
+        Args:
+            signal: Signal agrégé avec métadonnées enrichies
+            
+        Returns:
+            Tuple (is_valid, reason)
+        """
+        try:
+            # Vérifier la présence des métadonnées
+            if not hasattr(signal, 'metadata') or not signal.metadata:
+                return True, "Signal sans métadonnées - accepté par défaut"
+            
+            metadata = signal.metadata
+            
+            # 1. Validation du régime de marche (si disponible)
+            regime = metadata.get('regime')
+            regime_metrics = metadata.get('regime_metrics', {})
+            
+            if regime and regime_metrics:
+                # Vérifier ADX pour éviter les signaux en marche plat
+                adx = regime_metrics.get('adx')
+                if adx is not None and adx < 15:
+                    # Exception pour signaux ultra-confluents de haute qualité
+                    if metadata.get('ultra_confluence') and metadata.get('total_score', 0) >= 90:
+                        logger.info(f"🎆 Signal ultra-confluent accepté malgré ADX faible ({adx:.1f}) - score élevé")
+                    else:
+                        return False, f"Marché trop plat (ADX={adx:.1f} < 15) pour signal {signal.strategy}"
+            
+            # 2. Validation du volume (si disponible)
+            volume_analysis = metadata.get('volume_analysis', {})
+            if volume_analysis and volume_analysis.get('avg_volume_ratio'):
+                avg_volume_ratio = volume_analysis['avg_volume_ratio']
+                if avg_volume_ratio < 0.7:  # Volume très faible
+                    return False, f"Volume insuffisant (ratio={avg_volume_ratio:.2f} < 0.7)"
+            
+            # 3. Validation de la confluence stratégique
+            strategy_count = metadata.get('strategy_count', 1)
+            contributing_strategies = metadata.get('contributing_strategies', [])
+            
+            if strategy_count < 2 and not metadata.get('institutional_grade'):
+                return False, f"Confluence insuffisante ({strategy_count} stratégie)"
+            
+            # 4. Validation des niveaux de prix techniques
+            if hasattr(signal, 'stop_loss') and signal.stop_loss:
+                # Vérifier que le stop-loss est raisonnable
+                entry_price = float(signal.price)
+                stop_price = float(signal.stop_loss)
+                
+                if signal.side == 'BUY':
+                    stop_distance_pct = (entry_price - stop_price) / entry_price * 100
+                else:  # SELL
+                    stop_distance_pct = (stop_price - entry_price) / entry_price * 100
+                
+                if stop_distance_pct > 15:  # Stop trop loin
+                    return False, f"Stop-loss trop éloigné ({stop_distance_pct:.1f}% > 15%)"
+                elif stop_distance_pct < 0.2:  # Stop trop proche
+                    return False, f"Stop-loss trop proche ({stop_distance_pct:.1f}% < 0.2%)"
+            
+            # 5. Log des validations réussies avec détails
+            quality_indicators = []
+            if metadata.get('ultra_confluence'):
+                quality_indicators.append(f"ultra-confluent (score={metadata.get('total_score', 0):.1f})")
+            if regime:
+                quality_indicators.append(f"régime={regime}")
+            if volume_analysis.get('avg_volume_ratio'):
+                quality_indicators.append(f"volume={volume_analysis['avg_volume_ratio']:.1f}x")
+            
+            quality_summary = ", ".join(quality_indicators) if quality_indicators else "basique"
+            logger.info(f"✅ Signal agrégé validé: {signal.strategy} {signal.side} ({quality_summary})")
+            
+            return True, "Signal agrégé de qualité validé"
+            
+        except Exception as e:
+            logger.error(f"Erreur validation signal agrégé: {e}")
+            return True, "Erreur validation - signal accepté par défaut"
         
     def _check_cycle_limits(self, signal: StrategySignal, active_cycles: List[Dict]) -> bool:
         """

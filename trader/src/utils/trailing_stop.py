@@ -5,7 +5,7 @@ Trailing-stop "pur" : un seul filet de sécurité.
 """
 import logging
 from enum import Enum, auto
-from typing import Optional
+from typing import Optional, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +20,12 @@ class TrailingStop:
     - SELL : suit le plus-bas  (min)  et se place au-dessus.
     """
 
-    def __init__(self, side: Side, entry_price: float, stop_pct: float = 8.0, atr_multiplier: float = 3.0, min_stop_pct: float = 6.0):
+    def __init__(self, side: Side, entry_price: float, stop_pct: float = 8.0, atr_multiplier: float = 3.0, min_stop_pct: float = 6.0, 
+                 aggregated_metadata: Optional[Dict] = None):
         """
         Initialise le trailing stop.
+        
+        OPTIMISATION: Utilise les données ATR précalculées du signal_aggregator.
         
         Args:
             side: BUY ou SELL
@@ -30,13 +33,19 @@ class TrailingStop:
             stop_pct: Pourcentage de retracement toléré (défaut: 8.0% - utilisé si pas d'ATR)
             atr_multiplier: Multiplicateur ATR pour calcul adaptatif (défaut: 3.0)
             min_stop_pct: Pourcentage minimum de stop (défaut: 6.0%)
+            aggregated_metadata: Métadonnées du signal agrégé (contient ATR précalculé)
         """
         self.side = side
         self.entry_price = entry_price
         self.stop_pct = stop_pct
         self.atr_multiplier = atr_multiplier
         self.min_stop_pct = min_stop_pct
-        self.current_atr = None  # Sera mis à jour via update_atr()
+        
+        # NOUVEAU: Récupérer ATR depuis les métadonnées du signal_aggregator
+        self.current_atr = self._extract_atr_from_metadata(aggregated_metadata)
+        
+        # Informations sur la source de l'ATR
+        self.atr_source = "aggregated" if self.current_atr else "manual"
         
         # Extrêmes favorables
         self.max_price = entry_price  # pour BUY
@@ -46,7 +55,7 @@ class TrailingStop:
         self.stop_price = self._calc_stop(entry_price)
         
         logger.info(f"🎯 TrailingStop créé: {side.name} @ {entry_price:.6f}, "
-                   f"stop initial @ {self.stop_price:.6f} (stop_pct: {stop_pct}%, ATR: {atr_multiplier}x)")
+                   f"stop initial @ {self.stop_price:.6f} (stop_pct: {stop_pct}%, ATR: {atr_multiplier}x, source: {self.atr_source})")
 
     def _calc_stop(self, ref_price: float) -> float:
         """Calcule le stop par rapport à l'extrême favorable en utilisant l'ATR si disponible."""
@@ -71,6 +80,53 @@ class TrailingStop:
             # Fallback sur pourcentage fixe
             logger.debug(f"🧮 Stop fixe: {self.stop_pct:.2f}% (pas d'ATR disponible)")
             return self.stop_pct
+    
+    def _extract_atr_from_metadata(self, metadata: Optional[Dict]) -> Optional[float]:
+        """
+        Extrait la valeur ATR depuis les métadonnées du signal agrégé.
+        
+        OPTIMISATION: Évite de recalculer l'ATR déjà calculé par le signal_aggregator.
+        
+        Args:
+            metadata: Métadonnées du signal agrégé
+            
+        Returns:
+            Valeur ATR ou None si non disponible
+        """
+        if not metadata:
+            return None
+            
+        try:
+            # Chercher ATR dans les métadonnées enrichies
+            atr_value = None
+            
+            # 1. ATR depuis regime_metrics (calculé par Enhanced regime detector)
+            regime_metrics = metadata.get('regime_metrics', {})
+            if 'atr' in regime_metrics:
+                atr_value = float(regime_metrics['atr'])
+                logger.debug(f"📊 ATR récupéré depuis regime_metrics: {atr_value:.6f}")
+            
+            # 2. ATR depuis données techniques directes
+            elif 'atr_14' in metadata:
+                atr_value = float(metadata['atr_14'])
+                logger.debug(f"📊 ATR récupéré depuis métadonnées directes: {atr_value:.6f}")
+            
+            # 3. ATR depuis calcul de stop adaptatif du signal_aggregator
+            elif 'stop_price' in metadata and 'trailing_delta' in metadata:
+                # Recalculer ATR approximatif depuis trailing_delta
+                trailing_delta = metadata['trailing_delta']
+                # trailing_delta est en %, on peut estimer ATR
+                estimated_atr = self.entry_price * (trailing_delta / 100) / self.atr_multiplier
+                atr_value = estimated_atr
+                logger.debug(f"📊 ATR estimé depuis trailing_delta: {atr_value:.6f}")
+            
+            if atr_value and atr_value > 0:
+                return atr_value
+                
+        except Exception as e:
+            logger.error(f"Erreur extraction ATR depuis métadonnées: {e}")
+            
+        return None
 
     def update(self, price: float) -> bool:
         """

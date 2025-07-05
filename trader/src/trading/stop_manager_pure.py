@@ -31,12 +31,14 @@ class StopManagerPure:
         """
         Initialise le gestionnaire de stops pure.
         
+        OPTIMISATION: Utilise les données ATR du signal_aggregator quand disponibles.
+        
         Args:
             cycle_repository: Repository pour les cycles
             default_stop_pct: Pourcentage de stop par défaut (8.0% - fallback si pas d'ATR)
             atr_multiplier: Multiplicateur ATR pour calcul adaptatif (défaut: 3.0)
             min_stop_pct: Pourcentage minimum de stop (défaut: 6.0%)
-            analyzer_url: URL du service analyzer pour récupérer l'ATR
+            analyzer_url: URL du service analyzer pour récupérer l'ATR (fallback)
         """
         self.repository = cycle_repository
         self.price_locks = RLock()
@@ -48,7 +50,10 @@ class StopManagerPure:
         # Cache des TrailingStop par cycle_id
         self.trailing_stops: Dict[str, TrailingStop] = {}
         
-        # Cache ATR pour éviter les appels répétés
+        # NOUVEAU: Cache pour métadonnées des signaux agrégés
+        self.aggregated_metadata_cache: Dict[str, Dict[str, Any]] = {}  # {cycle_id: metadata}
+        
+        # Cache ATR pour éviter les appels répétés (fallback seulement)
         self.atr_cache: Dict[str, Dict[str, Any]] = {}  # {symbol: {atr: float, timestamp: float, price_moves: int}}
         self.atr_cache_ttl = 30  # 30 secondes pour scalping
         self.atr_force_update_moves = 20  # Force update après 20 mouvements de prix
@@ -56,22 +61,33 @@ class StopManagerPure:
         # Intégration du GainProtector
         self.gain_protector = GainProtector()
         
-        logger.info(f"✅ StopManagerPure initialisé (stop défaut: {default_stop_pct}%, ATR: {atr_multiplier}x, min: {min_stop_pct}%) avec GainProtector - CRYPTO OPTIMIZED")
+        logger.info(f"✅ StopManagerPure initialisé (stop défaut: {default_stop_pct}%, ATR: {atr_multiplier}x, min: {min_stop_pct}%) avec GainProtector + signal_aggregator ATR - OPTIMIZED")
     
-    def _get_current_atr(self, symbol: str, force_update: bool = False) -> Optional[float]:
+    def _get_current_atr(self, symbol: str, force_update: bool = False, cycle_id: str = None) -> Optional[float]:
         """
-        Récupère l'ATR actuel pour un symbole depuis l'analyzer.
+        Récupère l'ATR actuel pour un symbole.
+        
+        OPTIMISATION: Priorise les données du signal_aggregator, fallback vers analyzer.
         
         Args:
             symbol: Symbole (ex: 'BTCUSDC')
             force_update: Force la mise à jour même si en cache
+            cycle_id: ID du cycle pour récupérer les métadonnées agrégées
             
         Returns:
             Valeur ATR ou None si indisponible
         """
         current_time = time.time()
         
-        # Vérifier le cache d'abord (sauf si force_update)
+        # NOUVEAU: 1. Essayer d'abord les métadonnées du signal_aggregator
+        if cycle_id and cycle_id in self.aggregated_metadata_cache:
+            metadata = self.aggregated_metadata_cache[cycle_id]
+            atr_from_aggregator = self._extract_atr_from_aggregated_metadata(metadata)
+            if atr_from_aggregator:
+                logger.debug(f"📊 ATR récupéré depuis signal_aggregator pour {symbol}: {atr_from_aggregator:.6f}")
+                return atr_from_aggregator
+        
+        # 2. Vérifier le cache local (fallback)
         if not force_update and symbol in self.atr_cache:
             cache_entry = self.atr_cache[symbol]
             time_since_cache = current_time - cache_entry['timestamp']
@@ -127,6 +143,53 @@ class StopManagerPure:
         
         return None
     
+    def set_aggregated_metadata(self, cycle_id: str, metadata: Dict[str, Any]) -> None:
+        """
+        Stocke les métadonnées d'un signal agrégé pour réutilisation.
+        
+        OPTIMISATION: Évite de recalculer les indicateurs techniques.
+        
+        Args:
+            cycle_id: ID du cycle
+            metadata: Métadonnées du signal agrégé
+        """
+        self.aggregated_metadata_cache[cycle_id] = metadata
+        logger.debug(f"💾 Métadonnées agrégées stockées pour cycle {cycle_id}")
+    
+    def _extract_atr_from_aggregated_metadata(self, metadata: Dict[str, Any]) -> Optional[float]:
+        """
+        Extrait l'ATR depuis les métadonnées du signal_aggregator.
+        
+        Args:
+            metadata: Métadonnées du signal agrégé
+            
+        Returns:
+            Valeur ATR ou None
+        """
+        try:
+            # 1. ATR depuis regime_metrics
+            regime_metrics = metadata.get('regime_metrics', {})
+            if 'atr' in regime_metrics:
+                return float(regime_metrics['atr'])
+            
+            # 2. ATR direct
+            if 'atr_14' in metadata:
+                return float(metadata['atr_14'])
+            
+            # 3. Estimation depuis trailing_delta
+            if 'trailing_delta' in metadata:
+                # trailing_delta est en %, convertir en ATR approximatif
+                trailing_delta = metadata['trailing_delta']
+                # Récupérer prix depuis metadata ou cycle
+                entry_price = metadata.get('entry_price', 1.0)  # Fallback
+                estimated_atr = entry_price * (trailing_delta / 100) / self.atr_multiplier
+                return estimated_atr
+                
+        except Exception as e:
+            logger.error(f"Erreur extraction ATR depuis métadonnées agrégées: {e}")
+            
+        return None
+    
     def initialize_trailing_stop(self, cycle: TradeCycle) -> TrailingStop:
         """
         Initialise un TrailingStop pour un cycle.
@@ -162,8 +225,11 @@ class StopManagerPure:
             atr_config = cycle.metadata['atr_config']
             logger.debug(f"🔄 Configuration ATR restaurée depuis DB pour {cycle.id}: {atr_config}")
         
-        # Récupérer l'ATR actuel pour ce symbole (priorité sur celui en cache)
-        current_atr = self._get_current_atr(cycle.symbol)
+        # NOUVEAU: Récupérer métadonnées agrégées si disponibles
+        aggregated_metadata = self.aggregated_metadata_cache.get(cycle.id)
+        
+        # Récupérer l'ATR actuel (priorise signal_aggregator, fallback analyzer)
+        current_atr = self._get_current_atr(cycle.symbol, cycle_id=cycle.id)
         
         # Utiliser ATR restauré si pas de nouveau disponible
         if current_atr is None and atr_config and atr_config.get('atr_value'):

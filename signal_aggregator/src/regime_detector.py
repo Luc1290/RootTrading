@@ -174,6 +174,9 @@ class RegimeDetector:
             df['volume'] = df['volume'].astype(float) if 'volume' in df.columns else 0
             df['open'] = df['open'].astype(float) if 'open' in df.columns else df['close']
             
+            # CORRECTION: Extraire les prix de clôture pour les calculs d'indicateurs
+            closes = df['close'].values
+            
             danger_score = 0.0
             
             # 1. Calculate 24h volatility

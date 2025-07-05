@@ -98,6 +98,33 @@
             }
         }
         
+        #liveIndicator {
+            color: #00ff00;
+            margin-left: 10px;
+        }
+        
+        #lastUpdate {
+            color: #888;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        
+        #marketChart {
+            height: 600px;
+        }
+        
+        #volumeChart {
+            height: 150px;
+        }
+        
+        #rsiChart {
+            height: 200px;
+        }
+        
+        #macdChart {
+            height: 200px;
+        }
+        
         .websocket-status {
             position: fixed;
             top: 10px;
@@ -144,6 +171,16 @@
                 </select>
             </div>
             
+            <div class="control-group">
+                <label for="signalFilterSelect">Filtrer Signaux</label>
+                <select id="signalFilterSelect" name="signalFilterSelect">
+                    <option value="all" selected>Tous les signaux</option>
+                    <option value="Aggregated_2">Aggregated_2 (2 stratégies)</option>
+                    <option value="Aggregated_3">Aggregated_3 (3 stratégies)</option>
+                    <option value="Aggregated_4">Aggregated_4 (4 stratégies)</option>
+                    <option value="Aggregated_2,Aggregated_3,Aggregated_4">Multi-stratégies (2+)</option>
+                </select>
+            </div>
             
             <div class="control-group">
                 <label>Période Performance</label>
@@ -169,26 +206,26 @@
         <div class="chart-container">
             <div class="chart-title">
                 📈 Graphique de Marché 
-                <span id="liveIndicator" style="color: #00ff00; margin-left: 10px;">🔴 LIVE</span>
-                <span id="lastUpdate" style="color: #888; font-size: 12px; margin-left: 10px;"></span>
+                <span id="liveIndicator">🔴 LIVE</span>
+                <span id="lastUpdate"></span>
             </div>
-            <div id="marketChart" style="height: 600px;"></div>
+            <div id="marketChart"></div>
         </div>
         
         <div class="chart-container">
             <div class="chart-title">📊 Volume</div>
-            <div id="volumeChart" style="height: 150px;"></div>
+            <div id="volumeChart"></div>
         </div>
         
         <div class="grid">
             <div class="chart-container">
                 <div class="chart-title">📊 RSI (Relative Strength Index)</div>
-                <div id="rsiChart" style="height: 200px;"></div>
+                <div id="rsiChart"></div>
             </div>
             
             <div class="chart-container">
                 <div class="chart-title">📉 MACD</div>
-                <div id="macdChart" style="height: 200px;"></div>
+                <div id="macdChart"></div>
             </div>
         </div>
         
@@ -209,6 +246,8 @@
         let ws = null;
         let wsConnected = false;
         let currentXRange = null;  // Pour stocker la plage x actuelle
+        let currentYRange = null;  // Pour stocker la plage y actuelle
+        let isUserInteracting = false;  // Pour détecter si l'utilisateur interagit avec le graphique
         
         // Configuration Plotly
         const chartConfig = {
@@ -306,15 +345,29 @@
 
             // Plus d'indicateurs sur le graphique principal - graphique propre avec seulement chandeliers
 
-            // Ajouter les signaux de trading
+            // Ajouter les signaux de trading avec filtrage
+            const signalFilter = document.getElementById('signalFilterSelect').value;
             const signalData = await fetchData(`charts/signals/${symbol}`);
             if (signalData) {
+                // Filtrer les signaux selon la sélection
+                let filteredBuySignals = signalData.signals.buy;
+                let filteredSellSignals = signalData.signals.sell;
+                
+                if (signalFilter !== 'all') {
+                    const allowedStrategies = signalFilter.split(',');
+                    filteredBuySignals = signalData.signals.buy.filter(s => 
+                        allowedStrategies.some(strategy => s.strategy.includes(strategy))
+                    );
+                    filteredSellSignals = signalData.signals.sell.filter(s => 
+                        allowedStrategies.some(strategy => s.strategy.includes(strategy))
+                    );
+                }
                 // Signaux d'achat
-                if (signalData.signals.buy.length > 0) {
+                if (filteredBuySignals.length > 0) {
                     // Marqueurs pour les signaux BUY
                     traces.push({
-                        x: signalData.signals.buy.map(s => s.timestamp),
-                        y: signalData.signals.buy.map(s => s.price * 0.995), // Légèrement en dessous du prix
+                        x: filteredBuySignals.map(s => s.timestamp),
+                        y: filteredBuySignals.map(s => s.price * 0.995), // Légèrement en dessous du prix
                         type: 'scatter',
                         mode: 'markers',
                         name: 'Signal BUY',
@@ -325,15 +378,16 @@
                             line: { color: '#000000', width: 1 }
                         },
                         hovertemplate: '<b>BUY Signal</b><br>' +
-                                      'Prix: %{y:.2f}<br>' +
+                                      'Prix: %{customdata:.4f}<br>' +
                                       'Stratégie: %{text}<br>' +
                                       'Heure: %{x}<br>' +
                                       '<extra></extra>',
-                        text: signalData.signals.buy.map(s => `${s.strategy} (${s.strength})`),
+                        text: filteredBuySignals.map(s => `${s.strategy} (${s.strength})`),
+                        customdata: filteredBuySignals.map(s => s.price),
                     });
                     
                     // Lignes verticales pour les signaux BUY
-                    signalData.signals.buy.forEach(signal => {
+                    filteredBuySignals.forEach(signal => {
                         traces.push({
                             x: [signal.timestamp, signal.timestamp],
                             y: [signal.price * 0.99, signal.price * 1.005],
@@ -347,11 +401,11 @@
                 }
 
                 // Signaux de vente
-                if (signalData.signals.sell.length > 0) {
+                if (filteredSellSignals.length > 0) {
                     // Marqueurs pour les signaux SELL
                     traces.push({
-                        x: signalData.signals.sell.map(s => s.timestamp),
-                        y: signalData.signals.sell.map(s => s.price * 1.005), // Légèrement au-dessus du prix
+                        x: filteredSellSignals.map(s => s.timestamp),
+                        y: filteredSellSignals.map(s => s.price * 1.005), // Légèrement au-dessus du prix
                         type: 'scatter',
                         mode: 'markers',
                         name: 'Signal SELL',
@@ -362,15 +416,16 @@
                             line: { color: '#000000', width: 1 }
                         },
                         hovertemplate: '<b>SELL Signal</b><br>' +
-                                      'Prix: %{y:.2f}<br>' +
+                                      'Prix: %{customdata:.4f}<br>' +
                                       'Stratégie: %{text}<br>' +
                                       'Heure: %{x}<br>' +
                                       '<extra></extra>',
-                        text: signalData.signals.sell.map(s => `${s.strategy} (${s.strength})`),
+                        text: filteredSellSignals.map(s => `${s.strategy} (${s.strength})`),
+                        customdata: filteredSellSignals.map(s => s.price),
                     });
                     
                     // Lignes verticales pour les signaux SELL
-                    signalData.signals.sell.forEach(signal => {
+                    filteredSellSignals.forEach(signal => {
                         traces.push({
                             x: [signal.timestamp, signal.timestamp],
                             y: [signal.price * 0.995, signal.price * 1.01],
@@ -437,14 +492,48 @@
                 margin: { l: 10, r: 80, t: 50, b: 50 }
             };
 
-            Plotly.newPlot('marketChart', traces, layout, chartConfig);
+            // Préserver le zoom existant si disponible
+            if (currentXRange) {
+                layout.xaxis.range = currentXRange;
+            }
+            if (currentYRange) {
+                layout.yaxis.range = currentYRange;
+            }
+
+            // Utiliser Plotly.react pour préserver l'état du graphique lors des mises à jour
+            const marketChartDiv = document.getElementById('marketChart');
+            if (marketChartDiv.data) {
+                // Le graphique existe déjà, utiliser react pour une mise à jour fluide
+                Plotly.react('marketChart', traces, layout, chartConfig);
+            } else {
+                // Premier rendu, utiliser newPlot
+                Plotly.newPlot('marketChart', traces, layout, chartConfig);
+            }
             
-            // Ajouter l'événement de synchronisation
-            document.getElementById('marketChart').on('plotly_relayout', function(eventdata) {
+            // Ajouter les événements de synchronisation et de détection d'interaction
+            marketChartDiv.on('plotly_relayout', function(eventdata) {
+                // Sauvegarder les plages de zoom
                 if (eventdata['xaxis.range[0]'] && eventdata['xaxis.range[1]']) {
                     currentXRange = [eventdata['xaxis.range[0]'], eventdata['xaxis.range[1]']];
                     synchronizeCharts();
                 }
+                if (eventdata['yaxis.range[0]'] && eventdata['yaxis.range[1]']) {
+                    currentYRange = [eventdata['yaxis.range[0]'], eventdata['yaxis.range[1]']];
+                }
+                // Reset du zoom avec double-clic
+                if (eventdata['xaxis.autorange'] || eventdata['yaxis.autorange']) {
+                    currentXRange = null;
+                    currentYRange = null;
+                }
+            });
+
+            // Détecter quand l'utilisateur interagit avec le graphique
+            marketChartDiv.on('plotly_hover', function() {
+                isUserInteracting = true;
+            });
+            
+            marketChartDiv.on('plotly_unhover', function() {
+                isUserInteracting = false;
             });
         }
 
@@ -548,7 +637,13 @@
                 ]
             };
 
-            Plotly.newPlot('rsiChart', traces, layout, chartConfig);
+            // Utiliser Plotly.react pour préserver l'état
+            const rsiChartDiv = document.getElementById('rsiChart');
+            if (rsiChartDiv.data) {
+                Plotly.react('rsiChart', traces, layout, chartConfig);
+            } else {
+                Plotly.newPlot('rsiChart', traces, layout, chartConfig);
+            }
         }
 
         // Graphique MACD
@@ -627,7 +722,13 @@
                 barmode: 'relative'
             };
 
-            Plotly.newPlot('macdChart', traces, layout, chartConfig);
+            // Utiliser Plotly.react pour préserver l'état
+            const macdChartDiv = document.getElementById('macdChart');
+            if (macdChartDiv.data) {
+                Plotly.react('macdChart', traces, layout, chartConfig);
+            } else {
+                Plotly.newPlot('macdChart', traces, layout, chartConfig);
+            }
         }
 
         // Graphique Volume
@@ -680,7 +781,13 @@
                 showlegend: false
             };
 
-            Plotly.newPlot('volumeChart', traces, layout, chartConfig);
+            // Utiliser Plotly.react pour préserver l'état
+            const volumeChartDiv = document.getElementById('volumeChart');
+            if (volumeChartDiv.data) {
+                Plotly.react('volumeChart', traces, layout, chartConfig);
+            } else {
+                Plotly.newPlot('volumeChart', traces, layout, chartConfig);
+            }
         }
 
         // Graphique de performance
@@ -849,8 +956,13 @@
             await loadAvailableSymbols();
             await updateAllCharts();
             
-            // Auto-refresh plus fréquent pour la bougie courante
-            setInterval(updateAllCharts, 10000); // Toutes les 10 secondes
+            // Auto-refresh intelligent qui ne perturbe pas l'interaction utilisateur
+            setInterval(async () => {
+                // Ne pas actualiser si l'utilisateur interagit avec le graphique
+                if (!isUserInteracting) {
+                    await updateAllCharts();
+                }
+            }, 10000); // Toutes les 10 secondes
         });
 
         // Fonction de synchronisation des graphiques
@@ -885,6 +997,7 @@
         // Événements
         document.getElementById('symbolSelect').addEventListener('change', updateAllCharts);
         document.getElementById('intervalSelect').addEventListener('change', updateAllCharts);
+        document.getElementById('signalFilterSelect').addEventListener('change', updateAllCharts);
     </script>
 </body>
 </html>

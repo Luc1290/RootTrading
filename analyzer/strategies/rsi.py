@@ -16,7 +16,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 from shared.src.config import get_strategy_param
 from shared.src.enums import OrderSide
 from shared.src.schemas import StrategySignal
-from shared.src.technical_indicators import calculate_rsi, calculate_ema, calculate_macd
+# CORRECTION: Les fonctions de convenance existent bien dans le module !
+# Importer à la fois la classe ET les fonctions nécessaires
+from shared.src.technical_indicators import TechnicalIndicators, calculate_rsi, calculate_ema, calculate_macd
 
 from .base_strategy import BaseStrategy
 
