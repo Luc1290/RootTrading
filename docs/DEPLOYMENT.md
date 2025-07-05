@@ -51,6 +51,17 @@ LOG_LEVEL=INFO
 MAX_CONCURRENT_TRADES=5
 POSITION_SIZE_PERCENT=2.0
 
+# Hybrid Mode Configuration (Enhanced 2025)
+ADX_HYBRID_MODE=true
+ADX_SMOOTHING_PERIOD=3
+ADX_NO_TREND_THRESHOLD=18
+ADX_WEAK_TREND_THRESHOLD=23
+ADX_TREND_THRESHOLD=32
+ADX_STRONG_TREND_THRESHOLD=42
+SIGNAL_COOLDOWN_MINUTES=3
+VOTE_THRESHOLD=0.35
+CONFIDENCE_THRESHOLD=0.60
+
 # Trading Pairs
 TRADING_SYMBOLS=BTCUSDT,ETHUSDT,BNBUSDT
 TRADING_TIMEFRAMES=1m,5m,15m,1h
@@ -126,6 +137,10 @@ docker-compose logs -f --tail=100
 curl http://localhost:8001/health  # Gateway
 curl http://localhost:8002/health  # Analyzer
 curl http://localhost:8003/health  # Signal Aggregator
+
+# Verify hybrid mode activation
+docker-compose logs signal_aggregator | grep "Enhanced Regime Detector"
+docker-compose logs signal_aggregator | grep "Hybrid approach"
 ```
 
 ## Production Configuration
@@ -419,16 +434,21 @@ docker-compose run -e LOG_LEVEL=DEBUG analyzer
    - Check disk space
    - Review error logs
    - Update dependencies
+   - **Monitor signal balance** (BUY/SELL ratio)
+   - **Review ADX stability** and regime detection
 
 2. **Monthly**:
    - Performance analysis
    - Database vacuum
    - Security updates
+   - **Analyze trading frequency** (target: 8-12 trades/day)
+   - **Review hybrid mode effectiveness**
 
 3. **Quarterly**:
    - Full system backup
    - Disaster recovery test
    - Strategy performance review
+   - **Optimize ADX thresholds** based on market conditions
 
 ### Update Procedure
 

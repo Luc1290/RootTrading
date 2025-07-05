@@ -13,7 +13,7 @@ The Gateway service subscribes to Binance WebSocket streams and publishes normal
 
 **Channel**: `market:{symbol}:{timeframe}`
 
-**Message Format**:
+**Message Format (Enhanced with 18 Technical Indicators)**:
 ```json
 {
   "symbol": "BTCUSDT",
@@ -26,7 +26,29 @@ The Gateway service subscribes to Binance WebSocket streams and publishes normal
   "close": "43270.25",
   "volume": "125.543",
   "trades": 1523,
-  "timestamp": "2024-01-15T10:30:00Z"
+  "timestamp": "2024-01-15T10:30:00Z",
+  "enhanced": true,
+  "ultra_enriched": true,
+  "technical_indicators": {
+    "rsi_14": 65.4,
+    "adx_14": 35.2,
+    "plus_di": 25.8,
+    "minus_di": 18.3,
+    "macd_line": 125.5,
+    "macd_signal": 120.3,
+    "macd_histogram": 5.2,
+    "bb_upper": 43350.0,
+    "bb_middle": 43270.0,
+    "bb_lower": 43190.0,
+    "ema_12": 43265.0,
+    "ema_26": 43250.0,
+    "atr_14": 145.3,
+    "stoch_k": 72.1,
+    "stoch_d": 68.9,
+    "obv": 15432.1,
+    "supertrend": 43100.0,
+    "supertrend_direction": 1
+  }
 }
 ```
 
@@ -46,7 +68,7 @@ The Gateway service subscribes to Binance WebSocket streams and publishes normal
 
 **Channel**: `signals:raw`
 
-**Message Format**:
+**Message Format (Enhanced with Full Technical Analysis)**:
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
@@ -60,7 +82,15 @@ The Gateway service subscribes to Binance WebSocket streams and publishes normal
     "macd": 125.5,
     "signal": 120.3,
     "histogram": 5.2,
-    "rsi": 65.4
+    "rsi": 65.4,
+    "adx": 35.2,
+    "plus_di": 25.8,
+    "minus_di": 18.3,
+    "bb_position": 0.75,
+    "atr": 145.3,
+    "obv_trend": 1,
+    "supertrend": 43100.0,
+    "supertrend_direction": 1
   },
   "timestamp": "2024-01-15T10:30:00Z"
 }
@@ -100,7 +130,7 @@ The Gateway service subscribes to Binance WebSocket streams and publishes normal
 
 **Channel**: `signals:aggregated`
 
-**Message Format**:
+**Message Format (Enhanced Hybrid Approach)**:
 ```json
 {
   "id": "660e8400-e29b-41d4-a716-446655440001",
@@ -121,6 +151,13 @@ The Gateway service subscribes to Binance WebSocket streams and publishes normal
     }
   ],
   "bayesian_confidence": 0.82,
+  "market_regime": "TREND_UP",
+  "adx_strength": 35.2,
+  "adx_smoothed": 33.8,
+  "debounce_multiplier": 0.7,
+  "regime_filter_passed": true,
+  "obv_trend_confirmed": true,
+  "hybrid_mode": true,
   "timestamp": "2024-01-15T10:30:15Z"
 }
 ```

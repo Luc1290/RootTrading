@@ -43,6 +43,17 @@ cd RootTrading
 ```bash
 cp .env.example .env
 # Edit .env with your Binance API credentials and configuration
+
+# Hybrid Mode Configuration (recommended)
+ADX_HYBRID_MODE=true
+ADX_SMOOTHING_PERIOD=3
+ADX_NO_TREND_THRESHOLD=18
+ADX_WEAK_TREND_THRESHOLD=23
+ADX_TREND_THRESHOLD=32
+ADX_STRONG_TREND_THRESHOLD=42
+SIGNAL_COOLDOWN_MINUTES=3
+VOTE_THRESHOLD=0.35
+CONFIDENCE_THRESHOLD=0.60
 ```
 
 3. Start the services:
@@ -66,33 +77,44 @@ Connects to Binance WebSocket streams to receive real-time market data for confi
 - Market data normalization
 
 ### Analyzer Service
-Performs technical analysis on incoming market data using various indicators.
+Performs technical analysis on incoming market data using 18+ comprehensive indicators.
 
 **Supported Indicators:**
-- Moving Averages (SMA, EMA)
-- RSI (Relative Strength Index)
+- Moving Averages (SMA, EMA) - Multiple periods
+- RSI (Relative Strength Index) - 14/21 periods
 - MACD (Moving Average Convergence Divergence)
-- Bollinger Bands
-- Stochastic Oscillator
+- Bollinger Bands with position and width
+- Stochastic Oscillator (K/D)
+- ADX with DI+ and DI- (Enhanced with EMA smoothing)
+- ATR (Average True Range)
+- OBV (On-Balance Volume) with trend validation
+- Supertrend with band continuity
+- Williams %R, CCI, MFI, ROC
 - Custom indicators via TA-Lib
 
-### Signal Aggregator
-Aggregates signals from multiple analysis strategies and applies Bayesian weighting.
+### Signal Aggregator (Enhanced Hybrid Mode)
+Aggregates signals from multiple analysis strategies with intelligent market regime detection.
 
 **Features:**
-- Multi-strategy signal aggregation
+- Multi-strategy signal aggregation with market regime filtering
 - Bayesian weight optimization
 - Signal strength normalization
 - Historical performance tracking
+- **Adaptive Debounce**: 0.5x-1.8x based on ADX strength
+- **Balanced Signal Generation**: Eliminates BUY/SELL imbalance
+- **ADX Smoothing**: EMA(3) for stable regime detection
+- **Enhanced OBV Validation**: Linear regression trend analysis
 
-### Coordinator Service
-Manages the complete trade lifecycle from signal to execution.
+### Coordinator Service (Trust-Based Architecture)
+Manages the complete trade lifecycle from signal to execution with enhanced trust model.
 
 **Responsibilities:**
 - Trade cycle creation and management
 - Risk management rule enforcement
 - Position sizing calculation
 - Trade state coordination
+- **Enhanced Trust Model**: Trusts signal aggregator decisions (no re-validation)
+- **Regime-Aware Processing**: Adapts to market conditions
 
 ### Trader Service
 Executes trades on Binance exchange with advanced order management.

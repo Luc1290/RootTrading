@@ -55,21 +55,25 @@ RootTrading is a distributed cryptocurrency trading system built using microserv
 
 ## Service Communication Patterns
 
-### 1. Market Data Flow
-- **Protocol**: WebSocket → Redis Pub/Sub
-- **Pattern**: Publisher-Subscriber
-- **Data Format**: JSON messages with OHLCV data
-- **Frequency**: Real-time (tick-by-tick)
+### 1. Market Data Flow (Enhanced)
+- **Protocol**: WebSocket → Kafka → PostgreSQL
+- **Pattern**: Publisher-Subscriber with persistent storage
+- **Data Format**: JSON messages with OHLCV + 18 technical indicators
+- **Frequency**: Real-time (5m candles with enriched data)
+- **Enhancement**: UltraDataFetcher calculates and stores ADX, RSI, MACD, Bollinger, Stochastic, etc.
 
-### 2. Signal Generation Flow
-- **Protocol**: Redis Pub/Sub + PostgreSQL
-- **Pattern**: Event-driven processing
+### 2. Signal Generation Flow (Hybrid Approach)
+- **Protocol**: Kafka + Enhanced Regime Detection
+- **Pattern**: Event-driven with intelligent filtering
 - **Data Flow**: 
-  1. Gateway publishes market data to Redis
-  2. Analyzer subscribes to market data
-  3. Analyzer publishes signals to Redis
-  4. Signal Aggregator processes and weights signals
-  5. Coordinator receives aggregated signals
+  1. Gateway calculates enriched market data with ADX smoothing
+  2. DatabasePersister saves all 18 indicators to PostgreSQL
+  3. Analyzer generates signals with technical indicators
+  4. **Enhanced Signal Aggregator** with adaptive filtering:
+     - ADX-based regime detection (18/23/32/42 thresholds)
+     - Adaptive debounce (0.5x-1.8x based on trend strength)
+     - Balanced BUY/SELL signal generation
+  5. **Enhanced Coordinator** trusts aggregated signals (no re-validation)
 
 ### 3. Trade Execution Flow
 - **Protocol**: Kafka + REST API
@@ -86,18 +90,31 @@ RootTrading is a distributed cryptocurrency trading system built using microserv
 ### PostgreSQL Schema
 
 ```sql
--- Core Tables
+-- Core Tables (Enhanced)
 market_data
-├── id (BIGSERIAL)
+├── time (TIMESTAMP)
 ├── symbol (VARCHAR)
-├── open_time (TIMESTAMP)
-├── close_time (TIMESTAMP)
 ├── open (DECIMAL)
 ├── high (DECIMAL)
 ├── low (DECIMAL)
 ├── close (DECIMAL)
 ├── volume (DECIMAL)
-└── timeframe (VARCHAR)
+├── enhanced (BOOLEAN)
+├── ultra_enriched (BOOLEAN)
+├── -- Technical Indicators (18 total)
+├── rsi_14 (DECIMAL)
+├── ema_12, ema_26, ema_50 (DECIMAL)
+├── sma_20, sma_50 (DECIMAL)
+├── macd_line, macd_signal, macd_histogram (DECIMAL)
+├── bb_upper, bb_middle, bb_lower, bb_position, bb_width (DECIMAL)
+├── atr_14 (DECIMAL)
+├── adx_14, plus_di, minus_di (DECIMAL) -- New: ADX with smoothing
+├── stoch_k, stoch_d, stoch_rsi (DECIMAL)
+├── williams_r, cci_20, mfi_14 (DECIMAL)
+├── vwap_10, roc_10, roc_20 (DECIMAL)
+├── obv, trend_angle, pivot_count (DECIMAL)
+├── momentum_10, volume_ratio, avg_volume_20 (DECIMAL)
+└── supertrend, supertrend_direction (DECIMAL) -- New: Complete Supertrend
 
 signals
 ├── id (BIGSERIAL)
@@ -155,6 +172,43 @@ balances:current     # Current account balances (Hash)
 # Configuration
 config:symbols       # Trading pairs (Set)
 config:strategies    # Active strategies (Hash)
+```
+
+## Hybrid Trading Approach (2025 Enhancement)
+
+### Enhanced Technical Analysis
+- **ADX Smoothing**: EMA(3) applied to ADX for stable regime detection
+- **Adaptive Thresholds**: Optimized for crypto volatility (18/23/32/42 vs 20/25/35/45)
+- **18 Technical Indicators**: Comprehensive market analysis stored in database
+- **Complete Supertrend**: Full historical implementation with band continuity rules
+
+### Intelligent Signal Processing
+- **Adaptive Debounce**: 
+  - Strong trends (ADX ≥ 42): 0.5x debounce (faster signals)
+  - Moderate trends (ADX 23-42): 1.0x debounce (normal)
+  - Range markets (ADX < 23): 1.8x debounce (slower, less noise)
+- **Balanced Signal Generation**: Eliminates BUY/SELL imbalance
+- **Enhanced OBV Validation**: Historical trend analysis with linear regression
+- **Trust-Based Architecture**: Coordinator trusts signal aggregator decisions
+
+### Performance Targets
+- **Frequency**: 8-12 trades/day (vs previous imbalance)
+- **Win Rate**: Improved through intelligent filtering
+- **Regime Stability**: 15-30 min stable periods vs erratic changes
+- **Signal Quality**: Higher precision through multi-layer validation
+
+### Configuration Management
+```bash
+# Hybrid Mode Settings (.env)
+ADX_HYBRID_MODE=true
+ADX_SMOOTHING_PERIOD=3
+ADX_NO_TREND_THRESHOLD=18
+ADX_WEAK_TREND_THRESHOLD=23
+ADX_TREND_THRESHOLD=32
+ADX_STRONG_TREND_THRESHOLD=42
+SIGNAL_COOLDOWN_MINUTES=3
+VOTE_THRESHOLD=0.35
+CONFIDENCE_THRESHOLD=0.60
 ```
 
 ## Scalability Considerations
