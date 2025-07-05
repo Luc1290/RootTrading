@@ -94,12 +94,10 @@ class SignalProcessor:
             self.metrics["signals_rejected"] += 1
             return False, "Limite de cycles atteinte"
             
-        # 3. NOUVEAU: Validation technique enrichie pour signaux agrégés
+        # 3. Signaux agrégés : déjà validés par le signal_aggregator
         if signal.strategy.startswith("Aggregated_"):
-            validation_result = self._validate_aggregated_signal_quality(signal)
-            if not validation_result[0]:
-                self.metrics["signals_rejected"] += 1
-                return validation_result
+            logger.info(f"✅ Signal agrégé validé: {signal.strategy} {signal.side} (régime={getattr(signal, 'metadata', {}).get('regime', 'N/A')}, volume={getattr(signal, 'metadata', {}).get('volume_analysis', {}).get('avg_volume_ratio', 'N/A'):.1f}x)")
+            # Pas de re-validation technique - faire confiance au signal_aggregator
         
         # 4. Vérifier l'anti-spam (sauf pour signaux agrégés)
         elif not signal.strategy.startswith("Aggregated_"):
@@ -298,7 +296,7 @@ class SignalProcessor:
             'ETH': 0.003,
             'BNB': 0.02,
             'SOL': 0.10,   # Aligné avec MIN_TRADE_SOL dans .env
-            'XRP': 7.0,    # Aligné avec MIN_TRADE_XRP dans .env
+            'XRP': 10.0,   # Aligné avec MIN_TRADE_XRP dans .env
             'ADA': 20.0,
             'DOT': 1.0
         }
@@ -363,36 +361,43 @@ class SignalProcessor:
                 if signal_position == "BUY":
                     opposite_cycles.append(cycle)
                     
-        # S'il y a des positions opposées, évaluer le retournement
+        # S'il y a des positions opposées, gérer le retournement
         if opposite_cycles:
-            # Calculer la force du signal pour décider du retournement
-            signal_strength = self._calculate_signal_strength_score(signal)
-            
-            # Log pour debug
             import logging
             logger = logging.getLogger(__name__)
-            logger.info(f"🔍 Signal {signal.symbol} {signal.side}: strength={signal.strength}, confidence={getattr(signal, 'confidence', 'N/A')}, metadata={getattr(signal, 'metadata', {})}")
             
-            # Seuils adaptés selon le type de signal
-            threshold = 0.85  # Seuil par défaut
-            
-            if signal.metadata and signal.metadata.get("ultra_confluence"):
-                score = signal.metadata.get("total_score", 0)
-                if score >= 95:
-                    threshold = 0.75  # Plus permissif pour signaux institutionnels
-                elif score >= 85:
-                    threshold = 0.80  # Légèrement plus permissif pour excellents
-                    
-            if signal_strength >= threshold:
-                # Fermer les cycles opposés avant d'accepter le nouveau signal
+            # Pour les signaux agrégés, faire confiance au signal aggregator
+            if signal.strategy.startswith("Aggregated_"):
+                logger.info(f"🎯 Signal agrégé {signal.symbol} {signal.side}: acceptation automatique (pré-validé)")
                 try:
                     self._close_opposite_cycles(opposite_cycles, signal)
-                    return True, f"Retournement accepté (force: {signal_strength:.2f}) - positions opposées fermées"
+                    return True, "Retournement accepté (signal pré-validé par aggregator)"
                 except Exception as e:
                     logger.error(f"❌ Échec fermeture cycles opposés: {str(e)}")
                     return False, f"Retournement rejeté - impossible de fermer cycles opposés: {str(e)}"
+            
+            # Pour les signaux individuels, maintenir la validation de force
             else:
-                return False, f"Signal trop faible pour retournement (force: {signal_strength:.2f})"
+                signal_strength = self._calculate_signal_strength_score(signal)
+                logger.info(f"🔍 Signal individuel {signal.symbol} {signal.side}: strength={signal.strength}, confidence={getattr(signal, 'confidence', 'N/A')}")
+                
+                threshold = 0.85  # Seuil pour signaux individuels
+                if signal.metadata and signal.metadata.get("ultra_confluence"):
+                    score = signal.metadata.get("total_score", 0)
+                    if score >= 95:
+                        threshold = 0.75
+                    elif score >= 85:
+                        threshold = 0.80
+                        
+                if signal_strength >= threshold:
+                    try:
+                        self._close_opposite_cycles(opposite_cycles, signal)
+                        return True, f"Retournement accepté (force: {signal_strength:.2f}) - positions opposées fermées"
+                    except Exception as e:
+                        logger.error(f"❌ Échec fermeture cycles opposés: {str(e)}")
+                        return False, f"Retournement rejeté - impossible de fermer cycles opposés: {str(e)}"
+                else:
+                    return False, f"Signal trop faible pour retournement (force: {signal_strength:.2f})"
                 
         return True, "Pas de conflit de position"
         

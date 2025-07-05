@@ -491,6 +491,93 @@ class TechnicalIndicators:
                 
         return None, None, None
     
+    def calculate_adx_smoothed(self, highs: Union[List[float], np.ndarray, pd.Series],
+                             lows: Union[List[float], np.ndarray, pd.Series],
+                             closes: Union[List[float], np.ndarray, pd.Series],
+                             period: int = 14,
+                             smooth_period: int = 3) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+        """
+        Calcule ADX avec lissage EMA pour réduire la volatilité.
+        
+        Args:
+            highs: Prix hauts
+            lows: Prix bas
+            closes: Prix de clôture
+            period: Période pour ADX (défaut: 14)
+            smooth_period: Période de lissage EMA (défaut: 3)
+            
+        Returns:
+            Tuple (ADX lissé, DI+, DI-)
+        """
+        try:
+            # Importer la configuration
+            from shared.src.config import ADX_HYBRID_MODE, ADX_SMOOTHING_PERIOD
+            
+            # Calculer ADX standard
+            raw_adx, plus_di, minus_di = self.calculate_adx(highs, lows, closes, period)
+            
+            if not ADX_HYBRID_MODE or raw_adx is None:
+                return raw_adx, plus_di, minus_di
+            
+            # Convertir en numpy arrays pour le lissage
+            highs_array = np.array(highs, dtype=np.float64)
+            lows_array = np.array(lows, dtype=np.float64)
+            closes_array = np.array(closes, dtype=np.float64)
+            
+            # Besoin de plus de données pour le lissage
+            min_required = period + smooth_period + 5
+            if len(closes_array) < min_required:
+                return raw_adx, plus_di, minus_di
+                
+            # Calculer plusieurs valeurs ADX pour le lissage
+            adx_values = []
+            for i in range(smooth_period + 2):
+                end_idx = len(closes_array) - i
+                if end_idx >= period + 5:
+                    adx_val, _, _ = self.calculate_adx(
+                        highs_array[:end_idx], 
+                        lows_array[:end_idx], 
+                        closes_array[:end_idx], 
+                        period
+                    )
+                    if adx_val is not None:
+                        adx_values.append(adx_val)
+            
+            # Appliquer lissage EMA si on a assez de valeurs
+            if len(adx_values) >= smooth_period:
+                # Inverser pour avoir l'ordre chronologique
+                adx_values.reverse()
+                
+                # Calculer EMA avec TA-Lib si disponible
+                if self.talib_available:
+                    try:
+                        import talib
+                        smoothed_values = talib.EMA(np.array(adx_values), timeperiod=smooth_period)
+                        smoothed_adx = float(smoothed_values[-1]) if not np.isnan(smoothed_values[-1]) else raw_adx
+                        
+                        logger.debug(f"ADX lissé: {raw_adx:.2f} → {smoothed_adx:.2f} (EMA{smooth_period})")
+                        return smoothed_adx, plus_di, minus_di
+                    except Exception as e:
+                        logger.warning(f"Erreur lissage EMA TA-Lib: {e}")
+                
+                # Fallback: EMA manuel
+                alpha = 2.0 / (smooth_period + 1)
+                ema_value = adx_values[0]
+                
+                for value in adx_values[1:]:
+                    ema_value = alpha * value + (1 - alpha) * ema_value
+                
+                logger.debug(f"ADX lissé (manuel): {raw_adx:.2f} → {ema_value:.2f} (EMA{smooth_period})")
+                return round(ema_value, 2), plus_di, minus_di
+            
+            # Pas assez de données pour lisser
+            return raw_adx, plus_di, minus_di
+            
+        except Exception as e:
+            logger.error(f"Erreur calcul ADX lissé: {e}")
+            # Fallback sur ADX standard
+            return self.calculate_adx(highs, lows, closes, period)
+    
     # =================== STOCHASTIC ===================
     
     def calculate_stochastic(self, highs: Union[List[float], np.ndarray, pd.Series],
@@ -556,6 +643,139 @@ class TechnicalIndicators:
             return None
             
         return round(((current_price - past_price) / past_price) * 100, 4)
+    
+    # =================== SUPERTREND ===================
+    
+    def calculate_supertrend(self, highs: Union[List[float], np.ndarray, pd.Series],
+                           lows: Union[List[float], np.ndarray, pd.Series],
+                           closes: Union[List[float], np.ndarray, pd.Series],
+                           period: int = 7,
+                           multiplier: float = 3.0) -> Tuple[Optional[float], Optional[int]]:
+        """
+        Calcule l'indicateur Supertrend avec historique complet.
+        
+        Args:
+            highs: Prix hauts
+            lows: Prix bas
+            closes: Prix de clôture
+            period: Période pour l'ATR (défaut: 7)
+            multiplier: Multiplicateur pour les bandes (défaut: 3.0)
+            
+        Returns:
+            Tuple (supertrend_value, direction)
+            direction: 1 pour tendance haussière, -1 pour tendance baissière
+        """
+        try:
+            highs_array = self._to_numpy_array(highs)
+            lows_array = self._to_numpy_array(lows)
+            closes_array = self._to_numpy_array(closes)
+            
+            if len(closes_array) < period + 2:
+                return None, None
+            
+            # Calculer HL2 pour tout l'historique
+            hl2 = (highs_array + lows_array) / 2
+            
+            # Calculer ATR pour chaque point
+            atr_series = []
+            for i in range(period, len(closes_array)):
+                atr = self.calculate_atr(
+                    highs_array[i-period+1:i+1], 
+                    lows_array[i-period+1:i+1], 
+                    closes_array[i-period+1:i+1], 
+                    period
+                )
+                atr_series.append(atr if atr is not None else 0)
+            
+            if len(atr_series) < 2:
+                return None, None
+            
+            # Calculer les bandes supérieures et inférieures
+            upper_bands = []
+            lower_bands = []
+            supertrend_values = []
+            directions = []
+            
+            for i, atr in enumerate(atr_series):
+                current_idx = period + i
+                current_hl2 = hl2[current_idx]
+                current_close = closes_array[current_idx]
+                
+                # Bandes de base
+                basic_upper = current_hl2 + (multiplier * atr)
+                basic_lower = current_hl2 - (multiplier * atr)
+                
+                # Bandes ajustées (règles Supertrend)
+                if i == 0:
+                    # Premier calcul
+                    final_upper = basic_upper
+                    final_lower = basic_lower
+                else:
+                    # Ajustement des bandes basé sur l'historique
+                    prev_close = closes_array[current_idx - 1]
+                    prev_final_upper = upper_bands[-1]
+                    prev_final_lower = lower_bands[-1]
+                    
+                    # Règle upper band: ne pas descendre si prix était dessous
+                    if basic_upper < prev_final_upper or prev_close > prev_final_upper:
+                        final_upper = basic_upper
+                    else:
+                        final_upper = prev_final_upper
+                    
+                    # Règle lower band: ne pas monter si prix était dessus  
+                    if basic_lower > prev_final_lower or prev_close < prev_final_lower:
+                        final_lower = basic_lower
+                    else:
+                        final_lower = prev_final_lower
+                
+                upper_bands.append(final_upper)
+                lower_bands.append(final_lower)
+                
+                # Déterminer Supertrend et direction
+                if i == 0:
+                    # Premier calcul - basé sur position prix vs bandes
+                    if current_close <= final_lower:
+                        supertrend = final_upper
+                        direction = -1
+                    else:
+                        supertrend = final_lower
+                        direction = 1
+                else:
+                    # Calcul basé sur direction précédente et règles de changement
+                    prev_direction = directions[-1]
+                    prev_supertrend = supertrend_values[-1]
+                    
+                    if prev_direction == 1:  # Était en tendance haussière
+                        if current_close <= final_lower:
+                            # Changement vers tendance baissière
+                            supertrend = final_upper
+                            direction = -1
+                        else:
+                            # Continue en tendance haussière
+                            supertrend = final_lower
+                            direction = 1
+                    else:  # Était en tendance baissière (-1)
+                        if current_close >= final_upper:
+                            # Changement vers tendance haussière
+                            supertrend = final_lower
+                            direction = 1
+                        else:
+                            # Continue en tendance baissière
+                            supertrend = final_upper
+                            direction = -1
+                
+                supertrend_values.append(supertrend)
+                directions.append(direction)
+            
+            # Retourner la dernière valeur calculée
+            if supertrend_values and directions:
+                return round(supertrend_values[-1], 4), directions[-1]
+            else:
+                return None, None
+                
+        except Exception as e:
+            logger.error(f"Erreur calcul Supertrend: {e}")
+            return None, None
     
     # =================== OBV ===================
     
@@ -625,7 +845,7 @@ class TechnicalIndicators:
             indicators['atr_14'] = self.calculate_atr(highs, lows, closes, 14)
             
             # ADX et Directional Indicators
-            adx, plus_di, minus_di = self.calculate_adx(highs, lows, closes, 14)
+            adx, plus_di, minus_di = self.calculate_adx_smoothed(highs, lows, closes, 14)
             if adx is not None:
                 indicators['adx_14'] = adx
                 indicators['plus_di'] = plus_di

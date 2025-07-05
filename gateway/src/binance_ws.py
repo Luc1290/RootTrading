@@ -826,6 +826,9 @@ class BinanceWebSocket:
                                 else:
                                     clean_data[k] = v
                             
+                            # Log des clés pour débogage
+                            logger.debug(f"Données envoyées à Kafka - Clés: {list(clean_data.keys())}")
+
                             # Publier avec la nouvelle méthode
                             self.kafka_client.publish_to_topic(
                                 topic=topic,

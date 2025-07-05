@@ -233,8 +233,8 @@ class UltraDataFetcher:
                 # Stochastic RSI (pas dans le module partagé)
                 enriched_data['stoch_rsi'] = self._calculate_stoch_rsi(prices, 14)
                 
-                # ADX (sera ajouté au module partagé plus tard)
-                enriched_data['adx_14'] = self._calculate_adx(highs, lows, prices, 14)
+                # ADX déjà calculé par calculate_all_indicators avec plus_di/minus_di
+                # Pas besoin de recalculer individuellement
                 
                 # Williams %R
                 enriched_data['williams_r'] = self._calculate_williams_r(highs, lows, prices, 14)

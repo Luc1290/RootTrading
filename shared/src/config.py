@@ -102,6 +102,21 @@ STRATEGY_PARAMS = {
     }
 }
 
+# ADX Hybrid Configuration
+ADX_SMOOTHING_PERIOD = int(os.getenv("ADX_SMOOTHING_PERIOD", 3))
+ADX_HYBRID_MODE = os.getenv("ADX_HYBRID_MODE", "true").lower() == "true"
+
+# Regime Detection Thresholds (Optimized for crypto volatility)
+ADX_NO_TREND_THRESHOLD = float(os.getenv("ADX_NO_TREND_THRESHOLD", 18))
+ADX_WEAK_TREND_THRESHOLD = float(os.getenv("ADX_WEAK_TREND_THRESHOLD", 23))
+ADX_TREND_THRESHOLD = float(os.getenv("ADX_TREND_THRESHOLD", 32))
+ADX_STRONG_TREND_THRESHOLD = float(os.getenv("ADX_STRONG_TREND_THRESHOLD", 42))
+
+# Signal Aggregator Hybrid Settings
+SIGNAL_COOLDOWN_MINUTES = int(os.getenv("SIGNAL_COOLDOWN_MINUTES", 3))
+VOTE_THRESHOLD = float(os.getenv("VOTE_THRESHOLD", 0.35))
+CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", 0.60))
+
 # Configuration des canaux Redis
 CHANNEL_PREFIX = os.getenv("CHANNEL_PREFIX", "roottrading")
 

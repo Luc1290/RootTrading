@@ -102,10 +102,14 @@ class VectorizedIndicators:
             timeperiod=14, high=high[-14:], low=low[-14:]
         )
         
-        # Supertrend - skip for now as it needs specialized implementation
-        # TODO: Add supertrend to shared technical_indicators if needed
-        indicators['supertrend'] = np.full(len(close), np.nan)
-        indicators['supertrend_direction'] = np.full(len(close), 0)
+        # Supertrend - maintenant implémenté dans shared technical_indicators
+        supertrend_value, supertrend_direction = self.tech_indicators.calculate_supertrend(high, low, close, 7, 3.0)
+        if supertrend_value is not None:
+            indicators['supertrend'] = self._safe_indicator_array(supertrend_value, len(close))
+            indicators['supertrend_direction'] = np.full(len(close), supertrend_direction)
+        else:
+            indicators['supertrend'] = np.full(len(close), np.nan)
+            indicators['supertrend_direction'] = np.full(len(close), 0)
         
         # Statistiques de performance
         elapsed = (pd.Timestamp.now() - start_time).total_seconds()

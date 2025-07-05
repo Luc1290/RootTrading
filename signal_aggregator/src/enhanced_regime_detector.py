@@ -34,11 +34,13 @@ class EnhancedRegimeDetector:
         self.db_manager = DatabaseManager()
         self.db_initialized = False
         
-        # ADX thresholds (plus nuancés)
-        self.adx_no_trend = 20
-        self.adx_weak_trend = 25
-        self.adx_trend = 35
-        self.adx_strong_trend = 45
+        # ADX thresholds (Hybrid optimized for crypto volatility)
+        from shared.src.config import (ADX_NO_TREND_THRESHOLD, ADX_WEAK_TREND_THRESHOLD, 
+                                     ADX_TREND_THRESHOLD, ADX_STRONG_TREND_THRESHOLD)
+        self.adx_no_trend = ADX_NO_TREND_THRESHOLD
+        self.adx_weak_trend = ADX_WEAK_TREND_THRESHOLD  
+        self.adx_trend = ADX_TREND_THRESHOLD
+        self.adx_strong_trend = ADX_STRONG_TREND_THRESHOLD
         
         # Volatility thresholds
         self.bb_squeeze_tight = 0.015  # Très serré
@@ -204,7 +206,7 @@ class EnhancedRegimeDetector:
                     close_prices = [c['close'] for c in candles[-required_length:]]
                     high_prices = [c['high'] for c in candles[-required_length:]]
                     low_prices = [c['low'] for c in candles[-required_length:]]
-                    current_adx, _, _ = self.indicators.calculate_adx(high_prices, low_prices, close_prices, 14)
+                    current_adx, _, _ = self.indicators.calculate_adx_smoothed(high_prices, low_prices, close_prices, 14)
                 
                 if current_adx is None:
                     current_adx = 20  # Valeur par défaut
@@ -374,8 +376,8 @@ class EnhancedRegimeDetector:
             closes = df['close'].values.tolist()
             volumes = df['volume'].values.tolist()
             
-            # 1. ADX pour la force de tendance
-            current_adx, plus_di, minus_di = self.indicators.calculate_adx(highs, lows, closes, 14)
+            # 1. ADX pour la force de tendance (avec lissage)
+            current_adx, plus_di, minus_di = self.indicators.calculate_adx_smoothed(highs, lows, closes, 14)
             
             # Vérifier si les valeurs sont valides
             if current_adx is None or plus_di is None or minus_di is None:
@@ -784,10 +786,10 @@ class EnhancedRegimeDetector:
             closes = [c['close'] for c in candles]
             volumes = [c['volume'] for c in candles]
             
-            # ADX et DI (pas encore dans la DB)
-            current_adx, plus_di, minus_di = self.indicators.calculate_adx(highs, lows, closes, 14)
+            # ADX et DI (avec lissage - maintenant sauvegardé en DB)
+            current_adx, plus_di, minus_di = self.indicators.calculate_adx_smoothed(highs, lows, closes, 14)
             
-            # ROC (pas encore dans la DB)
+            # ROC (maintenant sauvegardé en DB)
             current_roc = self.indicators.calculate_roc(closes, 10)
             if current_roc is None:
                 current_roc = 0.0
@@ -858,8 +860,8 @@ class EnhancedRegimeDetector:
             closes = df['close'].values.tolist()
             volumes = df['volume'].values.tolist()
             
-            # Calculs complets avec le module partagé (ancienne logique)
-            current_adx, plus_di, minus_di = self.indicators.calculate_adx(highs, lows, closes, 14)
+            # Calculs complets avec le module partagé (avec lissage ADX)
+            current_adx, plus_di, minus_di = self.indicators.calculate_adx_smoothed(highs, lows, closes, 14)
             
             if current_adx is None or plus_di is None or minus_di is None:
                 logger.warning(f"ADX/DI non valides fallback")

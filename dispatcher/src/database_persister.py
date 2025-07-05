@@ -119,7 +119,22 @@ class DatabasePersister:
                 if bb_field in message and message[bb_field] is not None:
                     market_data[bb_field] = float(message[bb_field])
             
-            # Autres indicateurs
+            # ADX et indicateurs directionnels
+            for adx_field in ['adx_14', 'plus_di', 'minus_di']:
+                if adx_field in message and message[adx_field] is not None:
+                    market_data[adx_field] = float(message[adx_field])
+            
+            # Stochastic
+            for stoch_field in ['stoch_k', 'stoch_d', 'stoch_rsi']:
+                if stoch_field in message and message[stoch_field] is not None:
+                    market_data[stoch_field] = float(message[stoch_field])
+            
+            # Autres indicateurs avancés
+            for indicator in ['williams_r', 'cci_20', 'mfi_14', 'vwap_10', 'roc_10', 'roc_20', 'obv', 'trend_angle', 'pivot_count']:
+                if indicator in message and message[indicator] is not None:
+                    market_data[indicator] = float(message[indicator])
+            
+            # Indicateurs de base
             for indicator in ['atr_14', 'momentum_10', 'volume_ratio', 'avg_volume_20']:
                 if indicator in message and message[indicator] is not None:
                     market_data[indicator] = float(message[indicator])

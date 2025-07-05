@@ -97,15 +97,18 @@ class SignalAggregator:
         # Signal buffer for aggregation
         self.signal_buffer = defaultdict(list)
         self.last_signal_time = {}
-        self.cooldown_period = timedelta(minutes=5)  # SWING CRYPTO: cooldown plus long
+        # Hybrid approach: load thresholds from config
+        from shared.src.config import (SIGNAL_COOLDOWN_MINUTES, VOTE_THRESHOLD, 
+                                     CONFIDENCE_THRESHOLD)
+        self.cooldown_period = timedelta(minutes=SIGNAL_COOLDOWN_MINUTES)
         
-        # Voting thresholds adaptatifs - SWING CRYPTO OPTIMIZED (sélectif)
-        self.min_vote_threshold = 0.40  # Plus sélectif pour swing (était 0.25)
-        self.min_confidence_threshold = 0.65  # Plus sélectif pour swing (était 0.45)
+        # Voting thresholds adaptatifs - HYBRID OPTIMIZED (plus réactif)
+        self.min_vote_threshold = VOTE_THRESHOLD
+        self.min_confidence_threshold = CONFIDENCE_THRESHOLD
         
-        # Seuils spéciaux pour RANGE_TIGHT - SWING CRYPTO (très sélectif)
-        self.range_tight_vote_threshold = 0.35  # Plus sélectif swing (était 0.20)
-        self.range_tight_confidence_threshold = 0.60  # Plus sélectif swing (était 0.40)
+        # Seuils spéciaux pour RANGE_TIGHT - HYBRID (plus permissif)
+        self.range_tight_vote_threshold = max(0.30, VOTE_THRESHOLD - 0.05)
+        self.range_tight_confidence_threshold = max(0.55, CONFIDENCE_THRESHOLD - 0.05)
         
         # Monitoring stats
         try:
@@ -1042,7 +1045,7 @@ class SignalAggregator:
     
     def _validate_obv_trend(self, technical_context: Dict[str, Any], side: str) -> Optional[bool]:
         """
-        Valide si l'OBV confirme le côté du signal
+        Valide si l'OBV confirme le côté du signal avec analyse de tendance historique
         
         Args:
             technical_context: Contexte technique
@@ -1056,17 +1059,98 @@ class SignalAggregator:
             if obv_current is None:
                 return None
             
-            # Pour une validation complète, il faudrait l'historique OBV
-            # Ici on fait une validation basique sur la valeur absolue
-            # TODO: Améliorer avec historique OBV pour détecter la tendance
+            # Essayer de récupérer l'historique OBV récent
+            symbol = technical_context.get('symbol', 'UNKNOWN')
             
-            # Validation simplifiée: OBV élevé = volume d'achat, OBV faible = volume de vente
-            # Cette validation est approximative sans l'historique
-            return True  # Pour l'instant, toujours valide
+            try:
+                # Récupérer les dernières données depuis Redis pour calculer la tendance OBV
+                import json
+                recent_key = f"market_data:{symbol}:recent"
+                recent_data = self.redis_client.lrange(recent_key, 0, 9)  # 10 dernières valeurs
+                
+                if len(recent_data) >= 3:  # Besoin d'au moins 3 points pour une tendance
+                    obv_history = []
+                    
+                    for data_str in recent_data:
+                        try:
+                            data = json.loads(data_str)
+                            if 'obv' in data and data['obv'] is not None:
+                                obv_history.append(float(data['obv']))
+                        except (json.JSONDecodeError, KeyError, ValueError):
+                            continue
+                    
+                    # Ajouter l'OBV actuel
+                    obv_history.append(float(obv_current))
+                    
+                    if len(obv_history) >= 3:
+                        # Calculer la tendance OBV sur les derniers points
+                        recent_slope = self._calculate_obv_slope(obv_history[-3:])
+                        overall_slope = self._calculate_obv_slope(obv_history)
+                        
+                        # Validation basée sur la tendance OBV
+                        if side == 'BUY':
+                            # Pour BUY: OBV doit être en tendance haussière (volume d'achat croissant)
+                            obv_confirms = recent_slope > 0 or (overall_slope > 0 and recent_slope >= -0.1)
+                            logger.debug(f"📈 OBV validation BUY {symbol}: recent_slope={recent_slope:.2f}, overall_slope={overall_slope:.2f} → {obv_confirms}")
+                            return obv_confirms
+                        else:  # SELL
+                            # Pour SELL: OBV doit être en tendance baissière (volume de vente croissant) 
+                            obv_confirms = recent_slope < 0 or (overall_slope < 0 and recent_slope <= 0.1)
+                            logger.debug(f"📉 OBV validation SELL {symbol}: recent_slope={recent_slope:.2f}, overall_slope={overall_slope:.2f} → {obv_confirms}")
+                            return obv_confirms
+                            
+            except Exception as redis_error:
+                logger.warning(f"Impossible de récupérer l'historique OBV pour {symbol}: {redis_error}")
+            
+            # Fallback: validation simplifiée si pas d'historique disponible
+            # Comparer l'OBV actuel avec une valeur de référence basique
+            volume_ratio = technical_context.get('volume_ratio', 1.0)
+            
+            if side == 'BUY':
+                # BUY: favorable si volume ratio élevé (indique plus d'activité d'achat)
+                return volume_ratio >= 1.0
+            else:  # SELL  
+                # SELL: on accepte même avec volume normal (vente peut se faire avec moins de volume)
+                return volume_ratio >= 0.7
             
         except Exception as e:
             logger.error(f"Erreur validation OBV: {e}")
             return None
+    
+    def _calculate_obv_slope(self, obv_values: List[float]) -> float:
+        """
+        Calcule la pente de la tendance OBV
+        
+        Args:
+            obv_values: Liste des valeurs OBV chronologiques
+            
+        Returns:
+            Pente (positive = tendance haussière, négative = tendance baissière)
+        """
+        try:
+            if len(obv_values) < 2:
+                return 0.0
+                
+            # Calcul simple de la pente moyenne
+            n = len(obv_values)
+            x_values = list(range(n))
+            
+            # Régression linéaire simple: slope = Σ((x-x̄)(y-ȳ)) / Σ((x-x̄)²)
+            x_mean = sum(x_values) / n
+            y_mean = sum(obv_values) / n
+            
+            numerator = sum((x - x_mean) * (y - y_mean) for x, y in zip(x_values, obv_values))
+            denominator = sum((x - x_mean) ** 2 for x in x_values)
+            
+            if denominator == 0:
+                return 0.0
+                
+            slope = numerator / denominator
+            return slope
+            
+        except Exception as e:
+            logger.error(f"Erreur calcul pente OBV: {e}")
+            return 0.0
     
     def _check_roc_acceleration(self, technical_context: Dict[str, Any], side: str) -> bool:
         """
@@ -1649,9 +1733,34 @@ class EnhancedSignalAggregator(SignalAggregator):
             
             # Adapter les périodes de debounce selon l'intervalle
             # Pour 15m: 3 bougies = 45 min entre signaux même côté
-            # Pour 1m: 3 bougies = 3 min entre signaux même côté
-            debounce_same = self.debounce_periods['same_side']
-            debounce_opposite = self.debounce_periods['opposite_side']
+            # Debounce adaptatif basé sur l'ADX (Hybrid approach)
+            current_adx = await self._get_current_adx(symbol)
+            base_same = self.debounce_periods['same_side']
+            base_opposite = self.debounce_periods['opposite_side']
+            
+            # Calculer multiplicateur ADX pour debounce adaptatif
+            if current_adx is not None:
+                if current_adx >= 42:  # Tendance très forte
+                    adx_multiplier = 0.5  # Debounce réduit de moitié
+                    trend_strength = "très forte"
+                elif current_adx >= 32:  # Tendance forte
+                    adx_multiplier = 0.7  # Debounce réduit
+                    trend_strength = "forte" 
+                elif current_adx >= 23:  # Tendance modérée
+                    adx_multiplier = 1.0  # Debounce normal
+                    trend_strength = "modérée"
+                else:  # Range/tendance faible
+                    adx_multiplier = 1.8  # Debounce augmenté
+                    trend_strength = "faible/range"
+            else:
+                adx_multiplier = 1.0  # Fallback si ADX non disponible
+                trend_strength = "inconnue"
+            
+            # Appliquer multiplicateur
+            debounce_same = int(base_same * adx_multiplier)
+            debounce_opposite = int(base_opposite * adx_multiplier)
+            
+            logger.debug(f"📊 Debounce adaptatif {symbol}: ADX={current_adx:.1f} (tendance {trend_strength}) → même={debounce_same}, opposé={debounce_opposite} bougies")
             
             # Déterminer le dernier signal du même côté et du côté opposé
             if side == 'BUY':
