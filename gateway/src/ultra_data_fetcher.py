@@ -79,9 +79,9 @@ class UltraDataFetcher:
                     await self._fetch_ticker_data(symbol)
                     await self._respect_rate_limit()
                 
-                # Cycle complet toutes les 2 minutes (données très riches)
-                logger.info("✅ Cycle ultra-enrichi terminé, pause 120s")
-                await asyncio.sleep(120)
+                # Cycle complet toutes les 60 secondes (aligné avec bougies 1min)
+                logger.info("✅ Cycle ultra-enrichi terminé, pause 60s")
+                await asyncio.sleep(60)
                 
             except Exception as e:
                 logger.error(f"❌ Erreur dans la boucle ultra-enrichie: {e}")
@@ -137,8 +137,16 @@ class UltraDataFetcher:
         Calcule TOUS les indicateurs nécessaires pour UltraConfluence.
         """
         try:
-            # Récupérer suffisamment de klines pour tous les calculs (100 bougies)
-            klines = await self._fetch_klines(symbol, timeframe, limit=100)
+            # Récupérer suffisamment de klines avec limite adaptée au timeframe
+            timeframe_limits = {
+                '1m': 300,    # 5 heures (pour SMA 50 précis)
+                '5m': 400,    # 33 heures (pour EMA 50)
+                '15m': 200,   # 50 heures 
+                '1h': 150,    # 150 heures
+                '4h': 100     # 400 heures
+            }
+            limit = timeframe_limits.get(timeframe, 100)
+            klines = await self._fetch_klines(symbol, timeframe, limit=limit)
             
             if not klines:
                 logger.warning(f"Aucune kline pour {symbol} {timeframe}")

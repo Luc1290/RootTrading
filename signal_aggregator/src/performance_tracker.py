@@ -37,7 +37,9 @@ class PerformanceTracker:
             weight = await self._calculate_strategy_weight(strategy)
             
             # Cache for 5 minutes
+            # Sauvegarder de façon permanente + cache court terme
             self.redis.set(cache_key, str(weight), expiration=300)
+            self.redis.set(f"permanent:{cache_key}", str(weight))  # Sauvegarde permanente
             
             return weight
             
@@ -181,7 +183,9 @@ class PerformanceTracker:
                 
                 # Store in Redis
                 cache_key = f"strategy_weight:{strategy}"
-                self.redis.set(cache_key, str(weight), expiration=300)
+                # Sauvegarder de façon permanente + cache court terme
+            self.redis.set(cache_key, str(weight), expiration=300)
+            self.redis.set(f"permanent:{cache_key}", str(weight))  # Sauvegarde permanente
                 
             logger.info(f"Updated metrics for {len(strategies)} strategies")
             

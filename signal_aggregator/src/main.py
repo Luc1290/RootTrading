@@ -7,6 +7,7 @@ import json
 import time
 from typing import Dict, List, Optional
 from datetime import datetime, timezone
+from aiohttp import web # Import aiohttp
 
 # Ajouter le chemin vers les modules partagés et src
 sys.path.insert(0, '/app')
@@ -24,7 +25,8 @@ def get_config():
     return {
         'KAFKA_BROKER': os.getenv('KAFKA_BROKER', 'kafka:9092'),
         'REDIS_HOST': os.getenv('REDIS_HOST', 'redis'),
-        'REDIS_PORT': int(os.getenv('REDIS_PORT', 6379))
+        'REDIS_PORT': int(os.getenv('REDIS_PORT', 6379)),
+        'HEALTH_CHECK_PORT': int(os.getenv('SIGNAL_AGGREGATOR_PORT', 5013)) # Health check port
     }
 
 logging.basicConfig(
@@ -70,11 +72,12 @@ class SignalAggregatorService:
             logger.info("✅ Utilisation d'Enhanced Regime Detector comme détecteur principal")
                 
             self.performance_tracker = PerformanceTracker(self.redis)
-            # Utiliser la version améliorée avec filtres intelligents
+            # Utiliser la version améliorée avec filtres intelligents et DB
             self.aggregator = EnhancedSignalAggregator(
                 self.redis,
                 self.regime_detector,
-                self.performance_tracker
+                self.performance_tracker,
+                db_pool=self.db_manager._connection_pool
             )
             
             # Charger les données historiques pour initialiser l'accumulateur
@@ -244,9 +247,58 @@ class SignalAggregatorService:
             await self.db_manager.close()
 
 
+async def health_check(request):
+    return web.Response(text="Signal Aggregator is healthy")
+
+async def performance_summary(request):
+    """Endpoint pour récupérer le résumé des performances bayésiennes et seuils dynamiques"""
+    try:
+        service = request.app.get('service')
+        if service and hasattr(service, 'aggregator'):
+            summary = service.aggregator.get_performance_summary()
+            return web.json_response(summary)
+        else:
+            return web.json_response({'error': 'Service not available'}, status=503)
+    except Exception as e:
+        return web.json_response({'error': str(e)}, status=500)
+
+async def update_performance(request):
+    """Endpoint pour mettre à jour les performances d'une stratégie"""
+    try:
+        data = await request.json()
+        service = request.app.get('service')
+        
+        if not service or not hasattr(service, 'aggregator'):
+            return web.json_response({'error': 'Service not available'}, status=503)
+        
+        strategy = data.get('strategy')
+        is_win = data.get('is_win')
+        return_pct = data.get('return_pct', 0.0)
+        
+        if not strategy or is_win is None:
+            return web.json_response({'error': 'Missing required fields: strategy, is_win'}, status=400)
+        
+        service.aggregator.update_strategy_performance(strategy, is_win, return_pct)
+        return web.json_response({'status': 'updated', 'strategy': strategy})
+        
+    except Exception as e:
+        return web.json_response({'error': str(e)}, status=500)
+
 async def main():
     service = SignalAggregatorService()
     
+    # Setup aiohttp for health checks et API
+    app = web.Application()
+    app['service'] = service  # Stocker la référence du service
+    app.router.add_get('/health', health_check)
+    app.router.add_get('/performance', performance_summary)
+    app.router.add_post('/performance/update', update_performance)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', service.config['HEALTH_CHECK_PORT'])
+    await site.start()
+    logger.info(f"Health check server started on port {service.config['HEALTH_CHECK_PORT']}")
+
     try:
         await service.start()
     except KeyboardInterrupt:
@@ -255,6 +307,7 @@ async def main():
         logger.error(f"Service error: {e}")
     finally:
         await service.stop()
+        await runner.cleanup()
 
 
 if __name__ == "__main__":

@@ -112,6 +112,47 @@ class SignalAggregator:
             from monitoring_stats import SignalMonitoringStats
             self.monitoring_stats = SignalMonitoringStats(redis_client)
         
+        # Bayesian strategy weights avec DB
+        try:
+            from .bayesian_weights import BayesianStrategyWeights
+            # Utiliser le db_pool passé au constructeur
+            db_pool = getattr(self, 'db_pool', None)
+            self.bayesian_weights = BayesianStrategyWeights(redis_client, db_pool)
+            if db_pool:
+                logger.info("✅ Pondération bayésienne avec sauvegarde PostgreSQL activée")
+            else:
+                logger.info("✅ Pondération bayésienne avec cache Redis activée")
+        except ImportError:
+            import sys
+            import os
+            sys.path.append(os.path.dirname(__file__))
+            from bayesian_weights import BayesianStrategyWeights
+            db_pool = getattr(self, 'db_pool', None)
+            self.bayesian_weights = BayesianStrategyWeights(redis_client, db_pool)
+            if db_pool:
+                logger.info("✅ Pondération bayésienne avec sauvegarde PostgreSQL activée")
+            else:
+                logger.info("✅ Pondération bayésienne avec cache Redis activée")
+        
+        # Dynamic thresholds
+        try:
+            from .dynamic_thresholds import DynamicThresholdManager
+            self.dynamic_thresholds = DynamicThresholdManager(
+                redis_client,
+                target_signal_rate=0.08  # 8% des signaux devraient passer (sélectif)
+            )
+            logger.info("✅ Seuils dynamiques adaptatifs activés")
+        except ImportError:
+            import sys
+            import os
+            sys.path.append(os.path.dirname(__file__))
+            from dynamic_thresholds import DynamicThresholdManager
+            self.dynamic_thresholds = DynamicThresholdManager(
+                redis_client,
+                target_signal_rate=0.08
+            )
+            logger.info("✅ Seuils dynamiques adaptatifs activés")
+        
     async def _update_market_data_history(self, symbol: str) -> None:
         """Met à jour l'historique des données de marché pour un symbole"""
         try:
@@ -647,8 +688,11 @@ class SignalAggregator:
             # Get regime-specific weight
             regime_weight = regime_weights.get(strategy, 1.0)
             
-            # Combined weight (performance * regime adaptation)
-            combined_weight = performance_weight * regime_weight
+            # NOUVEAU: Pondération bayésienne des stratégies
+            bayesian_weight = self.bayesian_weights.get_bayesian_weight(strategy)
+            
+            # Combined weight (performance * regime * bayesian)
+            combined_weight = performance_weight * regime_weight * bayesian_weight
             
             # Apply adaptive confidence threshold based on regime
             confidence = signal.get('confidence', 0.5)
@@ -658,6 +702,10 @@ class SignalAggregator:
             if hasattr(regime, 'name') and regime.name == 'RANGE_TIGHT':
                 confidence_threshold = self.range_tight_confidence_threshold
                 logger.debug(f"📊 Seuil RANGE_TIGHT adaptatif: {confidence_threshold} pour {strategy}")
+            
+            # NOUVEAU: Appliquer les seuils dynamiques
+            dynamic_thresholds = self.dynamic_thresholds.get_current_thresholds()
+            confidence_threshold = max(confidence_threshold, dynamic_thresholds['confidence_threshold'])
             
             if confidence < confidence_threshold:
                 logger.debug(f"Signal {strategy} rejeté: confiance {confidence:.2f} < {confidence_threshold:.2f}")
@@ -735,13 +783,18 @@ class SignalAggregator:
         BUY_score = sum(s['score'] for s in BUY_signals)
         SELL_score = sum(s['score'] for s in SELL_signals)
 
-        # Enhanced decision logic based on regime
+        # Enhanced decision logic based on regime avec seuils dynamiques
         min_threshold = self._get_regime_threshold(regime)
         
         # Adapter le seuil de vote pour RANGE_TIGHT
         if hasattr(regime, 'name') and regime.name == 'RANGE_TIGHT':
             min_threshold = self.range_tight_vote_threshold
             logger.debug(f"📊 Seuil de vote RANGE_TIGHT adaptatif: {min_threshold}")
+        
+        # NOUVEAU: Appliquer les seuils dynamiques
+        dynamic_thresholds = self.dynamic_thresholds.get_current_thresholds()
+        min_threshold = max(min_threshold, dynamic_thresholds['vote_threshold'])
+        logger.debug(f"🎯 Seuil vote dynamique appliqué: {min_threshold}")
         
         # Determine side
         if BUY_score > SELL_score and BUY_score >= min_threshold:
@@ -836,6 +889,12 @@ class SignalAggregator:
             # Force acceptée malgré les règles strictes du régime
             logger.info(f"🚀 Override 'moderate' appliqué: {len(contributing_strategies)} stratégies "
                        f"en {regime.name} pour {symbol}")
+        
+        # NOUVEAU: Validation finale avec seuils dynamiques
+        vote_weight = max(BUY_score, SELL_score)
+        if not self.dynamic_thresholds.should_accept_signal(confidence, vote_weight):
+            logger.info(f"Signal {side} {symbol} rejeté par seuils dynamiques - confiance: {confidence:.3f}, vote: {vote_weight:.3f}")
+            return None
         
         # NOUVEAU: Vérifier le debounce pour éviter les signaux groupés
         if not await self._check_signal_debounce(symbol, side):
@@ -1615,8 +1674,9 @@ class SignalAggregator:
 class EnhancedSignalAggregator(SignalAggregator):
     """Version améliorée avec plus de filtres et validations"""
     
-    def __init__(self, redis_client, regime_detector, performance_tracker):
+    def __init__(self, redis_client, regime_detector, performance_tracker, db_pool=None):
         super().__init__(redis_client, regime_detector, performance_tracker)
+        self.db_pool = db_pool  # Stocker le db_pool pour les modules bayésiens
         
         # Vérifier si les modules améliorés sont disponibles
         if not EnhancedRegimeDetector:
@@ -1686,6 +1746,28 @@ class EnhancedSignalAggregator(SignalAggregator):
         
         return correlation_score
     
+    def update_strategy_performance(self, strategy: str, is_win: bool, return_pct: float = 0.0):
+        """
+        Met à jour les performances bayésiennes d'une stratégie
+        À appeler quand un trade se termine
+        """
+        try:
+            self.bayesian_weights.update_performance(strategy, is_win, return_pct)
+            logger.info(f"📈 Performance mise à jour pour {strategy}: {'WIN' if is_win else 'LOSS'} ({return_pct:+.2%})")
+        except Exception as e:
+            logger.error(f"Erreur mise à jour performance {strategy}: {e}")
+    
+    def get_performance_summary(self) -> Dict:
+        """Retourne un résumé des performances et seuils"""
+        try:
+            return {
+                'bayesian_weights': self.bayesian_weights.get_performance_summary(),
+                'dynamic_thresholds': self.dynamic_thresholds.get_statistics()
+            }
+        except Exception as e:
+            logger.error(f"Erreur récupération résumé performances: {e}")
+            return {}
+
     async def _check_signal_debounce(self, symbol: str, side: str, interval: str = None) -> bool:
         """
         Vérifie si un signal respecte le délai de debounce pour éviter les signaux groupés

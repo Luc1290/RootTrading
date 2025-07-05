@@ -46,17 +46,17 @@ def get_db_config() -> Dict[str, Any]:
 
 # Paramètres de trading
 DEFAULT_SYMBOL = os.getenv("SYMBOL", "SOLUSDC")
-SYMBOLS = os.getenv("SYMBOLS", "SOLUSDC,XRPUSDC").split(",")
+SYMBOLS = os.getenv("SYMBOLS", "BTCUSDC,ETHUSDC,SOLUSDC,XRPUSDC,ADAUSDC").split(",")
 INTERVAL = os.getenv("INTERVAL", "1m")
-VALIDATION_INTERVAL = os.getenv("VALIDATION_INTERVAL", "5m")  # Changé pour scalping
-SCALPING_INTERVALS = os.getenv("SCALPING_INTERVALS", "1m,3m,5m").split(",")  # Multi-timeframes
+VALIDATION_INTERVAL = os.getenv("VALIDATION_INTERVAL", "5m")
+SCALPING_INTERVALS = os.getenv("SCALPING_INTERVALS", "1m,5m,15m,1h,4h").split(",")
 TRADING_MODE = os.getenv("TRADING_MODE", "demo")  # 'demo' ou 'live'
 
-# Quantités individuelles par symbole (doivent correspondre aux SYMBOLS)
-TRADE_QUANTITY_SOLUSDC = float(os.getenv("TRADE_QUANTITY_SOLUSDC", 0.17))  # ~25$ par trade
-TRADE_QUANTITY_XRPUSDC = float(os.getenv("TRADE_QUANTITY_XRPUSDC", 11.0))   # ~24$ par trade
-TRADE_QUANTITY_SOL = float(os.getenv("TRADE_QUANTITY_SOL", 0.17))   # Pour compatibilité
-TRADE_QUANTITY_XRP = float(os.getenv("TRADE_QUANTITY_XRP", 11.0))   # Pour compatibilité
+# Quantités individuelles par symbole
+TRADE_QUANTITY_SOLUSDC = float(os.getenv("TRADE_QUANTITY_SOLUSDC", 0.17))
+TRADE_QUANTITY_XRPUSDC = float(os.getenv("TRADE_QUANTITY_XRPUSDC", 11.0))
+TRADE_QUANTITY_SOL = float(os.getenv("TRADE_QUANTITY_SOL", 0.17))
+TRADE_QUANTITY_XRP = float(os.getenv("TRADE_QUANTITY_XRP", 11.0))
 
 # Dictionnaire centralisé
 TRADE_QUANTITIES = {
@@ -66,7 +66,7 @@ TRADE_QUANTITIES = {
     "XRP": TRADE_QUANTITY_XRP,    
 }
 
-# Valeur par défaut utilisée par compatibilité
+# Valeur par défaut
 TRADE_QUANTITY = TRADE_QUANTITIES.get(DEFAULT_SYMBOL, TRADE_QUANTITY_SOLUSDC)
 
 
@@ -84,15 +84,6 @@ STRATEGY_PARAMS = {
     "bollinger": {
         "window": int(os.getenv("BB_WINDOW", 20)),
         "num_std": float(os.getenv("BB_STD", 2.0)),
-    },
-    "ride_or_react": {
-        "thresholds": {
-            "1h": float(os.getenv("ROD_1H_THRESHOLD", 0.8)),
-            "3h": float(os.getenv("ROD_3H_THRESHOLD", 2.5)),
-            "6h": float(os.getenv("ROD_6H_THRESHOLD", 3.6)),
-            "12h": float(os.getenv("ROD_12H_THRESHOLD", 5.1)),
-            "24h": float(os.getenv("ROD_24H_THRESHOLD", 7.8)),
-        }
     },
     "macd": {
         "fast_period": int(os.getenv("MACD_FAST_PERIOD", 12)),
@@ -112,10 +103,10 @@ ADX_WEAK_TREND_THRESHOLD = float(os.getenv("ADX_WEAK_TREND_THRESHOLD", 23))
 ADX_TREND_THRESHOLD = float(os.getenv("ADX_TREND_THRESHOLD", 32))
 ADX_STRONG_TREND_THRESHOLD = float(os.getenv("ADX_STRONG_TREND_THRESHOLD", 42))
 
-# Signal Aggregator Hybrid Settings
+# Signal Aggregator Settings
 SIGNAL_COOLDOWN_MINUTES = int(os.getenv("SIGNAL_COOLDOWN_MINUTES", 3))
 VOTE_THRESHOLD = float(os.getenv("VOTE_THRESHOLD", 0.35))
-CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", 0.60))
+CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", 0.72))
 
 # Configuration des canaux Redis
 CHANNEL_PREFIX = os.getenv("CHANNEL_PREFIX", "roottrading")

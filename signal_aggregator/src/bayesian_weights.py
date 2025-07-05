@@ -35,24 +35,29 @@ class StrategyPerformance:
 class BayesianStrategyWeights:
     """
     Calcul des poids de stratégie basé sur l'approche bayésienne
-    avec mise à jour continue basée sur les performances
+    avec mise à jour continue basée sur les performances.
+    Sauvegarde en PostgreSQL ET cache Redis.
     """
     
-    def __init__(self, redis_client=None, alpha: float = 1.0, beta: float = 1.0):
+    def __init__(self, redis_client=None, db_pool=None, alpha: float = 1.0, beta: float = 1.0):
         """
         Args:
-            redis_client: Client Redis pour persistance
+            redis_client: Client Redis pour cache
+            db_pool: Pool de connexions PostgreSQL pour persistance
             alpha: Paramètre alpha de la distribution Beta (succès initiaux + 1)
             beta: Paramètre beta de la distribution Beta (échecs initiaux + 1)
         """
         self.redis = redis_client
+        self.db_pool = db_pool
         self.alpha_prior = alpha
         self.beta_prior = beta
         self.performance_data: Dict[str, StrategyPerformance] = {}
         self.base_weight = 1.0
         
-        # Charger les données historiques si Redis disponible
-        if self.redis:
+        # Charger les données historiques depuis DB puis Redis
+        if self.db_pool:
+            self._load_from_database()
+        elif self.redis:
             self._load_performance_data()
     
     def _load_performance_data(self):
@@ -116,8 +121,10 @@ class BayesianStrategyWeights:
         perf.cumulative_return += return_pct
         perf.last_update = datetime.now()
         
-        # Sauvegarder périodiquement
-        if perf.total_signals % 10 == 0:
+        # Sauvegarder périodiquement en DB ET Redis
+        if perf.total_signals % 5 == 0:  # Plus fréquent pour DB
+            if self.db_pool:
+                self._save_to_database()
             self._save_performance_data()
         
         logger.debug(f"📈 Mise à jour {strategy}: win_rate={perf.win_rate:.2%}, total={perf.total_signals}")
@@ -226,4 +233,109 @@ class BayesianStrategyWeights:
                 
                 logger.debug(f"🔄 Décroissance appliquée à {strategy}: {days_old} jours, facteur {decay:.2f}")
         
+        # Sauvegarder après décroissance
+        if self.db_pool:
+            self._save_to_database()
         self._save_performance_data()
+    
+    def _load_from_database(self):
+        """Charge les performances depuis PostgreSQL"""
+        try:
+            import asyncio
+            
+            async def load_data():
+                async with self.db_pool.acquire() as conn:
+                    # Récupérer les performances depuis performance_stats
+                    # Agrégation des données pour calculer wins/losses
+                    query = """
+                    SELECT 
+                        strategy,
+                        SUM(winning_trades) as total_wins,
+                        SUM(losing_trades) as total_losses, 
+                        SUM(total_trades) as total_signals,
+                        AVG(profit_loss_percent) as avg_return,
+                        MAX(end_date) as last_update
+                    FROM performance_stats 
+                    WHERE period = 'realtime'
+                    GROUP BY strategy
+                    """
+                    rows = await conn.fetch(query)
+                    
+                    for row in rows:
+                        self.performance_data[row['strategy']] = StrategyPerformance(
+                            wins=row['total_wins'] or 0,
+                            losses=row['total_losses'] or 0,
+                            total_signals=row['total_signals'] or 0,
+                            cumulative_return=row['avg_return'] or 0.0,
+                            last_update=row['last_update'] or datetime.now()
+                        )
+                    
+                    logger.info(f"📊 Chargé {len(rows)} stratégies depuis PostgreSQL")
+            
+            # Exécuter de manière synchrone
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(load_data())
+            finally:
+                loop.close()
+                
+        except Exception as e:
+            logger.error(f"Erreur chargement DB: {e}")
+            # Fallback sur Redis si DB échoue
+            if self.redis:
+                self._load_performance_data()
+    
+    def _save_to_database(self):
+        """Sauvegarde les performances dans PostgreSQL"""
+        try:
+            import asyncio
+            
+            async def save_data():
+                async with self.db_pool.acquire() as conn:
+                    for strategy, perf in self.performance_data.items():
+                        # Insérer/mettre à jour dans performance_stats
+                        # Utiliser période 'realtime' pour les données bayésiennes
+                        query = """
+                        INSERT INTO performance_stats (
+                            symbol, strategy, period, start_date, end_date,
+                            total_trades, winning_trades, losing_trades,
+                            profit_loss_percent, win_rate, created_at
+                        ) VALUES (
+                            'ALL', $1, 'realtime', CURRENT_DATE, CURRENT_DATE,
+                            $2, $3, $4, $5, $6, NOW()
+                        )
+                        ON CONFLICT (symbol, strategy, period, start_date) 
+                        DO UPDATE SET
+                            total_trades = EXCLUDED.total_trades,
+                            winning_trades = EXCLUDED.winning_trades,
+                            losing_trades = EXCLUDED.losing_trades,
+                            profit_loss_percent = EXCLUDED.profit_loss_percent,
+                            win_rate = EXCLUDED.win_rate,
+                            created_at = NOW()
+                        """
+                        
+                        await conn.execute(
+                            query,
+                            strategy,
+                            perf.total_signals,
+                            perf.wins,
+                            perf.losses,
+                            perf.cumulative_return,
+                            perf.win_rate * 100  # Convertir en pourcentage
+                        )
+                    
+                    logger.debug(f"💾 Sauvegardé {len(self.performance_data)} stratégies en DB")
+            
+            # Exécuter de manière synchrone
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(save_data())
+            finally:
+                loop.close()
+                
+        except Exception as e:
+            logger.error(f"Erreur sauvegarde DB: {e}")
+            # Continuer avec Redis seulement
+            pass

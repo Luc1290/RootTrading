@@ -112,7 +112,7 @@ services:
       kafka:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5011/health').read()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5004/health').read()"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -164,7 +164,7 @@ services:
       kafka:
         condition: service_healthy
       dispatcher:
-        condition: service_started
+        condition: service_healthy
       db:
         condition: service_healthy
     healthcheck:
@@ -180,6 +180,8 @@ services:
     build:
       context: .  # Point sur le répertoire racine du projet
       dockerfile: signal_aggregator/Dockerfile  # Chemin vers le Dockerfile
+    ports:
+      - "5013:5013" # New: Health check port for signal_aggregator
     environment:
       - WAIT_FOR_REDIS=true
       - WAIT_FOR_KAFKA=true
@@ -194,7 +196,7 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "pgrep", "-f", "signal_aggregator"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5013/health').read()"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -212,7 +214,7 @@ services:
       - WAIT_FOR_REDIS=true
       - WAIT_FOR_KAFKA=true
       - WAIT_FOR_DB=true
-      - WAIT_FOR=dispatcher:5011,analyzer:5012
+      - WAIT_FOR=dispatcher:5004,analyzer:5012
     env_file: .env
     restart: unless-stopped
     depends_on:
