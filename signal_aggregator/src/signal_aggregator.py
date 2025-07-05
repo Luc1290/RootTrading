@@ -1925,35 +1925,53 @@ class EnhancedSignalAggregator(SignalAggregator):
             
             # Seuils adaptatifs selon le régime Enhanced + contexte technique
             if regime.name == 'STRONG_TREND_UP':
-                # Validation MACD pour confirmer la force de tendance
-                if self._validate_macd_trend(technical_context, 'bullish'):
-                    min_confidence = 0.35  # Encore plus permissif si MACD confirme
-                    logger.debug(f"💪 {regime.name}: MACD confirme, seuils très assouplis pour {symbol}")
-                else:
-                    min_confidence = 0.4
-                    logger.debug(f"💪 {regime.name}: seuils assouplis pour {symbol}")
-                required_strength = ['weak', 'moderate', 'strong', 'very_strong']
+                # Tendance haussière forte: favoriser les BUY, pénaliser les SELL
+                if side == 'SELL':
+                    min_confidence = 0.80  # Pénaliser SELL en forte tendance haussière
+                    required_strength = ['very_strong']
+                    logger.debug(f"💪 {regime.name}: SELL pénalisé, seuils stricts pour {symbol}")
+                else:  # BUY
+                    # Validation MACD pour confirmer la force de tendance
+                    if self._validate_macd_trend(technical_context, 'bullish'):
+                        min_confidence = 0.35  # Encore plus permissif si MACD confirme
+                        logger.debug(f"💪 {regime.name}: MACD confirme, seuils très assouplis pour {symbol}")
+                    else:
+                        min_confidence = 0.4
+                        logger.debug(f"💪 {regime.name}: seuils assouplis pour {symbol}")
+                    required_strength = ['weak', 'moderate', 'strong', 'very_strong']
                 
             elif regime.name == 'TREND_UP':
-                # Validation OBV pour confirmer le volume
-                if self._validate_obv_trend(technical_context, side):
-                    min_confidence = 0.45  # Bonus si OBV confirme
-                    logger.debug(f"📈 {regime.name}: OBV confirme, seuils bonus (0.45) pour {symbol}")
-                else:
-                    min_confidence = 0.5  # ASSOUPLI à 0.50 (était 0.7)
-                    logger.debug(f"📈 {regime.name}: seuils ASSOUPLIS (0.5) pour {symbol}")
-                required_strength = ['moderate', 'strong', 'very_strong']
+                # Tendance haussière: favoriser les BUY, pénaliser modérément les SELL
+                if side == 'SELL':
+                    min_confidence = 0.75  # Pénaliser SELL en tendance haussière
+                    required_strength = ['strong', 'very_strong']
+                    logger.debug(f"📈 {regime.name}: SELL pénalisé, seuils élevés pour {symbol}")
+                else:  # BUY
+                    # Validation OBV pour confirmer le volume
+                    if self._validate_obv_trend(technical_context, side):
+                        min_confidence = 0.45  # Bonus si OBV confirme
+                        logger.debug(f"📈 {regime.name}: OBV confirme, seuils bonus (0.45) pour {symbol}")
+                    else:
+                        min_confidence = 0.5  # ASSOUPLI à 0.50 (était 0.7)
+                        logger.debug(f"📈 {regime.name}: seuils ASSOUPLIS (0.5) pour {symbol}")
+                    required_strength = ['moderate', 'strong', 'very_strong']
                 
             elif regime.name == 'WEAK_TREND_UP':
-                # Validation ROC pour détecter l'accélération
-                roc_boost = self._check_roc_acceleration(technical_context, side)
-                if roc_boost:
-                    min_confidence = 0.50  # Bonus si ROC détecte accélération
-                    logger.debug(f"📊 {regime.name}: ROC accélération détectée, seuils bonus (0.50) pour {symbol}")
-                else:
-                    min_confidence = 0.55  # ASSOUPLI à 0.55 (était 0.65)
-                    logger.debug(f"📊 {regime.name}: seuils ASSOUPLIS (0.55) pour {symbol}")
-                required_strength = ['moderate', 'strong', 'very_strong']
+                # Tendance haussière faible: légère pénalisation des SELL
+                if side == 'SELL':
+                    min_confidence = 0.70  # Pénaliser légèrement SELL en tendance haussière faible
+                    required_strength = ['strong', 'very_strong']
+                    logger.debug(f"📊 {regime.name}: SELL légèrement pénalisé pour {symbol}")
+                else:  # BUY
+                    # Validation ROC pour détecter l'accélération
+                    roc_boost = self._check_roc_acceleration(technical_context, side)
+                    if roc_boost:
+                        min_confidence = 0.50  # Bonus si ROC détecte accélération
+                        logger.debug(f"📊 {regime.name}: ROC accélération détectée, seuils bonus (0.50) pour {symbol}")
+                    else:
+                        min_confidence = 0.55  # ASSOUPLI à 0.55 (était 0.65)
+                        logger.debug(f"📊 {regime.name}: seuils ASSOUPLIS (0.55) pour {symbol}")
+                    required_strength = ['moderate', 'strong', 'very_strong']
                 
             elif regime.name == 'RANGE_TIGHT':
                 # Gestion spéciale pour ADX très faible (marché plat)

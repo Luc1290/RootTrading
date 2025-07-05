@@ -17,7 +17,11 @@
       "Bash(docker-compose exec:*)",
       "Bash(docker cp:*)",
       "Bash(python3:*)",
-      "Bash(PGPASSWORD=postgres psql -h db -p 5432 -U postgres -d trading -c \"\nSELECT COUNT(*) as total_count \nFROM market_data \nWHERE symbol = ''SOLUSDC'';\n\")"
+      "Bash(PGPASSWORD=postgres psql -h db -p 5432 -U postgres -d trading -c \"\nSELECT COUNT(*) as total_count \nFROM market_data \nWHERE symbol = ''SOLUSDC'';\n\")",
+      "Bash(docker compose logs:*)",
+      "Bash(chmod:*)",
+      "Bash(./debug/monitor_signals.sh:*)",
+      "Bash(bash:*)"
     ],
     "deny": []
   }
