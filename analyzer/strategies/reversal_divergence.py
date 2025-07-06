@@ -35,16 +35,19 @@ class ReversalDivergenceStrategy(BaseStrategy):
     def __init__(self, symbol: str, params: Dict[str, Any] = None):
         super().__init__(symbol, params)
         
-        # Paramètres divergence ultra-précis
+        # Paramètres configurables par symbole depuis la DB
+        symbol_params = self.params.get(symbol, {}) if self.params else {}
+        
+        # Paramètres divergence ultra-précis configurables
         self.divergence_lookback = 25             # Périodes pour analyse divergence
         self.min_pivot_distance = 8               # Distance minimum entre pivots
-        self.min_divergence_strength = 0.15       # Force minimum divergence
+        self.min_divergence_strength = symbol_params.get('div_strength_min', 0.15)
         self.rsi_extreme_oversold = 25            # Zone survente pour divergence haussière
         self.rsi_extreme_overbought = 75          # Zone surachat pour divergence baissière
         
-        # Filtres ultra-précis
+        # Filtres ultra-précis configurables
         self.min_confidence = 0.76                # Confiance minimum 76%
-        self.min_volume_confirmation = 1.3        # Volume 30% au-dessus moyenne
+        self.min_volume_confirmation = symbol_params.get('volume_ratio_min', 1.3)
         self.pivot_validation_periods = 3         # Périodes pour validation pivot
         
         logger.info(f"🎯 Reversal Divergence Ultra-Précis initialisé pour {symbol}")

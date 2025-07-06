@@ -74,6 +74,8 @@ class OptimizedAnalyzer:
             Liste des signaux générés
         """
         try:
+            logger.debug(f"🔍 Starting analysis for {symbol}")
+            
             # 1. Récupérer les données enrichies de la DB (OHLCV + indicateurs)
             enriched_df = db_indicators.get_optimized_indicators(symbol, limit=200)
             
@@ -94,6 +96,8 @@ class OptimizedAnalyzer:
             if not symbol_strategies:
                 logger.warning(f"⚠️ Aucune stratégie pour {symbol}")
                 return []
+            
+            logger.debug(f"🔍 Found {len(symbol_strategies)} strategies for {symbol}")
                 
             strategy_tasks = []
             for strategy_name, strategy in symbol_strategies.items():
@@ -190,9 +194,13 @@ class OptimizedAnalyzer:
                              df: pd.DataFrame, indicators: Dict) -> Optional[Dict]:
         """Exécute l'analyse d'une stratégie de manière synchrone"""
         try:
+            logger.debug(f"🔍 Running {strategy.__class__.__name__} for {symbol}")
+            
             # La plupart des stratégies ont une méthode analyze()
             if hasattr(strategy, 'analyze'):
-                return strategy.analyze(symbol, df, indicators)
+                result = strategy.analyze(symbol, df, indicators)
+                logger.debug(f"🔍 {strategy.__class__.__name__} returned: {result is not None}")
+                return result
             elif hasattr(strategy, 'generate_signal'):
                 return strategy.generate_signal(symbol, df, indicators)
             else:

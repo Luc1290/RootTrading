@@ -35,15 +35,18 @@ class EMACrossStrategy(BaseStrategy):
     def __init__(self, symbol: str, params: Dict[str, Any] = None):
         super().__init__(symbol, params)
         
+        # Paramètres configurables par symbole depuis la DB
+        symbol_params = self.params.get(symbol, {}) if self.params else {}
+        
         # Paramètres EMA ultra-précis (harmonisés avec MACD)
         self.ema_fast = 12
         self.ema_slow = 26
         self.ema_trend = 50
         
-        # Filtres de qualité
-        self.min_crossover_strength = 0.003   # Force minimum 0.3%
+        # Filtres de qualité configurables
+        self.min_crossover_strength = symbol_params.get('ema_gap_min', 0.003)
         self.min_momentum_alignment = 0.7     # Score momentum minimum
-        self.min_volume_confirmation = 1.4    # Volume 40% au-dessus moyenne
+        self.min_volume_confirmation = symbol_params.get('volume_ratio_min', 1.4)
         self.max_volatility = 0.08            # Volatilité maximum 8%
         
         # Filtres ultra-précis

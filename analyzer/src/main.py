@@ -268,6 +268,7 @@ class AnalyzerService:
                 return
                 
             symbol = data['symbol']
+            logger.debug(f"🔍 Processing market data for {symbol}")
             
             # Analyser avec les stratégies en utilisant les données DB
             import asyncio
@@ -280,6 +281,7 @@ class AnalyzerService:
             asyncio.set_event_loop(loop)
             try:
                 signals = loop.run_until_complete(analyze_data())
+                logger.debug(f"🔍 Analysis complete for {symbol}: {len(signals) if signals else 0} signals")
             finally:
                 loop.close()
             

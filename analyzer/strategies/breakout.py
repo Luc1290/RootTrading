@@ -35,11 +35,14 @@ class BreakoutStrategy(BaseStrategy):
     def __init__(self, symbol: str, params: Dict[str, Any] = None):
         super().__init__(symbol, params)
         
-        # Paramètres breakout ultra-précis
+        # Paramètres configurables par symbole depuis la DB
+        symbol_params = self.params.get(symbol, {}) if self.params else {}
+        
+        # Paramètres breakout ultra-précis configurables
         self.consolidation_periods = 15           # Périodes pour détection consolidation
-        self.min_breakout_strength = 0.008        # Force minimum 0.8%
-        self.min_volume_expansion = 1.8           # Volume 80% au-dessus moyenne
-        self.max_consolidation_noise = 0.03       # Bruit maximum 3% en consolidation
+        self.min_breakout_strength = symbol_params.get('breakout_min', 0.008)
+        self.min_volume_expansion = symbol_params.get('volume_ratio_min', 1.8)
+        self.max_consolidation_noise = symbol_params.get('consolidation_noise_max', 0.03)
         
         # Filtres ultra-précis
         self.min_confidence = 0.72                # Confiance minimum 72%

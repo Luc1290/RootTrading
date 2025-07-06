@@ -31,10 +31,13 @@ class BollingerStrategy(BaseStrategy):
     def __init__(self, symbol: str, params: Dict[str, Any] = None):
         super().__init__(symbol, params)
         
-        # Paramètres Bollinger ultra-précis
-        self.squeeze_threshold = 0.02         # 2% largeur minimum pour squeeze
-        self.breakout_strength_min = 0.15     # Force minimum breakout
-        self.min_volume_confirmation = 1.6    # Volume 60% au-dessus moyenne
+        # Paramètres configurables par symbole depuis la DB
+        symbol_params = self.params.get(symbol, {}) if self.params else {}
+        
+        # Paramètres Bollinger ultra-précis configurables
+        self.squeeze_threshold = symbol_params.get('squeeze_max', 0.02)
+        self.breakout_strength_min = symbol_params.get('breakout_min', 0.15)
+        self.min_volume_confirmation = symbol_params.get('volume_ratio_min', 1.6)
         self.mean_reversion_zone = 0.05       # 5% de la bande pour reversion
         
         # Filtres de qualité

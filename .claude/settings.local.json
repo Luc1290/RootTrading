@@ -22,7 +22,9 @@
       "Bash(chmod:*)",
       "Bash(./debug/monitor_signals.sh:*)",
       "Bash(bash:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(python:*)",
+      "Bash(sqlite3:*)"
     ],
     "deny": []
   }

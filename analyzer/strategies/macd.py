@@ -36,10 +36,13 @@ class MACDStrategy(BaseStrategy):
     def __init__(self, symbol: str, params: Dict[str, Any] = None):
         super().__init__(symbol, params)
         
-        # Paramètres MACD ultra-précis
-        self.min_crossover_strength = 0.0002  # Force minimum du croisement
+        # Paramètres configurables par symbole depuis la DB
+        symbol_params = self.params.get(symbol, {}) if self.params else {}
+        
+        # Paramètres MACD ultra-précis configurables
+        self.min_crossover_strength = symbol_params.get('cross_force', 0.0002)
         self.min_histogram_expansion = 0.0001  # Expansion minimum histogramme
-        self.min_volume_confirmation = 1.5    # Volume 50% au-dessus moyenne
+        self.min_volume_confirmation = symbol_params.get('volume_ratio_min', 1.5)
         self.max_noise_ratio = 0.25           # Ratio bruit/signal maximum
         
         # Filtres de qualité du marché

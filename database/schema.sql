@@ -720,12 +720,14 @@ ON CONFLICT (symbol) DO UPDATE SET
     qty_precision = EXCLUDED.qty_precision,
     last_updated = NOW();
 
--- Insérer les configurations de stratégies par défaut
+-- Insérer les configurations de stratégies par défaut (stratégies Ultra avec paramètres optimisés XRP/SOL)
 INSERT INTO strategy_configs (name, mode, symbols, params, max_simultaneous_trades, enabled) VALUES
-('RSI_Strategy', 'active', '["BTCUSDC", "ETHUSDC"]', '{"window": 14, "overbought": 70, "oversold": 30}', 3, true),
-('EMA_Cross_Strategy', 'active', '["BTCUSDC", "ETHUSDC"]', '{"SELL_window": 5, "BUY_window": 20}', 2, true),
-('Bollinger_Bands_Strategy', 'monitoring', '["BTCUSDC", "ETHUSDC"]', '{"window": 20, "std_dev": 2.0}', 2, false),
-('Ride_or_React_Strategy', 'active', '["BTCUSDC", "ETHUSDC", "ETHBTC"]', '{"thresholds": {"1h": 0.8, "3h": 2.5, "6h": 3.6, "12h": 5.1, "24h": 7.8}}', 1, true)
+('Reversal_Divergence_Ultra_Strategy', 'active', '["BTCUSDC", "ETHUSDC", "SOLUSDC", "XRPUSDC"]', '{"XRPUSDC": {"div_strength_min": 0.12, "volume_ratio_min": 1.4}, "SOLUSDC": {"div_strength_min": 0.15, "volume_ratio_min": 1.6}}', 2, true),
+('Breakout_Ultra_Strategy', 'active', '["BTCUSDC", "ETHUSDC", "SOLUSDC", "XRPUSDC"]', '{"XRPUSDC": {"breakout_min": 0.048, "volume_ratio_min": 1.4, "consolidation_noise_max": 0.038}, "SOLUSDC": {"breakout_min": 0.09, "volume_ratio_min": 1.6, "consolidation_noise_max": 0.072}}', 2, true),
+('MACD_Ultra_Strategy', 'active', '["BTCUSDC", "ETHUSDC", "SOLUSDC", "XRPUSDC"]', '{"XRPUSDC": {"cross_force": 0.00016, "volume_ratio_min": 1.4}, "SOLUSDC": {"cross_force": 0.0003, "volume_ratio_min": 1.6}}', 2, true),
+('Bollinger_Ultra_Strategy', 'active', '["BTCUSDC", "ETHUSDC", "SOLUSDC", "XRPUSDC"]', '{"XRPUSDC": {"squeeze_max": 0.016, "breakout_min": 0.08, "volume_ratio_min": 1.4}, "SOLUSDC": {"squeeze_max": 0.03, "breakout_min": 0.15, "volume_ratio_min": 1.6}}', 2, true),
+('RSI_Ultra_Strategy', 'active', '["BTCUSDC", "ETHUSDC", "SOLUSDC", "XRPUSDC"]', '{"XRPUSDC": {"rsi_oversold": 22, "rsi_overbought": 78, "volume_ratio_min": 1.4}, "SOLUSDC": {"rsi_oversold": 23, "rsi_overbought": 77, "volume_ratio_min": 1.6}}', 3, true),
+('EMA_Cross_Ultra_Strategy', 'active', '["BTCUSDC", "ETHUSDC", "SOLUSDC", "XRPUSDC"]', '{"XRPUSDC": {"ema_gap_min": 0.0032, "volume_ratio_min": 1.4}, "SOLUSDC": {"ema_gap_min": 0.006, "volume_ratio_min": 1.6}}', 2, true)
 ON CONFLICT (name) DO UPDATE SET
     mode = EXCLUDED.mode,
     symbols = EXCLUDED.symbols,

@@ -37,14 +37,17 @@ class RSIStrategy(BaseStrategy):
     def __init__(self, symbol: str, params: Dict[str, Any] = None):
         super().__init__(symbol, params)
         
-        # Seuils RSI ultra-précis
-        self.extreme_oversold = 20    # Zone d'achat ultra-sélective
-        self.extreme_overbought = 80  # Zone de vente ultra-sélective
+        # Paramètres configurables par symbole depuis la DB
+        symbol_params = self.params.get(symbol, {}) if self.params else {}
+        
+        # Seuils RSI configurables
+        self.extreme_oversold = symbol_params.get('rsi_oversold', 20)
+        self.extreme_overbought = symbol_params.get('rsi_overbought', 80)
         self.rsi_exit_low = 35        # Sortie position courte
         self.rsi_exit_high = 65       # Sortie position longue
         
-        # Filtres de qualité
-        self.min_volume_ratio = 1.4   # Volume 40% au-dessus moyenne
+        # Filtres de qualité configurables
+        self.min_volume_ratio = symbol_params.get('volume_ratio_min', 1.4)
         self.max_volatility = 0.06    # 6% volatilité max
         self.min_confidence = 0.75    # Confiance minimum 75%
         
