@@ -101,25 +101,48 @@ class TechnicalIndicators:
         """
         Calcule une EMA (Exponential Moving Average) pour le lissage.
         Utilisé en interne pour divers calculs.
+        OPTIMISÉ : Utilise le calcul incrémental.
         """
         if len(data) < period:
             return data
         
         alpha = 2.0 / (period + 1)
-        ema = np.zeros_like(data)
-        ema[0] = data[0]
+        ema = np.zeros_like(data, dtype=float)
         
+        # Initialiser avec la première valeur
+        ema[0] = float(data[0])
+        
+        # Calcul incrémental optimisé
         for i in range(1, len(data)):
-            ema[i] = alpha * data[i] + (1 - alpha) * ema[i-1]
+            ema[i] = alpha * float(data[i]) + (1 - alpha) * ema[i-1]
         
         return ema
+    
+    def _sma_rolling(self, data: np.ndarray, period: int) -> np.ndarray:
+        """
+        Calcule une SMA (Simple Moving Average) roulante optimisée.
+        Alternative à _ema_smooth pour certains indicateurs.
+        """
+        if len(data) < period:
+            return np.full_like(data, np.nan, dtype=float)
+        
+        sma = np.full_like(data, np.nan, dtype=float)
+        
+        # Première valeur SMA
+        sma[period-1] = np.mean(data[:period])
+        
+        # Calcul roulant optimisé : SMA_new = SMA_old + (new - old) / period
+        for i in range(period, len(data)):
+            sma[i] = sma[i-1] + (data[i] - data[i-period]) / period
+            
+        return sma
     
     # =================== EMA ===================
     
     def calculate_ema(self, prices: Union[List[float], np.ndarray, pd.Series], 
                      period: int) -> Optional[float]:
         """
-        Calcule l'EMA (Exponential Moving Average).
+        Calcule l'EMA (Exponential Moving Average) - dernière valeur seulement.
         
         Args:
             prices: Prix de clôture
@@ -141,6 +164,68 @@ class TechnicalIndicators:
                 
         return self._calculate_ema_manual(prices_array, period)
     
+    def calculate_ema_incremental(self, current_price: float, previous_ema: Optional[float], period: int) -> float:
+        """
+        Calcule EMA de manière incrémentale pour éviter les dents de scie.
+        
+        Args:
+            current_price: Prix actuel
+            previous_ema: EMA précédente (None si première valeur)
+            period: Période EMA
+            
+        Returns:
+            Nouvelle valeur EMA
+        """
+        alpha = 2.0 / (period + 1)
+        
+        if previous_ema is None:
+            # Première valeur : utiliser le prix lui-même
+            return float(current_price)
+        
+        # Formule EMA incrémentale : EMA = α × Prix + (1-α) × EMA_prev
+        return alpha * float(current_price) + (1 - alpha) * float(previous_ema)
+    
+    def calculate_ema_series(self, prices: Union[List[float], np.ndarray, pd.Series], 
+                            period: int) -> List[Optional[float]]:
+        """
+        Calcule une série complète d'EMA de manière incrémentale.
+        
+        Args:
+            prices: Prix de clôture
+            period: Période EMA
+            
+        Returns:
+            Liste des valeurs EMA (None pour les premières valeurs insuffisantes)
+        """
+        prices_array = self._to_numpy_array(prices)
+        if len(prices_array) < period:
+            return [None] * len(prices_array)
+            
+        if self.talib_available:
+            try:
+                ema_values = talib.EMA(prices_array, timeperiod=period)
+                return [float(val) if not np.isnan(val) else None for val in ema_values]
+            except Exception as e:
+                logger.warning(f"Erreur talib EMA series: {e}, utilisation fallback")
+        
+        # Calcul manuel incrémental
+        ema_series = [None] * len(prices_array)
+        alpha = 2.0 / (period + 1)
+        
+        # Première valeur EMA = première valeur de prix (à l'index period-1)
+        if len(prices_array) >= period:
+            # Initialiser avec SMA des premières valeurs
+            first_ema = float(np.mean(prices_array[:period]))
+            ema_series[period - 1] = first_ema
+            
+            # Calcul incrémental pour le reste
+            for i in range(period, len(prices_array)):
+                prev_ema = ema_series[i - 1]
+                current_price = float(prices_array[i])
+                ema_series[i] = alpha * current_price + (1 - alpha) * prev_ema
+                
+        return ema_series
+    
     def _calculate_ema_manual(self, prices: np.ndarray, period: int) -> Optional[float]:
         """Calcul EMA manuel (fallback)"""
         if len(prices) < period:
@@ -158,7 +243,7 @@ class TechnicalIndicators:
     
     def calculate_macd(self, prices: Union[List[float], np.ndarray, pd.Series]) -> Dict[str, Optional[float]]:
         """
-        Calcule le MACD complet (line, signal, histogram).
+        Calcule le MACD complet (line, signal, histogram) - dernière valeur seulement.
         
         Args:
             prices: Prix de clôture
@@ -190,6 +275,109 @@ class TechnicalIndicators:
                 logger.warning(f"Erreur talib MACD: {e}, utilisation fallback")
                 
         return self._calculate_macd_manual(prices_array)
+    
+    def calculate_macd_incremental(self, current_price: float, 
+                                  prev_ema_fast: Optional[float], 
+                                  prev_ema_slow: Optional[float],
+                                  prev_macd_signal: Optional[float]) -> Dict[str, Optional[float]]:
+        """
+        Calcule MACD de manière incrémentale pour éviter les dents de scie.
+        
+        Args:
+            current_price: Prix actuel
+            prev_ema_fast: EMA rapide précédente
+            prev_ema_slow: EMA lente précédente  
+            prev_macd_signal: Signal MACD précédent
+            
+        Returns:
+            Dict avec macd_line, macd_signal, macd_histogram
+        """
+        # Calculer les nouvelles EMA de manière incrémentale
+        new_ema_fast = self.calculate_ema_incremental(current_price, prev_ema_fast, self.macd_fast)
+        new_ema_slow = self.calculate_ema_incremental(current_price, prev_ema_slow, self.macd_slow)
+        
+        # MACD Line = EMA_fast - EMA_slow
+        macd_line = new_ema_fast - new_ema_slow
+        
+        # Signal Line = EMA du MACD Line
+        macd_signal = self.calculate_ema_incremental(macd_line, prev_macd_signal, self.macd_signal)
+        
+        # Histogram = MACD Line - Signal Line
+        macd_histogram = macd_line - macd_signal
+        
+        return {
+            'macd_line': round(macd_line, 6),
+            'macd_signal': round(macd_signal, 6),
+            'macd_histogram': round(macd_histogram, 6),
+            'ema_fast': round(new_ema_fast, 6),  # Pour cache
+            'ema_slow': round(new_ema_slow, 6)   # Pour cache
+        }
+    
+    def calculate_macd_series(self, prices: Union[List[float], np.ndarray, pd.Series]) -> Dict[str, List[Optional[float]]]:
+        """
+        Calcule une série complète de MACD de manière incrémentale.
+        
+        Args:
+            prices: Prix de clôture
+            
+        Returns:
+            Dict avec séries macd_line, macd_signal, macd_histogram
+        """
+        prices_array = self._to_numpy_array(prices)
+        min_required = max(self.macd_slow, self.macd_fast) + self.macd_signal
+        
+        if len(prices_array) < min_required:
+            empty_series = [None] * len(prices_array)
+            return {
+                'macd_line': empty_series,
+                'macd_signal': empty_series, 
+                'macd_histogram': empty_series
+            }
+            
+        if self.talib_available:
+            try:
+                macd_line, macd_signal, macd_hist = talib.MACD(
+                    prices_array,
+                    fastperiod=self.macd_fast,
+                    slowperiod=self.macd_slow,
+                    signalperiod=self.macd_signal
+                )
+                
+                return {
+                    'macd_line': [float(val) if not np.isnan(val) else None for val in macd_line],
+                    'macd_signal': [float(val) if not np.isnan(val) else None for val in macd_signal],
+                    'macd_histogram': [float(val) if not np.isnan(val) else None for val in macd_hist]
+                }
+            except Exception as e:
+                logger.warning(f"Erreur talib MACD series: {e}, utilisation fallback")
+        
+        # Calcul manuel incrémental
+        ema_fast_series = self.calculate_ema_series(prices_array, self.macd_fast)
+        ema_slow_series = self.calculate_ema_series(prices_array, self.macd_slow)
+        
+        macd_line_series = []
+        for i in range(len(prices_array)):
+            if ema_fast_series[i] is not None and ema_slow_series[i] is not None:
+                macd_line_series.append(ema_fast_series[i] - ema_slow_series[i])
+            else:
+                macd_line_series.append(None)
+        
+        # Signal = EMA du MACD Line
+        macd_signal_series = self.calculate_ema_series(macd_line_series, self.macd_signal)
+        
+        # Histogram = MACD - Signal
+        macd_histogram_series = []
+        for i in range(len(prices_array)):
+            if macd_line_series[i] is not None and macd_signal_series[i] is not None:
+                macd_histogram_series.append(macd_line_series[i] - macd_signal_series[i])
+            else:
+                macd_histogram_series.append(None)
+        
+        return {
+            'macd_line': macd_line_series,
+            'macd_signal': macd_signal_series,
+            'macd_histogram': macd_histogram_series
+        }
     
     def _calculate_macd_manual(self, prices: np.ndarray) -> Dict[str, Optional[float]]:
         """Calcul MACD manuel (fallback)"""
@@ -369,7 +557,7 @@ class TechnicalIndicators:
     def calculate_sma(self, prices: Union[List[float], np.ndarray, pd.Series], 
                      period: int) -> Optional[float]:
         """
-        Calcule la SMA (Simple Moving Average).
+        Calcule la SMA (Simple Moving Average) - dernière valeur seulement.
         
         Args:
             prices: Prix de clôture
@@ -390,6 +578,69 @@ class TechnicalIndicators:
                 logger.warning(f"Erreur talib SMA: {e}, utilisation fallback")
                 
         return round(float(np.mean(prices_array[-period:])), 6)
+    
+    def calculate_sma_incremental(self, current_price: float, previous_sma: Optional[float], 
+                                 period: int, oldest_price: Optional[float] = None) -> float:
+        """
+        Calcule SMA de manière incrémentale (rolling average).
+        
+        Args:
+            current_price: Prix actuel
+            previous_sma: SMA précédente
+            period: Période SMA
+            oldest_price: Prix le plus ancien qui sort de la fenêtre (optionnel)
+            
+        Returns:
+            Nouvelle valeur SMA
+        """
+        if previous_sma is None:
+            return float(current_price)
+        
+        if oldest_price is not None:
+            # Calcul rolling : SMA_new = SMA_old + (new - old) / period
+            return float(previous_sma + (current_price - oldest_price) / period)
+        else:
+            # Calcul expanding (pour l'initialisation)
+            return float(current_price)  # Simplifié
+    
+    def calculate_sma_series(self, prices: Union[List[float], np.ndarray, pd.Series], 
+                            period: int) -> List[Optional[float]]:
+        """
+        Calcule une série complète de SMA de manière optimisée.
+        
+        Args:
+            prices: Prix de clôture
+            period: Période SMA
+            
+        Returns:
+            Liste des valeurs SMA (None pour les premières valeurs insuffisantes)
+        """
+        prices_array = self._to_numpy_array(prices)
+        if len(prices_array) < period:
+            return [None] * len(prices_array)
+            
+        if self.talib_available:
+            try:
+                sma_values = talib.SMA(prices_array, timeperiod=period)
+                return [float(val) if not np.isnan(val) else None for val in sma_values]
+            except Exception as e:
+                logger.warning(f"Erreur talib SMA series: {e}, utilisation fallback")
+        
+        # Calcul manuel optimisé
+        sma_series = [None] * len(prices_array)
+        
+        if len(prices_array) >= period:
+            # Première valeur SMA
+            sma_series[period - 1] = float(np.mean(prices_array[:period]))
+            
+            # Calcul rolling optimisé
+            for i in range(period, len(prices_array)):
+                prev_sma = sma_series[i - 1]
+                new_price = float(prices_array[i])
+                old_price = float(prices_array[i - period])
+                sma_series[i] = prev_sma + (new_price - old_price) / period
+                
+        return sma_series
     
     # =================== ADX ===================
     
@@ -825,7 +1076,7 @@ class TechnicalIndicators:
             # RSI
             indicators['rsi_14'] = self.calculate_rsi(closes, 14)
             
-            # EMAs multiples
+            # EMAs multiples (garde l'ancien comportement pour compatibilité)
             for period in [12, 26, 50]:
                 indicators[f'ema_{period}'] = self.calculate_ema(closes, period)
             
@@ -1084,6 +1335,32 @@ class TechnicalIndicators:
 # Instance globale pour utilisation dans tous les services
 indicators = TechnicalIndicators()
 
+# Cache global pour les indicateurs incrémentaux
+class IndicatorCache:
+    """Cache pour les valeurs précédentes des indicateurs incrémentaux"""
+    def __init__(self):
+        self.cache = {}
+    
+    def get_key(self, symbol: str, timeframe: str, indicator: str) -> str:
+        return f"{symbol}:{timeframe}:{indicator}"
+    
+    def get(self, symbol: str, timeframe: str, indicator: str, default=None):
+        key = self.get_key(symbol, timeframe, indicator)
+        return self.cache.get(key, default)
+    
+    def set(self, symbol: str, timeframe: str, indicator: str, value):
+        key = self.get_key(symbol, timeframe, indicator)
+        self.cache[key] = value
+    
+    def clear_symbol(self, symbol: str):
+        """Efface le cache pour un symbole"""
+        keys_to_remove = [k for k in self.cache.keys() if k.startswith(f"{symbol}:")]
+        for key in keys_to_remove:
+            del self.cache[key]
+
+# Instance globale du cache
+indicator_cache = IndicatorCache()
+
 # Fonctions de convenance pour compatibilité
 def calculate_rsi(prices: Union[List[float], np.ndarray, pd.Series], period: int = 14) -> Optional[float]:
     """Fonction de convenance pour calculer RSI"""
@@ -1093,9 +1370,18 @@ def calculate_ema(prices: Union[List[float], np.ndarray, pd.Series], period: int
     """Fonction de convenance pour calculer EMA"""
     return indicators.calculate_ema(prices, period)
 
+def calculate_ema_incremental(current_price: float, previous_ema: Optional[float], period: int) -> float:
+    """Fonction de convenance pour EMA incrémentale"""
+    return indicators.calculate_ema_incremental(current_price, previous_ema, period)
+
 def calculate_macd(prices: Union[List[float], np.ndarray, pd.Series]) -> Dict[str, Optional[float]]:
     """Fonction de convenance pour calculer MACD"""
     return indicators.calculate_macd(prices)
+
+def calculate_macd_incremental(current_price: float, prev_ema_fast: Optional[float], 
+                              prev_ema_slow: Optional[float], prev_macd_signal: Optional[float]) -> Dict[str, Optional[float]]:
+    """Fonction de convenance pour MACD incrémental"""
+    return indicators.calculate_macd_incremental(current_price, prev_ema_fast, prev_ema_slow, prev_macd_signal)
 
 def calculate_bollinger_bands(prices: Union[List[float], np.ndarray, pd.Series], 
                             period: int = 20, std_dev: float = 2.0) -> Dict[str, Optional[float]]:
@@ -1138,3 +1424,56 @@ def calculate_all_indicators(highs: List[float], lows: List[float],
                            closes: List[float], volumes: List[float]) -> Dict[str, Any]:
     """Fonction de convenance pour calculer tous les indicateurs"""
     return indicators.calculate_all_indicators(highs, lows, closes, volumes)
+
+def calculate_indicators_incremental(symbol: str, timeframe: str, current_candle: Dict) -> Dict[str, Any]:
+    """
+    Calcule les indicateurs de manière incrémentale pour éviter les dents de scie.
+    
+    Args:
+        symbol: Symbole tradé
+        timeframe: Intervalle de temps
+        current_candle: Bougie actuelle avec keys: open, high, low, close, volume
+        
+    Returns:
+        Dict avec tous les indicateurs calculés de manière incrémentale
+    """
+    result = {}
+    current_price = current_candle['close']
+    
+    # EMA 12, 26, 50
+    for period in [12, 26, 50]:
+        prev_ema = indicator_cache.get(symbol, timeframe, f'ema_{period}')
+        new_ema = indicators.calculate_ema_incremental(current_price, prev_ema, period)
+        result[f'ema_{period}'] = new_ema
+        indicator_cache.set(symbol, timeframe, f'ema_{period}', new_ema)
+    
+    # MACD incrémental
+    prev_ema_fast = indicator_cache.get(symbol, timeframe, 'macd_ema_fast')
+    prev_ema_slow = indicator_cache.get(symbol, timeframe, 'macd_ema_slow')
+    prev_macd_signal = indicator_cache.get(symbol, timeframe, 'macd_signal')
+    
+    macd_result = indicators.calculate_macd_incremental(
+        current_price, prev_ema_fast, prev_ema_slow, prev_macd_signal
+    )
+    
+    result.update({
+        'macd_line': macd_result['macd_line'],
+        'macd_signal': macd_result['macd_signal'],
+        'macd_histogram': macd_result['macd_histogram']
+    })
+    
+    # Mettre à jour le cache MACD
+    indicator_cache.set(symbol, timeframe, 'macd_ema_fast', macd_result['ema_fast'])
+    indicator_cache.set(symbol, timeframe, 'macd_ema_slow', macd_result['ema_slow'])
+    indicator_cache.set(symbol, timeframe, 'macd_signal', macd_result['macd_signal'])
+    
+    # SMA 20, 50 (pour comparaison)
+    for period in [20, 50]:
+        prev_sma = indicator_cache.get(symbol, timeframe, f'sma_{period}')
+        # Pour SMA, on a besoin du prix le plus ancien, simplification ici
+        result[f'sma_{period}'] = indicators.calculate_sma_incremental(current_price, prev_sma, period)
+    
+    # Autres indicateurs qui ne nécessitent pas de cache (recalcul acceptable)
+    result['rsi_14'] = indicators.calculate_rsi([current_price], 14)  # Simplifié
+    
+    return result

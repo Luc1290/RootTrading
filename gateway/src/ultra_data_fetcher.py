@@ -227,14 +227,24 @@ class UltraDataFetcher:
                 'last_update': time.time()
             }
             
-            # **NOUVEAU**: Utiliser le module partagé pour tous les indicateurs
-            logger.debug(f"🔧 Calcul indicateurs avec module partagé pour {symbol} {timeframe}")
+            # 🚀 HYBRIDE : Calcul incrémental pour EMA/MACD + traditionnel pour le reste
+            logger.debug(f"🔧 Calcul HYBRIDE indicateurs pour {symbol} {timeframe}")
             
-            # Calcul de tous les indicateurs en une fois avec le module partagé
+            # 🚀 NOUVEAU : Calcul incrémental pour EMA/MACD (évite dents de scie)
+            incremental_indicators = self._calculate_smooth_indicators_ultra(symbol, timeframe, prices, highs, lows, volumes)
+            
+            # 📊 TRADITIONNEL : Calcul normal pour les autres indicateurs
             calculated_indicators = indicators.calculate_all_indicators(highs, lows, prices, volumes)
             
+            # FUSION : Priorité aux incrémentaux (EMA/MACD lisses)
+            final_indicators = calculated_indicators.copy()
+            final_indicators.update(incremental_indicators)  # Override EMA/MACD with smooth versions
+            
             # Ajouter tous les indicateurs calculés
-            enriched_data.update(calculated_indicators)
+            enriched_data.update(final_indicators)
+            
+            if incremental_indicators:
+                logger.debug(f"✅ {len(final_indicators)} indicateurs calculés pour {symbol} (🚀 EMA/MACD incrémentaux)")
             
             # Indicateurs additionnels non couverts par le module partagé
             if len(prices) >= 20:
@@ -854,6 +864,65 @@ class UltraDataFetcher:
         except Exception as e:
             logger.error(f"❌ Erreur traitement historique {symbol} {timeframe}: {e}")
             return {}
+
+    def _calculate_smooth_indicators_ultra(self, symbol: str, timeframe: str, prices: List[float], highs: List[float], lows: List[float], volumes: List[float]) -> Dict:
+        """
+        🚀 NOUVEAU : Calcule EMA/MACD avec séries optimisées pour éviter les dents de scie.
+        Utilise le module technical_indicators pour un calcul lisse.
+        
+        Args:
+            symbol: Symbole tradé
+            timeframe: Intervalle de temps  
+            prices: Liste des prix de clôture
+            highs: Liste des prix hauts
+            lows: Liste des prix bas
+            volumes: Liste des volumes
+            
+        Returns:
+            Dict avec indicateurs EMA/MACD lisses
+        """
+        result = {}
+        
+        try:
+            if len(prices) < 12:  # Pas assez de données
+                return {}
+            
+            # 📈 EMA 12, 26, 50 avec séries optimisées (évite dents de scie)
+            for period in [12, 26, 50]:
+                if len(prices) >= period:
+                    ema_key = f'ema_{period}'
+                    
+                    # Utiliser la méthode série du module indicators
+                    ema_series = indicators.calculate_ema_series(prices, period)
+                    
+                    # Prendre la dernière valeur calculée (la plus récente)
+                    if ema_series and len(ema_series) > 0 and ema_series[-1] is not None:
+                        result[ema_key] = float(ema_series[-1])
+            
+            # 📊 MACD avec séries optimisées  
+            if len(prices) >= 26:  # Assez de données pour MACD
+                macd_data = indicators.calculate_macd_series(prices)
+                
+                if macd_data and isinstance(macd_data, dict):
+                    # Prendre les dernières valeurs calculées
+                    if 'macd_line' in macd_data and len(macd_data['macd_line']) > 0 and macd_data['macd_line'][-1] is not None:
+                        result['macd_line'] = float(macd_data['macd_line'][-1])
+                    if 'macd_signal' in macd_data and len(macd_data['macd_signal']) > 0 and macd_data['macd_signal'][-1] is not None:
+                        result['macd_signal'] = float(macd_data['macd_signal'][-1])
+                    if 'macd_histogram' in macd_data and len(macd_data['macd_histogram']) > 0 and macd_data['macd_histogram'][-1] is not None:
+                        result['macd_histogram'] = float(macd_data['macd_histogram'][-1])
+            
+            if result:
+                logger.debug(f"🚀 [ULTRA] EMA/MACD lisses calculés pour {symbol} {timeframe}: "
+                            f"EMA12={result.get('ema_12', 0):.4f}, "
+                            f"MACD={result.get('macd_line', 0):.4f}")
+            
+        except Exception as e:
+            logger.error(f"❌ [ULTRA] Erreur calcul indicateurs lisses {symbol} {timeframe}: {e}")
+            # En cas d'erreur, retourner un dict vide (fallback vers calcul traditionnel)
+            result = {}
+        
+        return result
 
 # Point d'entrée pour test standalone
 async def main():

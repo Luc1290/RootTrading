@@ -197,6 +197,24 @@
                 <input type="number" id="limitInput" value="500" min="10" max="1000" title="Limite du nombre de données à afficher" placeholder="Entrez une limite (10-1000)">
             </div>
             
+            <div class="control-group">
+                <label>Affichage EMA</label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <label style="display: flex; align-items: center; gap: 4px;">
+                        <input type="checkbox" id="emaToggle12" checked style="margin: 0;">
+                        <span style="font-size: 11px;">EMA 12</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 4px;">
+                        <input type="checkbox" id="emaToggle26" checked style="margin: 0;">
+                        <span style="font-size: 11px;">EMA 26</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 4px;">
+                        <input type="checkbox" id="emaToggle50" checked style="margin: 0;">
+                        <span style="font-size: 11px;">EMA 50</span>
+                    </label>
+                </div>
+            </div>
+            
             <button onclick="updateAllCharts()">🔄 Actualiser</button>
             <button onclick="toggleWebSocket()" id="wsToggle">📡 WebSocket</button>
         </div>
@@ -311,7 +329,8 @@
             const marketData = await fetchData(`charts/market/${symbol}?limit=${limit}&interval=${interval}`);
             if (!marketData || !marketData.data) return;
 
-            // Plus besoin de récupérer les indicateurs pour le graphique principal
+            // Récupérer les indicateurs EMA pour le graphique principal
+            const emaData = await fetchData(`charts/indicators/${symbol}?indicators=ema&limit=${limit}&interval=${interval}`);
 
             const traces = [];
 
@@ -343,7 +362,50 @@
                               '<extra></extra>'
             });
 
-            // Plus d'indicateurs sur le graphique principal - graphique propre avec seulement chandeliers
+            // Ajouter les EMA sur le graphique principal si les données sont disponibles et les toggles activés
+            if (emaData && emaData.indicators) {
+                // EMA 12
+                if (document.getElementById('emaToggle12').checked && emaData.indicators.ema_12) {
+                    traces.push({
+                        x: emaData.market_data.timestamps,
+                        y: emaData.indicators.ema_12,
+                        type: 'scatter',
+                        mode: 'lines',
+                        name: 'EMA 12',
+                        line: { color: '#ff6b35', width: 2 },
+                        opacity: 0.8,
+                        hovertemplate: '<b>EMA 12</b><br>%{y:.4f}<br><extra></extra>'
+                    });
+                }
+
+                // EMA 26
+                if (document.getElementById('emaToggle26').checked && emaData.indicators.ema_26) {
+                    traces.push({
+                        x: emaData.market_data.timestamps,
+                        y: emaData.indicators.ema_26,
+                        type: 'scatter',
+                        mode: 'lines',
+                        name: 'EMA 26',
+                        line: { color: '#f7931e', width: 2 },
+                        opacity: 0.8,
+                        hovertemplate: '<b>EMA 26</b><br>%{y:.4f}<br><extra></extra>'
+                    });
+                }
+
+                // EMA 50
+                if (document.getElementById('emaToggle50').checked && emaData.indicators.ema_50) {
+                    traces.push({
+                        x: emaData.market_data.timestamps,
+                        y: emaData.indicators.ema_50,
+                        type: 'scatter',
+                        mode: 'lines',
+                        name: 'EMA 50',
+                        line: { color: '#ffd700', width: 2 },
+                        opacity: 0.8,
+                        hovertemplate: '<b>EMA 50</b><br>%{y:.4f}<br><extra></extra>'
+                    });
+                }
+            }
 
             // Ajouter les signaux de trading avec filtrage
             const signalFilter = document.getElementById('signalFilterSelect').value;
@@ -998,6 +1060,11 @@
         document.getElementById('symbolSelect').addEventListener('change', updateAllCharts);
         document.getElementById('intervalSelect').addEventListener('change', updateAllCharts);
         document.getElementById('signalFilterSelect').addEventListener('change', updateAllCharts);
+        
+        // Événements pour les checkboxes EMA - mise à jour automatique du graphique
+        document.getElementById('emaToggle12').addEventListener('change', updateMarketChart);
+        document.getElementById('emaToggle26').addEventListener('change', updateMarketChart);
+        document.getElementById('emaToggle50').addEventListener('change', updateMarketChart);
     </script>
 </body>
 </html>

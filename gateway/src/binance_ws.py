@@ -77,6 +77,9 @@ class BinanceWebSocket:
         self.rsi_buffers = {}
         self.macd_buffers = {}
         
+        # 🚀 NOUVEAU : Cache pour indicateurs incrémentaux (évite dents de scie)
+        self.incremental_cache = {}
+        
         # Initialiser les buffers pour chaque symbole/timeframe
         for symbol in self.symbols:
             self.price_buffers[symbol] = {}
@@ -85,6 +88,10 @@ class BinanceWebSocket:
             self.low_buffers[symbol] = {}
             self.rsi_buffers[symbol] = {}
             self.macd_buffers[symbol] = {}
+            
+            # 🚀 NOUVEAU : Initialiser cache incrémental pour EMA/MACD lisses
+            self.incremental_cache[symbol] = {}
+            
             for tf in self.timeframes:
                 self.price_buffers[symbol][tf] = []
                 self.volume_buffers[symbol][tf] = []
@@ -92,6 +99,9 @@ class BinanceWebSocket:
                 self.low_buffers[symbol][tf] = []
                 self.rsi_buffers[symbol][tf] = []
                 self.macd_buffers[symbol][tf] = {'ema12': None, 'ema26': None, 'signal9': None}
+                
+                # Cache pour chaque timeframe
+                self.incremental_cache[symbol][tf] = {}
                 
         logger.info(f"🔥 Gateway ULTRA-AVANCÉ : {len(self.stream_paths)} streams + indicateurs temps réel")
     
@@ -302,20 +312,27 @@ class BinanceWebSocket:
         lows = self.low_buffers[symbol][timeframe]
         volumes = self.volume_buffers[symbol][timeframe]
         
-        # Utiliser calculate_all_indicators pour calculer TOUS les indicateurs d'un coup
+        # 🚀 HYBRIDE : Calcul incrémental pour EMA/MACD + traditionnel pour le reste
         if len(prices) >= 20 and len(highs) >= 20 and len(lows) >= 20 and len(volumes) >= 20:
-            logger.debug(f"📊 Calcul de tous les indicateurs pour {symbol} {timeframe}")
+            logger.debug(f"📊 Calcul HYBRIDE des indicateurs pour {symbol} {timeframe}")
             
-            # Utiliser la méthode qui calcule tout
+            # 🚀 NOUVEAU : Calcul incrémental pour EMA/MACD (évite dents de scie)
+            incremental_indicators = self._calculate_smooth_indicators(symbol, timeframe, candle_data)
+            
+            # 📊 TRADITIONNEL : Calcul normal pour les autres indicateurs
             from shared.src.technical_indicators import indicators
             all_indicators = indicators.calculate_all_indicators(highs, lows, prices, volumes)
             
+            # FUSION : Priorité aux incrémentaux (EMA/MACD lisses)
+            final_indicators = all_indicators.copy()
+            final_indicators.update(incremental_indicators)  # Override EMA/MACD with smooth versions
+            
             # Ajouter tous les indicateurs calculés
-            for indicator_name, value in all_indicators.items():
+            for indicator_name, value in final_indicators.items():
                 if value is not None:
                     candle_data[indicator_name] = value
             
-            logger.debug(f"✅ {len(all_indicators)} indicateurs calculés pour {symbol}")
+            logger.debug(f"✅ {len(final_indicators)} indicateurs calculés pour {symbol} (🚀 EMA/MACD incrémentaux)")
             
             # Calculer aussi les indicateurs custom non inclus dans calculate_all_indicators
             # Stochastic RSI (pas dans calculate_all_indicators)
@@ -346,6 +363,12 @@ class BinanceWebSocket:
         elif len(prices) >= 14:
             # Calcul partiel pour avoir au moins RSI et quelques indicateurs de base
             logger.debug(f"📊 Calcul partiel des indicateurs pour {symbol} {timeframe}")
+            
+            # 🚀 NOUVEAU : Même pour calcul partiel, utiliser les EMA incrémentales si possible
+            incremental_indicators = self._calculate_smooth_indicators(symbol, timeframe, candle_data)
+            for indicator_name, value in incremental_indicators.items():
+                if value is not None:
+                    candle_data[indicator_name] = value
             
             # RSI seul si pas assez de données pour tous les indicateurs
             rsi = self._calculate_rsi(prices, 14)
@@ -846,6 +869,13 @@ class BinanceWebSocket:
         self.last_message_time = time.time()
         
         try:
+            # 🚀 NOUVEAU : Initialiser le cache incrémental de manière simple
+            logger.info("💾 Initialisation du cache incrémental pour EMA/MACD lisses...")
+            for symbol in self.symbols:
+                for timeframe in self.timeframes:
+                    self._initialize_incremental_cache_simple(symbol, timeframe)
+            logger.info("✅ Cache incrémental initialisé pour tous les symboles/timeframes")
+            
             # Démarrer la connexion
             await self._connect()
             
@@ -893,6 +923,120 @@ class BinanceWebSocket:
             self.kafka_client.flush()
             self.kafka_client.close()
             logger.info("Client Kafka fermé")
+
+    def _calculate_smooth_indicators(self, symbol: str, timeframe: str, candle_data: Dict) -> Dict:
+        """
+        🚀 NOUVEAU : Calcule EMA/MACD de manière incrémentale pour éviter les dents de scie.
+        
+        Args:
+            symbol: Symbole tradé
+            timeframe: Intervalle de temps  
+            candle_data: Données de la bougie actuelle
+            
+        Returns:
+            Dict avec indicateurs EMA/MACD lisses
+        """
+        result = {}
+        current_price = candle_data['close']
+        
+        try:
+            # Cache pour ce symbole/timeframe
+            cache = self.incremental_cache[symbol][timeframe]
+            
+            # 📈 EMA 12, 26, 50 (incrémentaux avec initialisation intelligente)
+            from shared.src.technical_indicators import calculate_ema_incremental
+            
+            for period in [12, 26, 50]:
+                cache_ema_key = f'ema_{period}'
+                prev_ema = cache.get(cache_ema_key)
+                
+                if prev_ema is None:
+                    # Première fois : utiliser la valeur traditionnelle si on a assez de données
+                    prices = self.price_buffers[symbol][timeframe]
+                    if len(prices) >= period:
+                        from shared.src.technical_indicators import calculate_ema
+                        traditional_ema = calculate_ema(prices, period)
+                        if traditional_ema is not None:
+                            cache[cache_ema_key] = traditional_ema
+                            result[cache_ema_key] = traditional_ema
+                            logger.debug(f"🎯 EMA {period} initialisée depuis buffer: {traditional_ema:.4f}")
+                            continue
+                
+                # Calcul incrémental : EMA_new = α × price + (1-α) × EMA_prev
+                new_ema = calculate_ema_incremental(current_price, prev_ema, period)
+                result[cache_ema_key] = new_ema
+                
+                # Mettre à jour le cache
+                cache[cache_ema_key] = new_ema
+            
+            # 📊 MACD incrémental (basé sur EMA 12/26 du cache)
+            from shared.src.technical_indicators import calculate_macd_incremental
+            
+            prev_ema_fast = cache.get('macd_ema_fast')  # EMA 12 pour MACD
+            prev_ema_slow = cache.get('macd_ema_slow')  # EMA 26 pour MACD  
+            prev_macd_signal = cache.get('macd_signal')
+            
+            # Utiliser les EMA du cache si disponibles
+            if cache.get('ema_12') is not None and cache.get('ema_26') is not None:
+                # Synchroniser les EMA MACD avec les EMA principales
+                if prev_ema_fast is None:
+                    cache['macd_ema_fast'] = cache['ema_12']
+                    prev_ema_fast = cache['ema_12']
+                if prev_ema_slow is None:
+                    cache['macd_ema_slow'] = cache['ema_26']
+                    prev_ema_slow = cache['ema_26']
+            
+            macd_result = calculate_macd_incremental(
+                current_price, prev_ema_fast, prev_ema_slow, prev_macd_signal
+            )
+            
+            result.update({
+                'macd_line': macd_result['macd_line'],
+                'macd_signal': macd_result['macd_signal'],
+                'macd_histogram': macd_result['macd_histogram']
+            })
+            
+            # Mettre à jour le cache MACD
+            cache['macd_ema_fast'] = macd_result['ema_fast']
+            cache['macd_ema_slow'] = macd_result['ema_slow'] 
+            cache['macd_signal'] = macd_result['macd_signal']
+            
+            if result:
+                logger.debug(f"🚀 Indicateurs lisses calculés pour {symbol} {timeframe}: "
+                            f"EMA12={result.get('ema_12', 0):.4f}, "
+                            f"MACD={result.get('macd_line', 0):.4f}")
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur calcul indicateurs incrémentaux {symbol} {timeframe}: {e}")
+            # En cas d'erreur, retourner un dict vide (fallback vers calcul traditionnel)
+            result = {}
+        
+        return result
+
+    def _initialize_incremental_cache_simple(self, symbol: str, timeframe: str):
+        """
+        🔄 Initialise le cache incrémental de manière simple.
+        Les premières EMA seront calculées normalement, puis continuées de manière incrémentale.
+        """
+        try:
+            # Pour l'instant, initialisation simple : le cache commence vide
+            # Les premières valeurs EMA/MACD seront calculées par la méthode traditionnelle
+            # puis les suivantes seront incrémentales et lisses
+            
+            cache = self.incremental_cache[symbol][timeframe]
+            
+            # Cache initialement vide - sera rempli au premier calcul
+            cache['ema_12'] = None
+            cache['ema_26'] = None
+            cache['ema_50'] = None
+            cache['macd_ema_fast'] = None
+            cache['macd_ema_slow'] = None
+            cache['macd_signal'] = None
+            
+            logger.debug(f"💾 Cache incrémental initialisé (vide) pour {symbol} {timeframe}")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur initialisation cache pour {symbol} {timeframe}: {e}")
 
 # Fonction principale pour exécuter le WebSocket de manière asynchrone
 async def run_binance_websocket():
