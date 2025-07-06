@@ -87,6 +87,9 @@ class SignalAggregator:
         # Signal buffer for aggregation
         self.signal_buffer = defaultdict(list)
         self.last_signal_time = {}
+        
+        # Cache incrémental pour EMAs lisses (comme dans Gateway WebSocket)
+        self.ema_incremental_cache = defaultdict(lambda: defaultdict(dict))
         # Hybrid approach: load thresholds from config
         from shared.src.config import (SIGNAL_COOLDOWN_MINUTES, VOTE_THRESHOLD, 
                                      CONFIDENCE_THRESHOLD)
@@ -195,9 +198,7 @@ class SignalAggregator:
             is_ultra_confluent = signal.get('metadata', {}).get('ultra_confluence', False)
             signal_score = signal.get('metadata', {}).get('total_score')
             
-            # Convert 'side' to 'side' for compatibility
-            if 'side' in signal and 'side' not in signal:
-                signal['side'] = signal.pop('side')
+            # Note: Removed impossible condition bug
             
             # Normalize side value
             if 'side' in signal:
@@ -1501,22 +1502,27 @@ class SignalAggregator:
             if len(prices) < 50:
                 return True  # Pas assez de données pour EMA 50
             
-            # Utiliser les mêmes EMAs que les stratégies : 21 vs 50 périodes
-            ema_21 = self._calculate_ema(prices[-21:], 21)
-            ema_50 = self._calculate_ema(prices[-50:], 50)
+            # AMÉLIORATION : Utiliser EMAs incrémentales pour courbes lisses
+            current_price = prices[-1] if prices else 0
+            ema_21 = self._get_or_calculate_ema_incremental(symbol, current_price, 21)
+            ema_50 = self._get_or_calculate_ema_incremental(symbol, current_price, 50)
             
             # LOGIQUE SOPHISTIQUÉE : Analyser la force et le momentum de la tendance
-            current_price = prices[-1] if prices else 0
             
-            # Calculer la vélocité des EMAs (momentum)
-            if len(prices) >= 55:  # Besoin de données pour calculer la vélocité
-                ema_21_prev = self._calculate_ema(prices[-26:-5], 21)  # EMA21 il y a 5 périodes
-                ema_50_prev = self._calculate_ema(prices[-55:-5], 50)  # EMA50 il y a 5 périodes
-                ema_21_velocity = (ema_21 - ema_21_prev) / ema_21_prev if ema_21_prev > 0 else 0
-                ema_50_velocity = (ema_50 - ema_50_prev) / ema_50_prev if ema_50_prev > 0 else 0
-            else:
-                ema_21_velocity = 0
-                ema_50_velocity = 0
+            # Calculer la vélocité des EMAs (momentum) - méthode améliorée
+            # Récupérer les EMAs précédentes depuis le cache pour vélocité
+            timeframe = "1m"
+            cache = self.ema_incremental_cache.get(symbol, {}).get(timeframe, {})
+            ema_21_prev = cache.get('ema_21_prev', ema_21)
+            ema_50_prev = cache.get('ema_50_prev', ema_50)
+            
+            # Calculer vélocité avec EMAs lisses
+            ema_21_velocity = (ema_21 - ema_21_prev) / ema_21_prev if ema_21_prev > 0 else 0
+            ema_50_velocity = (ema_50 - ema_50_prev) / ema_50_prev if ema_50_prev > 0 else 0
+            
+            # Stocker les valeurs actuelles comme "précédentes" pour le prochain calcul
+            cache['ema_21_prev'] = ema_21
+            cache['ema_50_prev'] = ema_50
             
             # Calculer la force de la tendance
             trend_strength = abs(ema_21 - ema_50) / ema_50 if ema_50 > 0 else 0
@@ -1622,7 +1628,7 @@ class SignalAggregator:
             return True  # Mode dégradé : accepter le signal
     
     def _calculate_ema(self, prices: List[float], period: int) -> float:
-        """Calcule une EMA simple"""
+        """Calcule une EMA simple (fallback)"""
         if not prices or period <= 0:
             return prices[-1] if prices else 0
         
@@ -1633,6 +1639,272 @@ class SignalAggregator:
             ema = (price * multiplier) + (ema * (1 - multiplier))
         
         return ema
+    
+    def _get_or_calculate_ema_incremental(self, symbol: str, current_price: float, period: int) -> float:
+        """
+        Récupère ou calcule EMA de manière incrémentale pour éviter les dents de scie.
+        Utilise le même principe que le Gateway WebSocket.
+        """
+        timeframe = "1m"  # Timeframe principal du Signal Aggregator
+        cache_key = f'ema_{period}'
+        
+        # Initialiser le cache si nécessaire
+        if symbol not in self.ema_incremental_cache:
+            self.ema_incremental_cache[symbol] = {}
+        if timeframe not in self.ema_incremental_cache[symbol]:
+            self.ema_incremental_cache[symbol][timeframe] = {}
+            
+        cache = self.ema_incremental_cache[symbol][timeframe]
+        
+        # Récupérer EMA précédente du cache
+        prev_ema = cache.get(cache_key)
+        
+        if prev_ema is None:
+            # Première fois : utiliser le prix actuel comme base
+            new_ema = current_price
+        else:
+            # Calcul incrémental standard
+            from shared.src.technical_indicators import calculate_ema_incremental
+            new_ema = calculate_ema_incremental(current_price, prev_ema, period)
+        
+        # Mettre à jour le cache
+        cache[cache_key] = new_ema
+        
+        return new_ema
+    
+    def _get_or_calculate_indicator_incremental(self, symbol: str, current_candle: Dict, indicator_type: str, **params) -> Optional[float]:
+        """
+        Méthode générique pour calculer n'importe quel indicateur de manière incrémentale.
+        Évite les dents de scie pour MACD, RSI, ATR, Stochastic, etc.
+        
+        Args:
+            symbol: Symbole tradé
+            current_candle: Bougie actuelle avec OHLCV
+            indicator_type: Type d'indicateur ('macd', 'rsi', 'atr', 'stoch', etc.)
+            **params: Paramètres spécifiques (period, etc.)
+        """
+        timeframe = "1m"
+        
+        # Initialiser le cache si nécessaire
+        if symbol not in self.ema_incremental_cache:
+            self.ema_incremental_cache[symbol] = {}
+        if timeframe not in self.ema_incremental_cache[symbol]:
+            self.ema_incremental_cache[symbol][timeframe] = {}
+            
+        cache = self.ema_incremental_cache[symbol][timeframe]
+        
+        try:
+            if indicator_type == 'macd':
+                # MACD incrémental (line, signal, histogram)
+                prev_ema_fast = cache.get('macd_ema_fast')
+                prev_ema_slow = cache.get('macd_ema_slow') 
+                prev_macd_signal = cache.get('macd_signal')
+                
+                from shared.src.technical_indicators import calculate_macd_incremental
+                result = calculate_macd_incremental(
+                    current_candle['close'], prev_ema_fast, prev_ema_slow, prev_macd_signal
+                )
+                
+                # Mettre à jour le cache
+                cache['macd_ema_fast'] = result['ema_fast']
+                cache['macd_ema_slow'] = result['ema_slow']
+                cache['macd_signal'] = result['macd_signal']
+                cache['macd_line'] = result['macd_line']
+                cache['macd_histogram'] = result['macd_histogram']
+                
+                return result
+                
+            elif indicator_type == 'rsi':
+                # RSI incrémental (nécessite historique de gains/pertes)
+                period = params.get('period', 14)
+                prev_rsi = cache.get(f'rsi_{period}')
+                prev_avg_gain = cache.get(f'rsi_{period}_avg_gain')
+                prev_avg_loss = cache.get(f'rsi_{period}_avg_loss')
+                prev_price = cache.get('prev_close')
+                
+                if prev_price is None:
+                    # Première fois : utiliser valeur neutre
+                    cache['prev_close'] = current_candle['close']
+                    return 50.0
+                
+                # Calculer gain/perte pour cette période
+                price_change = current_candle['close'] - prev_price
+                gain = max(price_change, 0)
+                loss = max(-price_change, 0)
+                
+                if prev_avg_gain is None or prev_avg_loss is None:
+                    # Initialisation
+                    avg_gain = gain
+                    avg_loss = loss
+                else:
+                    # Calcul incrémental des moyennes
+                    alpha = 1.0 / period
+                    avg_gain = alpha * gain + (1 - alpha) * prev_avg_gain
+                    avg_loss = alpha * loss + (1 - alpha) * prev_avg_loss
+                
+                # Calculer RSI
+                if avg_loss == 0:
+                    rsi = 100.0
+                else:
+                    rs = avg_gain / avg_loss
+                    rsi = 100.0 - (100.0 / (1.0 + rs))
+                
+                # Mettre à jour le cache
+                cache[f'rsi_{period}'] = rsi
+                cache[f'rsi_{period}_avg_gain'] = avg_gain
+                cache[f'rsi_{period}_avg_loss'] = avg_loss
+                cache['prev_close'] = current_candle['close']
+                
+                return rsi
+                
+            elif indicator_type == 'sma':
+                # SMA incrémental
+                period = params.get('period', 20)
+                prev_sma = cache.get(f'sma_{period}')
+                
+                from shared.src.technical_indicators import calculate_sma_incremental
+                new_sma = calculate_sma_incremental(current_candle['close'], prev_sma, period)
+                
+                cache[f'sma_{period}'] = new_sma
+                return new_sma
+                
+            elif indicator_type == 'atr':
+                # ATR incrémental pour stop-loss plus précis
+                period = params.get('period', 14)
+                prev_atr = cache.get(f'atr_{period}')
+                prev_close = cache.get('atr_prev_close')
+                
+                if prev_close is None:
+                    cache['atr_prev_close'] = current_candle['close']
+                    cache[f'atr_{period}'] = current_candle['high'] - current_candle['low']
+                    return cache[f'atr_{period}']
+                
+                # Calcul True Range
+                tr1 = current_candle['high'] - current_candle['low']
+                tr2 = abs(current_candle['high'] - prev_close)
+                tr3 = abs(current_candle['low'] - prev_close)
+                true_range = max(tr1, tr2, tr3)
+                
+                # ATR incrémental (EMA du True Range)
+                if prev_atr is None:
+                    new_atr = true_range
+                else:
+                    alpha = 2.0 / (period + 1)
+                    new_atr = alpha * true_range + (1 - alpha) * prev_atr
+                
+                cache[f'atr_{period}'] = new_atr
+                cache['atr_prev_close'] = current_candle['close']
+                return new_atr
+                
+            elif indicator_type == 'stoch':
+                # Stochastic incrémental (K% et D%)
+                period_k = params.get('period_k', 14)
+                period_d = params.get('period_d', 3)
+                
+                # Maintenir historique des highs/lows pour K%
+                highs_key = f'stoch_highs_{period_k}'
+                lows_key = f'stoch_lows_{period_k}'
+                
+                if highs_key not in cache:
+                    cache[highs_key] = []
+                if lows_key not in cache:
+                    cache[lows_key] = []
+                
+                # Ajouter valeurs actuelles
+                cache[highs_key].append(current_candle['high'])
+                cache[lows_key].append(current_candle['low'])
+                
+                # Maintenir seulement les dernières 'period_k' valeurs
+                if len(cache[highs_key]) > period_k:
+                    cache[highs_key] = cache[highs_key][-period_k:]
+                if len(cache[lows_key]) > period_k:
+                    cache[lows_key] = cache[lows_key][-period_k:]
+                
+                if len(cache[highs_key]) < period_k:
+                    return {'stoch_k': 50.0, 'stoch_d': 50.0}  # Valeurs neutres
+                
+                # Calcul K%
+                highest_high = max(cache[highs_key])
+                lowest_low = min(cache[lows_key])
+                
+                if highest_high == lowest_low:
+                    stoch_k = 50.0
+                else:
+                    stoch_k = ((current_candle['close'] - lowest_low) / (highest_high - lowest_low)) * 100
+                
+                # Calcul D% (SMA de K%)
+                k_history_key = f'stoch_k_history_{period_d}'
+                if k_history_key not in cache:
+                    cache[k_history_key] = []
+                    
+                cache[k_history_key].append(stoch_k)
+                if len(cache[k_history_key]) > period_d:
+                    cache[k_history_key] = cache[k_history_key][-period_d:]
+                
+                stoch_d = sum(cache[k_history_key]) / len(cache[k_history_key])
+                
+                result = {'stoch_k': stoch_k, 'stoch_d': stoch_d}
+                cache['stoch_k'] = stoch_k
+                cache['stoch_d'] = stoch_d
+                return result
+                
+            elif indicator_type == 'bollinger':
+                # Bollinger Bands incrémental
+                period = params.get('period', 20)
+                std_dev = params.get('std_dev', 2.0)
+                
+                # Maintenir historique des prix pour calcul écart-type
+                prices_key = f'bb_prices_{period}'
+                if prices_key not in cache:
+                    cache[prices_key] = []
+                    
+                cache[prices_key].append(current_candle['close'])
+                if len(cache[prices_key]) > period:
+                    cache[prices_key] = cache[prices_key][-period:]
+                
+                if len(cache[prices_key]) < period:
+                    return None  # Pas assez de données
+                
+                # Calcul SMA (middle band)
+                sma = sum(cache[prices_key]) / period
+                
+                # Calcul écart-type
+                variance = sum((price - sma) ** 2 for price in cache[prices_key]) / period
+                std = variance ** 0.5
+                
+                # Calcul des bandes
+                bb_upper = sma + (std_dev * std)
+                bb_lower = sma - (std_dev * std)
+                bb_width = (bb_upper - bb_lower) / sma if sma > 0 else 0
+                
+                # Position relative du prix (0 = bande basse, 1 = bande haute)
+                if bb_upper == bb_lower:
+                    bb_position = 0.5
+                else:
+                    bb_position = (current_candle['close'] - bb_lower) / (bb_upper - bb_lower)
+                
+                result = {
+                    'bb_upper': bb_upper,
+                    'bb_middle': sma,
+                    'bb_lower': bb_lower,
+                    'bb_position': bb_position,
+                    'bb_width': bb_width
+                }
+                
+                # Mettre à jour le cache
+                for key, value in result.items():
+                    cache[key] = value
+                    
+                return result
+                
+            else:
+                # Fallback pour indicateurs non implémentés
+                logger.debug(f"Indicateur incrémental non implémenté: {indicator_type}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Erreur calcul incrémental {indicator_type} pour {symbol}: {e}")
+            return None
     
     async def _get_current_adx(self, symbol: str) -> Optional[float]:
         """

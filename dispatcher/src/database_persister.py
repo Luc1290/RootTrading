@@ -85,6 +85,7 @@ class DatabasePersister:
             market_data = {
                 'time': datetime.fromtimestamp(message['start_time'] / 1000),
                 'symbol': symbol,
+                'timeframe': timeframe,  # NOUVEAU: Inclure le timeframe
                 'open': float(message['open']),
                 'high': float(message['high']),
                 'low': float(message['low']),
@@ -174,13 +175,13 @@ class DatabasePersister:
             placeholders = [f"${i+1}" for i in range(len(columns))]
             values = list(data.values())
             
-            # Construire les clauses UPDATE pour ON CONFLICT
-            update_clauses = [f"{col} = EXCLUDED.{col}" for col in columns if col not in ['time', 'symbol']]
+            # Construire les clauses UPDATE pour ON CONFLICT (nouvelle clé primaire avec timeframe)
+            update_clauses = [f"{col} = EXCLUDED.{col}" for col in columns if col not in ['time', 'symbol', 'timeframe']]
             
             query = f"""
                 INSERT INTO market_data ({', '.join(columns)})
                 VALUES ({', '.join(placeholders)})
-                ON CONFLICT (time, symbol) DO UPDATE SET
+                ON CONFLICT (time, symbol, timeframe) DO UPDATE SET
                     {', '.join(update_clauses)}
             """
             

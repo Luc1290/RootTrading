@@ -63,16 +63,16 @@ class DatabaseIndicators:
                 momentum_10, volume_ratio, avg_volume_20,
                 enhanced, ultra_enriched
             FROM market_data 
-            WHERE symbol = %s AND enhanced = true
+            WHERE symbol = %s AND enhanced = true AND timeframe = %s
             ORDER BY time DESC 
             LIMIT %s
             """
             
             from shared.src.db_pool import fetch_all
-            rows = fetch_all(query, (symbol, limit), dict_result=True)
+            rows = fetch_all(query, (symbol, timeframe, limit), dict_result=True)
                 
             if not rows or rows is None:
-                logger.warning(f"Aucune donnée trouvée pour {symbol}")
+                logger.warning(f"Aucune donnée trouvée pour {symbol} timeframe {timeframe}")
                 return None
                 
             # Convertir en DataFrame et inverser l'ordre (plus ancien -> plus récent)
@@ -259,7 +259,7 @@ class DatabaseIndicators:
             DataFrame complet avec tous les indicateurs (DB + calculés)
         """
         # 1. Récupérer les données enrichies de la DB
-        df = self.get_enriched_market_data(symbol, limit=limit)
+        df = self.get_enriched_market_data(symbol, timeframe='1m', limit=limit)
         
         if df is None or df.empty:
             logger.warning(f"Impossible de récupérer les données pour {symbol}")

@@ -118,12 +118,14 @@ CREATE INDEX IF NOT EXISTS trading_signals_metadata_idx ON trading_signals USING
 CREATE TABLE IF NOT EXISTS market_data (
     time TIMESTAMP NOT NULL,
     symbol VARCHAR(20) NOT NULL,
+    timeframe VARCHAR(10) NOT NULL DEFAULT '1m',
     open NUMERIC(16, 8) NOT NULL,
     high NUMERIC(16, 8) NOT NULL,
     low NUMERIC(16, 8) NOT NULL,
     close NUMERIC(16, 8) NOT NULL,
     volume NUMERIC(16, 8) NOT NULL,
-    PRIMARY KEY (time, symbol)
+    PRIMARY KEY (time, symbol, timeframe),
+    CONSTRAINT valid_timeframe_check CHECK (timeframe IN ('1m', '5m', '15m', '1h', '4h', '1d'))
 );
 
 -- Convertir market_data en table hypertable (TimescaleDB)
@@ -137,8 +139,9 @@ ALTER TABLE market_data SET (
 );
 SELECT add_compression_policy('market_data', INTERVAL '7 days');
 
--- Index pour les données de marché
-CREATE INDEX IF NOT EXISTS market_data_symbol_idx ON market_data(symbol, time DESC);
+-- Index pour les données de marché (optimisés pour timeframe)
+CREATE INDEX IF NOT EXISTS market_data_symbol_timeframe_idx ON market_data(symbol, timeframe, time DESC);
+CREATE INDEX IF NOT EXISTS market_data_timeframe_symbol_time_idx ON market_data(timeframe, symbol, time DESC);
 -- Index BRIN plus efficace pour les grandes tables temporelles
 CREATE INDEX IF NOT EXISTS market_data_time_brin_idx ON market_data USING BRIN (time) WITH (pages_per_range = 128);
 

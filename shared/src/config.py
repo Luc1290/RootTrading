@@ -89,7 +89,7 @@ STRATEGY_PARAMS = {
         "fast_period": int(os.getenv("MACD_FAST_PERIOD", 12)),
         "slow_period": int(os.getenv("MACD_SLOW_PERIOD", 26)),
         "signal_period": int(os.getenv("MACD_SIGNAL_PERIOD", 9)),
-        "histogram_threshold": float(os.getenv("MACD_HISTOGRAM_THRESHOLD", 0.001)),
+        "histogram_threshold": float(os.getenv("MACD_HISTOGRAM_THRESHOLD", 0.0005)),  # Réduit pour plus de sensibilité
     }
 }
 
@@ -103,10 +103,10 @@ ADX_WEAK_TREND_THRESHOLD = float(os.getenv("ADX_WEAK_TREND_THRESHOLD", 23))
 ADX_TREND_THRESHOLD = float(os.getenv("ADX_TREND_THRESHOLD", 32))
 ADX_STRONG_TREND_THRESHOLD = float(os.getenv("ADX_STRONG_TREND_THRESHOLD", 42))
 
-# Signal Aggregator Settings
+# Signal Aggregator Settings - Optimisés pour plus de signaux
 SIGNAL_COOLDOWN_MINUTES = int(os.getenv("SIGNAL_COOLDOWN_MINUTES", 3))
-VOTE_THRESHOLD = float(os.getenv("VOTE_THRESHOLD", 0.35))
-CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", 0.72))
+VOTE_THRESHOLD = float(os.getenv("VOTE_THRESHOLD", 0.30))  # Réduit de 35% à 30%
+CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", 0.65))  # Réduit de 72% à 65%
 
 # Configuration des canaux Redis
 CHANNEL_PREFIX = os.getenv("CHANNEL_PREFIX", "roottrading")

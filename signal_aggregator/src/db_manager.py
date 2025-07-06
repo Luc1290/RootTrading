@@ -207,11 +207,12 @@ class DatabaseManager:
                         ultra_enriched
                     FROM market_data
                     WHERE symbol = $1
+                        AND timeframe = $2
                         AND enhanced = true
                     ORDER BY time DESC
-                    LIMIT $2
+                    LIMIT $3
                 """
-                params = [symbol, limit]
+                params = [symbol, interval, limit]
             else:
                 query = """
                     SELECT 
@@ -223,10 +224,11 @@ class DatabaseManager:
                         volume
                     FROM market_data
                     WHERE symbol = $1
+                        AND timeframe = $2
                     ORDER BY time DESC
-                    LIMIT $2
+                    LIMIT $3
                 """
-                params = [symbol, limit]
+                params = [symbol, interval, limit]
             
             # Utiliser le pool de connexions pour éviter les conflits de concurrence
             try:

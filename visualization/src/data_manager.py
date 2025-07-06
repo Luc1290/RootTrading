@@ -129,7 +129,7 @@ class DataManager:
                     enhanced,
                     ultra_enriched
                 FROM market_data
-                WHERE symbol = $1
+                WHERE symbol = $1 AND timeframe = $2
             """
         else:
             # Requête avec agrégation simple pour les autres intervalles
@@ -165,7 +165,7 @@ class DataManager:
                         (array_agg(enhanced ORDER BY time DESC NULLS LAST))[1] as enhanced,
                         (array_agg(ultra_enriched ORDER BY time DESC NULLS LAST))[1] as ultra_enriched
                     FROM market_data
-                    WHERE symbol = $1
+                    WHERE symbol = $1 AND timeframe = $2
                     GROUP BY period
                 )
                 SELECT 
@@ -179,7 +179,7 @@ class DataManager:
                 FROM aggregated
             """
         
-        params = [symbol]
+        params = [symbol, interval]
         
         if start_time:
             query += f" AND time >= ${len(params) + 1}"
