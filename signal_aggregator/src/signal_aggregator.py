@@ -254,8 +254,8 @@ class SignalAggregator:
             # Add to buffer
             self.signal_buffer[symbol].append(signal)
             
-            # Clean old signals (keep only last 90 seconds for confluence)
-            cutoff_time = timestamp - timedelta(seconds=90)
+            # Clean old signals (keep only last 120 seconds for confluence)
+            cutoff_time = timestamp - timedelta(seconds=120)
             self.signal_buffer[symbol] = [
                 s for s in self.signal_buffer[symbol]
                 if self._get_signal_timestamp(s) > cutoff_time
@@ -272,7 +272,7 @@ class SignalAggregator:
                 
                 # NOUVEAU: Filtrage intelligent basé sur les régimes Enhanced
                 signal_filtered = await self._apply_enhanced_regime_filtering(
-                    signal, regime, regime_metrics, is_ultra_confluent, signal_score
+                    signal, regime, regime_metrics, is_ultra_confluent, signal_score, len(self.signal_buffer[symbol])
                 )
                 if not signal_filtered:
                     return None  # Signal rejeté par le filtrage intelligent
@@ -2350,7 +2350,8 @@ class EnhancedSignalAggregator(SignalAggregator):
         return 0  # Default to start of recovery
     
     async def _apply_enhanced_regime_filtering(self, signal: Dict[str, Any], regime, regime_metrics: Dict[str, float], 
-                                             is_ultra_confluent: bool, signal_score: Optional[float]) -> bool:
+                                             is_ultra_confluent: bool, signal_score: Optional[float], 
+                                             strategy_count: int = 1) -> bool:
         """
         Applique un filtrage intelligent basé sur les régimes Enhanced.
         
@@ -2360,6 +2361,7 @@ class EnhancedSignalAggregator(SignalAggregator):
             regime_metrics: Métriques du régime
             is_ultra_confluent: Si le signal est ultra-confluent
             signal_score: Score du signal (si disponible)
+            strategy_count: Nombre de stratégies qui s'accordent sur ce signal
             
         Returns:
             True si le signal doit être accepté, False sinon
@@ -2494,7 +2496,11 @@ class EnhancedSignalAggregator(SignalAggregator):
                            f"pour {strategy} {side} {symbol}")
                 return False
                 
-            if signal_strength not in required_strength:
+            # NOUVEAU: Accepter les signaux 'moderate' si 2+ stratégies s'accordent
+            if signal_strength == 'moderate' and strategy_count >= 2:
+                logger.info(f"✅ Signal 'moderate' accepté avec {strategy_count} stratégies en {regime.name}: "
+                           f"{strategy} {side} {symbol}")
+            elif signal_strength not in required_strength:
                 logger.info(f"🚫 Signal rejeté en {regime.name}: force '{signal_strength}' insuffisante "
                            f"(requis: {required_strength}) pour {strategy} {side} {symbol}")
                 return False

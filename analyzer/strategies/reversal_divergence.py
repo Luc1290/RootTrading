@@ -69,45 +69,37 @@ class ReversalDivergenceStrategy(BaseStrategy):
             
             # SIGNAL D'ACHAT - Divergence bullish (prix baisse, RSI monte)
             if (price_trend <= -self.min_price_change and rsi_trend >= self.min_rsi_change):
-                confidence = min(0.9, (abs(price_trend) + abs(rsi_trend)) / 20 + 0.6)
-                signal = {
-                    'symbol': symbol,
-                    'side': OrderSide.BUY,
-                    'price': current_price,
-                    'confidence': confidence,
-                    'strength': SignalStrength.MODERATE,
-                    'strategy': self.name,
-                    'timestamp': datetime.now(),
-                    'metadata': {
+                confidence = min(0.95, (abs(price_trend) + abs(rsi_trend)) / 18 + 0.6)
+                signal = self.create_signal(
+                    side=OrderSide.BUY,
+                    price=current_price,
+                    confidence=confidence,
+                    metadata={
                         'price_trend': price_trend,
                         'rsi_trend': rsi_trend,
                         'current_rsi': rsi_values[-1],
                         'reason': f'Divergence bullish (prix: {price_trend:.1f}%, RSI: +{rsi_trend:.1f})'
                     }
-                }
+                )
             
             # SIGNAL DE VENTE - Divergence bearish (prix monte, RSI baisse)
             elif (price_trend >= self.min_price_change and rsi_trend <= -self.min_rsi_change):
-                confidence = min(0.9, (abs(price_trend) + abs(rsi_trend)) / 20 + 0.6)
-                signal = {
-                    'symbol': symbol,
-                    'side': OrderSide.SELL,
-                    'price': current_price,
-                    'confidence': confidence,
-                    'strength': SignalStrength.MODERATE,
-                    'strategy': self.name,
-                    'timestamp': datetime.now(),
-                    'metadata': {
+                confidence = min(0.95, (abs(price_trend) + abs(rsi_trend)) / 18 + 0.6)
+                signal = self.create_signal(
+                    side=OrderSide.SELL,
+                    price=current_price,
+                    confidence=confidence,
+                    metadata={
                         'price_trend': price_trend,
                         'rsi_trend': rsi_trend,
                         'current_rsi': rsi_values[-1],
                         'reason': f'Divergence bearish (prix: +{price_trend:.1f}%, RSI: {rsi_trend:.1f})'
                     }
-                }
+                )
             
             if signal:
-                logger.info(f"🎯 Divergence {symbol}: {signal['side'].value} @ {current_price:.4f} "
-                          f"(prix: {price_trend:.1f}%, RSI: {rsi_trend:.1f}, conf: {signal['confidence']:.2f})")
+                logger.info(f"🎯 Divergence {symbol}: {signal.side.value} @ {current_price:.4f} "
+                          f"(prix: {price_trend:.1f}%, RSI: {rsi_trend:.1f}, conf: {signal.confidence:.2f}, strength: {signal.strength.value})")
             
             return signal
             

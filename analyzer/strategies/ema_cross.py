@@ -71,46 +71,38 @@ class EMACrossStrategy(BaseStrategy):
             # SIGNAL D'ACHAT - Golden Cross (EMA12 croise au-dessus EMA26)
             if (previous_ema12 <= previous_ema26 and current_ema12 > current_ema26):
                 gap_percent = abs(current_ema12 - current_ema26) / current_ema26
-                confidence = min(0.9, gap_percent * 100 + 0.6)
-                signal = {
-                    'symbol': symbol,
-                    'side': OrderSide.BUY,
-                    'price': current_price,
-                    'confidence': confidence,
-                    'strength': SignalStrength.MODERATE,
-                    'strategy': self.name,
-                    'timestamp': datetime.now(),
-                    'metadata': {
+                confidence = min(0.95, gap_percent * 120 + 0.6)
+                signal = self.create_signal(
+                    side=OrderSide.BUY,
+                    price=current_price,
+                    confidence=confidence,
+                    metadata={
                         'ema12': current_ema12,
                         'ema26': current_ema26,
                         'gap_percent': gap_percent * 100,
                         'reason': f'EMA Golden Cross (12: {current_ema12:.4f} > 26: {current_ema26:.4f})'
                     }
-                }
+                )
             
             # SIGNAL DE VENTE - Death Cross (EMA12 croise en-dessous EMA26)
             elif (previous_ema12 >= previous_ema26 and current_ema12 < current_ema26):
                 gap_percent = abs(current_ema26 - current_ema12) / current_ema26
-                confidence = min(0.9, gap_percent * 100 + 0.6)
-                signal = {
-                    'symbol': symbol,
-                    'side': OrderSide.SELL,
-                    'price': current_price,
-                    'confidence': confidence,
-                    'strength': SignalStrength.MODERATE,
-                    'strategy': self.name,
-                    'timestamp': datetime.now(),
-                    'metadata': {
+                confidence = min(0.95, gap_percent * 120 + 0.6)
+                signal = self.create_signal(
+                    side=OrderSide.SELL,
+                    price=current_price,
+                    confidence=confidence,
+                    metadata={
                         'ema12': current_ema12,
                         'ema26': current_ema26,
                         'gap_percent': gap_percent * 100,
                         'reason': f'EMA Death Cross (12: {current_ema12:.4f} < 26: {current_ema26:.4f})'
                     }
-                }
+                )
             
             if signal:
-                logger.info(f"🎯 EMA Cross {symbol}: {signal['side'].value} @ {current_price:.4f} "
-                          f"(12: {current_ema12:.4f}, 26: {current_ema26:.4f}, conf: {signal['confidence']:.2f})")
+                logger.info(f"🎯 EMA Cross {symbol}: {signal.side.value} @ {current_price:.4f} "
+                          f"(12: {current_ema12:.4f}, 26: {current_ema26:.4f}, conf: {signal.confidence:.2f}, strength: {signal.strength.value})")
             
             return signal
             

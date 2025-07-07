@@ -67,43 +67,35 @@ class MACDStrategy(BaseStrategy):
             
             # SIGNAL D'ACHAT - Histogram devient positif (crossover bullish)
             if (previous_histogram <= 0 and current_histogram > self.min_histogram_threshold):
-                confidence = min(0.9, abs(current_histogram) * 1000 + 0.5)
-                signal = {
-                    'symbol': symbol,
-                    'side': OrderSide.BUY,
-                    'price': current_price,
-                    'confidence': confidence,
-                    'strength': SignalStrength.MODERATE,
-                    'strategy': self.name,
-                    'timestamp': datetime.now(),
-                    'metadata': {
+                confidence = min(0.95, abs(current_histogram) * 1200 + 0.5)
+                signal = self.create_signal(
+                    side=OrderSide.BUY,
+                    price=current_price,
+                    confidence=confidence,
+                    metadata={
                         'macd_histogram': current_histogram,
                         'previous_histogram': previous_histogram,
                         'reason': f'MACD bullish crossover (hist: {previous_histogram:.5f} → {current_histogram:.5f})'
                     }
-                }
+                )
             
             # SIGNAL DE VENTE - Histogram devient négatif (crossover bearish)
             elif (previous_histogram >= 0 and current_histogram < -self.min_histogram_threshold):
-                confidence = min(0.9, abs(current_histogram) * 1000 + 0.5)
-                signal = {
-                    'symbol': symbol,
-                    'side': OrderSide.SELL,
-                    'price': current_price,
-                    'confidence': confidence,
-                    'strength': SignalStrength.MODERATE,
-                    'strategy': self.name,
-                    'timestamp': datetime.now(),
-                    'metadata': {
+                confidence = min(0.95, abs(current_histogram) * 1200 + 0.5)
+                signal = self.create_signal(
+                    side=OrderSide.SELL,
+                    price=current_price,
+                    confidence=confidence,
+                    metadata={
                         'macd_histogram': current_histogram,
                         'previous_histogram': previous_histogram,
                         'reason': f'MACD bearish crossover (hist: {previous_histogram:.5f} → {current_histogram:.5f})'
                     }
-                }
+                )
             
             if signal:
-                logger.info(f"🎯 MACD {symbol}: {signal['side'].value} @ {current_price:.4f} "
-                          f"(hist: {current_histogram:.5f}, conf: {signal['confidence']:.2f})")
+                logger.info(f"🎯 MACD {symbol}: {signal.side.value} @ {current_price:.4f} "
+                          f"(hist: {current_histogram:.5f}, conf: {signal.confidence:.2f}, strength: {signal.strength.value})")
             
             return signal
             

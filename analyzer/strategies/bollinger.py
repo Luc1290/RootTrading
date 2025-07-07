@@ -66,47 +66,39 @@ class BollingerStrategy(BaseStrategy):
             
             # SIGNAL D'ACHAT - Prix près de la bande inférieure (oversold)
             if bb_position <= self.lower_band_threshold:
-                confidence = min(0.9, (self.lower_band_threshold - bb_position) * 5 + 0.6)
-                signal = {
-                    'symbol': symbol,
-                    'side': OrderSide.BUY,
-                    'price': current_price,
-                    'confidence': confidence,
-                    'strength': SignalStrength.MODERATE,
-                    'strategy': self.name,
-                    'timestamp': datetime.now(),
-                    'metadata': {
+                confidence = min(0.95, (self.lower_band_threshold - bb_position) * 6 + 0.6)
+                signal = self.create_signal(
+                    side=OrderSide.BUY,
+                    price=current_price,
+                    confidence=confidence,
+                    metadata={
                         'bb_position': bb_position,
                         'bb_upper': bb_upper,
                         'bb_lower': bb_lower,
                         'bb_middle': bb_middle,
                         'reason': f'Bollinger oversold (position: {bb_position:.2f} <= {self.lower_band_threshold})'
                     }
-                }
+                )
             
             # SIGNAL DE VENTE - Prix près de la bande supérieure (overbought)
             elif bb_position >= self.upper_band_threshold:
-                confidence = min(0.9, (bb_position - self.upper_band_threshold) * 5 + 0.6)
-                signal = {
-                    'symbol': symbol,
-                    'side': OrderSide.SELL,
-                    'price': current_price,
-                    'confidence': confidence,
-                    'strength': SignalStrength.MODERATE,
-                    'strategy': self.name,
-                    'timestamp': datetime.now(),
-                    'metadata': {
+                confidence = min(0.95, (bb_position - self.upper_band_threshold) * 6 + 0.6)
+                signal = self.create_signal(
+                    side=OrderSide.SELL,
+                    price=current_price,
+                    confidence=confidence,
+                    metadata={
                         'bb_position': bb_position,
                         'bb_upper': bb_upper,
                         'bb_lower': bb_lower,
                         'bb_middle': bb_middle,
                         'reason': f'Bollinger overbought (position: {bb_position:.2f} >= {self.upper_band_threshold})'
                     }
-                }
+                )
             
             if signal:
-                logger.info(f"🎯 Bollinger {symbol}: {signal['side'].value} @ {current_price:.4f} "
-                          f"(position: {bb_position:.2f}, conf: {signal['confidence']:.2f})")
+                logger.info(f"🎯 Bollinger {symbol}: {signal.side.value} @ {current_price:.4f} "
+                          f"(position: {bb_position:.2f}, conf: {signal.confidence:.2f}, strength: {signal.strength.value})")
             
             return signal
             

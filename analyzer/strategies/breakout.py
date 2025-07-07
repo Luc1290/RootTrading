@@ -62,46 +62,38 @@ class BreakoutStrategy(BaseStrategy):
             # SIGNAL D'ACHAT - Breakout au-dessus de la résistance
             breakout_above_percent = (current_price - resistance) / resistance * 100
             if breakout_above_percent >= self.min_breakout_percent:
-                confidence = min(0.9, breakout_above_percent / 2 + 0.6)
-                signal = {
-                    'symbol': symbol,
-                    'side': OrderSide.BUY,
-                    'price': current_price,
-                    'confidence': confidence,
-                    'strength': SignalStrength.MODERATE,
-                    'strategy': self.name,
-                    'timestamp': datetime.now(),
-                    'metadata': {
+                confidence = min(0.95, breakout_above_percent / 1.8 + 0.6)
+                signal = self.create_signal(
+                    side=OrderSide.BUY,
+                    price=current_price,
+                    confidence=confidence,
+                    metadata={
                         'resistance': resistance,
                         'support': support,
                         'breakout_percent': breakout_above_percent,
                         'reason': f'Breakout résistance ({current_price:.4f} > {resistance:.4f}, +{breakout_above_percent:.2f}%)'
                     }
-                }
+                )
             
             # SIGNAL DE VENTE - Breakdown en-dessous du support
             breakdown_below_percent = (support - current_price) / support * 100
-            elif breakdown_below_percent >= self.min_breakout_percent:
-                confidence = min(0.9, breakdown_below_percent / 2 + 0.6)
-                signal = {
-                    'symbol': symbol,
-                    'side': OrderSide.SELL,
-                    'price': current_price,
-                    'confidence': confidence,
-                    'strength': SignalStrength.MODERATE,
-                    'strategy': self.name,
-                    'timestamp': datetime.now(),
-                    'metadata': {
+            if breakdown_below_percent >= self.min_breakout_percent:
+                confidence = min(0.95, breakdown_below_percent / 1.8 + 0.6)
+                signal = self.create_signal(
+                    side=OrderSide.SELL,
+                    price=current_price,
+                    confidence=confidence,
+                    metadata={
                         'resistance': resistance,
                         'support': support,
                         'breakdown_percent': breakdown_below_percent,
                         'reason': f'Breakdown support ({current_price:.4f} < {support:.4f}, -{breakdown_below_percent:.2f}%)'
                     }
-                }
+                )
             
             if signal:
-                logger.info(f"🎯 Breakout {symbol}: {signal['side'].value} @ {current_price:.4f} "
-                          f"(S: {support:.4f}, R: {resistance:.4f}, conf: {signal['confidence']:.2f})")
+                logger.info(f"🎯 Breakout {symbol}: {signal.side.value} @ {current_price:.4f} "
+                          f"(S: {support:.4f}, R: {resistance:.4f}, conf: {signal.confidence:.2f}, strength: {signal.strength.value})")
             
             return signal
             

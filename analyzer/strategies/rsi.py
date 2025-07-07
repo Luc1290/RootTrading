@@ -64,41 +64,33 @@ class RSIStrategy(BaseStrategy):
             
             # SIGNAL D'ACHAT - RSI oversold
             if current_rsi <= self.oversold_threshold:
-                confidence = min(0.9, (self.oversold_threshold - current_rsi) / self.oversold_threshold + 0.5)
-                signal = {
-                    'symbol': symbol,
-                    'side': OrderSide.BUY,
-                    'price': current_price,
-                    'confidence': confidence,
-                    'strength': SignalStrength.MODERATE,
-                    'strategy': self.name,
-                    'timestamp': datetime.now(),
-                    'metadata': {
+                confidence = min(0.95, (self.oversold_threshold - current_rsi) / self.oversold_threshold * 1.2 + 0.5)
+                signal = self.create_signal(
+                    side=OrderSide.BUY,
+                    price=current_price,
+                    confidence=confidence,
+                    metadata={
                         'rsi': current_rsi,
                         'reason': f'RSI oversold ({current_rsi:.1f} <= {self.oversold_threshold})'
                     }
-                }
+                )
             
             # SIGNAL DE VENTE - RSI overbought  
             elif current_rsi >= self.overbought_threshold:
-                confidence = min(0.9, (current_rsi - self.overbought_threshold) / (100 - self.overbought_threshold) + 0.5)
-                signal = {
-                    'symbol': symbol,
-                    'side': OrderSide.SELL,
-                    'price': current_price,
-                    'confidence': confidence,
-                    'strength': SignalStrength.MODERATE,
-                    'strategy': self.name,
-                    'timestamp': datetime.now(),
-                    'metadata': {
+                confidence = min(0.95, (current_rsi - self.overbought_threshold) / (100 - self.overbought_threshold) * 1.2 + 0.5)
+                signal = self.create_signal(
+                    side=OrderSide.SELL,
+                    price=current_price,
+                    confidence=confidence,
+                    metadata={
                         'rsi': current_rsi,
                         'reason': f'RSI overbought ({current_rsi:.1f} >= {self.overbought_threshold})'
                     }
-                }
+                )
             
             if signal:
-                logger.info(f"🎯 RSI {symbol}: {signal['side'].value} @ {current_price:.4f} "
-                          f"(RSI: {current_rsi:.1f}, conf: {signal['confidence']:.2f})")
+                logger.info(f"🎯 RSI {symbol}: {signal.side.value} @ {current_price:.4f} "
+                          f"(RSI: {current_rsi:.1f}, conf: {signal.confidence:.2f}, strength: {signal.strength.value})")
             
             return signal
             
