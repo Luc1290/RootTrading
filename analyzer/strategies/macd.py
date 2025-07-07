@@ -73,7 +73,7 @@ class MACDStrategy(BaseStrategy):
                     'side': OrderSide.BUY,
                     'price': current_price,
                     'confidence': confidence,
-                    'strength': SignalStrength.MEDIUM,
+                    'strength': SignalStrength.MODERATE,
                     'strategy': self.name,
                     'timestamp': datetime.now(),
                     'metadata': {
@@ -91,7 +91,7 @@ class MACDStrategy(BaseStrategy):
                     'side': OrderSide.SELL,
                     'price': current_price,
                     'confidence': confidence,
-                    'strength': SignalStrength.MEDIUM,
+                    'strength': SignalStrength.MODERATE,
                     'strategy': self.name,
                     'timestamp': datetime.now(),
                     'metadata': {

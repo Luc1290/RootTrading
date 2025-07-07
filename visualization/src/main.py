@@ -77,12 +77,25 @@ async def health_check():
 async def get_market_chart(
     symbol: str,
     interval: str = "1m",
-    limit: int = 500,
+    limit: Optional[int] = None,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None
 ):
     """Get market data chart for a specific symbol"""
     try:
+        # Adapter automatiquement la limite selon le timeframe si non spécifiée
+        if limit is None:
+            timeframe_limits = {
+                "1m": 180,    # 3 heures
+                "5m": 288,    # 24 heures  
+                "15m": 192,   # 48 heures
+                "30m": 336,   # 7 jours
+                "1h": 168,    # 7 jours
+                "4h": 180,    # 30 jours
+                "1d": 90      # 90 jours
+            }
+            limit = timeframe_limits.get(interval, 200)
+        
         data = await chart_service.get_market_chart(
             symbol=symbol,
             interval=interval,
@@ -136,10 +149,23 @@ async def get_indicators_chart(
     symbol: str,
     indicators: str,  # comma-separated list
     interval: str = "1m",
-    limit: int = 500
+    limit: Optional[int] = None
 ):
     """Get technical indicators chart"""
     try:
+        # Adapter automatiquement la limite selon le timeframe si non spécifiée
+        if limit is None:
+            timeframe_limits = {
+                "1m": 180,    # 3 heures
+                "5m": 288,    # 24 heures  
+                "15m": 192,   # 48 heures
+                "30m": 336,   # 7 jours
+                "1h": 168,    # 7 jours
+                "4h": 180,    # 30 jours
+                "1d": 90      # 90 jours
+            }
+            limit = timeframe_limits.get(interval, 200)
+            
         indicator_list = indicators.split(",")
         data = await chart_service.get_indicators_chart(
             symbol=symbol,

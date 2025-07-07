@@ -172,7 +172,7 @@ class EnhancedRegimeDetector:
             # Récupérer les données enrichies de manière asynchrone
             candles = await self.db_manager.get_enriched_market_data(
                 symbol=symbol,
-                interval="5m",  # Standardisé sur 5m
+                interval="5m",  # Standard crypto pour détection de régime
                 limit=100,
                 include_indicators=True
             )

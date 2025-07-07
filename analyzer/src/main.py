@@ -290,7 +290,8 @@ class AnalyzerService:
                 for signal_dict in signals:
                     try:
                         # Convertir en StrategySignal et publier
-                        from shared.src.schemas import StrategySignal, TradeSide, SignalStrength
+                        from shared.src.schemas import StrategySignal, SignalStrength
+                        from shared.src.enums import OrderSide
                         
                         strategy_signal = StrategySignal(
                             strategy=signal_dict['strategy'],
@@ -299,7 +300,7 @@ class AnalyzerService:
                             price=signal_dict['price'],
                             confidence=signal_dict['confidence'],
                             timestamp=signal_dict.get('timestamp'),
-                            strength=signal_dict.get('strength', SignalStrength.MEDIUM)
+                            strength=signal_dict.get('strength', SignalStrength.MODERATE)
                         )
                         
                         self.redis_subscriber.publish_signal(strategy_signal)
