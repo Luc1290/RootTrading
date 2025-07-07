@@ -94,8 +94,8 @@ class MACDStrategy(BaseStrategy):
                 )
             
             if signal:
-                logger.info(f"🎯 MACD {symbol}: {signal.side.value} @ {current_price:.4f} "
-                          f"(hist: {current_histogram:.5f}, conf: {signal.confidence:.2f}, strength: {signal.strength.value})")
+                logger.info(f"🎯 MACD {symbol}: {signal.side} @ {current_price:.4f} "
+                          f"(hist: {current_histogram:.5f}, conf: {signal.confidence:.2f}, strength: {signal.strength})")
             
             return signal
             

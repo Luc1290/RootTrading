@@ -211,16 +211,25 @@ class OptimizedAnalyzer:
             logger.debug(f"Erreur exécution stratégie {strategy.__class__.__name__}: {e}")
             return None
     
-    def _validate_and_enrich_signal(self, signal: Dict, symbol: str, df: pd.DataFrame) -> Optional[Dict]:
+    def _validate_and_enrich_signal(self, signal, symbol: str, df: pd.DataFrame) -> Optional[Dict]:
         """
         Valide et enrichit un signal avec des métriques de qualité
         """
-        if not signal or not isinstance(signal, dict):
+        if not signal:
+            return None
+        
+        # Convertir StrategySignal en dict si nécessaire
+        if hasattr(signal, 'dict'):
+            signal_dict = signal.dict()
+        elif isinstance(signal, dict):
+            signal_dict = signal
+        else:
+            logger.debug(f"Signal invalide pour {symbol}: type non supporté {type(signal)}")
             return None
             
         # Vérifications de base
         required_fields = ['strategy', 'symbol', 'side', 'price', 'confidence']
-        if not all(field in signal for field in required_fields):
+        if not all(field in signal_dict for field in required_fields):
             logger.debug(f"Signal invalide pour {symbol}: champs manquants")
             return None
             
@@ -229,19 +238,19 @@ class OptimizedAnalyzer:
             current_price = df['close'].iloc[-1]
             
             # Ajouter des métriques de contexte du marché
-            signal.update({
+            signal_dict.update({
                 'current_price': current_price,
                 'timestamp': df.index[-1].isoformat(),
                 'market_context': self._get_market_context(df),
-                'signal_quality': self._calculate_signal_quality(signal, df)
+                'signal_quality': self._calculate_signal_quality(signal_dict, df)
             })
             
             # Valider la cohérence du prix
-            if abs(signal['price'] - current_price) / current_price > 0.05:  # 5% de différence max
-                logger.warning(f"Signal {symbol}: prix incohérent {signal['price']} vs {current_price}")
+            if abs(signal_dict['price'] - current_price) / current_price > 0.05:  # 5% de différence max
+                logger.warning(f"Signal {symbol}: prix incohérent {signal_dict['price']} vs {current_price}")
                 return None
                 
-            return signal
+            return signal_dict
             
         except Exception as e:
             logger.debug(f"Erreur validation signal {symbol}: {e}")

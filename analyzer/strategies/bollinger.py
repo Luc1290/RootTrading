@@ -97,8 +97,8 @@ class BollingerStrategy(BaseStrategy):
                 )
             
             if signal:
-                logger.info(f"🎯 Bollinger {symbol}: {signal.side.value} @ {current_price:.4f} "
-                          f"(position: {bb_position:.2f}, conf: {signal.confidence:.2f}, strength: {signal.strength.value})")
+                logger.info(f"🎯 Bollinger {symbol}: {signal.side} @ {current_price:.4f} "
+                          f"(position: {bb_position:.2f}, conf: {signal.confidence:.2f}, strength: {signal.strength})")
             
             return signal
             

@@ -98,8 +98,8 @@ class ReversalDivergenceStrategy(BaseStrategy):
                 )
             
             if signal:
-                logger.info(f"🎯 Divergence {symbol}: {signal.side.value} @ {current_price:.4f} "
-                          f"(prix: {price_trend:.1f}%, RSI: {rsi_trend:.1f}, conf: {signal.confidence:.2f}, strength: {signal.strength.value})")
+                logger.info(f"🎯 Divergence {symbol}: {signal.side} @ {current_price:.4f} "
+                          f"(prix: {price_trend:.1f}%, RSI: {rsi_trend:.1f}, conf: {signal.confidence:.2f}, strength: {signal.strength})")
             
             return signal
             

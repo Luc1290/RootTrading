@@ -89,8 +89,8 @@ class RSIStrategy(BaseStrategy):
                 )
             
             if signal:
-                logger.info(f"🎯 RSI {symbol}: {signal.side.value} @ {current_price:.4f} "
-                          f"(RSI: {current_rsi:.1f}, conf: {signal.confidence:.2f}, strength: {signal.strength.value})")
+                logger.info(f"🎯 RSI {symbol}: {signal.side} @ {current_price:.4f} "
+                          f"(RSI: {current_rsi:.1f}, conf: {signal.confidence:.2f}, strength: {signal.strength})")
             
             return signal
             

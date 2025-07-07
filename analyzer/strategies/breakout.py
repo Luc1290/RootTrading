@@ -92,8 +92,8 @@ class BreakoutStrategy(BaseStrategy):
                 )
             
             if signal:
-                logger.info(f"🎯 Breakout {symbol}: {signal.side.value} @ {current_price:.4f} "
-                          f"(S: {support:.4f}, R: {resistance:.4f}, conf: {signal.confidence:.2f}, strength: {signal.strength.value})")
+                logger.info(f"🎯 Breakout {symbol}: {signal.side} @ {current_price:.4f} "
+                          f"(S: {support:.4f}, R: {resistance:.4f}, conf: {signal.confidence:.2f}, strength: {signal.strength})")
             
             return signal
             

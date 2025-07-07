@@ -101,8 +101,8 @@ class EMACrossStrategy(BaseStrategy):
                 )
             
             if signal:
-                logger.info(f"🎯 EMA Cross {symbol}: {signal.side.value} @ {current_price:.4f} "
-                          f"(12: {current_ema12:.4f}, 26: {current_ema26:.4f}, conf: {signal.confidence:.2f}, strength: {signal.strength.value})")
+                logger.info(f"🎯 EMA Cross {symbol}: {signal.side} @ {current_price:.4f} "
+                          f"(12: {current_ema12:.4f}, 26: {current_ema26:.4f}, conf: {signal.confidence:.2f}, strength: {signal.strength})")
             
             return signal
             
