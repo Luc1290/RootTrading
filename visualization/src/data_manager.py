@@ -4,7 +4,7 @@ import asyncpg
 import json
 import logging
 from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 
 logger = logging.getLogger(__name__)
@@ -346,6 +346,9 @@ class DataManager:
             
             period_start = now.replace(minute=period_start_minute, second=0, microsecond=0)
             
+            # Convertir en timezone-naive pour PostgreSQL
+            period_start_naive = period_start.replace(tzinfo=None)
+            
             # Récupérer toutes les données 1m depuis le début de la période
             query = """
                 SELECT time, open, high, low, close, volume,
@@ -359,7 +362,7 @@ class DataManager:
                 ORDER BY time ASC
             """
             
-            rows = await conn.fetch(query, symbol, period_start)
+            rows = await conn.fetch(query, symbol, period_start_naive)
             
             if not rows:
                 return None
@@ -369,7 +372,7 @@ class DataManager:
             last_row = rows[-1]
             
             current_candle = {
-                "timestamp": period_start,
+                "timestamp": period_start_naive,
                 "open": float(first_row["open"]),
                 "high": max(float(row["high"]) for row in rows),
                 "low": min(float(row["low"]) for row in rows),
@@ -398,7 +401,7 @@ class DataManager:
                 "ultra_enriched": bool(last_row["ultra_enriched"]) if last_row["ultra_enriched"] is not None else False
             }
             
-            logger.info(f"🕯️ Bougie courante {interval_minutes}m construite pour {symbol}: {period_start} -> close={current_candle['close']}")
+            logger.info(f"🕯️ Bougie courante {interval_minutes}m construite pour {symbol}: {period_start_naive} -> close={current_candle['close']}")
             return current_candle
             
         except Exception as e:
@@ -422,7 +425,7 @@ class DataManager:
         }
         
         delta = period_map.get(period, timedelta(days=1))
-        start_time = datetime.utcnow() - delta
+        start_time = datetime.now(timezone.utc).replace(tzinfo=None) - delta
         
         query = """
             SELECT 

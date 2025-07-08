@@ -158,7 +158,7 @@ class CycleManager:
         """Démarre un thread de nettoyage périodique des ordres orphelins."""
         def orphan_cleanup_routine():
             # Attendre 2 minutes au démarrage pour laisser le système se stabiliser
-            time.sleep(120)
+            time.sleep(180)
             
             while True:
                 try:

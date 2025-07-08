@@ -254,8 +254,8 @@ class SignalAggregator:
             # Add to buffer
             self.signal_buffer[symbol].append(signal)
             
-            # Clean old signals (keep only last 120 seconds for confluence)
-            cutoff_time = timestamp - timedelta(seconds=120)
+            # Clean old signals (keep only last 140 seconds for confluence)
+            cutoff_time = timestamp - timedelta(seconds=140)
             self.signal_buffer[symbol] = [
                 s for s in self.signal_buffer[symbol]
                 if self._get_signal_timestamp(s) > cutoff_time
@@ -639,8 +639,17 @@ class SignalAggregator:
         else:
             strength = 'weak'
             
-        # Trailing stop fixe à 3% pour système pur (TrailingStop gère le reste)
-        trailing_delta = 3.0
+        # Trailing stop adaptatif : plus serré si stop ATR raisonnable
+        if stop_price is not None:
+            stop_distance_percent = abs(stop_price - current_price) / current_price * 100
+            if stop_distance_percent <= 8:  # Stop ATR raisonnable (≤8%)
+                trailing_delta = 2.0  # Trailing plus serré pour stops corrects
+                logger.debug(f"🎯 Trailing serré: stop {stop_distance_percent:.1f}% -> trailing {trailing_delta:.1f}%")
+            else:
+                trailing_delta = 8.0  # Trailing large pour stops aberrants
+                logger.warning(f"🚨 Trailing large: stop aberrant {stop_distance_percent:.1f}% -> trailing {trailing_delta:.1f}%")
+        else:
+            trailing_delta = 3.0  # Défaut si pas de stop calculé
         
         # NOUVEAU: Validation minimum 2 stratégies pour publier un signal
         if len(contributing_strategies) < 2:
@@ -863,6 +872,15 @@ class SignalAggregator:
         
         # Bonus multi-stratégies
         confidence = self._apply_multi_strategy_bonus(confidence, contributing_strategies)
+        
+        # SOFT-CAP sophistiqué avec tanh() pour préserver les nuances
+        import math
+        if confidence > 0.95:
+            # Appliquer tanh() pour un soft-cap au-dessus de 0.95
+            # tanh(x) mapping: 0.95 -> 0.95, 1.0 -> 0.96, 1.1 -> 0.97, etc.
+            raw_confidence = confidence
+            confidence = 0.95 + 0.05 * math.tanh((confidence - 0.95) * 4)
+            logger.debug(f"🧠 Soft-cap tanh appliqué: {raw_confidence:.3f} -> {confidence:.3f}")
         
         # Déterminer la force du signal basée sur la confiance et le régime
         strength = self._determine_signal_strength(confidence, regime)
@@ -1293,6 +1311,18 @@ class SignalAggregator:
             # Calculer le stop-loss selon le côté
             atr_distance = atr_value * atr_multiplier
             
+            # SANITY CHECK: Vérifier si ATR est en % ou en prix absolu
+            atr_as_percent = atr_value / entry_price
+            if atr_as_percent > 0.5:  # ATR > 50% du prix = probablement en prix absolu aberrant
+                logger.error(f"🚨 ATR ABERRANT {symbol}: {atr_value:.2f} = {atr_as_percent*100:.1f}% du prix {entry_price:.2f}")
+                # Forcer un ATR raisonnable basé sur la volatilité crypto (2-5%)
+                atr_value = entry_price * 0.03  # 3% par défaut
+                atr_distance = atr_value * atr_multiplier
+                logger.warning(f"🔧 ATR corrigé à 3%: nouvelle distance = {atr_distance:.2f}")
+            
+            # DEBUG: Log des valeurs pour diagnostiquer le problème
+            logger.info(f"🔍 ATR Debug {symbol}: atr_value={atr_value:.6f}, multiplier={atr_multiplier}x, distance={atr_distance:.6f}, entry_price={entry_price:.6f}")
+            
             if side == 'BUY':
                 # BUY: stop en dessous du prix d'entrée
                 stop_loss = entry_price - atr_distance
@@ -1325,6 +1355,19 @@ class SignalAggregator:
                 if stop_loss - entry_price > max_distance:
                     stop_loss = entry_price + max_distance
                     logger.debug(f"Stop SELL plafonné à 10%: {stop_loss:.4f}")
+            
+            # PROTECTION ABSOLUE: Forcer un hard-cap à 15% maximum (emergency fix)
+            max_emergency_percent = 0.15  # 15% maximum absolu
+            max_emergency_distance = entry_price * max_emergency_percent
+            
+            if side == 'BUY':
+                if entry_price - stop_loss > max_emergency_distance:
+                    stop_loss = entry_price - max_emergency_distance
+                    logger.warning(f"🚨 EMERGENCY CAP: Stop BUY forcé à 15% pour {symbol}: {stop_loss:.4f}")
+            else:  # SELL
+                if stop_loss - entry_price > max_emergency_distance:
+                    stop_loss = entry_price + max_emergency_distance
+                    logger.warning(f"🚨 EMERGENCY CAP: Stop SELL forcé à 15% pour {symbol}: {stop_loss:.4f}")
             
             distance_percent = abs(stop_loss - entry_price) / entry_price * 100
             logger.info(f"🎯 Stop ATR calculé pour {symbol} {side}: {stop_loss:.4f} "
@@ -1363,10 +1406,13 @@ class SignalAggregator:
             # Limiter le boost total
             boost_factor = min(1.15, max(0.95, boost_factor))  # Entre -5% et +15%
             
-            if boost_factor != 1.0:
-                logger.info(f"📊 Boost performance global: {boost_factor:.2f} pour {contributing_strategies}")
+            boosted_confidence = confidence * boost_factor
+            final_confidence = min(1.0, boosted_confidence)
             
-            return confidence * boost_factor
+            if boost_factor != 1.0:
+                logger.info(f"📊 Boost performance: {confidence:.3f} * {boost_factor:.2f} = {boosted_confidence:.3f} -> {final_confidence:.3f} (strategies: {contributing_strategies})")
+            
+            return final_confidence
             
         except Exception as e:
             logger.error(f"Erreur dans boost performance: {e}")
@@ -1485,7 +1531,7 @@ class SignalAggregator:
                         update_time = datetime.fromtimestamp(last_update, tz=timezone.utc)
                     
                     age_seconds = (datetime.now(timezone.utc) - update_time).total_seconds()
-                    if age_seconds > 120:  # Plus de 2 minutes = données stales
+                    if age_seconds > 310:  # Plus de 5 minutes = données stales
                         logger.warning(f"Données 5m trop anciennes pour {symbol} ({age_seconds:.0f}s), bypass validation")
                         return True
                 except Exception as e:

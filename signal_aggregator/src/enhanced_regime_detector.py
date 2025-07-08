@@ -112,6 +112,15 @@ class EnhancedRegimeDetector:
             logger.error(f"❌ Erreur récupération régime détaillé sync pour {symbol}: {e}")
             return MarketRegime.UNDEFINED, {}
 
+    def _calculate_detailed_regime_sync(self, symbol: str) -> Tuple[MarketRegime, Dict[str, float]]:
+        """Version synchrone du calcul de régime détaillé (fallback vers Redis)"""
+        try:
+            # Utiliser la méthode Redis sync existante avec des seuils ADX corrigés
+            return self._calculate_regime_from_redis_sync(symbol)
+        except Exception as e:
+            logger.error(f"❌ Erreur calcul régime sync pour {symbol}: {e}")
+            return MarketRegime.UNDEFINED, {}
+
     async def get_detailed_regime(self, symbol: str) -> Tuple[MarketRegime, Dict[str, float]]:
         """
         Obtient le régime de marché détaillé avec les métriques
@@ -329,9 +338,13 @@ class EnhancedRegimeDetector:
             current_adx = data.get('adx', 25)
             current_bb_width = data.get('bb_width', 0.025)
             
-            # Calcul simplifié du régime
-            if current_adx > 35:
+            # Calcul du régime avec seuils ADX corrects (ADX 39.5 doit être TREND_UP)
+            if current_adx >= self.adx_strong_trend:  # >= 42
+                regime = MarketRegime.STRONG_TREND_UP if current_rsi > 50 else MarketRegime.STRONG_TREND_DOWN
+            elif current_adx >= self.adx_trend:  # >= 32, ADX 39.5 sera ici !
                 regime = MarketRegime.TREND_UP if current_rsi > 50 else MarketRegime.TREND_DOWN
+            elif current_adx >= self.adx_weak_trend:  # >= 23
+                regime = MarketRegime.WEAK_TREND_UP if current_rsi > 50 else MarketRegime.WEAK_TREND_DOWN
             elif current_bb_width < 0.015:
                 regime = MarketRegime.RANGE_TIGHT
             else:

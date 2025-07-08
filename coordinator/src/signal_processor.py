@@ -23,7 +23,7 @@ class SignalProcessor:
     
     def __init__(self, service_client: ServiceClient, 
                  max_cycles_per_symbol_side: int = 3,
-                 signal_expiry_seconds: float = 60.0):  # SWING CRYPTO: 60s vs 10s
+                 signal_expiry_seconds: float = 140.0):  # SWING CRYPTO: 120s pour confluence étendue
         """
         Initialise le processeur de signaux.
         
