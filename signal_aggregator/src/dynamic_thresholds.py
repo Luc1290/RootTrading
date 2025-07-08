@@ -56,7 +56,11 @@ class DynamicThresholdManager:
         try:
             data = self.redis.get("dynamic_threshold_history")
             if data:
-                history_data = json.loads(data)
+                # Gérer les deux cas : string JSON ou dict déjà parsé
+                if isinstance(data, str):
+                    history_data = json.loads(data)
+                else:
+                    history_data = data
                 self.confidence_history = deque(
                     history_data.get('confidence_history', []), 
                     maxlen=self.history_size
@@ -83,7 +87,13 @@ class DynamicThresholdManager:
                 'current_vote_threshold': self.current_vote_threshold,
                 'last_update': datetime.now().isoformat()
             }
-            self.redis.set("dynamic_threshold_history", json.dumps(data))
+            # Gérer les différents types de clients Redis
+            try:
+                # Client Redis standard qui nécessite JSON
+                self.redis.set("dynamic_threshold_history", json.dumps(data))
+            except (TypeError, AttributeError):
+                # Client Redis custom qui gère directement les objets Python
+                self.redis.set("dynamic_threshold_history", data)
         except Exception as e:
             logger.error(f"Erreur sauvegarde historique seuils: {e}")
     

@@ -86,15 +86,15 @@ async def get_market_chart(
         # Adapter automatiquement la limite selon le timeframe si non spécifiée
         if limit is None:
             timeframe_limits = {
-                "1m": 180,    # 3 heures
-                "5m": 288,    # 24 heures  
-                "15m": 192,   # 48 heures
-                "30m": 336,   # 7 jours
-                "1h": 168,    # 7 jours
-                "4h": 180,    # 30 jours
-                "1d": 90      # 90 jours
+                "1m": 2880,    # 48 heures de données pour le dézoom
+                "5m": 2016,    # 7 jours de données
+                "15m": 1344,   # 14 jours de données  
+                "30m": 1440,   # 30 jours de données
+                "1h": 720,     # 30 jours de données
+                "4h": 720,     # 120 jours de données
+                "1d": 365      # 1 an de données
             }
-            limit = timeframe_limits.get(interval, 200)
+            limit = timeframe_limits.get(interval, 2880)
         
         data = await chart_service.get_market_chart(
             symbol=symbol,
@@ -156,15 +156,15 @@ async def get_indicators_chart(
         # Adapter automatiquement la limite selon le timeframe si non spécifiée
         if limit is None:
             timeframe_limits = {
-                "1m": 180,    # 3 heures
-                "5m": 288,    # 24 heures  
-                "15m": 192,   # 48 heures
-                "30m": 336,   # 7 jours
-                "1h": 168,    # 7 jours
-                "4h": 180,    # 30 jours
-                "1d": 90      # 90 jours
+                "1m": 2880,    # 48 heures de données pour le dézoom
+                "5m": 2016,    # 7 jours de données
+                "15m": 1344,   # 14 jours de données  
+                "30m": 1440,   # 30 jours de données
+                "1h": 720,     # 30 jours de données
+                "4h": 720,     # 120 jours de données
+                "1d": 365      # 1 an de données
             }
-            limit = timeframe_limits.get(interval, 200)
+            limit = timeframe_limits.get(interval, 2880)
             
         indicator_list = indicators.split(",")
         data = await chart_service.get_indicators_chart(

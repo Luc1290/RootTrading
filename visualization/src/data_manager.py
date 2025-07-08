@@ -79,7 +79,7 @@ class DataManager:
         self,
         symbol: str,
         interval: str,
-        limit: int = 500,
+        limit: int = 10000,  # Augmenté pour garder plus d'historique
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None
     ) -> List[Dict[str, Any]]:
@@ -295,7 +295,7 @@ class DataManager:
             query += f" AND timestamp <= ${len(params) + 1}"
             params.append(end_time)
             
-        query += " ORDER BY timestamp DESC LIMIT 1000"
+        query += " ORDER BY timestamp DESC LIMIT 10000"  # Plus de signaux historiques
         
         try:
             async with self.postgres_pool.acquire() as conn:

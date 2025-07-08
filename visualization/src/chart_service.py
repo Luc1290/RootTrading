@@ -14,7 +14,7 @@ class ChartService:
         self,
         symbol: str,
         interval: str = "1m",
-        limit: int = 500,
+        limit: int = 10000,  # Augmenté pour garder plus d'historique lors du dézoom
         start_time: Optional[str] = None,
         end_time: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -60,12 +60,13 @@ class ChartService:
         end_time: Optional[str] = None
     ) -> Dict[str, Any]:
         """Generate chart with trading signals overlaid"""
-        start_dt = datetime.fromisoformat(start_time) if start_time else datetime.utcnow() - timedelta(days=1)
-        end_dt = datetime.fromisoformat(end_time) if end_time else datetime.utcnow()
+        # Ne pas limiter par défaut aux dernières 24h - laisser la DB retourner toutes les données
+        start_dt = datetime.fromisoformat(start_time) if start_time else None
+        end_dt = datetime.fromisoformat(end_time) if end_time else None
         
         # Get both market data and signals
         candles = await self.data_manager.get_market_data(
-            symbol, "1m", 1440, start_dt, end_dt  # 24h of 1m candles
+            symbol, "1m", 10000, start_dt, end_dt  # Plus d'historique pour le dézoom
         )
         
         signals = await self.data_manager.get_trading_signals(
@@ -151,7 +152,7 @@ class ChartService:
         symbol: str,
         indicators: List[str],
         interval: str = "1m",
-        limit: int = 500
+        limit: int = 10000  # Augmenté pour plus d'historique sur les indicateurs
     ) -> Dict[str, Any]:
         """Generate chart with technical indicators"""
         # Fetch market data with enriched indicators

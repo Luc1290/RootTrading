@@ -193,7 +193,7 @@
             </div>
             
             <!-- Limite automatique selon le timeframe, plus besoin de contrôle manuel -->
-            <input type="hidden" id="limitInput" value="">
+            <input type="hidden" id="limitInput" value="2880">
             
             <div class="control-group">
                 <label>Affichage EMA</label>
@@ -317,18 +317,36 @@
             setTimeout(() => status.innerHTML = '', 5000);
         }
 
+        // Fonction pour obtenir les prix visibles dans une plage de temps
+        function getVisiblePrices(marketData, startTime, endTime) {
+            const visiblePrices = [];
+            const startMs = startTime.getTime();
+            const endMs = endTime.getTime();
+            
+            for (let i = 0; i < marketData.timestamps.length; i++) {
+                const timestampMs = new Date(marketData.timestamps[i]).getTime();
+                if (timestampMs >= startMs && timestampMs <= endMs) {
+                    // Ajouter high et low pour avoir la vraie plage de prix
+                    visiblePrices.push(marketData.high[i]);
+                    visiblePrices.push(marketData.low[i]);
+                }
+            }
+            
+            return visiblePrices;
+        }
+
         // Graphique de marché (Candlestick)
         async function updateMarketChart() {
             const symbol = document.getElementById('symbolSelect').value;
             const interval = document.getElementById('intervalSelect').value;
             const limit = document.getElementById('limitInput').value;
             
-            // Récupérer les données de marché
-            const marketData = await fetchData(`charts/market/${symbol}?interval=${interval}`);
+            // Récupérer les données de marché avec toutes les données disponibles
+            const marketData = await fetchData(`charts/market/${symbol}?interval=${interval}&limit=${limit}`);
             if (!marketData || !marketData.data) return;
 
             // Récupérer les indicateurs EMA pour le graphique principal
-            const emaData = await fetchData(`charts/indicators/${symbol}?indicators=ema&interval=${interval}`);
+            const emaData = await fetchData(`charts/indicators/${symbol}?indicators=ema&interval=${interval}&limit=${limit}`);
 
             const traces = [];
 
@@ -405,7 +423,7 @@
                 }
             }
 
-            // Ajouter les signaux de trading avec filtrage
+            // Ajouter les signaux de trading avec filtrage (récupérer tous les signaux disponibles)
             const signalFilter = document.getElementById('signalFilterSelect').value;
             const signalData = await fetchData(`charts/signals/${symbol}`);
             if (signalData) {
@@ -552,9 +570,41 @@
                 margin: { l: 10, r: 80, t: 50, b: 50 }
             };
 
-            // Préserver le zoom existant si disponible
+            // Préserver le zoom existant si disponible OU définir zoom initial selon timeframe
             if (currentXRange) {
                 layout.xaxis.range = currentXRange;
+            } else if (marketData.data.timestamps.length > 0) {
+                // Zoom initial adaptatif selon le timeframe
+                const timestamps = marketData.data.timestamps;
+                const lastTimestamp = new Date(timestamps[timestamps.length - 1]);
+                
+                // Plages d'affichage par défaut selon le timeframe (optimales pour la lisibilité)
+                const defaultRanges = {
+                    "1m": 3 * 60 * 60 * 1000,       // 3 heures (180 bougies)
+                    "5m": 24 * 60 * 60 * 1000,      // 24 heures (288 bougies)
+                    "15m": 48 * 60 * 60 * 1000,     // 48 heures (192 bougies)
+                    "30m": 7 * 24 * 60 * 60 * 1000, // 7 jours (336 bougies)
+                    "1h": 7 * 24 * 60 * 60 * 1000,  // 7 jours (168 bougies)
+                    "4h": 30 * 24 * 60 * 60 * 1000, // 30 jours (180 bougies)
+                    "1d": 90 * 24 * 60 * 60 * 1000  // 90 jours (90 bougies)
+                };
+                
+                const interval = document.getElementById('intervalSelect').value;
+                const rangeMs = defaultRanges[interval] || defaultRanges["1m"];
+                const firstTimestamp = new Date(lastTimestamp.getTime() - rangeMs);
+                
+                layout.xaxis.range = [firstTimestamp.toISOString(), lastTimestamp.toISOString()];
+                
+                // Calculer l'échelle Y pour la plage de temps visible
+                if (!currentYRange) {
+                    const visiblePrices = getVisiblePrices(marketData.data, firstTimestamp, lastTimestamp);
+                    if (visiblePrices.length > 0) {
+                        const minPrice = Math.min(...visiblePrices);
+                        const maxPrice = Math.max(...visiblePrices);
+                        const padding = (maxPrice - minPrice) * 0.55; // 55% de marge pour plus d'espace
+                        layout.yaxis.range = [minPrice - padding, maxPrice + padding];
+                    }
+                }
             }
             if (currentYRange) {
                 layout.yaxis.range = currentYRange;
@@ -603,7 +653,7 @@
             const interval = document.getElementById('intervalSelect').value;
             const limit = document.getElementById('limitInput').value;
             
-            const data = await fetchData(`charts/indicators/${symbol}?indicators=rsi&interval=${interval}`);
+            const data = await fetchData(`charts/indicators/${symbol}?indicators=rsi&interval=${interval}&limit=${limit}`);
             if (!data || !data.indicators || !data.indicators.rsi) return;
 
             const traces = [];
@@ -712,7 +762,7 @@
             const interval = document.getElementById('intervalSelect').value;
             const limit = document.getElementById('limitInput').value;
             
-            const data = await fetchData(`charts/indicators/${symbol}?indicators=macd&interval=${interval}`);
+            const data = await fetchData(`charts/indicators/${symbol}?indicators=macd&interval=${interval}&limit=${limit}`);
             if (!data || !data.indicators) return;
 
             const traces = [];
@@ -797,7 +847,7 @@
             const interval = document.getElementById('intervalSelect').value;
             const limit = document.getElementById('limitInput').value;
             
-            const data = await fetchData(`charts/market/${symbol}?interval=${interval}`);
+            const data = await fetchData(`charts/market/${symbol}?interval=${interval}&limit=${limit}`);
             if (!data || !data.data) return;
 
             const traces = [];
@@ -1054,9 +1104,16 @@
             }
         }
 
+        // Fonction pour réinitialiser le zoom quand on change de timeframe
+        function resetZoomOnIntervalChange() {
+            currentXRange = null;  // Réinitialiser le zoom
+            currentYRange = null;
+            updateAllCharts();
+        }
+
         // Événements
         document.getElementById('symbolSelect').addEventListener('change', updateAllCharts);
-        document.getElementById('intervalSelect').addEventListener('change', updateAllCharts);
+        document.getElementById('intervalSelect').addEventListener('change', resetZoomOnIntervalChange);
         document.getElementById('signalFilterSelect').addEventListener('change', updateAllCharts);
         
         // Événements pour les checkboxes EMA - mise à jour automatique du graphique
