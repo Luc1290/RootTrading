@@ -59,12 +59,23 @@ app.add_middleware(
 templates = Jinja2Templates(directory="src/templates")
 app.mount("/static", StaticFiles(directory="src/static"), name="static")
 
-@app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request):
-    """Interface web principale"""
-    return templates.TemplateResponse("index.html", {"request": request})
+# Configuration des templates et fichiers statiques (temporaire)
+frontend_build_path = "frontend/dist"
+serve_react_app_flag = os.path.exists(frontend_build_path)
 
-@app.get("/health")
+if serve_react_app_flag:
+    # Serve static assets first
+    app.mount("/assets", StaticFiles(directory=f"{frontend_build_path}/assets"), name="assets")
+    logger.info(f"Serving React app from {frontend_build_path}")
+else:
+    logger.warning(f"Frontend build path {frontend_build_path} not found, serving legacy template")
+    
+    @app.get("/", response_class=HTMLResponse)
+    async def dashboard(request: Request):
+        """Interface web principale (legacy)"""
+        return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/api/health")
 async def health_check():
     return {
         "status": "healthy",
@@ -223,6 +234,24 @@ async def get_available_indicators():
             "volume", "atr", "stochastic", "adx", "obv"
         ]
     }
+
+# Routes React (à la fin pour ne pas intercepter les routes API)
+if serve_react_app_flag:
+    @app.get("/", response_class=HTMLResponse)
+    async def serve_react_app(request: Request):
+        """Serve React app"""
+        with open(f"{frontend_build_path}/index.html", "r") as f:
+            return HTMLResponse(content=f.read())
+    
+    @app.get("/{path:path}", response_class=HTMLResponse)
+    async def serve_react_app_routes(request: Request, path: str):
+        """Serve React app for all routes (SPA routing)"""
+        # Skip API routes and WebSocket routes
+        if path.startswith(("api/", "ws/", "health")):
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Not found")
+        with open(f"{frontend_build_path}/index.html", "r") as f:
+            return HTMLResponse(content=f.read())
 
 if __name__ == "__main__":
     import uvicorn

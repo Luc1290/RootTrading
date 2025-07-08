@@ -1,3 +1,16 @@
+FROM node:18-alpine AS frontend-builder
+
+WORKDIR /app/frontend
+
+# Copy frontend package files
+COPY visualization/frontend/package*.json ./
+RUN npm install
+
+# Copy frontend source code
+COPY visualization/frontend ./
+RUN npm run build
+
+# Python stage
 FROM python:3.10-slim
 
 WORKDIR /app
@@ -23,6 +36,9 @@ COPY shared /app/shared
 
 # Copy application code
 COPY visualization/src/ ./src/
+
+# Copy built frontend from frontend-builder stage
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
