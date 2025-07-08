@@ -48,7 +48,7 @@ def get_db_config() -> Dict[str, Any]:
 DEFAULT_SYMBOL = os.getenv("SYMBOL", "SOLUSDC")
 SYMBOLS = os.getenv("SYMBOLS", "BTCUSDC,ETHUSDC,SOLUSDC,XRPUSDC,ADAUSDC").split(",")
 INTERVAL = os.getenv("INTERVAL", "1m")
-VALIDATION_INTERVAL = os.getenv("VALIDATION_INTERVAL", "5m")
+VALIDATION_INTERVAL = os.getenv("VALIDATION_INTERVAL", "15m")
 SCALPING_INTERVALS = os.getenv("SCALPING_INTERVALS", "1m,5m,15m,1h,4h").split(",")
 TRADING_MODE = os.getenv("TRADING_MODE", "demo")  # 'demo' ou 'live'
 

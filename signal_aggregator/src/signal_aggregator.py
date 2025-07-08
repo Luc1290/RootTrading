@@ -153,7 +153,7 @@ class SignalAggregator:
         """Met à jour l'historique des données de marché pour un symbole"""
         try:
             # Récupérer les données actuelles depuis Redis
-            key = f"market_data:{symbol}:5m"
+            key = f"market_data:{symbol}:15m"
             data = self.redis.get(key)
             if data:
                 parsed = json.loads(data) if isinstance(data, str) else data

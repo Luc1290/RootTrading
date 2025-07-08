@@ -181,7 +181,7 @@ class EnhancedRegimeDetector:
             # Récupérer les données enrichies de manière asynchrone
             candles = await self.db_manager.get_enriched_market_data(
                 symbol=symbol,
-                interval="5m",  # Standard crypto pour détection de régime
+                interval="15m",  # Standard crypto pour détection de régime
                 limit=100,
                 include_indicators=True
             )
@@ -320,7 +320,7 @@ class EnhancedRegimeDetector:
         """Fallback vers Redis pour calculer le régime (version sync)"""
         try:
             # Récupérer les données depuis Redis
-            key = f"market_data:{symbol}:5m"
+            key = f"market_data:{symbol}:15m"
             market_data = self.redis.get(key)
             
             if not market_data:
@@ -760,7 +760,7 @@ class EnhancedRegimeDetector:
             # Récupérer les données enrichies avec tous les indicateurs
             candles = await self.db_manager.get_enriched_market_data(
                 symbol=symbol,
-                interval="5m",  # Standardisé sur 5m pour cohérence système
+                interval="15m",  # Standardisé sur 15m pour cohérence système
                 limit=limit,
                 include_indicators=True
             )
