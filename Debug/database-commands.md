@@ -181,5 +181,65 @@ docker logs roottrading-trader-1 --tail 100 | grep "Prix XRPUSDC:"
 ```
 
 
+## Data Cleanup Commands
+
+### Preview what data would be deleted (READ-ONLY)
+```bash
+# Preview cleanup without deleting data
+./debug/preview_cleanup.sh
+
+# Or run SQL directly
+docker exec -i roottrading-db-1 psql -U postgres -d trading -f - < debug/preview_cleanup.sql
+```
+
+### Delete data older than July 10, 2025 10:00 AM
+```bash
+# Interactive cleanup with confirmation
+./debug/cleanup_database.sh
+
+# Or run SQL directly (BE CAREFUL!)
+docker exec -i roottrading-db-1 psql -U postgres -d trading -f - < debug/delete_old_data.sql
+```
+
+### Manual cleanup commands
+```bash
+# Delete specific data ranges
+docker exec roottrading-db-1 psql -U postgres -d trading -c "
+DELETE FROM trade_cycles WHERE created_at < '2025-07-10 10:00:00';
+DELETE FROM market_data WHERE time < '2025-07-10 10:00:00';
+DELETE FROM event_logs WHERE timestamp < '2025-07-10 10:00:00';
+DELETE FROM trading_signals WHERE created_at < '2025-07-10 10:00:00';
+DELETE FROM trade_executions WHERE created_at < '2025-07-10 10:00:00';
+DELETE FROM performance_stats WHERE start_date < '2025-07-10';
+"
+
+# Reclaim disk space after cleanup
+docker exec roottrading-db-1 psql -U postgres -d trading -c "VACUUM ANALYZE;"
+```
+
+### Check data size and counts
+```bash
+# Show row counts for all tables
+docker exec roottrading-db-1 psql -U postgres -d trading -c "
+SELECT 'trade_cycles' as table_name, COUNT(*) as row_count FROM trade_cycles
+UNION ALL
+SELECT 'market_data', COUNT(*) FROM market_data
+UNION ALL
+SELECT 'event_logs', COUNT(*) FROM event_logs
+UNION ALL
+SELECT 'trading_signals', COUNT(*) FROM trading_signals
+UNION ALL
+SELECT 'trade_executions', COUNT(*) FROM trade_executions
+UNION ALL
+SELECT 'performance_stats', COUNT(*) FROM performance_stats
+ORDER BY table_name;
+"
+
+# Show database size
+docker exec roottrading-db-1 psql -U postgres -d trading -c "
+SELECT pg_size_pretty(pg_database_size('trading')) as database_size;
+"
+```
+
 ---
 *Database maintenance commands for RootTrading project*
