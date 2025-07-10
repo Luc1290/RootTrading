@@ -1374,6 +1374,18 @@ class IndicatorCache:
         keys_to_remove = [k for k in self.cache.keys() if k.startswith(f"{symbol}:")]
         for key in keys_to_remove:
             del self.cache[key]
+    
+    def get_all_indicators(self, symbol: str, timeframe: str) -> dict:
+        """Récupère tous les indicateurs stockés dans le cache pour un symbole/timeframe"""
+        prefix = f"{symbol}:{timeframe}:"
+        indicators = {}
+        
+        for key, value in self.cache.items():
+            if key.startswith(prefix):
+                indicator_name = key[len(prefix):]
+                indicators[indicator_name] = value
+        
+        return indicators
 
 # Instance globale du cache
 indicator_cache = IndicatorCache()

@@ -145,6 +145,49 @@ def parse_arguments():
     )
     return parser.parse_args()
 
+async def sync_historical_to_realtime_cache(ws_client):
+    """
+    Synchronise TOUS les indicateurs calculés historiquement avec le cache temps réel du WebSocket.
+    CRITIQUE pour maintenir la continuité de TOUS les indicateurs (extensible pour futurs ajouts).
+    """
+    from shared.src.technical_indicators import indicator_cache
+    
+    try:
+        timeframes = ['1m', '5m', '15m', '1h', '4h']
+        synced_count = 0
+        indicator_types = set()
+        
+        for symbol in SYMBOLS:
+            for timeframe in timeframes:
+                # **NOUVEAU**: Récupérer TOUS les indicateurs calculés historiquement
+                all_historical_indicators = indicator_cache.get_all_indicators(symbol, timeframe)
+                
+                # Vérifier que le symbole/timeframe existe dans le cache WebSocket
+                if symbol in ws_client.incremental_cache and timeframe in ws_client.incremental_cache[symbol]:
+                    cache_ref = ws_client.incremental_cache[symbol][timeframe]
+                    
+                    # **EXTENSIBLE**: Transférer TOUS les indicateurs disponibles
+                    for indicator_name, indicator_value in all_historical_indicators.items():
+                        if indicator_value is not None:
+                            cache_ref[indicator_name] = indicator_value
+                            synced_count += 1
+                            indicator_types.add(indicator_name)
+                    
+                    if all_historical_indicators:
+                        key_indicators = {k: v for k, v in all_historical_indicators.items() 
+                                        if k in ['ema_12', 'ema_26', 'macd_line', 'rsi_14'] and v is not None}
+                        logger.debug(f"Sync {symbol} {timeframe}: {len(all_historical_indicators)} indicateurs → " +
+                                   ', '.join([f"{k}={v:.4f}" for k, v in key_indicators.items()]))
+                else:
+                    logger.warning(f"Cache WebSocket non initialisé pour {symbol} {timeframe}")
+        
+        logger.info(f"📊 Synchronisation terminée: {synced_count} indicateurs transférés")
+        logger.info(f"🔧 Types d'indicateurs synchronisés: {', '.join(sorted(indicator_types))}")
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur synchronisation cache: {e}")
+        # Ne pas faire échouer le démarrage pour un problème de sync
+
 async def main():
     """
     Fonction principale qui démarre le Gateway.
@@ -192,6 +235,12 @@ async def main():
         
         # Créer le client WebSocket Binance
         ws_client = BinanceWebSocket(symbols=SYMBOLS, interval=INTERVAL)
+        
+        # **FIX CRITIQUE**: Synchroniser les indicateurs historiques avec le cache temps réel
+        if not args.skip_init:
+            logger.info("🔄 Synchronisation cache historique → temps réel...")
+            await sync_historical_to_realtime_cache(ws_client)
+            logger.info("✅ Cache temps réel synchronisé avec données historiques")
         
         # Créer le service ultra-enrichi multi-timeframes
         ultra_fetcher = UltraDataFetcher()

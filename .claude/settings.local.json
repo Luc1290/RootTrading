@@ -25,7 +25,8 @@
       "Bash(rm:*)",
       "Bash(python:*)",
       "Bash(sqlite3:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(psql:*)"
     ],
     "deny": []
   }
