@@ -469,7 +469,7 @@ class EnhancedRegimeDetector:
             return MarketRegime.UNDEFINED, {}
     
     def _determine_regime(self, metrics: Dict[str, float]) -> MarketRegime:
-        """Détermine le régime basé sur les métriques"""
+        """Détermine le régime avec priorité au 'choppiness' sur l'ADX"""
         adx = metrics['adx']
         plus_di = metrics['plus_di']
         minus_di = metrics['minus_di']
@@ -477,67 +477,112 @@ class EnhancedRegimeDetector:
         rsi = metrics['rsi']
         roc = metrics['roc']
         trend_angle = metrics['trend_angle']
+        pivot_count = metrics.get('pivot_count', 0)
         
-        # Tendance directionnelle basée sur plusieurs facteurs
-        # Utiliser ROC et trend_angle en plus des DI pour plus de fiabilité
+        # NOUVEAU: Calculer l'indice de "choppiness"
+        # Plus il y a de pivots, plus le marché est erratique
+        choppiness_threshold = 15  # Ajustable selon le timeframe
+        high_choppiness_threshold = 25
+        
+        # Facteurs de choppiness
+        is_choppy = pivot_count > choppiness_threshold
+        is_very_choppy = pivot_count > high_choppiness_threshold
+        
+        # Volatilité sans direction claire
+        volatility_without_direction = (
+            bb_width > self.bb_expansion and  # Bandes larges
+            abs(roc) < 5 and  # Faible momentum directionnel
+            abs(trend_angle) < 10  # Angle de tendance plat
+        )
+        
+        # NOUVELLE LOGIQUE : Vérifier d'abord le "choppiness"
+        if is_very_choppy or (is_choppy and volatility_without_direction):
+            logger.info(f"🌊 Marché CHOPPY détecté: pivots={pivot_count}, ADX={adx:.1f} (ignoré)")
+            # Classifier selon la volatilité, PAS selon l'ADX
+            if bb_width > self.bb_expansion * 1.5:
+                return MarketRegime.RANGE_VOLATILE
+            elif bb_width < self.bb_squeeze_tight:
+                return MarketRegime.RANGE_TIGHT
+            else:
+                return MarketRegime.RANGE_VOLATILE
+        
+        # Si le marché n'est PAS choppy, alors on peut faire confiance à l'ADX
+        
+        # Direction consensus (comme avant)
         di_bullish = plus_di > minus_di
         roc_bullish = roc > 0
         angle_bullish = trend_angle > 0
-        
-        # Consensus : au moins 2 indicateurs sur 3 doivent être d'accord
         bullish_count = sum([di_bullish, roc_bullish, angle_bullish])
         is_bullish = bullish_count >= 2
         
+        # NOUVEAU: Exiger une convergence d'indicateurs pour valider une tendance
+        # même si ADX > 30
+        trend_confirmation = 0
+        
+        # Confirmation 1: Direction cohérente
+        if (is_bullish and roc > 2 and trend_angle > 5) or \
+           (not is_bullish and roc < -2 and trend_angle < -5):
+            trend_confirmation += 1
+        
+        # Confirmation 2: DI dominant
+        di_spread = abs(plus_di - minus_di)
+        if di_spread > 10:  # Un DI domine clairement
+            trend_confirmation += 1
+        
+        # Confirmation 3: RSI cohérent
+        if (is_bullish and rsi > 50) or (not is_bullish and rsi < 50):
+            trend_confirmation += 1
+        
         # Log détaillé pour debug
-        if adx > 30:  # Only log for trending markets
+        if adx > 30:
             logger.info(f"Direction consensus: +DI={plus_di:.1f} vs -DI={minus_di:.1f} ({di_bullish}), "
                        f"ROC={roc:.1f}% ({roc_bullish}), Angle={trend_angle:.1f}° ({angle_bullish}) "
-                       f"=> Bullish={is_bullish} (score: {bullish_count}/3)")
+                       f"=> Bullish={is_bullish} (score: {bullish_count}/3, confirmations: {trend_confirmation}/3)")
         
-        # PRIORITÉ À L'ADX - Si ADX > 30, c'est TOUJOURS une tendance
-        if adx >= 30:  # Seuil critique pour éviter faux RANGE_TIGHT
-            # Force de la tendance basée sur ADX
-            if adx >= self.adx_strong_trend:
-                # Tendance très forte
-                if is_bullish and roc > self.momentum_strong:
-                    return MarketRegime.STRONG_TREND_UP
-                elif not is_bullish and roc < -self.momentum_strong:
-                    return MarketRegime.STRONG_TREND_DOWN
-                # Tendance forte mais momentum modéré
-                elif is_bullish:
-                    return MarketRegime.TREND_UP
+        # ADX élevé MAIS avec confirmations requises
+        if adx >= 30:
+            # Exiger au moins 2 confirmations pour valider la tendance
+            if trend_confirmation >= 2:
+                if adx >= self.adx_strong_trend:
+                    if is_bullish and roc > self.momentum_strong:
+                        return MarketRegime.STRONG_TREND_UP
+                    elif not is_bullish and roc < -self.momentum_strong:
+                        return MarketRegime.STRONG_TREND_DOWN
+                    elif is_bullish:
+                        return MarketRegime.TREND_UP
+                    else:
+                        return MarketRegime.TREND_DOWN
+                elif adx >= self.adx_trend:
+                    if is_bullish:
+                        return MarketRegime.TREND_UP
+                    else:
+                        return MarketRegime.TREND_DOWN
+                else:  # ADX entre 30 et adx_trend
+                    if is_bullish:
+                        return MarketRegime.WEAK_TREND_UP
+                    else:
+                        return MarketRegime.WEAK_TREND_DOWN
+            else:
+                # ADX élevé mais pas assez de confirmations = fausse tendance
+                logger.info(f"⚠️ ADX élevé ({adx:.1f}) mais seulement {trend_confirmation}/3 confirmations => RANGE")
+                if bb_width > self.bb_expansion:
+                    return MarketRegime.RANGE_VOLATILE
                 else:
-                    return MarketRegime.TREND_DOWN
-                    
-            elif adx >= self.adx_trend:
-                # Tendance normale
-                if is_bullish:
-                    return MarketRegime.TREND_UP
-                else:
-                    return MarketRegime.TREND_DOWN
-                    
-            else:  # ADX entre 30 et adx_trend (35)
-                # Tendance émergente
-                if is_bullish:
-                    return MarketRegime.WEAK_TREND_UP
-                else:
-                    return MarketRegime.WEAK_TREND_DOWN
+                    return MarketRegime.RANGE_TIGHT
         
-        # ADX < 30 : vérifier d'autres critères pour range vs weak trend
+        # ADX < 30 : logique existante
         if adx >= self.adx_weak_trend:
-            # Tendance faible possible
             if trend_angle > 5 or roc > 5:
                 return MarketRegime.WEAK_TREND_UP
             elif trend_angle < -5 or roc < -5:
                 return MarketRegime.WEAK_TREND_DOWN
-                
-        # Marché en range seulement si ADX < 30
+        
+        # Marché en range
         if bb_width < self.bb_squeeze_tight:
             return MarketRegime.RANGE_TIGHT
         elif bb_width > self.bb_expansion:
             return MarketRegime.RANGE_VOLATILE
         else:
-            # Range normal, vérifier la direction générale
             if trend_angle > 5:
                 return MarketRegime.WEAK_TREND_UP
             elif trend_angle < -5:

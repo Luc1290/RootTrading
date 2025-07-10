@@ -528,7 +528,13 @@ class TechnicalIndicators:
         if self.talib_available:
             try:
                 atr_values = talib.ATR(highs_array, lows_array, closes_array, timeperiod=period)
-                return float(atr_values[-1]) if not np.isnan(atr_values[-1]) else None
+                if atr_values is not None and len(atr_values) > 0:
+                    last_atr = atr_values[-1]
+                    if not np.isnan(last_atr) and not np.isinf(last_atr):
+                        return float(last_atr)
+                    else:
+                        logger.warning(f"Talib ATR retourne NaN/Inf pour {period} périodes")
+                return None
             except Exception as e:
                 logger.warning(f"Erreur talib ATR: {e}, utilisation fallback")
                 
@@ -544,12 +550,23 @@ class TechnicalIndicators:
             tr1 = highs[i] - lows[i]
             tr2 = abs(highs[i] - closes[i-1])
             tr3 = abs(lows[i] - closes[i-1])
-            true_ranges.append(max(tr1, tr2, tr3))
+            
+            # Vérifier que les valeurs sont valides
+            tr = max(tr1, tr2, tr3)
+            if not np.isnan(tr) and not np.isinf(tr):
+                true_ranges.append(tr)
             
         if len(true_ranges) < period:
+            logger.warning(f"Pas assez de True Range valides: {len(true_ranges)} < {period}")
             return None
             
         atr = np.mean(true_ranges[-period:])
+        
+        # Vérifier que le résultat est valide
+        if np.isnan(atr) or np.isinf(atr):
+            logger.warning(f"ATR manuel calculé invalide: {atr}")
+            return None
+            
         return round(float(atr), 6)
     
     # =================== SMA ===================

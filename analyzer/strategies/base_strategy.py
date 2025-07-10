@@ -222,6 +222,35 @@ class BaseStrategy(ABC):
         
         return atr_percent
     
+    def should_skip_low_volatility(self, atr_percent: float = None) -> bool:
+        """
+        Détermine si un signal doit être ignoré en raison d'une faible volatilité.
+        Utile pour éviter les faux signaux dans les zones de consolidation.
+        
+        Args:
+            atr_percent: ATR en pourcentage (si None, calculé automatiquement)
+            
+        Returns:
+            True si la volatilité est trop faible, False sinon
+        """
+        if atr_percent is None:
+            atr_percent = self.calculate_atr()
+        
+        # Seuils adaptés par paire
+        if 'BTC' in self.symbol:
+            min_atr = 0.15  # 0.15% minimum pour BTC
+        elif 'ETH' in self.symbol:
+            min_atr = 0.20  # 0.20% pour ETH
+        else:
+            min_atr = 0.25  # 0.25% pour altcoins
+        
+        # Log si filtré
+        if atr_percent < min_atr:
+            logger.debug(f"[{self.name}] Signal ignoré pour {self.symbol}: ATR ({atr_percent:.3f}%) < seuil ({min_atr}%)")
+            return True
+            
+        return False
+    
     def calculate_dynamic_stop(self, entry_price: float, side: OrderSide, 
                              atr_percent: float = None) -> Dict[str, float]:
         """

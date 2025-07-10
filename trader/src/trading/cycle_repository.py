@@ -277,9 +277,17 @@ class CycleRepository:
             
             # Préparer les métadonnées pour PostgreSQL
             import json
+            import math
             metadata_json = None
             if hasattr(cycle, 'metadata') and cycle.metadata:
-                metadata_json = json.dumps(cycle.metadata)
+                # Nettoyer uniquement l'ATR si nécessaire, sans toucher au reste
+                metadata = cycle.metadata.copy()  # Copie pour ne pas modifier l'original
+                if 'atr_config' in metadata and 'atr_value' in metadata['atr_config']:
+                    atr_value = metadata['atr_config']['atr_value']
+                    if atr_value is not None and isinstance(atr_value, float):
+                        if math.isnan(atr_value) or math.isinf(atr_value):
+                            metadata['atr_config']['atr_value'] = None
+                metadata_json = json.dumps(metadata)
             
             # Définir la requête SQL
             if exists:

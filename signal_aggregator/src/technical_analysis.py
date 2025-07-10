@@ -5,6 +5,7 @@ Contient toutes les méthodes d'analyse technique extraites du signal_aggregator
 """
 
 import logging
+import math
 from typing import Dict, List, Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -121,6 +122,62 @@ class TechnicalAnalysis:
         except Exception as e:
             logger.error(f"Erreur validation MACD: {e}")
             return None
+    
+    async def get_atr(self, symbol: str) -> Dict[str, float]:
+        """
+        Récupère l'ATR (Average True Range) pour un symbole depuis Redis.
+        Utilise la méthode centralisée de TechnicalIndicators.
+        
+        Args:
+            symbol: Symbole de trading
+            
+        Returns:
+            Dict avec atr_percent et atr_value
+        """
+        try:
+            # Récupérer les données 5m depuis Redis
+            market_data_key = f"market_data:{symbol}:5m"
+            data_5m = self.redis.get(market_data_key)
+            
+            if not data_5m or not isinstance(data_5m, dict):
+                logger.debug(f"Pas de données 5m pour {symbol}, utilisation valeur par défaut ATR")
+                return {"atr_percent": 1.0, "atr_value": None}
+            
+            # Vérifier si ATR est déjà calculé dans les données
+            atr_value = data_5m.get('atr_14')
+            close_price = data_5m.get('close')
+            
+            if atr_value and close_price:
+                atr_percent = (float(atr_value) / float(close_price)) * 100
+                return {
+                    "atr_percent": atr_percent,
+                    "atr_value": float(atr_value)
+                }
+            
+            # Fallback: utiliser TechnicalIndicators.calculate_atr() si données OHLC disponibles
+            prices = data_5m.get('prices', [])
+            highs = data_5m.get('highs', [])
+            lows = data_5m.get('lows', [])
+            
+            if len(prices) >= 15 and len(highs) >= 15 and len(lows) >= 15:
+                from shared.src.technical_indicators import TechnicalIndicators
+                indicators = TechnicalIndicators()
+                
+                # Utiliser la méthode centralisée calculate_atr
+                atr_value = indicators.calculate_atr(highs[-15:], lows[-15:], prices[-15:], period=14)
+                if atr_value and prices and not math.isnan(atr_value) and not math.isinf(atr_value):
+                    atr_percent = (atr_value / prices[-1]) * 100
+                    return {
+                        "atr_percent": atr_percent,
+                        "atr_value": atr_value
+                    }
+            
+            # Valeur par défaut si calcul impossible
+            return {"atr_percent": 1.0, "atr_value": None}
+            
+        except Exception as e:
+            logger.error(f"Erreur récupération ATR pour {symbol}: {e}")
+            return {"atr_percent": 1.0, "atr_value": None}
     
     def validate_obv_trend(self, technical_context: Dict[str, Any], side: str) -> Optional[bool]:
         """
@@ -297,8 +354,8 @@ class TechnicalAnalysis:
             
             # Calculer ATR(14)
             atr_value = indicators.calculate_atr(highs, lows, closes, period=14)
-            if atr_value is None:
-                logger.debug(f"Calcul ATR échoué pour {symbol}")
+            if atr_value is None or math.isnan(atr_value) or math.isinf(atr_value):
+                logger.debug(f"Calcul ATR échoué ou invalide pour {symbol}: {atr_value}")
                 return None
             
             # Récupérer ADX pour adapter le multiplicateur
@@ -545,6 +602,11 @@ class TechnicalAnalysis:
                 else:
                     alpha = 2.0 / (period + 1)
                     new_atr = alpha * true_range + (1 - alpha) * prev_atr
+                
+                # Vérifier la validité de l'ATR calculé
+                if math.isnan(new_atr) or math.isinf(new_atr):
+                    logger.warning(f"ATR incrémental invalide pour {symbol}: {new_atr}, utilisation valeur par défaut")
+                    new_atr = true_range  # Fallback sur True Range actuel
                 
                 cache[f'atr_{period}'] = new_atr
                 cache['atr_prev_close'] = current_candle['close']

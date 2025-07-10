@@ -132,21 +132,45 @@ class SignalValidator:
             # LOGIQUE SOPHISTIQUÉE DE VALIDATION
             rejection_reason = None
             
+            # NOUVEAU: Validation stricte de la position relative aux EMAs
+            price_above_ema21 = current_price > ema_21
+            price_above_ema50 = current_price > ema_50
+            
+            # Position relative en pourcentage
+            distance_to_ema21 = ((current_price - ema_21) / ema_21) * 100
+            distance_to_ema50 = ((current_price - ema_50) / ema_50) * 100
+            
             if side == "BUY":
+                # NOUVEAU: Validation stricte position EMA pour BUY
+                if not price_above_ema21:
+                    rejection_reason = f"prix sous EMA21 ({distance_to_ema21:.2f}%), momentum baissier"
+                elif trend_5m in ["STRONG_BEARISH", "WEAK_BEARISH"] and not price_above_ema50:
+                    rejection_reason = f"contre-tendance baissière 5m et prix sous EMA50"
                 # Éviter d'acheter dans une forte montée (risque de sommet)
-                if trend_5m == "STRONG_BULLISH" and not trend_weakening:
+                elif trend_5m == "STRONG_BULLISH" and not trend_weakening:
                     rejection_reason = "forte tendance haussière en cours, risque de sommet"
                 # Éviter d'acheter un crash violent (couteau qui tombe)
                 elif trend_5m == "STRONG_BEARISH" and ema_21_velocity < -0.01:  # Accélération baissière > 1%
                     rejection_reason = "crash violent en cours, éviter le couteau qui tombe"
+                # Prix trop éloigné au-dessus des EMAs (surachat)
+                elif distance_to_ema21 > 2.0:  # Plus de 2% au-dessus
+                    rejection_reason = f"prix trop éloigné de EMA21 (+{distance_to_ema21:.2f}%), risque de retour"
                     
             elif side == "SELL":
+                # NOUVEAU: Validation stricte position EMA pour SELL
+                if price_above_ema50 and trend_5m not in ["STRONG_BEARISH", "WEAK_BEARISH"]:
+                    rejection_reason = f"prix au-dessus EMA50 ({distance_to_ema50:.2f}%), momentum haussier"
+                elif trend_5m in ["STRONG_BULLISH", "WEAK_BULLISH"] and price_above_ema21:
+                    rejection_reason = f"contre-tendance haussière 5m et prix au-dessus EMA21"
                 # Éviter de vendre dans une forte baisse (risque de creux)  
-                if trend_5m == "STRONG_BEARISH" and not trend_weakening:
+                elif trend_5m == "STRONG_BEARISH" and not trend_weakening:
                     rejection_reason = "forte tendance baissière en cours, risque de creux"
                 # Éviter de vendre une pump violente (FOMO manqué)
                 elif trend_5m == "STRONG_BULLISH" and ema_21_velocity > 0.01:  # Accélération haussière > 1%
                     rejection_reason = "pump violent en cours, éviter de rater la montée"
+                # Prix trop éloigné en-dessous des EMAs (survente)
+                elif distance_to_ema21 < -2.0:  # Plus de 2% en-dessous
+                    rejection_reason = f"prix trop éloigné sous EMA21 ({distance_to_ema21:.2f}%), risque de rebond"
             
             # Appliquer le rejet si raison trouvée
             if rejection_reason:
@@ -206,6 +230,64 @@ class SignalValidator:
         except Exception as e:
             logger.error(f"Erreur validation multi-timeframe: {e}")
             return True  # Mode dégradé : accepter le signal
+    
+    def check_price_momentum_divergence(self, symbol: str, prices: List[float], 
+                                       rsi: Optional[float], side: str) -> bool:
+        """
+        Détecte les divergences prix/RSI qui indiquent des retournements potentiels.
+        
+        Args:
+            symbol: Symbole de trading
+            prices: Liste des prix récents
+            rsi: Valeur RSI actuelle
+            side: Direction du signal (BUY/SELL)
+            
+        Returns:
+            True si divergence détectée (signal à rejeter), False sinon
+        """
+        if not rsi or len(prices) < 10:
+            return False
+        
+        try:
+            # Tendance des prix sur les 5 dernières périodes
+            price_trend_up = prices[-1] > prices[-5]
+            price_trend_strong_up = prices[-1] > prices[-5] * 1.005  # +0.5%
+            price_trend_down = prices[-1] < prices[-5]
+            price_trend_strong_down = prices[-1] < prices[-5] * 0.995  # -0.5%
+            
+            # RSI extrêmes
+            rsi_overbought = rsi > 70
+            rsi_oversold = rsi < 30
+            rsi_neutral_high = 60 < rsi < 70
+            rsi_neutral_low = 30 < rsi < 40
+            
+            # Divergences baissières (prix monte, RSI faiblit)
+            if side == "BUY":
+                # Prix en forte hausse mais RSI surachat = divergence baissière
+                if price_trend_strong_up and rsi_overbought:
+                    logger.info(f"🔴 Divergence baissière {symbol}: prix ↑↑ mais RSI={rsi:.1f} (surachat)")
+                    return True
+                # Prix monte mais RSI stagne ou baisse
+                elif price_trend_up and rsi < 50:
+                    logger.info(f"⚠️ Divergence potentielle {symbol}: prix ↑ mais RSI={rsi:.1f} < 50")
+                    return True
+                    
+            # Divergences haussières (prix baisse, RSI se renforce)
+            elif side == "SELL":
+                # Prix en forte baisse mais RSI survente = divergence haussière
+                if price_trend_strong_down and rsi_oversold:
+                    logger.info(f"🔴 Divergence haussière {symbol}: prix ↓↓ mais RSI={rsi:.1f} (survente)")
+                    return True
+                # Prix baisse mais RSI stagne ou monte
+                elif price_trend_down and rsi > 50:
+                    logger.info(f"⚠️ Divergence potentielle {symbol}: prix ↓ mais RSI={rsi:.1f} > 50")
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Erreur détection divergence {symbol}: {e}")
+            return False
     
     def _calculate_ema(self, prices: List[float], period: int) -> float:
         """Calcule une EMA simple (fallback)"""

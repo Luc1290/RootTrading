@@ -110,17 +110,26 @@ class StopManagerPure:
             if response.status_code == 200:
                 data = response.json()
                 
-                # Chercher l'ATR dans la réponse
+                # Chercher l'ATR dans la réponse (support de multiples formats)
                 atr_value = None
                 if 'atr' in data:
                     atr_value = data['atr']
-                elif 'indicators' in data and 'atr' in data['indicators']:
-                    atr_value = data['indicators']['atr']
+                elif 'indicators' in data:
+                    # Vérifier les différents formats d'ATR
+                    indicators = data['indicators']
+                    if 'atr' in indicators:
+                        atr_value = indicators['atr']
+                    elif 'atr_14' in indicators:  # Format standard de l'analyzer
+                        atr_value = indicators['atr_14']
+                    elif 'atr_value' in indicators:
+                        atr_value = indicators['atr_value']
                 elif 'technical_analysis' in data:
                     # Peut-être dans une structure plus complexe
                     ta_data = data['technical_analysis']
                     if 'atr' in ta_data:
                         atr_value = ta_data['atr']
+                    elif 'atr_14' in ta_data:
+                        atr_value = ta_data['atr_14']
                 
                 if atr_value is not None:
                     # Mettre en cache avec compteur de mouvements remis à zéro
@@ -371,10 +380,15 @@ class StopManagerPure:
                         force_atr_update = True
                 
                 # Mettre à jour l'ATR (30s max OU après 20 mouvements)
-                current_atr = self._get_current_atr(cycle.symbol, force_update=force_atr_update)
+                current_atr = self._get_current_atr(cycle.symbol, force_update=force_atr_update, cycle_id=cycle.id)
                 if current_atr is not None and current_atr != ts.current_atr:
-                    ts.update_atr(current_atr)
-                    logger.debug(f"📊 ATR mis à jour pour cycle {cycle.id}: {current_atr:.6f}")
+                    # Validation supplémentaire avant mise à jour
+                    import math
+                    if not math.isnan(current_atr) and not math.isinf(current_atr) and current_atr > 0:
+                        ts.update_atr(current_atr)
+                        logger.debug(f"📊 ATR mis à jour pour cycle {cycle.id}: {current_atr:.6f}")
+                    else:
+                        logger.warning(f"⚠️ ATR invalide rejeté pour cycle {cycle.id}: {current_atr}")
                 
                 # 1. Vérifier les protections de gains AVANT le trailing stop
                 protection_actions = self.gain_protector.update_and_check_protections(cycle.id, price)

@@ -157,20 +157,10 @@ class AnalyzerService:
             }), 400
         
         try:
-            import asyncio
             from analyzer.src.indicators.db_indicators import db_indicators
             
-            # Récupérer les indicateurs depuis la DB
-            async def get_db_indicators():
-                return await db_indicators.get_enriched_market_data(symbol, limit=1)
-            
-            # Exécuter l'appel asynchrone
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                df = loop.run_until_complete(get_db_indicators())
-            finally:
-                loop.close()
+            # Récupérer les indicateurs depuis la DB (méthode synchrone)
+            df = db_indicators.get_enriched_market_data(symbol, limit=1)
             
             if df is None or df.empty:
                 return jsonify({

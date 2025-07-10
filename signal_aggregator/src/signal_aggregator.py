@@ -346,16 +346,28 @@ class SignalAggregator:
             signal_is_ultra_confluent = signal.get('metadata', {}).get('ultra_confluence', False)
             signal_score = signal.get('metadata', {}).get('total_score')
             
-            # NOUVEAU: Seuils adaptatifs selon le type de signal
-            if signal_is_ultra_confluent and signal_score:
-                # Signaux ultra-confluents : seuil plus strict
-                min_threshold = 0.7
-            else:
-                # Signaux classiques : seuil standard
-                min_threshold = self.min_confidence_threshold
+            # NOUVEAU: Seuils adaptatifs selon le régime ET le type de signal
+            if regime in ["RANGE_TIGHT", "RANGE_VOLATILE", "CHOPPY"]:
+                # Régimes difficiles : seuils plus stricts
+                if signal_is_ultra_confluent and signal_score:
+                    min_threshold = 0.75  # Plus strict pour ultra-confluent en range
+                else:
+                    min_threshold = max(0.65, self.min_confidence_threshold)
+            elif regime in ["WEAK_TREND_UP", "WEAK_TREND_DOWN"]:
+                # Tendances faibles : seuils modérés
+                if signal_is_ultra_confluent and signal_score:
+                    min_threshold = 0.70
+                else:
+                    min_threshold = max(0.60, self.min_confidence_threshold)
+            else:  # STRONG_TREND_*, TREND_*
+                # Tendances fortes : seuils standards
+                if signal_is_ultra_confluent and signal_score:
+                    min_threshold = 0.65
+                else:
+                    min_threshold = self.min_confidence_threshold
                 
             if confidence < min_threshold:
-                logger.debug(f"Signal {strategy} filtré: confidence {confidence:.2f} < {min_threshold:.2f}")
+                logger.debug(f"Signal {strategy} filtré: confidence {confidence:.2f} < {min_threshold:.2f} (régime: {regime})")
                 continue
 
             # Get side (handle both 'side' and 'side' keys)
@@ -490,14 +502,13 @@ class SignalAggregator:
         else:
             trailing_delta = 3.0  # Défaut si pas de stop calculé
         
-        # NOUVEAU: Validation minimum 2 stratégies pour publier un signal (sauf cas particuliers)
+        # NOUVEAU: Validation stricte minimum 2 stratégies pour confluence
         if len(contributing_strategies) < 2:
-            # Permettre temporairement les signaux uniques pour débugger la confluence
             if len(contributing_strategies) == 1:
-                logger.info(f"⚠️ Signal unique accepté temporairement pour debug: {contributing_strategies[0]} pour {symbol}")
-                # Continuer le traitement
+                logger.info(f"❌ Signal unique rejeté (confluence requise): {contributing_strategies[0]} pour {symbol}")
+                return None
             else:
-                logger.info(f"❌ Signal rejeté: minimum 1 stratégie requise, seulement {len(contributing_strategies)} trouvée(s) pour {symbol}")
+                logger.info(f"❌ Signal rejeté: aucune stratégie valide pour {symbol}")
                 return None
         
         return {
@@ -633,6 +644,11 @@ class SignalAggregator:
                     confidence=confidence
                 )
 
+        # NOUVEAU: Vérifier la cohérence entre stratégies trend/reversal
+        if not self._check_strategy_coherence(BUY_signals + SELL_signals, regime):
+            logger.info(f"Signal rejeté pour {symbol}: incohérence entre stratégies trend/reversal")
+            return None
+
         # Calculate total scores
         BUY_score = sum(s['score'] for s in BUY_signals)
         SELL_score = sum(s['score'] for s in SELL_signals)
@@ -734,14 +750,13 @@ class SignalAggregator:
         # Trailing stop fixe à 8% pour système crypto pur
         trailing_delta = 8.0  # Crypto optimized (était 3.0%)
         
-        # NOUVEAU: Validation minimum 2 stratégies pour publier un signal (sauf cas particuliers)
+        # NOUVEAU: Validation stricte minimum 2 stratégies pour confluence
         if len(contributing_strategies) < 2:
-            # Permettre temporairement les signaux uniques pour débugger la confluence
             if len(contributing_strategies) == 1:
-                logger.info(f"⚠️ Signal unique accepté temporairement pour debug: {contributing_strategies[0]} pour {symbol}")
-                # Continuer le traitement
+                logger.info(f"❌ Signal unique rejeté (confluence requise): {contributing_strategies[0]} pour {symbol}")
+                return None
             else:
-                logger.info(f"❌ Signal rejeté: minimum 1 stratégie requise, seulement {len(contributing_strategies)} trouvée(s) pour {symbol}")
+                logger.info(f"❌ Signal rejeté: aucune stratégie valide pour {symbol}")
                 return None
         
         # VALIDATION FINALE: Override pour 'moderate' avec ≥2 stratégies
@@ -793,13 +808,109 @@ class SignalAggregator:
             }
         }
     
+    async def get_dynamic_cooldown(self, symbol: str) -> timedelta:
+        """
+        Calcule un cooldown adaptatif basé sur la volatilité (ATR).
+        Plus la volatilité est faible, plus le cooldown est long.
+        
+        Args:
+            symbol: Symbole de trading
+            
+        Returns:
+            Période de cooldown adaptée
+        """
+        try:
+            # Récupérer l'ATR depuis les données techniques
+            atr_data = await self.technical_analysis.get_atr(symbol)
+            atr_percent = atr_data.get('atr_percent', 1.0) if atr_data else 1.0
+            
+            # Cooldown inversement proportionnel à la volatilité
+            base_minutes = self.cooldown_period.total_seconds() / 60
+            
+            if atr_percent < 0.3:  # Très faible volatilité
+                cooldown_minutes = base_minutes * 3
+                logger.debug(f"🐢 Cooldown étendu pour {symbol}: {cooldown_minutes:.0f}min (ATR={atr_percent:.2f}%)")
+            elif atr_percent < 0.5:  # Faible volatilité
+                cooldown_minutes = base_minutes * 2
+                logger.debug(f"🐌 Cooldown augmenté pour {symbol}: {cooldown_minutes:.0f}min (ATR={atr_percent:.2f}%)")
+            elif atr_percent > 2.0:  # Haute volatilité
+                cooldown_minutes = base_minutes * 0.5
+                logger.debug(f"🚀 Cooldown réduit pour {symbol}: {cooldown_minutes:.0f}min (ATR={atr_percent:.2f}%)")
+            else:  # Volatilité normale
+                cooldown_minutes = base_minutes
+                
+            return timedelta(minutes=cooldown_minutes)
+            
+        except Exception as e:
+            logger.error(f"Erreur calcul cooldown dynamique pour {symbol}: {e}")
+            return self.cooldown_period  # Fallback au cooldown standard
+
+    def _check_strategy_coherence(self, signals: List[Dict], regime: str) -> bool:
+        """
+        Vérifie la cohérence entre stratégies trend-following et mean-reversion.
+        Évite les conflits où des stratégies opposées donnent des signaux contradictoires.
+        
+        Args:
+            signals: Liste des signaux pondérés
+            regime: Régime de marché actuel
+            
+        Returns:
+            True si les signaux sont cohérents, False sinon
+        """
+        if len(signals) < 2:
+            return True  # Pas de conflit possible avec un seul signal
+        
+        # Classifier les stratégies
+        trend_strategies = ['EMA_Cross', 'MACD', 'Breakout']
+        reversal_strategies = ['RSI', 'Bollinger', 'Divergence']
+        adaptive_strategies = ['Ride_or_React']  # S'adapte au contexte
+        
+        # Séparer les signaux par type
+        trend_signals = [s for s in signals if s['strategy'] in trend_strategies]
+        reversal_signals = [s for s in signals if s['strategy'] in reversal_strategies]
+        
+        # Si pas de mélange, c'est cohérent
+        if not trend_signals or not reversal_signals:
+            return True
+        
+        # Vérifier la direction des signaux
+        trend_sides = set(s['side'] for s in trend_signals)
+        reversal_sides = set(s['side'] for s in reversal_signals)
+        
+        # Si les directions sont opposées, vérifier le régime
+        if trend_sides != reversal_sides:
+            # En tendance forte, privilégier les stratégies de tendance
+            if regime in ['STRONG_TREND_UP', 'STRONG_TREND_DOWN', 'TREND_UP', 'TREND_DOWN']:
+                logger.debug(f"Conflit trend/reversal en régime {regime}: privilégier trend")
+                # OK si les stratégies de tendance dominent
+                return len(trend_signals) >= len(reversal_signals)
+            # En range, privilégier les stratégies de retournement
+            elif regime in ['RANGE_TIGHT', 'RANGE_VOLATILE']:
+                logger.debug(f"Conflit trend/reversal en régime {regime}: privilégier reversal")
+                # OK si les stratégies de retournement dominent
+                return len(reversal_signals) >= len(trend_signals)
+            else:
+                # Régime mixte : exiger consensus plus fort
+                total_trend_score = sum(s['score'] for s in trend_signals)
+                total_reversal_score = sum(s['score'] for s in reversal_signals)
+                # Le côté avec le score le plus élevé doit avoir 50% de plus
+                if total_trend_score > total_reversal_score:
+                    return total_trend_score > total_reversal_score * 1.5
+                else:
+                    return total_reversal_score > total_trend_score * 1.5
+        
+        return True  # Directions cohérentes
+
     async def _is_in_cooldown(self, symbol: str) -> bool:
-        """Check if symbol is in cooldown period"""
+        """Check if symbol is in cooldown period with dynamic adjustment"""
+        
+        # Get dynamic cooldown period
+        cooldown_period = await self.get_dynamic_cooldown(symbol)
         
         # Check local cooldown
         if symbol in self.last_signal_time:
             time_since_last = datetime.now(timezone.utc) - self.last_signal_time[symbol]
-            if time_since_last < self.cooldown_period:
+            if time_since_last < cooldown_period:
                 return True
                 
         # Check Redis for distributed cooldown
