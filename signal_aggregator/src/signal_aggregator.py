@@ -272,8 +272,8 @@ class SignalAggregator:
             # Add to buffer
             self.signal_buffer[symbol].append(signal)
             
-            # Clean old signals (keep only last 140 seconds for confluence)
-            cutoff_time = timestamp - timedelta(seconds=140)
+            # Clean old signals (keep only last 300 seconds for confluence)
+            cutoff_time = timestamp - timedelta(seconds=300)
             self.signal_buffer[symbol] = [
                 s for s in self.signal_buffer[symbol]
                 if self.signal_processor.get_signal_timestamp(s) > cutoff_time
@@ -284,12 +284,12 @@ class SignalAggregator:
             
             # Logique d'attente intelligente : attendre plus de signaux ou un délai
             if buffer_size < 2:
-                # Si on a seulement 1 signal, attendre 140 secondes pour voir si d'autres arrivent
+                # Si on a seulement 1 signal, attendre 300 secondes pour voir si d'autres arrivent
                 first_signal_time = self.signal_processor.get_signal_timestamp(self.signal_buffer[symbol][0])
                 time_since_first = timestamp - first_signal_time
-                
-                if time_since_first.total_seconds() < 140:
-                    logger.debug(f"🕐 Signal unique pour {symbol}, attente {140 - time_since_first.total_seconds():.0f}s pour confluence")
+
+                if time_since_first.total_seconds() < 300:
+                    logger.info(f"🕐 Signal unique pour {symbol}, attente {300 - time_since_first.total_seconds():.0f}s pour confluence")
                     return None  # Attendre plus de signaux
                 else:
                     logger.info(f"⏰ Délai d'attente écoulé pour {symbol}, traitement du signal unique")
