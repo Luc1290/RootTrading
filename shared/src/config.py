@@ -70,26 +70,35 @@ TRADE_QUANTITIES = {
 TRADE_QUANTITY = TRADE_QUANTITIES.get(DEFAULT_SYMBOL, TRADE_QUANTITY_SOLUSDC)
 
 
-# Paramètres des stratégies
+# Paramètres pour TechnicalIndicators (nécessaires pour compatibilité)
+# Les stratégies Pro gèrent leurs propres paramètres avancés
 STRATEGY_PARAMS = {
+    # Paramètres de base pour TechnicalIndicators
     "rsi": {
-        "window": int(os.getenv("RSI_WINDOW", 14)),
-        "overbought": int(os.getenv("RSI_OVERBOUGHT", 70)),
-        "oversold": int(os.getenv("RSI_OVERSOLD", 30)),
+        "window": 14,
+        "overbought": 70,
+        "oversold": 30,
     },
     "ema_cross": {
-        "SELL_window": int(os.getenv("SELL_WINDOW", 5)),
-        "BUY_window": int(os.getenv("BUY_WINDOW", 20)),
+        "fast_window": 12,
+        "slow_window": 26,
     },
     "bollinger": {
-        "window": int(os.getenv("BB_WINDOW", 20)),
-        "num_std": float(os.getenv("BB_STD", 2.0)),
+        "window": 20,
+        "num_std": 2.0,
     },
     "macd": {
-        "fast_period": int(os.getenv("MACD_FAST_PERIOD", 12)),
-        "slow_period": int(os.getenv("MACD_SLOW_PERIOD", 26)),
-        "signal_period": int(os.getenv("MACD_SIGNAL_PERIOD", 9)),
-        "histogram_threshold": float(os.getenv("MACD_HISTOGRAM_THRESHOLD", 0.0005)),  # Réduit pour plus de sensibilité
+        "fast_period": 12,
+        "slow_period": 26,
+        "signal_period": 9,
+        "histogram_threshold": 0.0005,
+    },
+    # Paramètres globaux pour toutes les stratégies Pro
+    "global": {
+        "confluence_threshold": float(os.getenv("CONFLUENCE_THRESHOLD", 55.0)),
+        "min_adx_trend": float(os.getenv("MIN_ADX_TREND", 25.0)),
+        "min_volume_ratio": float(os.getenv("MIN_VOLUME_RATIO", 1.2)),
+        "context_score_threshold": float(os.getenv("CONTEXT_SCORE_THRESHOLD", 50.0))
     }
 }
 
@@ -103,10 +112,10 @@ ADX_WEAK_TREND_THRESHOLD = float(os.getenv("ADX_WEAK_TREND_THRESHOLD", 23))
 ADX_TREND_THRESHOLD = float(os.getenv("ADX_TREND_THRESHOLD", 32))
 ADX_STRONG_TREND_THRESHOLD = float(os.getenv("ADX_STRONG_TREND_THRESHOLD", 42))
 
-# Signal Aggregator Settings - Optimisés pour plus de signaux
+# Signal Aggregator Settings - Optimisés pour stratégies Pro
 SIGNAL_COOLDOWN_MINUTES = int(os.getenv("SIGNAL_COOLDOWN_MINUTES", 3))
-VOTE_THRESHOLD = float(os.getenv("VOTE_THRESHOLD", 0.30))  # Réduit de 35% à 30%
-CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", 0.65))  # Réduit de 72% à 65%
+VOTE_THRESHOLD = float(os.getenv("VOTE_THRESHOLD", 0.40))  # Augmenté pour stratégies Pro plus sélectives
+CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", 0.70))  # Augmenté pour qualité supérieure
 
 # Configuration des canaux Redis
 CHANNEL_PREFIX = os.getenv("CHANNEL_PREFIX", "roottrading")

@@ -137,13 +137,13 @@ class UltraDataFetcher:
         Calcule TOUS les indicateurs nécessaires pour UltraConfluence.
         """
         try:
-            # Récupérer suffisamment de klines avec limite adaptée au timeframe
+            # Récupérer BEAUCOUP plus de klines pour indicateurs ultra-précis
             timeframe_limits = {
-                '1m': 300,    # 5 heures (pour SMA 50 précis)
-                '5m': 400,    # 33 heures (pour EMA 50)
-                '15m': 200,   # 50 heures 
-                '1h': 150,    # 150 heures
-                '4h': 100     # 400 heures
+                '1m': 1000,   # 16.7 heures → EMA/SMA 200 ultra-précis
+                '5m': 1000,   # 3.5 jours → Tendances moyennes parfaites
+                '15m': 800,   # 8.3 jours → Indicateurs long terme solides
+                '1h': 500,    # 20.8 jours → Tendance mensuelle
+                '4h': 300     # 50 jours → Tendance long terme
             }
             limit = timeframe_limits.get(timeframe, 100)
             klines = await self._fetch_klines(symbol, timeframe, limit=limit)
@@ -243,12 +243,17 @@ class UltraDataFetcher:
             # Ajouter tous les indicateurs calculés
             enriched_data.update(final_indicators)
             
-            # **NOUVEAU**: Sauvegarder les indicateurs dans le cache persistant
+            # **CRITIQUE**: Sauvegarder les indicateurs dans le cache persistant IMMÉDIATEMENT
             from shared.src.technical_indicators import indicator_cache
+            saved_indicators = 0
             for indicator_name, indicator_value in final_indicators.items():
                 # Sauvegarder seulement les indicateurs numériques valides
                 if isinstance(indicator_value, (int, float)) and not (isinstance(indicator_value, float) and indicator_value != indicator_value):
                     indicator_cache.set(symbol, timeframe, indicator_name, indicator_value)
+                    saved_indicators += 1
+            
+            if saved_indicators > 0:
+                logger.debug(f"💾 {saved_indicators} indicateurs sauvegardés dans cache persistant {symbol} {timeframe}")
             
             if incremental_indicators:
                 logger.debug(f"✅ {len(final_indicators)} indicateurs calculés et sauvegardés pour {symbol} (🚀 EMA/MACD incrémentaux)")
@@ -626,13 +631,13 @@ class UltraDataFetcher:
             logger.warning("⚠️ Producteur Kafka non disponible, données historiques non persistées en DB")
             kafka_producer = None
         
-        # Calculer les limites optimisées pour chaque timeframe (selon besoins des indicateurs)
+        # Calculer les limites optimisées pour indicateurs ULTRA-PRÉCIS
         timeframe_limits = {
-            '1m': 180,    # 3 heures (suffisant pour tous les indicateurs)
-            '5m': 288,    # 24 heures (1 jour complet)  
-            '15m': 192,   # 2 jours (48h / 15m = 192 points)
-            '1h': 168,    # 7 jours (168 heures)
-            '4h': 84      # 14 jours (84 * 4h = 14 jours)
+            '1m': 2000,   # 33.3 heures → Intraday ultra-précis
+            '5m': 1500,   # 5.2 jours → Pattern detection parfait
+            '15m': 1000,  # 10.4 jours → Swing trading optimal  
+            '1h': 720,    # 30 jours → Tendance mensuelle complète
+            '4h': 500     # 83.3 jours → Cycle long terme
         }
         
         total_expected = 0
@@ -793,7 +798,7 @@ class UltraDataFetcher:
     async def _enrich_historical_batch(self, klines: List, symbol: str, timeframe: str) -> List[Dict]:
         """
         Enrichit les données historiques avec calcul correct des indicateurs.
-        APPROCHE CORRIGÉE: Utilise les buffers historiques complets pour calculer TOUS les indicateurs.
+        APPROCHE CORRIGÉE: Calcule les indicateurs progressivement pour chaque point.
         
         Args:
             klines: Liste des klines historiques brutes (triées chronologiquement)
@@ -803,59 +808,56 @@ class UltraDataFetcher:
         Returns:
             Liste des points enrichis avec indicateurs calculés correctement
         """
-        from shared.src.technical_indicators import indicator_cache, indicators
+        from shared.src.technical_indicators import indicator_cache, indicators, TechnicalIndicators
+        import numpy as np
         
         enriched_points = []
         
         try:
             logger.info(f"🔄 Enrichissement de {len(klines)} points historiques pour {symbol} {timeframe}")
             
-            # **FIX CRITIQUE**: Construire les arrays complets pour calcul des indicateurs
+            # Extraire TOUTES les données OHLCV
             prices = []
             highs = []
             lows = []
             volumes = []
             timestamps = []
             
-            # Accumuler TOUTES les données historiques
             for kline in klines:
                 prices.append(float(kline[4]))    # close
-                highs.append(float(kline[2]))     # high  
+                highs.append(float(kline[2]))     # high
                 lows.append(float(kline[3]))      # low
                 volumes.append(float(kline[5]))   # volume
                 timestamps.append(kline[0])       # timestamp
             
-            logger.info(f"📊 Calcul des indicateurs sur {len(prices)} points pour {symbol} {timeframe}")
+            logger.info(f"📊 Calcul arrays d'indicateurs sur {len(prices)} points pour {symbol} {timeframe}")
             
-            # **FIX CRITIQUE**: Calculer TOUS les indicateurs avec les données complètes
-            from shared.src.technical_indicators import TechnicalIndicators
+            # Calculer TOUS les indicateurs en une fois avec les arrays complets
             tech_indicators = TechnicalIndicators()
-            all_indicators = tech_indicators.calculate_all_indicators(highs, lows, prices, volumes)
+            indicators_arrays = tech_indicators.calculate_all_indicators_array(highs, lows, prices, volumes)
             
-            # Debug: vérifier le format des indicateurs retournés
-            if all_indicators:
-                sample_indicator = list(all_indicators.items())[0]
-                logger.error(f"🔍 DEBUG Format: {sample_indicator[0]} = {type(sample_indicator[1])} (len={len(sample_indicator[1]) if isinstance(sample_indicator[1], list) else 'scalar'})")
-                logger.error(f"🔍 DEBUG Tous les indicateurs: {list(all_indicators.keys())}")
+            logger.info(f"✅ {len(indicators_arrays)} indicateurs calculés en arrays")
             
-            # Créer les points enrichis avec TOUS les indicateurs calculés
+            # Traiter chaque kline avec les indicateurs correspondants
             for i, kline in enumerate(klines):
                 try:
-                    # Données OHLCV de base
-                    close_price = float(kline[4])
+                    # Extraire les données OHLCV
+                    timestamp = kline[0]
+                    open_price = float(kline[1])
                     high_price = float(kline[2])
                     low_price = float(kline[3])
+                    close_price = float(kline[4])
                     volume = float(kline[5])
-                    timestamp = kline[0]
+                    close_time = kline[6]
                     
-                    # Créer le point enrichi avec TOUS les indicateurs
+                    # Créer le point enrichi de base
                     enriched_point = {
                         'symbol': symbol,
                         'interval': timeframe,
                         'start_time': timestamp,
                         'open_time': timestamp,
-                        'close_time': kline[6],
-                        'open': float(kline[1]),
+                        'close_time': close_time,
+                        'open': open_price,
                         'high': high_price,
                         'low': low_price,
                         'close': close_price,
@@ -866,25 +868,25 @@ class UltraDataFetcher:
                         'ultra_enriched': True
                     }
                     
-                    # **FIX CRITIQUE**: Les indicateurs sont des scalaires (calculés sur toute la série)
-                    # Pour les données historiques, on applique les DERNIERS indicateurs calculés à TOUS les points
-                    point_indicators = {}
-                    if all_indicators:
-                        for indicator_name, indicator_value in all_indicators.items():
-                            if indicator_value is not None and not (isinstance(indicator_value, float) and indicator_value != indicator_value):  # Pas NaN
-                                point_indicators[indicator_name] = indicator_value
-                                enriched_point[indicator_name] = indicator_value
-                    
-                    # **NOUVEAU**: Sauvegarder dans le cache persistant pour continuité
-                    for indicator_name, indicator_value in point_indicators.items():
-                        indicator_cache.set(symbol, timeframe, indicator_name, indicator_value)
+                    # Ajouter les indicateurs correspondant à l'index i
+                    indicators_count = 0
+                    if indicators_arrays:
+                        for indicator_name, indicator_array in indicators_arrays.items():
+                            if i < len(indicator_array):
+                                value = indicator_array[i]
+                                # Vérifier que la valeur est valide (pas NaN ou inf)
+                                if not (np.isnan(value) or np.isinf(value)):
+                                    enriched_point[indicator_name] = float(value)
+                                    indicators_count += 1
+                                    # Sauvegarder le dernier indicateur dans le cache pour continuité
+                                    if i == len(klines) - 1:  # Dernière kline
+                                        indicator_cache.set(symbol, timeframe, indicator_name, float(value))
                     
                     enriched_points.append(enriched_point)
                     
-                    # Log de progression avec count réel des indicateurs
+                    # Log de progression
                     if (i + 1) % max(1, len(klines) // 10) == 0 or i == len(klines) - 1:
-                        indicators_count = len(point_indicators)
-                        logger.debug(f"  ⚡ Point {i+1}/{len(klines)}: {indicators_count} indicateurs pour {close_price}")
+                        logger.debug(f"  ⚡ Point {i+1}/{len(klines)}: {indicators_count} indicateurs ajoutés")
                         
                 except Exception as e:
                     logger.warning(f"Erreur traitement point {i} pour {symbol} {timeframe}: {e}")

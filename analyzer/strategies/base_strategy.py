@@ -41,7 +41,7 @@ class BaseStrategy(ABC):
         self.buffer_size = self.params.get('buffer_size', 100)  # Taille par défaut du buffer
         self.data_buffer = deque(maxlen=self.buffer_size)  # Buffer circulaire pour stocker les données
         self.last_signal_time: Optional[datetime] = None
-        self.signal_cooldown = self.params.get('signal_cooldown', 45)  # Temps min entre signaux (sec) - réduit pour confluence
+        self.signal_cooldown = self.params.get('signal_cooldown', 30)  # Temps min entre signaux (sec) - réduit pour stratégies Pro
     
     @property
     @abstractmethod
@@ -71,8 +71,8 @@ class BaseStrategy(ABC):
         
             self.data_buffer.append(data)
         
-            # Déboguer les données
-            logger.info(f"[{self.name}] Données ajoutées pour {self.symbol}: "
+            # Déboguer les données (niveau DEBUG pour réduire le bruit)
+            logger.debug(f"[{self.name}] Données ajoutées pour {self.symbol}: "
                         f"close={data['close']}, time={datetime.fromtimestamp(data['start_time']/1000)}")
     
     def get_data_as_dataframe(self) -> Optional[pd.DataFrame]:
@@ -128,6 +128,10 @@ class BaseStrategy(ABC):
     
     def get_current_indicator(self, indicators: Dict, key: str) -> Optional[float]:
         """Méthode utilitaire pour récupérer valeur actuelle d'un indicateur"""
+        return self._get_current_indicator(indicators, key)
+    
+    def _get_current_indicator(self, indicators: Dict, key: str) -> Optional[float]:
+        """Version interne pour récupérer valeur actuelle d'un indicateur"""
         value = indicators.get(key)
         if value is None:
             return None
@@ -136,6 +140,28 @@ class BaseStrategy(ABC):
             return float(value[-1])
         elif isinstance(value, (int, float)):
             return float(value)
+        
+        return None
+    
+    def _get_previous_indicator(self, indicators: Dict, key: str) -> Optional[float]:
+        """Récupère la valeur précédente d'un indicateur (pour crossovers)"""
+        value = indicators.get(key)
+        if value is None:
+            return None
+        
+        if isinstance(value, (list, np.ndarray)) and len(value) > 1:
+            return float(value[-2])
+        
+        return None
+    
+    def _get_indicator_history(self, indicators: Dict, key: str, periods: int) -> Optional[List[float]]:
+        """Récupère l'historique d'un indicateur pour analyse de divergences"""
+        value = indicators.get(key)
+        if value is None:
+            return None
+        
+        if isinstance(value, (list, np.ndarray)) and len(value) >= periods:
+            return [float(v) for v in value[-periods:]]
         
         return None
     
@@ -164,13 +190,13 @@ class BaseStrategy(ABC):
         Returns:
             Objet signal standardisé
         """
-        # Déterminer la force du signal basée sur la confiance
+        # Déterminer la force du signal basée sur la confiance (ajusté pour stratégies Pro)
         strength = SignalStrength.WEAK
-        if confidence >= 0.9:
+        if confidence >= 0.85:  # Plus strict pour VERY_STRONG
             strength = SignalStrength.VERY_STRONG
-        elif confidence >= 0.75:
+        elif confidence >= 0.70:  # Ajusté pour STRONG
             strength = SignalStrength.STRONG
-        elif confidence >= 0.5:
+        elif confidence >= 0.55:  # Ajusté pour MODERATE
             strength = SignalStrength.MODERATE
         
         # Créer le signal
@@ -236,13 +262,13 @@ class BaseStrategy(ABC):
         if atr_percent is None:
             atr_percent = self.calculate_atr()
         
-        # Seuils adaptés par paire
+        # Seuils adaptés par paire (réduits pour stratégies Pro plus précises)
         if 'BTC' in self.symbol:
-            min_atr = 0.15  # 0.15% minimum pour BTC
+            min_atr = 0.12  # Réduit pour BTC
         elif 'ETH' in self.symbol:
-            min_atr = 0.20  # 0.20% pour ETH
+            min_atr = 0.15  # Réduit pour ETH
         else:
-            min_atr = 0.25  # 0.25% pour altcoins
+            min_atr = 0.18  # Réduit pour altcoins
         
         # Log si filtré
         if atr_percent < min_atr:

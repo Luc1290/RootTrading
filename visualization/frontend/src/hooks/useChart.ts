@@ -72,6 +72,19 @@ export function useChart(options: UseChartOptions = {}) {
     [refetch, isUserInteracting, setIsLoading, setLastUpdate]
   );
   
+  // Force update function - defined before handlers
+  const forceUpdate = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      await refetch();
+      setLastUpdate(new Date());
+    } catch (error) {
+      console.error('Error forcing chart update:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [refetch, setIsLoading, setLastUpdate]);
+  
   // Mise à jour automatique
   useEffect(() => {
     if (!autoUpdate) return;
@@ -97,16 +110,32 @@ export function useChart(options: UseChartOptions = {}) {
   
   // Handlers pour les changements de configuration
   const handleSymbolChange = useCallback((symbol: TradingSymbol) => {
+    // Clear data immediately to avoid showing stale data
+    useChartStore.setState({ 
+      marketData: null, 
+      signals: null, 
+      indicators: null,
+      isLoading: true 
+    });
     updateSymbol(symbol);
     resetZoom();
-    debouncedUpdate();
-  }, [updateSymbol, resetZoom, debouncedUpdate]);
+    // Force immediate update instead of debounced
+    forceUpdate();
+  }, [updateSymbol, resetZoom, forceUpdate]);
   
   const handleIntervalChange = useCallback((interval: TimeInterval) => {
+    // Clear data immediately to avoid showing stale data
+    useChartStore.setState({ 
+      marketData: null, 
+      signals: null, 
+      indicators: null,
+      isLoading: true 
+    });
     updateIntervalConfig(interval);
     resetZoom();
-    debouncedUpdate();
-  }, [updateIntervalConfig, resetZoom, debouncedUpdate]);
+    // Force immediate update instead of debounced
+    forceUpdate();
+  }, [updateIntervalConfig, resetZoom, forceUpdate]);
   
   const handleSignalFilterChange = useCallback((filter: string) => {
     updateSignalFilter(filter);
@@ -130,18 +159,6 @@ export function useChart(options: UseChartOptions = {}) {
   const handleUserInteraction = useCallback((interacting: boolean) => {
     setIsUserInteracting(interacting);
   }, [setIsUserInteracting]);
-  
-  const forceUpdate = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      await refetch();
-      setLastUpdate(new Date());
-    } catch (error) {
-      console.error('Error forcing chart update:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [refetch, setIsLoading, setLastUpdate]);
   
   return {
     // État

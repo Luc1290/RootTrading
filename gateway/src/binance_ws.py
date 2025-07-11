@@ -318,85 +318,64 @@ class BinanceWebSocket:
         lows = self.low_buffers[symbol][timeframe]
         volumes = self.volume_buffers[symbol][timeframe]
         
-        # 🚀 HYBRIDE : Calcul incrémental pour EMA/MACD + traditionnel pour le reste
-        if len(prices) >= 20 and len(highs) >= 20 and len(lows) >= 20 and len(volumes) >= 20:
-            logger.info(f"📊 HYBRIDE WebSocket {symbol} {timeframe}: buffers=[P:{len(prices)},H:{len(highs)},L:{len(lows)},V:{len(volumes)}] → calcul des 33 indicateurs")
+        # 🚀 HYBRIDE UNIFIÉ : Toujours calculer TOUS les indicateurs grâce aux données historiques
+        if len(prices) >= 1:  # Même avec 1 seul point, on peut utiliser l'historique !
+            logger.info(f"📊 HYBRIDE WebSocket {symbol} {timeframe}: buffers=[P:{len(prices)},H:{len(highs)},L:{len(lows)},V:{len(volumes)}] → calcul COMPLET avec historique")
             
-            # 📊 TRADITIONNEL : Calculer TOUS les indicateurs d'abord
-            from shared.src.technical_indicators import indicators
-            all_indicators = indicators.calculate_all_indicators(highs, lows, prices, volumes)
+            # **NOUVEAU**: Compléter avec les données historiques si pas assez de points (ULTRA-PRÉCIS)
+            extended_prices, extended_highs, extended_lows, extended_volumes = self._get_extended_buffers_sync(
+                symbol, timeframe, prices, highs, lows, volumes, min_required=200
+            )
+            
+            from shared.src.technical_indicators import indicators, indicator_cache
+            
+            # **CRITIQUE**: Commencer par récupérer TOUS les indicateurs historiques
+            historical_indicators = indicator_cache.get_all_indicators(symbol, timeframe)
+            all_indicators = historical_indicators.copy() if historical_indicators else {}
+            
+            # 📊 Recalculer seulement si on a assez de données étendues
+            if len(extended_prices) >= 20:
+                new_indicators = indicators.calculate_all_indicators(extended_highs, extended_lows, extended_prices, extended_volumes)
+                # Fusionner avec priorité aux nouveaux calculs
+                all_indicators.update(new_indicators)
+                
+                logger.debug(f"🔄 {len(new_indicators)} nouveaux indicateurs calculés, {len(historical_indicators or {})} historiques récupérés")
+            else:
+                logger.info(f"🔄 Utilisation des indicateurs historiques purs pour {symbol} {timeframe} ({len(historical_indicators or {})} indicateurs)")
+            
+            # **CRITIQUE**: Sauvegarder IMMÉDIATEMENT les indicateurs dans le cache persistant
+            for indicator_name, indicator_value in all_indicators.items():
+                if isinstance(indicator_value, (int, float)) and not (isinstance(indicator_value, float) and indicator_value != indicator_value):
+                    indicator_cache.set(symbol, timeframe, indicator_name, indicator_value)
             
             # Debug: vérifier si ADX est calculé
             if 'adx_14' in all_indicators and all_indicators['adx_14'] is not None:
-                logger.info(f"✅ ADX calculé dans WebSocket {symbol} {timeframe}: {all_indicators['adx_14']}")
+                logger.info(f"✅ ADX disponible dans WebSocket {symbol} {timeframe}: {all_indicators['adx_14']}")
             else:
-                logger.warning(f"❌ ADX manquant dans WebSocket {symbol} {timeframe}, buffer sizes: H={len(highs)}, L={len(lows)}, C={len(prices)}")
-                if 'adx_14' in all_indicators:
-                    logger.warning(f"ADX value is None: {all_indicators['adx_14']}")
+                logger.warning(f"❌ ADX manquant dans WebSocket {symbol} {timeframe}")
             
             # 🚀 NOUVEAU : Calcul incrémental pour EMA/MACD (évite dents de scie)
             incremental_indicators = self._calculate_smooth_indicators(symbol, timeframe, candle_data, all_indicators)
             
-            # FUSION INTELLIGENTE : Garder tous les traditionnels + override seulement EMA/MACD avec versions lisses
+            # FUSION INTELLIGENTE : Garder tous les historiques/nouveaux + override seulement EMA/MACD avec versions lisses
             final_indicators = all_indicators.copy()
             # Override seulement les indicateurs EMA/MACD avec les versions incrémentales lisses
             for indicator_name, value in incremental_indicators.items():
                 if value is not None and indicator_name in ['ema_12', 'ema_26', 'ema_50', 'macd_line', 'macd_signal', 'macd_histogram']:
                     final_indicators[indicator_name] = value
+                    # **NOUVEAU**: Sauvegarder les indicateurs lisses dans le cache persistant
+                    indicator_cache.set(symbol, timeframe, indicator_name, value)
             
             # Ajouter tous les indicateurs calculés
             for indicator_name, value in final_indicators.items():
                 if value is not None:
                     candle_data[indicator_name] = value
             
-            logger.debug(f"✅ {len(final_indicators)} indicateurs calculés pour {symbol} (🚀 {len(incremental_indicators)} EMA/MACD incrémentaux, {len(all_indicators)} traditionnels)")
+            logger.info(f"✅ {len(final_indicators)} indicateurs COMPLETS pour {symbol} {timeframe} (🚀 {len(incremental_indicators)} incrémentaux)")
             
-            # Calculer aussi les indicateurs custom non inclus dans calculate_all_indicators
-            # Stochastic RSI (pas dans calculate_all_indicators)
-            stoch_rsi = self._calculate_stoch_rsi(prices, 14)
-            if stoch_rsi:
-                candle_data['stoch_rsi'] = stoch_rsi
-                
-            # VWAP 10 (custom, pas dans calculate_all_indicators)
-            if len(volumes) >= 10:
-                vwap = self._calculate_vwap(prices[-10:], volumes[-10:])
-                if vwap:
-                    candle_data['vwap_10'] = vwap
-                    
-            # Williams %R (custom implementation)
-            williams_r = self._calculate_williams_r(symbol, timeframe, 14)
-            if williams_r:
-                candle_data['williams_r'] = williams_r
-                
-            # CCI 20 (custom implementation)
-            cci = self._calculate_cci(symbol, timeframe, 20)
-            if cci:
-                candle_data['cci_20'] = cci
-                
-            # Marquer les données comme enrichies
+            # Marquer comme totalement enrichi
             candle_data['enhanced'] = True
             candle_data['ultra_enriched'] = True
-            
-        elif len(prices) >= 14:
-            # Log pour debug: pourquoi on n'atteint pas les 20 points
-            logger.info(f"🔍 WebSocket {symbol} {timeframe}: buffers=[P:{len(prices)},H:{len(highs)},L:{len(lows)},V:{len(volumes)}] → calcul PARTIEL seulement")
-            # Calcul partiel pour avoir au moins RSI et quelques indicateurs de base
-            logger.debug(f"📊 Calcul partiel des indicateurs pour {symbol} {timeframe}")
-            
-            # 🚀 NOUVEAU : Même pour calcul partiel, utiliser les EMA incrémentales si possible
-            incremental_indicators = self._calculate_smooth_indicators(symbol, timeframe, candle_data)
-            for indicator_name, value in incremental_indicators.items():
-                if value is not None:
-                    candle_data[indicator_name] = value
-            
-            # RSI seul si pas assez de données pour tous les indicateurs
-            rsi = self._calculate_rsi(prices, 14)
-            if rsi:
-                candle_data['rsi_14'] = rsi
-                
-            # Marquer comme partiellement enrichi
-            candle_data['enhanced'] = True
-            candle_data['ultra_enriched'] = False
                 
     def _calculate_rsi(self, prices: List[float], period: int = 14) -> Optional[float]:
         """Calcule le RSI via le module centralisé"""
@@ -1002,7 +981,16 @@ class BinanceWebSocket:
                         logger.debug(f"🎯 EMA {period} initialisée depuis all_indicators: {traditional_ema:.4f}")
                         continue
                     else:
-                        logger.debug(f"⚠️ EMA {period} non disponible dans all_indicators, skip incrémental")
+                        # **NOUVEAU**: Fallback vers le cache persistant si all_indicators manque
+                        from shared.src.technical_indicators import indicator_cache
+                        cached_ema = indicator_cache.get(symbol, timeframe, cache_ema_key)
+                        if cached_ema is not None:
+                            cache[cache_ema_key] = cached_ema
+                            prev_ema = cached_ema
+                            logger.debug(f"🔄 EMA {period} restaurée depuis cache persistant: {cached_ema:.4f}")
+                        else:
+                            logger.debug(f"⚠️ EMA {period} non disponible, skip incrémental")
+                            continue
                 
                 # Calcul incrémental : EMA_new = α × price + (1-α) × EMA_prev
                 new_ema = calculate_ema_incremental(current_price, prev_ema, period)
@@ -1027,6 +1015,24 @@ class BinanceWebSocket:
                 if prev_ema_slow is None:
                     cache['macd_ema_slow'] = cache['ema_26']
                     prev_ema_slow = cache['ema_26']
+            else:
+                # **NOUVEAU**: Fallback vers le cache persistant pour les EMA MACD
+                from shared.src.technical_indicators import indicator_cache
+                if prev_ema_fast is None:
+                    cached_fast = indicator_cache.get(symbol, timeframe, 'ema_12')
+                    if cached_fast is not None:
+                        cache['macd_ema_fast'] = cached_fast
+                        prev_ema_fast = cached_fast
+                if prev_ema_slow is None:
+                    cached_slow = indicator_cache.get(symbol, timeframe, 'ema_26')
+                    if cached_slow is not None:
+                        cache['macd_ema_slow'] = cached_slow
+                        prev_ema_slow = cached_slow
+                if prev_macd_signal is None:
+                    cached_signal = indicator_cache.get(symbol, timeframe, 'macd_signal')
+                    if cached_signal is not None:
+                        cache['macd_signal'] = cached_signal
+                        prev_macd_signal = cached_signal
             
             macd_result = calculate_macd_incremental(
                 current_price, prev_ema_fast, prev_ema_slow, prev_macd_signal
@@ -1057,28 +1063,61 @@ class BinanceWebSocket:
 
     def _initialize_incremental_cache_simple(self, symbol: str, timeframe: str):
         """
-        🔄 Initialise le cache incrémental de manière simple.
-        Les premières EMA seront calculées normalement, puis continuées de manière incrémentale.
+        🔄 Initialise le cache incrémental avec restauration depuis le cache persistant.
+        Assure la continuité entre données historiques et temps réel.
         """
         try:
-            # Pour l'instant, initialisation simple : le cache commence vide
-            # Les premières valeurs EMA/MACD seront calculées par la méthode traditionnelle
-            # puis les suivantes seront incrémentales et lisses
-            
             cache = self.incremental_cache[symbol][timeframe]
             
-            # Cache initialement vide - sera rempli au premier calcul
-            cache['ema_12'] = None
-            cache['ema_26'] = None
-            cache['ema_50'] = None
-            cache['macd_ema_fast'] = None
-            cache['macd_ema_slow'] = None
-            cache['macd_signal'] = None
+            # **NOUVEAU**: Restaurer depuis le cache persistant d'abord
+            from shared.src.technical_indicators import indicator_cache
             
-            logger.debug(f"💾 Cache incrémental initialisé (vide) pour {symbol} {timeframe}")
+            restored_count = 0
+            indicator_keys = ['ema_12', 'ema_26', 'ema_50', 'macd_line', 'macd_signal', 'macd_histogram']
+            
+            for indicator_key in indicator_keys:
+                # Restaurer depuis Redis si disponible
+                cached_value = indicator_cache.get(symbol, timeframe, indicator_key)
+                if cached_value is not None:
+                    # Mapper les indicateurs vers les clés du cache incrémental
+                    if indicator_key == 'macd_line':
+                        # Pas stocké directement dans le cache incrémental
+                        pass
+                    elif indicator_key == 'macd_histogram':
+                        # Pas stocké directement dans le cache incrémental
+                        pass
+                    else:
+                        cache[indicator_key] = cached_value
+                        restored_count += 1
+                        logger.debug(f"🔄 {indicator_key} restauré: {cached_value:.6f}")
+            
+            # Restaurer les EMA spécifiques au MACD (synchronisation)
+            if cache.get('ema_12') is not None:
+                cache['macd_ema_fast'] = cache['ema_12']
+                restored_count += 1
+            if cache.get('ema_26') is not None:
+                cache['macd_ema_slow'] = cache['ema_26']
+                restored_count += 1
+            if indicator_cache.get(symbol, timeframe, 'macd_signal') is not None:
+                cache['macd_signal'] = indicator_cache.get(symbol, timeframe, 'macd_signal')
+                restored_count += 1
+            
+            # Initialiser à None seulement si pas restauré
+            for key in ['ema_12', 'ema_26', 'ema_50', 'macd_ema_fast', 'macd_ema_slow', 'macd_signal']:
+                if key not in cache or cache[key] is None:
+                    cache[key] = None
+            
+            if restored_count > 0:
+                logger.info(f"✅ Cache incrémental {symbol} {timeframe}: {restored_count} indicateurs restaurés (CONTINUITÉ PRÉSERVÉE)")
+            else:
+                logger.debug(f"💾 Cache incrémental {symbol} {timeframe}: initialisé vide (premier calcul)")
             
         except Exception as e:
             logger.warning(f"⚠️ Erreur initialisation cache pour {symbol} {timeframe}: {e}")
+            # Fallback: initialisation vide
+            cache = self.incremental_cache[symbol][timeframe]
+            for key in ['ema_12', 'ema_26', 'ema_50', 'macd_ema_fast', 'macd_ema_slow', 'macd_signal']:
+                cache[key] = None
     
     def _init_redis_for_buffers(self):
         """Initialise Redis pour la sauvegarde des buffers WebSocket"""
@@ -1090,6 +1129,85 @@ class BinanceWebSocket:
             logger.warning(f"⚠️ WebSocket sans Redis: {e}")
             self.redis_client = None
     
+    def _get_extended_buffers_sync(self, symbol: str, timeframe: str, 
+                                  current_prices: list, current_highs: list, 
+                                  current_lows: list, current_volumes: list, 
+                                  min_required: int = 50):
+        """
+        Étend les buffers actuels avec les données historiques de la DB si nécessaire (version synchrone).
+        
+        Args:
+            symbol: Symbole de trading
+            timeframe: Intervalle de temps
+            current_prices/highs/lows/volumes: Buffers actuels
+            min_required: Nombre minimum de points requis
+            
+        Returns:
+            Tuple (prices, highs, lows, volumes) étendus avec données historiques
+        """
+        try:
+            # Si on a déjà assez de points, retourner les buffers actuels
+            if len(current_prices) >= min_required:
+                return current_prices, current_highs, current_lows, current_volumes
+            
+            # Calculer combien de points historiques on doit récupérer (ULTRA-PRÉCIS)
+            needed_points = max(min_required - len(current_prices), 500)  # Minimum 500 points
+            
+            logger.debug(f"🔍 Extension buffers {symbol} {timeframe}: {len(current_prices)} points actuels, récupération de {needed_points} points historiques")
+            
+            # Récupérer les données historiques depuis la DB (version synchrone)
+            import psycopg2
+            from shared.src.config import get_db_config
+            
+            db_config = get_db_config()
+            connection = psycopg2.connect(
+                host=db_config['host'],
+                port=db_config['port'],
+                database=db_config['database'],
+                user=db_config['user'],
+                password=db_config['password']
+            )
+            
+            query = """
+                SELECT high, low, close, volume 
+                FROM market_data 
+                WHERE symbol = %s AND timeframe = %s AND enhanced = true
+                ORDER BY time DESC 
+                LIMIT %s
+            """
+            
+            cursor = connection.cursor()
+            cursor.execute(query, (symbol, timeframe, needed_points))
+            historical_data = cursor.fetchall()
+            cursor.close()
+            connection.close()
+            
+            if not historical_data:
+                logger.warning(f"⚠️ Aucune donnée historique trouvée pour {symbol} {timeframe}")
+                return current_prices, current_highs, current_lows, current_volumes
+            
+            # Inverser l'ordre (plus ancien en premier) et extraire les données
+            historical_data.reverse()
+            historical_highs = [float(row[0]) for row in historical_data]
+            historical_lows = [float(row[1]) for row in historical_data]
+            historical_prices = [float(row[2]) for row in historical_data]
+            historical_volumes = [float(row[3]) for row in historical_data]
+            
+            # Combiner données historiques + buffers actuels
+            extended_highs = historical_highs + current_highs
+            extended_lows = historical_lows + current_lows
+            extended_prices = historical_prices + current_prices
+            extended_volumes = historical_volumes + current_volumes
+            
+            logger.debug(f"✅ Buffers étendus {symbol} {timeframe}: {len(historical_data)} historiques + {len(current_prices)} actuels = {len(extended_prices)} total")
+            
+            return extended_prices, extended_highs, extended_lows, extended_volumes
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur extension buffers {symbol} {timeframe}: {e}")
+            # En cas d'erreur, retourner les buffers actuels
+            return current_prices, current_highs, current_lows, current_volumes
+
     async def _save_buffers_to_redis(self):
         """Sauvegarde périodique des buffers WebSocket vers Redis"""
         if not self.redis_client:

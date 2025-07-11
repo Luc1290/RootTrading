@@ -56,6 +56,42 @@ class SignalAggregator:
         self.enhanced_regime_detector.set_market_data_accumulator(self.market_data_accumulator)
         logger.info("✅ Enhanced Regime Detector activé avec accumulateur historique")
         
+        # Nouveaux modules d'analyse avancée
+        try:
+            import sys
+            import os
+            sys.path.append(os.path.dirname(__file__))
+            from multi_timeframe_confluence import MultiTimeframeConfluence
+            self.confluence_analyzer = MultiTimeframeConfluence(redis_client)
+            logger.info("✅ Analyseur de confluence multi-timeframes activé")
+        except ImportError as e:
+            logger.error(f"❌ Erreur import confluence analyzer: {e}")
+            self.confluence_analyzer = None
+        
+        try:
+            from market_structure_detector import MarketStructureDetector
+            self.structure_detector = MarketStructureDetector(redis_client)
+            logger.info("✅ Détecteur de structure de marché activé")
+        except ImportError as e:
+            logger.error(f"❌ Erreur import structure detector: {e}")
+            self.structure_detector = None
+        
+        try:
+            from momentum_cross_timeframe import MomentumCrossTimeframe
+            self.momentum_analyzer = MomentumCrossTimeframe(redis_client)
+            logger.info("✅ Analyseur de momentum cross-timeframe activé")
+        except ImportError as e:
+            logger.error(f"❌ Erreur import momentum analyzer: {e}")
+            self.momentum_analyzer = None
+        
+        try:
+            from adaptive_regime_enhanced import AdaptiveRegimeEnhanced
+            self.adaptive_regime = AdaptiveRegimeEnhanced(redis_client)
+            logger.info("✅ Système de régime adaptatif amélioré activé")
+        except ImportError as e:
+            logger.error(f"❌ Erreur import adaptive regime: {e}")
+            self.adaptive_regime = None
+        
         # Signal buffer for aggregation
         self.signal_buffer = defaultdict(list)
         self.last_signal_time = {}
@@ -535,10 +571,90 @@ class SignalAggregator:
     async def _aggregate_signals_enhanced(self, symbol: str, signals: List[Dict], 
                                         regime: Any, regime_metrics: Dict[str, float]) -> Optional[Dict[str, Any]]:
         """
-        Version améliorée de l'agrégation avec poids adaptatifs selon le régime
+        Version ultra-améliorée de l'agrégation avec analyse multi-timeframe complète
         """
-        # Obtenir les poids des stratégies pour ce régime
-        regime_weights = self.enhanced_regime_detector.get_strategy_weights_for_regime(regime)
+        try:
+            # ÉTAPE 1: Analyse multi-timeframe complète (avec fallbacks)
+            confluence_analysis = None
+            structure_analysis = None
+            momentum_analysis = None
+            adaptive_regime = None
+            adaptive_metrics = None
+            adaptive_thresholds = None
+            
+            if self.confluence_analyzer:
+                try:
+                    confluence_analysis = await self.confluence_analyzer.analyze_confluence(symbol)
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur analyse confluence pour {symbol}: {e}")
+            
+            if self.structure_detector:
+                try:
+                    structure_analysis = await self.structure_detector.analyze_market_structure(symbol)
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur analyse structure pour {symbol}: {e}")
+            
+            if self.momentum_analyzer:
+                try:
+                    momentum_analysis = await self.momentum_analyzer.analyze_momentum_cross_timeframe(symbol)
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur analyse momentum pour {symbol}: {e}")
+            
+            # ÉTAPE 2: Régime adaptatif amélioré (avec fallback)
+            if self.adaptive_regime:
+                try:
+                    adaptive_regime, adaptive_metrics, adaptive_thresholds = await self.adaptive_regime.get_adaptive_regime(symbol)
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur régime adaptatif pour {symbol}: {e}")
+            
+            # ÉTAPE 3: Utiliser le meilleur régime (adaptatif vs standard)
+            if adaptive_thresholds and adaptive_thresholds.confidence > 0.7:
+                final_regime = adaptive_regime
+                final_metrics = adaptive_metrics
+                logger.info(f"🧠 Utilisation régime adaptatif pour {symbol}: {adaptive_regime.value} (conf={adaptive_thresholds.confidence:.2f})")
+            else:
+                final_regime = regime
+                final_metrics = regime_metrics
+                logger.info(f"📊 Utilisation régime standard pour {symbol}: {regime.value}")
+            
+            # ÉTAPE 4: Calculer le score global de qualité du signal
+            global_quality_score = self._calculate_global_quality_score(
+                confluence_analysis, structure_analysis, momentum_analysis, final_regime, adaptive_thresholds
+            )
+            
+            # ÉTAPE 5: Filtrage selon la qualité globale
+            if global_quality_score < 30:  # Seuil minimum
+                logger.info(f"❌ Signal rejeté pour {symbol}: qualité globale trop faible ({global_quality_score:.1f})")
+                return None
+            
+            # ÉTAPE 6: Obtenir les poids des stratégies pour ce régime
+            regime_weights = self.enhanced_regime_detector.get_strategy_weights_for_regime(final_regime)
+            
+            # ÉTAPE 7: Ajuster les poids selon les analyses multi-timeframe
+            confluence_weight_modifier = self._get_confluence_weight_modifier(confluence_analysis)
+            structure_weight_modifier = self._get_structure_weight_modifier(structure_analysis)
+            momentum_weight_modifier = self._get_momentum_weight_modifier(momentum_analysis)
+            
+            logger.info(f"🎯 Modificateurs de poids pour {symbol}: "
+                       f"confluence={confluence_weight_modifier:.2f}, "
+                       f"structure={structure_weight_modifier:.2f}, "
+                       f"momentum={momentum_weight_modifier:.2f}")
+        
+        except Exception as e:
+            logger.error(f"❌ Erreur dans analyse multi-timeframe pour {symbol}: {e}")
+            # Fallback vers analyse standard
+            final_regime = regime
+            final_metrics = regime_metrics
+            regime_weights = self.enhanced_regime_detector.get_strategy_weights_for_regime(final_regime)
+            confluence_weight_modifier = 1.0
+            structure_weight_modifier = 1.0
+            momentum_weight_modifier = 1.0
+            global_quality_score = 50  # Score neutre en cas d'erreur
+            confluence_analysis = None
+            structure_analysis = None
+            momentum_analysis = None
+            adaptive_regime = None
+            adaptive_thresholds = None
         
         # Group signals by side
         BUY_signals = []
@@ -556,8 +672,9 @@ class SignalAggregator:
             # NOUVEAU: Pondération bayésienne des stratégies
             bayesian_weight = self.bayesian_weights.get_bayesian_weight(strategy)
             
-            # Combined weight (performance * regime * bayesian)
-            combined_weight = performance_weight * regime_weight * bayesian_weight
+            # Combined weight (performance * regime * bayesian * multi-timeframe modifiers)
+            combined_weight = (performance_weight * regime_weight * bayesian_weight * 
+                             confluence_weight_modifier * structure_weight_modifier * momentum_weight_modifier)
             
             # Apply adaptive confidence threshold based on regime
             confidence = signal.get('confidence', 0.5)
@@ -804,7 +921,39 @@ class SignalAggregator:
                 'regime_adaptive': True,
                 'regime': regime.value,
                 'volume_boosted': True,  # Indicateur que le volume a été pris en compte
-                'volume_analysis': self.signal_metrics.extract_volume_summary(signals)
+                'volume_analysis': self.signal_metrics.extract_volume_summary(signals),
+                'multi_timeframe_analysis': {
+                    'global_quality_score': global_quality_score,
+                    'confluence_analysis': {
+                        'overall_signal': confluence_analysis.overall_signal if confluence_analysis else 0,
+                        'confluence_score': confluence_analysis.confluence_score if confluence_analysis else 0,
+                        'strength_rating': confluence_analysis.strength_rating if confluence_analysis else 'UNDEFINED',
+                        'recommended_action': confluence_analysis.recommended_action if confluence_analysis else 'HOLD'
+                    },
+                    'structure_analysis': {
+                        'structure_type': structure_analysis.structure_type.value if structure_analysis else 'UNDEFINED',
+                        'structure_score': structure_analysis.structure_score if structure_analysis else 0,
+                        'bias': structure_analysis.bias if structure_analysis else 'neutral',
+                        'trend_strength': structure_analysis.trend_strength if structure_analysis else 0
+                    },
+                    'momentum_analysis': {
+                        'overall_momentum': momentum_analysis.overall_momentum if momentum_analysis else 0,
+                        'momentum_direction': momentum_analysis.momentum_direction.value if momentum_analysis else 'NEUTRAL',
+                        'momentum_score': momentum_analysis.momentum_score if momentum_analysis else 0,
+                        'entry_quality': momentum_analysis.entry_quality if momentum_analysis else 'POOR',
+                        'momentum_alignment': momentum_analysis.momentum_alignment if momentum_analysis else 0
+                    },
+                    'adaptive_regime': {
+                        'regime': adaptive_regime.value if 'adaptive_regime' in locals() else regime.value,
+                        'confidence': adaptive_thresholds.confidence if 'adaptive_thresholds' in locals() else 0,
+                        'used_adaptive': adaptive_thresholds.confidence > 0.7 if 'adaptive_thresholds' in locals() else False
+                    },
+                    'weight_modifiers': {
+                        'confluence_modifier': confluence_weight_modifier,
+                        'structure_modifier': structure_weight_modifier,
+                        'momentum_modifier': momentum_weight_modifier
+                    }
+                }
             }
         }
     
@@ -1094,3 +1243,104 @@ class EnhancedSignalAggregator(SignalAggregator):
         except Exception as e:
             logger.error(f"Erreur dans check_signal_debounce: {e}")
             return True  # En cas d'erreur, laisser passer le signal
+    
+    def _calculate_global_quality_score(self, confluence_analysis, structure_analysis, 
+                                       momentum_analysis, regime, adaptive_thresholds) -> float:
+        """Calcule le score global de qualité du signal"""
+        try:
+            quality_components = []
+            
+            # 1. Score de confluence (0-100)
+            confluence_score = confluence_analysis.confluence_score if confluence_analysis else 50
+            quality_components.append(confluence_score * 0.35)  # 35% du score
+            
+            # 2. Score de structure (0-100)  
+            structure_score = structure_analysis.structure_score if structure_analysis else 50
+            quality_components.append(structure_score * 0.25)  # 25% du score
+            
+            # 3. Score de momentum (0-100)
+            momentum_score = momentum_analysis.momentum_score if momentum_analysis else 50
+            quality_components.append(momentum_score * 0.25)  # 25% du score
+            
+            # 4. Score de régime adaptatif (0-100)
+            if adaptive_thresholds:
+                regime_score = adaptive_thresholds.confidence * 100
+                quality_components.append(regime_score * 0.15)  # 15% du score
+            else:
+                quality_components.append(50 * 0.15)  # Score neutre
+            
+            # Score global final
+            global_score = sum(quality_components)
+            
+            # Bonus pour alignement exceptionnel
+            if (confluence_analysis and confluence_analysis.strength_rating == 'VERY_STRONG' and
+                momentum_analysis and momentum_analysis.entry_quality == 'EXCELLENT' and
+                structure_analysis and structure_analysis.structure_score > 80):
+                global_score += 10  # Bonus d'alignement
+            
+            return min(100.0, max(0.0, global_score))
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur calcul score qualité globale: {e}")
+            return 50.0  # Score neutre en cas d'erreur
+    
+    def _get_confluence_weight_modifier(self, confluence_analysis) -> float:
+        """Calcule le modificateur de poids basé sur l'analyse de confluence"""
+        try:
+            if not confluence_analysis:
+                return 1.0
+            
+            # Modificateur basé sur la force de confluence
+            if confluence_analysis.strength_rating == 'VERY_STRONG':
+                return 1.5
+            elif confluence_analysis.strength_rating == 'STRONG':
+                return 1.3
+            elif confluence_analysis.strength_rating == 'MODERATE':
+                return 1.1
+            elif confluence_analysis.strength_rating == 'WEAK':
+                return 0.9
+            else:  # CONFLICTED
+                return 0.7
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur calcul modificateur confluence: {e}")
+            return 1.0
+    
+    def _get_structure_weight_modifier(self, structure_analysis) -> float:
+        """Calcule le modificateur de poids basé sur l'analyse de structure"""
+        try:
+            if not structure_analysis:
+                return 1.0
+            
+            # Modificateur basé sur la force de structure et le biais
+            structure_strength = structure_analysis.structure_score / 100.0
+            
+            # Bonus si structure et biais sont alignés
+            if structure_analysis.bias in ['bullish', 'bearish']:
+                return 1.0 + (structure_strength - 0.5) * 0.4  # Entre 0.8 et 1.2
+            else:
+                return 1.0 + (structure_strength - 0.5) * 0.2  # Entre 0.9 et 1.1
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur calcul modificateur structure: {e}")
+            return 1.0
+    
+    def _get_momentum_weight_modifier(self, momentum_analysis) -> float:
+        """Calcule le modificateur de poids basé sur l'analyse de momentum"""
+        try:
+            if not momentum_analysis:
+                return 1.0
+            
+            # Modificateur basé sur la qualité d'entrée
+            if momentum_analysis.entry_quality == 'EXCELLENT':
+                return 1.4
+            elif momentum_analysis.entry_quality == 'GOOD':
+                return 1.2
+            elif momentum_analysis.entry_quality == 'AVERAGE':
+                return 1.0
+            else:  # POOR
+                return 0.8
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur calcul modificateur momentum: {e}")
+            return 1.0

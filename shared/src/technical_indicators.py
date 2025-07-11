@@ -36,7 +36,7 @@ class TechnicalIndicators:
     def __init__(self):
         self.talib_available = TALIB_AVAILABLE
         
-        # Configuration des périodes depuis config.py
+        # Configuration des périodes depuis config.py (pour compatibilité)
         self.rsi_period = STRATEGY_PARAMS["rsi"]["window"]
         self.bb_period = STRATEGY_PARAMS["bollinger"]["window"]
         self.bb_std = STRATEGY_PARAMS["bollinger"]["num_std"]
@@ -1072,7 +1072,165 @@ class TechnicalIndicators:
                 
         return None
     
-    # =================== CALCUL COMPLET ===================
+    # =================== CALCUL COMPLET (ARRAYS) ===================
+    
+    def calculate_all_indicators_array(self, highs: List[float], lows: List[float], 
+                                     closes: List[float], volumes: List[float]) -> Dict[str, np.ndarray]:
+        """
+        Calcule tous les indicateurs techniques et retourne des ARRAYS complets.
+        Chaque indicateur contient une valeur pour chaque point de données.
+        
+        Args:
+            highs: Prix hauts
+            lows: Prix bas  
+            closes: Prix de clôture
+            volumes: Volumes
+            
+        Returns:
+            Dict avec arrays numpy pour chaque indicateur
+        """
+        indicators = {}
+        
+        try:
+            # Convertir en arrays numpy
+            highs_array = np.array(highs, dtype=np.float64)
+            lows_array = np.array(lows, dtype=np.float64)
+            closes_array = np.array(closes, dtype=np.float64)
+            volumes_array = np.array(volumes, dtype=np.float64)
+            
+            n_points = len(closes_array)
+            
+            if self.talib_available:
+                # RSI
+                rsi_array = talib.RSI(closes_array, timeperiod=14)
+                indicators['rsi_14'] = rsi_array
+                
+                # EMAs
+                indicators['ema_12'] = talib.EMA(closes_array, timeperiod=12)
+                indicators['ema_26'] = talib.EMA(closes_array, timeperiod=26)
+                indicators['ema_50'] = talib.EMA(closes_array, timeperiod=50)
+                
+                # SMAs
+                indicators['sma_20'] = talib.SMA(closes_array, timeperiod=20)
+                indicators['sma_50'] = talib.SMA(closes_array, timeperiod=50)
+                
+                # MACD
+                macd_line, macd_signal, macd_hist = talib.MACD(closes_array, 
+                                                               fastperiod=12, 
+                                                               slowperiod=26, 
+                                                               signalperiod=9)
+                indicators['macd_line'] = macd_line
+                indicators['macd_signal'] = macd_signal
+                indicators['macd_histogram'] = macd_hist
+                
+                # Bollinger Bands
+                bb_upper, bb_middle, bb_lower = talib.BBANDS(closes_array, 
+                                                            timeperiod=20, 
+                                                            nbdevup=2, 
+                                                            nbdevdn=2)
+                indicators['bb_upper'] = bb_upper
+                indicators['bb_middle'] = bb_middle
+                indicators['bb_lower'] = bb_lower
+                
+                # BB position et width
+                bb_position = np.full(n_points, np.nan)
+                bb_width = np.full(n_points, np.nan)
+                mask = ~(np.isnan(bb_upper) | np.isnan(bb_lower) | np.isnan(bb_middle))
+                width_diff = bb_upper[mask] - bb_lower[mask]
+                bb_position[mask] = np.where(width_diff != 0, 
+                                           (closes_array[mask] - bb_lower[mask]) / width_diff, 
+                                           0.5)
+                bb_width[mask] = np.where(bb_middle[mask] != 0,
+                                        (width_diff / bb_middle[mask]) * 100,
+                                        0)
+                indicators['bb_position'] = bb_position
+                indicators['bb_width'] = bb_width
+                
+                # ATR
+                indicators['atr_14'] = talib.ATR(highs_array, lows_array, closes_array, timeperiod=14)
+                
+                # ADX
+                indicators['adx_14'] = talib.ADX(highs_array, lows_array, closes_array, timeperiod=14)
+                indicators['plus_di'] = talib.PLUS_DI(highs_array, lows_array, closes_array, timeperiod=14)
+                indicators['minus_di'] = talib.MINUS_DI(highs_array, lows_array, closes_array, timeperiod=14)
+                
+                # Stochastic
+                stoch_k, stoch_d = talib.STOCH(highs_array, lows_array, closes_array,
+                                              fastk_period=14, slowk_period=3, slowd_period=3)
+                indicators['stoch_k'] = stoch_k
+                indicators['stoch_d'] = stoch_d
+                
+                # Stochastic RSI
+                indicators['stoch_rsi'] = talib.STOCHRSI(closes_array, timeperiod=14, 
+                                                        fastk_period=3, fastd_period=3)[0]
+                
+                # Williams %R
+                indicators['williams_r'] = talib.WILLR(highs_array, lows_array, closes_array, timeperiod=14)
+                
+                # CCI
+                indicators['cci_20'] = talib.CCI(highs_array, lows_array, closes_array, timeperiod=20)
+                
+                # MFI
+                indicators['mfi_14'] = talib.MFI(highs_array, lows_array, closes_array, volumes_array, timeperiod=14)
+                
+                # Momentum et ROC
+                indicators['momentum_10'] = talib.MOM(closes_array, timeperiod=10)
+                indicators['roc_10'] = talib.ROC(closes_array, timeperiod=10)
+                indicators['roc_20'] = talib.ROC(closes_array, timeperiod=20)
+                
+                # OBV
+                indicators['obv'] = talib.OBV(closes_array, volumes_array)
+                
+                # Volume analysis
+                volume_sma = talib.SMA(volumes_array, timeperiod=20)
+                volume_ratio = np.full(n_points, np.nan)
+                mask = volume_sma > 0
+                volume_ratio[mask] = volumes_array[mask] / volume_sma[mask]
+                indicators['avg_volume_20'] = volume_sma
+                indicators['volume_ratio'] = volume_ratio
+                
+                # VWAP approximation (10 périodes)
+                vwap = np.full(n_points, np.nan)
+                for i in range(9, n_points):
+                    price_volume = closes_array[i-9:i+1] * volumes_array[i-9:i+1]
+                    total_volume = np.sum(volumes_array[i-9:i+1])
+                    if total_volume > 0:
+                        vwap[i] = np.sum(price_volume) / total_volume
+                indicators['vwap_10'] = vwap
+                
+                # Trend angle (sur 5 périodes)
+                trend_angle = np.full(n_points, np.nan)
+                for i in range(4, n_points):
+                    price_change = (closes_array[i] - closes_array[i-4]) / closes_array[i-4] * 100
+                    trend_angle[i] = np.arctan(price_change) * 180 / np.pi
+                indicators['trend_angle'] = trend_angle
+                
+                # Pivot count (simplifié)
+                pivot_count = np.zeros(n_points)
+                for i in range(2, n_points-2):
+                    # High pivot
+                    if highs_array[i] > max(highs_array[i-2:i]) and highs_array[i] > max(highs_array[i+1:i+3]):
+                        pivot_count[i] += 1
+                    # Low pivot
+                    if lows_array[i] < min(lows_array[i-2:i]) and lows_array[i] < min(lows_array[i+1:i+3]):
+                        pivot_count[i] += 1
+                indicators['pivot_count'] = pivot_count
+                
+            else:
+                # Fallback manuel si talib non disponible
+                logger.warning("TA-Lib non disponible, utilisation limitée des indicateurs manuels")
+                # Implémenter au minimum RSI et EMAs manuellement
+                # TODO: Ajouter calculs manuels si nécessaire
+                
+            return indicators
+            
+        except Exception as e:
+            logger.error(f"Erreur calculate_all_indicators_array: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return {}
+    
+    # =================== CALCUL COMPLET (SCALAIRE) ===================
     
     def calculate_all_indicators(self, highs: List[float], lows: List[float], 
                                closes: List[float], volumes: List[float]) -> Dict[str, Any]:
@@ -1092,38 +1250,22 @@ class TechnicalIndicators:
         indicators = {}
         
         try:
-            logger.error(f"🔍 DEBUG: Calcul indicateurs avec {len(highs)} highs, {len(lows)} lows, {len(closes)} closes, {len(volumes)} volumes")
-            
             # RSI
             try:
-                logger.error(f"🔍 Tentative calcul RSI avec {len(closes)} points")
                 rsi_value = self.calculate_rsi(closes, 14)
-                logger.error(f"🔍 RSI résultat: {rsi_value}")
                 if rsi_value is not None:
                     indicators['rsi_14'] = rsi_value
-                    logger.error(f"✅ RSI calculé: {rsi_value}")
-                else:
-                    logger.error("⚠️ RSI non calculé (None)")
             except Exception as e:
                 logger.error(f"❌ Erreur RSI: {e}")
-                import traceback
-                logger.error(f"❌ Stack trace RSI: {traceback.format_exc()}")
             
             # EMAs multiples (garde l'ancien comportement pour compatibilité)
             try:
-                logger.error(f"🔍 Tentative calcul EMAs")
                 for period in [12, 26, 50]:
                     ema_value = self.calculate_ema(closes, period)
-                    logger.error(f"🔍 EMA {period} résultat: {ema_value}")
                     if ema_value is not None:
                         indicators[f'ema_{period}'] = ema_value
-                        logger.error(f"✅ EMA {period} calculé: {ema_value}")
-                    else:
-                        logger.error(f"⚠️ EMA {period} non calculé (None)")
             except Exception as e:
                 logger.error(f"❌ Erreur EMAs: {e}")
-                import traceback
-                logger.error(f"❌ Stack trace EMAs: {traceback.format_exc()}")
             
             # SMAs
             for period in [20, 50]:
@@ -1187,8 +1329,7 @@ class TechnicalIndicators:
                 vol_analysis = self._analyze_volume(volumes)
                 indicators.update(vol_analysis)
                 
-            logger.error(f"✅ Calculé {len(indicators)} indicateurs finaux")
-            logger.error(f"🔍 Liste indicateurs: {list(indicators.keys())}")
+            logger.debug(f"✅ Calculé {len(indicators)} indicateurs finaux")
             
         except Exception as e:
             logger.error(f"❌ Erreur calcul indicateurs: {e}")
