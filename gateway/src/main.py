@@ -188,6 +188,88 @@ async def sync_historical_to_realtime_cache(ws_client):
         logger.error(f"❌ Erreur synchronisation cache: {e}")
         # Ne pas faire échouer le démarrage pour un problème de sync
 
+async def restore_indicators_from_db():
+    """
+    Restaure les indicateurs techniques depuis la base de données PostgreSQL.
+    Charge les dernières valeurs d'indicateurs pour chaque symbole/timeframe pour maintenir la continuité.
+    
+    Returns:
+        int: Nombre d'indicateurs restaurés
+    """
+    from shared.src.technical_indicators import indicator_cache
+    from shared.src.config import get_db_config
+    import asyncpg
+    
+    restored_count = 0
+    
+    try:
+        # Connexion à la base de données
+        db_config = get_db_config()
+        conn = await asyncpg.connect(
+            host=db_config['host'],
+            port=db_config['port'],
+            database=db_config['database'],
+            user=db_config['user'],
+            password=db_config['password']
+        )
+        
+        # Requête pour récupérer les derniers indicateurs pour chaque symbole/timeframe
+        query = """
+            WITH latest_data AS (
+                SELECT DISTINCT ON (symbol, timeframe) 
+                    symbol, timeframe, time,
+                    rsi_14, ema_12, ema_26, ema_50, sma_20, sma_50,
+                    macd_line, macd_signal, macd_histogram,
+                    bb_upper, bb_middle, bb_lower, bb_position, bb_width,
+                    atr_14, momentum_10, volume_ratio, avg_volume_20,
+                    stoch_k, stoch_d, stoch_rsi, adx_14, plus_di, minus_di,
+                    williams_r, cci_20, mfi_14, vwap_10, roc_10, roc_20,
+                    obv, trend_angle, pivot_count
+                FROM market_data 
+                WHERE enhanced = true 
+                    AND symbol = ANY($1)
+                    AND timeframe = ANY($2)
+                ORDER BY symbol, timeframe, time DESC
+            )
+            SELECT * FROM latest_data
+        """
+        
+        timeframes = ['1m', '5m', '15m', '1h', '4h']
+        result = await conn.fetch(query, SYMBOLS, timeframes)
+        
+        # Restaurer les indicateurs dans le cache
+        for row in result:
+            symbol = row['symbol']
+            timeframe = row['timeframe']
+            
+            # Construire le dictionnaire des indicateurs
+            indicators = {}
+            
+            # Parcourir toutes les colonnes d'indicateurs
+            for field_name in row.keys():
+                if field_name not in ['symbol', 'timeframe', 'time'] and row[field_name] is not None:
+                    indicators[field_name] = float(row[field_name])
+            
+            # Restaurer dans le cache si des indicateurs sont trouvés
+            if indicators:
+                for indicator_name, value in indicators.items():
+                    indicator_cache.set(symbol, timeframe, indicator_name, value)
+                    restored_count += 1
+                
+                logger.debug(f"🔄 Restauré {symbol} {timeframe}: {len(indicators)} indicateurs depuis {row['time']}")
+        
+        await conn.close()
+        
+        if restored_count > 0:
+            logger.info(f"✅ {restored_count} indicateurs restaurés depuis la DB pour {len(result)} symbole/timeframe")
+        
+        return restored_count
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur restoration indicateurs depuis DB: {e}")
+        return 0
+
+
 async def main():
     """
     Fonction principale qui démarre le Gateway.
@@ -236,11 +318,55 @@ async def main():
         # Créer le client WebSocket Binance
         ws_client = BinanceWebSocket(symbols=SYMBOLS, interval=INTERVAL)
         
-        # **FIX CRITIQUE**: Synchroniser les indicateurs historiques avec le cache temps réel
-        if not args.skip_init:
-            logger.info("🔄 Synchronisation cache historique → temps réel...")
-            await sync_historical_to_realtime_cache(ws_client)
-            logger.info("✅ Cache temps réel synchronisé avec données historiques")
+        # **NOUVELLE LOGIQUE**: Restoration automatique du cache d'indicateurs depuis la DB
+        from shared.src.technical_indicators import indicator_cache
+        
+        logger.info("🔄 Restoration automatique du cache d'indicateurs depuis la DB...")
+        restored_indicators = await restore_indicators_from_db()
+        
+        if restored_indicators > 0:
+            logger.info(f"✅ {restored_indicators} indicateurs restaurés depuis la DB - CONTINUITÉ PRÉSERVÉE")
+            
+            # Afficher les statistiques de restoration
+            cache_stats = indicator_cache.get_cache_stats()
+            logger.info(f"📊 Cache Statistics: {cache_stats['local_entries']} entrées locales")
+        else:
+            logger.warning("⚠️ Aucun indicateur restauré - Premier démarrage ou DB vide")
+            
+            # Seulement si pas de restoration, faire l'initialisation complète
+            if not args.skip_init:
+                logger.info("🔧 Recalcul complet des indicateurs (pas de données persistées)...")
+                
+                # Forcer un calcul point par point pour remplir le cache
+                init_fetcher = UltraDataFetcher()
+                for symbol in SYMBOLS:
+                    for timeframe in ['1m', '5m', '15m', '1h', '4h']:
+                        try:
+                            # Utiliser UltraDataFetcher pour récupérer et calculer
+                            await init_fetcher._fetch_ultra_enriched_data(symbol, timeframe)
+                            logger.debug(f"✅ Cache recalculé pour {symbol} {timeframe}")
+                        except Exception as e:
+                            logger.warning(f"Erreur calcul initial {symbol} {timeframe}: {e}")
+        
+        # **FIX CRITIQUE**: Synchroniser les indicateurs restaurés/calculés avec le cache temps réel WebSocket
+        logger.info("🔄 Synchronisation cache → WebSocket temps réel...")
+        await sync_historical_to_realtime_cache(ws_client)
+        
+        # Vérifier la synchronisation
+        final_cache_stats = {"total": 0, "symbols": set()}
+        for symbol in SYMBOLS:
+            for timeframe in ['1m', '5m', '15m', '1h', '4h']:
+                indicators = indicator_cache.get_all_indicators(symbol, timeframe)
+                final_cache_stats["total"] += len(indicators)
+                if indicators:
+                    final_cache_stats["symbols"].add(symbol)
+        
+        logger.info(f"✅ Synchronisation terminée: {final_cache_stats['total']} indicateurs pour {len(final_cache_stats['symbols'])} symboles")
+        
+        # Force sauvegarde pour s'assurer que les données sont persistées
+        if final_cache_stats["total"] > 0:
+            saved_count = indicator_cache.force_save_all()
+            logger.info(f"💾 {saved_count} indicateurs sauvegardés pour la prochaine restoration")
         
         # Créer le service ultra-enrichi multi-timeframes
         ultra_fetcher = UltraDataFetcher()

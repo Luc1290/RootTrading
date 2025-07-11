@@ -144,8 +144,17 @@ class DatabasePersister:
             market_data['enhanced'] = message.get('enhanced', False)
             market_data['ultra_enriched'] = message.get('ultra_enriched', False)
             
+            # Debug: vérifier ce qui arrive du message Kafka
+            kafka_indicators = [k for k in message.keys() if k not in ['symbol', 'interval', 'start_time', 'open_time', 'close_time', 'open', 'high', 'low', 'close', 'volume', 'is_closed', 'is_historical', 'enhanced', 'ultra_enriched', 'timeframe']]
+            db_indicators = [k for k in market_data.keys() if k not in ['time', 'symbol', 'timeframe', 'open', 'high', 'low', 'close', 'volume', 'enhanced', 'ultra_enriched']]
+            
+            if len(kafka_indicators) > 10:  # Si plus de 10 indicateurs dans Kafka
+                logger.error(f"🔍 DISPATCHER {symbol}: {len(kafka_indicators)} indicateurs dans Kafka, {len(db_indicators)} dans market_data")
+                logger.error(f"🔍 Kafka: {kafka_indicators[:10]}...")  # Limiter le log
+                logger.error(f"🔍 DB: {db_indicators}")
+            
             # Log pour déboguer
-            indicators_count = len([k for k in market_data.keys() if k not in ['time', 'symbol', 'open', 'high', 'low', 'close', 'volume']])
+            indicators_count = len(db_indicators)
             if indicators_count > 2:  # Plus que enhanced/ultra_enriched
                 logger.debug(f"💾 Sauvegarde {symbol} avec {indicators_count} indicateurs")
             

@@ -9,7 +9,9 @@ Ce module remplace toutes les implémentations manuelles dispersées dans:
 - visualization/src/chart_service.py
 - signal_aggregator/src/*.py
 """
+import json
 import logging
+import time
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Tuple, Union, Any
@@ -1090,12 +1092,38 @@ class TechnicalIndicators:
         indicators = {}
         
         try:
+            logger.error(f"🔍 DEBUG: Calcul indicateurs avec {len(highs)} highs, {len(lows)} lows, {len(closes)} closes, {len(volumes)} volumes")
+            
             # RSI
-            indicators['rsi_14'] = self.calculate_rsi(closes, 14)
+            try:
+                logger.error(f"🔍 Tentative calcul RSI avec {len(closes)} points")
+                rsi_value = self.calculate_rsi(closes, 14)
+                logger.error(f"🔍 RSI résultat: {rsi_value}")
+                if rsi_value is not None:
+                    indicators['rsi_14'] = rsi_value
+                    logger.error(f"✅ RSI calculé: {rsi_value}")
+                else:
+                    logger.error("⚠️ RSI non calculé (None)")
+            except Exception as e:
+                logger.error(f"❌ Erreur RSI: {e}")
+                import traceback
+                logger.error(f"❌ Stack trace RSI: {traceback.format_exc()}")
             
             # EMAs multiples (garde l'ancien comportement pour compatibilité)
-            for period in [12, 26, 50]:
-                indicators[f'ema_{period}'] = self.calculate_ema(closes, period)
+            try:
+                logger.error(f"🔍 Tentative calcul EMAs")
+                for period in [12, 26, 50]:
+                    ema_value = self.calculate_ema(closes, period)
+                    logger.error(f"🔍 EMA {period} résultat: {ema_value}")
+                    if ema_value is not None:
+                        indicators[f'ema_{period}'] = ema_value
+                        logger.error(f"✅ EMA {period} calculé: {ema_value}")
+                    else:
+                        logger.error(f"⚠️ EMA {period} non calculé (None)")
+            except Exception as e:
+                logger.error(f"❌ Erreur EMAs: {e}")
+                import traceback
+                logger.error(f"❌ Stack trace EMAs: {traceback.format_exc()}")
             
             # SMAs
             for period in [20, 50]:
@@ -1138,6 +1166,15 @@ class TechnicalIndicators:
             # MFI (Money Flow Index)
             indicators['mfi_14'] = self.calculate_mfi(highs, lows, closes, volumes, 14)
             
+            # Williams %R
+            indicators['williams_r'] = self.calculate_williams_r(highs, lows, closes, 14)
+            
+            # CCI (Commodity Channel Index)
+            indicators['cci_20'] = self.calculate_cci(highs, lows, closes, 20)
+            
+            # VWAP
+            indicators['vwap_10'] = self.calculate_vwap(highs, lows, closes, volumes, 10)
+            
             # Indicateurs supplémentaires
             indicators['trend_angle'] = self.calculate_trend_angle(closes, 10)
             indicators['pivot_count'] = self.calculate_pivot_count(highs, lows, 5)
@@ -1150,13 +1187,157 @@ class TechnicalIndicators:
                 vol_analysis = self._analyze_volume(volumes)
                 indicators.update(vol_analysis)
                 
-            logger.debug(f"✅ Calculé {len(indicators)} indicateurs")
+            logger.error(f"✅ Calculé {len(indicators)} indicateurs finaux")
+            logger.error(f"🔍 Liste indicateurs: {list(indicators.keys())}")
             
         except Exception as e:
             logger.error(f"❌ Erreur calcul indicateurs: {e}")
+            logger.error(f"❌ Détails erreur: {str(e)}")
+            import traceback
+            logger.error(f"❌ Stack trace: {traceback.format_exc()}")
             
         return indicators
     
+    def calculate_williams_r(self, highs: Union[List[float], np.ndarray], 
+                            lows: Union[List[float], np.ndarray], 
+                            closes: Union[List[float], np.ndarray], 
+                            period: int = 14) -> Optional[float]:
+        """
+        Calcule Williams %R.
+        
+        Args:
+            highs: Prix hauts
+            lows: Prix bas  
+            closes: Prix de clôture
+            period: Période de calcul
+            
+        Returns:
+            Valeur Williams %R (entre -100 et 0)
+        """
+        try:
+            if len(highs) < period or len(lows) < period or len(closes) < period:
+                return None
+                
+            highs = np.array(highs)
+            lows = np.array(lows)
+            closes = np.array(closes)
+            
+            # Prendre les derniers points pour le calcul
+            recent_highs = highs[-period:]
+            recent_lows = lows[-period:]
+            current_close = closes[-1]
+            
+            highest_high = np.max(recent_highs)
+            lowest_low = np.min(recent_lows)
+            
+            if highest_high == lowest_low:
+                return -50.0  # Valeur par défaut
+                
+            williams_r = ((highest_high - current_close) / (highest_high - lowest_low)) * -100
+            
+            return float(williams_r)
+            
+        except Exception as e:
+            logger.debug(f"Erreur calcul Williams %R: {e}")
+            return None
+
+    def calculate_cci(self, highs: Union[List[float], np.ndarray], 
+                     lows: Union[List[float], np.ndarray], 
+                     closes: Union[List[float], np.ndarray], 
+                     period: int = 20) -> Optional[float]:
+        """
+        Calcule le Commodity Channel Index (CCI).
+        
+        Args:
+            highs: Prix hauts
+            lows: Prix bas
+            closes: Prix de clôture
+            period: Période de calcul
+            
+        Returns:
+            Valeur CCI
+        """
+        try:
+            if len(highs) < period or len(lows) < period or len(closes) < period:
+                return None
+                
+            highs = np.array(highs)
+            lows = np.array(lows)
+            closes = np.array(closes)
+            
+            # Calcul du prix typique (TP)
+            typical_price = (highs + lows + closes) / 3
+            
+            # Prendre les derniers points
+            recent_tp = typical_price[-period:]
+            
+            # SMA du prix typique
+            sma_tp = np.mean(recent_tp)
+            
+            # Écart absolu moyen
+            mean_deviation = np.mean(np.abs(recent_tp - sma_tp))
+            
+            if mean_deviation == 0:
+                return 0.0
+                
+            # CCI = (Prix Typique - SMA) / (0.015 * Écart Moyen)
+            current_tp = typical_price[-1]
+            cci = (current_tp - sma_tp) / (0.015 * mean_deviation)
+            
+            return float(cci)
+            
+        except Exception as e:
+            logger.debug(f"Erreur calcul CCI: {e}")
+            return None
+
+    def calculate_vwap(self, highs: Union[List[float], np.ndarray], 
+                      lows: Union[List[float], np.ndarray], 
+                      closes: Union[List[float], np.ndarray], 
+                      volumes: Union[List[float], np.ndarray], 
+                      period: int = 10) -> Optional[float]:
+        """
+        Calcule le Volume Weighted Average Price (VWAP).
+        
+        Args:
+            highs: Prix hauts
+            lows: Prix bas
+            closes: Prix de clôture
+            volumes: Volumes
+            period: Période de calcul
+            
+        Returns:
+            Valeur VWAP
+        """
+        try:
+            min_len = min(len(highs), len(lows), len(closes), len(volumes))
+            if min_len < period:
+                return None
+                
+            highs = np.array(highs)
+            lows = np.array(lows)
+            closes = np.array(closes)
+            volumes = np.array(volumes)
+            
+            # Prix typique
+            typical_price = (highs + lows + closes) / 3
+            
+            # Prendre les derniers points
+            recent_tp = typical_price[-period:]
+            recent_vol = volumes[-period:]
+            
+            # VWAP = Somme(Prix Typique * Volume) / Somme(Volume)
+            total_vol = np.sum(recent_vol)
+            if total_vol == 0:
+                return float(np.mean(recent_tp))
+                
+            vwap = np.sum(recent_tp * recent_vol) / total_vol
+            
+            return float(vwap)
+            
+        except Exception as e:
+            logger.debug(f"Erreur calcul VWAP: {e}")
+            return None
+
     # =================== INDICATEURS ADDITIONNELS ===================
     
     def calculate_stoch_rsi(self, prices: Union[List[float], np.ndarray, pd.Series], 
@@ -1352,38 +1533,225 @@ class TechnicalIndicators:
 # Instance globale pour utilisation dans tous les services
 indicators = TechnicalIndicators()
 
-# Cache global pour les indicateurs incrémentaux
+# Cache global pour les indicateurs incrémentaux avec persistence Redis
 class IndicatorCache:
-    """Cache pour les valeurs précédentes des indicateurs incrémentaux"""
+    """Cache persistant pour les valeurs précédentes des indicateurs incrémentaux"""
     def __init__(self):
-        self.cache = {}
+        self.cache = {}  # Cache local pour performance
+        self.redis_client = None
+        self._init_redis()
+        
+        # TTL pour la persistence (48h au lieu de 1h)
+        self.cache_ttl = 48 * 3600  # 48 heures
+        self.auto_save_interval = 300  # Sauvegarde auto toutes les 5 minutes
+        self.last_save_time = 0
+    
+    def _init_redis(self):
+        """Initialise la connexion Redis pour la persistence"""
+        try:
+            from shared.src.redis_client import RedisClient
+            self.redis_client = RedisClient()
+            logger.info("✅ IndicatorCache connecté à Redis pour persistence")
+        except Exception as e:
+            logger.warning(f"⚠️ IndicatorCache sans Redis: {e}")
+            self.redis_client = None
     
     def get_key(self, symbol: str, timeframe: str, indicator: str) -> str:
-        return f"{symbol}:{timeframe}:{indicator}"
+        return f"indicators:{symbol}:{timeframe}:{indicator}"
     
     def get(self, symbol: str, timeframe: str, indicator: str, default=None):
         key = self.get_key(symbol, timeframe, indicator)
-        return self.cache.get(key, default)
+        
+        # Vérifier le cache local d'abord
+        if key in self.cache:
+            return self.cache[key]
+        
+        # Fallback vers Redis pour restoration
+        if self.redis_client:
+            try:
+                redis_value = self.redis_client.get(key)
+                if redis_value is not None:
+                    # RedisClientPool fait déjà le parsing JSON automatiquement
+                    # Si c'est encore une string, parser manuellement
+                    if isinstance(redis_value, str):
+                        try:
+                            parsed_value = json.loads(redis_value)
+                        except json.JSONDecodeError:
+                            parsed_value = redis_value
+                    else:
+                        parsed_value = redis_value
+                    
+                    self.cache[key] = parsed_value
+                    logger.debug(f"🔄 Indicateur restauré depuis Redis: {key}")
+                    return parsed_value
+            except Exception as e:
+                logger.warning(f"Erreur lecture Redis pour {key}: {e}")
+        
+        return default
     
     def set(self, symbol: str, timeframe: str, indicator: str, value):
         key = self.get_key(symbol, timeframe, indicator)
+        
+        # Mettre à jour le cache local
         self.cache[key] = value
+        
+        # Sauvegarde automatique périodique (non bloquante)
+        current_time = time.time()
+        if current_time - self.last_save_time > self.auto_save_interval:
+            self._save_to_redis_async(key, value)
+            self.last_save_time = current_time
+        else:
+            # Sauvegarde immédiate pour les valeurs critiques
+            self._save_to_redis_async(key, value)
     
-    def clear_symbol(self, symbol: str):
-        """Efface le cache pour un symbole"""
-        keys_to_remove = [k for k in self.cache.keys() if k.startswith(f"{symbol}:")]
-        for key in keys_to_remove:
-            del self.cache[key]
+    def _save_to_redis_async(self, key: str, value):
+        """Sauvegarde asynchrone vers Redis (non bloquante)"""
+        if self.redis_client:
+            try:
+                # Sérialiser la valeur
+                serialized_value = json.dumps(value) if not isinstance(value, (str, int, float)) else value
+                self.redis_client.set(key, serialized_value, expiration=self.cache_ttl)
+                logger.debug(f"💾 Indicateur sauvegardé: {key}")
+            except Exception as e:
+                logger.warning(f"Erreur sauvegarde Redis {key}: {e}")
+    
+    def clear_symbol(self, symbol: str, force_clear: bool = False):
+        """
+        Efface le cache pour un symbole
+        
+        Args:
+            symbol: Symbole à effacer
+            force_clear: Si True, efface même les données persistées (utiliser avec prudence)
+        """
+        if force_clear:
+            # ATTENTION: Utilisé seulement si corruption de données
+            logger.warning(f"🗑️ EFFACEMENT FORCÉ du cache pour {symbol}")
+            
+            # Effacer du cache local
+            keys_to_remove = [k for k in self.cache.keys() if f":{symbol}:" in k]
+            for key in keys_to_remove:
+                del self.cache[key]
+            
+            # Effacer de Redis
+            if self.redis_client:
+                try:
+                    redis_pattern = f"indicators:{symbol}:*"
+                    redis_keys = list(self.redis_client.redis.scan_iter(match=redis_pattern))
+                    for redis_key in redis_keys:
+                        self.redis_client.delete(redis_key)
+                    logger.warning(f"Redis cache effacé pour {symbol}")
+                except Exception as e:
+                    logger.error(f"Erreur effacement Redis pour {symbol}: {e}")
+        else:
+            # Mode normal: NE PAS effacer, juste log
+            logger.info(f"📊 Cache préservé pour {symbol} (continuité des indicateurs)")
+    
+    def restore_from_redis(self, symbol: str = None):
+        """
+        Restaure le cache depuis Redis au démarrage
+        
+        Args:
+            symbol: Si spécifié, restore seulement ce symbole, sinon tous
+        """
+        if not self.redis_client:
+            logger.warning("Pas de Redis, impossible de restaurer le cache")
+            return 0
+        
+        restored_count = 0
+        try:
+            pattern = f"indicators:{symbol}:*" if symbol else "indicators:*"
+            redis_keys = list(self.redis_client.redis.scan_iter(match=pattern))
+            
+            for redis_key in redis_keys:
+                try:
+                    redis_value = self.redis_client.get(redis_key)
+                    if redis_value is not None:
+                        # RedisClientPool fait déjà le parsing JSON automatiquement
+                        if isinstance(redis_value, str):
+                            try:
+                                parsed_value = json.loads(redis_value)
+                            except json.JSONDecodeError:
+                                parsed_value = redis_value
+                        else:
+                            parsed_value = redis_value
+                        
+                        self.cache[redis_key] = parsed_value
+                        restored_count += 1
+                except Exception as e:
+                    logger.warning(f"Erreur restoration {redis_key}: {e}")
+            
+            logger.info(f"🔄 {restored_count} indicateurs restaurés depuis Redis")
+            return restored_count
+            
+        except Exception as e:
+            logger.error(f"Erreur restoration globale: {e}")
+            return 0
+    
+    def force_save_all(self):
+        """Force la sauvegarde de tout le cache vers Redis"""
+        if not self.redis_client:
+            return
+        
+        saved_count = 0
+        for key, value in self.cache.items():
+            try:
+                serialized_value = json.dumps(value) if not isinstance(value, (str, int, float)) else value
+                self.redis_client.set(key, serialized_value, expiration=self.cache_ttl)
+                saved_count += 1
+            except Exception as e:
+                logger.warning(f"Erreur sauvegarde {key}: {e}")
+        
+        logger.info(f"💾 {saved_count} indicateurs sauvegardés vers Redis")
+        return saved_count
+    
+    def get_cache_stats(self) -> dict:
+        """Retourne les statistiques du cache"""
+        return {
+            "local_entries": len(self.cache),
+            "redis_connected": self.redis_client is not None,
+            "cache_ttl_hours": self.cache_ttl / 3600,
+            "auto_save_interval_minutes": self.auto_save_interval / 60
+        }
     
     def get_all_indicators(self, symbol: str, timeframe: str) -> dict:
-        """Récupère tous les indicateurs stockés dans le cache pour un symbole/timeframe"""
-        prefix = f"{symbol}:{timeframe}:"
+        """
+        Récupère tous les indicateurs stockés dans le cache pour un symbole/timeframe
+        Priorise le cache local, puis Redis
+        """
+        prefix = f"indicators:{symbol}:{timeframe}:"
         indicators = {}
         
+        # Chercher dans le cache local d'abord
         for key, value in self.cache.items():
             if key.startswith(prefix):
                 indicator_name = key[len(prefix):]
                 indicators[indicator_name] = value
+        
+        # Compléter avec Redis si nécessaire
+        if self.redis_client and len(indicators) == 0:
+            try:
+                redis_keys = list(self.redis_client.redis.scan_iter(match=f"{prefix}*"))
+                for redis_key in redis_keys:
+                    try:
+                        redis_value = self.redis_client.get(redis_key)
+                        if redis_value is not None:
+                            indicator_name = redis_key[len(prefix):]
+                            # RedisClientPool fait déjà le parsing JSON automatiquement
+                            if isinstance(redis_value, str):
+                                try:
+                                    parsed_value = json.loads(redis_value)
+                                except json.JSONDecodeError:
+                                    parsed_value = redis_value
+                            else:
+                                parsed_value = redis_value
+                            
+                            indicators[indicator_name] = parsed_value
+                            # Restaurer dans le cache local
+                            self.cache[redis_key] = parsed_value
+                    except Exception as e:
+                        logger.warning(f"Erreur lecture indicateur {redis_key}: {e}")
+            except Exception as e:
+                logger.warning(f"Erreur scan Redis pour {prefix}: {e}")
         
         return indicators
 

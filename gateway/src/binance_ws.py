@@ -103,6 +103,12 @@ class BinanceWebSocket:
                 # Cache pour chaque timeframe
                 self.incremental_cache[symbol][tf] = {}
                 
+        # Configuration pour sauvegarde périodique des buffers
+        self.redis_client = None
+        self._init_redis_for_buffers()
+        self.buffer_save_interval = 300  # 5 minutes
+        self.last_buffer_save_time = 0
+        
         logger.info(f"🔥 Gateway ULTRA-AVANCÉ : {len(self.stream_paths)} streams + indicateurs temps réel")
     
     async def _connect(self) -> None:
@@ -314,25 +320,36 @@ class BinanceWebSocket:
         
         # 🚀 HYBRIDE : Calcul incrémental pour EMA/MACD + traditionnel pour le reste
         if len(prices) >= 20 and len(highs) >= 20 and len(lows) >= 20 and len(volumes) >= 20:
-            logger.debug(f"📊 Calcul HYBRIDE des indicateurs pour {symbol} {timeframe}")
+            logger.info(f"📊 HYBRIDE WebSocket {symbol} {timeframe}: buffers=[P:{len(prices)},H:{len(highs)},L:{len(lows)},V:{len(volumes)}] → calcul des 33 indicateurs")
             
-            # 🚀 NOUVEAU : Calcul incrémental pour EMA/MACD (évite dents de scie)
-            incremental_indicators = self._calculate_smooth_indicators(symbol, timeframe, candle_data)
-            
-            # 📊 TRADITIONNEL : Calcul normal pour les autres indicateurs
+            # 📊 TRADITIONNEL : Calculer TOUS les indicateurs d'abord
             from shared.src.technical_indicators import indicators
             all_indicators = indicators.calculate_all_indicators(highs, lows, prices, volumes)
             
-            # FUSION : Priorité aux incrémentaux (EMA/MACD lisses)
+            # Debug: vérifier si ADX est calculé
+            if 'adx_14' in all_indicators and all_indicators['adx_14'] is not None:
+                logger.info(f"✅ ADX calculé dans WebSocket {symbol} {timeframe}: {all_indicators['adx_14']}")
+            else:
+                logger.warning(f"❌ ADX manquant dans WebSocket {symbol} {timeframe}, buffer sizes: H={len(highs)}, L={len(lows)}, C={len(prices)}")
+                if 'adx_14' in all_indicators:
+                    logger.warning(f"ADX value is None: {all_indicators['adx_14']}")
+            
+            # 🚀 NOUVEAU : Calcul incrémental pour EMA/MACD (évite dents de scie)
+            incremental_indicators = self._calculate_smooth_indicators(symbol, timeframe, candle_data, all_indicators)
+            
+            # FUSION INTELLIGENTE : Garder tous les traditionnels + override seulement EMA/MACD avec versions lisses
             final_indicators = all_indicators.copy()
-            final_indicators.update(incremental_indicators)  # Override EMA/MACD with smooth versions
+            # Override seulement les indicateurs EMA/MACD avec les versions incrémentales lisses
+            for indicator_name, value in incremental_indicators.items():
+                if value is not None and indicator_name in ['ema_12', 'ema_26', 'ema_50', 'macd_line', 'macd_signal', 'macd_histogram']:
+                    final_indicators[indicator_name] = value
             
             # Ajouter tous les indicateurs calculés
             for indicator_name, value in final_indicators.items():
                 if value is not None:
                     candle_data[indicator_name] = value
             
-            logger.debug(f"✅ {len(final_indicators)} indicateurs calculés pour {symbol} (🚀 EMA/MACD incrémentaux)")
+            logger.debug(f"✅ {len(final_indicators)} indicateurs calculés pour {symbol} (🚀 {len(incremental_indicators)} EMA/MACD incrémentaux, {len(all_indicators)} traditionnels)")
             
             # Calculer aussi les indicateurs custom non inclus dans calculate_all_indicators
             # Stochastic RSI (pas dans calculate_all_indicators)
@@ -361,6 +378,8 @@ class BinanceWebSocket:
             candle_data['ultra_enriched'] = True
             
         elif len(prices) >= 14:
+            # Log pour debug: pourquoi on n'atteint pas les 20 points
+            logger.info(f"🔍 WebSocket {symbol} {timeframe}: buffers=[P:{len(prices)},H:{len(highs)},L:{len(lows)},V:{len(volumes)}] → calcul PARTIEL seulement")
             # Calcul partiel pour avoir au moins RSI et quelques indicateurs de base
             logger.debug(f"📊 Calcul partiel des indicateurs pour {symbol} {timeframe}")
             
@@ -869,7 +888,19 @@ class BinanceWebSocket:
         self.last_message_time = time.time()
         
         try:
-            # 🚀 NOUVEAU : Initialiser le cache incrémental de manière simple
+            # 🔄 NOUVEAU : Restaurer les buffers WebSocket depuis Redis
+            logger.info("🔄 Restoration des buffers WebSocket depuis Redis...")
+            restored_buffers = await self._restore_buffers_from_redis()
+            
+            if restored_buffers > 0:
+                logger.info(f"✅ {restored_buffers} buffers WebSocket restaurés - CONTINUITÉ PRÉSERVÉE")
+            else:
+                logger.info("🆕 Aucun buffer restauré - Premier démarrage ou cache vide")
+            
+            # 🚀 NOUVEAU : S'assurer que les buffers ont assez de données pour tous les indicateurs
+            await self._ensure_sufficient_buffer_data()
+            
+            # 🚀 Initialiser le cache incrémental (compléter si pas restauré)
             logger.info("💾 Initialisation du cache incrémental pour EMA/MACD lisses...")
             for symbol in self.symbols:
                 for timeframe in self.timeframes:
@@ -879,14 +910,18 @@ class BinanceWebSocket:
             # Démarrer la connexion
             await self._connect()
             
-            # Démarrer le vérificateur de heartbeat dans une tâche séparée
+            # Démarrer les tâches parallèles
             heartbeat_task = asyncio.create_task(self._heartbeat_check())
+            buffer_save_task = asyncio.create_task(self._periodic_buffer_save())
+            
+            logger.info("🚀 WebSocket + Sauvegarde périodique démarrés")
             
             # Écouter les messages
             await self._listen()
             
-            # Annuler la tâche de heartbeat si on sort de la boucle
+            # Annuler les tâches parallèles si on sort de la boucle
             heartbeat_task.cancel()
+            buffer_save_task.cancel()
             
         except Exception as e:
             logger.error(f"Erreur critique dans la boucle WebSocket: {str(e)}")
@@ -898,6 +933,14 @@ class BinanceWebSocket:
         """
         logger.info("Arrêt de la connexion WebSocket Binance...")
         self.running = False
+        
+        # 💾 Sauvegarder les buffers avant l'arrêt pour préserver la continuité
+        logger.info("💾 Sauvegarde finale des buffers WebSocket...")
+        try:
+            await self._save_buffers_to_redis()
+            logger.info("✅ Buffers sauvegardés pour la prochaine restoration")
+        except Exception as e:
+            logger.warning(f"Erreur sauvegarde finale: {e}")
         
         if self.ws:
             try:
@@ -924,7 +967,7 @@ class BinanceWebSocket:
             self.kafka_client.close()
             logger.info("Client Kafka fermé")
 
-    def _calculate_smooth_indicators(self, symbol: str, timeframe: str, candle_data: Dict) -> Dict:
+    def _calculate_smooth_indicators(self, symbol: str, timeframe: str, candle_data: Dict, all_indicators: Dict = None) -> Dict:
         """
         🚀 NOUVEAU : Calcule EMA/MACD de manière incrémentale pour éviter les dents de scie.
         
@@ -951,16 +994,15 @@ class BinanceWebSocket:
                 prev_ema = cache.get(cache_ema_key)
                 
                 if prev_ema is None:
-                    # Première fois : utiliser la valeur traditionnelle si on a assez de données
-                    prices = self.price_buffers[symbol][timeframe]
-                    if len(prices) >= period:
-                        from shared.src.technical_indicators import calculate_ema
-                        traditional_ema = calculate_ema(prices, period)
-                        if traditional_ema is not None:
-                            cache[cache_ema_key] = traditional_ema
-                            result[cache_ema_key] = traditional_ema
-                            logger.debug(f"🎯 EMA {period} initialisée depuis buffer: {traditional_ema:.4f}")
-                            continue
+                    # Première fois : utiliser la valeur déjà calculée dans all_indicators
+                    if all_indicators and cache_ema_key in all_indicators and all_indicators[cache_ema_key] is not None:
+                        traditional_ema = all_indicators[cache_ema_key]
+                        cache[cache_ema_key] = traditional_ema
+                        result[cache_ema_key] = traditional_ema
+                        logger.debug(f"🎯 EMA {period} initialisée depuis all_indicators: {traditional_ema:.4f}")
+                        continue
+                    else:
+                        logger.debug(f"⚠️ EMA {period} non disponible dans all_indicators, skip incrémental")
                 
                 # Calcul incrémental : EMA_new = α × price + (1-α) × EMA_prev
                 new_ema = calculate_ema_incremental(current_price, prev_ema, period)
@@ -1037,6 +1079,181 @@ class BinanceWebSocket:
             
         except Exception as e:
             logger.warning(f"⚠️ Erreur initialisation cache pour {symbol} {timeframe}: {e}")
+    
+    def _init_redis_for_buffers(self):
+        """Initialise Redis pour la sauvegarde des buffers WebSocket"""
+        try:
+            from shared.src.redis_client import RedisClient
+            self.redis_client = RedisClient()
+            logger.info("✅ WebSocket connecté à Redis pour persistence des buffers")
+        except Exception as e:
+            logger.warning(f"⚠️ WebSocket sans Redis: {e}")
+            self.redis_client = None
+    
+    async def _save_buffers_to_redis(self):
+        """Sauvegarde périodique des buffers WebSocket vers Redis"""
+        if not self.redis_client:
+            return
+        
+        try:
+            saved_count = 0
+            ttl = 24 * 3600  # 24h TTL pour buffers WebSocket
+            
+            for symbol in self.symbols:
+                for timeframe in self.timeframes:
+                    # Sauvegarder les price_buffers
+                    if symbol in self.price_buffers and timeframe in self.price_buffers[symbol]:
+                        if self.price_buffers[symbol][timeframe]:
+                            key = f"ws_buffers:prices:{symbol}:{timeframe}"
+                            buffer_data = {
+                                'prices': self.price_buffers[symbol][timeframe][-100:],  # Garder 100 derniers
+                                'timestamp': time.time()
+                            }
+                            self.redis_client.set(key, json.dumps(buffer_data), expiration=ttl)
+                            saved_count += 1
+                    
+                    # Sauvegarder incremental_cache
+                    if symbol in self.incremental_cache and timeframe in self.incremental_cache[symbol]:
+                        if self.incremental_cache[symbol][timeframe]:
+                            key = f"ws_buffers:incremental:{symbol}:{timeframe}"
+                            cache_data = {
+                                'cache': self.incremental_cache[symbol][timeframe],
+                                'timestamp': time.time()
+                            }
+                            self.redis_client.set(key, json.dumps(cache_data), expiration=ttl)
+                            saved_count += 1
+            
+            if saved_count > 0:
+                logger.debug(f"💾 {saved_count} buffers WebSocket sauvegardés vers Redis")
+                
+        except Exception as e:
+            logger.warning(f"Erreur sauvegarde buffers: {e}")
+    
+    async def _restore_buffers_from_redis(self):
+        """Restaure les buffers WebSocket depuis Redis au démarrage"""
+        if not self.redis_client:
+            return 0
+        
+        try:
+            restored_count = 0
+            
+            for symbol in self.symbols:
+                for timeframe in self.timeframes:
+                    # Restaurer price_buffers
+                    try:
+                        key = f"ws_buffers:prices:{symbol}:{timeframe}"
+                        buffer_data = self.redis_client.get(key)
+                        if buffer_data:
+                            # RedisClientPool fait déjà le parsing JSON automatiquement
+                            if isinstance(buffer_data, str):
+                                buffer_data = json.loads(buffer_data)
+                            self.price_buffers[symbol][timeframe] = buffer_data.get('prices', [])
+                            restored_count += 1
+                            logger.debug(f"🔄 Prices buffer restauré: {symbol} {timeframe} ({len(self.price_buffers[symbol][timeframe])} prix)")
+                    except Exception as e:
+                        logger.warning(f"Erreur restoration prices {symbol} {timeframe}: {e}")
+                    
+                    # Restaurer incremental_cache
+                    try:
+                        key = f"ws_buffers:incremental:{symbol}:{timeframe}"
+                        cache_data = self.redis_client.get(key)
+                        if cache_data:
+                            # RedisClientPool fait déjà le parsing JSON automatiquement
+                            if isinstance(cache_data, str):
+                                cache_data = json.loads(cache_data)
+                            self.incremental_cache[symbol][timeframe].update(cache_data.get('cache', {}))
+                            restored_count += 1
+                            logger.debug(f"🔄 Cache incrémental restauré: {symbol} {timeframe}")
+                    except Exception as e:
+                        logger.warning(f"Erreur restoration cache {symbol} {timeframe}: {e}")
+            
+            if restored_count > 0:
+                logger.info(f"🔄 {restored_count} buffers WebSocket restaurés depuis Redis")
+            
+            return restored_count
+            
+        except Exception as e:
+            logger.error(f"Erreur restoration buffers: {e}")
+            return 0
+    
+    async def _periodic_buffer_save(self):
+        """Tâche périodique de sauvegarde des buffers"""
+        while self.running:
+            try:
+                current_time = time.time()
+                if current_time - self.last_buffer_save_time > self.buffer_save_interval:
+                    await self._save_buffers_to_redis()
+                    self.last_buffer_save_time = current_time
+                
+                await asyncio.sleep(60)  # Vérifier toutes les minutes
+                
+            except Exception as e:
+                logger.warning(f"Erreur sauvegarde périodique: {e}")
+                await asyncio.sleep(60)
+
+    async def _ensure_sufficient_buffer_data(self):
+        """
+        S'assure que les buffers WebSocket ont suffisamment de données (≥20 points)
+        pour calculer immédiatement tous les 33 indicateurs techniques.
+        """
+        try:
+            import aiohttp
+            
+            total_fetched = 0
+            
+            for symbol in self.symbols:
+                for timeframe in self.timeframes:
+                    current_buffer_size = len(self.price_buffers[symbol][timeframe])
+                    
+                    # Vérifier TOUS les buffers pour ce symbole/timeframe  
+                    highs_size = len(self.high_buffers[symbol][timeframe])
+                    lows_size = len(self.low_buffers[symbol][timeframe])
+                    volumes_size = len(self.volume_buffers[symbol][timeframe])
+                    min_buffer_size = min(current_buffer_size, highs_size, lows_size, volumes_size)
+                    
+                    if min_buffer_size < 20:
+                        # Fetch recent klines from Binance API to fill buffers
+                        needed_points = 25 - min_buffer_size  # Fetch a few extra
+                        
+                        try:
+                            url = "https://api.binance.com/api/v3/klines"
+                            params = {
+                                'symbol': symbol,
+                                'interval': timeframe,
+                                'limit': needed_points
+                            }
+                            
+                            async with aiohttp.ClientSession() as session:
+                                async with session.get(url, params=params, timeout=10) as response:
+                                    if response.status == 200:
+                                        klines = await response.json()
+                                        
+                                        # Add to buffers (but don't exceed buffer limit)
+                                        for kline in klines:
+                                            if len(self.price_buffers[symbol][timeframe]) >= 100:
+                                                break  # Respect buffer limit
+                                                
+                                            self.price_buffers[symbol][timeframe].append(float(kline[4]))  # close
+                                            self.high_buffers[symbol][timeframe].append(float(kline[2]))   # high
+                                            self.low_buffers[symbol][timeframe].append(float(kline[3]))    # low
+                                            self.volume_buffers[symbol][timeframe].append(float(kline[5])) # volume
+                                            total_fetched += 1
+                                        
+                                        logger.debug(f"📊 Pré-rempli {symbol} {timeframe}: +{len(klines)} points → buffers=[P:{len(self.price_buffers[symbol][timeframe])},H:{len(self.high_buffers[symbol][timeframe])},L:{len(self.low_buffers[symbol][timeframe])},V:{len(self.volume_buffers[symbol][timeframe])}]")
+                                    
+                                    # Respect rate limits
+                                    await asyncio.sleep(0.1)
+                                    
+                        except Exception as e:
+                            logger.warning(f"Erreur pré-remplissage {symbol} {timeframe}: {e}")
+            
+            if total_fetched > 0:
+                logger.info(f"🚀 Buffers WebSocket pré-remplis: {total_fetched} points ajoutés pour calcul immédiat des 33 indicateurs")
+            else:
+                logger.info("💾 Buffers WebSocket déjà suffisamment remplis")
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur lors du pré-remplissage des buffers: {e}")
 
 # Fonction principale pour exécuter le WebSocket de manière asynchrone
 async def run_binance_websocket():

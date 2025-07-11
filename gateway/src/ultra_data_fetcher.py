@@ -243,28 +243,42 @@ class UltraDataFetcher:
             # Ajouter tous les indicateurs calculés
             enriched_data.update(final_indicators)
             
+            # **NOUVEAU**: Sauvegarder les indicateurs dans le cache persistant
+            from shared.src.technical_indicators import indicator_cache
+            for indicator_name, indicator_value in final_indicators.items():
+                # Sauvegarder seulement les indicateurs numériques valides
+                if isinstance(indicator_value, (int, float)) and not (isinstance(indicator_value, float) and indicator_value != indicator_value):
+                    indicator_cache.set(symbol, timeframe, indicator_name, indicator_value)
+            
             if incremental_indicators:
-                logger.debug(f"✅ {len(final_indicators)} indicateurs calculés pour {symbol} (🚀 EMA/MACD incrémentaux)")
+                logger.debug(f"✅ {len(final_indicators)} indicateurs calculés et sauvegardés pour {symbol} (🚀 EMA/MACD incrémentaux)")
             
             # Indicateurs additionnels non couverts par le module partagé
+            additional_indicators = {}
             if len(prices) >= 20:
                 # Stochastic RSI (pas dans le module partagé)
-                enriched_data['stoch_rsi'] = self._calculate_stoch_rsi(prices, 14)
+                additional_indicators['stoch_rsi'] = self._calculate_stoch_rsi(prices, 14)
                 
                 # ADX déjà calculé par calculate_all_indicators avec plus_di/minus_di
                 # Pas besoin de recalculer individuellement
                 
                 # Williams %R
-                enriched_data['williams_r'] = self._calculate_williams_r(highs, lows, prices, 14)
+                additional_indicators['williams_r'] = self._calculate_williams_r(highs, lows, prices, 14)
                 
                 # CCI
-                enriched_data['cci_20'] = self._calculate_cci(highs, lows, prices, 20)
+                additional_indicators['cci_20'] = self._calculate_cci(highs, lows, prices, 20)
             
             # VWAP
             if len(prices) >= 10:
-                enriched_data['vwap_10'] = self._calculate_vwap(prices[-10:], volumes[-10:])
+                additional_indicators['vwap_10'] = self._calculate_vwap(prices[-10:], volumes[-10:])
             
-            logger.debug(f"✅ {symbol} {timeframe}: {len(enriched_data)} indicateurs calculés (module partagé + additionnels)")
+            # Ajouter et sauvegarder les indicateurs additionnels
+            enriched_data.update(additional_indicators)
+            for indicator_name, indicator_value in additional_indicators.items():
+                if isinstance(indicator_value, (int, float)) and not (isinstance(indicator_value, float) and indicator_value != indicator_value):
+                    indicator_cache.set(symbol, timeframe, indicator_name, indicator_value)
+            
+            logger.debug(f"✅ {symbol} {timeframe}: {len(enriched_data)} indicateurs calculés et sauvegardés (module partagé + additionnels)")
             return enriched_data
             
         except Exception as e:
@@ -334,9 +348,18 @@ class UltraDataFetcher:
             logger.error(f"❌ Erreur mise à jour buffers {symbol} {timeframe}: {e}")
     
     async def _store_in_redis(self, key: str, data: Dict):
-        """Stocke les données dans Redis"""
+        """Stocke les données dans Redis avec TTL étendu pour continuité"""
         try:
-            self.redis_client.set(key, json.dumps(data), expiration=3600)  # Expire après 1h
+            # TTL étendu : 48h pour données historiques, 24h pour sentiment/ticker
+            if "market_data:" in key:
+                ttl = 48 * 3600  # 48 heures pour données de marché
+            elif "orderbook_sentiment:" in key or "ticker:" in key:
+                ttl = 24 * 3600  # 24 heures pour sentiment et ticker
+            else:
+                ttl = 12 * 3600  # 12 heures par défaut
+            
+            self.redis_client.set(key, json.dumps(data), expiration=ttl)
+            logger.debug(f"💾 Données stockées Redis {key} (TTL: {ttl/3600}h)")
         except Exception as e:
             logger.error(f"❌ Erreur stockage Redis {key}: {e}")
     
@@ -640,10 +663,19 @@ class UltraDataFetcher:
                                 )
                                 
                                 # Publier chaque point enrichi sur Kafka
-                                for enriched_point in enriched_historical:
+                                for i, enriched_point in enumerate(enriched_historical):
                                     try:
-                                        kafka_topic = f"market.data.{symbol.lower()}.{timeframe}"
-                                        kafka_producer.publish_market_data(enriched_point, kafka_topic)
+                                        # Assurer que les champs symbol et timeframe sont présents pour la génération automatique du topic
+                                        enriched_point['symbol'] = symbol  
+                                        enriched_point['timeframe'] = timeframe
+                                        
+                                        # Debug: Log d'un échantillon pour voir ce qui est publié
+                                        if i == len(enriched_historical) - 1:  # Dernier point
+                                            indicators_in_point = [k for k in enriched_point.keys() if k not in ['symbol', 'interval', 'start_time', 'open_time', 'close_time', 'open', 'high', 'low', 'close', 'volume', 'is_closed', 'is_historical', 'enhanced', 'ultra_enriched', 'timeframe']]
+                                            logger.error(f"🔍 KAFKA PUBLISH {symbol} {timeframe}: {len(indicators_in_point)} indicateurs dans le point")
+                                            logger.error(f"🔍 Indicateurs dans le point: {indicators_in_point}")
+                                        
+                                        kafka_producer.publish_market_data(enriched_point, symbol)
                                         total_published += 1
                                         
                                     except Exception as e:
@@ -760,8 +792,8 @@ class UltraDataFetcher:
     
     async def _enrich_historical_batch(self, klines: List, symbol: str, timeframe: str) -> List[Dict]:
         """
-        Enrichit les données historiques avec calcul séquentiel des indicateurs.
-        NOUVELLE APPROCHE: Calcule les indicateurs point par point pour garantir la continuité.
+        Enrichit les données historiques avec calcul correct des indicateurs.
+        APPROCHE CORRIGÉE: Utilise les buffers historiques complets pour calculer TOUS les indicateurs.
         
         Args:
             klines: Liste des klines historiques brutes (triées chronologiquement)
@@ -769,33 +801,52 @@ class UltraDataFetcher:
             timeframe: Timeframe des données
             
         Returns:
-            Liste des points enrichis avec indicateurs calculés séquentiellement
+            Liste des points enrichis avec indicateurs calculés correctement
         """
-        from shared.src.technical_indicators import indicator_cache
+        from shared.src.technical_indicators import indicator_cache, indicators
         
         enriched_points = []
         
         try:
-            logger.info(f"🔄 Enrichissement séquentiel de {len(klines)} points pour {symbol} {timeframe}")
+            logger.info(f"🔄 Enrichissement de {len(klines)} points historiques pour {symbol} {timeframe}")
             
-            # **FIX CRITIQUE**: Vider le cache pour ce symbole/timeframe pour garantir un recalcul propre
-            indicator_cache.clear_symbol(symbol)
-            logger.debug(f"Cache indicateurs vidé pour {symbol}")
+            # **FIX CRITIQUE**: Construire les arrays complets pour calcul des indicateurs
+            prices = []
+            highs = []
+            lows = []
+            volumes = []
+            timestamps = []
             
-            # Calculer les indicateurs point par point (approche séquentielle)
+            # Accumuler TOUTES les données historiques
+            for kline in klines:
+                prices.append(float(kline[4]))    # close
+                highs.append(float(kline[2]))     # high  
+                lows.append(float(kline[3]))      # low
+                volumes.append(float(kline[5]))   # volume
+                timestamps.append(kline[0])       # timestamp
+            
+            logger.info(f"📊 Calcul des indicateurs sur {len(prices)} points pour {symbol} {timeframe}")
+            
+            # **FIX CRITIQUE**: Calculer TOUS les indicateurs avec les données complètes
+            from shared.src.technical_indicators import TechnicalIndicators
+            tech_indicators = TechnicalIndicators()
+            all_indicators = tech_indicators.calculate_all_indicators(highs, lows, prices, volumes)
+            
+            # Debug: vérifier le format des indicateurs retournés
+            if all_indicators:
+                sample_indicator = list(all_indicators.items())[0]
+                logger.error(f"🔍 DEBUG Format: {sample_indicator[0]} = {type(sample_indicator[1])} (len={len(sample_indicator[1]) if isinstance(sample_indicator[1], list) else 'scalar'})")
+                logger.error(f"🔍 DEBUG Tous les indicateurs: {list(all_indicators.keys())}")
+            
+            # Créer les points enrichis avec TOUS les indicateurs calculés
             for i, kline in enumerate(klines):
                 try:
-                    # Extraire les données OHLCV de cette kline
+                    # Données OHLCV de base
                     close_price = float(kline[4])
                     high_price = float(kline[2])
                     low_price = float(kline[3])
                     volume = float(kline[5])
                     timestamp = kline[0]
-                    
-                    # Calculer les indicateurs pour ce point (séquentiel = maintient l'état)
-                    indicators = await self._calculate_point_indicators(
-                        close_price, high_price, low_price, volume, symbol, timeframe
-                    )
                     
                     # Créer le point enrichi avec TOUS les indicateurs
                     enriched_point = {
@@ -815,18 +866,25 @@ class UltraDataFetcher:
                         'ultra_enriched': True
                     }
                     
-                    # Ajouter TOUS les indicateurs calculés à ce point
-                    if indicators:
-                        for key, value in indicators.items():
-                            if key not in ['symbol', 'timeframe', 'timestamp', 'last_update']:
-                                if isinstance(value, (int, float)) and not (isinstance(value, float) and (value != value)):  # Exclure NaN
-                                    enriched_point[key] = value
+                    # **FIX CRITIQUE**: Les indicateurs sont des scalaires (calculés sur toute la série)
+                    # Pour les données historiques, on applique les DERNIERS indicateurs calculés à TOUS les points
+                    point_indicators = {}
+                    if all_indicators:
+                        for indicator_name, indicator_value in all_indicators.items():
+                            if indicator_value is not None and not (isinstance(indicator_value, float) and indicator_value != indicator_value):  # Pas NaN
+                                point_indicators[indicator_name] = indicator_value
+                                enriched_point[indicator_name] = indicator_value
+                    
+                    # **NOUVEAU**: Sauvegarder dans le cache persistant pour continuité
+                    for indicator_name, indicator_value in point_indicators.items():
+                        indicator_cache.set(symbol, timeframe, indicator_name, indicator_value)
                     
                     enriched_points.append(enriched_point)
                     
-                    # Log de progression pour les gros datasets
-                    if i > 0 and i % 50 == 0:
-                        logger.debug(f"Progression {symbol} {timeframe}: {i}/{len(klines)} points traités")
+                    # Log de progression avec count réel des indicateurs
+                    if (i + 1) % max(1, len(klines) // 10) == 0 or i == len(klines) - 1:
+                        indicators_count = len(point_indicators)
+                        logger.debug(f"  ⚡ Point {i+1}/{len(klines)}: {indicators_count} indicateurs pour {close_price}")
                         
                 except Exception as e:
                     logger.warning(f"Erreur traitement point {i} pour {symbol} {timeframe}: {e}")
@@ -847,7 +905,16 @@ class UltraDataFetcher:
                     }
                     enriched_points.append(basic_point)
             
-            logger.info(f"✅ {symbol} {timeframe}: {len(enriched_points)} points enrichis séquentiellement")
+            # Log final avec statistiques détaillées
+            if enriched_points:
+                sample_indicators = len([k for k in enriched_points[-1].keys() 
+                                       if k not in ['symbol', 'interval', 'start_time', 'open_time', 'close_time', 
+                                                   'open', 'high', 'low', 'close', 'volume', 'is_closed', 
+                                                   'is_historical', 'enhanced', 'ultra_enriched']])
+                logger.info(f"✅ {symbol} {timeframe}: {len(enriched_points)} points avec {sample_indicators} indicateurs chacun")
+            else:
+                logger.warning(f"⚠️ Aucun point enrichi généré pour {symbol} {timeframe}")
+            
             return enriched_points
             
         except Exception as e:
@@ -921,10 +988,14 @@ class UltraDataFetcher:
                 # Calculs simples possibles avec un point
                 point_indicators['rsi_14'] = incremental_indicators.get('rsi_14', 50.0)  # Valeur par défaut neutre
                 
-                # Pour RSI, on peut utiliser une approximation ou garder la dernière valeur
-                # Les vrais calculs RSI nécessitent plus de points
+                # **NOUVEAU**: Sauvegarder explicitement les indicateurs dans le cache persistant
+                from shared.src.technical_indicators import indicator_cache
+                for indicator_name, indicator_value in incremental_indicators.items():
+                    # Sauvegarder seulement les indicateurs numériques valides
+                    if isinstance(indicator_value, (int, float)) and not (isinstance(indicator_value, float) and indicator_value != indicator_value):
+                        indicator_cache.set(symbol, timeframe, indicator_name, indicator_value)
                 
-                logger.debug(f"Point {symbol} {timeframe}: {len(point_indicators)} indicateurs calculés")
+                logger.debug(f"Point {symbol} {timeframe}: {len(point_indicators)} indicateurs calculés et sauvegardés")
             
             return point_indicators
             
