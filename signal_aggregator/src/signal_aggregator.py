@@ -295,7 +295,14 @@ class SignalAggregator:
                     logger.info(f"⏰ Délai d'attente écoulé pour {symbol}, traitement du signal unique")
                     # Continuer avec le signal unique après délai
             else:
-                logger.info(f"🎯 Confluence détectée pour {symbol}: {buffer_size} signaux, traitement immédiat")
+                # Analyser rapidement si les signaux sont dans la même direction
+                sides = [s.get('side', s.get('side', '')).upper() for s in self.signal_buffer[symbol]]
+                unique_sides = set(sides)
+                
+                if len(unique_sides) == 1:
+                    logger.info(f"🎯 Confluence détectée pour {symbol}: {buffer_size} signaux {list(unique_sides)[0]}, traitement immédiat")
+                else:
+                    logger.info(f"⚡ Signaux multiples détectés pour {symbol}: {buffer_size} signaux mixtes, analyse en cours")
                 
             # Get market regime FIRST pour filtrage intelligent (enhanced if available, sinon fallback)
             if self.enhanced_regime_detector:
@@ -458,14 +465,32 @@ class SignalAggregator:
                         f"BUY ultra={len(ultra_buy)} classic={len(classic_buy)} "
                         f"SELL ultra={len(ultra_sell)} classic={len(classic_sell)}")
 
+        # NOUVEAU: Détection de signaux contradictoires
+        if BUY_signals and SELL_signals:
+            # Les signaux sont opposés - c'est un conflit, pas une confluence!
+            total_signals = len(BUY_signals) + len(SELL_signals)
+            buy_ratio = len(BUY_signals) / total_signals
+            sell_ratio = len(SELL_signals) / total_signals
+            
+            # Si les signaux sont trop équilibrés (40-60%), rejeter
+            if 0.4 <= buy_ratio <= 0.6:
+                logger.warning(f"⚠️ Signaux contradictoires pour {symbol}: "
+                             f"{len(BUY_signals)} BUY vs {len(SELL_signals)} SELL - REJET")
+                return None
+            
+            # Si un côté domine fortement (>70%), l'accepter mais réduire la confiance
+            confidence_penalty = 0.2  # Pénalité pour signaux opposés
+        else:
+            confidence_penalty = 0.0
+        
         # Determine side
         if BUY_score > SELL_score and BUY_score >= self.min_vote_threshold:
             side = 'BUY'
-            confidence = BUY_score / (BUY_score + SELL_score)
+            confidence = max(0.5, (BUY_score / (BUY_score + SELL_score)) - confidence_penalty)
             contributing_strategies = [s['strategy'] for s in BUY_signals]
         elif SELL_score > BUY_score and SELL_score >= self.min_vote_threshold:
             side = 'SELL'
-            confidence = SELL_score / (BUY_score + SELL_score)
+            confidence = max(0.5, (SELL_score / (BUY_score + SELL_score)) - confidence_penalty)
             contributing_strategies = [s['strategy'] for s in SELL_signals]
         else:
             # No clear signal

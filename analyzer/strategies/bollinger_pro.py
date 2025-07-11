@@ -191,6 +191,9 @@ class BollingerProStrategy(BaseStrategy):
                           f"({pattern_analysis['type']}, pos: {bb_position:.2f}, width: {bb_width:.3f}, "
                           f"Context: {context_analysis['score']:.1f}, Conf: {signal.confidence:.2f})")
                 
+                # Log metadata pour debug
+                logger.info(f"📊 Bollinger Pro metadata avant retour: {signal.metadata}")
+                
                 # Convertir StrategySignal en dict pour compatibilité
                 return {
                     'strategy': signal.strategy,
@@ -199,7 +202,7 @@ class BollingerProStrategy(BaseStrategy):
                     'timestamp': signal.timestamp.isoformat(),
                     'price': signal.price,
                     'confidence': signal.confidence,
-                    'strength': signal.strength.value,
+                    'strength': signal.strength,
                     'metadata': signal.metadata
                 }
             

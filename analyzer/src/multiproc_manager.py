@@ -178,7 +178,15 @@ class AnalyzerManager:
                                 continue
                             
                             # Recréer l'objet StrategySignal
+                            # S'assurer que les métadonnées sont présentes
+                            if 'metadata' not in signal_dict:
+                                signal_dict['metadata'] = {}
+                            
                             signal = StrategySignal(**signal_dict)
+                            
+                            # Log pour debug
+                            logger.info(f"📊 Signal dict metadata: {signal_dict.get('metadata', {})}")
+                            logger.info(f"📊 Signal object metadata: {signal.metadata}")
                         
                             # Publier le signal si valide
                             self.redis_subscriber.publish_signal(signal)

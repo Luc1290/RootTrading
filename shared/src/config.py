@@ -45,18 +45,32 @@ def get_db_config() -> Dict[str, Any]:
     }
 
 # Paramètres de trading
-DEFAULT_SYMBOL = os.getenv("SYMBOL", "SOLUSDC")
-SYMBOLS = os.getenv("SYMBOLS", "BTCUSDC,ETHUSDC,SOLUSDC,XRPUSDC,ADAUSDC").split(",")
-INTERVAL = os.getenv("INTERVAL", "1m")
-VALIDATION_INTERVAL = os.getenv("VALIDATION_INTERVAL", "15m")
-SCALPING_INTERVALS = os.getenv("SCALPING_INTERVALS", "1m,5m,15m,1h,4h").split(",")
-TRADING_MODE = os.getenv("TRADING_MODE", "demo")  # 'demo' ou 'live'
+DEFAULT_SYMBOL = "SOLUSDC"
+SYMBOLS = ["BTCUSDC", "ETHUSDC", "SOLUSDC", "XRPUSDC"]
+INTERVAL = "1m"
+VALIDATION_INTERVAL = "15m"
+SCALPING_INTERVALS = ["1m", "5m", "15m", "1h", "4h"]
+TRADING_MODE = os.getenv("TRADING_MODE", "demo")  # 'demo' ou 'live' - reste dans .env car peut changer
 
-# Quantités individuelles par symbole
-TRADE_QUANTITY_SOLUSDC = float(os.getenv("TRADE_QUANTITY_SOLUSDC", 0.17))
-TRADE_QUANTITY_XRPUSDC = float(os.getenv("TRADE_QUANTITY_XRPUSDC", 11.0))
-TRADE_QUANTITY_SOL = float(os.getenv("TRADE_QUANTITY_SOL", 0.17))
-TRADE_QUANTITY_XRP = float(os.getenv("TRADE_QUANTITY_XRP", 11.0))
+# Allocation dynamique par pourcentage de capital
+ALLOCATION_WEAK_PCT = 15.0
+ALLOCATION_MODERATE_PCT = 25.0
+ALLOCATION_STRONG_PCT = 35.0
+ALLOCATION_VERY_STRONG_PCT = 50.0
+
+# Limites d'allocation par devise
+MIN_TRADE_USDC = 15.0
+MAX_TRADE_USDC = 200.0
+MIN_TRADE_SOL = 0.15
+MAX_TRADE_SOL = 1.5
+MIN_TRADE_XRP = 10.0
+MAX_TRADE_XRP = 100.0
+
+# Quantités individuelles par symbole (legacy)
+TRADE_QUANTITY_SOLUSDC = 0.17
+TRADE_QUANTITY_XRPUSDC = 11.0
+TRADE_QUANTITY_SOL = 0.17
+TRADE_QUANTITY_XRP = 11.0
 
 # Dictionnaire centralisé
 TRADE_QUANTITIES = {
@@ -95,30 +109,30 @@ STRATEGY_PARAMS = {
     },
     # Paramètres globaux pour toutes les stratégies Pro
     "global": {
-        "confluence_threshold": float(os.getenv("CONFLUENCE_THRESHOLD", 55.0)),
-        "min_adx_trend": float(os.getenv("MIN_ADX_TREND", 25.0)),
-        "min_volume_ratio": float(os.getenv("MIN_VOLUME_RATIO", 1.2)),
-        "context_score_threshold": float(os.getenv("CONTEXT_SCORE_THRESHOLD", 50.0))
+        "confluence_threshold": 55.0,
+        "min_adx_trend": 25.0,
+        "min_volume_ratio": 1.2,
+        "context_score_threshold": 50.0
     }
 }
 
 # ADX Hybrid Configuration
-ADX_SMOOTHING_PERIOD = int(os.getenv("ADX_SMOOTHING_PERIOD", 3))
-ADX_HYBRID_MODE = os.getenv("ADX_HYBRID_MODE", "true").lower() == "true"
+ADX_SMOOTHING_PERIOD = 3
+ADX_HYBRID_MODE = True
 
 # Regime Detection Thresholds (Optimized for crypto volatility)
-ADX_NO_TREND_THRESHOLD = float(os.getenv("ADX_NO_TREND_THRESHOLD", 18))
-ADX_WEAK_TREND_THRESHOLD = float(os.getenv("ADX_WEAK_TREND_THRESHOLD", 23))
-ADX_TREND_THRESHOLD = float(os.getenv("ADX_TREND_THRESHOLD", 32))
-ADX_STRONG_TREND_THRESHOLD = float(os.getenv("ADX_STRONG_TREND_THRESHOLD", 42))
+ADX_NO_TREND_THRESHOLD = 18.0
+ADX_WEAK_TREND_THRESHOLD = 23.0
+ADX_TREND_THRESHOLD = 32.0
+ADX_STRONG_TREND_THRESHOLD = 42.0
 
 # Signal Aggregator Settings - Optimisés pour stratégies Pro
-SIGNAL_COOLDOWN_MINUTES = int(os.getenv("SIGNAL_COOLDOWN_MINUTES", 3))
-VOTE_THRESHOLD = float(os.getenv("VOTE_THRESHOLD", 0.40))  # Augmenté pour stratégies Pro plus sélectives
-CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", 0.70))  # Augmenté pour qualité supérieure
+SIGNAL_COOLDOWN_MINUTES = 3
+VOTE_THRESHOLD = 0.40  # Augmenté pour stratégies Pro plus sélectives
+CONFIDENCE_THRESHOLD = 0.70  # Augmenté pour qualité supérieure
 
 # Configuration des canaux Redis
-CHANNEL_PREFIX = os.getenv("CHANNEL_PREFIX", "roottrading")
+CHANNEL_PREFIX = "roottrading"
 
 # Chemins de Kafka Topics
 KAFKA_TOPIC_MARKET_DATA = "market.data"
@@ -126,6 +140,16 @@ KAFKA_TOPIC_SIGNALS = "signals"
 KAFKA_TOPIC_ORDERS = "orders"
 KAFKA_TOPIC_EXECUTIONS = "executions"
 KAFKA_TOPIC_ERRORS = "errors"
+
+# Ports des services
+GATEWAY_PORT = 5010
+ANALYZER_PORT = 5012
+SIGNAL_AGGREGATOR_PORT = 5013
+TRADER_PORT = 5002
+PORTFOLIO_PORT = 8000
+VISUALIZATION_PORT = 5009
+COORDINATOR_PORT = 5003
+DISPATCHER_PORT = 5004
 
 # Logging
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

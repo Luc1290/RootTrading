@@ -290,7 +290,8 @@ class AnalyzerService:
                             price=signal_dict['price'],
                             confidence=signal_dict['confidence'],
                             timestamp=signal_dict.get('timestamp'),
-                            strength=signal_dict.get('strength', SignalStrength.MODERATE)
+                            strength=signal_dict.get('strength', SignalStrength.MODERATE),
+                            metadata=signal_dict.get('metadata', {})
                         )
                         
                         self.redis_subscriber.publish_signal(strategy_signal)

@@ -206,7 +206,7 @@ class MACDProStrategy(BaseStrategy):
                     'timestamp': signal.timestamp.isoformat(),
                     'price': signal.price,
                     'confidence': signal.confidence,
-                    'strength': signal.strength.value,
+                    'strength': signal.strength,
                     'metadata': signal.metadata
                 }
             

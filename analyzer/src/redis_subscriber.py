@@ -167,6 +167,11 @@ class RedisSubscriber:
             
             # Convertir le signal en dictionnaire
             signal_dict = signal.dict()
+            
+            # Log pour debug des métadonnées
+            if hasattr(signal, 'metadata'):
+                logger.debug(f"📊 Métadonnées avant conversion: {signal.metadata}")
+                logger.debug(f"📊 Métadonnées après dict(): {signal_dict.get('metadata', 'MISSING')}")
         
             # S'assurer que timestamp est converti en chaîne ISO
             if "timestamp" in signal_dict and isinstance(signal_dict["timestamp"], datetime.datetime):
