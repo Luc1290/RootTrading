@@ -190,8 +190,9 @@ class SignalAggregatorService:
         try:
             logger.info("🔄 Chargement des données historiques pour signal_aggregator...")
             
-            # Symboles de trading (peut-être à récupérer depuis config)
-            symbols = ['BTCUSDC', 'ETHUSDC', 'SOLUSDC', 'XRPUSDC']
+            # Utiliser les symboles depuis la config partagée
+            from shared.src.config import SYMBOLS
+            symbols = SYMBOLS
             
             for symbol in symbols:
                 # Charger les données de marché 5m (timeframe principal harmonisé)

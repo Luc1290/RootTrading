@@ -1686,15 +1686,26 @@ class TechnicalIndicators:
         
         # Log détaillé si différences détectées
         if min_length != max_length:
-            logger.warning(f"Arrays de longueurs différentes détectés: {lengths}")
-            logger.warning(f"Troncature à {min_length} éléments")
+            data_loss = max_length - min_length
+            data_loss_pct = (data_loss / max_length) * 100 if max_length > 0 else 0
             
-            # Tronquer tous les arrays à la longueur minimum
+            if data_loss_pct > 10:  # Perte de plus de 10% des données
+                logger.error(f"❌ PERTE DE DONNÉES CRITIQUE: Arrays désalignés {lengths}")
+                logger.error(f"❌ Perte: {data_loss} points ({data_loss_pct:.1f}%) - INDICATEURS COMPROMIS")
+            else:
+                logger.warning(f"⚠️ Arrays de longueurs différentes: {lengths}")
+            
+            logger.warning(f"🔧 Troncature forcée à {min_length} éléments pour alignement")
+            
+            # Tronquer tous les arrays à la longueur minimum (garder les plus récents)
             aligned_arrays = [arr[-min_length:] for arr in np_arrays]
             
             # Vérification post-alignement
             post_lengths = [len(arr) for arr in aligned_arrays]
-            logger.info(f"Post-alignement: {post_lengths}")
+            if all(l == min_length for l in post_lengths):
+                logger.info(f"✅ Post-alignement réussi: {post_lengths}")
+            else:
+                logger.error(f"❌ Échec post-alignement: {post_lengths}")
             
             return tuple(aligned_arrays)
         

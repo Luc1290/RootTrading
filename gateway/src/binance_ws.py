@@ -296,22 +296,68 @@ class BinanceWebSocket:
         low_price = candle_data['low']
         volume = candle_data['volume']
         
-        # Ajouter aux buffers (garder 200 dernières valeurs max)
-        if len(self.price_buffers[symbol][timeframe]) >= 200:
-            self.price_buffers[symbol][timeframe].pop(0)
-        self.price_buffers[symbol][timeframe].append(close_price)
-        
-        if len(self.high_buffers[symbol][timeframe]) >= 200:
-            self.high_buffers[symbol][timeframe].pop(0)
-        self.high_buffers[symbol][timeframe].append(high_price)
-        
-        if len(self.low_buffers[symbol][timeframe]) >= 200:
-            self.low_buffers[symbol][timeframe].pop(0)
-        self.low_buffers[symbol][timeframe].append(low_price)
-        
-        if len(self.volume_buffers[symbol][timeframe]) >= 200:
-            self.volume_buffers[symbol][timeframe].pop(0)
-        self.volume_buffers[symbol][timeframe].append(volume)
+        # 🔧 FIX CRITIQUE: Mise à jour ATOMIQUE des buffers pour éviter désalignement
+        try:
+            # Vérifier les longueurs actuelles avant modification
+            price_len = len(self.price_buffers[symbol][timeframe])
+            high_len = len(self.high_buffers[symbol][timeframe])
+            low_len = len(self.low_buffers[symbol][timeframe])
+            volume_len = len(self.volume_buffers[symbol][timeframe])
+            
+            # Détecter un désalignement existant et le corriger AVANT d'ajouter
+            if not (price_len == high_len == low_len == volume_len):
+                logger.warning(f"🔧 Désalignement détecté {symbol} {timeframe}: P:{price_len} H:{high_len} L:{low_len} V:{volume_len}")
+                
+                # Trouver la longueur minimum et aligner TOUS les buffers
+                min_len = min(price_len, high_len, low_len, volume_len)
+                self.price_buffers[symbol][timeframe] = self.price_buffers[symbol][timeframe][-min_len:]
+                self.high_buffers[symbol][timeframe] = self.high_buffers[symbol][timeframe][-min_len:]
+                self.low_buffers[symbol][timeframe] = self.low_buffers[symbol][timeframe][-min_len:]
+                self.volume_buffers[symbol][timeframe] = self.volume_buffers[symbol][timeframe][-min_len:]
+                
+                logger.info(f"✅ Buffers réalignés à {min_len} éléments pour {symbol} {timeframe}")
+            
+            # Mise à jour ATOMIQUE : si un buffer doit être tronqué, TOUS le sont
+            max_buffer_size = 200
+            current_size = len(self.price_buffers[symbol][timeframe])
+            
+            if current_size >= max_buffer_size:
+                # Tronquer TOUS les buffers en même temps
+                self.price_buffers[symbol][timeframe].pop(0)
+                self.high_buffers[symbol][timeframe].pop(0)
+                self.low_buffers[symbol][timeframe].pop(0)
+                self.volume_buffers[symbol][timeframe].pop(0)
+            
+            # Ajouter TOUS les nouveaux éléments en même temps
+            self.price_buffers[symbol][timeframe].append(close_price)
+            self.high_buffers[symbol][timeframe].append(high_price)
+            self.low_buffers[symbol][timeframe].append(low_price)
+            self.volume_buffers[symbol][timeframe].append(volume)
+            
+            # Vérification post-mise à jour
+            final_lengths = [
+                len(self.price_buffers[symbol][timeframe]),
+                len(self.high_buffers[symbol][timeframe]),
+                len(self.low_buffers[symbol][timeframe]),
+                len(self.volume_buffers[symbol][timeframe])
+            ]
+            
+            if not all(l == final_lengths[0] for l in final_lengths):
+                logger.error(f"❌ ERREUR CRITIQUE: Buffers encore désalignés après correction {symbol} {timeframe}: {final_lengths}")
+                # Force synchronization as last resort
+                min_final_len = min(final_lengths)
+                self.price_buffers[symbol][timeframe] = self.price_buffers[symbol][timeframe][-min_final_len:]
+                self.high_buffers[symbol][timeframe] = self.high_buffers[symbol][timeframe][-min_final_len:]
+                self.low_buffers[symbol][timeframe] = self.low_buffers[symbol][timeframe][-min_final_len:]
+                self.volume_buffers[symbol][timeframe] = self.volume_buffers[symbol][timeframe][-min_final_len:]
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur mise à jour buffers {symbol} {timeframe}: {e}")
+            # En cas d'erreur critique, recréer des buffers propres
+            self.price_buffers[symbol][timeframe] = [close_price]
+            self.high_buffers[symbol][timeframe] = [high_price]
+            self.low_buffers[symbol][timeframe] = [low_price]
+            self.volume_buffers[symbol][timeframe] = [volume]
         
         prices = self.price_buffers[symbol][timeframe]
         highs = self.high_buffers[symbol][timeframe]
@@ -320,7 +366,22 @@ class BinanceWebSocket:
         
         # 🚀 HYBRIDE UNIFIÉ : Toujours calculer TOUS les indicateurs grâce aux données historiques
         if len(prices) >= 1:  # Même avec 1 seul point, on peut utiliser l'historique !
-            logger.info(f"📊 HYBRIDE WebSocket {symbol} {timeframe}: buffers=[P:{len(prices)},H:{len(highs)},L:{len(lows)},V:{len(volumes)}] → calcul COMPLET avec historique")
+            # Vérifier que tous les buffers sont bien alignés
+            all_lengths = [len(prices), len(highs), len(lows), len(volumes)]
+            if all(l == all_lengths[0] for l in all_lengths):
+                logger.info(f"📊 HYBRIDE WebSocket {symbol} {timeframe}: buffers=[P:{len(prices)},H:{len(highs)},L:{len(lows)},V:{len(volumes)}] → calcul COMPLET avec historique ✅ ALIGNÉS")
+            else:
+                logger.error(f"❌ BUFFERS DÉSALIGNÉS {symbol} {timeframe}: [P:{len(prices)},H:{len(highs)},L:{len(lows)},V:{len(volumes)}] - ARRÊT DU CALCUL")
+                
+                # 🔧 CORRECTION D'URGENCE: Force l'alignement immédiat
+                min_buffer_len = min(all_lengths)
+                self.price_buffers[symbol][timeframe] = self.price_buffers[symbol][timeframe][-min_buffer_len:]
+                self.high_buffers[symbol][timeframe] = self.high_buffers[symbol][timeframe][-min_buffer_len:]
+                self.low_buffers[symbol][timeframe] = self.low_buffers[symbol][timeframe][-min_buffer_len:]
+                self.volume_buffers[symbol][timeframe] = self.volume_buffers[symbol][timeframe][-min_buffer_len:]
+                
+                logger.warning(f"🚨 CORRECTION D'URGENCE APPLIQUÉE: Buffers forcés à {min_buffer_len} éléments")
+                return  # Skip calculation if buffers are misaligned despite correction
             
             # **NOUVEAU**: Compléter avec les données historiques si pas assez de points (ULTRA-PRÉCIS)
             extended_prices, extended_highs, extended_lows, extended_volumes = self._get_extended_buffers_sync(
@@ -1146,7 +1207,21 @@ class BinanceWebSocket:
             Tuple (prices, highs, lows, volumes) étendus avec données historiques
         """
         try:
-            # Si on a déjà assez de points, retourner les buffers actuels
+            # 🔧 CORRECTION CRITIQUE: Aligner les buffers actuels AVANT extension
+            current_lengths = [len(current_prices), len(current_highs), len(current_lows), len(current_volumes)]
+            if not all(l == current_lengths[0] for l in current_lengths):
+                logger.warning(f"🔧 Désalignement détecté avant extension {symbol} {timeframe}: P:{len(current_prices)} H:{len(current_highs)} L:{len(current_lows)} V:{len(current_volumes)}")
+                
+                # Aligner à la longueur minimum
+                min_len = min(current_lengths)
+                current_prices = current_prices[-min_len:]
+                current_highs = current_highs[-min_len:]
+                current_lows = current_lows[-min_len:]
+                current_volumes = current_volumes[-min_len:]
+                
+                logger.info(f"✅ Buffers actuels alignés à {min_len} éléments avant extension")
+            
+            # Si on a déjà assez de points, retourner les buffers actuels (maintenant alignés)
             if len(current_prices) >= min_required:
                 return current_prices, current_highs, current_lows, current_volumes
             
@@ -1198,6 +1273,20 @@ class BinanceWebSocket:
             extended_lows = historical_lows + current_lows
             extended_prices = historical_prices + current_prices
             extended_volumes = historical_volumes + current_volumes
+            
+            # 🔧 VALIDATION FINALE: Vérifier l'alignement post-extension
+            extended_lengths = [len(extended_prices), len(extended_highs), len(extended_lows), len(extended_volumes)]
+            if not all(l == extended_lengths[0] for l in extended_lengths):
+                logger.error(f"❌ DÉSALIGNEMENT CRITIQUE après extension {symbol} {timeframe}: P:{len(extended_prices)} H:{len(extended_highs)} L:{len(extended_lows)} V:{len(extended_volumes)}")
+                
+                # Force l'alignement final
+                min_extended_len = min(extended_lengths)
+                extended_prices = extended_prices[-min_extended_len:]
+                extended_highs = extended_highs[-min_extended_len:]
+                extended_lows = extended_lows[-min_extended_len:]
+                extended_volumes = extended_volumes[-min_extended_len:]
+                
+                logger.warning(f"🔧 CORRECTION APPLIQUÉE: Tous les buffers alignés à {min_extended_len} éléments")
             
             logger.debug(f"✅ Buffers étendus {symbol} {timeframe}: {len(historical_data)} historiques + {len(current_prices)} actuels = {len(extended_prices)} total")
             
@@ -1295,13 +1384,26 @@ class BinanceWebSocket:
             return 0
     
     async def _periodic_buffer_save(self):
-        """Tâche périodique de sauvegarde des buffers"""
+        """Tâche périodique de sauvegarde des buffers ET diagnostic de santé"""
         while self.running:
             try:
                 current_time = time.time()
+                
+                # Sauvegarde périodique
                 if current_time - self.last_buffer_save_time > self.buffer_save_interval:
                     await self._save_buffers_to_redis()
                     self.last_buffer_save_time = current_time
+                
+                # 🔧 NOUVEAU: Diagnostic de santé des buffers toutes les 2 minutes
+                if hasattr(self, 'last_health_check'):
+                    time_since_check = current_time - self.last_health_check
+                else:
+                    time_since_check = float('inf')
+                    self.last_health_check = current_time
+                
+                if time_since_check > 120:  # 2 minutes
+                    self._diagnose_buffer_health()
+                    self.last_health_check = current_time
                 
                 await asyncio.sleep(60)  # Vérifier toutes les minutes
                 
@@ -1372,6 +1474,74 @@ class BinanceWebSocket:
                 
         except Exception as e:
             logger.error(f"❌ Erreur lors du pré-remplissage des buffers: {e}")
+
+    def _diagnose_buffer_health(self):
+        """
+        🔧 NOUVEAU: Diagnostic complet de la santé des buffers WebSocket.
+        Détecte et corrige automatiquement les désalignements.
+        """
+        total_issues = 0
+        total_corrections = 0
+        
+        try:
+            logger.debug("🔍 Diagnostic de santé des buffers WebSocket...")
+            
+            for symbol in self.symbols:
+                for timeframe in self.timeframes:
+                    # Vérifier les longueurs
+                    price_len = len(self.price_buffers.get(symbol, {}).get(timeframe, []))
+                    high_len = len(self.high_buffers.get(symbol, {}).get(timeframe, []))
+                    low_len = len(self.low_buffers.get(symbol, {}).get(timeframe, []))
+                    volume_len = len(self.volume_buffers.get(symbol, {}).get(timeframe, []))
+                    
+                    lengths = [price_len, high_len, low_len, volume_len]
+                    
+                    # Détecter les problèmes
+                    if not all(l == lengths[0] for l in lengths):
+                        total_issues += 1
+                        min_len = min(lengths)
+                        max_len = max(lengths)
+                        data_loss = max_len - min_len
+                        
+                        logger.warning(f"🔧 SANTÉ: Désalignement {symbol} {timeframe} - "
+                                     f"Longueurs: P:{price_len} H:{high_len} L:{low_len} V:{volume_len} "
+                                     f"(perte: {data_loss} points)")
+                        
+                        # Correction automatique
+                        if min_len > 0:
+                            self.price_buffers[symbol][timeframe] = self.price_buffers[symbol][timeframe][-min_len:]
+                            self.high_buffers[symbol][timeframe] = self.high_buffers[symbol][timeframe][-min_len:]
+                            self.low_buffers[symbol][timeframe] = self.low_buffers[symbol][timeframe][-min_len:]
+                            self.volume_buffers[symbol][timeframe] = self.volume_buffers[symbol][timeframe][-min_len:]
+                            total_corrections += 1
+                            logger.info(f"✅ SANTÉ: {symbol} {timeframe} corrigé → {min_len} éléments alignés")
+                        else:
+                            # Réinitialiser les buffers vides
+                            self.price_buffers[symbol][timeframe] = []
+                            self.high_buffers[symbol][timeframe] = []
+                            self.low_buffers[symbol][timeframe] = []
+                            self.volume_buffers[symbol][timeframe] = []
+                            logger.warning(f"🔄 SANTÉ: {symbol} {timeframe} réinitialisé (buffers vides)")
+                    
+                    # Vérifier la taille maximum
+                    elif lengths[0] > 250:  # Plus que la limite normale + marge
+                        logger.warning(f"⚠️ SANTÉ: {symbol} {timeframe} buffer trop grand ({lengths[0]} éléments)")
+                        # Tronquer à 200 éléments
+                        self.price_buffers[symbol][timeframe] = self.price_buffers[symbol][timeframe][-200:]
+                        self.high_buffers[symbol][timeframe] = self.high_buffers[symbol][timeframe][-200:]
+                        self.low_buffers[symbol][timeframe] = self.low_buffers[symbol][timeframe][-200:]
+                        self.volume_buffers[symbol][timeframe] = self.volume_buffers[symbol][timeframe][-200:]
+                        total_corrections += 1
+                        logger.info(f"✅ SANTÉ: {symbol} {timeframe} tronqué à 200 éléments")
+            
+            # Rapport de santé
+            if total_issues > 0:
+                logger.warning(f"🔧 SANTÉ: {total_issues} problèmes détectés, {total_corrections} corrections appliquées")
+            else:
+                logger.debug("✅ SANTÉ: Tous les buffers sont en bonne santé")
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur diagnostic santé buffers: {e}")
 
 # Fonction principale pour exécuter le WebSocket de manière asynchrone
 async def run_binance_websocket():

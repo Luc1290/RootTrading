@@ -64,15 +64,16 @@ class GapDetector:
             '1d': 86400
         }.get(timeframe, 60)
         
-        # Calculer la période à vérifier
-        now = datetime.utcnow()
-        start_time = now - timedelta(hours=lookback_hours)
+        # Calculer la période à vérifier - forcer UTC explicitement avec timestamps propres
+        now = datetime.utcnow().replace(tzinfo=None, microsecond=0)
+        start_time = (now - timedelta(hours=lookback_hours)).replace(tzinfo=None, microsecond=0)
         
-        # NOUVELLE APPROCHE : Chercher la dernière candle et calculer le gap jusqu'à maintenant
+        # APPROCHE CORRIGÉE : Gérer le cas DB vide + chercher les gaps
         query = """
         WITH latest_data AS (
             -- Récupérer la dernière candle pour ce symbole/timeframe
-            SELECT MAX(time) as last_candle_time
+            SELECT MAX(time) as last_candle_time,
+                   COUNT(*) as total_rows
             FROM market_data
             WHERE symbol = $1 
             AND timeframe = $2
@@ -80,18 +81,29 @@ class GapDetector:
         ),
         gap_calculation AS (
             SELECT 
-                last_candle_time,
+                CASE 
+                    -- Si DB vide (total_rows = 0), créer un gap complet depuis start_time
+                    WHEN total_rows = 0 THEN $3::timestamp
+                    -- Sinon, gap depuis la dernière candle
+                    ELSE last_candle_time + make_interval(secs => $5)
+                END as gap_start,
                 $4::timestamp as current_time,
-                EXTRACT(EPOCH FROM ($4::timestamp - last_candle_time)) as seconds_since_last,
-                $5 as interval_seconds
+                CASE 
+                    -- Si DB vide, calculer depuis start_time
+                    WHEN total_rows = 0 THEN EXTRACT(EPOCH FROM ($4::timestamp - $3::timestamp))
+                    -- Sinon, depuis dernière candle
+                    ELSE EXTRACT(EPOCH FROM ($4::timestamp - last_candle_time))
+                END as seconds_since_last,
+                $5 as interval_seconds,
+                total_rows
             FROM latest_data
-            WHERE last_candle_time IS NOT NULL
         )
         SELECT 
-            last_candle_time + interval '1 second' * interval_seconds as gap_start,
-            current_time as gap_end,
+            gap_start AT TIME ZONE 'UTC' as gap_start,
+            current_time AT TIME ZONE 'UTC' as gap_end,
             (seconds_since_last / interval_seconds)::int as missing_candles,
-            seconds_since_last
+            seconds_since_last,
+            CASE WHEN total_rows = 0 THEN 'EMPTY_DB' ELSE 'NORMAL_GAP' END as gap_type
         FROM gap_calculation
         WHERE seconds_since_last > interval_seconds * 2  -- Plus de 2 intervalles de retard
         """
@@ -111,25 +123,57 @@ class GapDetector:
                 gap_start = row['gap_start']
                 gap_end = row['gap_end']
                 
-                # Convertir en datetime si nécessaire
-                if hasattr(gap_start, 'replace'):
+                # Debug: afficher les types retournés par PostgreSQL
+                logger.debug(f"PostgreSQL returned gap_start: {type(gap_start)} = {gap_start}")
+                logger.debug(f"PostgreSQL returned gap_end: {type(gap_end)} = {gap_end}")
+                
+                # Assurer que nous avons des objets datetime propres
+                try:
+                    # Convertir en datetime si pas déjà le cas
+                    if not isinstance(gap_start, datetime):
+                        if hasattr(gap_start, 'replace'):  # datetime.date ou time
+                            if hasattr(gap_start, 'hour') and hasattr(gap_start, 'year'):  # datetime complet
+                                gap_start = gap_start.replace(tzinfo=None)
+                            elif hasattr(gap_start, 'hour'):  # time only (pas de date)
+                                # C'est un datetime.time, on doit le combiner avec la date actuelle
+                                gap_start = datetime.combine(now.date(), gap_start)
+                                logger.debug(f"Converted time {gap_start} to datetime")
+                            else:  # date only
+                                gap_start = datetime.combine(gap_start, datetime.min.time())
+                        elif isinstance(gap_start, str):
+                            gap_start = datetime.fromisoformat(gap_start.replace('Z', ''))
+                    
+                    if not isinstance(gap_end, datetime):
+                        if hasattr(gap_end, 'replace'):  # datetime.date ou time
+                            if hasattr(gap_end, 'hour') and hasattr(gap_end, 'year'):  # datetime complet
+                                gap_end = gap_end.replace(tzinfo=None)
+                            elif hasattr(gap_end, 'hour'):  # time only (pas de date)
+                                # C'est un datetime.time, on doit le combiner avec la date actuelle
+                                gap_end = datetime.combine(now.date(), gap_end)
+                                logger.debug(f"Converted time {gap_end} to datetime")
+                            else:  # date only
+                                gap_end = datetime.combine(gap_end, datetime.min.time())
+                        elif isinstance(gap_end, str):
+                            gap_end = datetime.fromisoformat(gap_end.replace('Z', ''))
+                    
                     gaps.append((gap_start, gap_end))
-                else:
-                    # Si c'est un autre type, essayer de le convertir
-                    try:
-                        if isinstance(gap_start, str):
-                            gap_start = datetime.fromisoformat(gap_start.replace('Z', '+00:00'))
-                            gap_end = datetime.fromisoformat(gap_end.replace('Z', '+00:00'))
-                        gaps.append((gap_start, gap_end))
-                    except Exception as convert_error:
-                        logger.warning(f"Erreur conversion timestamp {gap_start}: {convert_error}")
-                        continue
+                    
+                except Exception as convert_error:
+                    logger.warning(f"Erreur conversion timestamp {gap_start} ({type(gap_start)}) -> {gap_end} ({type(gap_end)}): {convert_error}")
+                    continue
             
             if gaps:
                 total_missing = sum(row['missing_candles'] for row in rows)
                 total_hours = total_missing * interval_seconds / 3600
-                logger.warning(f"📊 {symbol} {timeframe}: GAP PRINCIPAL détecté - "
-                             f"{total_missing} candles manquantes ({total_hours:.1f}h)")
+                
+                # Identifier le type de gap
+                gap_types = [row.get('gap_type', 'NORMAL_GAP') for row in rows]
+                if 'EMPTY_DB' in gap_types:
+                    logger.error(f"🚨 {symbol} {timeframe}: DB VIDE - CHARGEMENT COMPLET REQUIS - "
+                               f"{total_missing} candles à charger ({total_hours:.1f}h)")
+                else:
+                    logger.warning(f"📊 {symbol} {timeframe}: GAP NORMAL détecté - "
+                                 f"{total_missing} candles manquantes ({total_hours:.1f}h)")
             else:
                 logger.info(f"✅ {symbol} {timeframe}: Aucun gap détecté")
                 
@@ -200,6 +244,44 @@ class GapDetector:
         """
         if not gaps:
             return []
+        
+        # Nettoyer et valider tous les gaps avant traitement
+        clean_gaps = []
+        for gap_start, gap_end in gaps:
+            try:
+                # Convertir gap_start en datetime si nécessaire
+                if not isinstance(gap_start, datetime):
+                    if hasattr(gap_start, 'hour'):  # datetime complet avec timezone
+                        gap_start = gap_start.replace(tzinfo=None) if hasattr(gap_start, 'replace') else gap_start
+                    elif hasattr(gap_start, 'replace'):  # date only
+                        gap_start = datetime.combine(gap_start, datetime.min.time())
+                    elif isinstance(gap_start, str):
+                        gap_start = datetime.fromisoformat(gap_start.replace('Z', ''))
+                    else:
+                        logger.warning(f"Impossible de convertir gap_start {type(gap_start)}: {gap_start}")
+                        continue
+                
+                # Convertir gap_end en datetime si nécessaire
+                if not isinstance(gap_end, datetime):
+                    if hasattr(gap_end, 'hour'):  # datetime complet avec timezone
+                        gap_end = gap_end.replace(tzinfo=None) if hasattr(gap_end, 'replace') else gap_end
+                    elif hasattr(gap_end, 'replace'):  # date only
+                        gap_end = datetime.combine(gap_end, datetime.min.time())
+                    elif isinstance(gap_end, str):
+                        gap_end = datetime.fromisoformat(gap_end.replace('Z', ''))
+                    else:
+                        logger.warning(f"Impossible de convertir gap_end {type(gap_end)}: {gap_end}")
+                        continue
+                
+                clean_gaps.append((gap_start, gap_end))
+                
+            except Exception as e:
+                logger.warning(f"Erreur nettoyage gap {gap_start} -> {gap_end}: {e}")
+                continue
+        
+        if not clean_gaps:
+            logger.warning("Aucun gap valide après nettoyage")
+            return []
             
         # Calculer la durée max par requête selon le timeframe
         interval_minutes = {
@@ -214,8 +296,8 @@ class GapDetector:
         max_duration = timedelta(minutes=interval_minutes * max_candles_per_request)
         merge_threshold = timedelta(minutes=interval_minutes * 10)  # Fusionner si < 10 candles d'écart
         
-        # Trier les gaps par ordre chronologique
-        sorted_gaps = sorted(gaps, key=lambda x: x[0])
+        # Trier les gaps nettoyés par ordre chronologique
+        sorted_gaps = sorted(clean_gaps, key=lambda x: x[0])
         
         fetch_periods = []
         current_start = sorted_gaps[0][0]

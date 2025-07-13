@@ -8,7 +8,7 @@ interface MarketChartProps {
   height?: number;
 }
 
-function MarketChart({ height = 600 }: MarketChartProps) {
+function MarketChart({ height = 750 }: MarketChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -36,6 +36,18 @@ function MarketChart({ height = 600 }: MarketChartProps) {
   }>({});
   
   const { marketData, signals, indicators, config, zoomState, setZoomState, setIsUserInteracting } = useChartStore();
+  
+  // Configuration de la précision basée sur le symbole
+  const getPriceFormat = () => {
+    const symbol = config.symbol;
+    if (symbol.includes('PEPE') || symbol.includes('BONK')) {
+      return { precision: 10, minMove: 0.0000000001 };
+    } else if (symbol.includes('BTC')) {
+      return { precision: 2, minMove: 0.01 };
+    } else {
+      return { precision: 6, minMove: 0.000001 };
+    }
+  };
   
   // Initialisation du graphique
   useEffect(() => {
@@ -99,8 +111,7 @@ function MarketChart({ height = 600 }: MarketChartProps) {
       wickDownColor: '#ef5350',
       priceFormat: {
         type: 'price',
-        precision: 4,
-        minMove: 0.0001,
+        ...getPriceFormat(),
       },
     });
     
@@ -365,17 +376,17 @@ function MarketChart({ height = 600 }: MarketChartProps) {
       )}
       
       {/* Contrôles du graphique */}
-      <div className="absolute bottom-2 right-2 z-10 flex items-center space-x-2">
+      <div className="absolute bottom-2 left-2 z-10 flex items-center space-x-2">
         <button
           onClick={() => chartRef.current?.timeScale().fitContent()}
-          className="bg-black/70 backdrop-blur-sm text-white px-2 py-1 rounded text-xs hover:bg-black/80 transition-colors"
+          className="bg-black/70 backdrop-blur-sm text-white px-3 py-1.5 rounded text-xs hover:bg-black/80 transition-colors"
           title="Ajuster à la taille"
         >
           Ajuster
         </button>
         <button
           onClick={() => chartRef.current?.timeScale().resetTimeScale()}
-          className="bg-black/70 backdrop-blur-sm text-white px-2 py-1 rounded text-xs hover:bg-black/80 transition-colors"
+          className="bg-black/70 backdrop-blur-sm text-white px-3 py-1.5 rounded text-xs hover:bg-black/80 transition-colors"
           title="Reset zoom"
         >
           Reset
