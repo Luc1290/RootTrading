@@ -11,8 +11,8 @@ export interface TradingSignal {
   timestamp: string;
   price: number;
   strategy: string;
-  strength: number;
-  type: 'buy' | 'sell';
+  strength?: number | string | null;
+  type?: 'buy' | 'sell';
 }
 
 export interface Indicators {

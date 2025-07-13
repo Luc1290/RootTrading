@@ -1,14 +1,21 @@
 import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import Layout from '@/components/Layout';
 import Dashboard from '@/components/Dashboard';
+import SignalsPage from '@/components/Signals/SignalsPage';
 
 function App() {
   return (
     <div className="min-h-screen bg-dark-500">
-      <Layout>
-        <Dashboard />
-      </Layout>
+      <Router>
+        <Layout>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/signals" element={<SignalsPage />} />
+          </Routes>
+        </Layout>
+      </Router>
       <Toaster
         position="top-right"
         toastOptions={{

@@ -1,15 +1,17 @@
 import React from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { formatTime } from '@/utils';
 import { useChartStore } from '@/stores/useChartStore';
 
 function Header() {
   const { lastUpdate, isLoading } = useChartStore();
+  const location = useLocation();
   
   return (
     <header className="gradient-header shadow-lg">
       <div className="container mx-auto px-4 py-6 max-w-7xl">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-6">
             <div className="flex items-center space-x-2">
               <span className="text-3xl">🚀</span>
               <div>
@@ -21,6 +23,29 @@ function Header() {
                 </p>
               </div>
             </div>
+            
+            <nav className="flex items-center space-x-4">
+              <Link
+                to="/"
+                className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
+                  location.pathname === '/'
+                    ? 'bg-primary-500 text-white'
+                    : 'text-primary-100 hover:bg-primary-500/20 hover:text-white'
+                }`}
+              >
+                📈 Dashboard
+              </Link>
+              <Link
+                to="/signals"
+                className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
+                  location.pathname === '/signals'
+                    ? 'bg-primary-500 text-white'
+                    : 'text-primary-100 hover:bg-primary-500/20 hover:text-white'
+                }`}
+              >
+                📊 Signaux
+              </Link>
+            </nav>
           </div>
           
           <div className="flex items-center space-x-4">
