@@ -139,6 +139,11 @@ def parse_arguments():
         help='Ignorer l\'initialisation des données ultra-enrichies'
     )
     parser.add_argument(
+        '--force-full-reload', 
+        action='store_true', 
+        help='Force le rechargement complet (ignore la détection de gaps)'
+    )
+    parser.add_argument(
         '--debug', 
         action='store_true', 
         help='Activer le mode debug pour plus de logs'
@@ -297,10 +302,13 @@ async def main():
             # Créer l'UltraDataFetcher pour l'initialisation
             init_fetcher = UltraDataFetcher()
             
-            # **NOUVEAU**: Charger 5 jours de données historiques pour tous les timeframes
+            # **NOUVEAU**: Charger 5 jours de données historiques avec détection de gaps intelligente
             try:
-                logger.info(f"📚 Chargement de 5 jours de données historiques...")
-                await init_fetcher.load_historical_data(days=5)
+                use_gap_detection = not args.force_full_reload
+                mode_desc = "intelligent (gaps uniquement)" if use_gap_detection else "complet (force reload)"
+                logger.info(f"📚 Chargement de 5 jours de données historiques ({mode_desc})...")
+                
+                await init_fetcher.load_historical_data(days=5, use_gap_detection=use_gap_detection)
                 logger.info(f"✅ Données historiques chargées avec succès")
             except Exception as e:
                 logger.error(f"❌ Erreur chargement données historiques: {e}")

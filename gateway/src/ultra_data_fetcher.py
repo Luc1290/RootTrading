@@ -7,6 +7,7 @@ import asyncio
 import logging
 import json
 import time
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 import aiohttp
 import sys
@@ -613,13 +614,14 @@ class UltraDataFetcher:
             logger.error(f"❌ Erreur analyse sentiment: {e}")
             return {}
 
-    async def load_historical_data(self, days: int = 5) -> None:
+    async def load_historical_data(self, days: int = 5, use_gap_detection: bool = True) -> None:
         """
         Charge les données historiques pour tous les symboles et timeframes.
         Publie aussi les données sur Kafka pour persistance en DB.
         
         Args:
             days: Nombre de jours d'historique à charger (défaut: 5)
+            use_gap_detection: Si True, détecte et charge uniquement les données manquantes
         """
         logger.info(f"🔄 Chargement de {days} jours de données historiques...")
         
@@ -630,6 +632,37 @@ class UltraDataFetcher:
         except ImportError:
             logger.warning("⚠️ Producteur Kafka non disponible, données historiques non persistées en DB")
             kafka_producer = None
+            
+        # Utiliser la détection de gaps si activée
+        gap_filling_plan = None
+        if use_gap_detection:
+            try:
+                from gap_detector import GapDetector
+                detector = GapDetector()
+                await detector.initialize()
+                
+                # Détecter les gaps sur la période demandée
+                lookback_hours = days * 24
+                all_gaps = await detector.detect_all_gaps(self.symbols, lookback_hours)
+                
+                # Générer le plan de remplissage optimisé
+                gap_filling_plan = detector.generate_gap_filling_plan(all_gaps)
+                
+                if gap_filling_plan:
+                    # Estimer le temps de remplissage
+                    estimated_time = detector.estimate_fill_time(gap_filling_plan)
+                    logger.info(f"🎯 Mode intelligent: Remplissage ciblé des gaps uniquement")
+                    logger.info(f"⏱️ Temps estimé: {estimated_time:.1f}s ({estimated_time/60:.1f} minutes)")
+                else:
+                    logger.info("✅ Aucun gap détecté - données déjà complètes")
+                    await detector.close()
+                    return
+                    
+                await detector.close()
+                
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur détection gaps: {e} - Fallback sur chargement complet")
+                gap_filling_plan = None
         
         # Calculer les limites optimisées pour indicateurs ULTRA-PRÉCIS
         timeframe_limits = {
@@ -644,68 +677,104 @@ class UltraDataFetcher:
         total_loaded = 0
         total_published = 0
         
-        for symbol in self.symbols:
-            for timeframe in self.timeframes:
-                expected_count = timeframe_limits[timeframe]
-                total_expected += expected_count
-                
-                try:
-                    # Charger les données historiques avec pagination si nécessaire
-                    historical_data = await self._fetch_historical_klines(
-                        symbol, timeframe, expected_count
-                    )
-                    
-                    if historical_data:
-                        loaded_count = len(historical_data)
-                        total_loaded += loaded_count
-                        
-                        # **NOUVEAU**: Enrichir et publier chaque kline historique sur Kafka
-                        if kafka_producer and historical_data:
-                            try:
-                                # Enrichir toutes les données historiques avec indicateurs techniques
-                                enriched_historical = await self._enrich_historical_batch(
-                                    historical_data, symbol, timeframe
-                                )
+        # Si on a un plan de remplissage de gaps, l'utiliser
+        if gap_filling_plan:
+            for symbol, timeframe_periods in gap_filling_plan.items():
+                for timeframe, periods in timeframe_periods.items():
+                    for start_time, end_time in periods:
+                        try:
+                            # Charger uniquement les données pour cette période de gap
+                            historical_data = await self._fetch_historical_klines_for_period(
+                                symbol, timeframe, start_time, end_time
+                            )
+                            
+                            if historical_data:
+                                loaded_count = len(historical_data)
+                                total_loaded += loaded_count
+                                logger.info(f"📊 {symbol} {timeframe}: Gap {start_time} → {end_time} rempli ({loaded_count} points)")
                                 
-                                # Publier chaque point enrichi sur Kafka
-                                for i, enriched_point in enumerate(enriched_historical):
+                                # Enrichir et publier sur Kafka
+                                if kafka_producer and historical_data:
                                     try:
-                                        # Assurer que les champs symbol et timeframe sont présents pour la génération automatique du topic
-                                        enriched_point['symbol'] = symbol  
-                                        enriched_point['timeframe'] = timeframe
+                                        enriched_historical = await self._enrich_historical_batch(
+                                            historical_data, symbol, timeframe
+                                        )
                                         
-                                        # Debug: Log d'un échantillon pour voir ce qui est publié
-                                        if i == len(enriched_historical) - 1:  # Dernier point
-                                            indicators_in_point = [k for k in enriched_point.keys() if k not in ['symbol', 'interval', 'start_time', 'open_time', 'close_time', 'open', 'high', 'low', 'close', 'volume', 'is_closed', 'is_historical', 'enhanced', 'ultra_enriched', 'timeframe']]
-                                            logger.error(f"🔍 KAFKA PUBLISH {symbol} {timeframe}: {len(indicators_in_point)} indicateurs dans le point")
-                                            logger.error(f"🔍 Indicateurs dans le point: {indicators_in_point}")
-                                        
-                                        kafka_producer.publish_market_data(enriched_point, symbol)
-                                        total_published += 1
-                                        
+                                        for enriched_point in enriched_historical:
+                                            enriched_point['symbol'] = symbol
+                                            enriched_point['timeframe'] = timeframe
+                                            kafka_producer.publish_market_data(enriched_point, symbol)
+                                            total_published += 1
+                                            
                                     except Exception as e:
-                                        logger.warning(f"Erreur publication Kafka point enrichi: {e}")
+                                        logger.error(f"❌ Erreur enrichissement gap {symbol} {timeframe}: {e}")
                                         
-                                logger.info(f"📊 {symbol} {timeframe}: {len(enriched_historical)} points enrichis publiés")
-                                
-                            except Exception as e:
-                                logger.error(f"❌ Erreur enrichissement historique {symbol} {timeframe}: {e}")
-                        
-                        # Traiter et enrichir la dernière donnée pour Redis (indicateurs actuels)
-                        enriched_data = await self._process_historical_klines(
-                            historical_data, symbol, timeframe
+                        except Exception as e:
+                            logger.error(f"❌ Erreur remplissage gap {symbol} {timeframe} {start_time}: {e}")
+        else:
+            # Mode classique: charger toutes les données
+            for symbol in self.symbols:
+                for timeframe in self.timeframes:
+                    expected_count = timeframe_limits[timeframe]
+                    total_expected += expected_count
+                    
+                    try:
+                        # Charger les données historiques avec pagination si nécessaire
+                        historical_data = await self._fetch_historical_klines(
+                            symbol, timeframe, expected_count
                         )
                         
-                        # Stocker dans Redis
-                        redis_key = f"market_data:{symbol}:{timeframe}_history"
-                        await self._store_in_redis(redis_key, enriched_data)
-                        
-                        logger.info(f"📊 {symbol} {timeframe}: {loaded_count}/{expected_count} points chargés")
-                    else:
-                        logger.warning(f"⚠️ Aucune donnée historique pour {symbol} {timeframe}")
-                        
-                except Exception as e:
-                    logger.error(f"❌ Erreur chargement historique {symbol} {timeframe}: {e}")
+                        if historical_data:
+                            loaded_count = len(historical_data)
+                            total_loaded += loaded_count
+                            
+                            # **NOUVEAU**: Enrichir et publier chaque kline historique sur Kafka
+                            if kafka_producer and historical_data:
+                                try:
+                                    # Enrichir toutes les données historiques avec indicateurs techniques
+                                    enriched_historical = await self._enrich_historical_batch(
+                                        historical_data, symbol, timeframe
+                                    )
+                                    
+                                    # Publier chaque point enrichi sur Kafka
+                                    for i, enriched_point in enumerate(enriched_historical):
+                                        try:
+                                            # Assurer que les champs symbol et timeframe sont présents pour la génération automatique du topic
+                                            enriched_point['symbol'] = symbol  
+                                            enriched_point['timeframe'] = timeframe
+                                            
+                                            # Debug: Log d'un échantillon pour voir ce qui est publié
+                                            if i == len(enriched_historical) - 1:  # Dernier point
+                                                indicators_in_point = [k for k in enriched_point.keys() if k not in ['symbol', 'interval', 'start_time', 'open_time', 'close_time', 'open', 'high', 'low', 'close', 'volume', 'is_closed', 'is_historical', 'enhanced', 'ultra_enriched', 'timeframe']]
+                                                logger.error(f"🔍 KAFKA PUBLISH {symbol} {timeframe}: {len(indicators_in_point)} indicateurs dans le point")
+                                                logger.error(f"🔍 Indicateurs dans le point: {indicators_in_point}")
+                                            
+                                            kafka_producer.publish_market_data(enriched_point, symbol)
+                                            total_published += 1
+                                            
+                                        except Exception as e:
+                                            logger.warning(f"Erreur publication Kafka point enrichi: {e}")
+                                            
+                                    logger.info(f"📊 {symbol} {timeframe}: {len(enriched_historical)} points enrichis publiés")
+                                    
+                                except Exception as e:
+                                    logger.error(f"❌ Erreur enrichissement historique {symbol} {timeframe}: {e}")
+                            
+                            # Traiter et enrichir la dernière donnée pour Redis (indicateurs actuels)
+                            enriched_data = await self._process_historical_klines(
+                                historical_data, symbol, timeframe
+                            )
+                            
+                            # Stocker dans Redis
+                            redis_key = f"market_data:{symbol}:{timeframe}_history"
+                            await self._store_in_redis(redis_key, enriched_data)
+                            
+                            logger.info(f"📊 {symbol} {timeframe}: {loaded_count}/{expected_count} points chargés")
+                        else:
+                            logger.warning(f"⚠️ Aucune donnée historique pour {symbol} {timeframe}")
+                            
+                    except Exception as e:
+                        logger.error(f"❌ Erreur chargement historique {symbol} {timeframe}: {e}")
         
         # Attendre que tous les messages Kafka soient envoyés
         if kafka_producer:
@@ -715,6 +784,52 @@ class UltraDataFetcher:
         success_rate = (total_loaded / total_expected * 100) if total_expected > 0 else 0
         logger.info(f"✅ Chargement historique terminé: {total_loaded}/{total_expected} points ({success_rate:.1f}%)")
     
+    async def _fetch_historical_klines_for_period(self, 
+                                                  symbol: str, 
+                                                  timeframe: str, 
+                                                  start_time: datetime, 
+                                                  end_time: datetime) -> List:
+        """
+        Récupère les klines historiques pour une période spécifique (gap filling)
+        """
+        try:
+            # Convertir les datetime en timestamps milliseconds
+            start_timestamp = int(start_time.timestamp() * 1000)
+            end_timestamp = int(end_time.timestamp() * 1000)
+            
+            # Calculer combien de klines maximum pour cette période
+            interval_seconds = {
+                '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400
+            }.get(timeframe, 60)
+            
+            duration_seconds = (end_time - start_time).total_seconds()
+            max_klines = min(1000, int(duration_seconds / interval_seconds) + 10)  # +10 de marge
+            
+            params = {
+                'symbol': symbol,
+                'interval': timeframe,
+                'startTime': start_timestamp,
+                'endTime': end_timestamp,
+                'limit': max_klines
+            }
+            
+            url = f"{self.base_url}{self.klines_endpoint}"
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, params=params, timeout=15) as response:
+                    if response.status == 200:
+                        klines = await response.json()
+                        logger.debug(f"📚 Gap fill {symbol} {timeframe}: {len(klines)} klines récupérées "
+                                   f"pour {start_time} → {end_time}")
+                        return klines
+                    else:
+                        logger.error(f"❌ API Binance error {response.status} pour gap {symbol} {timeframe}")
+                        return []
+                        
+        except Exception as e:
+            logger.error(f"❌ Erreur fetch gap {symbol} {timeframe} {start_time}: {e}")
+            return []
+
     async def _fetch_historical_klines(self, symbol: str, timeframe: str, limit: int) -> List:
         """
         Récupère les klines historiques avec pagination pour les gros volumes.

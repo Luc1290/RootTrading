@@ -26,7 +26,10 @@
       "Bash(python:*)",
       "Bash(sqlite3:*)",
       "Bash(curl:*)",
-      "Bash(psql:*)"
+      "Bash(psql:*)",
+      "Bash(sudo dmidecode:*)",
+      "Bash(cat:*)",
+      "Bash(iostat:*)"
     ],
     "deny": []
   }

@@ -520,9 +520,12 @@ class TechnicalIndicators:
         Returns:
             Valeur ATR ou None si impossible
         """
-        highs_array = self._to_numpy_array(highs)
-        lows_array = self._to_numpy_array(lows)
-        closes_array = self._to_numpy_array(closes)
+        # Validation et alignement des arrays
+        try:
+            highs_array, lows_array, closes_array = self._validate_and_align_arrays(highs, lows, closes)
+        except Exception as e:
+            logger.error(f"Erreur validation arrays ATR: {e}")
+            return None
         
         if len(highs_array) < period or len(lows_array) < period or len(closes_array) < period:
             return None
@@ -679,9 +682,12 @@ class TechnicalIndicators:
         Returns:
             Tuple (ADX, DI+, DI-) ou (None, None, None) si impossible
         """
-        highs_array = self._to_numpy_array(highs)
-        lows_array = self._to_numpy_array(lows)
-        closes_array = self._to_numpy_array(closes)
+        # Validation et alignement des arrays
+        try:
+            highs_array, lows_array, closes_array = self._validate_and_align_arrays(highs, lows, closes)
+        except Exception as e:
+            logger.error(f"Erreur validation arrays ADX: {e}")
+            return None, None, None
         
         if len(highs_array) < period * 2:
             return None, None, None
@@ -862,9 +868,12 @@ class TechnicalIndicators:
         Returns:
             Tuple (%K, %D) ou (None, None) si impossible
         """
-        highs_array = self._to_numpy_array(highs)
-        lows_array = self._to_numpy_array(lows)
-        closes_array = self._to_numpy_array(closes)
+        # Validation et alignement des arrays
+        try:
+            highs_array, lows_array, closes_array = self._validate_and_align_arrays(highs, lows, closes)
+        except Exception as e:
+            logger.error(f"Erreur validation arrays STOCH: {e}")
+            return None, None
         
         if len(highs_array) < fastk_period + slowk_period:
             return None, None
@@ -1057,8 +1066,12 @@ class TechnicalIndicators:
         Returns:
             Valeur OBV ou None si impossible
         """
-        prices_array = self._to_numpy_array(prices)
-        volumes_array = self._to_numpy_array(volumes)
+        # Validation et alignement des arrays
+        try:
+            prices_array, volumes_array = self._validate_and_align_arrays(prices, volumes)
+        except Exception as e:
+            logger.error(f"Erreur validation arrays OBV: {e}")
+            return None
         
         if len(prices_array) < 2 or len(volumes_array) < 2:
             return None
@@ -1092,11 +1105,8 @@ class TechnicalIndicators:
         indicators = {}
         
         try:
-            # Convertir en arrays numpy
-            highs_array = np.array(highs, dtype=np.float64)
-            lows_array = np.array(lows, dtype=np.float64)
-            closes_array = np.array(closes, dtype=np.float64)
-            volumes_array = np.array(volumes, dtype=np.float64)
+            # Validation et alignement des arrays
+            highs_array, lows_array, closes_array, volumes_array = self._validate_and_align_arrays(highs, lows, closes, volumes)
             
             n_points = len(closes_array)
             
@@ -1536,10 +1546,12 @@ class TechnicalIndicators:
                 return None
                 
             if self.talib_available:
-                highs_array = self._to_numpy_array(highs)
-                lows_array = self._to_numpy_array(lows)  
-                closes_array = self._to_numpy_array(closes)
-                volumes_array = self._to_numpy_array(volumes)
+                # Validation et alignement des arrays
+                try:
+                    highs_array, lows_array, closes_array, volumes_array = self._validate_and_align_arrays(highs, lows, closes, volumes)
+                except Exception as e:
+                    logger.error(f"Erreur validation arrays MFI: {e}")
+                    return None
                 
                 mfi = talib.MFI(highs_array, lows_array, closes_array, volumes_array, timeperiod=period)
                 return round(float(mfi[-1]), 4) if not np.isnan(mfi[-1]) else None
@@ -1649,6 +1661,44 @@ class TechnicalIndicators:
             return data.astype(float)
         else:
             raise ValueError(f"Type de données non supporté: {type(data)}")
+    
+    def _validate_and_align_arrays(self, *arrays) -> Tuple[np.ndarray, ...]:
+        """
+        Valide et aligne les arrays pour s'assurer qu'ils ont la même longueur.
+        Troncature à la longueur minimum pour éviter les erreurs talib.
+        
+        Args:
+            *arrays: Arrays à valider et aligner
+            
+        Returns:
+            Tuple d'arrays alignés
+        """
+        if not arrays:
+            return ()
+        
+        # Convertir tous en numpy arrays
+        np_arrays = [self._to_numpy_array(arr) for arr in arrays]
+        
+        # Vérifier les longueurs
+        lengths = [len(arr) for arr in np_arrays]
+        min_length = min(lengths)
+        max_length = max(lengths)
+        
+        # Log détaillé si différences détectées
+        if min_length != max_length:
+            logger.warning(f"Arrays de longueurs différentes détectés: {lengths}")
+            logger.warning(f"Troncature à {min_length} éléments")
+            
+            # Tronquer tous les arrays à la longueur minimum
+            aligned_arrays = [arr[-min_length:] for arr in np_arrays]
+            
+            # Vérification post-alignement
+            post_lengths = [len(arr) for arr in aligned_arrays]
+            logger.info(f"Post-alignement: {post_lengths}")
+            
+            return tuple(aligned_arrays)
+        
+        return tuple(np_arrays)
     
     def _calculate_momentum(self, prices: List[float], period: int) -> Optional[float]:
         """Calcule le momentum (changement de prix sur période)"""
