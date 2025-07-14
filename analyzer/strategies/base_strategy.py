@@ -248,7 +248,7 @@ class BaseStrategy(ABC):
         
         return atr_percent
     
-    def calculate_price_position_in_range(self, df: pd.DataFrame = None, lookback: int = 50) -> float:
+    def calculate_price_position_in_range(self, df: pd.DataFrame = None, lookback: int = 200) -> float:
         """
         Calcule la position relative du prix actuel dans son range récent.
         

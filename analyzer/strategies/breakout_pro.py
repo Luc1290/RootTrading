@@ -47,7 +47,7 @@ class BreakoutProStrategy(BaseStrategy):
         # Paramètres Breakout avancés
         symbol_params = self.params.get(symbol, {}) if self.params else {}
         self.lookback_periods = symbol_params.get('lookback_periods', 50)  # Plus long pour S/R
-        self.min_breakout_percent = symbol_params.get('breakout_min_percent', 0.15)
+        self.min_breakout_percent = symbol_params.get('breakout_min_percent', 0.12)
         self.min_volume_multiplier = symbol_params.get('min_volume_multiplier', 1.5)
         self.false_breakout_retest_periods = symbol_params.get('retest_periods', 5)
         self.sr_strength_threshold = symbol_params.get('sr_strength', 3)  # Nombre de touches minimum

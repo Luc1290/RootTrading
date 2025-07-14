@@ -47,8 +47,8 @@ class BollingerProStrategy(BaseStrategy):
         
         # Paramètres Bollinger avancés
         symbol_params = self.params.get(symbol, {}) if self.params else {}
-        self.squeeze_threshold = symbol_params.get('bb_squeeze_threshold', 0.015)  # Width pour squeeze
-        self.expansion_threshold = symbol_params.get('bb_expansion_threshold', 0.04)  # Width pour expansion
+        self.squeeze_threshold = symbol_params.get('bb_squeeze_threshold', 0.020)  # Width pour squeeze
+        self.expansion_threshold = symbol_params.get('bb_expansion_threshold', 0.035)  # Width pour expansion
         self.breakout_min_volume = symbol_params.get('breakout_min_volume', 1.3)  # Volume minimum
         self.mean_reversion_zone = symbol_params.get('mean_reversion_zone', 0.15)  # Zone mean reversion
         self.trend_follow_zone = symbol_params.get('trend_follow_zone', 0.85)  # Zone trend following

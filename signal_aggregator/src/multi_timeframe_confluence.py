@@ -49,22 +49,22 @@ class MultiTimeframeConfluence:
         # Configuration des timeframes avec pondérations
         self.timeframes = {
             '1m': {
-                'weight': 0.15,
+                'weight': 0.20,
                 'role': 'entry_timing',
                 'min_data_points': 20
             },
             '5m': {
-                'weight': 0.25,
+                'weight': 0.30,
                 'role': 'signal_validation', 
                 'min_data_points': 50
             },
             '15m': {
-                'weight': 0.30,
+                'weight': 0.25,
                 'role': 'trend_confirmation',
                 'min_data_points': 100
             },
             '1h': {
-                'weight': 0.20,
+                'weight': 0.15,
                 'role': 'market_context',
                 'min_data_points': 150
             },
@@ -77,10 +77,10 @@ class MultiTimeframeConfluence:
         
         # Seuils de confluence
         self.confluence_thresholds = {
-            'very_strong': 85.0,
-            'strong': 70.0,
-            'moderate': 55.0,
-            'weak': 40.0
+            'very_strong': 80.0,
+            'strong': 65.0,
+            'moderate': 50.0,
+            'weak': 35.0
         }
     
     async def analyze_confluence(self, symbol: str) -> ConfluenceResult:

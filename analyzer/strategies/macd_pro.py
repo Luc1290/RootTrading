@@ -47,8 +47,8 @@ class MACDProStrategy(BaseStrategy):
         
         # Paramètres MACD avancés
         symbol_params = self.params.get(symbol, {}) if self.params else {}
-        self.min_histogram_threshold = symbol_params.get('macd_histogram_threshold', 0.0001)
-        self.strong_signal_threshold = symbol_params.get('macd_strong_threshold', 0.0005)
+        self.min_histogram_threshold = symbol_params.get('macd_histogram_threshold', 0.00008)
+        self.strong_signal_threshold = symbol_params.get('macd_strong_threshold', 0.0004)
         self.min_volume_ratio = symbol_params.get('min_volume_ratio', 1.1)
         self.min_adx = symbol_params.get('min_adx', 20.0)
         self.confluence_threshold = symbol_params.get('confluence_threshold', 50.0)
