@@ -396,8 +396,13 @@ class MessageRouter:
             # Nettoyage des clés expirées
             self._dedup_cache = {k: t for k, t in self._dedup_cache.items() if now - t < self._dedup_ttl}
 
-            # Clé = topic + timestamp + close (si présent)
-            dedup_key = f"{topic}:{message.get('close_time') or message.get('start_time')}:{message.get('close')}"
+            # Clé de déduplication adaptée au type de message
+            if topic.startswith("analyzer.signals"):
+                # Pour les signaux : topic + symbol + side + timestamp
+                dedup_key = f"{topic}:{message.get('symbol')}:{message.get('side')}:{message.get('timestamp')}"
+            else:
+                # Pour les données de marché : topic + timestamp + close (si présent)
+                dedup_key = f"{topic}:{message.get('close_time') or message.get('start_time')}:{message.get('close')}"
             if dedup_key in self._dedup_cache:
                 logger.debug(f"Message ignoré (doublon) : {dedup_key}")
                 return False
