@@ -119,59 +119,74 @@ class RSIProStrategy(BaseStrategy):
             # Détecter les divergences
             divergence_analysis = self._detect_rsi_divergences()
             
+            # NOUVEAU: Calculer la position du prix dans son range
+            price_position = self.calculate_price_position_in_range(df)
+            
             signal = None
             
             # SIGNAL D'ACHAT - RSI oversold avec contexte favorable
             if self._is_bullish_rsi_signal(current_rsi, context_analysis, divergence_analysis):
-                confidence = self._calculate_bullish_confidence(
-                    current_rsi, context_analysis, divergence_analysis, current_price, vwap
-                )
-                
-                signal = self.create_signal(
-                    side=OrderSide.BUY,
-                    price=current_price,
-                    confidence=confidence,
-                    metadata={
-                        'rsi': current_rsi,
-                        'adx': adx,
-                        'cci': cci,
-                        'williams_r': williams_r,
-                        'vwap_distance': ((current_price - vwap) / vwap * 100) if vwap else 0,
-                        'volume_ratio': volume_ratio,
-                        'volume_spike': volume_spike,
-                        'context_score': context_analysis['score'],
-                        'divergence_type': divergence_analysis.get('type', 'none'),
-                        'divergence_strength': divergence_analysis.get('strength', 0),
-                        'confluence_score': context_analysis.get('confluence_score', 0),
-                        'reason': f'RSI Pro BUY (RSI: {current_rsi:.1f}, Context: {context_analysis["score"]:.1f})'
-                    }
-                )
+                # Vérifier la position du prix avant de générer le signal
+                if not self.should_filter_signal_by_price_position(OrderSide.BUY, price_position, df):
+                    confidence = self._calculate_bullish_confidence(
+                        current_rsi, context_analysis, divergence_analysis, current_price, vwap
+                    )
+                    
+                    signal = self.create_signal(
+                        side=OrderSide.BUY,
+                        price=current_price,
+                        confidence=confidence,
+                        metadata={
+                            'rsi': current_rsi,
+                            'adx': adx,
+                            'cci': cci,
+                            'williams_r': williams_r,
+                            'vwap_distance': ((current_price - vwap) / vwap * 100) if vwap else 0,
+                            'volume_ratio': volume_ratio,
+                            'volume_spike': volume_spike,
+                            'context_score': context_analysis['score'],
+                            'divergence_type': divergence_analysis.get('type', 'none'),
+                            'divergence_strength': divergence_analysis.get('strength', 0),
+                            'confluence_score': context_analysis.get('confluence_score', 0),
+                            'price_position': price_position,
+                            'reason': f'RSI Pro BUY (RSI: {current_rsi:.1f}, Context: {context_analysis["score"]:.1f})'
+                        }
+                    )
+                else:
+                    logger.info(f"📊 RSI Pro {symbol}: Signal BUY techniquement valide mais filtré "
+                              f"(position prix: {price_position:.2f})")
             
             # SIGNAL DE VENTE - RSI overbought avec contexte favorable
             elif self._is_bearish_rsi_signal(current_rsi, context_analysis, divergence_analysis):
-                confidence = self._calculate_bearish_confidence(
-                    current_rsi, context_analysis, divergence_analysis, current_price, vwap
-                )
-                
-                signal = self.create_signal(
-                    side=OrderSide.SELL,
-                    price=current_price,
-                    confidence=confidence,
-                    metadata={
-                        'rsi': current_rsi,
-                        'adx': adx,
-                        'cci': cci,
-                        'williams_r': williams_r,
-                        'vwap_distance': ((current_price - vwap) / vwap * 100) if vwap else 0,
-                        'volume_ratio': volume_ratio,
-                        'volume_spike': volume_spike,
-                        'context_score': context_analysis['score'],
-                        'divergence_type': divergence_analysis.get('type', 'none'),
-                        'divergence_strength': divergence_analysis.get('strength', 0),
-                        'confluence_score': context_analysis.get('confluence_score', 0),
-                        'reason': f'RSI Pro SELL (RSI: {current_rsi:.1f}, Context: {context_analysis["score"]:.1f})'
-                    }
-                )
+                # Vérifier la position du prix avant de générer le signal
+                if not self.should_filter_signal_by_price_position(OrderSide.SELL, price_position, df):
+                    confidence = self._calculate_bearish_confidence(
+                        current_rsi, context_analysis, divergence_analysis, current_price, vwap
+                    )
+                    
+                    signal = self.create_signal(
+                        side=OrderSide.SELL,
+                        price=current_price,
+                        confidence=confidence,
+                        metadata={
+                            'rsi': current_rsi,
+                            'adx': adx,
+                            'cci': cci,
+                            'williams_r': williams_r,
+                            'vwap_distance': ((current_price - vwap) / vwap * 100) if vwap else 0,
+                            'volume_ratio': volume_ratio,
+                            'volume_spike': volume_spike,
+                            'context_score': context_analysis['score'],
+                            'divergence_type': divergence_analysis.get('type', 'none'),
+                            'divergence_strength': divergence_analysis.get('strength', 0),
+                            'confluence_score': context_analysis.get('confluence_score', 0),
+                            'price_position': price_position,
+                            'reason': f'RSI Pro SELL (RSI: {current_rsi:.1f}, Context: {context_analysis["score"]:.1f})'
+                        }
+                    )
+                else:
+                    logger.info(f"📊 RSI Pro {symbol}: Signal SELL techniquement valide mais filtré "
+                              f"(position prix: {price_position:.2f})")
             
             if signal:
                 logger.info(f"🎯 RSI Pro {symbol}: {signal.side} @ {current_price:.4f} "

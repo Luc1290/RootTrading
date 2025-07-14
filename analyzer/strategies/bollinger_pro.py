@@ -124,67 +124,82 @@ class BollingerProStrategy(BaseStrategy):
                 momentum_10, rsi, adx
             )
             
+            # NOUVEAU: Calculer la position du prix dans son range
+            price_position = self.calculate_price_position_in_range(df)
+            
             signal = None
             
             # SIGNAL D'ACHAT - Conditions favorables
             if self._is_bullish_bollinger_signal(
                 bb_position, bb_width, pattern_analysis, context_analysis, current_price, bb_middle
             ):
-                confidence = self._calculate_bullish_confidence(
-                    bb_position, bb_width, pattern_analysis, context_analysis, 
-                    volume_ratio, momentum_10
-                )
-                
-                signal = self.create_signal(
-                    side=OrderSide.BUY,
-                    price=current_price,
-                    confidence=confidence,
-                    metadata={
-                        'bb_position': bb_position,
-                        'bb_width': bb_width,
-                        'bb_upper': bb_upper,
-                        'bb_lower': bb_lower,
-                        'bb_middle': bb_middle,
-                        'pattern_type': pattern_analysis['type'],
-                        'pattern_strength': pattern_analysis['strength'],
-                        'volume_ratio': volume_ratio,
+                # Vérifier la position du prix avant de générer le signal
+                if not self.should_filter_signal_by_price_position(OrderSide.BUY, price_position, df):
+                    confidence = self._calculate_bullish_confidence(
+                        bb_position, bb_width, pattern_analysis, context_analysis, 
+                        volume_ratio, momentum_10
+                    )
+                    
+                    signal = self.create_signal(
+                        side=OrderSide.BUY,
+                        price=current_price,
+                        confidence=confidence,
+                        metadata={
+                            'bb_position': bb_position,
+                            'bb_width': bb_width,
+                            'bb_upper': bb_upper,
+                            'bb_lower': bb_lower,
+                            'bb_middle': bb_middle,
+                            'pattern_type': pattern_analysis['type'],
+                            'pattern_strength': pattern_analysis['strength'],
+                            'volume_ratio': volume_ratio,
                         'volume_spike': volume_spike,
                         'momentum_10': momentum_10,
                         'context_score': context_analysis['score'],
                         'confluence_score': context_analysis.get('confluence_score', 0),
+                        'price_position': price_position,
                         'reason': f'Bollinger Pro BUY ({pattern_analysis["type"]}, pos: {bb_position:.2f}, width: {bb_width:.3f})'
                     }
                 )
+                else:
+                    logger.info(f"📊 Bollinger Pro {symbol}: Signal BUY techniquement valide mais filtré "
+                              f"(position prix: {price_position:.2f})")
             
             # SIGNAL DE VENTE - Conditions favorables
             elif self._is_bearish_bollinger_signal(
                 bb_position, bb_width, pattern_analysis, context_analysis, current_price, bb_middle
             ):
-                confidence = self._calculate_bearish_confidence(
-                    bb_position, bb_width, pattern_analysis, context_analysis, 
-                    volume_ratio, momentum_10
-                )
-                
-                signal = self.create_signal(
-                    side=OrderSide.SELL,
-                    price=current_price,
-                    confidence=confidence,
-                    metadata={
-                        'bb_position': bb_position,
-                        'bb_width': bb_width,
-                        'bb_upper': bb_upper,
-                        'bb_lower': bb_lower,
-                        'bb_middle': bb_middle,
-                        'pattern_type': pattern_analysis['type'],
-                        'pattern_strength': pattern_analysis['strength'],
-                        'volume_ratio': volume_ratio,
-                        'volume_spike': volume_spike,
-                        'momentum_10': momentum_10,
-                        'context_score': context_analysis['score'],
-                        'confluence_score': context_analysis.get('confluence_score', 0),
-                        'reason': f'Bollinger Pro SELL ({pattern_analysis["type"]}, pos: {bb_position:.2f}, width: {bb_width:.3f})'
-                    }
-                )
+                # Vérifier la position du prix avant de générer le signal
+                if not self.should_filter_signal_by_price_position(OrderSide.SELL, price_position, df):
+                    confidence = self._calculate_bearish_confidence(
+                        bb_position, bb_width, pattern_analysis, context_analysis, 
+                        volume_ratio, momentum_10
+                    )
+                    
+                    signal = self.create_signal(
+                        side=OrderSide.SELL,
+                        price=current_price,
+                        confidence=confidence,
+                        metadata={
+                            'bb_position': bb_position,
+                            'bb_width': bb_width,
+                            'bb_upper': bb_upper,
+                            'bb_lower': bb_lower,
+                            'bb_middle': bb_middle,
+                            'pattern_type': pattern_analysis['type'],
+                            'pattern_strength': pattern_analysis['strength'],
+                            'volume_ratio': volume_ratio,
+                            'volume_spike': volume_spike,
+                            'momentum_10': momentum_10,
+                            'context_score': context_analysis['score'],
+                            'confluence_score': context_analysis.get('confluence_score', 0),
+                            'price_position': price_position,
+                            'reason': f'Bollinger Pro SELL ({pattern_analysis["type"]}, pos: {bb_position:.2f}, width: {bb_width:.3f})'
+                        }
+                    )
+                else:
+                    logger.info(f"📊 Bollinger Pro {symbol}: Signal SELL techniquement valide mais filtré "
+                              f"(position prix: {price_position:.2f})")
             
             if signal:
                 logger.info(f"🎯 Bollinger Pro {symbol}: {signal.side} @ {current_price:.4f} "

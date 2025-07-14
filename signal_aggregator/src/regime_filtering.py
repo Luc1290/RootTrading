@@ -55,53 +55,41 @@ class RegimeFiltering:
             
             # Seuils adaptatifs selon le régime Enhanced + contexte technique
             if regime.name == 'STRONG_TREND_UP':
-                # Tendance haussière forte: favoriser les BUY, pénaliser les SELL
+                # Tendance haussière forte: ATTENTION - éviter d'acheter au sommet
                 if side == 'SELL':
-                    min_confidence = 0.80  # Pénaliser SELL en forte tendance haussière
-                    required_strength = ['very_strong']
-                    logger.debug(f"💪 {regime.name}: SELL pénalisé, seuils stricts pour {symbol}")
+                    # En forte tendance haussière, c'est le moment de prendre des profits
+                    min_confidence = 0.65  # Plus permissif pour SELL (prise de profits)
+                    required_strength = ['moderate', 'strong', 'very_strong']
+                    logger.debug(f"💪 {regime.name}: SELL favorisé pour prise de profits pour {symbol}")
                 else:  # BUY
-                    # Validation MACD pour confirmer la force de tendance
-                    if self.technical_analysis and self.technical_analysis.validate_macd_trend(technical_context, 'bullish'):
-                        min_confidence = 0.35  # Encore plus permissif si MACD confirme
-                        logger.debug(f"💪 {regime.name}: MACD confirme, seuils très assouplis pour {symbol}")
-                    else:
-                        min_confidence = 0.4
-                        logger.debug(f"💪 {regime.name}: seuils assouplis pour {symbol}")
-                    required_strength = ['weak', 'moderate', 'strong', 'very_strong']
+                    # En forte tendance haussière, éviter d'acheter (prix déjà haut)
+                    min_confidence = 0.85  # Très strict pour BUY quand prix très haut
+                    required_strength = ['very_strong']
+                    logger.debug(f"💪 {regime.name}: BUY fortement pénalisé (prix déjà haut) pour {symbol}")
                 
             elif regime.name == 'TREND_UP':
-                # Tendance haussière: favoriser les BUY, pénaliser modérément les SELL
+                # Tendance haussière modérée: équilibrer BUY/SELL mais attention au prix
                 if side == 'SELL':
-                    min_confidence = 0.75  # Pénaliser SELL en tendance haussière
-                    required_strength = ['strong', 'very_strong']
-                    logger.debug(f"📈 {regime.name}: SELL pénalisé, seuils élevés pour {symbol}")
-                else:  # BUY
-                    # Validation OBV pour confirmer le volume
-                    if self.technical_analysis and self.technical_analysis.validate_obv_trend(technical_context, side):
-                        min_confidence = 0.45  # Bonus si OBV confirme
-                        logger.debug(f"📈 {regime.name}: OBV confirme, seuils bonus (0.45) pour {symbol}")
-                    else:
-                        min_confidence = 0.5  # ASSOUPLI à 0.50 (était 0.7)
-                        logger.debug(f"📈 {regime.name}: seuils ASSOUPLIS (0.5) pour {symbol}")
+                    min_confidence = 0.70  # Modérément permissif pour SELL (prise de profits)
                     required_strength = ['moderate', 'strong', 'very_strong']
+                    logger.debug(f"📈 {regime.name}: SELL modérément favorisé pour profits pour {symbol}")
+                else:  # BUY
+                    # En tendance haussière, être prudent avec les BUY
+                    min_confidence = 0.75  # Plus strict pour BUY (prix en hausse)
+                    required_strength = ['strong', 'very_strong']
+                    logger.debug(f"📈 {regime.name}: BUY pénalisé (prix en hausse) pour {symbol}")
                 
             elif regime.name == 'WEAK_TREND_UP':
-                # Tendance haussière faible: légère pénalisation des SELL
+                # Tendance haussière faible: plus équilibré
                 if side == 'SELL':
-                    min_confidence = 0.70  # Pénaliser légèrement SELL en tendance haussière faible
-                    required_strength = ['strong', 'very_strong']
-                    logger.debug(f"📊 {regime.name}: SELL légèrement pénalisé pour {symbol}")
-                else:  # BUY
-                    # Validation ROC pour détecter l'accélération
-                    roc_boost = self.technical_analysis.check_roc_acceleration(technical_context, side) if self.technical_analysis else False
-                    if roc_boost:
-                        min_confidence = 0.50  # Bonus si ROC détecte accélération
-                        logger.debug(f"📊 {regime.name}: ROC accélération détectée, seuils bonus (0.50) pour {symbol}")
-                    else:
-                        min_confidence = 0.55  # ASSOUPLI à 0.55 (était 0.65)
-                        logger.debug(f"📊 {regime.name}: seuils ASSOUPLIS (0.55) pour {symbol}")
+                    min_confidence = 0.65  # Légèrement permissif pour SELL
                     required_strength = ['moderate', 'strong', 'very_strong']
+                    logger.debug(f"📊 {regime.name}: SELL légèrement favorisé pour {symbol}")
+                else:  # BUY
+                    # En tendance faible, BUY acceptable mais prudent
+                    min_confidence = 0.70  # Modérément strict pour BUY
+                    required_strength = ['moderate', 'strong', 'very_strong']
+                    logger.debug(f"📊 {regime.name}: BUY modérément accepté pour {symbol}")
                 
             elif regime.name == 'RANGE_TIGHT':
                 # Gestion spéciale pour ADX très faible (marché plat)
@@ -137,14 +125,26 @@ class RegimeFiltering:
                 logger.debug(f"⚡ {regime.name}: seuils stricts pour {symbol}")
                 
             elif regime.name in ['WEAK_TREND_DOWN', 'TREND_DOWN', 'STRONG_TREND_DOWN']:
-                # Tendances baissières: favoriser les SELL, bloquer les BUY faibles
+                # Tendances baissières: INVERSER LA LOGIQUE - favoriser les BUY opportunistes, bloquer les SELL
                 if side == 'BUY':
-                    min_confidence = 0.80  # Assoupli de 0.85 à 0.80 pour les BUY en downtrend
-                    required_strength = ['very_strong']
+                    # En tendance baissière, c'est le moment d'acheter (prix bas)
+                    if regime.name == 'STRONG_TREND_DOWN':
+                        min_confidence = 0.65  # Plus permissif pour BUY quand prix très bas
+                        required_strength = ['moderate', 'strong', 'very_strong']
+                        logger.debug(f"📉 {regime.name}: BUY opportuniste favorisé (prix bas) pour {symbol}")
+                    else:
+                        min_confidence = 0.70  # Modérément permissif pour BUY
+                        required_strength = ['moderate', 'strong', 'very_strong']
                 else:  # SELL
-                    min_confidence = 0.7  # Seuil ajusté pour les SELL (0.7 recommandé)
-                    required_strength = ['moderate', 'strong', 'very_strong']
-                logger.debug(f"📉 {regime.name}: adaptation BUY/SELL pour {symbol}")
+                    # En tendance baissière, éviter de vendre (prix déjà bas)
+                    if regime.name == 'STRONG_TREND_DOWN':
+                        min_confidence = 0.85  # Très strict pour SELL quand prix très bas
+                        required_strength = ['very_strong']
+                        logger.debug(f"📉 {regime.name}: SELL fortement pénalisé (prix déjà bas) pour {symbol}")
+                    else:
+                        min_confidence = 0.80  # Strict pour SELL
+                        required_strength = ['strong', 'very_strong']
+                logger.debug(f"📉 {regime.name}: logique inversée BUY/SELL pour {symbol}")
                 
             else:
                 # Régime inconnu ou UNDEFINED: seuils par défaut

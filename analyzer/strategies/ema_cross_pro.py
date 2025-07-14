@@ -111,6 +111,9 @@ class EMACrossProStrategy(BaseStrategy):
             # Analyser le contexte multi-timeframes
             context_analysis = self._analyze_market_context(symbol, adx, williams_r, volume_ratio, bb_width, momentum_10)
             
+            # NOUVEAU: Calculer la position du prix dans son range
+            price_position = self.calculate_price_position_in_range(df)
+            
             signal = None
             
             # SIGNAL D'ACHAT - Golden Cross avec contexte favorable
@@ -119,29 +122,35 @@ class EMACrossProStrategy(BaseStrategy):
                 
                 # Vérifier les conditions de contexte
                 if self._validate_bullish_context(context_analysis, gap_percent):
-                    # Calculer confiance avec tous les facteurs
-                    base_confidence = min(0.8, gap_percent * 120 + 0.5)
-                    context_boost = context_analysis['confidence_boost']
-                    final_confidence = min(0.95, base_confidence + context_boost)
-                    
-                    signal = self.create_signal(
-                        side=OrderSide.BUY,
-                        price=current_price,
-                        confidence=final_confidence,
-                        metadata={
-                            'ema12': current_ema12,
-                            'ema26': current_ema26,
-                            'gap_percent': gap_percent * 100,
-                            'adx': adx,
-                            'williams_r': williams_r,
-                            'volume_ratio': volume_ratio,
-                            'volume_spike': volume_spike,
-                            'context_score': context_analysis['score'],
-                            'confluence_score': context_analysis.get('confluence_score', 0),
-                            'momentum_score': context_analysis.get('momentum_score', 0),
-                            'reason': f'EMA Golden Cross Pro (12: {current_ema12:.4f} > 26: {current_ema26:.4f}) + Contexte favorable'
-                        }
-                    )
+                    # Vérifier la position du prix avant de générer le signal
+                    if not self.should_filter_signal_by_price_position(OrderSide.BUY, price_position, df):
+                        # Calculer confiance avec tous les facteurs
+                        base_confidence = min(0.8, gap_percent * 120 + 0.5)
+                        context_boost = context_analysis['confidence_boost']
+                        final_confidence = min(0.95, base_confidence + context_boost)
+                        
+                        signal = self.create_signal(
+                            side=OrderSide.BUY,
+                            price=current_price,
+                            confidence=final_confidence,
+                            metadata={
+                                'ema12': current_ema12,
+                                'ema26': current_ema26,
+                                'gap_percent': gap_percent * 100,
+                                'adx': adx,
+                                'williams_r': williams_r,
+                                'volume_ratio': volume_ratio,
+                                'volume_spike': volume_spike,
+                                'context_score': context_analysis['score'],
+                                'confluence_score': context_analysis.get('confluence_score', 0),
+                                'momentum_score': context_analysis.get('momentum_score', 0),
+                                'price_position': price_position,
+                                'reason': f'EMA Golden Cross Pro (12: {current_ema12:.4f} > 26: {current_ema26:.4f}) + Contexte favorable'
+                            }
+                        )
+                    else:
+                        logger.info(f"📊 EMA Cross Pro {symbol}: Signal BUY techniquement valide mais filtré "
+                                  f"(position prix: {price_position:.2f})")
                 else:
                     logger.debug(f"🚫 EMA Cross {symbol}: Golden cross détecté mais contexte défavorable (score: {context_analysis['score']:.1f})")
             
@@ -151,29 +160,35 @@ class EMACrossProStrategy(BaseStrategy):
                 
                 # Vérifier les conditions de contexte
                 if self._validate_bearish_context(context_analysis, gap_percent):
-                    # Calculer confiance avec tous les facteurs
-                    base_confidence = min(0.8, gap_percent * 120 + 0.5)
-                    context_boost = context_analysis['confidence_boost']
-                    final_confidence = min(0.95, base_confidence + context_boost)
-                    
-                    signal = self.create_signal(
-                        side=OrderSide.SELL,
-                        price=current_price,
-                        confidence=final_confidence,
-                        metadata={
-                            'ema12': current_ema12,
-                            'ema26': current_ema26,
-                            'gap_percent': gap_percent * 100,
-                            'adx': adx,
-                            'williams_r': williams_r,
-                            'volume_ratio': volume_ratio,
-                            'volume_spike': volume_spike,
-                            'context_score': context_analysis['score'],
-                            'confluence_score': context_analysis.get('confluence_score', 0),
-                            'momentum_score': context_analysis.get('momentum_score', 0),
-                            'reason': f'EMA Death Cross Pro (12: {current_ema12:.4f} < 26: {current_ema26:.4f}) + Contexte favorable'
-                        }
-                    )
+                    # Vérifier la position du prix avant de générer le signal
+                    if not self.should_filter_signal_by_price_position(OrderSide.SELL, price_position, df):
+                        # Calculer confiance avec tous les facteurs
+                        base_confidence = min(0.8, gap_percent * 120 + 0.5)
+                        context_boost = context_analysis['confidence_boost']
+                        final_confidence = min(0.95, base_confidence + context_boost)
+                        
+                        signal = self.create_signal(
+                            side=OrderSide.SELL,
+                            price=current_price,
+                            confidence=final_confidence,
+                            metadata={
+                                'ema12': current_ema12,
+                                'ema26': current_ema26,
+                                'gap_percent': gap_percent * 100,
+                                'adx': adx,
+                                'williams_r': williams_r,
+                                'volume_ratio': volume_ratio,
+                                'volume_spike': volume_spike,
+                                'context_score': context_analysis['score'],
+                                'confluence_score': context_analysis.get('confluence_score', 0),
+                                'momentum_score': context_analysis.get('momentum_score', 0),
+                                'price_position': price_position,
+                                'reason': f'EMA Death Cross Pro (12: {current_ema12:.4f} < 26: {current_ema26:.4f}) + Contexte favorable'
+                            }
+                        )
+                    else:
+                        logger.info(f"📊 EMA Cross Pro {symbol}: Signal SELL techniquement valide mais filtré "
+                                  f"(position prix: {price_position:.2f})")
                 else:
                     logger.debug(f"🚫 EMA Cross {symbol}: Death cross détecté mais contexte défavorable (score: {context_analysis['score']:.1f})")
             

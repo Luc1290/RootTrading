@@ -134,63 +134,78 @@ class MACDProStrategy(BaseStrategy):
                 symbol, adx, volume_ratio, momentum_10, rsi, williams_r
             )
             
+            # NOUVEAU: Calculer la position du prix dans son range
+            price_position = self.calculate_price_position_in_range(df)
+            
             signal = None
             
             # SIGNAL D'ACHAT - MACD bullish avec contexte favorable
             if self._is_bullish_macd_signal(macd_analysis, divergence_analysis, context_analysis):
-                confidence = self._calculate_bullish_confidence(
-                    macd_analysis, divergence_analysis, context_analysis, 
-                    volume_ratio, current_histogram
-                )
-                
-                signal = self.create_signal(
-                    side=OrderSide.BUY,
-                    price=current_price,
-                    confidence=confidence,
-                    metadata={
-                        'macd_line': current_macd_line,
-                        'macd_signal': current_macd_signal,
-                        'macd_histogram': current_histogram,
-                        'signal_type': macd_analysis['signal_type'],
-                        'signal_strength': macd_analysis['strength'],
-                        'divergence_type': divergence_analysis.get('type', 'none'),
-                        'divergence_strength': divergence_analysis.get('strength', 0),
-                        'adx': adx,
-                        'volume_ratio': volume_ratio,
-                        'volume_spike': volume_spike,
-                        'context_score': context_analysis['score'],
-                        'confluence_score': context_analysis.get('confluence_score', 0),
-                        'reason': f'MACD Pro BUY ({macd_analysis["signal_type"]}, hist: {current_histogram:.5f})'
-                    }
-                )
+                # Vérifier la position du prix avant de générer le signal
+                if not self.should_filter_signal_by_price_position(OrderSide.BUY, price_position, df):
+                    confidence = self._calculate_bullish_confidence(
+                        macd_analysis, divergence_analysis, context_analysis, 
+                        volume_ratio, current_histogram
+                    )
+                    
+                    signal = self.create_signal(
+                        side=OrderSide.BUY,
+                        price=current_price,
+                        confidence=confidence,
+                        metadata={
+                            'macd_line': current_macd_line,
+                            'macd_signal': current_macd_signal,
+                            'macd_histogram': current_histogram,
+                            'signal_type': macd_analysis['signal_type'],
+                            'signal_strength': macd_analysis['strength'],
+                            'divergence_type': divergence_analysis.get('type', 'none'),
+                            'divergence_strength': divergence_analysis.get('strength', 0),
+                            'adx': adx,
+                            'volume_ratio': volume_ratio,
+                            'volume_spike': volume_spike,
+                            'context_score': context_analysis['score'],
+                            'confluence_score': context_analysis.get('confluence_score', 0),
+                            'price_position': price_position,
+                            'reason': f'MACD Pro BUY ({macd_analysis["signal_type"]}, hist: {current_histogram:.5f})'
+                        }
+                    )
+                else:
+                    logger.info(f"📊 MACD Pro {symbol}: Signal BUY techniquement valide mais filtré "
+                              f"(position prix: {price_position:.2f})")
             
             # SIGNAL DE VENTE - MACD bearish avec contexte favorable
             elif self._is_bearish_macd_signal(macd_analysis, divergence_analysis, context_analysis):
-                confidence = self._calculate_bearish_confidence(
-                    macd_analysis, divergence_analysis, context_analysis, 
-                    volume_ratio, current_histogram
-                )
-                
-                signal = self.create_signal(
-                    side=OrderSide.SELL,
-                    price=current_price,
-                    confidence=confidence,
-                    metadata={
-                        'macd_line': current_macd_line,
-                        'macd_signal': current_macd_signal,
-                        'macd_histogram': current_histogram,
-                        'signal_type': macd_analysis['signal_type'],
-                        'signal_strength': macd_analysis['strength'],
-                        'divergence_type': divergence_analysis.get('type', 'none'),
-                        'divergence_strength': divergence_analysis.get('strength', 0),
-                        'adx': adx,
-                        'volume_ratio': volume_ratio,
-                        'volume_spike': volume_spike,
-                        'context_score': context_analysis['score'],
-                        'confluence_score': context_analysis.get('confluence_score', 0),
-                        'reason': f'MACD Pro SELL ({macd_analysis["signal_type"]}, hist: {current_histogram:.5f})'
-                    }
-                )
+                # Vérifier la position du prix avant de générer le signal
+                if not self.should_filter_signal_by_price_position(OrderSide.SELL, price_position, df):
+                    confidence = self._calculate_bearish_confidence(
+                        macd_analysis, divergence_analysis, context_analysis, 
+                        volume_ratio, current_histogram
+                    )
+                    
+                    signal = self.create_signal(
+                        side=OrderSide.SELL,
+                        price=current_price,
+                        confidence=confidence,
+                        metadata={
+                            'macd_line': current_macd_line,
+                            'macd_signal': current_macd_signal,
+                            'macd_histogram': current_histogram,
+                            'signal_type': macd_analysis['signal_type'],
+                            'signal_strength': macd_analysis['strength'],
+                            'divergence_type': divergence_analysis.get('type', 'none'),
+                            'divergence_strength': divergence_analysis.get('strength', 0),
+                            'adx': adx,
+                            'volume_ratio': volume_ratio,
+                            'volume_spike': volume_spike,
+                            'context_score': context_analysis['score'],
+                            'confluence_score': context_analysis.get('confluence_score', 0),
+                            'price_position': price_position,
+                            'reason': f'MACD Pro SELL ({macd_analysis["signal_type"]}, hist: {current_histogram:.5f})'
+                        }
+                    )
+                else:
+                    logger.info(f"📊 MACD Pro {symbol}: Signal SELL techniquement valide mais filtré "
+                              f"(position prix: {price_position:.2f})")
             
             if signal:
                 logger.info(f"🎯 MACD Pro {symbol}: {signal.side} @ {current_price:.4f} "

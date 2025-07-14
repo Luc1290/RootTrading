@@ -248,6 +248,86 @@ class BaseStrategy(ABC):
         
         return atr_percent
     
+    def calculate_price_position_in_range(self, df: pd.DataFrame = None, lookback: int = 50) -> float:
+        """
+        Calcule la position relative du prix actuel dans son range récent.
+        
+        Args:
+            df: DataFrame avec les données (si None, utilise le buffer)
+            lookback: Nombre de périodes pour calculer le range
+            
+        Returns:
+            Position relative (0.0 = bas du range, 1.0 = haut du range)
+        """
+        if df is None:
+            df = self.get_data_as_dataframe()
+        
+        if df is None or len(df) < lookback:
+            return 0.5  # Retourner position médiane si pas assez de données
+        
+        try:
+            # Prendre les dernières N bougies
+            recent_data = df.tail(lookback)
+            
+            # Calculer le range
+            highest_high = recent_data['high'].max()
+            lowest_low = recent_data['low'].min()
+            current_price = df['close'].iloc[-1]
+            
+            # Calculer la position relative
+            range_size = highest_high - lowest_low
+            if range_size <= 0:
+                return 0.5  # Si pas de range, position médiane
+            
+            position = (current_price - lowest_low) / range_size
+            
+            # Limiter entre 0 et 1
+            position = max(0.0, min(1.0, position))
+            
+            logger.debug(f"[{self.name}] Position prix {self.symbol}: {position:.2f} "
+                        f"(Prix: {current_price:.4f}, Range: {lowest_low:.4f}-{highest_high:.4f})")
+            
+            return position
+            
+        except Exception as e:
+            logger.error(f"Erreur calcul position dans range: {e}")
+            return 0.5
+    
+    def should_filter_signal_by_price_position(self, side: OrderSide, price_position: float = None,
+                                             df: pd.DataFrame = None) -> bool:
+        """
+        Détermine si un signal devrait être filtré basé sur la position du prix dans son range.
+        
+        Args:
+            side: Direction du signal (BUY ou SELL)
+            price_position: Position pré-calculée (si None, la calcule)
+            df: DataFrame avec les données
+            
+        Returns:
+            True si le signal devrait être bloqué, False sinon
+        """
+        if price_position is None:
+            price_position = self.calculate_price_position_in_range(df)
+        
+        # Seuils de filtrage (ajustables par stratégie)
+        symbol_params = self.params.get(self.symbol, {}) if self.params else {}
+        buy_threshold_high = symbol_params.get('buy_filter_high', 0.80)  # Bloquer BUY si prix > 80% du range
+        sell_threshold_low = symbol_params.get('sell_filter_low', 0.20)  # Bloquer SELL si prix < 20% du range
+        
+        # Filtrer les BUY en haut du range
+        if side == OrderSide.BUY and price_position > buy_threshold_high:
+            logger.info(f"🚫 [{self.name}] BUY filtré pour {self.symbol}: "
+                       f"prix trop haut dans le range ({price_position:.2f} > {buy_threshold_high})")
+            return True
+        
+        # Filtrer les SELL en bas du range
+        if side == OrderSide.SELL and price_position < sell_threshold_low:
+            logger.info(f"🚫 [{self.name}] SELL filtré pour {self.symbol}: "
+                       f"prix trop bas dans le range ({price_position:.2f} < {sell_threshold_low})")
+            return True
+        
+        return False
+    
     def should_skip_low_volatility(self, atr_percent: float = None) -> bool:
         """
         Détermine si un signal doit être ignoré en raison d'une faible volatilité.

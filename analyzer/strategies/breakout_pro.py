@@ -111,6 +111,9 @@ class BreakoutProStrategy(BaseStrategy):
                 symbol, volume_ratio, atr, momentum_10, adx, rsi, bb_width
             )
             
+            # NOUVEAU: Calculer la position du prix dans son range
+            price_position = self.calculate_price_position_in_range(df)
+            
             signal = None
             
             # SIGNAL D'ACHAT - Breakout résistance avec validations
@@ -119,31 +122,37 @@ class BreakoutProStrategy(BaseStrategy):
             )
             
             if breakout_analysis['is_valid']:
-                confidence = self._calculate_breakout_confidence(
-                    breakout_analysis, context_analysis, volume_ratio, momentum_10, True
-                )
-                
-                signal = self.create_signal(
-                    side=OrderSide.BUY,
-                    price=current_price,
-                    confidence=confidence,
-                    metadata={
-                        'breakout_type': 'resistance',
-                        'resistance_level': breakout_analysis['level'],
-                        'breakout_strength': breakout_analysis['strength'],
-                        'breakout_percent': breakout_analysis['percent'],
-                        'sr_touches': breakout_analysis['touches'],
-                        'volume_ratio': volume_ratio,
-                        'volume_spike': volume_spike,
-                        'atr_context': atr,
-                        'momentum_10': momentum_10,
-                        'structure_type': structure_analysis['type'],
-                        'context_score': context_analysis['score'],
-                        'confluence_score': context_analysis.get('confluence_score', 0),
-                        'false_breakout_risk': breakout_analysis['false_risk'],
-                        'reason': f'Breakout Pro résistance ({current_price:.4f} > {breakout_analysis["level"]:.4f})'
-                    }
-                )
+                # Vérifier la position du prix avant de générer le signal
+                if not self.should_filter_signal_by_price_position(OrderSide.BUY, price_position, df):
+                    confidence = self._calculate_breakout_confidence(
+                        breakout_analysis, context_analysis, volume_ratio, momentum_10, True
+                    )
+                    
+                    signal = self.create_signal(
+                        side=OrderSide.BUY,
+                        price=current_price,
+                        confidence=confidence,
+                        metadata={
+                            'breakout_type': 'resistance',
+                            'resistance_level': breakout_analysis['level'],
+                            'breakout_strength': breakout_analysis['strength'],
+                            'breakout_percent': breakout_analysis['percent'],
+                            'sr_touches': breakout_analysis['touches'],
+                            'volume_ratio': volume_ratio,
+                            'volume_spike': volume_spike,
+                            'atr_context': atr,
+                            'momentum_10': momentum_10,
+                            'structure_type': structure_analysis['type'],
+                            'context_score': context_analysis['score'],
+                            'confluence_score': context_analysis.get('confluence_score', 0),
+                            'false_breakout_risk': breakout_analysis['false_risk'],
+                            'price_position': price_position,
+                            'reason': f'Breakout Pro résistance ({current_price:.4f} > {breakout_analysis["level"]:.4f})'
+                        }
+                    )
+                else:
+                    logger.info(f"📊 Breakout Pro {symbol}: Signal BUY techniquement valide mais filtré "
+                              f"(position prix: {price_position:.2f})")
             
             # SIGNAL DE VENTE - Breakdown support avec validations
             else:
@@ -152,31 +161,37 @@ class BreakoutProStrategy(BaseStrategy):
                 )
                 
                 if breakdown_analysis['is_valid']:
-                    confidence = self._calculate_breakout_confidence(
-                        breakdown_analysis, context_analysis, volume_ratio, momentum_10, False
-                    )
-                    
-                    signal = self.create_signal(
-                        side=OrderSide.SELL,
-                        price=current_price,
-                        confidence=confidence,
-                        metadata={
-                            'breakout_type': 'support',
-                            'support_level': breakdown_analysis['level'],
-                            'breakdown_strength': breakdown_analysis['strength'],
-                            'breakdown_percent': breakdown_analysis['percent'],
-                            'sr_touches': breakdown_analysis['touches'],
-                            'volume_ratio': volume_ratio,
-                            'volume_spike': volume_spike,
-                            'atr_context': atr,
-                            'momentum_10': momentum_10,
-                            'structure_type': structure_analysis['type'],
-                            'context_score': context_analysis['score'],
-                            'confluence_score': context_analysis.get('confluence_score', 0),
-                            'false_breakout_risk': breakdown_analysis['false_risk'],
-                            'reason': f'Breakdown Pro support ({current_price:.4f} < {breakdown_analysis["level"]:.4f})'
-                        }
-                    )
+                    # Vérifier la position du prix avant de générer le signal
+                    if not self.should_filter_signal_by_price_position(OrderSide.SELL, price_position, df):
+                        confidence = self._calculate_breakout_confidence(
+                            breakdown_analysis, context_analysis, volume_ratio, momentum_10, False
+                        )
+                        
+                        signal = self.create_signal(
+                            side=OrderSide.SELL,
+                            price=current_price,
+                            confidence=confidence,
+                            metadata={
+                                'breakout_type': 'support',
+                                'support_level': breakdown_analysis['level'],
+                                'breakdown_strength': breakdown_analysis['strength'],
+                                'breakdown_percent': breakdown_analysis['percent'],
+                                'sr_touches': breakdown_analysis['touches'],
+                                'volume_ratio': volume_ratio,
+                                'volume_spike': volume_spike,
+                                'atr_context': atr,
+                                'momentum_10': momentum_10,
+                                'structure_type': structure_analysis['type'],
+                                'context_score': context_analysis['score'],
+                                'confluence_score': context_analysis.get('confluence_score', 0),
+                                'false_breakout_risk': breakdown_analysis['false_risk'],
+                                'price_position': price_position,
+                                'reason': f'Breakdown Pro support ({current_price:.4f} < {breakdown_analysis["level"]:.4f})'
+                            }
+                        )
+                    else:
+                        logger.info(f"📊 Breakout Pro {symbol}: Signal SELL techniquement valide mais filtré "
+                                  f"(position prix: {price_position:.2f})")
             
             if signal:
                 logger.info(f"🎯 Breakout Pro {symbol}: {signal.side} @ {current_price:.4f} "

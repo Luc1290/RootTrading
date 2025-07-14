@@ -138,68 +138,83 @@ class ReversalDivergenceProStrategy(BaseStrategy):
                 symbol, volume_ratio, adx, williams_r, bb_position
             )
             
+            # NOUVEAU: Calculer la position du prix dans son range
+            price_position = self.calculate_price_position_in_range(df)
+            
             signal = None
             
             # SIGNAL D'ACHAT - Divergences bullish avec contexte favorable
             bullish_divergences = [d for d in all_divergences if d.type in ['bullish', 'hidden_bullish']]
             if self._is_valid_bullish_divergence_signal(bullish_divergences, structure_analysis, context_analysis):
-                confidence = self._calculate_divergence_confidence(
-                    bullish_divergences, structure_analysis, context_analysis, volume_ratio, True
-                )
-                
-                # Préparer métadonnées détaillées
-                div_summary = self._summarize_divergences(bullish_divergences)
-                
-                signal = self.create_signal(
-                    side=OrderSide.BUY,
-                    price=current_price,
-                    confidence=confidence,
-                    metadata={
-                        'divergence_count': len(bullish_divergences),
-                        'divergence_types': [d.type for d in bullish_divergences],
-                        'divergence_indicators': [d.indicator for d in bullish_divergences],
-                        'strongest_divergence': div_summary['strongest'],
-                        'avg_divergence_strength': div_summary['avg_strength'],
-                        'price_swing_strength': structure_analysis['swing_strength'],
-                        'volume_ratio': volume_ratio,
+                # Vérifier la position du prix avant de générer le signal
+                if not self.should_filter_signal_by_price_position(OrderSide.BUY, price_position, df):
+                    confidence = self._calculate_divergence_confidence(
+                        bullish_divergences, structure_analysis, context_analysis, volume_ratio, True
+                    )
+                    
+                    # Préparer métadonnées détaillées
+                    div_summary = self._summarize_divergences(bullish_divergences)
+                    
+                    signal = self.create_signal(
+                        side=OrderSide.BUY,
+                        price=current_price,
+                        confidence=confidence,
+                        metadata={
+                            'divergence_count': len(bullish_divergences),
+                            'divergence_types': [d.type for d in bullish_divergences],
+                            'divergence_indicators': [d.indicator for d in bullish_divergences],
+                            'strongest_divergence': div_summary['strongest'],
+                            'avg_divergence_strength': div_summary['avg_strength'],
+                            'price_swing_strength': structure_analysis['swing_strength'],
+                            'volume_ratio': volume_ratio,
                         'volume_spike': volume_spike,
                         'context_score': context_analysis['score'],
                         'confluence_score': context_analysis.get('confluence_score', 0),
                         'structure_favorability': structure_analysis['favorability'],
+                        'price_position': price_position,
                         'reason': f'Divergence Pro BUY ({len(bullish_divergences)} div: {div_summary["indicators"]})'
                     }
                 )
+                else:
+                    logger.info(f"📊 Divergence Pro {symbol}: Signal BUY techniquement valide mais filtré "
+                              f"(position prix: {price_position:.2f})")
             
             # SIGNAL DE VENTE - Divergences bearish avec contexte favorable
             else:
                 bearish_divergences = [d for d in all_divergences if d.type in ['bearish', 'hidden_bearish']]
                 if self._is_valid_bearish_divergence_signal(bearish_divergences, structure_analysis, context_analysis):
-                    confidence = self._calculate_divergence_confidence(
-                        bearish_divergences, structure_analysis, context_analysis, volume_ratio, False
-                    )
-                    
-                    # Préparer métadonnées détaillées
-                    div_summary = self._summarize_divergences(bearish_divergences)
-                    
-                    signal = self.create_signal(
-                        side=OrderSide.SELL,
-                        price=current_price,
-                        confidence=confidence,
-                        metadata={
-                            'divergence_count': len(bearish_divergences),
-                            'divergence_types': [d.type for d in bearish_divergences],
-                            'divergence_indicators': [d.indicator for d in bearish_divergences],
-                            'strongest_divergence': div_summary['strongest'],
-                            'avg_divergence_strength': div_summary['avg_strength'],
-                            'price_swing_strength': structure_analysis['swing_strength'],
-                            'volume_ratio': volume_ratio,
-                            'volume_spike': volume_spike,
-                            'context_score': context_analysis['score'],
-                            'confluence_score': context_analysis.get('confluence_score', 0),
-                            'structure_favorability': structure_analysis['favorability'],
-                            'reason': f'Divergence Pro SELL ({len(bearish_divergences)} div: {div_summary["indicators"]})'
-                        }
-                    )
+                    # Vérifier la position du prix avant de générer le signal
+                    if not self.should_filter_signal_by_price_position(OrderSide.SELL, price_position, df):
+                        confidence = self._calculate_divergence_confidence(
+                            bearish_divergences, structure_analysis, context_analysis, volume_ratio, False
+                        )
+                        
+                        # Préparer métadonnées détaillées
+                        div_summary = self._summarize_divergences(bearish_divergences)
+                        
+                        signal = self.create_signal(
+                            side=OrderSide.SELL,
+                            price=current_price,
+                            confidence=confidence,
+                            metadata={
+                                'divergence_count': len(bearish_divergences),
+                                'divergence_types': [d.type for d in bearish_divergences],
+                                'divergence_indicators': [d.indicator for d in bearish_divergences],
+                                'strongest_divergence': div_summary['strongest'],
+                                'avg_divergence_strength': div_summary['avg_strength'],
+                                'price_swing_strength': structure_analysis['swing_strength'],
+                                'volume_ratio': volume_ratio,
+                                'volume_spike': volume_spike,
+                                'context_score': context_analysis['score'],
+                                'confluence_score': context_analysis.get('confluence_score', 0),
+                                'structure_favorability': structure_analysis['favorability'],
+                                'price_position': price_position,
+                                'reason': f'Divergence Pro SELL ({len(bearish_divergences)} div: {div_summary["indicators"]})'
+                            }
+                        )
+                    else:
+                        logger.info(f"📊 Divergence Pro {symbol}: Signal SELL techniquement valide mais filtré "
+                                  f"(position prix: {price_position:.2f})")
             
             if signal:
                 div_count = signal.metadata['divergence_count']
