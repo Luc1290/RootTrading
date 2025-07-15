@@ -412,7 +412,8 @@ class ServiceClient:
                     if isinstance(balance, dict) and "asset" in balance:
                         asset = balance["asset"]
                         balances[asset] = {
-                            "free": balance.get("free", 0.0)
+                            "free": balance.get("free", 0.0),
+                            "value_usdc": balance.get("value_usdc", 0.0)
                         }
                 return balances
             return response

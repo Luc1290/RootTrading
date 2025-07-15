@@ -35,10 +35,10 @@ class Coordinator:
         # Configuration dynamique basée sur le capital total
         self.fee_rate = 0.001  # 0.1% de frais estimés par trade
         
-        # Allocation dynamique - pas de hardcodage !
-        self.min_trade_percent = 3.0  # 3% minimum du capital total
+        # Allocation dynamique intelligente
+        self.base_allocation_percent = 8.0  # 8% par défaut du capital total
         self.max_trade_percent = 15.0  # 15% maximum du capital total
-        self.min_absolute_trade_usdc = 30.0  # 30 USDC minimum absolu (seuil technique)
+        self.min_absolute_trade_usdc = 10.0  # 10 USDC minimum Binance
         
         # Stats
         self.stats = {
@@ -209,22 +209,9 @@ class Coordinator:
             # Valeur totale du trade
             trade_value = quantity * signal.price
             
-            # Filtre 1: Valeur minimum du trade (dynamique selon capital)
-            balances = self.service_client.get_all_balances()
-            if balances:
-                if isinstance(balances, dict):
-                    total_capital = sum(b.get('value_usdc', 0) for b in balances.values())
-                else:
-                    total_capital = sum(b.get('value_usdc', 0) for b in balances)
-                min_trade_value = max(
-                    self.min_absolute_trade_usdc,  # 30 USDC minimum absolu
-                    total_capital * (self.min_trade_percent / 100)  # 3% du capital
-                )
-            else:
-                min_trade_value = self.min_absolute_trade_usdc
-            
-            if trade_value < min_trade_value:
-                return False, f"Trade trop petit: {trade_value:.2f} USDC < {min_trade_value:.2f} USDC (capital: {total_capital:.0f})"
+            # Filtre 1: Valeur minimum du trade (simple)
+            if trade_value < self.min_absolute_trade_usdc:
+                return False, f"Trade trop petit: {trade_value:.2f} USDC < {self.min_absolute_trade_usdc:.2f} USDC (minimum Binance)"
             
             # Filtre 2: Ratio frais/valeur acceptable
             estimated_fees = trade_value * self.fee_rate * 2  # Aller-retour
@@ -267,34 +254,32 @@ class Coordinator:
                     total_capital = sum(b.get('value_usdc', 0) for b in balances)
                 
                 # Allocation dynamique basée sur la force du signal
-                base_allocation_percent = 8.0  # 8% par défaut
+                allocation_percent = self.base_allocation_percent  # 8% par défaut
                 
                 # Ajuster selon la force du signal si disponible
                 if signal.metadata and "signal_strength" in signal.metadata:
                     strength = signal.metadata["signal_strength"]
                     if strength == "VERY_STRONG":
-                        base_allocation_percent = 12.0
+                        allocation_percent = 12.0
                     elif strength == "STRONG":
-                        base_allocation_percent = 10.0
+                        allocation_percent = 10.0
                     elif strength == "MODERATE":
-                        base_allocation_percent = 8.0
+                        allocation_percent = 8.0
                     elif strength == "WEAK":
-                        base_allocation_percent = 5.0
+                        allocation_percent = 5.0
                 
-                # Calculer le montant à trader
-                trade_amount = total_capital * (base_allocation_percent / 100)
+                # Calculer le montant à trader (% du capital total)
+                trade_amount = total_capital * (allocation_percent / 100)
                 
-                # Limiter par l'USDC disponible
-                trade_amount = min(trade_amount, usdc_balance * 0.95)  # Garder 5% de marge
+                # Limiter par l'USDC disponible (utiliser jusqu'à 98% pour garder une petite marge)
+                trade_amount = min(trade_amount, usdc_balance * 0.98)
                 
-                # Appliquer les limites dynamiques
-                min_trade_value = max(
-                    self.min_absolute_trade_usdc,
-                    total_capital * (self.min_trade_percent / 100)
-                )
+                # Appliquer seulement le maximum (pas de minimum % car on veut pouvoir épuiser l'USDC)
                 max_trade_value = total_capital * (self.max_trade_percent / 100)
+                trade_amount = min(trade_amount, max_trade_value)
                 
-                trade_amount = max(min_trade_value, min(trade_amount, max_trade_value))
+                # Mais toujours respecter le minimum absolu Binance
+                trade_amount = max(self.min_absolute_trade_usdc, trade_amount)
                 
                 # Convertir en quantité
                 quantity = trade_amount / signal.price
