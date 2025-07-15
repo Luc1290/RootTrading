@@ -288,8 +288,10 @@ class SignalAggregator:
                 first_signal_time = self.signal_processor.get_signal_timestamp(self.signal_buffer[symbol][0])
                 time_since_first = timestamp - first_signal_time
 
-                if time_since_first.total_seconds() < 180:
-                    logger.info(f"🕐 Signal unique pour {symbol}, attente {180 - time_since_first.total_seconds():.0f}s pour confluence")
+                # Marge de tolérance de 10s pour le temps de traitement
+                confluence_timeout = 270
+                if time_since_first.total_seconds() < confluence_timeout:
+                    logger.info(f"🕐 Signal unique pour {symbol}, attente {confluence_timeout - time_since_first.total_seconds():.0f}s pour confluence")
                     return None  # Attendre plus de signaux
                 else:
                     logger.info(f"⏰ Délai d'attente écoulé pour {symbol}, traitement du signal unique")
@@ -487,10 +489,12 @@ class SignalAggregator:
         if BUY_score > SELL_score and BUY_score >= self.min_vote_threshold:
             side = 'BUY'
             confidence = max(0.5, (BUY_score / (BUY_score + SELL_score)) - confidence_penalty)
+            # Compter les signaux multiples d'une même stratégie au lieu de dédupliquer
             contributing_strategies = [s['strategy'] for s in BUY_signals]
         elif SELL_score > BUY_score and SELL_score >= self.min_vote_threshold:
             side = 'SELL'
             confidence = max(0.5, (SELL_score / (BUY_score + SELL_score)) - confidence_penalty)
+            # Compter les signaux multiples d'une même stratégie au lieu de dédupliquer
             contributing_strategies = [s['strategy'] for s in SELL_signals]
         else:
             # No clear signal
@@ -563,10 +567,10 @@ class SignalAggregator:
         else:
             trailing_delta = 3.0  # Défaut si pas de stop calculé
         
-        # NOUVEAU: Validation stricte minimum 2 stratégies pour confluence
+        # NOUVEAU: Validation stricte minimum 2 signaux pour confluence (peut être de la même stratégie)
         if len(contributing_strategies) < 2:
             if len(contributing_strategies) == 1:
-                logger.info(f"❌ Signal unique rejeté (confluence requise): {contributing_strategies[0]} pour {symbol}")
+                logger.info(f"❌ Signal insuffisant rejeté (confluence requise): {len(contributing_strategies)} signaux pour {symbol}")
                 return None
             else:
                 logger.info(f"❌ Signal rejeté: aucune stratégie valide pour {symbol}")
@@ -812,12 +816,14 @@ class SignalAggregator:
         if BUY_score > SELL_score and BUY_score >= min_threshold:
             side = 'BUY'
             confidence = BUY_score / (BUY_score + SELL_score)
-            contributing_strategies = list(set(s['strategy'] for s in BUY_signals))  # Dé-dupliquer
+            # Compter les signaux multiples d'une même stratégie au lieu de dédupliquer
+            contributing_strategies = [s['strategy'] for s in BUY_signals]
             relevant_signals = BUY_signals
         elif SELL_score > BUY_score and SELL_score >= min_threshold:
             side = 'SELL'
             confidence = SELL_score / (BUY_score + SELL_score)
-            contributing_strategies = list(set(s['strategy'] for s in SELL_signals))  # Dé-dupliquer
+            # Compter les signaux multiples d'une même stratégie au lieu de dédupliquer
+            contributing_strategies = [s['strategy'] for s in SELL_signals]
             relevant_signals = SELL_signals
         else:
             # No clear signal
@@ -892,10 +898,10 @@ class SignalAggregator:
         # Trailing stop fixe à 8% pour système crypto pur
         trailing_delta = 8.0  # Crypto optimized (était 3.0%)
         
-        # NOUVEAU: Validation stricte minimum 2 stratégies pour confluence
+        # NOUVEAU: Validation stricte minimum 2 signaux pour confluence (peut être de la même stratégie)
         if len(contributing_strategies) < 2:
             if len(contributing_strategies) == 1:
-                logger.info(f"❌ Signal unique rejeté (confluence requise): {contributing_strategies[0]} pour {symbol}")
+                logger.info(f"❌ Signal insuffisant rejeté (confluence requise): {len(contributing_strategies)} signaux pour {symbol}")
                 return None
             else:
                 logger.info(f"❌ Signal rejeté: aucune stratégie valide pour {symbol}")

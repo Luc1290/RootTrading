@@ -178,8 +178,12 @@ class PerformanceTracker:
         try:
             # Get all strategies
             strategies = [
-                'Bollinger', 'Breakout', 'EMA_Cross', 'MACD',
-                'Divergence', 'Ride_or_React', 'RSI'
+                'Bollinger_Pro_Strategy',
+                'Breakout_Pro_Strategy', 
+                'EMA_Cross_Pro_Strategy',
+                'MACD_Pro_Strategy',
+                'Reversal_Divergence_Pro_Strategy',
+                'RSI_Pro_Strategy'
             ]
             
             for strategy in strategies:

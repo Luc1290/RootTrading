@@ -200,9 +200,23 @@ class DatabaseManager:
                         bb_position,
                         bb_width,
                         atr_14,
+                        adx_14,
+                        plus_di,
+                        minus_di,
                         momentum_10,
                         volume_ratio,
                         avg_volume_20,
+                        stoch_rsi,
+                        williams_r,
+                        cci_20,
+                        vwap_10,
+                        stoch_k,
+                        stoch_d,
+                        roc_10,
+                        roc_20,
+                        obv,
+                        mfi_14,
+                        trend_angle,
                         enhanced,
                         ultra_enriched
                     FROM market_data
@@ -288,7 +302,13 @@ class DatabaseManager:
                             record[bb_field] = float(row[bb_field])
                     
                     # Autres indicateurs
-                    for indicator in ['atr_14', 'momentum_10', 'volume_ratio', 'avg_volume_20']:
+                    other_indicators = [
+                        'atr_14', 'adx_14', 'plus_di', 'minus_di', 'momentum_10', 
+                        'volume_ratio', 'avg_volume_20', 'stoch_rsi', 'williams_r', 
+                        'cci_20', 'vwap_10', 'stoch_k', 'stoch_d', 'roc_10', 
+                        'roc_20', 'obv', 'mfi_14', 'trend_angle'
+                    ]
+                    for indicator in other_indicators:
                         if row[indicator] is not None:
                             record[indicator] = float(row[indicator])
                     
