@@ -152,7 +152,8 @@ class BinanceExecutor:
             # Transformer la réponse en objet TradeExecution
             execution = self.utils.create_execution_from_response(response)
             
-            logger.info(f"✅ Ordre exécuté sur Binance: {order.side.value} {execution.quantity} {execution.symbol} @ {execution.price}")
+            side_str = order.side.value if hasattr(order.side, 'value') else str(order.side)
+            logger.info(f"✅ Ordre exécuté sur Binance: {side_str} {execution.quantity} {execution.symbol} @ {execution.price}")
             return execution
             
         except Exception as e:

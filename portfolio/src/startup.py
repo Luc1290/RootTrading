@@ -1,26 +1,16 @@
+"""
+Module de démarrage pour le service Portfolio.
+Contient la logique de synchronisation initiale avec Binance.
+"""
 import asyncio
 import logging
 
-from portfolio.src.sync import start_sync_tasks
-from portfolio.src.redis_subscriber import start_redis_subscriptions
-from portfolio.src.models import DBManager, SharedCache
-from portfolio.src.binance_account_manager import BinanceAccountManager, BinanceApiError
-from portfolio.src.models import PortfolioModel
+from models import DBManager, SharedCache
+from binance_account_manager import BinanceAccountManager, BinanceApiError
+from models import PortfolioModel
 from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY
 
 logger = logging.getLogger(__name__)
-
-async def on_startup():
-    """Tâches de démarrage"""
-    logger.info("🚀 Initialisation du Portfolio...")
-
-    await initial_sync_binance()
-
-    logger.info("▶️ Démarrage des tâches de synchronisation continue")
-    start_sync_tasks()
-
-    logger.info("▶️ Abonnement aux canaux Redis")
-    start_redis_subscriptions()
 
 async def initial_sync_binance():
     """Force une synchronisation avec Binance à l'initialisation"""

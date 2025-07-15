@@ -46,42 +46,16 @@ def get_db_config() -> Dict[str, Any]:
 
 # Paramètres de trading
 DEFAULT_SYMBOL = "BTCUSDC"
-SYMBOLS = ["BTCUSDC", "ETHUSDC", "SOLUSDC", "XRPUSDC", "BNBUSDC", "ADAUSDC", "AVAXUSDC", "DOGEUSDC", "LINKUSDC", "AAVEUSDC", "SUIUSDC", "PEPEUSDC", "BONKUSDC", "HYPERUSDC", "LDOUSDC"]
+SYMBOLS = ["BTCUSDC", "ETHUSDC", "SOLUSDC", "XRPUSDC", "ADAUSDC", "AVAXUSDC", "DOGEUSDC", "LINKUSDC", "AAVEUSDC", "SUIUSDC", "PEPEUSDC", "BONKUSDC", "HYPERUSDC", "LDOUSDC"]
 INTERVAL = "1m"
-VALIDATION_INTERVAL = "15m"
+VALIDATION_INTERVAL = "5m"
 SCALPING_INTERVALS = ["1m", "5m", "15m", "1h", "4h"]
 TRADING_MODE = os.getenv("TRADING_MODE", "demo")  # 'demo' ou 'live' - reste dans .env car peut changer
 
-# Allocation dynamique par pourcentage de capital
-ALLOCATION_WEAK_PCT = 15.0
-ALLOCATION_MODERATE_PCT = 25.0
-ALLOCATION_STRONG_PCT = 35.0
-ALLOCATION_VERY_STRONG_PCT = 50.0
+# Allocation dynamique maintenant gérée par le Coordinator
+# (Anciens hardcoded values supprimés - allocation dynamique selon capital)
 
-# Limites d'allocation par devise
-MIN_TRADE_USDC = 15.0
-MAX_TRADE_USDC = 200.0
-MIN_TRADE_SOL = 0.15
-MAX_TRADE_SOL = 1.5
-MIN_TRADE_XRP = 10.0
-MAX_TRADE_XRP = 100.0
-
-# Quantités individuelles par symbole (legacy)
-TRADE_QUANTITY_SOLUSDC = 0.17
-TRADE_QUANTITY_XRPUSDC = 11.0
-TRADE_QUANTITY_SOL = 0.17
-TRADE_QUANTITY_XRP = 11.0
-
-# Dictionnaire centralisé
-TRADE_QUANTITIES = {
-    "SOLUSDC": TRADE_QUANTITY_SOLUSDC,
-    "XRPUSDC": TRADE_QUANTITY_XRPUSDC,
-    "SOL": TRADE_QUANTITY_SOL,
-    "XRP": TRADE_QUANTITY_XRP,    
-}
-
-# Valeur par défaut
-TRADE_QUANTITY = TRADE_QUANTITIES.get(DEFAULT_SYMBOL, TRADE_QUANTITY_SOLUSDC)
+# Quantités legacy supprimées - utilisation allocation dynamique
 
 
 # Paramètres pour TechnicalIndicators (nécessaires pour compatibilité)

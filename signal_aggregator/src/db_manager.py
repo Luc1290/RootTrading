@@ -104,7 +104,7 @@ class DatabaseManager:
         self,
         symbol: str,
         interval: str = "1m",
-        limit: int = 100,
+        limit: int = 500,
         include_indicators: bool = True
     ) -> List[Dict[str, Any]]:
         """

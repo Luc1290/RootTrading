@@ -186,51 +186,89 @@ class SignalAggregatorService:
                 await asyncio.sleep(30)
     
     async def _load_historical_market_data(self):
-        """Charge les données historiques pour initialiser l'accumulateur"""
+        """Charge les vraies données historiques depuis la DB pour initialiser l'accumulateur"""
         try:
-            logger.info("🔄 Chargement des données historiques pour signal_aggregator...")
+            logger.info("🔄 Chargement des vraies données historiques depuis la DB...")
             
             # Utiliser les symboles depuis la config partagée
             from shared.src.config import SYMBOLS
             symbols = SYMBOLS
             
             for symbol in symbols:
-                # Charger les données de marché 5m (timeframe principal harmonisé)
-                redis_key = f"market_data:{symbol}:5m"
-                
                 try:
-                    raw_data = self.redis.get(redis_key)
-                    if raw_data:
-                        data = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
-                        
-                        if isinstance(data, dict) and 'ultra_enriched' in data:
-                            # Simuler plusieurs points de données historiques
-                            base_time = time.time() - (100 * 60)  # 100 minutes ago
+                    # Récupérer les vraies données historiques depuis la DB (250 derniers points 5m)
+                    query = """
+                        SELECT time, symbol, timeframe, open, high, low, close, volume,
+                               rsi_14, ema_12, ema_26, macd_line, macd_signal, bb_upper, bb_lower, atr_14
+                        FROM market_data 
+                        WHERE symbol = $1 AND timeframe = '5m' AND enhanced = true
+                        ORDER BY time DESC 
+                        LIMIT 250
+                    """
+                    
+                    # Exécuter la requête via le pool de connexions du db_manager
+                    if self.db_manager and self.db_manager._connection_pool:
+                        async with self.db_manager._connection_pool.acquire() as conn:
+                            rows = await conn.fetch(query, symbol)
                             
-                            for i in range(100):
-                                historical_data = data.copy()
-                                historical_data['timestamp'] = base_time + (i * 60)  # 1 minute intervals
+                            if rows:
+                                # Inverser l'ordre pour avoir du plus ancien au plus récent
+                                rows = list(reversed(rows))
                                 
-                                # Légère variation des prix pour simuler l'historique
-                                price_variation = (i % 10 - 5) * 0.001  # ±0.5% variation
-                                close_price = data['close'] * (1 + price_variation)
+                                for row in rows:
+                                    # Convertir la row PostgreSQL en dict pour l'accumulateur
+                                    historical_data = {
+                                        'timestamp': row['time'].timestamp(),
+                                        'symbol': row['symbol'],
+                                        'timeframe': row['timeframe'],
+                                        'open': float(row['open']),
+                                        'high': float(row['high']),
+                                        'low': float(row['low']),
+                                        'close': float(row['close']),
+                                        'volume': float(row['volume']),
+                                        'rsi_14': float(row['rsi_14']) if row['rsi_14'] else None,
+                                        'ema_12': float(row['ema_12']) if row['ema_12'] else None,
+                                        'ema_26': float(row['ema_26']) if row['ema_26'] else None,
+                                        'macd_line': float(row['macd_line']) if row['macd_line'] else None,
+                                        'macd_signal': float(row['macd_signal']) if row['macd_signal'] else None,
+                                        'bb_upper': float(row['bb_upper']) if row['bb_upper'] else None,
+                                        'bb_lower': float(row['bb_lower']) if row['bb_lower'] else None,
+                                        'atr_14': float(row['atr_14']) if row['atr_14'] else None,
+                                        'ultra_enriched': True  # Marquer comme vraies données enrichies
+                                    }
+                                    
+                                    # Ajouter à l'accumulateur
+                                    self.aggregator.market_data_accumulator.add_market_data(symbol, historical_data)
                                 
-                                # Ajouter les valeurs OHLC manquantes
-                                historical_data['close'] = close_price
-                                historical_data['open'] = close_price  # Approximation
-                                historical_data['high'] = close_price * 1.002  # +0.2%
-                                historical_data['low'] = close_price * 0.998   # -0.2%
-                                
-                                # Ajouter à l'accumulateur
-                                self.aggregator.market_data_accumulator.add_market_data(symbol, historical_data)
-                            
-                            count = self.aggregator.market_data_accumulator.get_history_count(symbol)
-                            logger.info(f"✅ Données historiques chargées pour {symbol}: {count} points")
+                                count = self.aggregator.market_data_accumulator.get_history_count(symbol)
+                                logger.info(f"✅ Vraies données historiques DB chargées pour {symbol}: {count} points")
+                            else:
+                                logger.warning(f"⚠️ Aucune donnée historique trouvée en DB pour {symbol}")
+                    else:
+                        logger.warning("⚠️ Pas de pool de connexion DB disponible")
                         
                 except Exception as e:
-                    logger.warning(f"⚠️ Erreur chargement données historiques {symbol}: {e}")
+                    logger.warning(f"⚠️ Erreur chargement données DB {symbol}: {e}")
+                    
+                    # Fallback: essayer Redis comme secours (sans simulation)
+                    try:
+                        redis_key = f"market_data:{symbol}:5m_history"
+                        raw_data = self.redis.get(redis_key)
+                        if raw_data:
+                            historical_list = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
+                            if isinstance(historical_list, list):
+                                for data in historical_list[-100:]:  # 100 derniers points
+                                    if isinstance(data, dict):
+                                        self.aggregator.market_data_accumulator.add_market_data(symbol, data)
+                                
+                                count = self.aggregator.market_data_accumulator.get_history_count(symbol)
+                                logger.info(f"✅ Données historiques Redis chargées pour {symbol}: {count} points")
+                        else:
+                            logger.warning(f"⚠️ Pas de données historiques Redis pour {symbol}")
+                    except Exception as redis_e:
+                        logger.error(f"❌ Erreur fallback Redis pour {symbol}: {redis_e}")
             
-            logger.info("✅ Chargement des données historiques terminé")
+            logger.info("✅ Chargement des vraies données historiques terminé")
             
         except Exception as e:
             logger.error(f"❌ Erreur générale lors du chargement historique: {e}")

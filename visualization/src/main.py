@@ -79,7 +79,7 @@ else:
 async def health_check():
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.utcnow().isoformat() + 'Z',
         "redis_connected": data_manager.is_redis_connected() if data_manager else False,
         "postgres_connected": data_manager.is_postgres_connected() if data_manager else False
     }

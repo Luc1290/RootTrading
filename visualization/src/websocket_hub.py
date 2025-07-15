@@ -52,7 +52,7 @@ class WebSocketHub:
             "type": "connection",
             "status": "connected",
             "client_id": client_id,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat() + 'Z'
         })
         
     async def disconnect(self, client_id: str):
@@ -95,7 +95,7 @@ class WebSocketHub:
             "type": "subscription",
             "action": "subscribed",
             "channel": channel,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat() + 'Z'
         })
         
         # Start channel-specific updates if needed
@@ -124,7 +124,7 @@ class WebSocketHub:
             "type": "subscription",
             "action": "unsubscribed",
             "channel": channel,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat() + 'Z'
         })
         
     async def broadcast_to_channel(self, channel: str, data: Dict):
@@ -139,7 +139,7 @@ class WebSocketHub:
                 "type": "update",
                 "channel": channel,
                 "data": data,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat() + 'Z'
             })
             
     async def _send_to_client(self, client_id: str, data: Dict):

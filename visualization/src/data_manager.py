@@ -215,11 +215,11 @@ class DataManager:
                     if isinstance(row, dict):
                         data_point = row.copy()
                         if not isinstance(data_point["timestamp"], str):
-                            data_point["timestamp"] = data_point["timestamp"].isoformat()
+                            data_point["timestamp"] = data_point["timestamp"].isoformat() + 'Z'
                     else:
                         # Pour les données de la DB, row est un Record
                         data_point = {
-                            "timestamp": row["timestamp"].isoformat(),
+                            "timestamp": row["timestamp"].isoformat() + 'Z',
                             "open": float(row["open"]),
                             "high": float(row["high"]),
                             "low": float(row["low"]),
@@ -303,7 +303,7 @@ class DataManager:
                 
                 return [
                     {
-                        "timestamp": row["timestamp"].isoformat(),
+                        "timestamp": row["timestamp"].isoformat() + 'Z',
                         "strategy": row["strategy"],
                         "signal_type": row["signal_type"],
                         "strength": row["strength"],
@@ -453,7 +453,7 @@ class DataManager:
                     pnl_percentages.append(float(row["pnl_percentage"]) if row["pnl_percentage"] else 0)
                 
                 return {
-                    "timestamps": [row["timestamp"].isoformat() for row in rows],
+                    "timestamps": [row["timestamp"].isoformat() + 'Z' for row in rows],
                     "balances": balances,
                     "pnl": pnl_values,
                     "pnl_percentage": pnl_percentages,

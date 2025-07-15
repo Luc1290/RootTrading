@@ -291,14 +291,21 @@ class ServiceClient:
         Returns:
             Dict {symbol: price}
         """
-        response = self._make_request("trader", "/prices", 
-                                    params={"symbols": ",".join(symbols)})
+        response = self._make_request("trader", "/prices", params={"symbols": ",".join(symbols)})
+        return response.get("prices", {}) if response else {}
+    
+    def get_current_price(self, symbol: str) -> Optional[float]:
+        """
+        Récupère le prix actuel d'un symbole.
         
-        # Le endpoint /prices retourne directement les prix {symbol: price}
-        if response:
-            return response
+        Args:
+            symbol: Symbole à vérifier
             
-        return {}
+        Returns:
+            Prix actuel ou None
+        """
+        prices = self.get_current_prices([symbol])
+        return prices.get(symbol)
     
     # === API Portfolio ===
     
@@ -372,7 +379,7 @@ class ServiceClient:
                 required_amount = amount
             
             # Vérifier la balance disponible
-            available_balance = all_balances.get(required_asset, {}).get("binance_free", 0.0)
+            available_balance = all_balances.get(required_asset, {}).get("free", 0.0)
             
             can_trade = available_balance >= required_amount
             
@@ -393,7 +400,7 @@ class ServiceClient:
         Récupère toutes les balances depuis le portfolio.
         
         Returns:
-            Dict {asset: {binance_free: float, portfolio_free: float}}
+            Dict {asset: {free: float}}
         """
         response = self._make_request("portfolio", "/balances")
         
@@ -405,37 +412,14 @@ class ServiceClient:
                     if isinstance(balance, dict) and "asset" in balance:
                         asset = balance["asset"]
                         balances[asset] = {
-                            "binance_free": balance.get("free", 0.0),
-                            "portfolio_free": balance.get("free", 0.0)
+                            "free": balance.get("free", 0.0)
                         }
                 return balances
             return response
             
         return {}
     
-    # === API Analyzer (pour scoring) ===
-    
-    def get_signal_score(self, signal_data: Dict[str, Any]) -> Optional[float]:
-        """
-        Obtient le score d'un signal depuis l'analyzer.
-        
-        Args:
-            signal_data: Données du signal
-            
-        Returns:
-            Score du signal (0-100) ou None
-        """
-        response = self._make_request(
-            "analyzer",
-            "/score-signal",
-            method="POST",
-            json_data=signal_data
-        )
-        
-        if response and response.get("status") == "success":
-            return response.get("data", {}).get("score", 0.0)
-            
-        return None
+    # get_positions() supprimée - le coordinator n'a plus besoin de vérifier les positions
     
     # === Méthodes utilitaires ===
     
