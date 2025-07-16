@@ -75,12 +75,12 @@ class MultiTimeframeConfluence:
             }
         }
         
-        # Seuils de confluence
+        # Seuils de confluence - plus stricts pour approche sniper
         self.confluence_thresholds = {
-            'very_strong': 80.0,
-            'strong': 65.0,
-            'moderate': 50.0,
-            'weak': 35.0
+            'very_strong': 85.0,  # Exiger plus d'alignement
+            'strong': 75.0,       # Plus sélectif
+            'moderate': 60.0,     # Niveau modéré plus élevé
+            'weak': 45.0          # Même les signaux faibles doivent avoir un alignement décent
         }
     
     async def analyze_confluence(self, symbol: str) -> ConfluenceResult:

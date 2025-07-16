@@ -46,10 +46,10 @@ class RSIProStrategy(BaseStrategy):
         
         # Paramètres RSI avancés
         symbol_params = self.params.get(symbol, {}) if self.params else {}
-        self.oversold_threshold = symbol_params.get('rsi_oversold', 30)  # Plus strict
-        self.overbought_threshold = symbol_params.get('rsi_overbought', 70)  # Plus strict
-        self.extreme_oversold = symbol_params.get('rsi_extreme_oversold', 15)
-        self.extreme_overbought = symbol_params.get('rsi_extreme_overbought', 85)
+        self.oversold_threshold = symbol_params.get('rsi_oversold', 25)  # Plus strict - signaux plus rares
+        self.overbought_threshold = symbol_params.get('rsi_overbought', 75)  # Plus strict - signaux plus rares
+        self.extreme_oversold = symbol_params.get('rsi_extreme_oversold', 20)
+        self.extreme_overbought = symbol_params.get('rsi_extreme_overbought', 80)
         self.min_adx = symbol_params.get('min_adx', 20.0)
         self.confluence_threshold = symbol_params.get('confluence_threshold', 50.0)
         

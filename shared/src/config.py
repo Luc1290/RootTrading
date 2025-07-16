@@ -97,13 +97,13 @@ ADX_HYBRID_MODE = True
 # Regime Detection Thresholds (Optimized for crypto volatility)
 ADX_NO_TREND_THRESHOLD = 18.0
 ADX_WEAK_TREND_THRESHOLD = 23.0
-ADX_TREND_THRESHOLD = 32.0
-ADX_STRONG_TREND_THRESHOLD = 42.0
+ADX_TREND_THRESHOLD = 25.0  # Seuil pour détecter une tendance (avant 32)
+ADX_STRONG_TREND_THRESHOLD = 35.0  # Seuil pour tendance forte (avant 42)
 
 # Signal Aggregator Settings - Optimisés pour stratégies Pro
-SIGNAL_COOLDOWN_MINUTES = 3
-VOTE_THRESHOLD = 0.40  # Augmenté pour stratégies Pro plus sélectives
-CONFIDENCE_THRESHOLD = 0.70  # Augmenté pour qualité supérieure
+SIGNAL_COOLDOWN_MINUTES = 15  # Cooldown plus long pour éviter sur-trading (15min entre signaux)
+VOTE_THRESHOLD = 0.60  # Seuil de vote plus élevé - au moins 60% des stratégies doivent s'accorder
+CONFIDENCE_THRESHOLD = 0.85  # Seuil de confiance élevé - seulement les signaux très forts
 
 # Configuration des canaux Redis
 CHANNEL_PREFIX = "roottrading"

@@ -20,7 +20,7 @@ class DynamicThresholdManager:
                  history_size: int = 500,
                  min_threshold: float = 0.35,
                  max_threshold: float = 0.85,
-                 target_signal_rate: float = 0.1):  # 10% des signaux devraient passer
+                 target_signal_rate: float = 0.02):  # 2% des signaux devraient passer - approche sniper
         """
         Args:
             redis_client: Client Redis pour persistance
@@ -39,9 +39,9 @@ class DynamicThresholdManager:
         self.confidence_history: Deque[float] = deque(maxlen=history_size)
         self.signal_timestamps: Deque[datetime] = deque(maxlen=history_size)
         
-        # Seuils actuels
-        self.current_confidence_threshold = 0.55
-        self.current_vote_threshold = 0.35
+        # Seuils actuels - plus sélectifs pour approche sniper
+        self.current_confidence_threshold = 0.80
+        self.current_vote_threshold = 0.55
         
         # Statistiques
         self.signals_evaluated = 0

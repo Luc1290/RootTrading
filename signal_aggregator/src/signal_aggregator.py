@@ -19,6 +19,10 @@ from signal_processor import SignalProcessor
 from technical_analysis import TechnicalAnalysis
 from regime_filtering import RegimeFiltering
 from signal_metrics import SignalMetrics
+# from trend_filter import TrendFilter  # Supprimé - doublon avec regime_filtering
+from enhanced_cooldown import EnhancedCooldownManager
+from spike_detector import SpikeDetector
+from indicator_coherence import IndicatorCoherenceValidator
 
 logger = logging.getLogger(__name__)
 
@@ -108,9 +112,9 @@ class SignalAggregator:
         self.min_vote_threshold = VOTE_THRESHOLD
         self.min_confidence_threshold = CONFIDENCE_THRESHOLD
         
-        # Seuils spéciaux pour RANGE_TIGHT - HYBRID (plus permissif)
-        self.range_tight_vote_threshold = max(0.30, VOTE_THRESHOLD - 0.05)
-        self.range_tight_confidence_threshold = max(0.55, CONFIDENCE_THRESHOLD - 0.05)
+        # Seuils spéciaux pour RANGE_TIGHT - HYBRID (plus sélectif maintenant)
+        self.range_tight_vote_threshold = max(0.50, VOTE_THRESHOLD - 0.10)
+        self.range_tight_confidence_threshold = max(0.75, CONFIDENCE_THRESHOLD - 0.10)
         
         # Initialiser les modules
         self._init_modules()
@@ -153,8 +157,8 @@ class SignalAggregator:
         try:
             from .dynamic_thresholds import DynamicThresholdManager
             self.dynamic_thresholds = DynamicThresholdManager(
-                redis_client,
-                target_signal_rate=0.08  # 8% des signaux devraient passer (sélectif)
+                self.redis,
+                target_signal_rate=0.02  # 2% des signaux devraient passer - approche sniper
             )
             logger.info("✅ Seuils dynamiques adaptatifs activés")
         except ImportError:
@@ -163,8 +167,8 @@ class SignalAggregator:
             sys.path.append(os.path.dirname(__file__))
             from dynamic_thresholds import DynamicThresholdManager
             self.dynamic_thresholds = DynamicThresholdManager(
-                redis_client,
-                target_signal_rate=0.08
+                self.redis,
+                target_signal_rate=0.02  # 2% - approche sniper
             )
             logger.info("✅ Seuils dynamiques adaptatifs activés")
     
@@ -184,6 +188,17 @@ class SignalAggregator:
         
         # Métriques et boost
         self.signal_metrics = SignalMetrics(self.performance_tracker)
+        
+        # Filtre de tendance - utilise regime_filtering existant
+        
+        # Gestionnaire de cooldown amélioré
+        self.enhanced_cooldown = EnhancedCooldownManager(self.redis)
+        
+        # Détecteur de spikes
+        self.spike_detector = SpikeDetector(self.redis)
+        
+        # Validateur de cohérence des indicateurs
+        self.coherence_validator = IndicatorCoherenceValidator()
         
     async def _update_market_data_history(self, symbol: str) -> None:
         """Met à jour l'historique des données de marché pour un symbole"""
@@ -255,6 +270,40 @@ class SignalAggregator:
                     logger.info(f"❌ Signal ultra-confluent rejeté (score faible): {symbol} score={signal_score:.1f}")
                     return None
             
+            # NOUVEAU: Récupérer les indicateurs depuis Redis (format individuel)
+            indicators = {}
+            # Récupérer les principaux indicateurs depuis Redis
+            indicator_keys = [
+                'rsi_14', 'macd_line', 'macd_signal', 'macd_histogram',
+                'ema_12', 'ema_26', 'ema_50', 'adx', 'volume_ratio'
+            ]
+            
+            for indicator in indicator_keys:
+                redis_key = f"indicators:{symbol}:15m:{indicator}"
+                value = self.redis.get(redis_key)
+                if value is not None:
+                    try:
+                        indicators[indicator] = float(value)
+                    except (ValueError, TypeError):
+                        logger.debug(f"Erreur conversion {indicator}: {value}")
+                        
+            # Fallback: essayer depuis metadata du signal
+            if not indicators:
+                indicators = signal.get('metadata', {}).get('indicators', {})
+            
+            # Le filtrage de tendance est déjà fait par regime_filtering.apply_enhanced_regime_filtering() 
+            # qui utilise enhanced_regime_detector - pas besoin de dupliquer
+            
+            # NOUVEAU: Validation de cohérence des indicateurs
+            is_coherent, coherence_score, coherence_reason = self.coherence_validator.validate_signal_coherence(
+                signal['side'], 
+                indicators
+            )
+            
+            if not is_coherent:
+                logger.info(f"🔍 Signal incohérent pour {symbol}: {coherence_reason}")
+                return None
+            
             # NOUVEAU: Validation multi-timeframe avec 5m (SWING CRYPTO)
             # Validation 5m pour swing trading, filtrage plus strict
             if not await self.signal_validator.validate_signal_with_higher_timeframe(signal):
@@ -264,9 +313,14 @@ class SignalAggregator:
             # Handle timestamp conversion
             timestamp = self.signal_processor.get_signal_timestamp(signal)
             
-            # Check cooldown
-            if await self._is_in_cooldown(symbol):
-                logger.debug(f"Symbol {symbol} in cooldown, ignoring signal")
+            # Check cooldown amélioré
+            current_price = signal.get('price', 0)
+            is_allowed, cooldown_reason = self.enhanced_cooldown.check_cooldown(
+                symbol, signal['side'], current_price
+            )
+            
+            if not is_allowed:
+                logger.info(f"⏱️ Signal bloqué pour {symbol}: {cooldown_reason}")
                 return None
                 
             # Add to buffer
