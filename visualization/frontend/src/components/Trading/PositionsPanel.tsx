@@ -12,7 +12,9 @@ interface Position {
   value: number;
   margin_used: number;
   timestamp: string;
-  status: 'ACTIVE' | 'CLOSED' | 'PENDING';
+  completed_at?: string;
+  status: 'ACTIVE' | 'COMPLETED' | 'PENDING';
+  strategy?: string;
 }
 
 function PositionsPanel() {
@@ -31,32 +33,11 @@ function PositionsPanel() {
       setLoading(true);
       setError(null);
       
-      // Récupérer les vraies données des balances
-      const balancesResponse = await apiService.getPortfolioBalances();
+      // Récupérer les positions actives ET récemment fermées (dernières 24h)
+      const recentPositions = await apiService.getRecentPositions(24);
       
-      // Transformer les balances en positions actives
-      const realPositions: Position[] = balancesResponse
-        .filter((balance: any) => balance.total > 0 && balance.asset !== 'USDC')
-        .map((balance: any) => {
-          const currentPrice = balance.value_usdc / balance.total;
-          const entryPrice = currentPrice; // Approximation, il faudrait les vraies données d'entrée
-          
-          return {
-            symbol: `${balance.asset}USDC`,
-            side: 'LONG' as const,
-            quantity: balance.total,
-            entry_price: entryPrice,
-            current_price: currentPrice,
-            pnl: 0, // Sera calculé avec les données de performance
-            pnl_percentage: 0,
-            value: balance.value_usdc,
-            margin_used: balance.value_usdc,
-            timestamp: new Date().toISOString(),
-            status: 'ACTIVE' as const
-          };
-        });
-
-      setPositions(realPositions);
+      // Les données sont déjà formatées par l'API
+      setPositions(recentPositions || []);
     } catch (err) {
       setError('Erreur lors du chargement des positions');
       console.error('Positions fetch error:', err);
@@ -127,10 +108,16 @@ function PositionsPanel() {
                     {position.side}
                   </span>
                   <span className={`text-xs px-2 py-1 rounded ${
-                    position.status === 'ACTIVE' ? 'bg-blue-900 text-blue-300' : 'bg-gray-900 text-gray-300'
+                    position.status === 'ACTIVE' ? 'bg-blue-900 text-blue-300' : 
+                    position.status === 'COMPLETED' ? 'bg-green-900 text-green-300' : 'bg-gray-900 text-gray-300'
                   }`}>
                     {position.status}
                   </span>
+                  {position.strategy && (
+                    <span className="text-xs px-2 py-1 rounded bg-purple-900 text-purple-300">
+                      {position.strategy}
+                    </span>
+                  )}
                 </div>
                 <div className="text-right">
                   <div className={`text-sm font-medium ${
@@ -169,10 +156,14 @@ function PositionsPanel() {
               {/* Footer */}
               <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-700">
                 <div className="text-xs text-gray-400">
-                  Ouvert il y a {formatTimeAgo(position.timestamp)}
+                  {position.status === 'COMPLETED' && position.completed_at ? (
+                    `Fermé il y a ${formatTimeAgo(position.completed_at)}`
+                  ) : (
+                    `Ouvert il y a ${formatTimeAgo(position.timestamp)}`
+                  )}
                 </div>
                 <div className="text-xs text-gray-400">
-                  Margin: {formatCurrency(position.margin_used)}
+                  {position.status === 'COMPLETED' ? 'P&L final' : 'Margin'}: {formatCurrency(position.margin_used)}
                 </div>
               </div>
             </div>

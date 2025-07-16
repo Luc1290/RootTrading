@@ -47,7 +47,7 @@ class EMACrossProStrategy(BaseStrategy):
         
         # Paramètres EMA avancés
         symbol_params = self.params.get(symbol, {}) if self.params else {}
-        self.min_gap_percent = symbol_params.get('ema_gap_min', 0.0015)
+        self.min_gap_percent = symbol_params.get('ema_gap_min', 0.003)
         self.min_adx = symbol_params.get('min_adx', 25.0)  # ADX minimum pour tendance
         self.confluence_threshold = symbol_params.get('confluence_threshold', 55.0)  # Confluence minimum
         self.momentum_threshold = symbol_params.get('momentum_threshold', 0.3)  # Momentum minimum

@@ -84,6 +84,14 @@ class ApiService {
     return this.request(`http://localhost:8000/performance/${period}`);
   }
 
+  async getActivePositions(): Promise<any> {
+    return this.request(`http://localhost:8000/positions/active`);
+  }
+
+  async getRecentPositions(hours: number = 24): Promise<any> {
+    return this.request(`http://localhost:8000/positions/recent?hours=${hours}`);
+  }
+
   // Trader API (port 5002)
   async getTraderStats(): Promise<any> {
     return this.request(`http://localhost:5002/stats`);

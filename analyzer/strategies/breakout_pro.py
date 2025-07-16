@@ -47,11 +47,11 @@ class BreakoutProStrategy(BaseStrategy):
         # Paramètres Breakout avancés
         symbol_params = self.params.get(symbol, {}) if self.params else {}
         self.lookback_periods = symbol_params.get('lookback_periods', 50)  # Plus long pour S/R
-        self.min_breakout_percent = symbol_params.get('breakout_min_percent', 0.12)
-        self.min_volume_multiplier = symbol_params.get('min_volume_multiplier', 1.5)
+        self.min_breakout_percent = symbol_params.get('breakout_min_percent', 1.5)
+        self.min_volume_multiplier = symbol_params.get('min_volume_multiplier', 2.0)
         self.false_breakout_retest_periods = symbol_params.get('retest_periods', 5)
         self.sr_strength_threshold = symbol_params.get('sr_strength', 3)  # Nombre de touches minimum
-        self.confluence_threshold = symbol_params.get('confluence_threshold', 50.0)
+        self.confluence_threshold = symbol_params.get('confluence_threshold', 70.0)
         
         # Historique pour S/R dynamiques
         self.sr_levels = {'supports': [], 'resistances': []}
@@ -155,43 +155,45 @@ class BreakoutProStrategy(BaseStrategy):
                               f"(position prix: {price_position:.2f})")
             
             # SIGNAL DE VENTE - Breakdown support avec validations
-            else:
-                breakdown_analysis = self._analyze_support_breakdown(
-                    current_price, sr_analysis, context_analysis, structure_analysis
-                )
-                
-                if breakdown_analysis['is_valid']:
-                    # Vérifier la position du prix avant de générer le signal
-                    if not self.should_filter_signal_by_price_position(OrderSide.SELL, price_position, df):
-                        confidence = self._calculate_breakout_confidence(
-                            breakdown_analysis, context_analysis, volume_ratio, momentum_10, False
-                        )
-                        
-                        signal = self.create_signal(
-                            side=OrderSide.SELL,
-                            price=current_price,
-                            confidence=confidence,
-                            metadata={
-                                'breakout_type': 'support',
-                                'support_level': breakdown_analysis['level'],
-                                'breakdown_strength': breakdown_analysis['strength'],
-                                'breakdown_percent': breakdown_analysis['percent'],
-                                'sr_touches': breakdown_analysis['touches'],
-                                'volume_ratio': volume_ratio,
-                                'volume_spike': volume_spike,
-                                'atr_context': atr,
-                                'momentum_10': momentum_10,
-                                'structure_type': structure_analysis['type'],
-                                'context_score': context_analysis['score'],
-                                'confluence_score': context_analysis.get('confluence_score', 0),
-                                'false_breakout_risk': breakdown_analysis['false_risk'],
-                                'price_position': price_position,
-                                'reason': f'Breakdown Pro support ({current_price:.4f} < {breakdown_analysis["level"]:.4f})'
-                            }
-                        )
-                    else:
-                        logger.info(f"📊 Breakout Pro {symbol}: Signal SELL techniquement valide mais filtré "
-                                  f"(position prix: {price_position:.2f})")
+            breakdown_analysis = self._analyze_support_breakdown(
+                current_price, sr_analysis, context_analysis, structure_analysis
+            )
+            
+            if breakdown_analysis['is_valid']:
+                # Vérifier la position du prix avant de générer le signal
+                if not self.should_filter_signal_by_price_position(OrderSide.SELL, price_position, df):
+                    confidence = self._calculate_breakout_confidence(
+                        breakdown_analysis, context_analysis, volume_ratio, momentum_10, False
+                    )
+                    
+                    signal = self.create_signal(
+                        side=OrderSide.SELL,
+                        price=current_price,
+                        confidence=confidence,
+                        metadata={
+                            'breakout_type': 'support',
+                            'support_level': breakdown_analysis['level'],
+                            'breakdown_strength': breakdown_analysis['strength'],
+                            'breakdown_percent': breakdown_analysis['percent'],
+                            'sr_touches': breakdown_analysis['touches'],
+                            'volume_ratio': volume_ratio,
+                            'volume_spike': volume_spike,
+                            'atr_context': atr,
+                            'momentum_10': momentum_10,
+                            'structure_type': structure_analysis['type'],
+                            'context_score': context_analysis['score'],
+                            'confluence_score': context_analysis.get('confluence_score', 0),
+                            'false_breakout_risk': breakdown_analysis['false_risk'],
+                            'price_position': price_position,
+                            'reason': f'Breakdown Pro support ({current_price:.4f} < {breakdown_analysis["level"]:.4f})'
+                        }
+                    )
+                else:
+                    logger.info(f"📊 Breakout Pro {symbol}: Signal SELL techniquement valide mais filtré "
+                              f"(position prix: {price_position:.2f})")
+            
+            # AJOUT CRITIQUE: NO SIGNAL si aucune condition n'est remplie
+            # Avant c'était un else forcé - maintenant on peut avoir NO SIGNAL
             
             if signal:
                 logger.info(f"🎯 Breakout Pro {symbol}: {signal.side} @ {current_price:.4f} "
@@ -517,17 +519,20 @@ class BreakoutProStrategy(BaseStrategy):
                 # Vérifier les conditions de validation
                 conditions_met = []
                 
-                # 1. Score de contexte minimum
-                if context['score'] >= 50:
+                # 1. Score de contexte minimum - AUGMENTÉ de 50 à 70
+                if context['score'] >= 70:
                     conditions_met.append('context')
                 
                 # 2. Structure favorable (uptrend ou neutre)
                 if structure['bias'] in ['bullish', 'neutral']:
                     conditions_met.append('structure')
                 
-                # 3. Confluence si disponible
+                # 3. Confluence si disponible - Rejeter seulement si données disponibles mais insuffisantes
                 confluence_score = context.get('confluence_score', 0)
-                if confluence_score == 0 or confluence_score >= self.confluence_threshold:
+                if confluence_score > 0 and confluence_score < self.confluence_threshold:
+                    # Confluence disponible mais trop faible = signal invalide
+                    return analysis
+                elif confluence_score >= self.confluence_threshold:
                     conditions_met.append('confluence')
                 
                 # 4. Force du breakout
@@ -580,17 +585,20 @@ class BreakoutProStrategy(BaseStrategy):
                 # Vérifier les conditions de validation
                 conditions_met = []
                 
-                # 1. Score de contexte minimum
-                if context['score'] >= 50:
+                # 1. Score de contexte minimum - AUGMENTÉ de 50 à 70
+                if context['score'] >= 70:
                     conditions_met.append('context')
                 
                 # 2. Structure favorable (downtrend ou neutre)
                 if structure['bias'] in ['bearish', 'neutral']:
                     conditions_met.append('structure')
                 
-                # 3. Confluence si disponible
+                # 3. Confluence si disponible - Rejeter seulement si données disponibles mais insuffisantes
                 confluence_score = context.get('confluence_score', 0)
-                if confluence_score == 0 or confluence_score >= self.confluence_threshold:
+                if confluence_score > 0 and confluence_score < self.confluence_threshold:
+                    # Confluence disponible mais trop faible = signal invalide
+                    return analysis
+                elif confluence_score >= self.confluence_threshold:
                     conditions_met.append('confluence')
                 
                 # 4. Force du breakdown

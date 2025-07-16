@@ -980,6 +980,14 @@ class SignalAggregator:
             logger.info(f"Signal {side} {symbol} rejeté par filtre debounce")
             return None
         
+        # FILTRE CRITIQUE: Bloquer les signaux avec recommended_action = "AVOID"
+        if confluence_analysis and confluence_analysis.recommended_action == 'AVOID':
+            logger.warning(f"❌ Signal {side} {symbol} BLOQUÉ: confluence_analysis recommande AVOID "
+                          f"(risk: {confluence_analysis.risk_level:.1f}, "
+                          f"confluence: {confluence_analysis.confluence_score:.1f}%, "
+                          f"strength: {confluence_analysis.strength_rating})")
+            return None
+        
         return {
             'symbol': symbol,
             'side': side,

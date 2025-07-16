@@ -305,6 +305,171 @@ def _register_portfolio_routes(app: FastAPI):
             "available": 0.0
         }
 
+    @app.get("/positions/active")
+    async def get_active_positions(
+        portfolio: PortfolioModel = Depends(get_portfolio_model),
+        response: Response = None
+    ):
+        """
+        Récupère les positions actives avec le PnL réel calculé.
+        """
+        # Requête pour récupérer les cycles actifs avec prix d'entrée
+        query = """
+        WITH latest_prices AS (
+            SELECT 
+                symbol,
+                close as current_price,
+                ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY time DESC) as rn
+            FROM market_data
+            WHERE symbol IN (
+                SELECT DISTINCT symbol 
+                FROM trade_cycles 
+                WHERE status IN ('active_buy', 'waiting_sell')
+            )
+        ),
+        active_positions AS (
+            SELECT 
+                tc.symbol,
+                tc.entry_price,
+                tc.quantity,
+                tc.status,
+                tc.strategy,
+                tc.created_at,
+                lp.current_price,
+                (lp.current_price - tc.entry_price) * tc.quantity as pnl,
+                ((lp.current_price - tc.entry_price) / tc.entry_price) * 100 as pnl_percentage,
+                lp.current_price * tc.quantity as current_value
+            FROM trade_cycles tc
+            JOIN latest_prices lp ON tc.symbol = lp.symbol AND lp.rn = 1
+            WHERE tc.status IN ('active_buy', 'waiting_sell')
+        )
+        SELECT * FROM active_positions
+        ORDER BY created_at DESC
+        """
+        
+        result = portfolio.db.execute_query(query, fetch_all=True)
+        
+        if not result:
+            return []
+        
+        # Formater les résultats
+        positions = []
+        for row in result:
+            position = {
+                "symbol": row['symbol'],
+                "side": "LONG",  # ROOT trading fait uniquement du SPOT LONG
+                "quantity": float(row['quantity']),
+                "entry_price": float(row['entry_price']),
+                "current_price": float(row['current_price']) if row['current_price'] else float(row['entry_price']),
+                "pnl": float(row['pnl']) if row['pnl'] else 0.0,
+                "pnl_percentage": float(row['pnl_percentage']) if row['pnl_percentage'] else 0.0,
+                "value": float(row['current_value']) if row['current_value'] else 0.0,
+                "margin_used": float(row['current_value']) if row['current_value'] else 0.0,
+                "timestamp": row['created_at'].isoformat() if row['created_at'] else None,
+                "status": "ACTIVE",
+                "strategy": row['strategy']
+            }
+            positions.append(position)
+        
+        # Cache pour 5 secondes
+        if response:
+            response.headers["Cache-Control"] = "public, max-age=5"
+        
+        return positions
+
+    @app.get("/positions/recent")
+    async def get_recent_positions(
+        hours: int = Query(24, ge=1, le=168, description="Nombre d'heures en arrière"),
+        portfolio: PortfolioModel = Depends(get_portfolio_model),
+        response: Response = None
+    ):
+        """
+        Récupère les positions actives ET récemment fermées.
+        """
+        # Requête combinée pour positions actives + récemment fermées
+        query = """
+        WITH latest_prices AS (
+            SELECT 
+                symbol,
+                close as current_price,
+                ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY time DESC) as rn
+            FROM market_data
+            WHERE symbol IN (
+                SELECT DISTINCT symbol 
+                FROM trade_cycles 
+                WHERE (status IN ('active_buy', 'waiting_sell')) 
+                   OR (status = 'completed' AND completed_at > NOW() - INTERVAL '%s hours')
+            )
+        ),
+        all_positions AS (
+            SELECT 
+                tc.symbol,
+                tc.entry_price,
+                tc.exit_price,
+                tc.quantity,
+                tc.status,
+                tc.strategy,
+                tc.created_at,
+                tc.completed_at,
+                tc.profit_loss,
+                tc.profit_loss_percent,
+                lp.current_price,
+                CASE 
+                    WHEN tc.status = 'completed' THEN tc.profit_loss
+                    ELSE (lp.current_price - tc.entry_price) * tc.quantity
+                END as pnl,
+                CASE 
+                    WHEN tc.status = 'completed' THEN tc.profit_loss_percent
+                    ELSE ((lp.current_price - tc.entry_price) / tc.entry_price) * 100
+                END as pnl_percentage,
+                CASE 
+                    WHEN tc.status = 'completed' THEN tc.exit_price * tc.quantity
+                    ELSE lp.current_price * tc.quantity
+                END as current_value
+            FROM trade_cycles tc
+            LEFT JOIN latest_prices lp ON tc.symbol = lp.symbol AND lp.rn = 1
+            WHERE (tc.status IN ('active_buy', 'waiting_sell')) 
+               OR (tc.status = 'completed' AND tc.completed_at > NOW() - INTERVAL '%s hours')
+        )
+        SELECT * FROM all_positions
+        ORDER BY 
+            CASE WHEN status = 'completed' THEN 1 ELSE 0 END,
+            created_at DESC
+        """
+        
+        result = portfolio.db.execute_query(query % (hours, hours), fetch_all=True)
+        
+        if not result:
+            return []
+        
+        # Formater les résultats
+        positions = []
+        for row in result:
+            is_completed = row['status'] == 'completed'
+            
+            position = {
+                "symbol": row['symbol'],
+                "side": "LONG",
+                "quantity": float(row['quantity']),
+                "entry_price": float(row['entry_price']),
+                "current_price": float(row['exit_price'] if is_completed else row['current_price']) if (row['exit_price'] if is_completed else row['current_price']) else float(row['entry_price']),
+                "pnl": float(row['pnl']) if row['pnl'] else 0.0,
+                "pnl_percentage": float(row['pnl_percentage']) if row['pnl_percentage'] else 0.0,
+                "value": float(row['current_value']) if row['current_value'] else 0.0,
+                "margin_used": float(row['current_value']) if row['current_value'] else 0.0,
+                "timestamp": row['created_at'].isoformat() if row['created_at'] else None,
+                "completed_at": row['completed_at'].isoformat() if row['completed_at'] else None,
+                "status": "COMPLETED" if is_completed else "ACTIVE",
+                "strategy": row['strategy']
+            }
+            positions.append(position)
+        
+        # Cache pour 10 secondes (données moins critiques)
+        if response:
+            response.headers["Cache-Control"] = "public, max-age=10"
+        
+        return positions
+
     @app.get("/trades", response_model=TradeHistoryResponse)
     async def get_trade_history(
         page: int = Query(1, ge=1, description="Numéro de page"),
