@@ -136,7 +136,7 @@ class DispatcherService:
         except Exception as e:
             logger.error(f"Erreur lors du traitement du message Kafka: {str(e)}")
     
-    def start_http_server(self, port=5011):
+    def start_http_server(self, port=5004):
         """
         Démarre un serveur HTTP pour les endpoints de santé.
         

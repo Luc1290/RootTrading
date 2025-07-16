@@ -12,6 +12,7 @@ from shared.src.enums import OrderSide, OrderStatus
 from shared.src.schemas import TradeOrder, TradeExecution
 from shared.src.db_pool import transaction
 from trader.src.exchange.binance_executor import BinanceExecutor
+from trader.src.trading.cycle_manager import CycleManager
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,9 @@ class OrderExecutor:
         
         # Historique des ordres exécutés
         self.order_history: List[Dict[str, Any]] = []
+        
+        # Gestionnaire de cycles pour le tracking des P&L
+        self.cycle_manager = CycleManager()
         
         logger.info("✅ OrderExecutor initialisé (logique simplifiée)")
     
@@ -117,6 +121,18 @@ class OrderExecutor:
             
             status_str = execution.status.value if hasattr(execution.status, 'value') else str(execution.status)
             logger.info(f"✅ Ordre exécuté: {order_id} (Binance: {execution.order_id}) - {status_str}")
+            
+            # Traiter le trade pour les cycles en arrière-plan (après avoir retourné la réponse)
+            cycle_id = None
+            try:
+                cycle_id = self._process_trade_for_cycles(execution, strategy)
+                if cycle_id:
+                    # Mettre à jour l'exécution avec le cycle_id
+                    self._update_execution_with_cycle_id(execution.order_id, cycle_id)
+            except Exception as e:
+                logger.error(f"❌ Erreur processing cycle: {e}")
+                # On ne propage pas l'erreur
+            
             return order_id
             
         except Exception as e:
@@ -191,6 +207,36 @@ class OrderExecutor:
                 return order
         return None
     
+    def _process_trade_for_cycles(self, execution: TradeExecution, strategy: str) -> Optional[str]:
+        """
+        Traite un trade exécuté pour mettre à jour les cycles.
+        Cette méthode est appelée pour ne pas bloquer l'exécution.
+        
+        Args:
+            execution: Exécution du trade
+            strategy: Stratégie utilisée
+            
+        Returns:
+            ID du cycle créé/mis à jour ou None
+        """
+        try:
+            trade_data = {
+                'symbol': execution.symbol,
+                'side': execution.side,
+                'price': execution.price,
+                'quantity': execution.quantity,
+                'order_id': execution.order_id,
+                'timestamp': execution.timestamp,
+                'strategy': strategy
+            }
+            
+            return self.cycle_manager.process_trade_execution(trade_data)
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur traitement cycle: {str(e)}")
+            # On ne propage pas l'erreur pour ne pas impacter le trading
+            return None
+    
     def get_stats(self) -> Dict[str, Any]:
         """
         Récupère les statistiques de l'exécuteur.
@@ -207,5 +253,29 @@ class OrderExecutor:
             "successful_orders": successful_orders,
             "success_rate": (successful_orders / total_orders * 100) if total_orders > 0 else 0,
             "demo_mode": self.binance_executor.demo_mode,
-            "last_order_time": self.order_history[-1]["timestamp"].isoformat() if self.order_history else None
+            "last_order_time": str(self.order_history[-1]["timestamp"]) if self.order_history else None
         }
+    
+    def _update_execution_with_cycle_id(self, order_id: str, cycle_id: str) -> None:
+        """
+        Met à jour une exécution existante avec son cycle_id.
+        
+        Args:
+            order_id: ID de l'ordre à mettre à jour
+            cycle_id: ID du cycle à associer
+        """
+        try:
+            with transaction() as cursor:
+                cursor.execute("""
+                    UPDATE trade_executions 
+                    SET cycle_id = %s, updated_at = NOW()
+                    WHERE order_id = %s
+                """, (cycle_id, order_id))
+                
+                if cursor.rowcount > 0:
+                    logger.debug(f"✅ Exécution {order_id} liée au cycle {cycle_id}")
+                else:
+                    logger.warning(f"⚠️ Aucune exécution trouvée pour order_id {order_id}")
+                    
+        except Exception as e:
+            logger.error(f"❌ Erreur mise à jour cycle_id: {str(e)}")

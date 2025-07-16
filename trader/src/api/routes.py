@@ -4,6 +4,7 @@ Plus de cycles complexes : juste exécuter les ordres du coordinator.
 """
 import logging
 import time
+from datetime import datetime, timezone
 from flask import request, jsonify, Blueprint, current_app
 
 from shared.src.config import TRADING_MODE
@@ -187,10 +188,18 @@ def get_orders():
         limit = int(request.args.get('limit', 50))
         orders = order_manager.get_order_history(limit)
         
-        # Convertir les timestamps en ISO format
+        # Convertir les timestamps en ISO format de manière sécurisée
         for order in orders:
-            if 'timestamp' in order:
-                order['timestamp'] = order['timestamp'].isoformat()
+            if 'timestamp' in order and order['timestamp'] is not None:
+                if hasattr(order['timestamp'], 'isoformat'):
+                    # Si c'est un objet datetime, on le convertit
+                    order['timestamp'] = order['timestamp'].isoformat()
+                elif isinstance(order['timestamp'], (int, float)):
+                    # Si c'est un timestamp Unix, on le convertit
+                    order['timestamp'] = datetime.fromtimestamp(order['timestamp'], tz=timezone.utc).isoformat()
+                else:
+                    # Si c'est déjà une string ou autre, on la laisse telle quelle
+                    order['timestamp'] = str(order['timestamp'])
         
         return jsonify({
             "success": True,
@@ -214,9 +223,17 @@ def get_order_status(order_id):
         order = order_manager.get_order_status(order_id)
         
         if order:
-            # Convertir le timestamp en ISO format
-            if 'timestamp' in order:
-                order['timestamp'] = order['timestamp'].isoformat()
+            # Convertir le timestamp en ISO format de manière sécurisée
+            if 'timestamp' in order and order['timestamp'] is not None:
+                if hasattr(order['timestamp'], 'isoformat'):
+                    # Si c'est un objet datetime, on le convertit
+                    order['timestamp'] = order['timestamp'].isoformat()
+                elif isinstance(order['timestamp'], (int, float)):
+                    # Si c'est un timestamp Unix, on le convertit
+                    order['timestamp'] = datetime.fromtimestamp(order['timestamp'], tz=timezone.utc).isoformat()
+                else:
+                    # Si c'est déjà une string ou autre, on la laisse telle quelle
+                    order['timestamp'] = str(order['timestamp'])
             
             return jsonify({
                 "success": True,

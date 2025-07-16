@@ -192,12 +192,20 @@ class ServiceClient:
         Returns:
             ID de l'ordre créé ou None
         """
-        response = self._make_request("trader", "/order", method="POST", json_data=order_data)
+        # Désactiver les retry pour les ordres (éviter les doubles exécutions)
+        original_retries = self.endpoints["trader"].max_retries
+        self.endpoints["trader"].max_retries = 1
         
-        if response and response.get("order_id"):
-            return response["order_id"]
+        try:
+            response = self._make_request("trader", "/order", method="POST", json_data=order_data)
             
-        return None
+            if response and response.get("order_id"):
+                return response["order_id"]
+                
+            return None
+        finally:
+            # Restaurer les retry originaux
+            self.endpoints["trader"].max_retries = original_retries
     
     def reinforce_cycle(self, cycle_id: str, symbol: str, side: str, 
                        quantity: float, price: Optional[float] = None,
