@@ -66,6 +66,54 @@ class ApiService {
   ): Promise<{ data: PerformanceData }> {
     return this.request(`/api/charts/performance?period=${period}&metric=${metric}`);
   }
+
+  // Portfolio API (port 8000)
+  async getPortfolioSummary(): Promise<any> {
+    return this.request(`http://localhost:8000/summary`);
+  }
+
+  async getPortfolioBalances(): Promise<any> {
+    return this.request(`http://localhost:8000/balances`);
+  }
+
+  async getTradeHistory(page: number = 1, pageSize: number = 20): Promise<any> {
+    return this.request(`http://localhost:8000/trades?page=${page}&page_size=${pageSize}`);
+  }
+
+  async getPortfolioPerformance(period: string = 'daily'): Promise<any> {
+    return this.request(`http://localhost:8000/performance/${period}`);
+  }
+
+  // Trader API (port 5002)
+  async getTraderStats(): Promise<any> {
+    return this.request(`http://localhost:5002/stats`);
+  }
+
+  async getOrderHistory(limit: number = 50): Promise<any> {
+    return this.request(`http://localhost:5002/orders?limit=${limit}`);
+  }
+
+  async getTraderHealth(): Promise<any> {
+    return this.request(`http://localhost:5002/health`);
+  }
+
+  // Alertes système (diagnostic multi-services)
+  async getSystemAlerts(): Promise<any> {
+    try {
+      const [portfolioHealth, traderHealth] = await Promise.all([
+        this.request(`http://localhost:8000/health`).catch(() => ({ status: 'offline', service: 'portfolio' })),
+        this.request(`http://localhost:5002/health`).catch(() => ({ status: 'offline', service: 'trader' }))
+      ]);
+
+      return {
+        portfolio: portfolioHealth,
+        trader: traderHealth
+      };
+    } catch (error) {
+      console.error('System alerts fetch error:', error);
+      return { portfolio: { status: 'error' }, trader: { status: 'error' } };
+    }
+  }
   
   // Symboles disponibles
   async getAvailableSymbols(): Promise<{ symbols: TradingSymbol[] }> {

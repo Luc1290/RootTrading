@@ -29,7 +29,8 @@
       "Bash(psql:*)",
       "Bash(sudo dmidecode:*)",
       "Bash(cat:*)",
-      "Bash(iostat:*)"
+      "Bash(iostat:*)",
+      "Bash(cp:*)"
     ],
     "deny": []
   }

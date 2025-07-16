@@ -9,15 +9,16 @@ function Header() {
   
   return (
     <header className="gradient-header shadow-lg">
-      <div className="container mx-auto px-4 py-6 max-w-7xl">
+      <div className="container mx-auto px-4 py-6 max-w-none">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-6">
-            <div className="flex items-center space-x-2">
-              <span className="text-3xl">🚀</span>
+            <div className="flex items-center space-x-3">
+              <img 
+                src="/assets/logo.svg" 
+                alt="Root Logo" 
+                className="w-64 h-36"
+              />
               <div>
-                <h1 className="text-2xl font-bold text-white text-shadow-lg">
-                  RootTrading
-                </h1>
                 <p className="text-primary-100 text-sm opacity-90">
                   Visualisation en temps réel des données de trading
                 </p>

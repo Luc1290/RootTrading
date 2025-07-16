@@ -6,6 +6,13 @@ import RSIChart from '@/components/Charts/RSIChart';
 import MACDChart from '@/components/Charts/MACDChart';
 import PerformanceChart from '@/components/Charts/PerformanceChart';
 import { GlobalStatusMessage } from '@/components/Common/StatusMessage';
+import PortfolioPanel from '@/components/Trading/PortfolioPanel';
+import PositionsPanel from '@/components/Trading/PositionsPanel';
+import TradeHistoryPanel from '@/components/Trading/TradeHistoryPanel';
+import AlertsPanel from '@/components/Trading/AlertsPanel';
+import RecentOrdersPanel from '@/components/Trading/RecentOrdersPanel';
+import MultiTimeframeChart from '@/components/Charts/MultiTimeframeChart';
+import OrderBookPanel from '@/components/Trading/OrderBookPanel';
 import { useChart } from '@/hooks/useChart';
 
 function Dashboard() {
@@ -21,45 +28,110 @@ function Dashboard() {
       
       <GlobalStatusMessage />
       
-      {/* Graphique principal */}
-      <div className="chart-container">
-        <div className="chart-title">
-          📈 Graphique de Marché
-        </div>
-        <MarketChart />
-      </div>
-      
-      {/* Graphique de volume */}
-      <div className="chart-container">
-        <div className="chart-title">
-          📉 Volume
-        </div>
-        <VolumeChart />
-      </div>
-      
-      {/* Grille des indicateurs */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="chart-container">
-          <div className="chart-title">
-            📉 RSI (Relative Strength Index)
+      {/* Layout ultrawide avec grille optimisée */}
+      <div className="grid grid-cols-12 gap-6">
+        {/* Colonne gauche - Graphiques principaux */}
+        <div className="col-span-12 lg:col-span-8 xl:col-span-9 2xl:col-span-8 3xl:col-span-9 space-y-6">
+          {/* Graphique principal */}
+          <div className="chart-container">
+            <div className="chart-title">
+              📈 Graphique de Marché
+            </div>
+            <MarketChart />
           </div>
-          <RSIChart />
+          
+          {/* Graphique de volume */}
+          <div className="chart-container">
+            <div className="chart-title">
+              📉 Volume
+            </div>
+            <VolumeChart />
+          </div>
+          
+          {/* Grille des indicateurs */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="chart-container">
+              <div className="chart-title">
+                📉 RSI (Relative Strength Index)
+              </div>
+              <RSIChart />
+            </div>
+            
+            <div className="chart-container">
+              <div className="chart-title">
+                📉 MACD
+              </div>
+              <MACDChart />
+            </div>
+          </div>
+
+          {/* Timeframes multiples */}
+          <div className="chart-container">
+            <div className="chart-title">
+              🕐 Timeframes Multiples
+            </div>
+            <MultiTimeframeChart />
+          </div>
+          
+          {/* Graphique de performance */}
+          <div className="chart-container">
+            <div className="chart-title">
+              💰 Performance du Portfolio
+            </div>
+            <PerformanceChart />
+          </div>
         </div>
         
-        <div className="chart-container">
-          <div className="chart-title">
-            📉 MACD
+        {/* Colonne droite - Métriques et informations */}
+        <div className="col-span-12 lg:col-span-4 xl:col-span-3 2xl:col-span-4 3xl:col-span-3 space-y-6">
+          {/* Panel Trading & Portfolio */}
+          <div className="chart-container">
+            <div className="chart-title">
+              💼 Portfolio & Trading
+            </div>
+            <PortfolioPanel />
           </div>
-          <MACDChart />
+          
+          {/* Panel Positions */}
+          <div className="chart-container">
+            <div className="chart-title">
+              📊 Positions Actuelles
+            </div>
+            <PositionsPanel />
+          </div>
+          
+          {/* Panel Historique */}
+          <div className="chart-container">
+            <div className="chart-title">
+              📈 Historique Trades
+            </div>
+            <TradeHistoryPanel />
+          </div>
+          
+          {/* Panel Alertes */}
+          <div className="chart-container">
+            <div className="chart-title">
+              🚨 Alertes Système
+            </div>
+            <AlertsPanel />
+          </div>
+
+          {/* Panel OrderBook */}
+          <div className="chart-container">
+            <div className="chart-title">
+              📋 Carnet d'Ordres
+            </div>
+            <OrderBookPanel />
+          </div>
+
+          {/* Panel Ordres Récents */}
+          <div className="chart-container">
+            <div className="chart-title">
+              ⚡ Ordres Récents
+            </div>
+            <RecentOrdersPanel />
+          </div>
         </div>
-      </div>
-      
-      {/* Graphique de performance */}
-      <div className="chart-container">
-        <div className="chart-title">
-          💰 Performance du Portfolio
-        </div>
-        <PerformanceChart />
       </div>
       
       {/* Overlay de loading */}
