@@ -49,9 +49,9 @@ class MACDProStrategy(BaseStrategy):
         symbol_params = self.params.get(symbol, {}) if self.params else {}
         self.min_histogram_threshold = symbol_params.get('macd_histogram_threshold', 0.00015)  # Plus strict - signaux plus forts requis
         self.strong_signal_threshold = symbol_params.get('macd_strong_threshold', 0.0006)  # Plus strict - crossovers plus significatifs
-        self.min_volume_ratio = symbol_params.get('min_volume_ratio', 1.1)
+        self.min_volume_ratio = symbol_params.get('min_volume_ratio', 0.8)  # Assoupli de 1.1 à 0.8
         self.min_adx = symbol_params.get('min_adx', 20.0)
-        self.confluence_threshold = symbol_params.get('confluence_threshold', 50.0)
+        self.confluence_threshold = symbol_params.get('confluence_threshold', 40.0)  # Assoupli de 50 à 40
         
         # Historique pour divergences
         self.price_history = []
@@ -486,7 +486,7 @@ class MACDProStrategy(BaseStrategy):
             return False
         
         # Score de contexte minimum
-        if context['score'] < 35:
+        if context['score'] < 30:  # Assoupli de 35 à 30
             return False
         
         # Confluence minimum si disponible

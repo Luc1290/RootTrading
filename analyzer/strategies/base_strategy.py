@@ -214,7 +214,7 @@ class BaseStrategy(ABC):
     def create_signal(self, side: OrderSide, price: float, confidence: float = 0.7, 
                     metadata: Dict[str, Any] = None) -> StrategySignal:
         """
-        Crée un objet signal standardisé.
+        Crée un objet signal standardisé avec protection contre les effondrements.
         
         Args:
             side: Côté de l'ordre (BUY ou SELL)
@@ -223,8 +223,28 @@ class BaseStrategy(ABC):
             metadata: Métadonnées supplémentaires spécifiques à la stratégie
             
         Returns:
-            Objet signal standardisé
+            Objet signal standardisé ou None si BUY bloqué par protection
         """
+        # PROTECTION SPÉCIALE pour les signaux BUY
+        if side == OrderSide.BUY:
+            df = self.get_data_as_dataframe()
+            if df is not None and len(df) >= 20:
+                protection_analysis = self.crash_protection.should_block_buy_signal(df, price)
+                
+                if protection_analysis.get("block_buy", False):
+                    # Ajouter les détails de protection aux métadonnées
+                    if metadata is None:
+                        metadata = {}
+                    metadata.update({
+                        "buy_blocked": True,
+                        "block_reasons": protection_analysis.get("reasons", []),
+                        "block_score": protection_analysis.get("block_score", 0),
+                        "protection_recommendation": protection_analysis.get("recommendation", "")
+                    })
+                    
+                    logger.warning(f"🚫 Signal BUY {self.symbol} bloqué par protection: {'; '.join(protection_analysis.get('reasons', []))}")
+                    return None  # Signal BUY bloqué
+        
         # Déterminer la force du signal basée sur la confiance (ajusté pour stratégies Pro)
         strength = SignalStrength.WEAK
         if confidence >= 0.85:  # Plus strict pour VERY_STRONG
@@ -332,6 +352,7 @@ class BaseStrategy(ABC):
                                              df: pd.DataFrame = None) -> bool:
         """
         Détermine si un signal devrait être filtré basé sur la position du prix dans son range.
+        Inclut une logique intelligente pour les pumps/momentum.
         
         Args:
             side: Direction du signal (BUY ou SELL)
@@ -346,14 +367,25 @@ class BaseStrategy(ABC):
         
         # Seuils de filtrage (ajustables par stratégie)
         symbol_params = self.params.get(self.symbol, {}) if self.params else {}
-        buy_threshold_high = symbol_params.get('buy_filter_high', 0.85)  # Assoupli de 0.80 à 0.85
-        sell_threshold_low = symbol_params.get('sell_filter_low', 0.05)  # ASSOUPLI de 0.20 à 0.05 pour permettre les SELL après correction
+        buy_threshold_high = symbol_params.get('buy_filter_high', 0.85)
+        sell_threshold_low = symbol_params.get('sell_filter_low', 0.05)
         
-        # Filtrer les BUY en haut du range
+        # NOUVEAU: Détection de conditions de pump/momentum pour assouplir les filtres BUY
         if side == OrderSide.BUY and price_position > buy_threshold_high:
-            logger.info(f"🚫 [{self.name}] BUY filtré pour {self.symbol}: "
-                       f"prix trop haut dans le range ({price_position:.2f} > {buy_threshold_high})")
-            return True
+            # Vérifier les conditions de pump avant de filtrer
+            pump_conditions = self._detect_pump_conditions(df)
+            
+            if pump_conditions['is_pump']:
+                logger.info(f"🚀 [{self.name}] BUY autorisé malgré position haute pour {self.symbol}: "
+                           f"PUMP détecté (position: {price_position:.2f}, "
+                           f"volume: {pump_conditions['volume_ratio']:.1f}x, "
+                           f"momentum: {pump_conditions['momentum_score']:.2f})")
+                return False  # Ne pas filtrer pendant un pump
+            else:
+                logger.info(f"🚫 [{self.name}] BUY filtré pour {self.symbol}: "
+                           f"prix trop haut dans le range ({price_position:.2f} > {buy_threshold_high}) "
+                           f"et pas de pump détecté")
+                return True
         
         # Filtrer les SELL seulement si vraiment en bas du range (pump fini)
         if side == OrderSide.SELL and price_position < sell_threshold_low:
@@ -362,6 +394,87 @@ class BaseStrategy(ABC):
             return True
         
         return False
+    
+    def _detect_pump_conditions(self, df: pd.DataFrame = None) -> Dict[str, any]:
+        """
+        Détecte les conditions de pump/momentum pour assouplir les filtres de position.
+        
+        Args:
+            df: DataFrame avec les données de marché
+            
+        Returns:
+            Dict avec is_pump, volume_ratio, momentum_score, etc.
+        """
+        try:
+            if df is None or len(df) < 10:
+                return {'is_pump': False, 'volume_ratio': 1.0, 'momentum_score': 0.0}
+            
+            latest = df.iloc[-1]
+            
+            # 1. Volume spike (ratio actuel vs moyenne 20 périodes)
+            volume_avg = df['volume'].rolling(20).mean().iloc[-1]
+            current_volume = latest.get('volume', 0)
+            volume_ratio = current_volume / volume_avg if volume_avg > 0 else 1.0
+            
+            # 2. Momentum sur les 5 dernières bougies
+            price_change_5 = (latest['close'] - df['close'].iloc[-6]) / df['close'].iloc[-6] * 100
+            
+            # 3. RSI momentum (éviter les zones de surachat extrême)
+            rsi = latest.get('rsi_14', latest.get('rsi', 50))
+            
+            # 4. MACD momentum positif
+            macd_line = latest.get('macd_line', 0)
+            macd_signal = latest.get('macd_signal', 0)
+            macd_momentum = macd_line > macd_signal
+            
+            # 5. ATR élevé (volatilité)
+            atr_14 = latest.get('atr_14', latest.get('atr', 0))
+            price = latest['close']
+            atr_percent = (atr_14 / price * 100) if price > 0 else 0
+            
+            # Score composite de momentum
+            momentum_score = 0.0
+            
+            # Volume boost
+            if volume_ratio > 2.0:
+                momentum_score += 0.4
+            elif volume_ratio > 1.5:
+                momentum_score += 0.2
+            
+            # Prix momentum (changement sur 5 bougies)
+            if price_change_5 > 3.0:  # +3% en 5 bougies
+                momentum_score += 0.3
+            elif price_change_5 > 1.5:
+                momentum_score += 0.15
+            
+            # MACD momentum
+            if macd_momentum:
+                momentum_score += 0.2
+            
+            # ATR élevé
+            if atr_percent > 1.5:
+                momentum_score += 0.1
+            
+            # Pénalité RSI surachat extrême (>85)
+            if rsi > 85:
+                momentum_score -= 0.3
+            
+            # Condition de pump: score >= 0.5 ET volume >= 1.8x
+            is_pump = momentum_score >= 0.5 and volume_ratio >= 1.8
+            
+            return {
+                'is_pump': is_pump,
+                'volume_ratio': volume_ratio,
+                'momentum_score': momentum_score,
+                'price_change_5': price_change_5,
+                'rsi': rsi,
+                'macd_momentum': macd_momentum,
+                'atr_percent': atr_percent
+            }
+            
+        except Exception as e:
+            logger.error(f"Erreur détection pump: {e}")
+            return {'is_pump': False, 'volume_ratio': 1.0, 'momentum_score': 0.0}
     
     def should_skip_low_volatility(self, atr_percent: float = None) -> bool:
         """

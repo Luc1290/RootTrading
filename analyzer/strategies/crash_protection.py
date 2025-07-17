@@ -21,7 +21,7 @@ class CrashProtection:
     """
     
     def __init__(self):
-        # Seuils de protection
+        # Seuils de protection SELL (crash)
         self.CRASH_THRESHOLD_5M = -0.05  # -5% en 5 minutes = crash
         self.RAPID_DROP_THRESHOLD = -0.02  # -2% en 1 minute = chute rapide
         self.VOLUME_PANIC_MULTIPLIER = 3.0  # Volume 3x supérieur = panique
@@ -31,6 +31,13 @@ class CrashProtection:
         # Stop-loss d'urgence
         self.EMERGENCY_STOP_LOSS = -0.08  # -8% = stop-loss d'urgence
         self.TRAILING_STOP_LOSS = -0.05   # -5% = trailing stop serré
+        
+        # Seuils de protection BUY (effondrement vs correction) - AJUSTÉS POUR CRYPTO
+        self.COLLAPSE_THRESHOLD_5M = -0.12  # -12% en 5min = effondrement total (était -8%)
+        self.COLLAPSE_THRESHOLD_1H = -0.20  # -20% en 1h = pas une correction (était -15%)
+        self.PANIC_VOLUME_BUY_BLOCK = 8.0   # Volume 8x = panique, pas correction (était 5x)
+        self.RSI_DEAD_CAT_THRESHOLD = 10    # RSI < 10 = dead cat bounce (était 15)
+        self.TREND_BREAKDOWN_ADX = 10       # ADX < 10 = perte de structure (était 15)
         
         logger.info("🛡️ CrashProtection initialisé")
     
@@ -339,3 +346,85 @@ class CrashProtection:
         
         logger.warning(f"🛡️ Signal défensif généré pour {symbol}: priorité {priority}")
         return signal
+    
+    def should_block_buy_signal(self, df: pd.DataFrame, current_price: float) -> Dict:
+        """
+        Détermine si un signal BUY doit être bloqué car c'est un effondrement, pas une correction.
+        Retourne des informations sur pourquoi le BUY est bloqué.
+        """
+        try:
+            if df is None or len(df) < 20:
+                return {"block_buy": False, "reason": "insufficient_data"}
+            
+            reasons = []
+            block_score = 0
+            
+            # 1. EFFONDREMENT RAPIDE (pas correction)
+            if len(df) >= 5:
+                price_5m_ago = df['close'].iloc[-5]
+                change_5m = (current_price - price_5m_ago) / price_5m_ago
+                
+                if change_5m <= self.COLLAPSE_THRESHOLD_5M:  # -8% en 5min
+                    reasons.append(f"Effondrement {change_5m:.1%} en 5min")
+                    block_score += 3
+            
+            # 2. EFFONDREMENT PROLONGÉ (pas correction)
+            if len(df) >= 60:
+                price_1h_ago = df['close'].iloc[-60]
+                change_1h = (current_price - price_1h_ago) / price_1h_ago
+                
+                if change_1h <= self.COLLAPSE_THRESHOLD_1H:  # -15% en 1h
+                    reasons.append(f"Effondrement {change_1h:.1%} en 1h")
+                    block_score += 2
+            
+            # 3. VOLUME DE PANIQUE (pas correction saine)
+            if len(df) >= 20 and 'volume' in df.columns:
+                current_volume = df['volume'].iloc[-1]
+                avg_volume = df['volume'].iloc[-20:].mean()
+                volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1
+                
+                if volume_ratio >= self.PANIC_VOLUME_BUY_BLOCK:  # Volume 5x
+                    reasons.append(f"Volume panique {volume_ratio:.1f}x")
+                    block_score += 2
+            
+            # 4. RSI DEAD CAT BOUNCE
+            if 'rsi_14' in df.columns:
+                rsi_current = df['rsi_14'].iloc[-1]
+                if rsi_current < self.RSI_DEAD_CAT_THRESHOLD:  # RSI < 15
+                    reasons.append(f"RSI dead cat bounce ({rsi_current:.0f})")
+                    block_score += 2
+            
+            # 5. PERTE DE STRUCTURE (ADX)
+            if 'adx_14' in df.columns:
+                adx_current = df['adx_14'].iloc[-1]
+                if adx_current < self.TREND_BREAKDOWN_ADX:  # ADX < 15
+                    reasons.append(f"Structure cassée (ADX: {adx_current:.0f})")
+                    block_score += 1
+            
+            # 6. MACD DIVERGENCE BAISSIÈRE
+            if 'macd_line' in df.columns and 'macd_signal' in df.columns:
+                macd_line = df['macd_line'].iloc[-1]
+                macd_signal = df['macd_signal'].iloc[-1]
+                
+                if macd_line < macd_signal and macd_line < 0:
+                    reasons.append("MACD divergence baissière")
+                    block_score += 1
+            
+            # DÉCISION FINALE - SEUIL AJUSTÉ POUR CRYPTO
+            should_block = block_score >= 5  # Seuil de sécurité (était 3, maintenant 5)
+            
+            result = {
+                "block_buy": should_block,
+                "block_score": block_score,
+                "reasons": reasons,
+                "recommendation": "AVOID_BUY" if should_block else "BUY_ALLOWED"
+            }
+            
+            if should_block:
+                logger.warning(f"🚫 BUY BLOQUÉ - Score: {block_score}, Raisons: {'; '.join(reasons)}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Erreur analyse protection BUY: {e}")
+            return {"block_buy": False, "reason": "analysis_error"}

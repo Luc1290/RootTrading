@@ -46,7 +46,7 @@ class RSIProStrategy(BaseStrategy):
         
         # Paramètres RSI avancés
         symbol_params = self.params.get(symbol, {}) if self.params else {}
-        self.oversold_threshold = symbol_params.get('rsi_oversold', 30)  # Pour débuts de pump
+        self.oversold_threshold = symbol_params.get('rsi_oversold', 35)  # Assoupli de 30 à 35 pour plus de BUY
         self.overbought_threshold = symbol_params.get('rsi_overbought', 70)  # Pour fins de pump
         self.extreme_oversold = symbol_params.get('rsi_extreme_oversold', 25)  # ASSOUPLI de 20 à 25
         self.extreme_overbought = symbol_params.get('rsi_extreme_overbought', 75)  # ASSOUPLI de 80 à 75
@@ -288,11 +288,11 @@ class RSIProStrategy(BaseStrategy):
                 context['score'] += 20
                 context['confidence_boost'] += 0.08
                 context['details'].append(f"Volume fort ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio > 0.8:
+            elif volume_ratio and volume_ratio > 0.6:  # Assoupli de 0.8 à 0.6
                 context['score'] += 10
                 context['details'].append(f"Volume normal ({volume_ratio:.1f}x)")
             else:
-                context['score'] -= 5
+                context['score'] -= 3  # Assoupli de -5 à -3
                 context['details'].append(f"Volume faible ({volume_ratio or 0:.1f}x)")
             
             # 6. Momentum support
@@ -414,7 +414,7 @@ class RSIProStrategy(BaseStrategy):
             return False
         
         # Score de contexte minimum assoupli
-        if context['score'] < 30:  # Assoupli de 35 à 30
+        if context['score'] < 25:  # Assoupli de 30 à 25 pour plus de BUY
             return False
         
         # Si confluence disponible, la vérifier - assoupli

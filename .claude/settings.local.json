@@ -32,7 +32,8 @@
       "Bash(iostat:*)",
       "Bash(cp:*)",
       "Bash(apt list:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(docker ps:*)"
     ],
     "deny": []
   }

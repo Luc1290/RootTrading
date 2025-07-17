@@ -632,18 +632,18 @@ class MultiTimeframeConfluence:
             confluence_risk = max(0, (100 - confluence_score) / 10)
             risk_factors.append(confluence_risk)
             
-            # 2. Risque de volatilité
+            # 2. Risque de volatilité (facteur réduit pour crypto)
             volatilities = [signal.volatility for signal in timeframe_signals.values()]
             avg_volatility = sum(volatilities) / len(volatilities)
-            volatility_risk = avg_volatility * 5  # 0-5 scale
+            volatility_risk = avg_volatility * 3.5  # Réduit de 5 à 3.5 pour crypto
             risk_factors.append(volatility_risk)
             
-            # 3. Risque de momentum divergent
+            # 3. Risque de momentum divergent (assoupli)
             momentums = [signal.momentum for signal in timeframe_signals.values()]
             if momentums:
                 momentum_std = np.std(momentums)
-                momentum_risk = momentum_std * 10  # Normaliser
-                risk_factors.append(min(3.0, momentum_risk))
+                momentum_risk = momentum_std * 7  # Réduit de 10 à 7
+                risk_factors.append(min(4.0, momentum_risk))  # Cap augmenté à 4.0
             
             # 4. Risque de conflit de timeframes
             conflicting_count = len(self._identify_timeframe_consensus(timeframe_signals)[1])
@@ -651,6 +651,13 @@ class MultiTimeframeConfluence:
             risk_factors.append(conflict_risk)
             
             total_risk = sum(risk_factors)
+            
+            # 5. NOUVEAU: Bonus confluence élevée (réduction de risque)
+            if confluence_score > 80.0:
+                confluence_bonus = (confluence_score - 80.0) / 100.0  # 0.0 à 0.2
+                total_risk *= (1.0 - confluence_bonus)  # Réduction jusqu'à 20%
+                logger.debug(f"🎯 Bonus confluence élevée appliqué: {confluence_score:.1f}% → réduction {confluence_bonus*100:.1f}%")
+            
             return min(10.0, max(0.0, total_risk))
             
         except Exception as e:
@@ -666,12 +673,15 @@ class MultiTimeframeConfluence:
             # BUY pour début pump, SELL pour fin pump
             if overall_signal > 0:  # Signal BUY (début pump)
                 # Conditions assouplies pour BUY (capturer début pump)
-                if risk_level > 7.5 or confluence_score < 30.0:
+                # Seuils ajustés pour permettre les signaux BUY de qualité
+                if risk_level > 9.5 or confluence_score < 25.0:
                     return 'AVOID'
-                elif signal_strength > 0.3 and confluence_score > 50.0:
+                elif signal_strength > 0.3 and confluence_score > 40.0:
                     return 'BUY'  # Signal fort pour début pump
-                elif signal_strength > 0.2 and confluence_score > 40.0:
+                elif signal_strength > 0.2 and confluence_score > 35.0:
                     return 'BUY'  # Signal modéré pour début pump
+                elif signal_strength > 0.15 and confluence_score > 30.0:
+                    return 'BUY'  # Signal faible mais confluence acceptable
                 else:
                     return 'HOLD'
             

@@ -1065,12 +1065,67 @@ class SignalAggregator:
             logger.info(f"Signal {side} {symbol} de {strategy} rejeté par filtre debounce")
             return None
         
+        # NOUVEAU FILTRE: Bloquer les BUY pendant les tendances baissières fortes
+        if side == 'BUY' and regime in [MarketRegime.STRONG_TREND_DOWN, MarketRegime.TREND_DOWN]:
+            # Analyser la force de la tendance baissière et les conditions de momentum
+            current_price = signals[0].get('price', 0) if signals else 0
+            
+            # Récupérer les indicateurs pour validation
+            recent_data = await self.get_recent_market_data(symbol, limit=50)
+            allow_buy = False
+            
+            if recent_data and len(recent_data) >= 20:
+                df = pd.DataFrame(recent_data)
+                
+                # Conditions pour autoriser un BUY pendant une tendance baissière:
+                # 1. RSI très oversold (< 25) ET
+                # 2. Volume spike élevé (> 3x) ET  
+                # 3. Support technique identifié
+                rsi = df['rsi_14'].iloc[-1] if 'rsi_14' in df.columns else 50
+                volume_avg = df['volume'].tail(20).mean()
+                current_volume = df['volume'].iloc[-1]
+                volume_ratio = current_volume / volume_avg if volume_avg > 0 else 1.0
+                
+                # Support: prix proche du low des 50 dernières bougies
+                low_50 = df['low'].tail(50).min()
+                support_proximity = (current_price - low_50) / low_50 if low_50 > 0 else 1.0
+                
+                # MACD divergence bullish
+                macd_bullish = False
+                if 'macd_line' in df.columns and 'macd_signal' in df.columns:
+                    macd_line = df['macd_line'].iloc[-1]
+                    macd_signal = df['macd_signal'].iloc[-1]
+                    macd_bullish = macd_line > macd_signal and macd_line > df['macd_line'].iloc[-3]
+                
+                # Conditions strictes pour BUY en downtrend
+                if (rsi < 25 and volume_ratio > 3.0 and support_proximity < 0.02) or \
+                   (rsi < 20 and macd_bullish and volume_ratio > 2.0):
+                    allow_buy = True
+                    logger.info(f"✅ BUY autorisé en TREND_DOWN pour {symbol}: "
+                               f"RSI oversold ({rsi:.1f}), Volume spike ({volume_ratio:.1f}x), "
+                               f"Support proche ({support_proximity:.1%})")
+            
+            if not allow_buy:
+                logger.warning(f"❌ Signal BUY {symbol} BLOQUÉ: {regime.value} détecté - "
+                              f"pas de conditions exceptionnelles pour acheter en downtrend")
+                return None
+
         # FILTRE CRITIQUE: Assouplir pour les SELL (vente au sommet)
         if confluence_analysis and confluence_analysis.recommended_action == 'AVOID':
             # Pour SELL, on accepte avec des critères assouplis
             if side == 'SELL':
                 # Accepter si RSI > 65 ou Bollinger position > 0.85 ou volume élevé
-                rsi_val = momentum_analysis.rsi_current if momentum_analysis else 50
+                # Récupérer RSI depuis les indicateurs ou metadata du signal
+                rsi_val = 50  # valeur par défaut
+                if momentum_analysis and hasattr(momentum_analysis, 'timeframe_momentums'):
+                    # Essayer de récupérer le RSI momentum
+                    primary_tf = momentum_analysis.timeframe_momentums.get('15m')
+                    if primary_tf and hasattr(primary_tf, 'rsi_momentum'):
+                        rsi_val = primary_tf.rsi_momentum * 100  # Convertir en échelle 0-100
+                elif signals and len(signals) > 0:
+                    # Récupérer depuis metadata du signal
+                    signal_metadata = signals[0].get('metadata', {})
+                    rsi_val = signal_metadata.get('rsi', 50)
                 bb_position = confluence_analysis.bb_position if hasattr(confluence_analysis, 'bb_position') else 0.5
                 volume_summary = self.signal_metrics.extract_volume_summary(signals)
                 volume_ratio = volume_summary.get('avg_volume_ratio', 1.0)
