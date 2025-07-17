@@ -40,7 +40,6 @@ logger = logging.getLogger(__name__)
 # Import des optimisations après la configuration du logger
 try:
     from analyzer.src.optimized_analyzer import OptimizedAnalyzer
-    from analyzer.src.concurrent_analyzer import ConcurrentAnalyzer  # Fallback
     OPTIMIZATIONS_AVAILABLE = True
     logger.info("✅ Analyzer optimisé chargé: récupération DB + calculs intelligents")
 except ImportError as e:
@@ -96,15 +95,15 @@ class AnalyzerManager:
         # Créer le chargeur de stratégies
         self.strategy_loader = get_strategy_loader()
         
-        # Initialiser l'analyseur concurrent si disponible
+        # Initialiser l'analyseur optimisé si disponible
         if OPTIMIZATIONS_AVAILABLE:
-            self.concurrent_analyzer = ConcurrentAnalyzer(
+            self.optimized_analyzer = OptimizedAnalyzer(
                 self.strategy_loader,
                 max_workers=min(4, self.max_workers)
             )
-            logger.info("✅ Analyseur concurrent initialisé")
+            logger.info("✅ Analyseur optimisé initialisé")
         else:
-            self.concurrent_analyzer = None
+            self.optimized_analyzer = None
         
         # Événement d'arrêt
         self.stop_event = mp.Event() if not use_threads else threading.Event()
@@ -263,7 +262,7 @@ class AnalyzerManager:
                 
                     # Analyser les données avec optimisations si disponibles
                     try:
-                        if OPTIMIZATIONS_AVAILABLE and hasattr(self, 'concurrent_analyzer'):
+                        if OPTIMIZATIONS_AVAILABLE and hasattr(self, 'optimized_analyzer'):
                             # Utiliser l'analyse optimisée avec vectorisation
                             signals = self._process_with_optimizations(analysis_data, local_strategy_loader)
                         else:

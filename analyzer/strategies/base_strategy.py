@@ -134,7 +134,7 @@ class BaseStrategy(ABC):
             
             # Si conditions critiques détectées, générer signal défensif
             if crash_analysis.get("emergency_sell_recommended", False):
-                signal = self.crash_protection.get_defensive_sell_signal(self.symbol, crash_analysis)
+                signal = self.crash_protection.get_defensive_sell_signal(self.symbol, crash_analysis, current_price)
                 if signal:
                     logger.warning(f"🛡️ {self.name}: Signal défensif généré pour {self.symbol}")
                     return signal

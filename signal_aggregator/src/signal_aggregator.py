@@ -383,11 +383,33 @@ class SignalAggregator:
                                            f"(confluence: {confluence_score:.1f}%, RSI: {rsi}, BB: {bb_position:.2f})")
                                 return None
                 
-                # Pour BUY: garder les seuils stricts
+                # Pour BUY: seuils adaptatifs selon la qualité technique
                 else:
+                    # Critères pour signaux excellents avec tolérance de confluence
+                    volume_ratio = single_signal.get('metadata', {}).get('volume_ratio', 0)
+                    context_score = single_signal.get('metadata', {}).get('context_score', 0)
+                    rsi = single_signal.get('metadata', {}).get('rsi', 50)
+                    williams_r = single_signal.get('metadata', {}).get('williams_r', -50)
+                    cci = single_signal.get('metadata', {}).get('cci', 0)
+                    
+                    # Conditions pour signal techniquement excellent
+                    is_excellent_technical = (
+                        volume_ratio > 3.0 and  # Volume très élevé
+                        context_score > 90 and  # Contexte excellent
+                        rsi < 30 and  # RSI en survente
+                        williams_r < -90 and  # Williams en survente extrême
+                        cci < -100  # CCI en survente
+                    )
+                    
+                    # Seuils adaptatifs
                     if confluence_score > 80 and signal_confidence > 0.9:
                         logger.info(f"✨ Signal unique BUY {symbol} AUTORISÉ par qualité exceptionnelle "
                                    f"(confluence: {confluence_score:.1f}%, confiance: {signal_confidence:.2f})")
+                        # Continuer avec le traitement
+                    elif is_excellent_technical and confluence_score > 70 and signal_confidence > 0.75:
+                        logger.info(f"✨ Signal unique BUY {symbol} AUTORISÉ par excellence technique "
+                                   f"(confluence: {confluence_score:.1f}%, confiance: {signal_confidence:.2f}, "
+                                   f"vol: {volume_ratio:.1f}x, ctx: {context_score}, RSI: {rsi:.1f})")
                         # Continuer avec le traitement
                     else:
                         first_signal_time = self.signal_processor.get_signal_timestamp(single_signal)
@@ -1048,9 +1070,10 @@ class SignalAggregator:
             # Pour SELL, on accepte avec des critères assouplis
             if side == 'SELL':
                 # Accepter si RSI > 65 ou Bollinger position > 0.85 ou volume élevé
-                rsi_val = multi_tf_analysis.get('momentum_analysis', {}).get('rsi_current', 50)
-                bb_position = signal_metrics.get('price_position', 0.5)
-                volume_ratio = signal_metrics.get('volume_analysis', {}).get('avg_volume_ratio', 1.0)
+                rsi_val = momentum_analysis.rsi_current if momentum_analysis else 50
+                bb_position = confluence_analysis.bb_position if hasattr(confluence_analysis, 'bb_position') else 0.5
+                volume_summary = self.signal_metrics.extract_volume_summary(signals)
+                volume_ratio = volume_summary.get('avg_volume_ratio', 1.0)
                 
                 if rsi_val > 65 or bb_position > 0.85 or volume_ratio > 2.0:
                     logger.info(f"✅ Signal SELL {symbol} autorisé malgré AVOID - "

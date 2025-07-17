@@ -158,19 +158,20 @@ class BollingerProStrategy(BaseStrategy):
                             'pattern_type': pattern_analysis['type'],
                             'pattern_strength': pattern_analysis['strength'],
                             'volume_ratio': volume_ratio,
-                        'volume_spike': volume_spike,
-                        'momentum_10': momentum_10,
-                        'context_score': context_analysis['score'],
-                        'confluence_score': context_analysis.get('confluence_score', 0),
-                        'price_position': price_position,
-                        'reason': f'Bollinger Pro BUY ({pattern_analysis["type"]}, pos: {bb_position:.2f}, width: {bb_width:.3f})'
-                    }
-                )
-                # Enregistrer prix d'entrée pour protection défensive
-                self.last_entry_price = current_price
+                            'volume_spike': volume_spike,
+                            'momentum_10': momentum_10,
+                            'context_score': context_analysis['score'],
+                            'confluence_score': context_analysis.get('confluence_score', 0),
+                            'price_position': price_position,
+                            'reason': f'Bollinger Pro BUY ({pattern_analysis["type"]}, pos: {bb_position:.2f}, width: {bb_width:.3f})'
+                        }
+                    )
+                    # Enregistrer prix d'entrée pour protection défensive
+                    self.last_entry_price = current_price
+                    
                 else:
                     logger.info(f"📊 Bollinger Pro {symbol}: Signal BUY techniquement valide mais filtré "
-                              f"(position prix: {price_position:.2f})")
+                                f"(position prix: {price_position:.2f})")
             
             # SIGNAL DE VENTE - Conditions favorables
             elif self._is_bearish_bollinger_signal(

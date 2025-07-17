@@ -10,6 +10,9 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 import logging
 
+# Import des énumérations pour la validation
+from shared.src.enums import SignalStrength
+
 logger = logging.getLogger(__name__)
 
 class CrashProtection:
@@ -294,7 +297,7 @@ class CrashProtection:
         # Priorité 3 = court-circuiter les signaux techniques normaux
         return crash_analysis.get("priority", 0) >= 3
     
-    def get_defensive_sell_signal(self, symbol: str, crash_analysis: Dict) -> Optional[Dict]:
+    def get_defensive_sell_signal(self, symbol: str, crash_analysis: Dict, current_price: float) -> Optional[Dict]:
         """
         Génère un signal de vente défensive basé sur l'analyse de crash.
         """
@@ -305,13 +308,24 @@ class CrashProtection:
         conditions = crash_analysis.get("conditions", [])
         priority = crash_analysis.get("priority", 1)
         
+        # Déterminer la force du signal basée sur priorité
+        if priority >= 4:
+            signal_strength = SignalStrength.VERY_STRONG
+        elif priority >= 3:
+            signal_strength = SignalStrength.STRONG
+        elif priority >= 2:
+            signal_strength = SignalStrength.MODERATE
+        else:
+            signal_strength = SignalStrength.WEAK
+        
         signal = {
             "symbol": symbol,
             "side": "SELL",
             "strategy": "CRASH_PROTECTION",
             "signal_type": "DEFENSIVE",
             "timestamp": datetime.now().isoformat(),
-            "strength": min(priority / 4.0, 1.0),  # Force basée sur priorité
+            "price": current_price,  # CHAMP MANQUANT AJOUTÉ
+            "strength": signal_strength,  # Force basée sur priorité avec enum
             "confidence": 0.95,  # Haute confiance pour signaux défensifs
             "reason": "Protection défensive activée",
             "metadata": {

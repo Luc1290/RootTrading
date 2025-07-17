@@ -172,19 +172,21 @@ class ReversalDivergenceProStrategy(BaseStrategy):
                             'avg_divergence_strength': div_summary['avg_strength'],
                             'price_swing_strength': structure_analysis['swing_strength'],
                             'volume_ratio': volume_ratio,
-                        'volume_spike': volume_spike,
-                        'context_score': context_analysis['score'],
-                        'confluence_score': context_analysis.get('confluence_score', 0),
-                        'structure_favorability': structure_analysis['favorability'],
-                        'price_position': price_position,
-                        'reason': f'Divergence Pro BUY ({len(bullish_divergences)} div: {div_summary["indicators"]})'
-                    }
-                )
-                # Enregistrer prix d'entrée pour protection défensive
-                self.last_entry_price = current_price
+                            'volume_spike': volume_spike,
+                            'context_score': context_analysis['score'],
+                            'confluence_score': context_analysis.get('confluence_score', 0),
+                            'structure_favorability': structure_analysis['favorability'],
+                            'price_position': price_position,
+                            'reason': f'Divergence Pro BUY ({len(bullish_divergences)} div: {div_summary["indicators"]})'
+                        }
+                    )
+                    # Enregistrer prix d'entrée pour protection défensive
+                    self.last_entry_price = current_price
+                    return signal
+                    
                 else:
                     logger.info(f"📊 Divergence Pro {symbol}: Signal BUY techniquement valide mais filtré "
-                              f"(position prix: {price_position:.2f})")
+                                f"(position prix: {price_position:.2f})")
             
             # SIGNAL DE VENTE - Divergences bearish avec contexte favorable
             else:
