@@ -336,20 +336,41 @@ class SignalAggregator:
             # Check if we have enough signals to make a decision - MODE CONFLUENCE
             buffer_size = len(self.signal_buffer[symbol])
             
-            # Logique d'attente intelligente : attendre plus de signaux ou un délai
+            # NOUVELLE RÈGLE STRICTE : Minimum 2 signaux obligatoire avec exception qualité
             if buffer_size < 2:
-                # Si on a seulement 1 signal, attendre 300 secondes pour voir si d'autres arrivent
-                first_signal_time = self.signal_processor.get_signal_timestamp(self.signal_buffer[symbol][0])
-                time_since_first = timestamp - first_signal_time
-
-                # Marge de tolérance de 10s pour le temps de traitement
-                confluence_timeout = 270
-                if time_since_first.total_seconds() < confluence_timeout:
-                    logger.info(f"🕐 Signal unique pour {symbol}, attente {confluence_timeout - time_since_first.total_seconds():.0f}s pour confluence")
-                    return None  # Attendre plus de signaux
+                # Vérifier d'abord si le signal unique a une qualité exceptionnelle
+                single_signal = self.signal_buffer[symbol][0]
+                signal_confidence = single_signal.get('confidence', 0)
+                
+                # Calculer/récupérer confluence pour ce signal
+                confluence_analysis = None
+                try:
+                    confluence_analysis = await self.confluence_analyzer.analyze_confluence(symbol)
+                except Exception as e:
+                    logger.debug(f"Confluence non disponible pour signal unique {symbol}: {e}")
+                
+                confluence_score = confluence_analysis.confluence_score if confluence_analysis else 0
+                
+                # Exception pour signaux de qualité exceptionnelle
+                if confluence_score > 80 and signal_confidence > 0.9:
+                    logger.info(f"✨ Signal unique {symbol} AUTORISÉ par qualité exceptionnelle "
+                               f"(confluence: {confluence_score:.1f}%, confiance: {signal_confidence:.2f})")
+                    # Continuer avec le traitement du signal unique de haute qualité
                 else:
-                    logger.info(f"⏰ Délai d'attente écoulé pour {symbol}, traitement du signal unique")
-                    # Continuer avec le signal unique après délai
+                    # Signal unique de qualité normale = rejeté
+                    first_signal_time = self.signal_processor.get_signal_timestamp(single_signal)
+                    time_since_first = timestamp - first_signal_time
+
+                    # Nettoyage si signal trop ancien (plus de 10 minutes)
+                    if time_since_first.total_seconds() > 600:
+                        logger.info(f"🧹 Signal unique {symbol} trop ancien ({time_since_first.total_seconds():.0f}s), suppression du buffer")
+                        self.signal_buffer[symbol] = []
+                        return None
+                    else:
+                        logger.info(f"❌ Signal unique {symbol} REJETÉ - qualité insuffisante "
+                                   f"(confluence: {confluence_score:.1f}%, confiance: {signal_confidence:.2f}) - "
+                                   f"minimum 2 signaux requis (attente: {time_since_first.total_seconds():.0f}s)")
+                        return None
             else:
                 # Analyser rapidement si les signaux sont dans la même direction
                 sides = [s.get('side', s.get('side', '')).upper() for s in self.signal_buffer[symbol]]
@@ -975,9 +996,22 @@ class SignalAggregator:
             logger.info(f"Signal {side} {symbol} rejeté par seuils dynamiques - confiance: {confidence:.3f}, vote: {vote_weight:.3f}")
             return None
         
-        # NOUVEAU: Vérifier le debounce pour éviter les signaux groupés
-        if not await self._check_signal_debounce(symbol, side):
-            logger.info(f"Signal {side} {symbol} rejeté par filtre debounce")
+        # NOUVEAU: Vérifier le debounce pour éviter les signaux groupés (par stratégie)
+        # Exception: Si d'autres stratégies sont en attente de confluence, autoriser le signal
+        has_pending_confluence = symbol in self.signal_buffer and len(self.signal_buffer[symbol]) > 0
+        if has_pending_confluence:
+            # Vérifier si les signaux en attente sont du même côté
+            pending_sides = [s.get('side', '').upper() for s in self.signal_buffer[symbol]]
+            if side.upper() in pending_sides:
+                logger.info(f"✅ Signal {side} {symbol}[{strategy}] autorisé malgré debounce - confluence multi-stratégies en cours")
+                debounce_check = True
+            else:
+                debounce_check = await self._check_signal_debounce(symbol, side, strategy=strategy, confidence=confidence)
+        else:
+            debounce_check = await self._check_signal_debounce(symbol, side, strategy=strategy, confidence=confidence)
+        
+        if not debounce_check:
+            logger.info(f"Signal {side} {symbol} de {strategy} rejeté par filtre debounce")
             return None
         
         # FILTRE CRITIQUE: Bloquer les signaux avec recommended_action = "AVOID"
@@ -1200,11 +1234,12 @@ class EnhancedSignalAggregator(SignalAggregator):
         self.false_signal_tracker = defaultdict(int)
         self.false_signal_threshold = 3  # Max faux signaux avant désactivation temporaire
         
-        # NOUVEAU: Debounce pour éviter les signaux groupés
-        self.signal_debounce = defaultdict(lambda: {'last_buy': None, 'last_sell': None})
+        # NOUVEAU: Debounce pour éviter les signaux groupés (par stratégie)
+        self.signal_debounce = defaultdict(lambda: defaultdict(lambda: {'last_buy': None, 'last_sell': None}))
         self.debounce_periods = {
-            'same_side': 3,  # Nombre de bougies minimum entre signaux du même côté (BUY-BUY ou SELL-SELL)
-            'opposite_side': 1  # Nombre de bougies minimum entre signaux opposés (BUY-SELL)
+            'same_side_minutes': 10,  # Minutes minimum entre signaux du même côté 
+            'opposite_side_minutes': 15,  # Minutes pour signaux opposés normaux (protection)
+            'opposite_side_strong_minutes': 5  # Minutes pour signaux opposés forts (urgence/stop-loss)
         }
         self.candle_duration = timedelta(minutes=1)  # Durée d'une bougie (à adapter selon l'intervalle)
         
@@ -1230,7 +1265,7 @@ class EnhancedSignalAggregator(SignalAggregator):
             logger.error(f"Erreur récupération résumé performances: {e}")
             return {}
 
-    async def _check_signal_debounce(self, symbol: str, side: str, interval: str = None) -> bool:
+    async def _check_signal_debounce(self, symbol: str, side: str, strategy: str = None, interval: str = None, confidence: float = 0.0) -> bool:
         """
         Vérifie si un signal respecte le délai de debounce pour éviter les signaux groupés
         
@@ -1244,7 +1279,7 @@ class EnhancedSignalAggregator(SignalAggregator):
         """
         try:
             current_time = datetime.now(timezone.utc)
-            debounce_info = self.signal_debounce[symbol]
+            debounce_info = self.signal_debounce[symbol][strategy or 'unknown']
             
             # Déterminer la durée d'une bougie selon l'intervalle
             interval_map = {
@@ -1265,36 +1300,42 @@ class EnhancedSignalAggregator(SignalAggregator):
             
             candle_duration = interval_map.get(interval, timedelta(minutes=15))
             
-            # Adapter les périodes de debounce selon l'intervalle
-            # Pour 15m: 3 bougies = 45 min entre signaux même côté
-            # Debounce adaptatif basé sur l'ADX (Hybrid approach)
+            # Debounce fixe en minutes (plus lié aux bougies)
+            # Adaptatif basé sur l'ADX pour ajuster selon les conditions de marché
             current_adx = await self.technical_analysis._get_current_adx(symbol)
-            base_same = self.debounce_periods['same_side']
-            base_opposite = self.debounce_periods['opposite_side']
+            base_same_minutes = self.debounce_periods['same_side_minutes']
+            
+            # Choisir le délai opposé selon la force du signal
+            if confidence >= 0.85:  # Signal très fort = urgence
+                base_opposite_minutes = self.debounce_periods['opposite_side_strong_minutes']
+                signal_strength_desc = "fort"
+            else:  # Signal normal/faible = protection
+                base_opposite_minutes = self.debounce_periods['opposite_side_minutes']
+                signal_strength_desc = "normal"
             
             # Calculer multiplicateur ADX pour debounce adaptatif
             if current_adx is not None:
                 if current_adx >= 42:  # Tendance très forte
-                    adx_multiplier = 0.5  # Debounce réduit de moitié
+                    adx_multiplier = 0.6  # Debounce réduit (mais pas trop)
                     trend_strength = "très forte"
                 elif current_adx >= 32:  # Tendance forte
-                    adx_multiplier = 0.7  # Debounce réduit
+                    adx_multiplier = 0.8  # Debounce légèrement réduit
                     trend_strength = "forte" 
                 elif current_adx >= 23:  # Tendance modérée
                     adx_multiplier = 1.0  # Debounce normal
                     trend_strength = "modérée"
                 else:  # Range/tendance faible
-                    adx_multiplier = 1.8  # Debounce augmenté
+                    adx_multiplier = 1.5  # Debounce augmenté modérément
                     trend_strength = "faible/range"
             else:
                 adx_multiplier = 1.0  # Fallback si ADX non disponible
                 trend_strength = "inconnue"
             
-            # Appliquer multiplicateur
-            debounce_same = int(base_same * adx_multiplier)
-            debounce_opposite = int(base_opposite * adx_multiplier)
+            # Appliquer multiplicateur (résultat en minutes)
+            debounce_same_minutes = int(base_same_minutes * adx_multiplier)
+            debounce_opposite_minutes = int(base_opposite_minutes * adx_multiplier)
             
-            logger.debug(f"📊 Debounce adaptatif {symbol}: ADX={current_adx:.1f} (tendance {trend_strength}) → même={debounce_same}, opposé={debounce_opposite} bougies")
+            logger.debug(f"📊 Debounce adaptatif {symbol}[{strategy}]: ADX={current_adx:.1f} (tendance {trend_strength}), signal {signal_strength_desc} (conf={confidence:.2f}) → même={debounce_same_minutes}min, opposé={debounce_opposite_minutes}min")
             
             # Déterminer le dernier signal du même côté et du côté opposé
             if side == 'BUY':
@@ -1304,24 +1345,24 @@ class EnhancedSignalAggregator(SignalAggregator):
                 last_same_side = debounce_info['last_sell']
                 last_opposite_side = debounce_info['last_buy']
             
-            # Vérifier le debounce pour le même côté
+            # Vérifier le debounce pour le même côté (en minutes fixes)
             if last_same_side:
                 time_since_same = (current_time - last_same_side).total_seconds()
-                min_time_same = debounce_same * candle_duration.total_seconds()
+                min_time_same = debounce_same_minutes * 60  # Convertir minutes en secondes
                 
                 if time_since_same < min_time_same:
-                    logger.info(f"❌ Signal {side} {symbol} filtré par debounce même côté: "
-                              f"{time_since_same:.0f}s < {min_time_same:.0f}s requis ({debounce_same} bougies {interval})")
+                    logger.info(f"❌ Signal {side} {symbol}[{strategy}] filtré par debounce même côté: "
+                              f"{time_since_same:.0f}s < {min_time_same:.0f}s requis ({debounce_same_minutes} minutes)")
                     return False
             
-            # Vérifier le debounce pour le côté opposé
+            # Vérifier le debounce pour le côté opposé (en minutes fixes)
             if last_opposite_side:
                 time_since_opposite = (current_time - last_opposite_side).total_seconds()
-                min_time_opposite = debounce_opposite * candle_duration.total_seconds()
+                min_time_opposite = debounce_opposite_minutes * 60  # Convertir minutes en secondes
                 
                 if time_since_opposite < min_time_opposite:
-                    logger.info(f"⚠️ Signal {side} {symbol} filtré par debounce côté opposé: "
-                              f"{time_since_opposite:.0f}s < {min_time_opposite:.0f}s requis ({debounce_opposite} bougies {interval})")
+                    logger.info(f"⚠️ Signal {side} {symbol}[{strategy}] filtré par debounce côté opposé: "
+                              f"{time_since_opposite:.0f}s < {min_time_opposite:.0f}s requis ({debounce_opposite_minutes} minutes)")
                     return False
             
             # Signal autorisé - mettre à jour le tracking
@@ -1330,7 +1371,7 @@ class EnhancedSignalAggregator(SignalAggregator):
             else:
                 debounce_info['last_sell'] = current_time
             
-            logger.debug(f"✅ Signal {side} {symbol} passe le filtre debounce (intervalle: {interval})")
+            logger.debug(f"✅ Signal {side} {symbol}[{strategy}] passe le filtre debounce")
             return True
             
         except Exception as e:
