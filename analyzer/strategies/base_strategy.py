@@ -19,6 +19,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 from shared.src.enums import OrderSide, SignalStrength
 from shared.src.schemas import StrategySignal, MarketData
 
+# Importer le module de protection contre les crashes
+from crash_protection import CrashProtection
+
 # Configuration du logging
 logger = logging.getLogger(__name__)
 
@@ -42,6 +45,11 @@ class BaseStrategy(ABC):
         self.data_buffer = deque(maxlen=self.buffer_size)  # Buffer circulaire pour stocker les données
         self.last_signal_time: Optional[datetime] = None
         self.signal_cooldown = self.params.get('signal_cooldown', 30)  # Temps min entre signaux (sec) - réduit pour stratégies Pro
+        
+        # Système de protection défensive
+        self.crash_protection = CrashProtection()
+        self.enable_crash_protection = self.params.get('enable_crash_protection', True)
+        self.last_entry_price: Optional[float] = None  # Pour calculer les stop-loss
     
     @property
     @abstractmethod
@@ -109,6 +117,33 @@ class BaseStrategy(ABC):
         elapsed = (now - self.last_signal_time).total_seconds()
         
         return elapsed >= self.signal_cooldown
+    
+    def check_defensive_conditions(self, df: pd.DataFrame) -> Optional[Dict]:
+        """
+        Vérifie les conditions de protection défensive.
+        Retourne un signal de vente défensive si conditions critiques détectées.
+        """
+        if not self.enable_crash_protection or df is None or len(df) < 10:
+            return None
+        
+        try:
+            current_price = df['close'].iloc[-1]
+            crash_analysis = self.crash_protection.analyze_crash_conditions(
+                df, current_price, self.last_entry_price
+            )
+            
+            # Si conditions critiques détectées, générer signal défensif
+            if crash_analysis.get("emergency_sell_recommended", False):
+                signal = self.crash_protection.get_defensive_sell_signal(self.symbol, crash_analysis)
+                if signal:
+                    logger.warning(f"🛡️ {self.name}: Signal défensif généré pour {self.symbol}")
+                    return signal
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Erreur vérification protection défensive {self.name}: {e}")
+            return None
     
     @abstractmethod
     def analyze(self, symbol: str, df: pd.DataFrame, indicators: Dict) -> Optional[Dict]:
@@ -311,8 +346,8 @@ class BaseStrategy(ABC):
         
         # Seuils de filtrage (ajustables par stratégie)
         symbol_params = self.params.get(self.symbol, {}) if self.params else {}
-        buy_threshold_high = symbol_params.get('buy_filter_high', 0.80)  # Bloquer BUY si prix > 80% du range
-        sell_threshold_low = symbol_params.get('sell_filter_low', 0.20)  # Bloquer SELL si prix < 20% du range
+        buy_threshold_high = symbol_params.get('buy_filter_high', 0.85)  # Assoupli de 0.80 à 0.85
+        sell_threshold_low = symbol_params.get('sell_filter_low', 0.05)  # ASSOUPLI de 0.20 à 0.05 pour permettre les SELL après correction
         
         # Filtrer les BUY en haut du range
         if side == OrderSide.BUY and price_position > buy_threshold_high:
@@ -320,7 +355,7 @@ class BaseStrategy(ABC):
                        f"prix trop haut dans le range ({price_position:.2f} > {buy_threshold_high})")
             return True
         
-        # Filtrer les SELL en bas du range
+        # Filtrer les SELL seulement si vraiment en bas du range (pump fini)
         if side == OrderSide.SELL and price_position < sell_threshold_low:
             logger.info(f"🚫 [{self.name}] SELL filtré pour {self.symbol}: "
                        f"prix trop bas dans le range ({price_position:.2f} < {sell_threshold_low})")

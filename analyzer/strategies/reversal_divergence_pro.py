@@ -105,6 +105,11 @@ class ReversalDivergenceProStrategy(BaseStrategy):
             if len(df) < self.get_min_data_points():
                 return None
             
+            # PRIORITÉ 1: Vérifier conditions de protection défensive
+            defensive_signal = self.check_defensive_conditions(df)
+            if defensive_signal:
+                return defensive_signal
+            
             current_price = df['close'].iloc[-1]
             
             # Récupérer indicateurs
@@ -175,6 +180,8 @@ class ReversalDivergenceProStrategy(BaseStrategy):
                         'reason': f'Divergence Pro BUY ({len(bullish_divergences)} div: {div_summary["indicators"]})'
                     }
                 )
+                # Enregistrer prix d'entrée pour protection défensive
+                self.last_entry_price = current_price
                 else:
                     logger.info(f"📊 Divergence Pro {symbol}: Signal BUY techniquement valide mais filtré "
                               f"(position prix: {price_position:.2f})")
@@ -474,11 +481,12 @@ class ReversalDivergenceProStrategy(BaseStrategy):
             
             # 2. Force de tendance (ADX) - divergences meilleures en fin de tendance
             if adx:
-                if adx >= 35:  # Tendance très forte = potentiel retournement
+                from shared.src.config import ADX_STRONG_TREND_THRESHOLD, ADX_TREND_THRESHOLD
+                if adx >= ADX_STRONG_TREND_THRESHOLD:  # Tendance très forte = potentiel retournement
                     context['score'] += 20
                     context['confidence_boost'] += 0.08
                     context['details'].append(f"ADX fort - retournement potentiel ({adx:.1f})")
-                elif adx >= 25:
+                elif adx >= ADX_TREND_THRESHOLD:
                     context['score'] += 15
                     context['confidence_boost'] += 0.05
                     context['details'].append(f"ADX modéré ({adx:.1f})")
@@ -575,13 +583,13 @@ class ReversalDivergenceProStrategy(BaseStrategy):
         if not divergences:
             return False
         
-        # Score de contexte minimum
-        if context['score'] < 40:
+        # Score de contexte minimum assoupli pour SELL
+        if context['score'] < 35:
             return False
         
-        # Confluence minimum si disponible
+        # Confluence minimum si disponible - assoupli
         confluence_score = context.get('confluence_score', 0)
-        if confluence_score > 0 and confluence_score < self.confluence_threshold:
+        if confluence_score > 0 and confluence_score < (self.confluence_threshold - 5):
             return False
         
         # Force des divergences

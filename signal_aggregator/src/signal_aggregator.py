@@ -352,25 +352,54 @@ class SignalAggregator:
                 confluence_score = confluence_analysis.confluence_score if confluence_analysis else 0
                 
                 # Exception pour signaux de qualité exceptionnelle
-                if confluence_score > 80 and signal_confidence > 0.9:
-                    logger.info(f"✨ Signal unique {symbol} AUTORISÉ par qualité exceptionnelle "
-                               f"(confluence: {confluence_score:.1f}%, confiance: {signal_confidence:.2f})")
-                    # Continuer avec le traitement du signal unique de haute qualité
-                else:
-                    # Signal unique de qualité normale = rejeté
-                    first_signal_time = self.signal_processor.get_signal_timestamp(single_signal)
-                    time_since_first = timestamp - first_signal_time
-
-                    # Nettoyage si signal trop ancien (plus de 10 minutes)
-                    if time_since_first.total_seconds() > 600:
-                        logger.info(f"🧹 Signal unique {symbol} trop ancien ({time_since_first.total_seconds():.0f}s), suppression du buffer")
-                        self.signal_buffer[symbol] = []
-                        return None
+                # Logique différente pour BUY et SELL
+                signal_side = single_signal.get('side', single_signal.get('signal', {}).get('side', '')).upper()
+                
+                # Pour SELL: seuils plus souples (vente au sommet)
+                if signal_side == 'SELL':
+                    if confluence_score > 70 and signal_confidence > 0.85:
+                        logger.info(f"✨ Signal unique SELL {symbol} AUTORISÉ - "
+                                   f"seuils SELL atteints (confluence: {confluence_score:.1f}%, confiance: {signal_confidence:.2f})")
+                        # Continuer avec le traitement
                     else:
-                        logger.info(f"❌ Signal unique {symbol} REJETÉ - qualité insuffisante "
-                                   f"(confluence: {confluence_score:.1f}%, confiance: {signal_confidence:.2f}) - "
-                                   f"minimum 2 signaux requis (attente: {time_since_first.total_seconds():.0f}s)")
-                        return None
+                        # Vérifier conditions spéciales pour SELL
+                        metadata = single_signal.get('metadata', single_signal.get('signal', {}).get('metadata', {}))
+                        rsi = metadata.get('rsi', 50)
+                        bb_position = metadata.get('bb_position', 0.5)
+                        volume_ratio = metadata.get('volume_ratio', 1.0)
+                        
+                        if rsi > 70 or bb_position > 0.9 or volume_ratio > 2.5:
+                            logger.info(f"✨ Signal unique SELL {symbol} AUTORISÉ - "
+                                       f"conditions pump détectées (RSI: {rsi}, BB: {bb_position:.2f}, Vol: {volume_ratio:.1f})")
+                        else:
+                            first_signal_time = self.signal_processor.get_signal_timestamp(single_signal)
+                            time_since_first = timestamp - first_signal_time
+                            if time_since_first.total_seconds() > 600:
+                                logger.info(f"🧹 Signal unique SELL {symbol} trop ancien, suppression")
+                                self.signal_buffer[symbol] = []
+                                return None
+                            else:
+                                logger.info(f"⚠️ Signal unique SELL {symbol} en attente - pas encore de pump "
+                                           f"(confluence: {confluence_score:.1f}%, RSI: {rsi}, BB: {bb_position:.2f})")
+                                return None
+                
+                # Pour BUY: garder les seuils stricts
+                else:
+                    if confluence_score > 80 and signal_confidence > 0.9:
+                        logger.info(f"✨ Signal unique BUY {symbol} AUTORISÉ par qualité exceptionnelle "
+                                   f"(confluence: {confluence_score:.1f}%, confiance: {signal_confidence:.2f})")
+                        # Continuer avec le traitement
+                    else:
+                        first_signal_time = self.signal_processor.get_signal_timestamp(single_signal)
+                        time_since_first = timestamp - first_signal_time
+                        if time_since_first.total_seconds() > 600:
+                            logger.info(f"🧹 Signal unique BUY {symbol} trop ancien, suppression")
+                            self.signal_buffer[symbol] = []
+                            return None
+                        else:
+                            logger.info(f"❌ Signal unique BUY {symbol} REJETÉ - qualité insuffisante "
+                                       f"(confluence: {confluence_score:.1f}%, confiance: {signal_confidence:.2f})")
+                            return None
             else:
                 # Analyser rapidement si les signaux sont dans la même direction
                 sides = [s.get('side', s.get('side', '')).upper() for s in self.signal_buffer[symbol]]
@@ -1014,13 +1043,28 @@ class SignalAggregator:
             logger.info(f"Signal {side} {symbol} de {strategy} rejeté par filtre debounce")
             return None
         
-        # FILTRE CRITIQUE: Bloquer les signaux avec recommended_action = "AVOID"
+        # FILTRE CRITIQUE: Assouplir pour les SELL (vente au sommet)
         if confluence_analysis and confluence_analysis.recommended_action == 'AVOID':
-            logger.warning(f"❌ Signal {side} {symbol} BLOQUÉ: confluence_analysis recommande AVOID "
-                          f"(risk: {confluence_analysis.risk_level:.1f}, "
-                          f"confluence: {confluence_analysis.confluence_score:.1f}%, "
-                          f"strength: {confluence_analysis.strength_rating})")
-            return None
+            # Pour SELL, on accepte avec des critères assouplis
+            if side == 'SELL':
+                # Accepter si RSI > 65 ou Bollinger position > 0.85 ou volume élevé
+                rsi_val = multi_tf_analysis.get('momentum_analysis', {}).get('rsi_current', 50)
+                bb_position = signal_metrics.get('price_position', 0.5)
+                volume_ratio = signal_metrics.get('volume_analysis', {}).get('avg_volume_ratio', 1.0)
+                
+                if rsi_val > 65 or bb_position > 0.85 or volume_ratio > 2.0:
+                    logger.info(f"✅ Signal SELL {symbol} autorisé malgré AVOID - "
+                               f"conditions de pump détectées (RSI: {rsi_val:.1f}, BB: {bb_position:.2f}, Vol: {volume_ratio:.1f})")
+                else:
+                    logger.warning(f"❌ Signal SELL {symbol} BLOQUÉ: confluence AVOID sans conditions de pump")
+                    return None
+            else:
+                # Pour BUY, on reste plus strict
+                logger.warning(f"❌ Signal {side} {symbol} BLOQUÉ: confluence_analysis recommande AVOID "
+                              f"(risk: {confluence_analysis.risk_level:.1f}, "
+                              f"confluence: {confluence_analysis.confluence_score:.1f}%, "
+                              f"strength: {confluence_analysis.strength_rating})")
+                return None
         
         return {
             'symbol': symbol,
@@ -1314,14 +1358,15 @@ class EnhancedSignalAggregator(SignalAggregator):
                 signal_strength_desc = "normal"
             
             # Calculer multiplicateur ADX pour debounce adaptatif
+            from shared.src.config import ADX_STRONG_TREND_THRESHOLD, ADX_TREND_THRESHOLD, ADX_WEAK_TREND_THRESHOLD
             if current_adx is not None:
-                if current_adx >= 42:  # Tendance très forte
+                if current_adx >= ADX_STRONG_TREND_THRESHOLD:  # Tendance très forte
                     adx_multiplier = 0.6  # Debounce réduit (mais pas trop)
                     trend_strength = "très forte"
-                elif current_adx >= 32:  # Tendance forte
+                elif current_adx >= ADX_TREND_THRESHOLD:  # Tendance forte
                     adx_multiplier = 0.8  # Debounce légèrement réduit
                     trend_strength = "forte" 
-                elif current_adx >= 23:  # Tendance modérée
+                elif current_adx >= ADX_WEAK_TREND_THRESHOLD:  # Tendance modérée
                     adx_multiplier = 1.0  # Debounce normal
                     trend_strength = "modérée"
                 else:  # Range/tendance faible

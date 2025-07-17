@@ -53,7 +53,7 @@ class BollingerProStrategy(BaseStrategy):
         self.mean_reversion_zone = symbol_params.get('mean_reversion_zone', 0.15)  # Zone mean reversion
         self.trend_follow_zone = symbol_params.get('trend_follow_zone', 0.85)  # Zone trend following
         self.min_atr = symbol_params.get('min_atr', 0.002)  # ATR minimum
-        self.confluence_threshold = symbol_params.get('confluence_threshold', 50.0)
+        self.confluence_threshold = symbol_params.get('confluence_threshold', 40.0)  # Assoupli de 50 à 40
         
         # Historique pour détection de patterns
         self.bb_width_history = []
@@ -90,6 +90,11 @@ class BollingerProStrategy(BaseStrategy):
         try:
             if len(df) < self.get_min_data_points():
                 return None
+            
+            # PRIORITÉ 1: Vérifier conditions de protection défensive
+            defensive_signal = self.check_defensive_conditions(df)
+            if defensive_signal:
+                return defensive_signal
             
             # Récupérer indicateurs Bollinger
             bb_position = self._get_current_indicator(indicators, 'bb_position')
@@ -161,6 +166,8 @@ class BollingerProStrategy(BaseStrategy):
                         'reason': f'Bollinger Pro BUY ({pattern_analysis["type"]}, pos: {bb_position:.2f}, width: {bb_width:.3f})'
                     }
                 )
+                # Enregistrer prix d'entrée pour protection défensive
+                self.last_entry_price = current_price
                 else:
                     logger.info(f"📊 Bollinger Pro {symbol}: Signal BUY techniquement valide mais filtré "
                               f"(position prix: {price_position:.2f})")
@@ -366,11 +373,12 @@ class BollingerProStrategy(BaseStrategy):
             
             # 5. Tendance (ADX)
             if adx:
-                if adx >= 30:
+                from shared.src.config import ADX_TREND_THRESHOLD, ADX_WEAK_TREND_THRESHOLD
+                if adx >= ADX_TREND_THRESHOLD:
                     context['score'] += 15
                     context['confidence_boost'] += 0.05
                     context['details'].append(f"ADX tendance ({adx:.1f})")
-                elif adx >= 20:
+                elif adx >= ADX_WEAK_TREND_THRESHOLD:
                     context['score'] += 10
                     context['details'].append(f"ADX modéré ({adx:.1f})")
                 else:
@@ -407,61 +415,69 @@ class BollingerProStrategy(BaseStrategy):
                                     pattern: Dict, context: Dict, price: float, bb_middle: float) -> bool:
         """Détermine si les conditions d'achat Bollinger sont remplies"""
         
-        # Score de contexte minimum
-        if context['score'] < 30:
+        # Score de contexte minimum assoupli
+        if context['score'] < 25:
             return False
         
-        # Confluence minimum si disponible
+        # Confluence minimum assouplie
         confluence_score = context.get('confluence_score', 0)
         if confluence_score > 0 and confluence_score < self.confluence_threshold:
             return False
         
         signal_type = pattern['signal_type']
         
-        # 1. Mean reversion (prix bas, retour vers moyenne)
-        if signal_type == 'mean_reversion' and bb_position <= self.mean_reversion_zone:
-            return context['score'] > 50
+        # 1. Mean reversion (prix bas, retour vers moyenne) - AMÉLIORÉ
+        if signal_type == 'mean_reversion' and bb_position <= 0.25:  # Élargi de 0.15 à 0.25
+            return context['score'] > 40  # Assoupli de 50 à 40
         
-        # 2. Breakout haussier après squeeze
+        # 2. Breakout haussier après squeeze - AMÉLIORÉ
         if (signal_type == 'breakout' and pattern['type'] in ['squeeze', 'contracting'] and 
-            bb_position > 0.5 and price > bb_middle):
-            return context['score'] > 60
+            bb_position > 0.4 and price > bb_middle):  # Assoupli de 0.5 à 0.4
+            return context['score'] > 50  # Assoupli de 60 à 50
         
-        # 3. Trend following (continuation haussière)
-        if (signal_type == 'trend_following' and bb_position > self.trend_follow_zone and 
+        # 3. Trend following - CORRIGÉ pour capturer les débuts de pump
+        if (signal_type == 'trend_following' and bb_position < 0.4 and  # CORRIGÉ: Début pump = position basse
             bb_width > self.expansion_threshold):
-            return context['score'] > 70
+            return context['score'] > 50  # Début pump validé
+        
+        # 4. NOUVEAU: Détection de début de pump (oversold qui remonte)
+        if bb_position < 0.3 and pattern['type'] == 'expanding' and price > bb_middle:
+            return context['score'] > 45  # Seuil modéré pour débuts de pump
         
         return False
     
     def _is_bearish_bollinger_signal(self, bb_position: float, bb_width: float, 
                                     pattern: Dict, context: Dict, price: float, bb_middle: float) -> bool:
-        """Détermine si les conditions de vente Bollinger sont remplies"""
+        """Détermine si les conditions de vente Bollinger sont remplies (fin de pump)"""
         
-        # Score de contexte minimum
+        # Score de contexte minimum pour fin pump
         if context['score'] < 30:
             return False
         
-        # Confluence minimum si disponible
+        # Confluence minimum pour fin pump confirmée
         confluence_score = context.get('confluence_score', 0)
-        if confluence_score > 0 and confluence_score < self.confluence_threshold:
+        if confluence_score > 0 and confluence_score < 45:  # Plus strict pour fin pump
             return False
         
         signal_type = pattern['signal_type']
         
-        # 1. Mean reversion (prix haut, retour vers moyenne)
-        if signal_type == 'mean_reversion' and bb_position >= (1 - self.mean_reversion_zone):
-            return context['score'] > 50
+        # 1. Mean reversion (prix haut, retour vers moyenne) - CORRIGÉ
+        if signal_type == 'mean_reversion' and bb_position >= 0.75:  # Était 0.85, maintenant 0.75
+            return context['score'] > 40  # Était 50, maintenant 40
         
-        # 2. Breakout baissier après squeeze
+        # 2. Breakout baissier après squeeze - INCHANGÉ
         if (signal_type == 'breakout' and pattern['type'] in ['squeeze', 'contracting'] and 
             bb_position < 0.5 and price < bb_middle):
-            return context['score'] > 60
+            return context['score'] > 50  # Était 60, maintenant 50
         
-        # 3. Trend following (continuation baissière)
-        if (signal_type == 'trend_following' and bb_position < (1 - self.trend_follow_zone) and 
+        # 3. Trend following - CORRIGÉ pour FIN de pump (vendre au sommet)
+        if (signal_type == 'trend_following' and bb_position > 0.8 and  # Seuil élevé pour fin pump
             bb_width > self.expansion_threshold):
-            return context['score'] > 70
+            return context['score'] > 50  # Fin de pump confirmée
+        
+        # 4. NOUVEAU : Détection de fin pump (surachat extrême)
+        if bb_position > 0.9 and pattern['type'] == 'expansion':
+            return context['score'] > 40  # Seuil bas pour capturer fin pump
         
         return False
     
@@ -495,27 +511,40 @@ class BollingerProStrategy(BaseStrategy):
     def _calculate_bearish_confidence(self, bb_position: float, bb_width: float, pattern: Dict, 
                                      context: Dict, volume_ratio: float, momentum_10: float) -> float:
         """Calcule la confiance pour un signal de vente"""
-        base_confidence = 0.5
+        base_confidence = 0.6  # Base plus élevée pour SELL
         
         # Force du pattern
         base_confidence += pattern['strength'] * 0.15
         
-        # Position dans les bandes
-        if bb_position >= 0.8:  # Très haut
-            base_confidence += 0.1
-        elif bb_position >= 0.7:
+        # Position dans les bandes - CORRIGÉE pour les pumps
+        if bb_position >= 0.9:  # Pump extrême
+            base_confidence += 0.15
+        elif bb_position >= 0.8:  # Pump fort
+            base_confidence += 0.12
+        elif bb_position >= 0.7:  # Pump modéré
+            base_confidence += 0.08
+        elif bb_position >= 0.6:  # Début de hausse
             base_confidence += 0.05
         
         # Contexte
         base_confidence += context['confidence_boost']
         
-        # Volume
-        if volume_ratio and volume_ratio > 1.3:
+        # Volume - plus important pour SELL (confirme le pump)
+        if volume_ratio and volume_ratio > 2.0:  # Volume très élevé
+            base_confidence += 0.12
+        elif volume_ratio and volume_ratio > 1.5:  # Volume élevé
+            base_confidence += 0.10
+        elif volume_ratio and volume_ratio > 1.2:  # Volume modéré
             base_confidence += 0.08
         
-        # Momentum favorable
-        if momentum_10 and momentum_10 < -0.5:
-            base_confidence += 0.05
+        # Momentum - accepté même si positif (pump en cours)
+        if momentum_10:
+            if momentum_10 > 0.5:  # Momentum haussier fort = bon pour SELL au sommet
+                base_confidence += 0.08
+            elif momentum_10 > 0.2:  # Momentum haussier modéré
+                base_confidence += 0.05
+            elif momentum_10 < -0.5:  # Momentum baissier
+                base_confidence += 0.05
         
         return min(0.95, base_confidence)
     

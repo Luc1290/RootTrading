@@ -46,12 +46,12 @@ class RSIProStrategy(BaseStrategy):
         
         # Paramètres RSI avancés
         symbol_params = self.params.get(symbol, {}) if self.params else {}
-        self.oversold_threshold = symbol_params.get('rsi_oversold', 25)  # Plus strict - signaux plus rares
-        self.overbought_threshold = symbol_params.get('rsi_overbought', 75)  # Plus strict - signaux plus rares
-        self.extreme_oversold = symbol_params.get('rsi_extreme_oversold', 20)
-        self.extreme_overbought = symbol_params.get('rsi_extreme_overbought', 80)
+        self.oversold_threshold = symbol_params.get('rsi_oversold', 30)  # Pour débuts de pump
+        self.overbought_threshold = symbol_params.get('rsi_overbought', 70)  # Pour fins de pump
+        self.extreme_oversold = symbol_params.get('rsi_extreme_oversold', 25)  # ASSOUPLI de 20 à 25
+        self.extreme_overbought = symbol_params.get('rsi_extreme_overbought', 75)  # ASSOUPLI de 80 à 75
         self.min_adx = symbol_params.get('min_adx', 20.0)
-        self.confluence_threshold = symbol_params.get('confluence_threshold', 50.0)
+        self.confluence_threshold = symbol_params.get('confluence_threshold', 45.0)  # Assoupli de 50 à 45
         
         # Historique pour détection de divergences
         self.price_history = []
@@ -88,6 +88,11 @@ class RSIProStrategy(BaseStrategy):
         try:
             if len(df) < self.get_min_data_points():
                 return None
+            
+            # PRIORITÉ 1: Vérifier conditions de protection défensive
+            defensive_signal = self.check_defensive_conditions(df)
+            if defensive_signal:
+                return defensive_signal
             
             # Récupérer indicateurs principaux
             current_rsi = self._get_current_indicator(indicators, 'rsi_14')
@@ -152,6 +157,8 @@ class RSIProStrategy(BaseStrategy):
                             'reason': f'RSI Pro BUY (RSI: {current_rsi:.1f}, Context: {context_analysis["score"]:.1f})'
                         }
                     )
+                    # Enregistrer prix d'entrée pour protection défensive
+                    self.last_entry_price = current_price
                 else:
                     logger.info(f"📊 RSI Pro {symbol}: Signal BUY techniquement valide mais filtré "
                               f"(position prix: {price_position:.2f})")
@@ -224,11 +231,12 @@ class RSIProStrategy(BaseStrategy):
         
         try:
             # 1. Force de tendance (ADX)
+            from shared.src.config import ADX_NO_TREND_THRESHOLD, ADX_WEAK_TREND_THRESHOLD
             if adx and adx >= self.min_adx:
                 context['score'] += 20
                 context['confidence_boost'] += 0.05
                 context['details'].append(f"ADX tendance ({adx:.1f})")
-            elif adx and adx >= 15:
+            elif adx and adx >= ADX_NO_TREND_THRESHOLD:
                 context['score'] += 10
                 context['details'].append(f"ADX faible ({adx:.1f})")
             else:
@@ -401,15 +409,15 @@ class RSIProStrategy(BaseStrategy):
     
     def _is_bullish_rsi_signal(self, rsi: float, context: Dict, divergence: Dict) -> bool:
         """Détermine si les conditions d'achat RSI sont remplies"""
-        # RSI oversold
+        # RSI oversold - assoupli
         if rsi > self.oversold_threshold:
             return False
         
-        # Score de contexte minimum
-        if context['score'] < 35:
+        # Score de contexte minimum assoupli
+        if context['score'] < 30:  # Assoupli de 35 à 30
             return False
         
-        # Si confluence disponible, la vérifier
+        # Si confluence disponible, la vérifier - assoupli
         confluence_score = context.get('confluence_score', 0)
         if confluence_score > 0 and confluence_score < self.confluence_threshold:
             return False

@@ -14,17 +14,27 @@ class IndicatorCoherenceValidator:
     """
     
     def __init__(self):
-        # Seuils de cohérence
-        self.rsi_buy_threshold = 40   # RSI minimum pour BUY
-        self.rsi_sell_threshold = 60  # RSI maximum pour SELL
+        # Seuils de cohérence pour pump timing
+        self.rsi_buy_threshold = 35   # RSI minimum pour BUY (début pump)
+        self.rsi_sell_threshold = 65  # RSI minimum pour SELL (fin pump)
         self.macd_threshold = 0.00005  # MACD minimum significatif
         
         # Poids des indicateurs pour le score de cohérence
+        # BUY privilégie MACD et EMA (pour acheter en début de pump)
+        # SELL privilégie RSI et position (pour vendre en fin de pump)
         self.indicator_weights = {
-            'rsi': 0.3,
-            'macd': 0.3,
-            'ema_alignment': 0.25,
-            'volume': 0.15
+            'BUY': {
+                'rsi': 0.30,       # Important pour débuts pump
+                'macd': 0.35,      # Momentum important
+                'ema_alignment': 0.25,  # Tendance émergente
+                'volume': 0.10
+            },
+            'SELL': {
+                'rsi': 0.45,       # Crucial pour fins pump
+                'macd': 0.15,      # Moins important en fin pump
+                'ema_alignment': 0.10,  # Moins important en fin pump
+                'volume': 0.30     # Volume important pour confirmer essoufflement
+            }
         }
     
     def validate_signal_coherence(self, signal_side: str, indicators: Dict) -> Tuple[bool, float, str]:
@@ -42,32 +52,37 @@ class IndicatorCoherenceValidator:
             coherence_score = 0.0
             reasons = []
             
+            # Utiliser les poids spécifiques au signal
+            weights = self.indicator_weights[signal_side]
+            
             # Vérifier RSI
             rsi_score, rsi_reason = self._check_rsi_coherence(signal_side, indicators)
-            coherence_score += rsi_score * self.indicator_weights['rsi']
+            coherence_score += rsi_score * weights['rsi']
             if rsi_reason:
                 reasons.append(rsi_reason)
             
             # Vérifier MACD
             macd_score, macd_reason = self._check_macd_coherence(signal_side, indicators)
-            coherence_score += macd_score * self.indicator_weights['macd']
+            coherence_score += macd_score * weights['macd']
             if macd_reason:
                 reasons.append(macd_reason)
             
             # Vérifier alignement EMA
             ema_score, ema_reason = self._check_ema_alignment(signal_side, indicators)
-            coherence_score += ema_score * self.indicator_weights['ema_alignment']
+            coherence_score += ema_score * weights['ema_alignment']
             if ema_reason:
                 reasons.append(ema_reason)
             
             # Vérifier volume
             volume_score, volume_reason = self._check_volume_confirmation(signal_side, indicators)
-            coherence_score += volume_score * self.indicator_weights['volume']
+            coherence_score += volume_score * weights['volume']
             if volume_reason:
                 reasons.append(volume_reason)
             
-            # Déterminer si coherent (score > 0.6)
-            is_coherent = coherence_score > 0.6
+            # Seuil plus bas pour SELL (0.45) pour permettre les ventes au sommet
+            # Seuil normal pour BUY (0.55)
+            threshold = 0.45 if signal_side == 'SELL' else 0.55
+            is_coherent = coherence_score > threshold
             
             reason = " | ".join(reasons) if reasons else "Cohérence validée"
             
@@ -97,24 +112,38 @@ class IndicatorCoherenceValidator:
             rsi_val = float(rsi)
             
             if signal_side == 'BUY':
-                if rsi_val < 30:
-                    return 1.0, ""  # Excellent - RSI oversold
+                # BUY = début pump (RSI bas mais pas trop)
+                if rsi_val < 20:
+                    return 0.7, "RSI trop bas, attendre rebond"  # Éviter oversold extrême
+                elif rsi_val < 30:
+                    return 1.0, ""  # Excellent - zone début pump
+                elif rsi_val < 40:
+                    return 0.9, ""  # Très bon - momentum émergeant
                 elif rsi_val < 50:
-                    return 0.8, ""  # Bon - RSI favorable
+                    return 0.8, ""  # Bon - début pump possible
+                elif rsi_val < 60:
+                    return 0.6, ""  # Acceptable - pump en cours
                 elif rsi_val < 70:
-                    return 0.4, "RSI neutre pour BUY"
+                    return 0.3, "RSI élevé, pump déjà avancé"
                 else:
-                    return 0.1, "RSI trop élevé pour BUY"
+                    return 0.1, "RSI trop élevé, pump terminé"
             
             else:  # SELL
-                if rsi_val > 70:
-                    return 1.0, ""  # Excellent - RSI overbought
+                # SELL = fin pump (RSI haut nécessaire)
+                if rsi_val > 80:
+                    return 1.0, ""  # Excellent - surachat extrême (fin pump)
+                elif rsi_val > 75:
+                    return 0.9, ""  # Très bon - zone de vente optimale
+                elif rsi_val > 70:
+                    return 0.8, ""  # Bon - début fin pump
+                elif rsi_val > 65:
+                    return 0.7, ""  # Acceptable - pump qui monte
+                elif rsi_val > 60:
+                    return 0.5, ""  # Modéré - pump pas terminé
                 elif rsi_val > 50:
-                    return 0.8, ""  # Bon - RSI favorable
-                elif rsi_val > 30:
-                    return 0.4, "RSI neutre pour SELL"
+                    return 0.3, "RSI trop bas, pump pas fini"
                 else:
-                    return 0.1, "RSI trop bas pour SELL"
+                    return 0.1, "RSI trop bas, pas de pump"
                     
         except Exception as e:
             logger.error(f"Erreur check RSI: {e}")
@@ -141,22 +170,27 @@ class IndicatorCoherenceValidator:
                 if macd_line_val > macd_signal_val and macd_histogram_val > 0:
                     return 1.0, ""  # Parfait
                 elif macd_line_val > macd_signal_val:
-                    return 0.7, ""  # Bon - crossover bullish
+                    return 0.8, ""  # Bon - crossover bullish
                 elif macd_histogram_val > 0:
-                    return 0.5, ""  # Moyen - momentum positif
+                    return 0.6, ""  # Moyen - momentum positif
+                elif abs(macd_histogram_val) < self.macd_threshold:
+                    return 0.5, ""  # Neutre - potentiel retournement
                 else:
-                    return 0.2, "MACD baissier pour BUY"
+                    return 0.3, ""  # MACD baissier mais acceptable
             
             else:  # SELL
-                # Pour SELL: MACD line < signal line et histogram < 0
+                # Pour SELL: fin pump, MACD commence à s'essouffler
                 if macd_line_val < macd_signal_val and macd_histogram_val < 0:
-                    return 1.0, ""  # Parfait
-                elif macd_line_val < macd_signal_val:
-                    return 0.7, ""  # Bon - crossover bearish
+                    return 1.0, ""  # Parfait - momentum s'inverse (fin pump)
                 elif macd_histogram_val < 0:
-                    return 0.5, ""  # Moyen - momentum négatif
+                    return 0.9, ""  # Très bon - momentum négatif (essoufflement)
+                elif abs(macd_histogram_val) < self.macd_threshold:
+                    return 0.8, ""  # Bon - momentum neutre (fin pump proche)
+                elif macd_line_val < macd_signal_val:
+                    return 0.7, ""  # Crossover bearish (début essoufflement)
                 else:
-                    return 0.2, "MACD haussier pour SELL"
+                    # MACD encore haussier = pump pas terminé
+                    return 0.4, "MACD haussier, pump pas terminé"
                     
         except Exception as e:
             logger.error(f"Erreur check MACD: {e}")
@@ -183,22 +217,23 @@ class IndicatorCoherenceValidator:
                 if ema_12_val > ema_26_val > ema_50_val:
                     return 1.0, ""  # Parfait
                 elif ema_12_val > ema_26_val:
-                    return 0.6, ""  # Bon - trend court terme haussier
+                    return 0.7, ""  # Bon - trend court terme haussier
                 elif ema_12_val > ema_50_val:
-                    return 0.4, ""  # Moyen
+                    return 0.5, ""  # Moyen
                 else:
-                    return 0.2, "EMAs baissières pour BUY"
+                    return 0.3, ""  # EMAs baissières mais acceptable pour début de pump
             
             else:  # SELL
-                # Pour SELL: EMA12 < EMA26 < EMA50 (bearish alignment)
+                # Pour SELL: EMAs encore haussières mais price doit être au-dessus
                 if ema_12_val < ema_26_val < ema_50_val:
-                    return 1.0, ""  # Parfait
+                    return 1.0, ""  # Parfait - tendance s'inverse (fin pump confirmée)
                 elif ema_12_val < ema_26_val:
-                    return 0.6, ""  # Bon - trend court terme baissier
-                elif ema_12_val < ema_50_val:
-                    return 0.4, ""  # Moyen
+                    return 0.9, ""  # Très bon - début retournement
+                elif ema_12_val > ema_26_val > ema_50_val:
+                    # EMAs haussières = pump encore en cours, mais acceptable près du sommet
+                    return 0.6, ""  # Acceptable si RSI haut
                 else:
-                    return 0.2, "EMAs haussières pour SELL"
+                    return 0.5, ""  # Configuration mixte
                     
         except Exception as e:
             logger.error(f"Erreur check EMA: {e}")
@@ -217,15 +252,31 @@ class IndicatorCoherenceValidator:
             
             volume_ratio_val = float(volume_ratio)
             
-            # Volume élevé confirme le signal
-            if volume_ratio_val > 1.5:
-                return 1.0, ""  # Excellent
-            elif volume_ratio_val > 1.2:
-                return 0.8, ""  # Bon
-            elif volume_ratio_val > 0.8:
-                return 0.6, ""  # Moyen
-            else:
-                return 0.3, "Volume trop faible"
+            # Logique différente selon BUY/SELL
+            if signal_side == 'BUY':
+                # Pour BUY, volume élevé confirme le début pump
+                if volume_ratio_val > 2.0:
+                    return 1.0, ""  # Excellent - début pump confirmé
+                elif volume_ratio_val > 1.5:
+                    return 0.9, ""  # Très bon
+                elif volume_ratio_val > 1.2:
+                    return 0.8, ""  # Bon
+                elif volume_ratio_val > 0.8:
+                    return 0.6, ""  # Acceptable
+                else:
+                    return 0.4, "Volume faible pour début pump"
+            else:  # SELL
+                # Pour SELL, volume peut diminuer (essoufflement)
+                if volume_ratio_val > 3.0:
+                    return 0.7, "Volume très élevé, pump peut continuer"  # Pump trop fort
+                elif volume_ratio_val > 2.0:
+                    return 1.0, ""  # Excellent - volume élevé mais gérable
+                elif volume_ratio_val > 1.5:
+                    return 0.9, ""  # Très bon
+                elif volume_ratio_val > 1.0:
+                    return 0.8, ""  # Bon - volume normal
+                else:
+                    return 0.9, ""  # Très bon - volume faible = essoufflement
                 
         except Exception as e:
             logger.error(f"Erreur check volume: {e}")

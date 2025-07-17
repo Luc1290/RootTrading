@@ -51,7 +51,7 @@ class BreakoutProStrategy(BaseStrategy):
         self.min_volume_multiplier = symbol_params.get('min_volume_multiplier', 2.0)
         self.false_breakout_retest_periods = symbol_params.get('retest_periods', 5)
         self.sr_strength_threshold = symbol_params.get('sr_strength', 3)  # Nombre de touches minimum
-        self.confluence_threshold = symbol_params.get('confluence_threshold', 70.0)
+        self.confluence_threshold = symbol_params.get('confluence_threshold', 55.0)  # Assoupli de 70 à 55
         
         # Historique pour S/R dynamiques
         self.sr_levels = {'supports': [], 'resistances': []}
@@ -88,6 +88,11 @@ class BreakoutProStrategy(BaseStrategy):
         try:
             if len(df) < self.get_min_data_points():
                 return None
+            
+            # PRIORITÉ 1: Vérifier conditions de protection défensive
+            defensive_signal = self.check_defensive_conditions(df)
+            if defensive_signal:
+                return defensive_signal
             
             current_price = df['close'].iloc[-1]
             
@@ -150,6 +155,8 @@ class BreakoutProStrategy(BaseStrategy):
                             'reason': f'Breakout Pro résistance ({current_price:.4f} > {breakout_analysis["level"]:.4f})'
                         }
                     )
+                    # Enregistrer prix d'entrée pour protection défensive
+                    self.last_entry_price = current_price
                 else:
                     logger.info(f"📊 Breakout Pro {symbol}: Signal BUY techniquement valide mais filtré "
                               f"(position prix: {price_position:.2f})")
@@ -427,11 +434,12 @@ class BreakoutProStrategy(BaseStrategy):
             
             # 4. Force de tendance (ADX)
             if adx:
-                if adx >= 30:
+                from shared.src.config import ADX_TREND_THRESHOLD, ADX_WEAK_TREND_THRESHOLD
+                if adx >= ADX_TREND_THRESHOLD:
                     context['score'] += 20
                     context['confidence_boost'] += 0.08
                     context['details'].append(f"Tendance forte ({adx:.1f})")
-                elif adx >= 20:
+                elif adx >= ADX_WEAK_TREND_THRESHOLD:
                     context['score'] += 15
                     context['confidence_boost'] += 0.05
                     context['details'].append(f"Tendance modérée ({adx:.1f})")

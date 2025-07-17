@@ -362,11 +362,12 @@ class TechnicalAnalysis:
             adx_value = await self._get_current_adx(symbol)
             
             # Multiplicateur ATR adaptatif selon l'ADX (force de tendance)
+            from shared.src.config import ADX_STRONG_TREND_THRESHOLD, ADX_TREND_THRESHOLD
             if adx_value is not None:
-                if adx_value > 40:  # Tendance très forte
+                if adx_value > ADX_STRONG_TREND_THRESHOLD:  # Tendance très forte
                     atr_multiplier = 2.0  # Stop plus serré en tendance forte
                     logger.debug(f"ADX forte ({adx_value:.1f}): multiplicateur ATR 2.0x")
-                elif adx_value > 25:  # Tendance modérée
+                elif adx_value > ADX_TREND_THRESHOLD:  # Tendance modérée
                     atr_multiplier = 2.5  # Standard
                     logger.debug(f"ADX modérée ({adx_value:.1f}): multiplicateur ATR 2.5x")
                 else:  # Tendance faible ou range

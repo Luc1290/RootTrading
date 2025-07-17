@@ -540,7 +540,7 @@ class EnhancedRegimeDetector:
                        f"=> Bullish={is_bullish} (score: {bullish_count}/3, confirmations: {trend_confirmation}/3)")
         
         # ADX élevé MAIS avec confirmations requises
-        if adx >= 30:
+        if adx >= self.adx_trend:
             # Exiger au moins 2 confirmations pour valider la tendance
             if trend_confirmation >= 2:
                 if adx >= self.adx_strong_trend:

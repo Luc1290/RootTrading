@@ -90,6 +90,11 @@ class MACDProStrategy(BaseStrategy):
             if len(df) < self.get_min_data_points():
                 return None
             
+            # PRIORITÉ 1: Vérifier conditions de protection défensive
+            defensive_signal = self.check_defensive_conditions(df)
+            if defensive_signal:
+                return defensive_signal
+            
             # Récupérer indicateurs MACD
             current_macd_line = self._get_current_indicator(indicators, 'macd_line')
             current_macd_signal = self._get_current_indicator(indicators, 'macd_signal')
@@ -169,6 +174,8 @@ class MACDProStrategy(BaseStrategy):
                             'reason': f'MACD Pro BUY ({macd_analysis["signal_type"]}, hist: {current_histogram:.5f})'
                         }
                     )
+                    # Enregistrer prix d'entrée pour protection défensive
+                    self.last_entry_price = current_price
                 else:
                     logger.info(f"📊 MACD Pro {symbol}: Signal BUY techniquement valide mais filtré "
                               f"(position prix: {price_position:.2f})")
@@ -368,8 +375,9 @@ class MACDProStrategy(BaseStrategy):
         
         try:
             # 1. Force de tendance (ADX)
+            from shared.src.config import ADX_STRONG_TREND_THRESHOLD, ADX_WEAK_TREND_THRESHOLD
             if adx and adx >= self.min_adx:
-                if adx >= 35:
+                if adx >= ADX_STRONG_TREND_THRESHOLD:
                     context['score'] += 25
                     context['confidence_boost'] += 0.08
                     context['details'].append(f"ADX fort ({adx:.1f})")
@@ -377,7 +385,7 @@ class MACDProStrategy(BaseStrategy):
                     context['score'] += 15
                     context['confidence_boost'] += 0.05
                     context['details'].append(f"ADX modéré ({adx:.1f})")
-            elif adx and adx >= 15:
+            elif adx and adx >= ADX_WEAK_TREND_THRESHOLD:
                 context['score'] += 5
                 context['details'].append(f"ADX faible ({adx:.1f})")
             else:
@@ -512,26 +520,26 @@ class MACDProStrategy(BaseStrategy):
         if 'bullish' in signal_type:
             return False
         
-        # Score de contexte minimum
-        if context['score'] < 35:
+        # Score de contexte minimum assoupli pour SELL
+        if context['score'] < 30:
             return False
         
-        # Confluence minimum si disponible
+        # Confluence minimum si disponible - assoupli de 5 points
         confluence_score = context.get('confluence_score', 0)
-        if confluence_score > 0 and confluence_score < self.confluence_threshold:
+        if confluence_score > 0 and confluence_score < (self.confluence_threshold - 5):
             return False
         
-        # Signaux forts (zero cross, high quality)
+        # Signaux forts (zero cross, high quality) - assoupli de 50 à 45
         if signal_type in ['bearish_zero_cross'] or macd_analysis['quality'] == 'high':
-            return context['score'] > 50
+            return context['score'] > 45
         
-        # Divergence baissière forte
+        # Divergence baissière forte - assoupli de 40 à 35
         if divergence['type'] == 'bearish' and divergence['strength'] > 0.6:
-            return context['score'] > 40
+            return context['score'] > 35
         
-        # Signaux standards
+        # Signaux standards - assoupli de 60 à 55
         if signal_type in ['bearish_crossover', 'momentum_bearish']:
-            return context['score'] > 60 and macd_analysis['strength'] > 0.3
+            return context['score'] > 55 and macd_analysis['strength'] > 0.3
         
         return False
     

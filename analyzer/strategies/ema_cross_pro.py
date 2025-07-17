@@ -49,7 +49,7 @@ class EMACrossProStrategy(BaseStrategy):
         symbol_params = self.params.get(symbol, {}) if self.params else {}
         self.min_gap_percent = symbol_params.get('ema_gap_min', 0.003)
         self.min_adx = symbol_params.get('min_adx', 25.0)  # ADX minimum pour tendance
-        self.confluence_threshold = symbol_params.get('confluence_threshold', 55.0)  # Confluence minimum
+        self.confluence_threshold = symbol_params.get('confluence_threshold', 50.0)  # Confluence minimum assoupli
         self.momentum_threshold = symbol_params.get('momentum_threshold', 0.3)  # Momentum minimum
         
         # Connexion Redis pour analyses avancées
@@ -82,6 +82,11 @@ class EMACrossProStrategy(BaseStrategy):
         try:
             if len(df) < self.get_min_data_points():
                 return None
+            
+            # PRIORITÉ 1: Vérifier conditions de protection défensive
+            defensive_signal = self.check_defensive_conditions(df)
+            if defensive_signal:
+                return defensive_signal
             
             # Récupérer EMAs pré-calculées
             current_ema12 = self._get_current_indicator(indicators, 'ema_12')
@@ -148,6 +153,8 @@ class EMACrossProStrategy(BaseStrategy):
                                 'reason': f'EMA Golden Cross Pro (12: {current_ema12:.4f} > 26: {current_ema26:.4f}) + Contexte favorable'
                             }
                         )
+                        # Enregistrer prix d'entrée pour protection défensive
+                        self.last_entry_price = current_price
                     else:
                         logger.info(f"📊 EMA Cross Pro {symbol}: Signal BUY techniquement valide mais filtré "
                                   f"(position prix: {price_position:.2f})")
@@ -228,12 +235,13 @@ class EMACrossProStrategy(BaseStrategy):
         
         try:
             # 1. Force de tendance (ADX)
+            from shared.src.config import ADX_STRONG_TREND_THRESHOLD, ADX_TREND_THRESHOLD
             if adx and adx >= self.min_adx:
-                if adx >= 40:
+                if adx >= ADX_STRONG_TREND_THRESHOLD:
                     context['score'] += 25
                     context['confidence_boost'] += 0.1
                     context['details'].append(f"ADX fort ({adx:.1f})")
-                elif adx >= 30:
+                elif adx >= ADX_TREND_THRESHOLD:
                     context['score'] += 15
                     context['confidence_boost'] += 0.05
                     context['details'].append(f"ADX modéré ({adx:.1f})")
@@ -350,16 +358,16 @@ class EMACrossProStrategy(BaseStrategy):
         """Valide si le contexte est favorable pour un signal de vente"""
         score = context_analysis['score']
         
-        # Conditions minimales
-        if score < 40:  # Score minimum
+        # Conditions minimales assouplis pour SELL
+        if score < 35:  # Score minimum assoupli de 40 à 35
             return False
         
-        if gap_percent < self.min_gap_percent:  # Gap EMA minimum
+        if gap_percent < self.min_gap_percent * 0.8:  # Gap EMA minimum assoupli
             return False
         
-        # Si confluence disponible, l'utiliser
+        # Si confluence disponible, l'utiliser - assoupli
         confluence_score = context_analysis.get('confluence_score', 0)
-        if confluence_score > 0 and confluence_score < self.confluence_threshold:
+        if confluence_score > 0 and confluence_score < (self.confluence_threshold - 5):
             return False
         
         return True

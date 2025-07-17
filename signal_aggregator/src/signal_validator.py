@@ -141,33 +141,48 @@ class SignalValidator:
             distance_to_ema50 = ((current_price - ema_50) / ema_50) * 100
             
             if side == "BUY":
-                # NOUVEAU: Validation stricte position EMA pour BUY
-                if not price_above_ema21:
-                    rejection_reason = f"prix sous EMA21 ({distance_to_ema21:.2f}%), momentum baissier"
-                elif trend_5m in ["STRONG_BEARISH", "WEAK_BEARISH"] and not price_above_ema50:
-                    rejection_reason = f"contre-tendance baissière 5m et prix sous EMA50"
-                # Éviter d'acheter dans une forte montée (risque de sommet)
-                elif trend_5m == "STRONG_BULLISH" and not trend_weakening:
-                    rejection_reason = "forte tendance haussière en cours, risque de sommet"
-                # Éviter d'acheter un crash violent (couteau qui tombe)
-                elif trend_5m == "STRONG_BEARISH" and ema_21_velocity < -0.01:  # Accélération baissière > 1%
+                # NOUVEAU: Validation BUY pour DEBUT DE PUMP (détection précoce)
+                if trend_5m == "STRONG_BEARISH" and ema_21_velocity < -0.01:  # Crash violent
                     rejection_reason = "crash violent en cours, éviter le couteau qui tombe"
-                # Prix trop éloigné au-dessus des EMAs (surachat)
-                elif distance_to_ema21 > 2.0:  # Plus de 2% au-dessus
-                    rejection_reason = f"prix trop éloigné de EMA21 (+{distance_to_ema21:.2f}%), risque de retour"
+                elif not price_above_ema50 and trend_5m in ["STRONG_BEARISH", "WEAK_BEARISH"]:
+                    rejection_reason = f"prix sous EMA50 ({distance_to_ema50:.2f}%) en tendance baissière"
+                # DETECTER DEBUT DE PUMP: Vélocité EMA21 qui accélère après consolidation
+                elif trend_5m == "NEUTRAL" and ema_21_velocity > 0.005:  # Accélération depuis neutre
+                    # C'est bon pour BUY - pump qui démarre
+                    pass
+                elif trend_5m == "WEAK_BULLISH" and ema_21_velocity > 0.008:  # Accélération en cours
+                    # C'est bon pour BUY - pump qui s'accélère
+                    pass
+                # Éviter d'acheter trop tard dans un pump avancé
+                elif trend_5m == "STRONG_BULLISH" and distance_to_ema21 > 1.5:  # Pump déjà avancé
+                    rejection_reason = f"pump déjà avancé ({distance_to_ema21:.2f}% au-dessus EMA21), risque de sommet"
+                # Prix trop éloigné en-dessous des EMAs (crash en cours)
+                elif distance_to_ema21 < -1.5:  # Plus de 1.5% en-dessous
+                    rejection_reason = f"prix trop éloigné sous EMA21 ({distance_to_ema21:.2f}%), crash en cours"
                     
             elif side == "SELL":
-                # NOUVEAU: Validation stricte position EMA pour SELL
-                if price_above_ema50 and trend_5m not in ["STRONG_BEARISH", "WEAK_BEARISH"]:
-                    rejection_reason = f"prix au-dessus EMA50 ({distance_to_ema50:.2f}%), momentum haussier"
-                elif trend_5m in ["STRONG_BULLISH", "WEAK_BULLISH"] and price_above_ema21:
-                    rejection_reason = f"contre-tendance haussière 5m et prix au-dessus EMA21"
-                # Éviter de vendre dans une forte baisse (risque de creux)  
+                # DÉTECTION VENTE DÉFENSIVE - Priorité sur vente fin de pump
+                defensive_sell_triggered = self._check_defensive_sell_conditions(symbol, data_5m, prices)
+                
+                if defensive_sell_triggered:
+                    logger.info(f"✅ Signal SELL défensif {symbol} validé - conditions de chute détectées")
+                    return True  # Court-circuiter les autres validations
+                
+                # NOUVEAU: Validation SELL pour FIN DE PUMP (essoufflement)
+                if not price_above_ema21:
+                    rejection_reason = f"prix sous EMA21 ({distance_to_ema21:.2f}%), pump déjà terminé"
                 elif trend_5m == "STRONG_BEARISH" and not trend_weakening:
                     rejection_reason = "forte tendance baissière en cours, risque de creux"
-                # Éviter de vendre une pump violente (FOMO manqué)
-                elif trend_5m == "STRONG_BULLISH" and ema_21_velocity > 0.01:  # Accélération haussière > 1%
-                    rejection_reason = "pump violent en cours, éviter de rater la montée"
+                # DETECTER FIN DE PUMP: Vélocité EMA21 qui ralentit après forte hausse
+                elif trend_5m == "STRONG_BULLISH" and ema_21_velocity < 0.005:  # Pump qui s'essouffle
+                    # C'est bon pour SELL - pump qui ralentit
+                    pass
+                elif trend_5m == "WEAK_BULLISH" and ema_21_velocity < 0:  # Momentum qui faiblit
+                    # C'est bon pour SELL - momentum qui s'inverse
+                    pass
+                # Éviter de vendre trop tôt dans un pump qui démarre
+                elif trend_5m == "STRONG_BULLISH" and ema_21_velocity > 0.01:  # Pump qui accélère
+                    rejection_reason = "pump qui accélère, trop tôt pour vendre"
                 # Prix trop éloigné en-dessous des EMAs (survente)
                 elif distance_to_ema21 < -2.0:  # Plus de 2% en-dessous
                     rejection_reason = f"prix trop éloigné sous EMA21 ({distance_to_ema21:.2f}%), risque de rebond"
@@ -177,26 +192,32 @@ class SignalValidator:
                 logger.info(f"Signal {side} {symbol} rejeté : {rejection_reason}")
                 return False
             
-            # NOUVELLE VALIDATION ENRICHIE : Bollinger Bands position pour timing optimal
+            # NOUVELLE VALIDATION : Bollinger Bands pour début/fin pump
             bb_position = data_5m.get('bb_position')
             if bb_position is not None:
-                if side == "BUY" and bb_position > 0.8:  # Prix proche de la bande haute
-                    logger.info(f"Signal BUY {symbol} rejeté : BB position trop haute ({bb_position:.2f})")
+                if side == "BUY" and bb_position > 0.7:  # Éviter d'acheter près du sommet
+                    logger.info(f"Signal BUY {symbol} rejeté : BB position trop haute ({bb_position:.2f}), pump déjà avancé")
                     return False
-                elif side == "SELL" and bb_position < 0.2:  # Prix proche de la bande basse
-                    logger.info(f"Signal SELL {symbol} rejeté : BB position trop basse ({bb_position:.2f})")
-                    return False
+                elif side == "SELL" and bb_position < 0.6:  # Vendre seulement en haut des BB
+                    # Vérifier si c'est une vente défensive avant de rejeter
+                    defensive_sell_again = self._check_defensive_sell_conditions(symbol, data_5m, prices)
+                    if not defensive_sell_again:
+                        logger.info(f"Signal SELL {symbol} rejeté : BB position trop basse ({bb_position:.2f}), pump pas assez monté")
+                        return False
             
-            # NOUVELLE VALIDATION : Stochastic pour confirmer oversold/overbought
+            # NOUVELLE VALIDATION : Stochastic pour timing pump
             stoch_k = data_5m.get('stoch_k')
             stoch_d = data_5m.get('stoch_d')
             if stoch_k is not None and stoch_d is not None:
-                if side == "BUY" and stoch_k > 85 and stoch_d > 85:  # Surachat confirmé
-                    logger.info(f"Signal BUY {symbol} rejeté : Stochastic surachat K={stoch_k:.1f} D={stoch_d:.1f}")
+                if side == "BUY" and stoch_k > 80 and stoch_d > 80:  # Éviter d'acheter en surachat
+                    logger.info(f"Signal BUY {symbol} rejeté : Stochastic surachat K={stoch_k:.1f} D={stoch_d:.1f}, pump déjà avancé")
                     return False
-                elif side == "SELL" and stoch_k < 15 and stoch_d < 15:  # Survente confirmé
-                    logger.info(f"Signal SELL {symbol} rejeté : Stochastic survente K={stoch_k:.1f} D={stoch_d:.1f}")
-                    return False
+                elif side == "SELL" and stoch_k < 70:  # Vendre seulement en zone haute
+                    # Vérifier si c'est une vente défensive avant de rejeter
+                    defensive_sell_stoch = self._check_defensive_sell_conditions(symbol, data_5m, prices)
+                    if not defensive_sell_stoch:
+                        logger.info(f"Signal SELL {symbol} rejeté : Stochastic pas assez haut K={stoch_k:.1f}, pump pas terminé")
+                        return False
             
             # VALIDATION ADAPTATIVE : Ajuster seuils RSI selon ATR (volatilité)
             atr_15m = data_5m.get('atr_14')
@@ -214,15 +235,18 @@ class SignalValidator:
                 rsi_buy_threshold = 85  # Plus strict
                 rsi_sell_threshold = 15
             
-            # Validation RSI avec seuils adaptatifs
+            # Validation RSI pour timing pump
             rsi_5m = data_5m.get('rsi_14')
             if rsi_5m:
-                if side == "BUY" and rsi_5m > rsi_buy_threshold:
-                    logger.info(f"Signal BUY {symbol} rejeté : RSI 5m surachat ({rsi_5m:.1f} > {rsi_buy_threshold}) - ATR={atr_percent:.1f}%")
+                if side == "BUY" and rsi_5m > 70:  # Éviter d'acheter en surachat
+                    logger.info(f"Signal BUY {symbol} rejeté : RSI 5m surachat ({rsi_5m:.1f}), pump déjà avancé")
                     return False
-                elif side == "SELL" and rsi_5m < rsi_sell_threshold:
-                    logger.info(f"Signal SELL {symbol} rejeté : RSI 5m survente ({rsi_5m:.1f} < {rsi_sell_threshold}) - ATR={atr_percent:.1f}%")
-                    return False
+                elif side == "SELL" and rsi_5m < 60:  # Vendre seulement en zone haute
+                    # Vérifier si c'est une vente défensive avant de rejeter
+                    defensive_sell_rsi = self._check_defensive_sell_conditions(symbol, data_5m, prices)
+                    if not defensive_sell_rsi:
+                        logger.info(f"Signal SELL {symbol} rejeté : RSI 5m pas assez haut ({rsi_5m:.1f}), pump pas terminé")
+                        return False
 
             logger.debug(f"Signal {side} {symbol} validé par analyse multi-indicateurs 5m - tendance={trend_5m} BB={bb_position} ATR={atr_percent:.1f}%")
             return True
@@ -376,6 +400,76 @@ class SignalValidator:
                 correlation_score *= 0.8
         
         return correlation_score
+    
+    def _check_defensive_sell_conditions(self, symbol: str, data_5m: Dict, prices: List[float]) -> bool:
+        """
+        Détecte les conditions de vente défensive (chute du marché).
+        Retourne True si une vente défensive est justifiée.
+        """
+        try:
+            if not data_5m or not prices or len(prices) < 10:
+                return False
+                
+            current_price = data_5m.get('close', prices[-1])
+            rsi_5m = data_5m.get('rsi_14')
+            atr_14 = data_5m.get('atr_14')
+            volume = data_5m.get('volume', 0)
+            bb_position = data_5m.get('bb_position')
+            
+            # Calculer la chute de prix récente (5 dernières bougies)
+            recent_prices = prices[-5:] if len(prices) >= 5 else prices
+            price_change_5 = ((current_price - recent_prices[0]) / recent_prices[0] * 100) if recent_prices[0] > 0 else 0
+            
+            # Calculer la chute rapide (2 dernières bougies)  
+            price_change_2 = ((current_price - prices[-2]) / prices[-2] * 100) if len(prices) >= 2 and prices[-2] > 0 else 0
+            
+            # ATR en pourcentage pour normaliser
+            atr_percent = (atr_14 / current_price * 100) if atr_14 and current_price > 0 else 2.0
+            
+            # CONDITIONS DE VENTE DÉFENSIVE
+            conditions_met = []
+            
+            # 1. CHUTE RAPIDE - Plus de 2% en 5 bougies ou 1% en 2 bougies
+            if price_change_5 < -2.0:
+                conditions_met.append(f"chute_5m:{price_change_5:.1f}%")
+            elif price_change_2 < -1.0 and atr_percent < 3.0:  # Chute rapide en faible volatilité
+                conditions_met.append(f"chute_rapide:{price_change_2:.1f}%")
+            
+            # 2. RSI PLONGEANT - RSI qui chute rapidement
+            if rsi_5m and rsi_5m < 40:
+                # Calculer si le RSI a chuté récemment (si historique disponible)
+                rsi_1h = data_5m.get('rsi_1h')  # Si disponible
+                if rsi_1h and (rsi_1h - rsi_5m) > 15:  # RSI a chuté de 15+ points
+                    conditions_met.append(f"rsi_plonge:{rsi_5m:.0f}")
+                elif rsi_5m < 30:  # RSI très bas
+                    conditions_met.append(f"rsi_bas:{rsi_5m:.0f}")
+            
+            # 3. CASSURE BOLLINGER - Prix sous la bande basse
+            if bb_position is not None and bb_position < 0.2:
+                conditions_met.append(f"bb_cassure:{bb_position:.2f}")
+            
+            # 4. VOLUME ANORMAL - Volume élevé pendant la chute
+            avg_volume = sum(data_5m.get('volume_history', [volume])[-10:]) / min(10, len(data_5m.get('volume_history', [volume])))
+            if volume > avg_volume * 1.5 and price_change_2 < -0.5:
+                conditions_met.append(f"volume_panic:{volume/avg_volume:.1f}x")
+            
+            # 5. MOMENTUM NÉGATIF FORT - Vélocité EMA négative
+            ema_21_velocity = data_5m.get('ema_21_velocity', 0)
+            if ema_21_velocity < -0.01:  # Vélocité fortement négative
+                conditions_met.append(f"momentum_negatif:{ema_21_velocity:.3f}")
+            
+            # DÉCISION: Au moins 2 conditions pour déclencher vente défensive
+            if len(conditions_met) >= 2:
+                logger.info(f"🛡️ VENTE DÉFENSIVE {symbol}: {', '.join(conditions_met)}")
+                return True
+            elif len(conditions_met) == 1:
+                logger.debug(f"⚠️ Condition défensive {symbol}: {conditions_met[0]} (insuffisant)")
+                
+            return False
+            
+        except Exception as e:
+            logger.error(f"Erreur vérification vente défensive {symbol}: {e}")
+            return False
     
     async def check_btc_correlation(self, symbol: str) -> float:
         """

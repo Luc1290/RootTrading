@@ -75,12 +75,12 @@ class MultiTimeframeConfluence:
             }
         }
         
-        # Seuils de confluence - plus stricts pour approche sniper
+        # Seuils de confluence ajustés pour capturer les pumps
         self.confluence_thresholds = {
-            'very_strong': 85.0,  # Exiger plus d'alignement
-            'strong': 75.0,       # Plus sélectif
-            'moderate': 60.0,     # Niveau modéré plus élevé
-            'weak': 45.0          # Même les signaux faibles doivent avoir un alignement décent
+            'very_strong': 80.0,  # Légèrement assoupli
+            'strong': 65.0,       # Plus réaliste
+            'moderate': 50.0,     # Modéré standard
+            'weak': 35.0          # Permet plus de signaux faibles
         }
     
     async def analyze_confluence(self, symbol: str) -> ConfluenceResult:
@@ -662,21 +662,29 @@ class MultiTimeframeConfluence:
         try:
             signal_strength = abs(overall_signal)
             
-            # Conditions de sécurité
-            if risk_level > 7.0 or confluence_score < 40.0:
-                return 'AVOID'
+            # Logique pour timing pump optimal
+            # BUY pour début pump, SELL pour fin pump
+            if overall_signal > 0:  # Signal BUY (début pump)
+                # Conditions assouplies pour BUY (capturer début pump)
+                if risk_level > 7.5 or confluence_score < 30.0:
+                    return 'AVOID'
+                elif signal_strength > 0.3 and confluence_score > 50.0:
+                    return 'BUY'  # Signal fort pour début pump
+                elif signal_strength > 0.2 and confluence_score > 40.0:
+                    return 'BUY'  # Signal modéré pour début pump
+                else:
+                    return 'HOLD'
             
-            # Signal fort avec bonne confluence
-            if signal_strength > 0.6 and confluence_score > 70.0:
-                return 'BUY' if overall_signal > 0 else 'SELL'
-            
-            # Signal modéré
-            elif signal_strength > 0.3 and confluence_score > 55.0:
-                return 'BUY' if overall_signal > 0 else 'SELL'
-            
-            # Signal faible ou confluence insuffisante
-            else:
-                return 'HOLD'
+            else:  # Signal SELL (fin pump)
+                # Conditions plus strictes pour SELL (fin pump confirmée)
+                if risk_level > 8.5 or confluence_score < 40.0:
+                    return 'AVOID'
+                elif signal_strength > 0.6 and confluence_score > 70.0:
+                    return 'SELL'  # Signal fort fin pump
+                elif signal_strength > 0.4 and confluence_score > 60.0:
+                    return 'SELL'  # Signal modéré fin pump
+                else:
+                    return 'HOLD'
                 
         except Exception as e:
             logger.error(f"❌ Erreur détermination action: {e}")

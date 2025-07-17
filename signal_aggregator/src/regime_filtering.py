@@ -255,10 +255,11 @@ class RegimeFiltering:
     def apply_regime_confidence_boost(self, confidence: float, regime: Any, metrics: Dict[str, float]) -> float:
         """Applique un boost de confiance basé sur les métriques du régime"""
         # Boost basé sur la force de la tendance (ADX)
+        from shared.src.config import ADX_STRONG_TREND_THRESHOLD, ADX_TREND_THRESHOLD
         adx = metrics.get('adx', 20)
-        if adx > 40:  # Tendance très forte
+        if adx > ADX_STRONG_TREND_THRESHOLD:  # Tendance très forte
             confidence *= 1.1
-        elif adx > 30:  # Tendance forte
+        elif adx > ADX_TREND_THRESHOLD:  # Tendance forte
             confidence *= 1.05
         
         # Boost basé sur le momentum (ROC)
