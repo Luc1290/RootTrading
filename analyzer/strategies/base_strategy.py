@@ -20,7 +20,7 @@ from shared.src.enums import OrderSide, SignalStrength
 from shared.src.schemas import StrategySignal, MarketData
 
 # Importer le module de protection contre les crashes
-from crash_protection import CrashProtection
+from .crash_protection import CrashProtection
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
