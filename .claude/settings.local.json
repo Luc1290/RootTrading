@@ -30,7 +30,9 @@
       "Bash(sudo dmidecode:*)",
       "Bash(cat:*)",
       "Bash(iostat:*)",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "Bash(apt list:*)",
+      "Bash(npm install:*)"
     ],
     "deny": []
   }
