@@ -275,7 +275,7 @@ class SignalAggregator:
             # Récupérer les principaux indicateurs depuis Redis
             indicator_keys = [
                 'rsi_14', 'macd_line', 'macd_signal', 'macd_histogram',
-                'ema_12', 'ema_26', 'ema_50', 'adx', 'volume_ratio'
+                'ema_7', 'ema_26', 'ema_99', 'adx', 'volume_ratio'
             ]
             
             for indicator in indicator_keys:

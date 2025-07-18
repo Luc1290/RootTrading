@@ -186,9 +186,9 @@ class DatabaseManager:
                         volume,
                         -- Indicateurs techniques enrichis
                         rsi_14,
-                        ema_12,
+                        ema_7,    -- MIGRATION BINANCE
                         ema_26,
-                        ema_50,
+                        ema_99,   -- MIGRATION BINANCE
                         sma_20,
                         sma_50,
                         macd_line,

@@ -207,35 +207,36 @@ class IndicatorCoherenceValidator:
         Vérifie l'alignement des EMAs avec le signal
         """
         try:
-            ema_12 = indicators.get('ema_12')
+            # MIGRATION BINANCE: Utilisation directe des nouvelles EMAs 7/26/99
+            ema_7 = indicators.get('ema_7')
             ema_26 = indicators.get('ema_26')
-            ema_50 = indicators.get('ema_50')
+            ema_99 = indicators.get('ema_99')
             
-            if not all([ema_12, ema_26, ema_50]):
+            if not all([ema_7, ema_26, ema_99]):
                 return 0.5, "EMAs incomplètes"
             
-            ema_12_val = float(ema_12)
+            ema_7_val = float(ema_7)
             ema_26_val = float(ema_26)
-            ema_50_val = float(ema_50)
+            ema_99_val = float(ema_99)
             
             if signal_side == 'BUY':
-                # Pour BUY: EMA12 > EMA26 > EMA50 (bullish alignment)
-                if ema_12_val > ema_26_val > ema_50_val:
+                # Pour BUY: EMA7 > EMA26 > EMA99 (bullish alignment) - CONFIG BINANCE
+                if ema_7_val > ema_26_val > ema_99_val:
                     return 1.0, ""  # Parfait
-                elif ema_12_val > ema_26_val:
+                elif ema_7_val > ema_26_val:
                     return 0.7, ""  # Bon - trend court terme haussier
-                elif ema_12_val > ema_50_val:
+                elif ema_7_val > ema_99_val:
                     return 0.5, ""  # Moyen
                 else:
                     return 0.3, ""  # EMAs baissières mais acceptable pour début de pump
             
             else:  # SELL
-                # Pour SELL: EMAs encore haussières mais price doit être au-dessus
-                if ema_12_val < ema_26_val < ema_50_val:
+                # Pour SELL: EMAs encore haussières mais price doit être au-dessus - CONFIG BINANCE
+                if ema_7_val < ema_26_val < ema_99_val:
                     return 1.0, ""  # Parfait - tendance s'inverse (fin pump confirmée)
-                elif ema_12_val < ema_26_val:
+                elif ema_7_val < ema_26_val:
                     return 0.9, ""  # Très bon - début retournement
-                elif ema_12_val > ema_26_val > ema_50_val:
+                elif ema_7_val > ema_26_val > ema_99_val:
                     # EMAs haussières = pump encore en cours, mais acceptable près du sommet
                     return 0.6, ""  # Acceptable si RSI haut
                 else:
@@ -296,13 +297,13 @@ class IndicatorCoherenceValidator:
             return {
                 'rsi': 'RSI < 40 (idéalement < 25)',  # STANDARDISÉ
                 'macd': f'MACD line > signal line, histogram > {MACD_HISTOGRAM_WEAK}',  # STANDARDISÉ
-                'ema': 'EMA12 > EMA26 > EMA50',
+                'ema': 'EMA7 > EMA26 > EMA99',  # MIGRATION BINANCE
                 'volume': 'Volume ratio > 1.0'  # STANDARDISÉ
             }
         else:  # SELL
             return {
                 'rsi': 'RSI > 65 (idéalement > 75)',  # STANDARDISÉ
                 'macd': f'MACD line < signal line, histogram < -{MACD_HISTOGRAM_WEAK}',  # STANDARDISÉ
-                'ema': 'EMA12 < EMA26 < EMA50',
+                'ema': 'EMA7 < EMA26 < EMA99',  # MIGRATION BINANCE
                 'volume': 'Volume ratio > 1.0'  # STANDARDISÉ
             }

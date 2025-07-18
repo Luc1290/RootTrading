@@ -176,9 +176,9 @@ class ChartService:
                 indicator_data["sma_20"] = [c.get("sma_20") for c in candles]
                 indicator_data["sma_50"] = [c.get("sma_50") for c in candles]
             elif indicator == "ema":
-                indicator_data["ema_12"] = [c.get("ema_12") for c in candles]
+                indicator_data["ema_7"] = [c.get("ema_7") for c in candles]
                 indicator_data["ema_26"] = [c.get("ema_26") for c in candles]
-                indicator_data["ema_50"] = [c.get("ema_50") for c in candles]
+                indicator_data["ema_99"] = [c.get("ema_99") for c in candles]
             elif indicator == "rsi":
                 indicator_data["rsi"] = [c.get("rsi_14") for c in candles]
             elif indicator == "macd":

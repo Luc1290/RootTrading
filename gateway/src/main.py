@@ -180,7 +180,7 @@ async def sync_historical_to_realtime_cache(ws_client):
                     
                     if all_historical_indicators:
                         key_indicators = {k: v for k, v in all_historical_indicators.items() 
-                                        if k in ['ema_12', 'ema_26', 'macd_line', 'rsi_14'] and v is not None}
+                                        if k in ['ema_7', 'ema_26', 'macd_line', 'rsi_14'] and v is not None}
                         logger.debug(f"Sync {symbol} {timeframe}: {len(all_historical_indicators)} indicateurs → " +
                                    ', '.join([f"{k}={v:.4f}" for k, v in key_indicators.items()]))
                 else:
@@ -223,7 +223,7 @@ async def restore_indicators_from_db():
             WITH latest_data AS (
                 SELECT DISTINCT ON (symbol, timeframe) 
                     symbol, timeframe, time,
-                    rsi_14, ema_12, ema_26, ema_50, sma_20, sma_50,
+                    rsi_14, ema_7, ema_26, ema_99, sma_20, sma_50,
                     macd_line, macd_signal, macd_histogram,
                     bb_upper, bb_middle, bb_lower, bb_position, bb_width,
                     atr_14, momentum_10, volume_ratio, avg_volume_20,

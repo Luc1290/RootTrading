@@ -1115,10 +1115,10 @@ class TechnicalIndicators:
                 rsi_array = talib.RSI(closes_array, timeperiod=14)
                 indicators['rsi_14'] = rsi_array
                 
-                # EMAs
-                indicators['ema_12'] = talib.EMA(closes_array, timeperiod=12)
+                # EMAs - Binance standard (7/26/99)
+                indicators['ema_7'] = talib.EMA(closes_array, timeperiod=7)
                 indicators['ema_26'] = talib.EMA(closes_array, timeperiod=26)
-                indicators['ema_50'] = talib.EMA(closes_array, timeperiod=50)
+                indicators['ema_99'] = talib.EMA(closes_array, timeperiod=99)
                 
                 # SMAs
                 indicators['sma_20'] = talib.SMA(closes_array, timeperiod=20)
@@ -1126,7 +1126,7 @@ class TechnicalIndicators:
                 
                 # MACD
                 macd_line, macd_signal, macd_hist = talib.MACD(closes_array, 
-                                                               fastperiod=12, 
+                                                               fastperiod=7, 
                                                                slowperiod=26, 
                                                                signalperiod=9)
                 indicators['macd_line'] = macd_line
@@ -1270,7 +1270,7 @@ class TechnicalIndicators:
             
             # EMAs multiples (garde l'ancien comportement pour compatibilité)
             try:
-                for period in [12, 26, 50]:
+                for period in [7, 26, 99]:
                     ema_value = self.calculate_ema(closes, period)
                     if ema_value is not None:
                         indicators[f'ema_{period}'] = ema_value
@@ -2039,8 +2039,8 @@ def calculate_indicators_incremental(symbol: str, timeframe: str, current_candle
     result = {}
     current_price = current_candle['close']
     
-    # EMA 12, 26, 50
-    for period in [12, 26, 50]:
+    # EMA 7, 26, 99
+    for period in [7, 26, 99]:
         prev_ema = indicator_cache.get(symbol, timeframe, f'ema_{period}')
         new_ema = indicators.calculate_ema_incremental(current_price, prev_ema, period)
         result[f'ema_{period}'] = new_ema

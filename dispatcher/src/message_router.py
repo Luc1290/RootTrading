@@ -290,7 +290,7 @@ class MessageRouter:
             # Traitement optimisé pour données enrichies
             if is_enhanced_data and is_closed_candle:
                 # Validation rapide des indicateurs critiques
-                critical_indicators = ['rsi_14', 'macd_line', 'ema_12', 'bb_position', 'adx_14']
+                critical_indicators = ['rsi_14', 'macd_line', 'ema_7', 'bb_position', 'adx_14']  # MIGRATION BINANCE
                 for indicator in critical_indicators:
                     if indicator in transformed and not isinstance(transformed[indicator], (int, float, type(None))):
                         try:

@@ -52,7 +52,7 @@ interface ChartStore {
   updateInterval: (interval: TimeInterval) => void;
   updateSignalFilter: (filter: SignalFilter) => void;
   updatePeriod: (period: PerformancePeriod) => void;
-  toggleEMA: (type: 'ema12' | 'ema26' | 'ema50') => void;
+  toggleEMA: (type: 'ema7' | 'ema26' | 'ema99') => void;
 }
 
 export const useChartStore = create<ChartStore>()(
@@ -65,9 +65,9 @@ export const useChartStore = create<ChartStore>()(
       signalFilter: 'all',
       period: '24h',
       emaToggles: {
-        ema12: true,
+        ema7: true,
         ema26: true,
-        ema50: true,
+        ema99: true,
       },
     },
     

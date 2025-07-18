@@ -85,7 +85,8 @@ class SignalValidator:
             # AMÉLIORATION : Utiliser EMAs incrémentales pour courbes lisses
             current_price = prices[-1] if prices else 0
             ema_21 = self._get_or_calculate_ema_incremental(symbol, current_price, 21)
-            ema_50 = self._get_or_calculate_ema_incremental(symbol, current_price, 50)
+            # MIGRATION BINANCE: EMA 99 au lieu de 50
+            ema_99 = self._get_or_calculate_ema_incremental(symbol, current_price, 99)
             
             # LOGIQUE SOPHISTIQUÉE : Analyser la force et le momentum de la tendance
             
@@ -94,27 +95,28 @@ class SignalValidator:
             timeframe = "1m"
             cache = self.ema_incremental_cache.get(symbol, {}).get(timeframe, {})
             ema_21_prev = cache.get('ema_21_prev', ema_21)
-            ema_50_prev = cache.get('ema_50_prev', ema_50)
+            ema_99_prev = cache.get('ema_99_prev', ema_99)
             
             # Calculer vélocité avec EMAs lisses
             ema_21_velocity = (ema_21 - ema_21_prev) / ema_21_prev if ema_21_prev > 0 else 0
-            ema_50_velocity = (ema_50 - ema_50_prev) / ema_50_prev if ema_50_prev > 0 else 0
+            ema_99_velocity = (ema_99 - ema_99_prev) / ema_99_prev if ema_99_prev > 0 else 0
             
             # Stocker les valeurs actuelles comme "précédentes" pour le prochain calcul
             cache['ema_21_prev'] = ema_21
-            cache['ema_50_prev'] = ema_50
+            cache['ema_99_prev'] = ema_99
             
             # Calculer la force de la tendance
-            trend_strength = abs(ema_21 - ema_50) / ema_50 if ema_50 > 0 else 0
+            trend_strength = abs(ema_21 - ema_99) / ema_99 if ema_99 > 0 else 0
             
             # Classification sophistiquée de la tendance
-            if ema_21 > ema_50 * 1.015:  # +1.5% = forte haussière
+            # MIGRATION BINANCE: EMA 99 au lieu de 50
+            if ema_21 > ema_99 * 1.015:  # +1.5% = forte haussière
                 trend_5m = "STRONG_BULLISH"
-            elif ema_21 > ema_50 * 1.005:  # +0.5% = faible haussière
+            elif ema_21 > ema_99 * 1.005:  # +0.5% = faible haussière
                 trend_5m = "WEAK_BULLISH"
-            elif ema_21 < ema_50 * 0.985:  # -1.5% = forte baissière  
+            elif ema_21 < ema_99 * 0.985:  # -1.5% = forte baissière  
                 trend_5m = "STRONG_BEARISH"
-            elif ema_21 < ema_50 * 0.995:  # -0.5% = faible baissière
+            elif ema_21 < ema_99 * 0.995:  # -0.5% = faible baissière
                 trend_5m = "WEAK_BEARISH"
             else:
                 trend_5m = "NEUTRAL"
@@ -127,18 +129,18 @@ class SignalValidator:
                 trend_weakening = True  # Tendance baissière qui ralentit
             
             # DEBUG: Log détaillé pour comprendre les rejets
-            logger.info(f"🔍 {symbol} | Prix={current_price:.4f} | EMA21={ema_21:.4f} | EMA50={ema_50:.4f} | Tendance={trend_5m} | Signal={side} | Velocity21={ema_21_velocity*100:.2f}% | Weakening={trend_weakening}")
+            logger.info(f"🔍 {symbol} | Prix={current_price:.4f} | EMA21={ema_21:.4f} | EMA99={ema_99:.4f} | Tendance={trend_5m} | Signal={side} | Velocity21={ema_21_velocity*100:.2f}% | Weakening={trend_weakening}")
             
             # LOGIQUE SOPHISTIQUÉE DE VALIDATION
             rejection_reason = None
             
             # NOUVEAU: Validation stricte de la position relative aux EMAs
             price_above_ema21 = current_price > ema_21
-            price_above_ema50 = current_price > ema_50
+            price_above_ema99 = current_price > ema_99
             
             # Position relative en pourcentage
             distance_to_ema21 = ((current_price - ema_21) / ema_21) * 100
-            distance_to_ema50 = ((current_price - ema_50) / ema_50) * 100
+            distance_to_ema99 = ((current_price - ema_99) / ema_99) * 100
             
             if side == "BUY":
                 # NOUVEAU: Validation BUY pour DEBUT DE PUMP (détection précoce)

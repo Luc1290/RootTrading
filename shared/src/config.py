@@ -68,15 +68,16 @@ STRATEGY_PARAMS = {
         "oversold": 40,   # STANDARDISÉ: Cohérent avec toutes les stratégies Pro
     },
     "ema_cross": {
-        "fast_window": 12,
-        "slow_window": 26,
+        "fast_window": 7,   # MIGRATION BINANCE: 12 → 7 (plus réactif)
+        "slow_window": 26,  # Inchangé (déjà optimal)
+        "long_window": 99,  # NOUVEAU: Ajout EMA long terme (remplacement de 50)
     },
     "bollinger": {
         "window": 20,
         "num_std": 2.0,
     },
     "macd": {
-        "fast_period": 12,
+        "fast_period": 7,  # Aligné avec EMA Binance (7/26/99)
         "slow_period": 26,
         "signal_period": 9,
         "histogram_threshold": 0.00005,  # STANDARDISÉ: Momentum faible minimum (sera MACD_HISTOGRAM_WEAK)

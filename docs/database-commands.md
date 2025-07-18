@@ -35,7 +35,7 @@ ORDER BY symbol, timeframe;"
 
 # Dernières entrées avec indicateurs
 docker exec roottrading-db-1 psql -U postgres -d trading -c "
-SELECT time, symbol, close, volume, rsi_14, ema_12, ema_26, macd_line 
+SELECT time, symbol, close, volume, rsi_14, ema_7, ema_26, macd_line 
 FROM market_data 
 WHERE symbol = 'SOLUSDC' 
 ORDER BY time DESC LIMIT 10;"

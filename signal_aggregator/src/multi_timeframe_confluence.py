@@ -211,9 +211,9 @@ class MultiTimeframeConfluence:
                 'macd_line': market_data.get('macd_line', 0),
                 'macd_signal': market_data.get('macd_signal', 0),
                 'macd_histogram': market_data.get('macd_histogram', 0),
-                'ema_12': market_data.get('ema_12', 0),
+                'ema_7': market_data.get('ema_7', 0),   # MIGRATION BINANCE directe
                 'ema_26': market_data.get('ema_26', 0),
-                'ema_50': market_data.get('ema_50', 0),
+                'ema_99': market_data.get('ema_99', 0),  # MIGRATION BINANCE directe
                 'bb_upper': market_data.get('bb_upper', 0),
                 'bb_middle': market_data.get('bb_middle', 0),
                 'bb_lower': market_data.get('bb_lower', 0),
@@ -242,21 +242,21 @@ class MultiTimeframeConfluence:
         try:
             signals = []
             
-            # 1. Signal EMA (12/26/50)
-            ema_12 = metrics['ema_12']
+            # 1. Signal EMA (7/26/99) - MIGRATION BINANCE
+            ema_7 = metrics['ema_7']
             ema_26 = metrics['ema_26'] 
-            ema_50 = metrics['ema_50']
+            ema_99 = metrics['ema_99']
             price = metrics['price']
             
-            if ema_12 > 0 and ema_26 > 0 and ema_50 > 0:
-                # Alignement EMA
-                if ema_12 > ema_26 > ema_50 and price > ema_12:
+            if ema_7 > 0 and ema_26 > 0 and ema_99 > 0:
+                # Alignement EMA - CONFIG BINANCE
+                if ema_7 > ema_26 > ema_99 and price > ema_7:
                     signals.append(0.8)  # Signal haussier fort
-                elif ema_12 > ema_26 and price > ema_26:
+                elif ema_7 > ema_26 and price > ema_26:
                     signals.append(0.5)  # Signal haussier modéré
-                elif ema_12 < ema_26 < ema_50 and price < ema_12:
+                elif ema_7 < ema_26 < ema_99 and price < ema_7:
                     signals.append(-0.8) # Signal baissier fort
-                elif ema_12 < ema_26 and price < ema_26:
+                elif ema_7 < ema_26 and price < ema_26:
                     signals.append(-0.5) # Signal baissier modéré
                 else:
                     signals.append(0.0)  # Neutre
@@ -324,9 +324,10 @@ class MultiTimeframeConfluence:
     def _determine_trend_direction(self, metrics: Dict) -> str:
         """Détermine la direction de tendance"""
         try:
-            ema_12 = metrics['ema_12']
+            # MIGRATION BINANCE: EMA 7/26/99
+            ema_7 = metrics['ema_7']
             ema_26 = metrics['ema_26']
-            ema_50 = metrics['ema_50']
+            ema_99 = metrics['ema_99']
             macd_line = metrics['macd_line']
             adx = metrics['adx']
             
@@ -334,14 +335,14 @@ class MultiTimeframeConfluence:
             bullish_signals = 0
             bearish_signals = 0
             
-            # EMA alignement
-            if ema_12 > ema_26 > ema_50:
+            # EMA alignement - CONFIG BINANCE
+            if ema_7 > ema_26 > ema_99:
                 bullish_signals += 2
-            elif ema_12 < ema_26 < ema_50:
+            elif ema_7 < ema_26 < ema_99:
                 bearish_signals += 2
-            elif ema_12 > ema_26:
+            elif ema_7 > ema_26:
                 bullish_signals += 1
-            elif ema_12 < ema_26:
+            elif ema_7 < ema_26:
                 bearish_signals += 1
             
             # MACD

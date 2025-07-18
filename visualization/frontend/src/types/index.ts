@@ -20,9 +20,9 @@ export interface Indicators {
   macd?: number[];
   macd_signal?: number[];
   macd_histogram?: number[];
-  ema_12?: number[];
+  ema_7?: number[];
   ema_26?: number[];
-  ema_50?: number[];
+  ema_99?: number[];
 }
 
 export interface ChartData {
@@ -48,9 +48,9 @@ export interface ChartConfig {
   signalFilter: string;
   period: string;
   emaToggles: {
-    ema12: boolean;
+    ema7: boolean;
     ema26: boolean;
-    ema50: boolean;
+    ema99: boolean;
   };
 }
 

@@ -98,8 +98,8 @@ class DatabasePersister:
             if 'rsi_14' in message and message['rsi_14'] is not None:
                 market_data['rsi_14'] = float(message['rsi_14'])
             
-            # EMAs
-            for period in [12, 26, 50]:
+            # EMAs - Support des nouvelles périodes et fallback sur anciennes
+            for period in [7, 26, 99]:
                 key = f'ema_{period}'
                 if key in message and message[key] is not None:
                     market_data[key] = float(message[key])

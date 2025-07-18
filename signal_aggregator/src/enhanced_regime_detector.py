@@ -1041,9 +1041,9 @@ class EnhancedRegimeDetector:
                             'macd_line': parsed.get('macd_line', 0),
                             'macd_signal': parsed.get('macd_signal', 0),
                             'macd_histogram': parsed.get('macd_histogram', 0),
-                            'ema_12': parsed.get('ema_12', parsed.get('close', 0)),
+                            'ema_7': parsed.get('ema_7', 0),  # MIGRATION BINANCE directe
                             'ema_26': parsed.get('ema_26', parsed.get('close', 0)),
-                            'ema_50': parsed.get('ema_50', parsed.get('close', 0)),
+                            'ema_99': parsed.get('ema_99', 0),
                             'sma_20': parsed.get('sma_20', parsed.get('close', 0)),
                             'sma_50': parsed.get('sma_50', parsed.get('close', 0)),
                             'bb_upper': parsed.get('bb_upper', parsed.get('close', 0)),

@@ -98,7 +98,7 @@ class BinanceWebSocket:
                 self.high_buffers[symbol][tf] = []
                 self.low_buffers[symbol][tf] = []
                 self.rsi_buffers[symbol][tf] = []
-                self.macd_buffers[symbol][tf] = {'ema12': None, 'ema26': None, 'signal9': None}
+                self.macd_buffers[symbol][tf] = {'ema7': None, 'ema26': None, 'signal9': None}
                 
                 # Cache pour chaque timeframe
                 self.incremental_cache[symbol][tf] = {}
@@ -422,7 +422,7 @@ class BinanceWebSocket:
             final_indicators = all_indicators.copy()
             # Override seulement les indicateurs EMA/MACD avec les versions incrémentales lisses
             for indicator_name, value in incremental_indicators.items():
-                if value is not None and indicator_name in ['ema_12', 'ema_26', 'ema_50', 'macd_line', 'macd_signal', 'macd_histogram']:
+                if value is not None and indicator_name in ['ema_7', 'ema_26', 'ema_99', 'macd_line', 'macd_signal', 'macd_histogram']:
                     final_indicators[indicator_name] = value
                     # **NOUVEAU**: Sauvegarder les indicateurs lisses dans le cache persistant
                     indicator_cache.set(symbol, timeframe, indicator_name, value)
@@ -1026,10 +1026,10 @@ class BinanceWebSocket:
             # Cache pour ce symbole/timeframe
             cache = self.incremental_cache[symbol][timeframe]
             
-            # 📈 EMA 12, 26, 50 (incrémentaux avec initialisation intelligente)
+            # 📈 EMA 7, 26, 99 (incrémentaux avec initialisation intelligente)
             from shared.src.technical_indicators import calculate_ema_incremental
             
-            for period in [12, 26, 50]:
+            for period in [7, 26, 99]:
                 cache_ema_key = f'ema_{period}'
                 prev_ema = cache.get(cache_ema_key)
                 
@@ -1060,19 +1060,19 @@ class BinanceWebSocket:
                 # Mettre à jour le cache
                 cache[cache_ema_key] = new_ema
             
-            # 📊 MACD incrémental (basé sur EMA 12/26 du cache)
+            # 📊 MACD incrémental (basé sur EMA 7/26 du cache)
             from shared.src.technical_indicators import calculate_macd_incremental
             
-            prev_ema_fast = cache.get('macd_ema_fast')  # EMA 12 pour MACD
+            prev_ema_fast = cache.get('macd_ema_fast')  # EMA 7 pour MACD
             prev_ema_slow = cache.get('macd_ema_slow')  # EMA 26 pour MACD  
             prev_macd_signal = cache.get('macd_signal')
             
             # Utiliser les EMA du cache si disponibles
-            if cache.get('ema_12') is not None and cache.get('ema_26') is not None:
+            if cache.get('ema_7') is not None and cache.get('ema_26') is not None:
                 # Synchroniser les EMA MACD avec les EMA principales
                 if prev_ema_fast is None:
-                    cache['macd_ema_fast'] = cache['ema_12']
-                    prev_ema_fast = cache['ema_12']
+                    cache['macd_ema_fast'] = cache['ema_7']
+                    prev_ema_fast = cache['ema_7']
                 if prev_ema_slow is None:
                     cache['macd_ema_slow'] = cache['ema_26']
                     prev_ema_slow = cache['ema_26']
@@ -1080,7 +1080,8 @@ class BinanceWebSocket:
                 # **NOUVEAU**: Fallback vers le cache persistant pour les EMA MACD
                 from shared.src.technical_indicators import indicator_cache
                 if prev_ema_fast is None:
-                    cached_fast = indicator_cache.get(symbol, timeframe, 'ema_12')
+                    # MIGRATION BINANCE: Utiliser directement ema_7
+                    cached_fast = indicator_cache.get(symbol, timeframe, 'ema_7')
                     if cached_fast is not None:
                         cache['macd_ema_fast'] = cached_fast
                         prev_ema_fast = cached_fast
@@ -1112,7 +1113,7 @@ class BinanceWebSocket:
             
             if result:
                 logger.debug(f"🚀 Indicateurs lisses calculés pour {symbol} {timeframe}: "
-                            f"EMA12={result.get('ema_12', 0):.4f}, "
+                            f"EMA7={result.get('ema_7', 0):.4f}, "
                             f"MACD={result.get('macd_line', 0):.4f}")
             
         except Exception as e:
@@ -1134,7 +1135,7 @@ class BinanceWebSocket:
             from shared.src.technical_indicators import indicator_cache
             
             restored_count = 0
-            indicator_keys = ['ema_12', 'ema_26', 'ema_50', 'macd_line', 'macd_signal', 'macd_histogram']
+            indicator_keys = ['ema_7', 'ema_26', 'ema_99', 'macd_line', 'macd_signal', 'macd_histogram']
             
             for indicator_key in indicator_keys:
                 # Restaurer depuis Redis si disponible
@@ -1153,8 +1154,10 @@ class BinanceWebSocket:
                         logger.debug(f"🔄 {indicator_key} restauré: {cached_value:.6f}")
             
             # Restaurer les EMA spécifiques au MACD (synchronisation)
-            if cache.get('ema_12') is not None:
-                cache['macd_ema_fast'] = cache['ema_12']
+            if cache.get('ema_7') is not None:
+                cache['macd_ema_fast'] = cache['ema_7']
+                restored_count += 1
+            # Si ema_7 n'est pas disponible, on ne fait rien (sera calculé la prochaine fois)
                 restored_count += 1
             if cache.get('ema_26') is not None:
                 cache['macd_ema_slow'] = cache['ema_26']
@@ -1164,7 +1167,7 @@ class BinanceWebSocket:
                 restored_count += 1
             
             # Initialiser à None seulement si pas restauré
-            for key in ['ema_12', 'ema_26', 'ema_50', 'macd_ema_fast', 'macd_ema_slow', 'macd_signal']:
+            for key in ['ema_7', 'ema_26', 'ema_99', 'macd_ema_fast', 'macd_ema_slow', 'macd_signal']:
                 if key not in cache or cache[key] is None:
                     cache[key] = None
             
@@ -1177,7 +1180,7 @@ class BinanceWebSocket:
             logger.warning(f"⚠️ Erreur initialisation cache pour {symbol} {timeframe}: {e}")
             # Fallback: initialisation vide
             cache = self.incremental_cache[symbol][timeframe]
-            for key in ['ema_12', 'ema_26', 'ema_50', 'macd_ema_fast', 'macd_ema_slow', 'macd_signal']:
+            for key in ['ema_7', 'ema_26', 'ema_99', 'macd_ema_fast', 'macd_ema_slow', 'macd_signal']:
                 cache[key] = None
     
     def _init_redis_for_buffers(self):

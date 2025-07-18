@@ -13,9 +13,9 @@ function MarketChart({ height = 750 }: MarketChartProps) {
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const emaSeriesRef = useRef<{
-    ema12?: ISeriesApi<'Line'>;
+    ema7?: ISeriesApi<'Line'>;
     ema26?: ISeriesApi<'Line'>;
-    ema50?: ISeriesApi<'Line'>;
+    ema99?: ISeriesApi<'Line'>;
   }>({});
   
   // État pour l'infobulle des signaux
@@ -214,9 +214,9 @@ function MarketChart({ height = 750 }: MarketChartProps) {
     });
     emaSeriesRef.current = {};
     
-    // EMA 12
-    if (config.emaToggles.ema12 && indicators.ema_12 && marketData) {
-      const ema12Series = chartRef.current.addLineSeries({
+    // EMA 7
+    if (config.emaToggles.ema7 && indicators.ema_7 && marketData) {
+      const ema7Series = chartRef.current.addLineSeries({
         color: '#ff6b35',
         lineWidth: 2,
         title: '',
@@ -225,13 +225,13 @@ function MarketChart({ height = 750 }: MarketChartProps) {
         priceLineVisible: false, // Hide price line
       });
       
-      const ema12Data: LineData[] = marketData.timestamps.map((timestamp: string, index: number) => ({
+      const ema7Data: LineData[] = marketData.timestamps.map((timestamp: string, index: number) => ({
         time: Math.floor(new Date(timestamp).getTime() / 1000) as Time,
-        value: indicators.ema_12![index],
+        value: indicators.ema_7![index],
       })).filter((item) => item.value !== null && item.value !== undefined) as LineData[];
       
-      ema12Series.setData(ema12Data);
-      emaSeriesRef.current.ema12 = ema12Series;
+      ema7Series.setData(ema7Data);
+      emaSeriesRef.current.ema7 = ema7Series;
     }
     
     // EMA 26
@@ -254,9 +254,9 @@ function MarketChart({ height = 750 }: MarketChartProps) {
       emaSeriesRef.current.ema26 = ema26Series;
     }
     
-    // EMA 50
-    if (config.emaToggles.ema50 && indicators.ema_50 && marketData) {
-      const ema50Series = chartRef.current.addLineSeries({
+    // EMA 99
+    if (config.emaToggles.ema99 && indicators.ema_99 && marketData) {
+      const ema99Series = chartRef.current.addLineSeries({
         color: '#ffd700',
         lineWidth: 2,
         title: '',
@@ -265,13 +265,13 @@ function MarketChart({ height = 750 }: MarketChartProps) {
         priceLineVisible: false, // Hide price line
       });
       
-      const ema50Data: LineData[] = marketData.timestamps.map((timestamp: string, index: number) => ({
+      const ema99Data: LineData[] = marketData.timestamps.map((timestamp: string, index: number) => ({
         time: Math.floor(new Date(timestamp).getTime() / 1000) as Time,
-        value: indicators.ema_50![index],
+        value: indicators.ema_99![index],
       })).filter((item) => item.value !== null && item.value !== undefined) as LineData[];
       
-      ema50Series.setData(ema50Data);
-      emaSeriesRef.current.ema50 = ema50Series;
+      ema99Series.setData(ema99Data);
+      emaSeriesRef.current.ema99 = ema99Series;
     }
   }, [indicators, config.emaToggles, marketData]);
   

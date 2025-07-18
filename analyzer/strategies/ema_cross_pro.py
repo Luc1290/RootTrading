@@ -89,15 +89,17 @@ class EMACrossProStrategy(BaseStrategy):
                 return defensive_signal
             
             # Récupérer EMAs pré-calculées
-            current_ema12 = self._get_current_indicator(indicators, 'ema_12')
+            # MIGRATION BINANCE: EMA 7 directement (plus réactif)
+            current_ema7 = self._get_current_indicator(indicators, 'ema_7')
             current_ema26 = self._get_current_indicator(indicators, 'ema_26')
             
-            if current_ema12 is None or current_ema26 is None:
+            if current_ema7 is None or current_ema26 is None:
                 logger.debug(f"❌ {symbol}: EMAs non disponibles")
                 return None
             
             # Récupérer EMAs précédentes pour détecter croisement
-            previous_ema12 = self._get_previous_indicator(indicators, 'ema_12')
+            # MIGRATION BINANCE: EMA 7 directement
+            previous_ema7 = self._get_previous_indicator(indicators, 'ema_7')
             previous_ema26 = self._get_previous_indicator(indicators, 'ema_26')
             
             # Récupérer indicateurs de contexte
@@ -108,7 +110,7 @@ class EMACrossProStrategy(BaseStrategy):
             bb_width = self._get_current_indicator(indicators, 'bb_width')
             momentum_10 = self._get_current_indicator(indicators, 'momentum_10')
             
-            if previous_ema12 is None or previous_ema26 is None:
+            if previous_ema7 is None or previous_ema26 is None:
                 return None
             
             current_price = df['close'].iloc[-1]
@@ -122,8 +124,8 @@ class EMACrossProStrategy(BaseStrategy):
             signal = None
             
             # SIGNAL D'ACHAT - Golden Cross avec contexte favorable
-            if (previous_ema12 <= previous_ema26 and current_ema12 > current_ema26):
-                gap_percent = abs(current_ema12 - current_ema26) / current_ema26
+            if (previous_ema7 <= previous_ema26 and current_ema7 > current_ema26):
+                gap_percent = abs(current_ema7 - current_ema26) / current_ema26
                 
                 # Vérifier les conditions de contexte
                 if self._validate_bullish_context(context_analysis, gap_percent):
@@ -139,7 +141,7 @@ class EMACrossProStrategy(BaseStrategy):
                             price=current_price,
                             confidence=final_confidence,
                             metadata={
-                                'ema12': current_ema12,
+                                'ema7': current_ema7,  # MIGRATION BINANCE
                                 'ema26': current_ema26,
                                 'gap_percent': gap_percent * 100,
                                 'adx': adx,
@@ -150,7 +152,7 @@ class EMACrossProStrategy(BaseStrategy):
                                 'confluence_score': context_analysis.get('confluence_score', 0),
                                 'momentum_score': context_analysis.get('momentum_score', 0),
                                 'price_position': price_position,
-                                'reason': f'EMA Golden Cross Pro (12: {current_ema12:.4f} > 26: {current_ema26:.4f}) + Contexte favorable'
+                                'reason': f'EMA Golden Cross Pro BINANCE (7: {current_ema7:.4f} > 26: {current_ema26:.4f}) + Contexte favorable'
                             }
                         )
                         # Enregistrer prix d'entrée pour protection défensive
@@ -162,8 +164,8 @@ class EMACrossProStrategy(BaseStrategy):
                     logger.debug(f"🚫 EMA Cross {symbol}: Golden cross détecté mais contexte défavorable (score: {context_analysis['score']:.1f})")
             
             # SIGNAL DE VENTE - Death Cross avec contexte favorable
-            elif (previous_ema12 >= previous_ema26 and current_ema12 < current_ema26):
-                gap_percent = abs(current_ema26 - current_ema12) / current_ema26
+            elif (previous_ema7 >= previous_ema26 and current_ema7 < current_ema26):
+                gap_percent = abs(current_ema26 - current_ema7) / current_ema26
                 
                 # Vérifier les conditions de contexte
                 if self._validate_bearish_context(context_analysis, gap_percent):
@@ -179,7 +181,7 @@ class EMACrossProStrategy(BaseStrategy):
                             price=current_price,
                             confidence=final_confidence,
                             metadata={
-                                'ema12': current_ema12,
+                                'ema7': current_ema7,  # MIGRATION BINANCE
                                 'ema26': current_ema26,
                                 'gap_percent': gap_percent * 100,
                                 'adx': adx,
@@ -190,7 +192,7 @@ class EMACrossProStrategy(BaseStrategy):
                                 'confluence_score': context_analysis.get('confluence_score', 0),
                                 'momentum_score': context_analysis.get('momentum_score', 0),
                                 'price_position': price_position,
-                                'reason': f'EMA Death Cross Pro (12: {current_ema12:.4f} < 26: {current_ema26:.4f}) + Contexte favorable'
+                                'reason': f'EMA Death Cross Pro BINANCE (7: {current_ema7:.4f} < 26: {current_ema26:.4f}) + Contexte favorable'
                             }
                         )
                     else:
@@ -201,7 +203,7 @@ class EMACrossProStrategy(BaseStrategy):
             
             if signal:
                 logger.info(f"🎯 EMA Cross Pro {symbol}: {signal.side} @ {current_price:.4f} "
-                          f"(12: {current_ema12:.4f}, 26: {current_ema26:.4f}, ADX: {adx:.1f}, "
+                          f"(7: {current_ema7:.4f}, 26: {current_ema26:.4f}, ADX: {adx:.1f}, "
                           f"Context: {context_analysis['score']:.1f}, Conf: {signal.confidence:.2f}, {signal.strength})")
                 
                 # Convertir StrategySignal en dict pour compatibilité

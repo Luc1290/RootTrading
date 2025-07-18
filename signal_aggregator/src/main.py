@@ -199,7 +199,7 @@ class SignalAggregatorService:
                     # Récupérer les vraies données historiques depuis la DB (250 derniers points 5m)
                     query = """
                         SELECT time, symbol, timeframe, open, high, low, close, volume,
-                               rsi_14, ema_12, ema_26, macd_line, macd_signal, bb_upper, bb_lower, atr_14
+                               rsi_14, ema_7, ema_26, macd_line, macd_signal, bb_upper, bb_lower, atr_14  -- MIGRATION BINANCE
                         FROM market_data 
                         WHERE symbol = $1 AND timeframe = '5m' AND enhanced = true
                         ORDER BY time DESC 
@@ -227,7 +227,7 @@ class SignalAggregatorService:
                                         'close': float(row['close']),
                                         'volume': float(row['volume']),
                                         'rsi_14': float(row['rsi_14']) if row['rsi_14'] else None,
-                                        'ema_12': float(row['ema_12']) if row['ema_12'] else None,
+                                        'ema_7': float(row['ema_7']) if row['ema_7'] else None,  # MIGRATION BINANCE
                                         'ema_26': float(row['ema_26']) if row['ema_26'] else None,
                                         'macd_line': float(row['macd_line']) if row['macd_line'] else None,
                                         'macd_signal': float(row['macd_signal']) if row['macd_signal'] else None,

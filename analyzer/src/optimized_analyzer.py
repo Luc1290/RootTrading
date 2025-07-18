@@ -139,9 +139,9 @@ class OptimizedAnalyzer:
         """
         indicators = {}
         
-        # Indicateurs de base
+        # Indicateurs de base - Binance EMAs (7/26/99)
         indicator_columns = [
-            'rsi_14', 'ema_12', 'ema_26', 'ema_50', 'sma_20', 'sma_50',
+            'rsi_14', 'ema_7', 'ema_26', 'ema_99', 'sma_20', 'sma_50',
             'macd_line', 'macd_signal', 'macd_histogram',
             'bb_upper', 'bb_middle', 'bb_lower', 'bb_position', 'bb_width',
             'atr_14', 'adx_14', 'plus_di', 'minus_di',

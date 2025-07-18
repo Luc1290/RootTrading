@@ -164,7 +164,7 @@ export function useChart(options: UseChartOptions = {}) {
     debouncedUpdate();
   }, [updatePeriod, debouncedUpdate]);
   
-  const handleEMAToggle = useCallback((type: 'ema12' | 'ema26' | 'ema50') => {
+  const handleEMAToggle = useCallback((type: 'ema7' | 'ema26' | 'ema99') => {
     toggleEMA(type);
     debouncedUpdate();
   }, [toggleEMA, debouncedUpdate]);

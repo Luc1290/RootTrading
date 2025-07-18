@@ -1171,11 +1171,11 @@ class UltraDataFetcher:
         result = {}
         
         try:
-            if len(prices) < 12:  # Pas assez de données
+            if len(prices) < 7:  # Pas assez de données
                 return {}
             
-            # 📈 EMA 12, 26, 50 avec séries optimisées (évite dents de scie)
-            for period in [12, 26, 50]:
+            # 📈 EMA 7, 26, 99 avec séries optimisées (évite dents de scie)
+            for period in [7, 26, 99]:
                 if len(prices) >= period:
                     ema_key = f'ema_{period}'
                     
@@ -1201,7 +1201,7 @@ class UltraDataFetcher:
             
             if result:
                 logger.debug(f"🚀 [ULTRA] EMA/MACD lisses calculés pour {symbol} {timeframe}: "
-                            f"EMA12={result.get('ema_12', 0):.4f}, "
+                            f"EMA7={result.get('ema_7', 0):.4f}, "
                             f"MACD={result.get('macd_line', 0):.4f}")
             
         except Exception as e:

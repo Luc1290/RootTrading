@@ -5,9 +5,9 @@ function EMAToggles() {
   const { config, handleEMAToggle } = useChart();
   
   const emaOptions = [
-    { key: 'ema12' as const, label: 'EMA 12', color: 'text-orange-400' },
+    { key: 'ema7' as const, label: 'EMA 7', color: 'text-orange-400' },
     { key: 'ema26' as const, label: 'EMA 26', color: 'text-yellow-400' },
-    { key: 'ema50' as const, label: 'EMA 50', color: 'text-yellow-300' },
+    { key: 'ema99' as const, label: 'EMA 99', color: 'text-yellow-300' },
   ];
   
   return (

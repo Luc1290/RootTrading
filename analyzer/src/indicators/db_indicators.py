@@ -48,7 +48,7 @@ class DatabaseIndicators:
             SELECT 
                 time, symbol, open, high, low, close, volume,
                 -- Indicateurs de base
-                rsi_14, ema_12, ema_26, ema_50, sma_20, sma_50,
+                rsi_14, ema_7, ema_26, ema_99, sma_20, sma_50,
                 -- MACD complet
                 macd_line, macd_signal, macd_histogram,
                 -- Bollinger Bands complet
@@ -85,7 +85,7 @@ class DatabaseIndicators:
                 
             # Convertir les colonnes numériques de Decimal vers float
             numeric_columns = ['open', 'high', 'low', 'close', 'volume', 
-                             'rsi_14', 'ema_12', 'ema_26', 'ema_50', 'sma_20', 'sma_50',
+                             'rsi_14', 'ema_7', 'ema_26', 'ema_99', 'sma_20', 'sma_50',
                              'macd_line', 'macd_signal', 'macd_histogram',
                              'bb_upper', 'bb_middle', 'bb_lower', 'bb_position', 'bb_width',
                              'atr_14', 'adx_14', 'plus_di', 'minus_di',
@@ -128,7 +128,7 @@ class DatabaseIndicators:
         
         # Liste des indicateurs à vérifier
         indicators_to_check = [
-            'rsi_14', 'ema_12', 'ema_26', 'ema_50', 'sma_20', 'sma_50',
+            'rsi_14', 'ema_7', 'ema_26', 'ema_99', 'sma_20', 'sma_50',
             'macd_line', 'macd_signal', 'macd_histogram',
             'bb_upper', 'bb_middle', 'bb_lower', 'bb_position', 'bb_width',
             'atr_14', 'adx_14', 'plus_di', 'minus_di',
