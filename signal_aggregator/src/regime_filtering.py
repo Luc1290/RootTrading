@@ -148,10 +148,10 @@ class RegimeFiltering:
                 logger.debug(f"📉 {regime.name}: logique inversée BUY/SELL pour {symbol}")
                 
             else:
-                # Régime inconnu ou UNDEFINED: seuils par défaut
-                min_confidence = 0.6
-                required_strength = ['strong', 'very_strong']
-                logger.debug(f"❓ {regime.name}: seuils par défaut pour {symbol}")
+                # Régime inconnu ou UNDEFINED: SEUILS TRÈS STRICTS (protection maximale)
+                min_confidence = 0.85  # AUGMENTÉ de 0.6 à 0.85
+                required_strength = ['very_strong']  # SEULEMENT les signaux très forts
+                logger.warning(f"⚠️ {regime.name}: seuils MAXIMAUX appliqués pour {symbol} (protection mode)")
             
             # Exception pour signaux ultra-confluents de haute qualité
             if is_ultra_confluent and signal_score:
@@ -205,7 +205,7 @@ class RegimeFiltering:
             MarketRegime.WEAK_TREND_DOWN: 0.4,
             MarketRegime.RANGE_TIGHT: 0.7,  # Plus strict en range serré
             MarketRegime.RANGE_VOLATILE: 0.6,
-            MarketRegime.UNDEFINED: 0.8  # Très prudent si indéfini
+            MarketRegime.UNDEFINED: 0.95  # ULTRA PRUDENT si indéfini (augmenté de 0.8 à 0.95)
         }
         return thresholds.get(regime, 0.5)
     
@@ -223,7 +223,7 @@ class RegimeFiltering:
             MarketRegime.WEAK_TREND_DOWN: 0.8,
             MarketRegime.RANGE_TIGHT: 0.85,  # Très strict en range serré
             MarketRegime.RANGE_VOLATILE: 0.8,
-            MarketRegime.UNDEFINED: 0.9  # Très prudent si indéfini
+            MarketRegime.UNDEFINED: 0.95  # MAXIMUM DE PRUDENCE si indéfini (augmenté de 0.9 à 0.95)
         }
         return thresholds.get(regime, 0.8)
     

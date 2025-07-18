@@ -295,9 +295,11 @@ class SignalAggregator:
             # qui utilise enhanced_regime_detector - pas besoin de dupliquer
             
             # NOUVEAU: Validation de cohérence des indicateurs
+            # CORRECTION: Passer les métadonnées du signal au lieu des indicateurs techniques
+            signal_metadata = signal.get('metadata', {})
             is_coherent, coherence_score, coherence_reason = self.coherence_validator.validate_signal_coherence(
                 signal['side'], 
-                indicators
+                signal_metadata
             )
             
             if not is_coherent:

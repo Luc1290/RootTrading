@@ -56,6 +56,12 @@ class IndicatorCoherenceValidator:
             (is_coherent, coherence_score, reason)
         """
         try:
+            # NOUVEAU: Vérifier la tendance récente AVANT tout
+            if signal_side == 'BUY':
+                trend_check = self._check_recent_trend(indicators)
+                if not trend_check['is_safe']:
+                    return False, 0.0, trend_check['reason']
+            
             coherence_score = 0.0
             reasons = []
             
@@ -119,21 +125,23 @@ class IndicatorCoherenceValidator:
             rsi_val = float(rsi)
             
             if signal_side == 'BUY':
-                # BUY = début pump (RSI bas mais pas trop)
+                # BUY = REBOND après oversold, PAS pendant la chute !
                 if rsi_val < 20:
-                    return 0.7, "RSI trop bas, attendre rebond"  # Éviter oversold extrême
+                    return 0.1, "RSI extrême, chute en cours"  # DANGER - ne PAS acheter
                 elif rsi_val < 30:
-                    return 1.0, ""  # Excellent - zone début pump
+                    return 0.2, "RSI oversold, attendre stabilisation"  # Attendre rebond
+                elif rsi_val < 35:
+                    return 0.5, "RSI remonte, surveiller"  # Début de rebond possible
                 elif rsi_val < 40:
-                    return 0.9, ""  # Très bon - momentum émergeant
+                    return 0.8, ""  # BON - rebond confirmé
                 elif rsi_val < 50:
-                    return 0.8, ""  # Bon - début pump possible
+                    return 1.0, ""  # EXCELLENT - momentum haussier
                 elif rsi_val < 60:
-                    return 0.6, ""  # Acceptable - pump en cours
+                    return 0.7, ""  # Acceptable mais prudence
                 elif rsi_val < 70:
-                    return 0.3, "RSI élevé, pump déjà avancé"
+                    return 0.4, "RSI élevé, entrée tardive"
                 else:
-                    return 0.1, "RSI trop élevé, pump terminé"
+                    return 0.1, "RSI trop élevé, trop tard"
             
             else:  # SELL
                 # SELL = fin pump (RSI haut nécessaire)
@@ -312,6 +320,84 @@ class IndicatorCoherenceValidator:
         except Exception as e:
             logger.error(f"Erreur check volume contextuel: {e}")
             return 0.5, "Erreur volume contextuel"
+    
+    def _check_recent_trend(self, indicators: Dict) -> Dict:
+        """
+        NOUVEAU: Vérifie la tendance récente pour éviter d'acheter pendant une chute
+        CORRIGÉ: Utilise les vrais noms d'indicateurs disponibles
+        
+        Returns:
+            {'is_safe': bool, 'reason': str}
+        """
+        try:
+            # CORRECTION: Récupérer les indicateurs critiques avec les bons noms
+            momentum = indicators.get('momentum_10')  # Disponible dans metadata
+            rsi = indicators.get('rsi_14') or indicators.get('rsi')  # Essayer les deux
+            volume_ratio = indicators.get('volume_ratio')  # Disponible dans metadata
+            
+            logger.info(f"🔍 Vérification tendance: momentum={momentum}, rsi={rsi}, volume={volume_ratio}")
+            
+            # CONDITIONS DE DANGER - Ne PAS acheter si:
+            
+            # 1. Volume très faible (signal principal de danger)
+            if volume_ratio and volume_ratio < 0.8:  # Très strict sur le volume
+                return {
+                    'is_safe': False,
+                    'reason': f"Volume trop faible ({volume_ratio:.2f}) - signal douteux"
+                }
+            
+            # 2. Momentum négatif (chute active) - Seuil moins strict
+            if momentum and momentum < -0.5:  # Réduit de -1.0 à -0.5
+                return {
+                    'is_safe': False,
+                    'reason': f"Momentum négatif ({momentum:.2f}) - chute en cours"
+                }
+            
+            # 3. RSI < 30 ET momentum négatif (oversold en chute)
+            if rsi and momentum:
+                if rsi < 30 and momentum < -0.2:  # Seuil momentum réduit
+                    return {
+                        'is_safe': False,
+                        'reason': f"RSI oversold ({rsi:.1f}) avec momentum négatif - attendre rebond"
+                    }
+            
+            # 4. Combinaison dangereuse: momentum très négatif + volume faible
+            if momentum and volume_ratio:
+                if momentum < -0.7 and volume_ratio < 1.0:
+                    return {
+                        'is_safe': False,
+                        'reason': f"Chute ({momentum:.2f}) + volume faible ({volume_ratio:.2f})"
+                    }
+            
+            # CONDITIONS DE SÉCURITÉ - OK pour acheter si:
+            
+            # Volume acceptable et momentum pas trop négatif
+            if volume_ratio and volume_ratio >= 1.0 and (not momentum or momentum > -0.3):
+                return {
+                    'is_safe': True,
+                    'reason': f"Volume OK ({volume_ratio:.2f}) et momentum acceptable"
+                }
+            
+            # RSI oversold mais momentum qui s'améliore
+            if rsi and rsi < 35 and momentum and momentum > -0.3:
+                return {
+                    'is_safe': True,
+                    'reason': f"RSI oversold ({rsi:.1f}) mais momentum stabilisé"
+                }
+            
+            # Par défaut, être PRUDENT (changement)
+            return {
+                'is_safe': False,
+                'reason': f"Conditions insuffisantes (mom={momentum}, vol={volume_ratio})"
+            }
+            
+        except Exception as e:
+            logger.error(f"Erreur vérification tendance récente: {e}")
+            # En cas d'erreur, être très prudent
+            return {
+                'is_safe': False,
+                'reason': f"Erreur vérification tendance: {e}"
+            }
     
     def get_coherence_requirements(self, signal_side: str) -> Dict:
         """
