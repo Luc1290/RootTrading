@@ -279,8 +279,8 @@ class DatabaseManager:
                     if row['rsi_14'] is not None:
                         record['rsi_14'] = float(row['rsi_14'])
                     
-                    # EMAs
-                    for ema_period in [12, 26, 50]:
+                    # EMAs (migration Binance: 7, 26, 99)
+                    for ema_period in [7, 26, 99]:
                         ema_key = f'ema_{ema_period}'
                         if row[ema_key] is not None:
                             record[ema_key] = float(row[ema_key])

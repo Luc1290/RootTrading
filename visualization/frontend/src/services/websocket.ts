@@ -56,7 +56,7 @@ class WebSocketService {
       
       // Ré-s'abonner aux canaux
       this.subscribedChannels.forEach(channel => {
-        this.subscribe(channel);
+        this.sendMessage({ action: 'subscribe', channel });
       });
     };
     
@@ -133,12 +133,20 @@ class WebSocketService {
   
   subscribe(channel: string): void {
     this.subscribedChannels.add(channel);
-    this.sendMessage({ action: 'subscribe', channel });
+    
+    // Envoyer le message seulement si connecté, sinon il sera envoyé lors de la connexion
+    if (this.status === 'connected') {
+      this.sendMessage({ action: 'subscribe', channel });
+    }
   }
   
   unsubscribe(channel: string): void {
     this.subscribedChannels.delete(channel);
-    this.sendMessage({ action: 'unsubscribe', channel });
+    
+    // Envoyer le message seulement si connecté
+    if (this.status === 'connected') {
+      this.sendMessage({ action: 'unsubscribe', channel });
+    }
   }
   
   onMessage(handler: MessageHandler): () => void {

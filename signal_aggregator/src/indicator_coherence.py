@@ -11,6 +11,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from shared.src.config import MACD_HISTOGRAM_WEAK
+from shared.src.volume_context_detector import volume_context_detector
 
 logger = logging.getLogger(__name__)
 
@@ -248,7 +249,7 @@ class IndicatorCoherenceValidator:
     
     def _check_volume_confirmation(self, signal_side: str, indicators: Dict) -> Tuple[float, str]:
         """
-        Vérifie la confirmation du volume
+        Vérifie la confirmation du volume avec adaptation contextuelle
         """
         try:
             volume_ratio = indicators.get('volume_ratio')
@@ -259,35 +260,58 @@ class IndicatorCoherenceValidator:
             
             volume_ratio_val = float(volume_ratio)
             
-            # SEUILS VOLUME STANDARDISÉS - Version harmonisée
+            # Récupération des indicateurs pour contexte
+            rsi = indicators.get('rsi')
+            cci = indicators.get('cci')
+            adx = indicators.get('adx')
+            
+            # Détection du contexte market et seuils adaptatifs
+            contextual_threshold, context_name, contextual_score = volume_context_detector.get_contextual_volume_threshold(
+                base_volume_ratio=volume_ratio_val,
+                rsi=rsi,
+                cci=cci,
+                adx=adx,
+                signal_type=signal_side
+            )
+            
+            # Qualité du volume selon le contexte
+            volume_quality = volume_context_detector.get_volume_quality_description(
+                volume_ratio_val, context_name
+            )
+            
             if signal_side == 'BUY':
-                # Pour BUY, volume élevé confirme le début pump
+                # Pour BUY, utiliser les seuils contextuels
                 if volume_ratio_val > 2.0:
-                    return 1.0, ""  # Excellent - début pump confirmé
+                    return 1.0, f"Volume excellent ({volume_quality}) - Contexte: {context_name}"
                 elif volume_ratio_val > 1.5:
-                    return 0.9, ""  # Très bon
+                    return 0.9, f"Volume très bon ({volume_quality}) - Contexte: {context_name}"
                 elif volume_ratio_val > 1.2:
-                    return 0.8, ""  # Bon
-                elif volume_ratio_val > 1.0:  # STANDARDISÉ: 1.0 pour tous les modules
-                    return 0.6, ""  # Acceptable
+                    return 0.8, f"Volume bon ({volume_quality}) - Contexte: {context_name}"
+                elif volume_ratio_val >= contextual_threshold:
+                    # Utiliser le score contextuel calculé
+                    score = max(0.5, contextual_score)  # Score minimum de 0.5
+                    return score, f"Volume {volume_quality.lower()} (contexte: {context_name})"
                 else:
-                    return 0.4, "Volume faible pour début pump"
+                    # En dessous du seuil contextuel
+                    penalty_score = max(0.3, (volume_ratio_val / contextual_threshold) * 0.5)
+                    return penalty_score, f"Volume insuffisant pour {context_name} (seuil: {contextual_threshold:.2f})"
+            
             else:  # SELL
-                # Pour SELL, volume peut diminuer (essoufflement)
-                if volume_ratio_val > 2.5:  # STANDARDISÉ: 2.5 pour tous les modules
-                    return 0.7, "Volume très élevé, pump peut continuer"  # Pump trop fort
+                # Pour SELL, logique différente - volume peut diminuer (essoufflement)
+                if volume_ratio_val > 2.5:
+                    return 0.7, f"Volume très élevé ({volume_quality}), pump peut continuer - Contexte: {context_name}"
                 elif volume_ratio_val > 2.0:
-                    return 1.0, ""  # Excellent - volume élevé mais gérable
+                    return 1.0, f"Volume excellent ({volume_quality}) - Contexte: {context_name}"
                 elif volume_ratio_val > 1.5:
-                    return 0.9, ""  # Très bon
+                    return 0.9, f"Volume très bon ({volume_quality}) - Contexte: {context_name}"
                 elif volume_ratio_val > 1.0:
-                    return 0.8, ""  # Bon - volume normal
+                    return 0.8, f"Volume bon ({volume_quality}) - Contexte: {context_name}"
                 else:
-                    return 0.9, ""  # Très bon - volume faible = essoufflement
+                    return 0.9, f"Volume faible ({volume_quality}) = essoufflement - Contexte: {context_name}"
                 
         except Exception as e:
-            logger.error(f"Erreur check volume: {e}")
-            return 0.5, "Erreur volume"
+            logger.error(f"Erreur check volume contextuel: {e}")
+            return 0.5, "Erreur volume contextuel"
     
     def get_coherence_requirements(self, signal_side: str) -> Dict:
         """
@@ -298,12 +322,12 @@ class IndicatorCoherenceValidator:
                 'rsi': 'RSI < 40 (idéalement < 25)',  # STANDARDISÉ
                 'macd': f'MACD line > signal line, histogram > {MACD_HISTOGRAM_WEAK}',  # STANDARDISÉ
                 'ema': 'EMA7 > EMA26 > EMA99',  # MIGRATION BINANCE
-                'volume': 'Volume ratio > 1.0'  # STANDARDISÉ
+                'volume': 'Volume contextuel adaptatif (0.6-2.0 selon RSI/CCI/ADX)'  # NOUVEAU: Contextuel
             }
         else:  # SELL
             return {
                 'rsi': 'RSI > 65 (idéalement > 75)',  # STANDARDISÉ
                 'macd': f'MACD line < signal line, histogram < -{MACD_HISTOGRAM_WEAK}',  # STANDARDISÉ
                 'ema': 'EMA7 < EMA26 < EMA99',  # MIGRATION BINANCE
-                'volume': 'Volume ratio > 1.0'  # STANDARDISÉ
+                'volume': 'Volume contextuel adaptatif (1.0-2.5 selon contexte)'  # NOUVEAU: Contextuel
             }

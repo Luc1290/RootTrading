@@ -15,6 +15,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 
 from shared.src.enums import OrderSide, SignalStrength
 from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB
+from shared.src.volume_context_detector import volume_context_detector
 
 from .base_strategy import BaseStrategy
 
@@ -330,28 +331,73 @@ class BollingerProStrategy(BaseStrategy):
                 context['score'] -= 10
                 context['details'].append(f"ATR faible ({atr or 0:.4f})")
             
-            # 2. Volume confirmation - SEUILS STANDARDISÉS
-            if volume_ratio and volume_ratio >= 2.0:  # STANDARDISÉ: Excellent (début pump confirmé)
-                context['score'] += 25
-                context['confidence_boost'] += 0.1
-                context['details'].append(f"Volume excellent ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio > 1.5:  # STANDARDISÉ: Très bon
-                context['score'] += 20
-                context['confidence_boost'] += 0.08
-                context['details'].append(f"Volume très bon ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio > 1.2:  # STANDARDISÉ: Bon
-                context['score'] += 15
-                context['confidence_boost'] += 0.05
-                context['details'].append(f"Volume bon ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio > 1.0:  # STANDARDISÉ: Acceptable
-                context['score'] += 10
-                context['details'].append(f"Volume acceptable ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio > 0.7:  # Faible mais utilisable
-                context['score'] += 5
-                context['details'].append(f"Volume faible ({volume_ratio:.1f}x)")
+            # 2. Volume confirmation - SEUILS CONTEXTUELS ADAPTATIFS BOLLINGER
+            if volume_ratio:
+                try:
+                    # Détection contexte spécifique pour Bollinger patterns
+                    bollinger_context = self._get_bollinger_volume_context(pattern_analysis)
+                    
+                    contextual_threshold, context_name, contextual_score = volume_context_detector.get_contextual_volume_threshold(
+                        base_volume_ratio=volume_ratio,
+                        rsi=latest_data.get('rsi'),
+                        cci=latest_data.get('cci'),
+                        adx=latest_data.get('adx'),
+                        signal_type="BUY",
+                        price_trend=bollinger_context  # Contexte Bollinger spécifique
+                    )
+                    
+                    volume_quality = volume_context_detector.get_volume_quality_description(
+                        volume_ratio, context_name
+                    )
+                    
+                    # Scoring contextuel pour Bollinger
+                    if volume_ratio >= 2.0:  # Excellent absolu
+                        context['score'] += 25
+                        context['confidence_boost'] += 0.1
+                        context['details'].append(f"Volume excellent ({volume_ratio:.1f}x) - {bollinger_context}")
+                    elif volume_ratio >= 1.5:  # Très bon
+                        context['score'] += 20
+                        context['confidence_boost'] += 0.08
+                        context['details'].append(f"Volume très bon ({volume_ratio:.1f}x) - {bollinger_context}")
+                    elif volume_ratio >= contextual_threshold:
+                        # Score contextuel adaptatif
+                        score_bonus = int(contextual_score * 20)  # 0-20 points
+                        confidence_bonus = contextual_score * 0.08  # 0-0.08 boost
+                        context['score'] += score_bonus
+                        context['confidence_boost'] += confidence_bonus
+                        context['details'].append(f"Volume {volume_quality.lower()} ({volume_ratio:.1f}x) - {bollinger_context}")
+                    elif volume_ratio >= 0.7:  # Volume faible mais utilisable pour mean reversion
+                        if pattern_analysis['signal_type'] == 'mean_reversion':
+                            # Mean reversion tolère volume plus faible
+                            context['score'] += 8
+                            context['details'].append(f"Volume faible acceptable mean reversion ({volume_ratio:.1f}x)")
+                        else:
+                            context['score'] += 3
+                            context['details'].append(f"Volume faible ({volume_ratio:.1f}x) - {bollinger_context}")
+                    else:
+                        # Volume vraiment faible
+                        if pattern_analysis['signal_type'] == 'breakout':
+                            context['score'] -= 10  # Pénalité forte pour breakout sans volume
+                            context['details'].append(f"Volume insuffisant breakout ({volume_ratio:.1f}x)")
+                        else:
+                            context['score'] -= 5  # Pénalité standard
+                            context['details'].append(f"Volume faible ({volume_ratio:.1f}x) - {bollinger_context}")
+                        
+                except Exception as e:
+                    # Fallback sur logique standard si erreur contextuelle
+                    if volume_ratio >= 1.5:
+                        context['score'] += 20
+                        context['confidence_boost'] += 0.08
+                        context['details'].append(f"Volume très bon ({volume_ratio:.1f}x) - standard")
+                    elif volume_ratio >= 1.0:
+                        context['score'] += 10
+                        context['details'].append(f"Volume acceptable ({volume_ratio:.1f}x) - standard")
+                    else:
+                        context['score'] -= 5
+                        context['details'].append(f"Volume faible ({volume_ratio:.1f}x) - standard")
             else:
                 context['score'] -= 5
-                context['details'].append(f"Volume faible ({volume_ratio or 0:.1f}x)")
+                context['details'].append("Volume non disponible")
             
             # 3. Momentum support
             if momentum_10:
@@ -596,3 +642,32 @@ class BollingerProStrategy(BaseStrategy):
             return float(value)
         
         return None
+    
+    def _get_bollinger_volume_context(self, pattern_analysis: Dict) -> str:
+        """Détermine le contexte volume selon le pattern Bollinger détecté"""
+        
+        pattern_type = pattern_analysis.get('type', 'normal')
+        signal_type = pattern_analysis.get('signal_type', 'none')
+        
+        # Mapping des patterns Bollinger vers contextes volume
+        if pattern_type == 'squeeze':
+            # Squeeze: préparation breakout, volume peut être faible avant explosion
+            return "consolidation_break"
+        elif pattern_type == 'expansion':
+            # Expansion: mouvement en cours, volume élevé attendu
+            return "breakout"
+        elif pattern_type == 'contracting':
+            # Contraction: préparation breakout
+            return "consolidation_break"
+        elif signal_type == 'breakout':
+            # Signal de breakout: volume critique
+            return "breakout"
+        elif signal_type == 'mean_reversion':
+            # Mean reversion: volume moins critique, mouvement naturel
+            return "trend_continuation"
+        elif signal_type == 'trend_following':
+            # Trend following: continuation, volume modéré
+            return "trend_continuation"
+        else:
+            # Pattern normal: volume standard
+            return "trend_continuation"

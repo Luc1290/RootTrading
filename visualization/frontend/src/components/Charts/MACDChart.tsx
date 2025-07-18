@@ -191,10 +191,26 @@ function MACDChart({ height = 200 }: MACDChartProps) {
   
   // Synchronisation du zoom avec le graphique principal
   useEffect(() => {
-    if (!chartRef.current || !zoomState.xRange) return;
+    if (!chartRef.current) return;
     
-    // Vérifier que les valeurs ne sont pas null
-    if (zoomState.xRange[0] && zoomState.xRange[1]) {
+    // Si xRange est null, c'est un reset intentionnel - on utilise fitContent
+    if (!zoomState.xRange) {
+      try {
+        chartRef.current.timeScale().fitContent();
+      } catch (error) {
+        console.warn('Error fitting content:', error);
+      }
+      return;
+    }
+    
+    // Vérifier que les valeurs sont des nombres valides
+    if (
+      zoomState.xRange[0] != null && 
+      zoomState.xRange[1] != null &&
+      typeof zoomState.xRange[0] === 'number' &&
+      typeof zoomState.xRange[1] === 'number' &&
+      zoomState.xRange[0] < zoomState.xRange[1]
+    ) {
       try {
         chartRef.current.timeScale().setVisibleRange({
           from: zoomState.xRange[0] as Time,

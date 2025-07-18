@@ -15,6 +15,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 
 from shared.src.enums import OrderSide, SignalStrength
 from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB
+from shared.src.volume_context_detector import volume_context_detector
 
 from .base_strategy import BaseStrategy
 
@@ -379,26 +380,76 @@ class BreakoutProStrategy(BaseStrategy):
         }
         
         try:
-            # 1. Volume explosion (critère principal pour breakouts) - SEUILS STANDARDISÉS
-            if volume_ratio and volume_ratio >= self.min_volume_multiplier:
-                if volume_ratio >= 2.0:  # STANDARDISÉ: Excellent (début pump confirmé)
-                    context['score'] += 35
-                    context['confidence_boost'] += 0.15
-                    context['details'].append(f"Volume excellent ({volume_ratio:.1f}x)")
-                elif volume_ratio >= 1.5:  # STANDARDISÉ: Très bon
-                    context['score'] += 30
-                    context['confidence_boost'] += 0.12
-                    context['details'].append(f"Volume très bon ({volume_ratio:.1f}x)")
-                else:
-                    context['score'] += 20
-                    context['confidence_boost'] += 0.08
-                    context['details'].append(f"Volume bon ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio >= 1.2:  # STANDARDISÉ: Bon
-                context['score'] += 10
-                context['details'].append(f"Volume bon ({volume_ratio:.1f}x)")
+            # 1. Volume explosion (critère principal pour breakouts) - SEUILS CONTEXTUELS ADAPTATIFS
+            if volume_ratio:
+                try:
+                    # Détection contexte spécifique pour breakouts
+                    contextual_threshold, context_name, contextual_score = volume_context_detector.get_contextual_volume_threshold(
+                        base_volume_ratio=volume_ratio,
+                        rsi=latest_data.get('rsi'),
+                        cci=latest_data.get('cci'),
+                        adx=latest_data.get('adx'),
+                        signal_type="BUY",
+                        price_trend="breakout"  # Contexte spécifique breakout
+                    )
+                    
+                    volume_quality = volume_context_detector.get_volume_quality_description(
+                        volume_ratio, context_name
+                    )
+                    
+                    # Scoring contextuel pour breakouts (critère CRITIQUE)
+                    if volume_ratio >= 2.0:  # Excellent absolu - explosion volume
+                        context['score'] += 35
+                        context['confidence_boost'] += 0.15
+                        context['details'].append(f"Volume explosion ({volume_ratio:.1f}x) - {context_name}")
+                    elif volume_ratio >= 1.5:  # Très bon - fort volume
+                        context['score'] += 30
+                        context['confidence_boost'] += 0.12
+                        context['details'].append(f"Volume fort ({volume_ratio:.1f}x) - {context_name}")
+                    elif volume_ratio >= contextual_threshold:
+                        # Volume acceptable selon le contexte market
+                        score_bonus = int(contextual_score * 25)  # 0-25 points (plus élevé pour breakouts)
+                        confidence_bonus = contextual_score * 0.10  # 0-0.10 boost
+                        context['score'] += score_bonus
+                        context['confidence_boost'] += confidence_bonus
+                        context['details'].append(f"Volume {volume_quality.lower()} breakout ({volume_ratio:.1f}x) - {context_name}")
+                    elif volume_ratio >= self.min_volume_multiplier:
+                        # Volume minimum breakout respecté mais pas idéal
+                        context['score'] += 15
+                        context['confidence_boost'] += 0.05
+                        context['details'].append(f"Volume minimum breakout ({volume_ratio:.1f}x) - {context_name}")
+                    else:
+                        # Volume vraiment insuffisant pour breakout valide
+                        # Appliquer une tolérance réduite si contexte favorable
+                        if context_name in ["deep_oversold", "moderate_oversold"] and volume_ratio >= 0.8:
+                            # Tolérance spéciale pour oversold avec breakout
+                            context['score'] += 5
+                            context['details'].append(f"Volume toléré breakout oversold ({volume_ratio:.1f}x) - {context_name}")
+                        else:
+                            context['score'] -= 15  # Pénalité forte pour breakouts sans volume
+                            context['details'].append(f"Volume insuffisant breakout ({volume_ratio:.1f}x) - {context_name} (min: {self.min_volume_multiplier})")
+                        
+                except Exception as e:
+                    # Fallback sur logique standard si erreur contextuelle
+                    if volume_ratio >= self.min_volume_multiplier:
+                        if volume_ratio >= 2.0:
+                            context['score'] += 35
+                            context['confidence_boost'] += 0.15
+                            context['details'].append(f"Volume excellent ({volume_ratio:.1f}x) - standard")
+                        elif volume_ratio >= 1.5:
+                            context['score'] += 30
+                            context['confidence_boost'] += 0.12
+                            context['details'].append(f"Volume très bon ({volume_ratio:.1f}x) - standard")
+                        else:
+                            context['score'] += 20
+                            context['confidence_boost'] += 0.08
+                            context['details'].append(f"Volume bon ({volume_ratio:.1f}x) - standard")
+                    else:
+                        context['score'] -= 15
+                        context['details'].append(f"Volume insuffisant ({volume_ratio:.1f}x) - standard")
             else:
-                context['score'] -= 15  # Pénalité forte pour volume faible
-                context['details'].append(f"Volume insuffisant ({volume_ratio or 0:.1f}x)")
+                context['score'] -= 15  # Pénalité forte pour volume manquant
+                context['details'].append("Volume non disponible pour breakout")
             
             # 2. Volatilité (ATR) - breakouts nécessitent volatilité
             from shared.src.config import ATR_THRESHOLD_VERY_HIGH, ATR_THRESHOLD_MODERATE

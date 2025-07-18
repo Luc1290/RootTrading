@@ -131,6 +131,72 @@ ATR_MIN_BTC = 0.0012                # 0.12% - BTC volatilité minimale
 ATR_MIN_ETH = 0.0015                # 0.15% - ETH volatilité minimale
 ATR_MIN_ALTCOINS = 0.0018           # 0.18% - Altcoins volatilité minimale
 
+# Volume Context Configuration - Seuils adaptatifs selon le contexte market
+VOLUME_CONTEXTS = {
+    "deep_oversold": {
+        "min_ratio": 0.6,
+        "ideal_ratio": 1.2,
+        "rsi_threshold": 30,
+        "cci_threshold": -200,
+        "description": "RSI < 30 et CCI < -200 - Oversold extrême, volume plus tolérant"
+    },
+    "moderate_oversold": {
+        "min_ratio": 0.8,
+        "ideal_ratio": 1.0,
+        "rsi_threshold": 40,
+        "cci_threshold": -150,
+        "description": "RSI < 40 et CCI < -150 - Oversold modéré, légèrement tolérant"
+    },
+    "oversold_bounce": {
+        "min_ratio": 0.8,
+        "ideal_ratio": 1.2,
+        "rsi_threshold": 40,
+        "cci_threshold": -100,
+        "description": "Rebond technique depuis oversold, volume réduit acceptable"
+    },
+    "trend_continuation": {
+        "min_ratio": 1.0,
+        "ideal_ratio": 1.5,
+        "description": "Continuation de tendance établie, volume standard"
+    },
+    "consolidation_break": {
+        "min_ratio": 1.3,
+        "ideal_ratio": 1.8,
+        "description": "Cassure de consolidation, volume confirmation requis"
+    },
+    "breakout": {
+        "min_ratio": 1.5,
+        "ideal_ratio": 2.0,
+        "description": "Breakout de résistance/support, volume élevé obligatoire"
+    },
+    "pump_start": {
+        "min_ratio": 1.2,
+        "ideal_ratio": 2.5,
+        "description": "Début de pump détecté, volume confirmation importante"
+    },
+    "low_volatility": {
+        "min_ratio": 0.9,
+        "ideal_ratio": 1.3,
+        "adx_threshold": 20,
+        "description": "Marché calme (ADX < 20), volume réduit acceptable"
+    },
+    "high_volatility": {
+        "min_ratio": 1.1,
+        "ideal_ratio": 1.6,
+        "adx_threshold": 35,
+        "description": "Marché volatile (ADX > 35), volume légèrement plus élevé"
+    }
+}
+
+# Volume Progressive Pattern Detection
+VOLUME_BUILDUP_CONFIG = {
+    "lookback_periods": 5,           # Nombre de bougies à analyser
+    "min_increase_ratio": 1.1,       # Augmentation minimale entre bougies (10%)
+    "progressive_threshold": 0.7,    # 70% des bougies doivent suivre la progression
+    "spike_detection_ratio": 2.0,    # Ratio pour détecter un spike volume
+    "accumulation_threshold": 1.5    # Seuil d'accumulation progressive
+}
+
 # Signal Aggregator Settings - Optimisés pour stratégies Pro
 SIGNAL_COOLDOWN_MINUTES = 15  # Cooldown plus long pour éviter sur-trading (15min entre signaux)
 VOTE_THRESHOLD = 0.60  # Seuil de vote plus élevé - au moins 60% des stratégies doivent s'accorder

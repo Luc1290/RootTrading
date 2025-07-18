@@ -67,46 +67,46 @@ class ApiService {
     return this.request(`/api/charts/performance?period=${period}&metric=${metric}`);
   }
 
-  // Portfolio API (port 8000)
+  // Portfolio API (via proxy)
   async getPortfolioSummary(): Promise<any> {
-    return this.request(`http://localhost:8000/summary`);
+    return this.request(`/api/portfolio/summary`);
   }
 
   async getPortfolioBalances(): Promise<any> {
-    return this.request(`http://localhost:8000/balances`);
+    return this.request(`/api/portfolio/balances`);
   }
 
   async getTradeHistory(page: number = 1, pageSize: number = 20): Promise<any> {
-    return this.request(`http://localhost:8000/trades?page=${page}&page_size=${pageSize}`);
+    return this.request(`/api/portfolio/trades?page=${page}&page_size=${pageSize}`);
   }
 
   async getPortfolioPerformance(period: string = 'daily'): Promise<any> {
-    return this.request(`http://localhost:8000/performance/${period}`);
+    return this.request(`/api/portfolio/performance/${period}`);
   }
 
   async getActivePositions(): Promise<any> {
-    return this.request(`http://localhost:8000/positions/active`);
+    return this.request(`/api/portfolio/positions/active`);
   }
 
   async getRecentPositions(hours: number = 24): Promise<any> {
-    return this.request(`http://localhost:8000/positions/recent?hours=${hours}`);
+    return this.request(`/api/portfolio/positions/recent?hours=${hours}`);
   }
 
   async getOwnedSymbolsWithVariations(): Promise<any> {
-    return this.request(`http://localhost:8000/symbols/owned`);
+    return this.request(`/api/portfolio/symbols/owned`);
   }
 
-  // Trader API (port 5002)
+  // Trader API (via proxy)
   async getTraderStats(): Promise<any> {
-    return this.request(`http://localhost:5002/stats`);
+    return this.request(`/api/trader/stats`);
   }
 
   async getOrderHistory(limit: number = 50): Promise<any> {
-    return this.request(`http://localhost:5002/orders?limit=${limit}`);
+    return this.request(`/api/trader/orders?limit=${limit}`);
   }
 
   async getTraderHealth(): Promise<any> {
-    return this.request(`http://localhost:5002/health`);
+    return this.request(`/api/trader/health`);
   }
 
   // Alertes système (diagnostic multi-services)

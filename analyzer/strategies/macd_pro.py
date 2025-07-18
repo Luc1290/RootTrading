@@ -19,6 +19,7 @@ from shared.src.config import (
     MACD_HISTOGRAM_VERY_STRONG, MACD_HISTOGRAM_STRONG, MACD_HISTOGRAM_MODERATE, 
     MACD_HISTOGRAM_WEAK, MACD_HISTOGRAM_NEUTRAL
 )
+from shared.src.volume_context_detector import volume_context_detector
 
 from .base_strategy import BaseStrategy
 
@@ -402,29 +403,61 @@ class MACDProStrategy(BaseStrategy):
                 context['score'] -= 10
                 context['details'].append(f"ADX insuffisant ({adx or 0:.1f})")
             
-            # 2. Volume confirmation - SEUILS STANDARDISÉS
-            if volume_ratio and volume_ratio >= 2.0:  # STANDARDISÉ: Excellent (début pump confirmé)
-                context['score'] += 30
-                context['confidence_boost'] += 0.12
-                context['details'].append(f"Volume excellent ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio >= 1.5:  # STANDARDISÉ: Très bon
-                context['score'] += 25
-                context['confidence_boost'] += 0.1
-                context['details'].append(f"Volume très bon ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio >= 1.2:  # STANDARDISÉ: Bon
-                context['score'] += 20
-                context['confidence_boost'] += 0.08
-                context['details'].append(f"Volume bon ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio >= 1.0:  # STANDARDISÉ: Acceptable
-                context['score'] += 15
-                context['confidence_boost'] += 0.05
-                context['details'].append(f"Volume acceptable ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio > 0.8:  # Faible mais utilisable
-                context['score'] += 5
-                context['details'].append(f"Volume faible ({volume_ratio:.1f}x)")
+            # 2. Volume confirmation - SEUILS CONTEXTUELS ADAPTATIFS
+            if volume_ratio:
+                try:
+                    # Détection du contexte market pour volume adaptatif
+                    contextual_threshold, context_name, contextual_score = volume_context_detector.get_contextual_volume_threshold(
+                        base_volume_ratio=volume_ratio,
+                        rsi=latest_data.get('rsi'),
+                        cci=latest_data.get('cci'),
+                        adx=latest_data.get('adx'),
+                        signal_type="BUY"
+                    )
+                    
+                    volume_quality = volume_context_detector.get_volume_quality_description(
+                        volume_ratio, context_name
+                    )
+                    
+                    # Scoring contextuel du volume
+                    if volume_ratio >= 2.0:  # Excellent absolu
+                        context['score'] += 30
+                        context['confidence_boost'] += 0.12
+                        context['details'].append(f"Volume excellent ({volume_ratio:.1f}x) - {context_name}")
+                    elif volume_ratio >= 1.5:  # Très bon
+                        context['score'] += 25
+                        context['confidence_boost'] += 0.1
+                        context['details'].append(f"Volume très bon ({volume_ratio:.1f}x) - {context_name}")
+                    elif volume_ratio >= 1.2:  # Bon
+                        context['score'] += 20
+                        context['confidence_boost'] += 0.08
+                        context['details'].append(f"Volume bon ({volume_ratio:.1f}x) - {context_name}")
+                    elif volume_ratio >= contextual_threshold:  # Contextuel acceptable
+                        # Score basé sur la qualité contextuelle
+                        score_bonus = int(contextual_score * 20)  # 0-20 points
+                        confidence_bonus = contextual_score * 0.06  # 0-0.06 boost
+                        context['score'] += score_bonus
+                        context['confidence_boost'] += confidence_bonus
+                        context['details'].append(f"Volume {volume_quality.lower()} ({volume_ratio:.1f}x) - {context_name}")
+                    else:
+                        # En dessous du seuil contextuel mais pas forcément éliminatoire
+                        penalty = min(5, int((1 - volume_ratio/contextual_threshold) * 10))
+                        context['score'] -= penalty
+                        context['details'].append(f"Volume {volume_quality.lower()} ({volume_ratio:.1f}x) - {context_name}")
+                        
+                except Exception as e:
+                    # Fallback sur la logique standard si erreur
+                    if volume_ratio >= 1.0:
+                        context['score'] += 15
+                        context['confidence_boost'] += 0.05
+                        context['details'].append(f"Volume acceptable ({volume_ratio:.1f}x) - standard")
+                    else:
+                        context['score'] -= 5
+                        context['details'].append(f"Volume faible ({volume_ratio:.1f}x) - standard")
+                        
             else:
                 context['score'] -= 5
-                context['details'].append(f"Volume faible ({volume_ratio or 0:.1f}x)")
+                context['details'].append("Volume non disponible")
             
             # 3. Momentum général
             if momentum_10:

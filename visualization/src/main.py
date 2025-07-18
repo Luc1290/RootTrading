@@ -269,6 +269,118 @@ async def get_available_indicators():
         ]
     }
 
+# ============================================================================
+# Routes Proxy pour les autres services
+# ============================================================================
+
+@app.get("/api/portfolio/{path:path}")
+async def proxy_portfolio(path: str, request: Request):
+    """Proxy vers le service portfolio"""
+    import aiohttp
+    
+    # Construire l'URL complète avec les query parameters
+    query_string = str(request.url.query)
+    portfolio_url = f"http://portfolio:8000/{path}"
+    if query_string:
+        portfolio_url += f"?{query_string}"
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(portfolio_url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                if response.content_type == 'application/json':
+                    data = await response.json()
+                    return data
+                else:
+                    text = await response.text()
+                    return {"data": text}
+    except Exception as e:
+        logger.error(f"Error proxying to portfolio service: {e}")
+        raise HTTPException(status_code=503, detail=f"Portfolio service unavailable: {str(e)}")
+
+@app.get("/api/trader/{path:path}")
+async def proxy_trader(path: str, request: Request):
+    """Proxy vers le service trader"""
+    import aiohttp
+    
+    # Construire l'URL complète avec les query parameters
+    query_string = str(request.url.query)
+    trader_url = f"http://trader:5002/{path}"
+    if query_string:
+        trader_url += f"?{query_string}"
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(trader_url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                if response.content_type == 'application/json':
+                    data = await response.json()
+                    return data
+                else:
+                    text = await response.text()
+                    return {"data": text}
+    except Exception as e:
+        logger.error(f"Error proxying to trader service: {e}")
+        raise HTTPException(status_code=503, detail=f"Trader service unavailable: {str(e)}")
+
+@app.post("/api/trader/{path:path}")
+async def proxy_trader_post(path: str, request: Request):
+    """Proxy POST vers le service trader"""
+    import aiohttp
+    
+    # Récupérer le body de la requête
+    body = await request.body()
+    headers = dict(request.headers)
+    
+    # Construire l'URL complète
+    trader_url = f"http://trader:5002/{path}"
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                trader_url, 
+                data=body,
+                headers={k: v for k, v in headers.items() if k.lower() not in ['host', 'content-length']},
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                if response.content_type == 'application/json':
+                    data = await response.json()
+                    return data
+                else:
+                    text = await response.text()
+                    return {"data": text}
+    except Exception as e:
+        logger.error(f"Error proxying POST to trader service: {e}")
+        raise HTTPException(status_code=503, detail=f"Trader service unavailable: {str(e)}")
+
+@app.post("/api/portfolio/{path:path}")
+async def proxy_portfolio_post(path: str, request: Request):
+    """Proxy POST vers le service portfolio"""
+    import aiohttp
+    
+    # Récupérer le body de la requête
+    body = await request.body()
+    headers = dict(request.headers)
+    
+    # Construire l'URL complète
+    portfolio_url = f"http://portfolio:8000/{path}"
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                portfolio_url, 
+                data=body,
+                headers={k: v for k, v in headers.items() if k.lower() not in ['host', 'content-length']},
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                if response.content_type == 'application/json':
+                    data = await response.json()
+                    return data
+                else:
+                    text = await response.text()
+                    return {"data": text}
+    except Exception as e:
+        logger.error(f"Error proxying POST to portfolio service: {e}")
+        raise HTTPException(status_code=503, detail=f"Portfolio service unavailable: {str(e)}")
+
 # Routes React (à la fin pour ne pas intercepter les routes API)
 if serve_react_app_flag:
     @app.get("/", response_class=HTMLResponse)
