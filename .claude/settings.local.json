@@ -33,7 +33,11 @@
       "Bash(cp:*)",
       "Bash(apt list:*)",
       "Bash(npm install:*)",
-      "Bash(docker ps:*)"
+      "Bash(docker ps:*)",
+      "Bash(mypy:*)",
+      "Bash(ruff check:*)",
+      "Bash(docker run:*)",
+      "Bash(sudo apt:*)"
     ],
     "deny": []
   }
