@@ -277,7 +277,7 @@ class OptimizedAnalyzer:
                 'volatility': round(volatility, 4),
                 'trend_pct': round(price_change * 100, 2),
                 'volume_ratio': round(volume_ratio, 2),
-                'is_high_volume': volume_ratio > 1.5
+                'is_high_volume': volume_ratio > 1.5  # STANDARDISÉ: Très bon volume
             }
             
         except Exception:

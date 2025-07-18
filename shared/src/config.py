@@ -64,8 +64,8 @@ STRATEGY_PARAMS = {
     # Paramètres de base pour TechnicalIndicators
     "rsi": {
         "window": 14,
-        "overbought": 70,
-        "oversold": 30,
+        "overbought": 65,  # STANDARDISÉ: Cohérent avec toutes les stratégies Pro
+        "oversold": 40,   # STANDARDISÉ: Cohérent avec toutes les stratégies Pro
     },
     "ema_cross": {
         "fast_window": 12,
@@ -79,13 +79,13 @@ STRATEGY_PARAMS = {
         "fast_period": 12,
         "slow_period": 26,
         "signal_period": 9,
-        "histogram_threshold": 0.0005,
+        "histogram_threshold": 0.00005,  # STANDARDISÉ: Momentum faible minimum (sera MACD_HISTOGRAM_WEAK)
     },
-    # Paramètres globaux pour toutes les stratégies Pro
+    # Paramètres globaux pour toutes les stratégies Pro - STANDARDISÉS
     "global": {
         "confluence_threshold": 55.0,
-        "min_adx_trend": 25.0,
-        "min_volume_ratio": 1.2,
+        "min_adx_trend": 25.0,         # STANDARDISÉ: ADX_TREND_THRESHOLD
+        "min_volume_ratio": 1.0,       # STANDARDISÉ: Volume acceptable minimum
         "context_score_threshold": 50.0
     }
 }
@@ -94,11 +94,41 @@ STRATEGY_PARAMS = {
 ADX_SMOOTHING_PERIOD = 3
 ADX_HYBRID_MODE = True
 
-# Regime Detection Thresholds (Optimized for crypto volatility)
-ADX_NO_TREND_THRESHOLD = 18.0
-ADX_WEAK_TREND_THRESHOLD = 23.0
-ADX_TREND_THRESHOLD = 25.0  # Seuil pour détecter une tendance (avant 32)
-ADX_STRONG_TREND_THRESHOLD = 35.0  # Seuil pour tendance forte (avant 42)
+# Regime Detection Thresholds - Standardisation ADX (Analyse technique standard)
+ADX_NO_TREND_THRESHOLD = 15.0        # < 15 : Pas de tendance (range/consolidation)
+ADX_WEAK_TREND_THRESHOLD = 20.0      # >= 15 à <20 : Tendance faible  
+ADX_MODERATE_TREND_THRESHOLD = 25.0  # >= 20 à <25 : Tendance modérée
+ADX_TREND_THRESHOLD = 25.0           # >= 25 : Forte tendance (alias pour compatibilité)
+ADX_STRONG_TREND_THRESHOLD = 35.0    # >= 35 : Très forte tendance
+
+# MACD Histogram Thresholds - STANDARDISÉS pour tous les modules
+MACD_HISTOGRAM_VERY_STRONG = 0.001   # >= 0.001 : Momentum très fort (positif/négatif)
+MACD_HISTOGRAM_STRONG = 0.0005       # >= 0.0005 : Momentum fort
+MACD_HISTOGRAM_MODERATE = 0.0001     # >= 0.0001 : Momentum modéré
+MACD_HISTOGRAM_WEAK = 0.00005        # >= 0.00005 : Momentum faible
+MACD_HISTOGRAM_NEUTRAL = 0.00005     # < 0.00005 : Momentum neutre/insignifiant
+
+# ATR Multipliers - Standardisation pour la volatilité et risk management
+ATR_MULTIPLIER_EXTREME = 3.0       # Volatilité extrême (crash protection)
+ATR_MULTIPLIER_VERY_HIGH = 2.5     # Volatilité très élevée (range trading)
+ATR_MULTIPLIER_HIGH = 2.0          # Volatilité élevée (forte tendance)
+ATR_MULTIPLIER_MODERATE = 1.5      # Volatilité modérée (standard)
+ATR_MULTIPLIER_LOW = 1.0           # Volatilité faible (ETH, majors)
+ATR_MULTIPLIER_VERY_LOW = 0.8      # Volatilité très faible (BTC)
+ATR_MULTIPLIER_ALTCOINS = 1.2      # Volatilité altcoins (légèrement plus élevée)
+
+# ATR Threshold Values - Seuils standardisés pour les stratégies (en % du prix)
+ATR_THRESHOLD_EXTREME = 0.008       # 0.8% - Volatilité extrême
+ATR_THRESHOLD_VERY_HIGH = 0.006     # 0.6% - Volatilité très élevée
+ATR_THRESHOLD_HIGH = 0.005          # 0.5% - Volatilité élevée
+ATR_THRESHOLD_MODERATE = 0.003      # 0.3% - Volatilité modérée
+ATR_THRESHOLD_LOW = 0.002           # 0.2% - Volatilité faible
+ATR_THRESHOLD_VERY_LOW = 0.001      # 0.1% - Volatilité très faible
+
+# ATR Minimum Values - Valeurs minimales par type d'actif (en % du prix)
+ATR_MIN_BTC = 0.0012                # 0.12% - BTC volatilité minimale
+ATR_MIN_ETH = 0.0015                # 0.15% - ETH volatilité minimale
+ATR_MIN_ALTCOINS = 0.0018           # 0.18% - Altcoins volatilité minimale
 
 # Signal Aggregator Settings - Optimisés pour stratégies Pro
 SIGNAL_COOLDOWN_MINUTES = 15  # Cooldown plus long pour éviter sur-trading (15min entre signaux)

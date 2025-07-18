@@ -60,10 +60,10 @@ class ReversalDivergenceProStrategy(BaseStrategy):
         # Paramètres divergence avancés
         symbol_params = self.params.get(symbol, {}) if self.params else {}
         self.lookback_periods = symbol_params.get('div_lookback', 20)
-        self.min_swing_strength = symbol_params.get('min_swing_strength', 5)  # Force minimum des swings
-        self.min_price_change = symbol_params.get('min_price_change', 1.5)  # % minimum
-        self.min_indicator_change = symbol_params.get('min_indicator_change', 3.0)  # Points minimum
-        self.confluence_threshold = symbol_params.get('confluence_threshold', 45.0)
+        self.min_swing_strength = symbol_params.get('min_swing_strength', 3)  # ASSOUPLI de 5 à 3
+        self.min_price_change = symbol_params.get('min_price_change', 1.0)  # ASSOUPLI de 1.5 à 1.0
+        self.min_indicator_change = symbol_params.get('min_indicator_change', 2.0)  # ASSOUPLI de 3.0 à 2.0
+        self.confluence_threshold = symbol_params.get('confluence_threshold', 35.0)  # ASSOUPLI de 45 à 35
         self.multiple_div_bonus = symbol_params.get('multiple_div_bonus', 0.15)  # Bonus multi-divergences
         
         # Historique pour divergences
@@ -468,15 +468,19 @@ class ReversalDivergenceProStrategy(BaseStrategy):
         }
         
         try:
-            # 1. Volume confirmation (critique pour retournements)
-            if volume_ratio and volume_ratio > 1.3:
+            # 1. Volume confirmation (critique pour retournements) - SEUILS STANDARDISÉS
+            if volume_ratio and volume_ratio > 1.5:  # STANDARDISÉ: Très bon
                 context['score'] += 25
                 context['confidence_boost'] += 0.1
-                context['details'].append(f"Volume élevé ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio > 1.0:
+                context['details'].append(f"Volume très bon ({volume_ratio:.1f}x)")
+            elif volume_ratio and volume_ratio > 1.2:  # STANDARDISÉ: Bon
+                context['score'] += 20
+                context['confidence_boost'] += 0.08
+                context['details'].append(f"Volume bon ({volume_ratio:.1f}x)")
+            elif volume_ratio and volume_ratio > 1.0:  # STANDARDISÉ: Acceptable
                 context['score'] += 15
                 context['confidence_boost'] += 0.05
-                context['details'].append(f"Volume normal ({volume_ratio:.1f}x)")
+                context['details'].append(f"Volume acceptable ({volume_ratio:.1f}x)")
             else:
                 context['score'] -= 10
                 context['details'].append(f"Volume faible ({volume_ratio or 0:.1f}x)")
@@ -510,13 +514,13 @@ class ReversalDivergenceProStrategy(BaseStrategy):
                     context['score'] += 5
                     context['details'].append(f"Williams neutre ({williams_r:.1f})")
             
-            # 4. Position Bollinger pour extrêmes
+            # 4. Position Bollinger pour extrêmes - STANDARDISÉ
             if bb_position is not None:
-                if bb_position <= 0.1 or bb_position >= 0.9:  # Extrêmes
+                if bb_position <= 0.15 or bb_position >= 0.85:  # STANDARDISÉ: Excellent
                     context['score'] += 20
                     context['confidence_boost'] += 0.08
                     context['details'].append(f"BB position extrême ({bb_position:.2f})")
-                elif bb_position <= 0.2 or bb_position >= 0.8:
+                elif bb_position <= 0.25 or bb_position >= 0.75:  # STANDARDISÉ: Très bon
                     context['score'] += 15
                     context['confidence_boost'] += 0.05
                     context['details'].append(f"BB position favorable ({bb_position:.2f})")
@@ -561,7 +565,7 @@ class ReversalDivergenceProStrategy(BaseStrategy):
         
         # Confluence minimum si disponible
         confluence_score = context.get('confluence_score', 0)
-        if confluence_score > 0 and confluence_score < self.confluence_threshold:
+        if confluence_score > 0 and confluence_score < (self.confluence_threshold - 10):  # ASSOUPLI de 5 à 10  # Encore plus assoupli
             return False
         
         # Force des divergences
@@ -591,7 +595,7 @@ class ReversalDivergenceProStrategy(BaseStrategy):
         
         # Confluence minimum si disponible - assoupli
         confluence_score = context.get('confluence_score', 0)
-        if confluence_score > 0 and confluence_score < (self.confluence_threshold - 5):
+        if confluence_score > 0 and confluence_score < (self.confluence_threshold - 10):  # ASSOUPLI de 5 à 10
             return False
         
         # Force des divergences
@@ -634,10 +638,10 @@ class ReversalDivergenceProStrategy(BaseStrategy):
         # Structure favorable
         base_confidence += structure['favorability'] * 0.1
         
-        # Volume confirmation
-        if volume_ratio and volume_ratio > 1.5:
+        # Volume confirmation - SEUILS STANDARDISÉS
+        if volume_ratio and volume_ratio > 1.5:  # STANDARDISÉ: Très bon
             base_confidence += 0.08
-        elif volume_ratio and volume_ratio > 1.2:
+        elif volume_ratio and volume_ratio > 1.2:  # STANDARDISÉ: Bon
             base_confidence += 0.05
         
         # Probabilité de retournement

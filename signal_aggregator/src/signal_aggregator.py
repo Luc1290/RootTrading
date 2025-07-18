@@ -368,7 +368,7 @@ class SignalAggregator:
                         bb_position = metadata.get('bb_position', 0.5)
                         volume_ratio = metadata.get('volume_ratio', 1.0)
                         
-                        if rsi > 70 or bb_position > 0.9 or volume_ratio > 2.5:
+                        if rsi > 70 or bb_position >= 0.85 or volume_ratio > 2.5:  # STANDARDISÉ: Excellent (très haut, proche bande haute)
                             logger.info(f"✨ Signal unique SELL {symbol} AUTORISÉ - "
                                        f"conditions pump détectées (RSI: {rsi}, BB: {bb_position:.2f}, Vol: {volume_ratio:.1f})")
                         else:
@@ -394,7 +394,7 @@ class SignalAggregator:
                     
                     # Conditions pour signal techniquement excellent
                     is_excellent_technical = (
-                        volume_ratio > 3.0 and  # Volume très élevé
+                        volume_ratio > 2.0 and  # STANDARDISÉ: Volume excellent (début pump confirmé)
                         context_score > 90 and  # Contexte excellent
                         rsi < 30 and  # RSI en survente
                         williams_r < -90 and  # Williams en survente extrême
@@ -1098,8 +1098,8 @@ class SignalAggregator:
                     macd_bullish = macd_line > macd_signal and macd_line > df['macd_line'].iloc[-3]
                 
                 # Conditions strictes pour BUY en downtrend
-                if (rsi < 25 and volume_ratio > 3.0 and support_proximity < 0.02) or \
-                   (rsi < 20 and macd_bullish and volume_ratio > 2.0):
+                if (rsi < 25 and volume_ratio > 2.0 and support_proximity < 0.02) or \
+                   (rsi < 20 and macd_bullish and volume_ratio > 1.5):  # STANDARDISÉ: Très bon volume suffisant
                     allow_buy = True
                     logger.info(f"✅ BUY autorisé en TREND_DOWN pour {symbol}: "
                                f"RSI oversold ({rsi:.1f}), Volume spike ({volume_ratio:.1f}x), "
@@ -1130,7 +1130,7 @@ class SignalAggregator:
                 volume_summary = self.signal_metrics.extract_volume_summary(signals)
                 volume_ratio = volume_summary.get('avg_volume_ratio', 1.0)
                 
-                if rsi_val > 65 or bb_position > 0.85 or volume_ratio > 2.0:
+                if rsi_val > 65 or bb_position >= 0.75 or volume_ratio > 1.5:  # STANDARDISÉ: Très bon (haut de bande)
                     logger.info(f"✅ Signal SELL {symbol} autorisé malgré AVOID - "
                                f"conditions de pump détectées (RSI: {rsi_val:.1f}, BB: {bb_position:.2f}, Vol: {volume_ratio:.1f})")
                 else:

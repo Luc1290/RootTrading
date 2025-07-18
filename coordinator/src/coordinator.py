@@ -328,7 +328,7 @@ class Coordinator:
     
     def _check_active_cycle(self, symbol: str) -> Optional[str]:
         """
-        Vérifie s'il y a un cycle actif pour ce symbole.
+        Vérifie s'il y a un cycle actif pour ce symbole via le portfolio service.
         
         Args:
             symbol: Symbole à vérifier (ex: 'BTCUSDC')
@@ -337,13 +337,13 @@ class Coordinator:
             ID du cycle actif si trouvé, None sinon
         """
         try:
-            # Appeler le service trader pour vérifier les cycles actifs
-            response = self.service_client.get_active_cycles(symbol)
+            # Récupérer les positions actives depuis le portfolio service
+            active_positions = self.service_client.get_active_cycles(symbol)
             
-            if response and response.get('active_cycles'):
-                # Retourner l'ID du premier cycle actif trouvé
-                active_cycle = response['active_cycles'][0]
-                return active_cycle.get('id', 'unknown')
+            if active_positions:
+                # Retourner l'ID de la première position active trouvée
+                position = active_positions[0]
+                return position.get('id', f"position_{symbol}")
             
             return None
             

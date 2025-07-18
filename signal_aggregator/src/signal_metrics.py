@@ -97,18 +97,18 @@ class SignalMetrics:
             if volume_ratios:
                 avg_volume_ratio = sum(volume_ratios) / len(volume_ratios)
                 
-                if avg_volume_ratio >= 3.0:
-                    # Volume très élevé: boost significatif (+15%)
+                if avg_volume_ratio >= 2.0:  # STANDARDISÉ: Excellent (début pump confirmé)
+                    # Volume excellent: boost significatif (+15%)
                     volume_boost = 1.15
-                    logger.info(f"🔊 Volume très élevé détecté: ratio={avg_volume_ratio:.1f} -> boost +15%")
-                elif avg_volume_ratio >= 2.0:
-                    # Volume élevé: boost modéré (+10%)
+                    logger.info(f"🔊 Volume excellent détecté: ratio={avg_volume_ratio:.1f} -> boost +15%")
+                elif avg_volume_ratio >= 1.5:  # STANDARDISÉ: Très bon
+                    # Volume très bon: boost modéré (+10%)
                     volume_boost = 1.10
-                    logger.info(f"📢 Volume élevé détecté: ratio={avg_volume_ratio:.1f} -> boost +10%")
-                elif avg_volume_ratio >= 1.5:
-                    # Volume augmenté: boost léger (+5%)
+                    logger.info(f"📢 Volume très bon détecté: ratio={avg_volume_ratio:.1f} -> boost +10%")
+                elif avg_volume_ratio >= 1.2:  # STANDARDISÉ: Bon
+                    # Volume bon: boost léger (+5%)
                     volume_boost = 1.05
-                    logger.debug(f"📈 Volume augmenté: ratio={avg_volume_ratio:.1f} -> boost +5%")
+                    logger.debug(f"📈 Volume bon: ratio={avg_volume_ratio:.1f} -> boost +5%")
                 elif avg_volume_ratio <= 0.5:
                     # Volume très faible: pénalité (-5%)
                     volume_boost = 0.95

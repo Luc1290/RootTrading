@@ -46,12 +46,13 @@ class RSIProStrategy(BaseStrategy):
         
         # Paramètres RSI avancés
         symbol_params = self.params.get(symbol, {}) if self.params else {}
-        self.oversold_threshold = symbol_params.get('rsi_oversold', 35)  # Assoupli de 30 à 35 pour plus de BUY
-        self.overbought_threshold = symbol_params.get('rsi_overbought', 70)  # Pour fins de pump
-        self.extreme_oversold = symbol_params.get('rsi_extreme_oversold', 25)  # ASSOUPLI de 20 à 25
-        self.extreme_overbought = symbol_params.get('rsi_extreme_overbought', 75)  # ASSOUPLI de 80 à 75
-        self.min_adx = symbol_params.get('min_adx', 20.0)
-        self.confluence_threshold = symbol_params.get('confluence_threshold', 45.0)  # Assoupli de 50 à 45
+        # SEUILS RSI STANDARDISÉS - Version harmonisée avec tous les modules
+        self.oversold_threshold = symbol_params.get('rsi_oversold', 40)  # STANDARDISÉ: 40 pour tous les modules
+        self.overbought_threshold = symbol_params.get('rsi_overbought', 65)  # STANDARDISÉ: 65 pour tous les modules  
+        self.extreme_oversold = symbol_params.get('rsi_extreme_oversold', 25)  # STANDARDISÉ: 25 pour tous les modules
+        self.extreme_overbought = symbol_params.get('rsi_extreme_overbought', 75)  # STANDARDISÉ: 75 pour tous les modules
+        self.min_adx = symbol_params.get('min_adx', 15.0)  # ASSOUPLI de 20 à 15
+        self.confluence_threshold = symbol_params.get('confluence_threshold', 35.0)  # ASSOUPLI de 45 à 35
         
         # Historique pour détection de divergences
         self.price_history = []
@@ -283,14 +284,18 @@ class RSIProStrategy(BaseStrategy):
                     context['score'] += 5
                     context['details'].append(f"Prix proche VWAP ({vwap_distance:+.1f}%)")
             
-            # 5. Volume confirmation
-            if volume_ratio and volume_ratio > 1.3:
+            # 5. Volume confirmation - SEUILS STANDARDISÉS
+            if volume_ratio and volume_ratio > 1.5:  # STANDARDISÉ: Très bon
+                context['score'] += 25
+                context['confidence_boost'] += 0.1
+                context['details'].append(f"Volume très bon ({volume_ratio:.1f}x)")
+            elif volume_ratio and volume_ratio > 1.2:  # STANDARDISÉ: Bon
                 context['score'] += 20
                 context['confidence_boost'] += 0.08
-                context['details'].append(f"Volume fort ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio > 0.6:  # Assoupli de 0.8 à 0.6
+                context['details'].append(f"Volume bon ({volume_ratio:.1f}x)")
+            elif volume_ratio and volume_ratio > 1.0:  # STANDARDISÉ: Acceptable
                 context['score'] += 10
-                context['details'].append(f"Volume normal ({volume_ratio:.1f}x)")
+                context['details'].append(f"Volume acceptable ({volume_ratio:.1f}x)")
             else:
                 context['score'] -= 3  # Assoupli de -5 à -3
                 context['details'].append(f"Volume faible ({volume_ratio or 0:.1f}x)")
@@ -414,7 +419,7 @@ class RSIProStrategy(BaseStrategy):
             return False
         
         # Score de contexte minimum assoupli
-        if context['score'] < 25:  # Assoupli de 30 à 25 pour plus de BUY
+        if context['score'] < 20:  # ASSOUPLI de 25 à 20 pour beaucoup plus de BUY
             return False
         
         # Si confluence disponible, la vérifier - assoupli
@@ -427,11 +432,11 @@ class RSIProStrategy(BaseStrategy):
             return True
         
         # Conditions extrêmes
-        if rsi <= self.extreme_oversold and context['score'] > 50:
+        if rsi <= self.extreme_oversold and context['score'] > 35:  # ASSOUPLI de 50 à 35
             return True
         
         # Conditions standard
-        return context['score'] > 60
+        return context['score'] > 45  # ASSOUPLI de 60 à 45
     
     def _is_bearish_rsi_signal(self, rsi: float, context: Dict, divergence: Dict) -> bool:
         """Détermine si les conditions de vente RSI sont remplies"""
@@ -457,7 +462,7 @@ class RSIProStrategy(BaseStrategy):
             return True
         
         # Conditions standard
-        return context['score'] > 60
+        return context['score'] > 50  # ASSOUPLI de 60 à 50
     
     def _calculate_bullish_confidence(self, rsi: float, context: Dict, divergence: Dict, 
                                      price: float, vwap: float) -> float:

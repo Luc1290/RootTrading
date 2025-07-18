@@ -52,8 +52,9 @@ class BollingerProStrategy(BaseStrategy):
         self.breakout_min_volume = symbol_params.get('breakout_min_volume', 1.3)  # Volume minimum
         self.mean_reversion_zone = symbol_params.get('mean_reversion_zone', 0.15)  # Zone mean reversion
         self.trend_follow_zone = symbol_params.get('trend_follow_zone', 0.85)  # Zone trend following
-        self.min_atr = symbol_params.get('min_atr', 0.002)  # ATR minimum
-        self.confluence_threshold = symbol_params.get('confluence_threshold', 40.0)  # Assoupli de 50 à 40
+        from shared.src.config import ATR_THRESHOLD_LOW
+        self.min_atr = symbol_params.get('min_atr', ATR_THRESHOLD_LOW)  # ATR minimum (0.002)
+        self.confluence_threshold = symbol_params.get('confluence_threshold', 30.0)  # ASSOUPLI de 40 à 30
         
         # Historique pour détection de patterns
         self.bb_width_history = []
@@ -316,8 +317,9 @@ class BollingerProStrategy(BaseStrategy):
         
         try:
             # 1. Volatilité (ATR)
+            from shared.src.config import ATR_THRESHOLD_HIGH
             if atr and atr >= self.min_atr:
-                if atr >= 0.005:  # Haute volatilité
+                if atr >= ATR_THRESHOLD_HIGH:  # 0.005 - Volatilité élevée
                     context['score'] += 20
                     context['confidence_boost'] += 0.05
                     context['details'].append(f"ATR élevé ({atr:.4f})")
@@ -328,18 +330,25 @@ class BollingerProStrategy(BaseStrategy):
                 context['score'] -= 10
                 context['details'].append(f"ATR faible ({atr or 0:.4f})")
             
-            # 2. Volume confirmation
-            if volume_ratio and volume_ratio >= self.breakout_min_volume:
+            # 2. Volume confirmation - SEUILS STANDARDISÉS
+            if volume_ratio and volume_ratio >= 2.0:  # STANDARDISÉ: Excellent (début pump confirmé)
                 context['score'] += 25
                 context['confidence_boost'] += 0.1
-                context['details'].append(f"Volume breakout ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio > 1.0:
+                context['details'].append(f"Volume excellent ({volume_ratio:.1f}x)")
+            elif volume_ratio and volume_ratio > 1.5:  # STANDARDISÉ: Très bon
+                context['score'] += 20
+                context['confidence_boost'] += 0.08
+                context['details'].append(f"Volume très bon ({volume_ratio:.1f}x)")
+            elif volume_ratio and volume_ratio > 1.2:  # STANDARDISÉ: Bon
                 context['score'] += 15
                 context['confidence_boost'] += 0.05
-                context['details'].append(f"Volume élevé ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio > 0.7:
+                context['details'].append(f"Volume bon ({volume_ratio:.1f}x)")
+            elif volume_ratio and volume_ratio > 1.0:  # STANDARDISÉ: Acceptable
+                context['score'] += 10
+                context['details'].append(f"Volume acceptable ({volume_ratio:.1f}x)")
+            elif volume_ratio and volume_ratio > 0.7:  # Faible mais utilisable
                 context['score'] += 5
-                context['details'].append(f"Volume normal ({volume_ratio:.1f}x)")
+                context['details'].append(f"Volume faible ({volume_ratio:.1f}x)")
             else:
                 context['score'] -= 5
                 context['details'].append(f"Volume faible ({volume_ratio or 0:.1f}x)")
@@ -417,7 +426,7 @@ class BollingerProStrategy(BaseStrategy):
         """Détermine si les conditions d'achat Bollinger sont remplies"""
         
         # Score de contexte minimum assoupli
-        if context['score'] < 25:
+        if context['score'] < 20:  # ASSOUPLI de 25 à 20
             return False
         
         # Confluence minimum assouplie
@@ -427,23 +436,27 @@ class BollingerProStrategy(BaseStrategy):
         
         signal_type = pattern['signal_type']
         
-        # 1. Mean reversion (prix bas, retour vers moyenne) - AMÉLIORÉ
-        if signal_type == 'mean_reversion' and bb_position <= 0.25:  # Élargi de 0.15 à 0.25
-            return context['score'] > 40  # Assoupli de 50 à 40
+        # 1. Mean reversion (prix bas, retour vers moyenne) - STANDARDISÉ
+        if signal_type == 'mean_reversion' and bb_position <= 0.25:  # STANDARDISÉ: Très bon (bas de bande)
+            return context['score'] > 30  # ASSOUPLI de 40 à 30
         
-        # 2. Breakout haussier après squeeze - AMÉLIORÉ
+        # 2. Breakout haussier après squeeze - STANDARDISÉ
         if (signal_type == 'breakout' and pattern['type'] in ['squeeze', 'contracting'] and 
-            bb_position > 0.4 and price > bb_middle):  # Assoupli de 0.5 à 0.4
-            return context['score'] > 50  # Assoupli de 60 à 50
+            bb_position > 0.25 and price > bb_middle):  # STANDARDISÉ: Au-dessus de "très bon"
+            return context['score'] > 35  # ASSOUPLI de 50 à 35
         
-        # 3. Trend following - CORRIGÉ pour capturer les débuts de pump
-        if (signal_type == 'trend_following' and bb_position < 0.4 and  # CORRIGÉ: Début pump = position basse
+        # 3. Trend following - STANDARDISÉ pour capturer les débuts de pump
+        if (signal_type == 'trend_following' and bb_position <= 0.45 and  # STANDARDISÉ: Acceptable (position neutre-basse)
             bb_width > self.expansion_threshold):
-            return context['score'] > 50  # Début pump validé
+            return context['score'] > 40  # ASSOUPLI de 50 à 40
         
-        # 4. NOUVEAU: Détection de début de pump (oversold qui remonte)
-        if bb_position < 0.3 and pattern['type'] == 'expanding' and price > bb_middle:
-            return context['score'] > 45  # Seuil modéré pour débuts de pump
+        # 4. NOUVEAU: Détection de début de pump (oversold qui remonte) - STANDARDISÉ
+        if bb_position <= 0.35 and pattern['type'] == 'expanding' and price > bb_middle:  # STANDARDISÉ: Bon (position basse)
+            return context['score'] > 35  # ASSOUPLI de 45 à 35
+        
+        # 5. NOUVEAU: Condition générale pour positions basses - STANDARDISÉ
+        if bb_position <= 0.25 and context['score'] > 50:  # STANDARDISÉ: Très bon (bas de bande)
+            return True  # Force BUY sur position basse
         
         return False
     
@@ -462,8 +475,8 @@ class BollingerProStrategy(BaseStrategy):
         
         signal_type = pattern['signal_type']
         
-        # 1. Mean reversion (prix haut, retour vers moyenne) - CORRIGÉ
-        if signal_type == 'mean_reversion' and bb_position >= 0.75:  # Était 0.85, maintenant 0.75
+        # 1. Mean reversion (prix haut, retour vers moyenne) - STANDARDISÉ
+        if signal_type == 'mean_reversion' and bb_position >= 0.75:  # STANDARDISÉ: Très bon (haut de bande)
             return context['score'] > 40  # Était 50, maintenant 40
         
         # 2. Breakout baissier après squeeze - INCHANGÉ
@@ -471,13 +484,13 @@ class BollingerProStrategy(BaseStrategy):
             bb_position < 0.5 and price < bb_middle):
             return context['score'] > 50  # Était 60, maintenant 50
         
-        # 3. Trend following - CORRIGÉ pour FIN de pump (vendre au sommet)
-        if (signal_type == 'trend_following' and bb_position > 0.8 and  # Seuil élevé pour fin pump
+        # 3. Trend following - STANDARDISÉ pour FIN de pump (vendre au sommet)
+        if (signal_type == 'trend_following' and bb_position >= 0.75 and  # STANDARDISÉ: Très bon (haut de bande)
             bb_width > self.expansion_threshold):
             return context['score'] > 50  # Fin de pump confirmée
         
-        # 4. NOUVEAU : Détection de fin pump (surachat extrême)
-        if bb_position > 0.9 and pattern['type'] == 'expansion':
+        # 4. NOUVEAU : Détection de fin pump (surachat extrême) - STANDARDISÉ
+        if bb_position >= 0.85 and pattern['type'] == 'expansion':  # STANDARDISÉ: Excellent (très haut, proche bande haute)
             return context['score'] > 40  # Seuil bas pour capturer fin pump
         
         return False
@@ -490,18 +503,22 @@ class BollingerProStrategy(BaseStrategy):
         # Force du pattern
         base_confidence += pattern['strength'] * 0.15
         
-        # Position dans les bandes
-        if bb_position <= 0.2:  # Très bas
+        # Position dans les bandes - STANDARDISÉ
+        if bb_position <= 0.15:  # STANDARDISÉ: Excellent (très bas, proche bande basse)
+            base_confidence += 0.15
+        elif bb_position <= 0.25:  # STANDARDISÉ: Très bon (bas de bande)
             base_confidence += 0.1
-        elif bb_position <= 0.3:
+        elif bb_position <= 0.35:  # STANDARDISÉ: Bon (position basse)
             base_confidence += 0.05
         
         # Contexte
         base_confidence += context['confidence_boost']
         
-        # Volume
-        if volume_ratio and volume_ratio > 1.3:
+        # Volume - SEUILS STANDARDISÉS
+        if volume_ratio and volume_ratio > 1.5:  # STANDARDISÉ: Très bon
             base_confidence += 0.08
+        elif volume_ratio and volume_ratio > 1.2:  # STANDARDISÉ: Bon
+            base_confidence += 0.05
         
         # Momentum favorable
         if momentum_10 and momentum_10 > 0.5:
@@ -517,25 +534,25 @@ class BollingerProStrategy(BaseStrategy):
         # Force du pattern
         base_confidence += pattern['strength'] * 0.15
         
-        # Position dans les bandes - CORRIGÉE pour les pumps
-        if bb_position >= 0.9:  # Pump extrême
+        # Position dans les bandes - STANDARDISÉ pour les pumps
+        if bb_position >= 0.85:  # STANDARDISÉ: Excellent (très haut, proche bande haute)
             base_confidence += 0.15
-        elif bb_position >= 0.8:  # Pump fort
+        elif bb_position >= 0.75:  # STANDARDISÉ: Très bon (haut de bande)
             base_confidence += 0.12
-        elif bb_position >= 0.7:  # Pump modéré
+        elif bb_position >= 0.65:  # STANDARDISÉ: Bon (position haute)
             base_confidence += 0.08
-        elif bb_position >= 0.6:  # Début de hausse
+        elif bb_position >= 0.55:  # STANDARDISÉ: Acceptable (position neutre-haute)
             base_confidence += 0.05
         
         # Contexte
         base_confidence += context['confidence_boost']
         
-        # Volume - plus important pour SELL (confirme le pump)
-        if volume_ratio and volume_ratio > 2.0:  # Volume très élevé
+        # Volume - plus important pour SELL (confirme le pump) - SEUILS STANDARDISÉS
+        if volume_ratio and volume_ratio > 2.0:  # STANDARDISÉ: Excellent (début pump confirmé)
             base_confidence += 0.12
-        elif volume_ratio and volume_ratio > 1.5:  # Volume élevé
+        elif volume_ratio and volume_ratio > 1.5:  # STANDARDISÉ: Très bon
             base_confidence += 0.10
-        elif volume_ratio and volume_ratio > 1.2:  # Volume modéré
+        elif volume_ratio and volume_ratio > 1.2:  # STANDARDISÉ: Bon
             base_confidence += 0.08
         
         # Momentum - accepté même si positif (pump en cours)

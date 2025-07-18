@@ -25,8 +25,10 @@ class CrashProtection:
         self.CRASH_THRESHOLD_5M = -0.05  # -5% en 5 minutes = crash
         self.RAPID_DROP_THRESHOLD = -0.02  # -2% en 1 minute = chute rapide
         self.VOLUME_PANIC_MULTIPLIER = 3.0  # Volume 3x supérieur = panique
-        self.RSI_COLLAPSE_THRESHOLD = 25   # RSI < 25 = effondrement momentum
-        self.ATR_EXTREME_MULTIPLIER = 2.5  # ATR 2.5x normal = volatilité extrême
+        self.RSI_COLLAPSE_THRESHOLD = 15   # ASSOUPLI: RSI < 15 = effondrement momentum (pour permettre BUY dans creux normaux)
+        # Import des constantes ATR standardisées
+        from shared.src.config import ATR_MULTIPLIER_EXTREME
+        self.ATR_EXTREME_MULTIPLIER = ATR_MULTIPLIER_EXTREME  # 3.0 - Volatilité extrême (crash protection)
         
         # Stop-loss d'urgence
         self.EMERGENCY_STOP_LOSS = -0.08  # -8% = stop-loss d'urgence
@@ -36,8 +38,8 @@ class CrashProtection:
         self.COLLAPSE_THRESHOLD_5M = -0.12  # -12% en 5min = effondrement total (était -8%)
         self.COLLAPSE_THRESHOLD_1H = -0.20  # -20% en 1h = pas une correction (était -15%)
         self.PANIC_VOLUME_BUY_BLOCK = 8.0   # Volume 8x = panique, pas correction (était 5x)
-        self.RSI_DEAD_CAT_THRESHOLD = 10    # RSI < 10 = dead cat bounce (était 15)
-        self.TREND_BREAKDOWN_ADX = 10       # ADX < 10 = perte de structure (était 15)
+        self.RSI_DEAD_CAT_THRESHOLD = 8     # ASSOUPLI: RSI < 8 = dead cat bounce (pour permettre BUY dans creux normaux)
+        self.TREND_BREAKDOWN_ADX = 10       # ASSOUPLI: ADX < 10 = perte de structure (pour permettre BUY dans creux normaux)
         
         logger.info("🛡️ CrashProtection initialisé")
     
@@ -199,7 +201,7 @@ class CrashProtection:
                 macd_negative = macd < macd_signal and macd < 0
             
             # Conditions d'effondrement
-            if rsi_current < self.RSI_COLLAPSE_THRESHOLD:  # RSI < 25
+            if rsi_current < self.RSI_COLLAPSE_THRESHOLD:  # STANDARDISÉ: RSI < 20
                 return {
                     "is_collapse": True,
                     "type": "MOMENTUM_COLLAPSE",
@@ -239,7 +241,7 @@ class CrashProtection:
             current_price = df['close'].iloc[-1]
             atr_percent = (current_atr / current_price * 100) if current_price > 0 else 0
             
-            if atr_ratio >= self.ATR_EXTREME_MULTIPLIER:  # ATR 2.5x normal
+            if atr_ratio >= self.ATR_EXTREME_MULTIPLIER:  # ATR 3.0x normal - volatilité extrême
                 return {
                     "is_extreme": True,
                     "type": "VOLATILITÉ_EXTRÊME",
@@ -390,14 +392,14 @@ class CrashProtection:
             # 4. RSI DEAD CAT BOUNCE
             if 'rsi_14' in df.columns:
                 rsi_current = df['rsi_14'].iloc[-1]
-                if rsi_current < self.RSI_DEAD_CAT_THRESHOLD:  # RSI < 15
+                if rsi_current < self.RSI_DEAD_CAT_THRESHOLD:  # STANDARDISÉ: RSI < 15
                     reasons.append(f"RSI dead cat bounce ({rsi_current:.0f})")
                     block_score += 2
             
             # 5. PERTE DE STRUCTURE (ADX)
             if 'adx_14' in df.columns:
                 adx_current = df['adx_14'].iloc[-1]
-                if adx_current < self.TREND_BREAKDOWN_ADX:  # ADX < 15
+                if adx_current < self.TREND_BREAKDOWN_ADX:  # STANDARDISÉ: ADX < 15
                     reasons.append(f"Structure cassée (ADX: {adx_current:.0f})")
                     block_score += 1
             
@@ -411,7 +413,7 @@ class CrashProtection:
                     block_score += 1
             
             # DÉCISION FINALE - SEUIL AJUSTÉ POUR CRYPTO
-            should_block = block_score >= 5  # Seuil de sécurité (était 3, maintenant 5)
+            should_block = block_score >= 6  # Seuil de sécurité (ASSOUPLI de 5 à 6)
             
             result = {
                 "block_buy": should_block,

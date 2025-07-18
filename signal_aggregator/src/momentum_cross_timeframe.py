@@ -460,7 +460,7 @@ class MomentumCrossTimeframe:
             
             # 3. Volume confirmation
             volume_ratio = market_data.get('volume_ratio', 1.0)
-            volume_confidence = min(1.0, volume_ratio / 1.5) if volume_ratio > 1.0 else 0.5
+            volume_confidence = min(1.0, volume_ratio / 1.5) if volume_ratio > 1.0 else 0.5  # STANDARDISÉ: 1.5 = Très bon
             confidence_factors.append(volume_confidence * 0.2)
             
             # 4. Qualité des données

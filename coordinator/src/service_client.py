@@ -150,37 +150,29 @@ class ServiceClient:
     
     def get_active_cycles(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Récupère les cycles actifs depuis le trader.
+        Récupère les positions actives depuis le portfolio service.
         
         Args:
             symbol: Filtrer par symbole (optionnel)
             
         Returns:
-            Liste des cycles actifs
+            Liste des positions actives
         """
-        cache_key = f"cycles:{symbol or 'all'}"
-        
-        # Vérifier le cache
-        if cache_key in self._cache:
-            if time.time() - self._cache_ttl[cache_key] < 2.0:  # Cache 2 secondes
-                return self._cache[cache_key]
-        
-        params = {"symbol": symbol} if symbol else None
-        response = self._make_request("trader", "/cycles", params=params)
-        
-        if response:
-            if "cycles" in response:
-                cycles = response["cycles"]
-            elif "data" in response and "cycles" in response["data"]:
-                cycles = response["data"]["cycles"]
-            else:
-                cycles = response if isinstance(response, list) else []
-            # Mettre en cache
-            self._cache[cache_key] = cycles
-            self._cache_ttl[cache_key] = time.time()
-            return cycles
+        try:
+            # Appeler le service portfolio pour récupérer les positions actives
+            response = self._make_request("portfolio", "/positions/active")
             
-        return []
+            if response and isinstance(response, list):
+                # Filtrer par symbole si spécifié
+                if symbol:
+                    return [pos for pos in response if pos.get('symbol') == symbol]
+                return response
+            
+            return []
+            
+        except Exception as e:
+            logger.warning(f"Erreur récupération positions actives: {str(e)}")
+            return []
     
     def create_order(self, order_data: Dict[str, Any]) -> Optional[str]:
         """

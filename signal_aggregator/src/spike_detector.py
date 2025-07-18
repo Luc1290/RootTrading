@@ -7,6 +7,15 @@ from datetime import datetime, timedelta
 import numpy as np
 import json
 
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+
+from shared.src.config import (
+    MACD_HISTOGRAM_VERY_STRONG, MACD_HISTOGRAM_STRONG, MACD_HISTOGRAM_MODERATE, 
+    MACD_HISTOGRAM_WEAK, MACD_HISTOGRAM_NEUTRAL
+)
+
 logger = logging.getLogger(__name__)
 
 class SpikeDetector:
@@ -175,16 +184,30 @@ class SpikeDetector:
                     momentum_score += 0.2
                 if rsi > 70:
                     momentum_score += 0.1
-                if macd_histogram > 0:
+                # SEUILS STANDARDISÉS MACD histogram
+                if macd_histogram > MACD_HISTOGRAM_VERY_STRONG:  # STANDARDISÉ: Momentum très fort
+                    momentum_score += 0.3
+                elif macd_histogram > MACD_HISTOGRAM_STRONG:  # STANDARDISÉ: Momentum fort
                     momentum_score += 0.2
+                elif macd_histogram > MACD_HISTOGRAM_MODERATE:  # STANDARDISÉ: Momentum modéré
+                    momentum_score += 0.1
+                elif macd_histogram > MACD_HISTOGRAM_WEAK:  # STANDARDISÉ: Momentum faible
+                    momentum_score += 0.05
             else:  # SELL
                 # Pour SELL: RSI < 50 et MACD < 0 = bon momentum
                 if rsi < 40:
                     momentum_score += 0.2
                 if rsi < 30:
                     momentum_score += 0.1
-                if macd_histogram < 0:
+                # SEUILS STANDARDISÉS MACD histogram
+                if macd_histogram < -MACD_HISTOGRAM_VERY_STRONG:  # STANDARDISÉ: Momentum très fort
+                    momentum_score += 0.3
+                elif macd_histogram < -MACD_HISTOGRAM_STRONG:  # STANDARDISÉ: Momentum fort
                     momentum_score += 0.2
+                elif macd_histogram < -MACD_HISTOGRAM_MODERATE:  # STANDARDISÉ: Momentum modéré
+                    momentum_score += 0.1
+                elif macd_histogram < -MACD_HISTOGRAM_WEAK:  # STANDARDISÉ: Momentum faible
+                    momentum_score += 0.05
             
             return min(1.0, momentum_score)
             

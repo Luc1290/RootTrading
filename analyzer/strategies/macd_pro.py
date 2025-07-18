@@ -14,7 +14,11 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
 from shared.src.enums import OrderSide, SignalStrength
-from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB
+from shared.src.config import (
+    REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB,
+    MACD_HISTOGRAM_VERY_STRONG, MACD_HISTOGRAM_STRONG, MACD_HISTOGRAM_MODERATE, 
+    MACD_HISTOGRAM_WEAK, MACD_HISTOGRAM_NEUTRAL
+)
 
 from .base_strategy import BaseStrategy
 
@@ -45,13 +49,13 @@ class MACDProStrategy(BaseStrategy):
     def __init__(self, symbol: str, params: Dict[str, Any] = None):
         super().__init__(symbol, params)
         
-        # Paramètres MACD avancés
+        # Paramètres MACD avancés - SEUILS STANDARDISÉS
         symbol_params = self.params.get(symbol, {}) if self.params else {}
-        self.min_histogram_threshold = symbol_params.get('macd_histogram_threshold', 0.00015)  # Plus strict - signaux plus forts requis
-        self.strong_signal_threshold = symbol_params.get('macd_strong_threshold', 0.0006)  # Plus strict - crossovers plus significatifs
-        self.min_volume_ratio = symbol_params.get('min_volume_ratio', 0.8)  # Assoupli de 1.1 à 0.8
-        self.min_adx = symbol_params.get('min_adx', 20.0)
-        self.confluence_threshold = symbol_params.get('confluence_threshold', 40.0)  # Assoupli de 50 à 40
+        self.min_histogram_threshold = symbol_params.get('macd_histogram_threshold', MACD_HISTOGRAM_WEAK)  # STANDARDISÉ: Momentum faible
+        self.strong_signal_threshold = symbol_params.get('macd_strong_threshold', MACD_HISTOGRAM_VERY_STRONG)  # STANDARDISÉ: Momentum très fort
+        self.min_volume_ratio = symbol_params.get('min_volume_ratio', 0.6)  # ASSOUPLI de 0.8 à 0.6
+        self.min_adx = symbol_params.get('min_adx', 15.0)  # ASSOUPLI de 20 à 15
+        self.confluence_threshold = symbol_params.get('confluence_threshold', 30.0)  # ASSOUPLI de 40 à 30
         
         # Historique pour divergences
         self.price_history = []
@@ -73,7 +77,7 @@ class MACDProStrategy(BaseStrategy):
                 logger.warning(f"⚠️ Redis non disponible pour MACD Pro: {e}")
                 self.redis_client = None
         
-        logger.info(f"🎯 MACD Pro initialisé pour {symbol} (Threshold: {self.min_histogram_threshold:.5f}, ADX≥{self.min_adx})")
+        logger.info(f"🎯 MACD Pro initialisé pour {symbol} (Threshold min: {self.min_histogram_threshold:.5f}, Strong: {self.strong_signal_threshold:.5f}, ADX≥{self.min_adx})")
 
     @property
     def name(self) -> str:
@@ -265,19 +269,25 @@ class MACDProStrategy(BaseStrategy):
                 analysis['signal_type'] = 'bullish_crossover'
                 analysis['strength'] = min(1.0, abs(macd_line - macd_signal) * 2000)
                 
-                if histogram > self.strong_signal_threshold:
+                # SEUILS STANDARDISÉS pour quality
+                if histogram > self.strong_signal_threshold:  # >= MACD_HISTOGRAM_VERY_STRONG
                     analysis['quality'] = 'high'
-                elif histogram > self.min_histogram_threshold:
+                elif histogram > MACD_HISTOGRAM_STRONG:  # STANDARDISÉ: Momentum fort
                     analysis['quality'] = 'medium'
+                elif histogram > self.min_histogram_threshold:  # >= MACD_HISTOGRAM_WEAK
+                    analysis['quality'] = 'low'
             
             elif prev_macd_line >= prev_macd_signal and macd_line < macd_signal:
                 analysis['signal_type'] = 'bearish_crossover'
                 analysis['strength'] = min(1.0, abs(macd_signal - macd_line) * 2000)
                 
-                if histogram < -self.strong_signal_threshold:
+                # SEUILS STANDARDISÉS pour quality
+                if histogram < -self.strong_signal_threshold:  # <= -MACD_HISTOGRAM_VERY_STRONG
                     analysis['quality'] = 'high'
-                elif histogram < -self.min_histogram_threshold:
+                elif histogram < -MACD_HISTOGRAM_STRONG:  # STANDARDISÉ: Momentum fort
                     analysis['quality'] = 'medium'
+                elif histogram < -self.min_histogram_threshold:  # <= -MACD_HISTOGRAM_WEAK
+                    analysis['quality'] = 'low'
             
             # 2. Zero Line Cross (MACD line croise zéro)
             elif prev_macd_line <= 0 and macd_line > 0:
@@ -290,13 +300,13 @@ class MACDProStrategy(BaseStrategy):
                 analysis['strength'] = min(1.0, abs(macd_line) * 1000)
                 analysis['quality'] = 'high'
             
-            # 3. Histogram Change (changement de momentum)
-            elif prev_histogram <= 0 and histogram > self.min_histogram_threshold:
+            # 3. Histogram Change (changement de momentum) - SEUILS STANDARDISÉS
+            elif prev_histogram <= 0 and histogram > MACD_HISTOGRAM_MODERATE:  # STANDARDISÉ: Momentum modéré minimum
                 analysis['signal_type'] = 'momentum_bullish'
                 analysis['strength'] = min(1.0, histogram * 1500)
                 analysis['quality'] = 'medium'
             
-            elif prev_histogram >= 0 and histogram < -self.min_histogram_threshold:
+            elif prev_histogram >= 0 and histogram < -MACD_HISTOGRAM_MODERATE:  # STANDARDISÉ: Momentum modéré minimum
                 analysis['signal_type'] = 'momentum_bearish'
                 analysis['strength'] = min(1.0, abs(histogram) * 1500)
                 analysis['quality'] = 'medium'
@@ -341,7 +351,7 @@ class MACDProStrategy(BaseStrategy):
                 price_decline = (recent_prices[price_min_idx] - recent_prices[0]) / recent_prices[0]
                 macd_improvement = recent_macd[macd_max_idx] - recent_macd[0]
                 
-                if price_decline < -0.015 and macd_improvement > 0.0001:
+                if price_decline < -0.015 and macd_improvement > MACD_HISTOGRAM_WEAK:  # STANDARDISÉ: Momentum faible minimum
                     divergence['type'] = 'bullish'
                     divergence['strength'] = min(1.0, abs(price_decline) * 30 + macd_improvement * 5000)
                     divergence['confidence'] = 0.75
@@ -353,7 +363,7 @@ class MACDProStrategy(BaseStrategy):
                 price_rise = (recent_prices[price_max_idx] - recent_prices[0]) / recent_prices[0]
                 macd_decline = recent_macd[0] - recent_macd[macd_min_idx]
                 
-                if price_rise > 0.015 and macd_decline > 0.0001:
+                if price_rise > 0.015 and macd_decline > MACD_HISTOGRAM_WEAK:  # STANDARDISÉ: Momentum faible minimum
                     divergence['type'] = 'bearish'
                     divergence['strength'] = min(1.0, price_rise * 30 + macd_decline * 5000)
                     divergence['confidence'] = 0.75
@@ -392,19 +402,26 @@ class MACDProStrategy(BaseStrategy):
                 context['score'] -= 10
                 context['details'].append(f"ADX insuffisant ({adx or 0:.1f})")
             
-            # 2. Volume confirmation
-            if volume_ratio and volume_ratio >= self.min_volume_ratio:
-                if volume_ratio >= 1.5:
-                    context['score'] += 25
-                    context['confidence_boost'] += 0.1
-                    context['details'].append(f"Volume très élevé ({volume_ratio:.1f}x)")
-                else:
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
-                    context['details'].append(f"Volume élevé ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio > 0.8:
+            # 2. Volume confirmation - SEUILS STANDARDISÉS
+            if volume_ratio and volume_ratio >= 2.0:  # STANDARDISÉ: Excellent (début pump confirmé)
+                context['score'] += 30
+                context['confidence_boost'] += 0.12
+                context['details'].append(f"Volume excellent ({volume_ratio:.1f}x)")
+            elif volume_ratio and volume_ratio >= 1.5:  # STANDARDISÉ: Très bon
+                context['score'] += 25
+                context['confidence_boost'] += 0.1
+                context['details'].append(f"Volume très bon ({volume_ratio:.1f}x)")
+            elif volume_ratio and volume_ratio >= 1.2:  # STANDARDISÉ: Bon
+                context['score'] += 20
+                context['confidence_boost'] += 0.08
+                context['details'].append(f"Volume bon ({volume_ratio:.1f}x)")
+            elif volume_ratio and volume_ratio >= 1.0:  # STANDARDISÉ: Acceptable
+                context['score'] += 15
+                context['confidence_boost'] += 0.05
+                context['details'].append(f"Volume acceptable ({volume_ratio:.1f}x)")
+            elif volume_ratio and volume_ratio > 0.8:  # Faible mais utilisable
                 context['score'] += 5
-                context['details'].append(f"Volume normal ({volume_ratio:.1f}x)")
+                context['details'].append(f"Volume faible ({volume_ratio:.1f}x)")
             else:
                 context['score'] -= 5
                 context['details'].append(f"Volume faible ({volume_ratio or 0:.1f}x)")
@@ -486,7 +503,7 @@ class MACDProStrategy(BaseStrategy):
             return False
         
         # Score de contexte minimum
-        if context['score'] < 30:  # Assoupli de 35 à 30
+        if context['score'] < 25:  # ASSOUPLI de 30 à 25
             return False
         
         # Confluence minimum si disponible
@@ -496,15 +513,15 @@ class MACDProStrategy(BaseStrategy):
         
         # Signaux forts (zero cross, high quality)
         if signal_type in ['bullish_zero_cross'] or macd_analysis['quality'] == 'high':
-            return context['score'] > 50
+            return context['score'] > 40  # ASSOUPLI de 50 à 40
         
         # Divergence haussière forte
-        if divergence['type'] == 'bullish' and divergence['strength'] > 0.6:
-            return context['score'] > 40
+        if divergence['type'] == 'bullish' and divergence['strength'] > 0.5:  # ASSOUPLI de 0.6 à 0.5
+            return context['score'] > 30  # ASSOUPLI de 40 à 30
         
         # Signaux standards
         if signal_type in ['bullish_crossover', 'momentum_bullish']:
-            return context['score'] > 60 and macd_analysis['strength'] > 0.3
+            return context['score'] > 45 and macd_analysis['strength'] > 0.2  # ASSOUPLI de 60 à 45 et 0.3 à 0.2
         
         return False
     
@@ -568,8 +585,10 @@ class MACDProStrategy(BaseStrategy):
         # Contexte
         base_confidence += context['confidence_boost']
         
-        # Volume
-        if volume_ratio and volume_ratio > 1.3:
+        # Volume - SEUILS STANDARDISÉS
+        if volume_ratio and volume_ratio > 1.5:  # STANDARDISÉ: Très bon
+            base_confidence += 0.08
+        elif volume_ratio and volume_ratio > 1.2:  # STANDARDISÉ: Bon
             base_confidence += 0.05
         
         # Force histogramme
@@ -603,8 +622,10 @@ class MACDProStrategy(BaseStrategy):
         # Contexte
         base_confidence += context['confidence_boost']
         
-        # Volume
-        if volume_ratio and volume_ratio > 1.3:
+        # Volume - SEUILS STANDARDISÉS
+        if volume_ratio and volume_ratio > 1.5:  # STANDARDISÉ: Très bon
+            base_confidence += 0.08
+        elif volume_ratio and volume_ratio > 1.2:  # STANDARDISÉ: Bon
             base_confidence += 0.05
         
         # Force histogramme

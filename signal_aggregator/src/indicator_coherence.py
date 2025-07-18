@@ -6,6 +6,12 @@ import logging
 from typing import Dict, Optional, Tuple
 import numpy as np
 
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+
+from shared.src.config import MACD_HISTOGRAM_WEAK
+
 logger = logging.getLogger(__name__)
 
 class IndicatorCoherenceValidator:
@@ -14,10 +20,10 @@ class IndicatorCoherenceValidator:
     """
     
     def __init__(self):
-        # Seuils de cohérence pour pump timing
-        self.rsi_buy_threshold = 35   # RSI minimum pour BUY (début pump)
-        self.rsi_sell_threshold = 65  # RSI minimum pour SELL (fin pump)
-        self.macd_threshold = 0.00005  # MACD minimum significatif
+        # SEUILS STANDARDISÉS - Version harmonisée avec tous les modules
+        self.rsi_buy_threshold = 40   # STANDARDISÉ: RSI minimum pour BUY (début pump)
+        self.rsi_sell_threshold = 65  # STANDARDISÉ: RSI minimum pour SELL (fin pump)
+        self.macd_threshold = MACD_HISTOGRAM_WEAK  # STANDARDISÉ: Momentum faible minimum
         
         # Poids des indicateurs pour le score de cohérence
         # BUY privilégie MACD et EMA (pour acheter en début de pump)
@@ -140,7 +146,7 @@ class IndicatorCoherenceValidator:
                     return 0.7, ""  # Acceptable - pump qui monte
                 elif rsi_val > 60:
                     return 0.5, ""  # Modéré - pump pas terminé
-                elif rsi_val > 50:
+                elif rsi_val > 40:  # STANDARDISÉ: 40 pour cohérence avec tous les modules
                     return 0.3, "RSI trop bas, pump pas fini"
                 else:
                     return 0.1, "RSI trop bas, pas de pump"
@@ -252,7 +258,7 @@ class IndicatorCoherenceValidator:
             
             volume_ratio_val = float(volume_ratio)
             
-            # Logique différente selon BUY/SELL
+            # SEUILS VOLUME STANDARDISÉS - Version harmonisée
             if signal_side == 'BUY':
                 # Pour BUY, volume élevé confirme le début pump
                 if volume_ratio_val > 2.0:
@@ -261,13 +267,13 @@ class IndicatorCoherenceValidator:
                     return 0.9, ""  # Très bon
                 elif volume_ratio_val > 1.2:
                     return 0.8, ""  # Bon
-                elif volume_ratio_val > 0.8:
+                elif volume_ratio_val > 1.0:  # STANDARDISÉ: 1.0 pour tous les modules
                     return 0.6, ""  # Acceptable
                 else:
                     return 0.4, "Volume faible pour début pump"
             else:  # SELL
                 # Pour SELL, volume peut diminuer (essoufflement)
-                if volume_ratio_val > 3.0:
+                if volume_ratio_val > 2.5:  # STANDARDISÉ: 2.5 pour tous les modules
                     return 0.7, "Volume très élevé, pump peut continuer"  # Pump trop fort
                 elif volume_ratio_val > 2.0:
                     return 1.0, ""  # Excellent - volume élevé mais gérable
@@ -288,15 +294,15 @@ class IndicatorCoherenceValidator:
         """
         if signal_side == 'BUY':
             return {
-                'rsi': 'RSI < 50 (idéalement < 30)',
-                'macd': 'MACD line > signal line, histogram > 0',
+                'rsi': 'RSI < 40 (idéalement < 25)',  # STANDARDISÉ
+                'macd': f'MACD line > signal line, histogram > {MACD_HISTOGRAM_WEAK}',  # STANDARDISÉ
                 'ema': 'EMA12 > EMA26 > EMA50',
-                'volume': 'Volume ratio > 1.2'
+                'volume': 'Volume ratio > 1.0'  # STANDARDISÉ
             }
         else:  # SELL
             return {
-                'rsi': 'RSI > 50 (idéalement > 70)',
-                'macd': 'MACD line < signal line, histogram < 0',
+                'rsi': 'RSI > 65 (idéalement > 75)',  # STANDARDISÉ
+                'macd': f'MACD line < signal line, histogram < -{MACD_HISTOGRAM_WEAK}',  # STANDARDISÉ
                 'ema': 'EMA12 < EMA26 < EMA50',
-                'volume': 'Volume ratio > 1.2'
+                'volume': 'Volume ratio > 1.0'  # STANDARDISÉ
             }

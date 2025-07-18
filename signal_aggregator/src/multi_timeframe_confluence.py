@@ -8,6 +8,10 @@ import json
 from enum import Enum
 from dataclasses import dataclass
 from shared.src.technical_indicators import TechnicalIndicators
+from shared.src.config import (
+    MACD_HISTOGRAM_VERY_STRONG, MACD_HISTOGRAM_STRONG, MACD_HISTOGRAM_MODERATE, 
+    MACD_HISTOGRAM_WEAK, MACD_HISTOGRAM_NEUTRAL
+)
 from enhanced_regime_detector import MarketRegime
 
 logger = logging.getLogger(__name__)
@@ -282,13 +286,13 @@ class MultiTimeframeConfluence:
             else:
                 signals.append(-0.3)  # Légèrement baissier
             
-            # 4. Signal Bollinger Bands
+            # 4. Signal Bollinger Bands - STANDARDISÉ
             bb_position = metrics['bb_position']
             bb_width = metrics['bb_width']
             
-            if bb_position > 0.8 and bb_width > 0.03:
+            if bb_position >= 0.75 and bb_width > 0.03:  # STANDARDISÉ: Très bon (haut de bande)
                 signals.append(-0.3)  # Proche de la bande haute, expansion
-            elif bb_position < 0.2 and bb_width > 0.03:
+            elif bb_position <= 0.25 and bb_width > 0.03:  # STANDARDISÉ: Très bon (bas de bande)
                 signals.append(0.3)   # Proche de la bande basse, expansion
             elif bb_width < 0.015:
                 signals.append(0.0)   # Compression, attente breakout
@@ -297,7 +301,8 @@ class MultiTimeframeConfluence:
             adx = metrics['adx']
             williams_r = metrics['williams_r']
             
-            if adx > 30:  # Tendance confirmée
+            from shared.src.config import ADX_TREND_THRESHOLD
+            if adx > ADX_TREND_THRESHOLD:  # Tendance confirmée
                 if williams_r > -30:  # Surachat
                     signals.append(-0.2)
                 elif williams_r < -70:  # Survente
@@ -346,7 +351,8 @@ class MultiTimeframeConfluence:
                 bearish_signals += 1
             
             # ADX force
-            if adx < 25:
+            from shared.src.config import ADX_TREND_THRESHOLD
+            if adx < ADX_TREND_THRESHOLD:
                 return 'sideways'  # Pas de tendance claire
             
             if bullish_signals > bearish_signals:
@@ -365,10 +371,16 @@ class MultiTimeframeConfluence:
         try:
             momentum_signals = []
             
-            # 1. MACD Histogram momentum
+            # 1. MACD Histogram momentum - SEUILS STANDARDISÉS
             macd_histogram = metrics['macd_histogram']
-            if abs(macd_histogram) > 0.001:
+            if abs(macd_histogram) > MACD_HISTOGRAM_VERY_STRONG:  # STANDARDISÉ: Momentum très fort
                 momentum_signals.append(min(1.0, abs(macd_histogram) * 1000))
+            elif abs(macd_histogram) > MACD_HISTOGRAM_STRONG:  # STANDARDISÉ: Momentum fort
+                momentum_signals.append(min(0.8, abs(macd_histogram) * 1500))
+            elif abs(macd_histogram) > MACD_HISTOGRAM_MODERATE:  # STANDARDISÉ: Momentum modéré
+                momentum_signals.append(min(0.6, abs(macd_histogram) * 2000))
+            elif abs(macd_histogram) > MACD_HISTOGRAM_WEAK:  # STANDARDISÉ: Momentum faible
+                momentum_signals.append(min(0.4, abs(macd_histogram) * 3000))
             
             # 2. RSI momentum (distance from 50)
             rsi = metrics['rsi']
@@ -432,8 +444,8 @@ class MultiTimeframeConfluence:
             volume_ratio = metrics['volume_ratio']
             volume_spike = metrics['volume_spike']
             
-            # Volume élevé = confirmation
-            return volume_spike or volume_ratio > 1.2
+            # Volume élevé = confirmation - SEUILS STANDARDISÉS
+            return volume_spike or volume_ratio > 1.2  # STANDARDISÉ: Bon volume minimum
             
         except Exception as e:
             logger.error(f"❌ Erreur vérification volume: {e}")
@@ -447,14 +459,15 @@ class MultiTimeframeConfluence:
             trend_direction = self._determine_trend_direction(metrics)
             
             # Classification basique selon ADX et direction
-            if adx > 40:
+            from shared.src.config import ADX_STRONG_TREND_THRESHOLD, ADX_TREND_THRESHOLD
+            if adx > ADX_STRONG_TREND_THRESHOLD:
                 if trend_direction == 'up':
                     return MarketRegime.STRONG_TREND_UP
                 elif trend_direction == 'down':
                     return MarketRegime.STRONG_TREND_DOWN
                 else:
                     return MarketRegime.RANGE_VOLATILE
-            elif adx > 25:
+            elif adx > ADX_TREND_THRESHOLD:
                 if trend_direction == 'up':
                     return MarketRegime.TREND_UP
                 elif trend_direction == 'down':

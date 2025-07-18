@@ -192,13 +192,13 @@ class SignalValidator:
                 logger.info(f"Signal {side} {symbol} rejeté : {rejection_reason}")
                 return False
             
-            # NOUVELLE VALIDATION : Bollinger Bands pour début/fin pump
+            # NOUVELLE VALIDATION : Bollinger Bands pour début/fin pump - STANDARDISÉ
             bb_position = data_5m.get('bb_position')
             if bb_position is not None:
-                if side == "BUY" and bb_position > 0.7:  # Éviter d'acheter près du sommet
+                if side == "BUY" and bb_position > 0.45:  # STANDARDISÉ: Filtrer si trop haut pour BUY
                     logger.info(f"Signal BUY {symbol} rejeté : BB position trop haute ({bb_position:.2f}), pump déjà avancé")
                     return False
-                elif side == "SELL" and bb_position < 0.6:  # Vendre seulement en haut des BB
+                elif side == "SELL" and bb_position < 0.55:  # STANDARDISÉ: Filtrer si trop bas pour SELL
                     # Vérifier si c'est une vente défensive avant de rejeter
                     defensive_sell_again = self._check_defensive_sell_conditions(symbol, data_5m, prices)
                     if not defensive_sell_again:
@@ -444,8 +444,8 @@ class SignalValidator:
                 elif rsi_5m < 30:  # RSI très bas
                     conditions_met.append(f"rsi_bas:{rsi_5m:.0f}")
             
-            # 3. CASSURE BOLLINGER - Prix sous la bande basse
-            if bb_position is not None and bb_position < 0.2:
+            # 3. CASSURE BOLLINGER - Prix sous la bande basse - STANDARDISÉ
+            if bb_position is not None and bb_position <= 0.15:  # STANDARDISÉ: Excellent (très bas, proche bande basse)
                 conditions_met.append(f"bb_cassure:{bb_position:.2f}")
             
             # 4. VOLUME ANORMAL - Volume élevé pendant la chute

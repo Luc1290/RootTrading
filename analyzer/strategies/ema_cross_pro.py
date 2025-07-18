@@ -47,10 +47,10 @@ class EMACrossProStrategy(BaseStrategy):
         
         # Paramètres EMA avancés
         symbol_params = self.params.get(symbol, {}) if self.params else {}
-        self.min_gap_percent = symbol_params.get('ema_gap_min', 0.003)
-        self.min_adx = symbol_params.get('min_adx', 20.0)  # Assoupli de 25 à 20
-        self.confluence_threshold = symbol_params.get('confluence_threshold', 40.0)  # Assoupli de 50 à 40
-        self.momentum_threshold = symbol_params.get('momentum_threshold', 0.3)  # Momentum minimum
+        self.min_gap_percent = symbol_params.get('ema_gap_min', 0.001)  # ASSOUPLI de 0.003 à 0.001
+        self.min_adx = symbol_params.get('min_adx', 15.0)  # ASSOUPLI de 20 à 15
+        self.confluence_threshold = symbol_params.get('confluence_threshold', 30.0)  # ASSOUPLI de 40 à 30
+        self.momentum_threshold = symbol_params.get('momentum_threshold', 0.2)  # ASSOUPLI de 0.3 à 0.2
         
         # Connexion Redis pour analyses avancées
         self.redis_client = None
@@ -266,14 +266,22 @@ class EMACrossProStrategy(BaseStrategy):
                     context['score'] += 5
                     context['details'].append(f"Williams neutre ({williams_r:.1f})")
             
-            # 3. Confirmation de volume
-            if volume_ratio and volume_ratio > 1.2:
+            # 3. Confirmation de volume - SEUILS STANDARDISÉS
+            if volume_ratio and volume_ratio > 1.5:  # STANDARDISÉ: Très bon
+                context['score'] += 25
+                context['confidence_boost'] += 0.1
+                context['details'].append(f"Volume très bon ({volume_ratio:.1f}x)")
+            elif volume_ratio and volume_ratio > 1.2:  # STANDARDISÉ: Bon
                 context['score'] += 20
                 context['confidence_boost'] += 0.08
-                context['details'].append(f"Volume élevé ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio > 0.8:
+                context['details'].append(f"Volume bon ({volume_ratio:.1f}x)")
+            elif volume_ratio and volume_ratio > 1.0:  # STANDARDISÉ: Acceptable
+                context['score'] += 15
+                context['confidence_boost'] += 0.05
+                context['details'].append(f"Volume acceptable ({volume_ratio:.1f}x)")
+            elif volume_ratio and volume_ratio > 0.8:  # Faible mais utilisable
                 context['score'] += 10
-                context['details'].append(f"Volume normal ({volume_ratio:.1f}x)")
+                context['details'].append(f"Volume faible ({volume_ratio:.1f}x)")
             else:
                 context['score'] -= 5
                 context['details'].append(f"Volume faible ({volume_ratio or 0:.1f}x)")
@@ -341,7 +349,7 @@ class EMACrossProStrategy(BaseStrategy):
         score = context_analysis['score']
         
         # Conditions minimales
-        if score < 40:  # Score minimum
+        if score < 30:  # ASSOUPLI de 40 à 30
             return False
         
         if gap_percent < self.min_gap_percent:  # Gap EMA minimum
@@ -359,15 +367,15 @@ class EMACrossProStrategy(BaseStrategy):
         score = context_analysis['score']
         
         # Conditions minimales assouplis pour SELL
-        if score < 35:  # Score minimum assoupli de 40 à 35
+        if score < 30:  # ASSOUPLI de 35 à 30
             return False
         
-        if gap_percent < self.min_gap_percent * 0.8:  # Gap EMA minimum assoupli
+        if gap_percent < self.min_gap_percent * 0.5:  # Gap EMA minimum encore plus assoupli
             return False
         
         # Si confluence disponible, l'utiliser - assoupli
         confluence_score = context_analysis.get('confluence_score', 0)
-        if confluence_score > 0 and confluence_score < (self.confluence_threshold - 5):
+        if confluence_score > 0 and confluence_score < (self.confluence_threshold - 10):  # ASSOUPLI de 5 à 10
             return False
         
         return True

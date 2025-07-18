@@ -93,12 +93,13 @@ class RegimeFiltering:
                 
             elif regime.name == 'RANGE_TIGHT':
                 # Gestion spéciale pour ADX très faible (marché plat)
+                from shared.src.config import ADX_NO_TREND_THRESHOLD
                 adx = regime_metrics.get('adx', 0)
-                if adx <= 5:  # ADX près de 0
+                if adx <= ADX_NO_TREND_THRESHOLD:  # ADX indiquant pas de tendance
                     # Exiger confirmation volume élevé
                     volume_ratio = signal.get('metadata', {}).get('volume_ratio', 1.0)
-                    if volume_ratio < 2.0:
-                        logger.info(f"🚫 Signal rejeté en RANGE_TIGHT: ADX={adx:.1f} et volume_ratio={volume_ratio:.1f} < 2.0")
+                    if volume_ratio < 1.5:  # STANDARDISÉ: Très bon volume minimum
+                        logger.info(f"🚫 Signal rejeté en RANGE_TIGHT: ADX={adx:.1f} et volume_ratio={volume_ratio:.1f} < 1.5")
                         return False
                     
                     # Marquer pour réduction de poids 0.5x

@@ -435,10 +435,10 @@ class BaseStrategy(ABC):
             # Score composite de momentum
             momentum_score = 0.0
             
-            # Volume boost
-            if volume_ratio > 2.0:
+            # Volume boost - SEUILS STANDARDISÉS
+            if volume_ratio > 2.0:  # STANDARDISÉ: Excellent (début pump confirmé)
                 momentum_score += 0.4
-            elif volume_ratio > 1.5:
+            elif volume_ratio > 1.5:  # STANDARDISÉ: Très bon
                 momentum_score += 0.2
             
             # Prix momentum (changement sur 5 bougies)
@@ -459,8 +459,8 @@ class BaseStrategy(ABC):
             if rsi > 85:
                 momentum_score -= 0.3
             
-            # Condition de pump: score >= 0.5 ET volume >= 1.8x
-            is_pump = momentum_score >= 0.5 and volume_ratio >= 1.8
+            # Condition de pump: score >= 0.5 ET volume >= 1.5x (STANDARDISÉ: Très bon)
+            is_pump = momentum_score >= 0.5 and volume_ratio >= 1.5
             
             return {
                 'is_pump': is_pump,
@@ -490,13 +490,14 @@ class BaseStrategy(ABC):
         if atr_percent is None:
             atr_percent = self.calculate_atr()
         
-        # Seuils adaptés par paire (réduits pour stratégies Pro plus précises)
+        # Seuils adaptés par paire - STANDARDISÉS avec config (convertis en %)
+        from shared.src.config import ATR_MIN_BTC, ATR_MIN_ETH, ATR_MIN_ALTCOINS
         if 'BTC' in self.symbol:
-            min_atr = 0.12  # Réduit pour BTC
+            min_atr = ATR_MIN_BTC * 100  # 0.12% - BTC volatilité minimale
         elif 'ETH' in self.symbol:
-            min_atr = 0.15  # Réduit pour ETH
+            min_atr = ATR_MIN_ETH * 100  # 0.15% - ETH volatilité minimale
         else:
-            min_atr = 0.18  # Réduit pour altcoins
+            min_atr = ATR_MIN_ALTCOINS * 100  # 0.18% - Altcoins volatilité minimale
         
         # Log si filtré
         if atr_percent < min_atr:
@@ -524,13 +525,14 @@ class BaseStrategy(ABC):
         # Limiter l'ATR pour éviter des stops trop extrêmes
         atr_percent = max(0.3, min(atr_percent, 2.0))
         
-        # Pour les paires crypto, ajuster selon la volatilité moyenne
+        # Pour les paires crypto, ajuster selon la volatilité moyenne - STANDARDISÉ
+        from shared.src.config import ATR_MULTIPLIER_VERY_LOW, ATR_MULTIPLIER_LOW, ATR_MULTIPLIER_ALTCOINS
         if 'BTC' in self.symbol:
-            atr_multiplier = 0.8
+            atr_multiplier = ATR_MULTIPLIER_VERY_LOW  # 0.8 - Volatilité très faible (BTC)
         elif 'ETH' in self.symbol:
-            atr_multiplier = 1.0
+            atr_multiplier = ATR_MULTIPLIER_LOW  # 1.0 - Volatilité faible (ETH, majors)
         else:
-            atr_multiplier = 1.2
+            atr_multiplier = ATR_MULTIPLIER_ALTCOINS  # 1.2 - Volatilité altcoins (légèrement plus élevée)
         
         # Distance de base pour le stop
         # MODIFIÉ: Augmentation du stop loss pour éviter les sorties prématurées

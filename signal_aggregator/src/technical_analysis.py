@@ -244,10 +244,10 @@ class TechnicalAnalysis:
             
             if side == 'BUY':
                 # BUY: favorable si volume ratio élevé (indique plus d'activité d'achat)
-                return volume_ratio >= 1.0
+                return volume_ratio >= 1.0  # STANDARDISÉ: Acceptable
             else:  # SELL  
-                # SELL: on accepte même avec volume normal (vente peut se faire avec moins de volume)
-                return volume_ratio >= 0.7
+                # SELL: essoufflement (très bon pour SELL) ou volume correct
+                return volume_ratio >= 0.7  # STANDARDISÉ: < 1.0 essoufflement (très bon pour SELL)
             
         except Exception as e:
             logger.error(f"Erreur validation OBV: {e}")
@@ -361,21 +361,22 @@ class TechnicalAnalysis:
             # Récupérer ADX pour adapter le multiplicateur
             adx_value = await self._get_current_adx(symbol)
             
-            # Multiplicateur ATR adaptatif selon l'ADX (force de tendance)
-            from shared.src.config import ADX_STRONG_TREND_THRESHOLD, ADX_TREND_THRESHOLD
+            # Multiplicateur ATR adaptatif selon l'ADX (force de tendance) - STANDARDISÉ
+            from shared.src.config import (ADX_STRONG_TREND_THRESHOLD, ADX_TREND_THRESHOLD,
+                                         ATR_MULTIPLIER_HIGH, ATR_MULTIPLIER_VERY_HIGH, ATR_MULTIPLIER_EXTREME)
             if adx_value is not None:
                 if adx_value > ADX_STRONG_TREND_THRESHOLD:  # Tendance très forte
-                    atr_multiplier = 2.0  # Stop plus serré en tendance forte
-                    logger.debug(f"ADX forte ({adx_value:.1f}): multiplicateur ATR 2.0x")
+                    atr_multiplier = ATR_MULTIPLIER_HIGH  # 2.0 - Stop plus serré en tendance forte
+                    logger.debug(f"ADX forte ({adx_value:.1f}): multiplicateur ATR {atr_multiplier}x")
                 elif adx_value > ADX_TREND_THRESHOLD:  # Tendance modérée
-                    atr_multiplier = 2.5  # Standard
-                    logger.debug(f"ADX modérée ({adx_value:.1f}): multiplicateur ATR 2.5x")
+                    atr_multiplier = ATR_MULTIPLIER_VERY_HIGH  # 2.5 - Standard
+                    logger.debug(f"ADX modérée ({adx_value:.1f}): multiplicateur ATR {atr_multiplier}x")
                 else:  # Tendance faible ou range
-                    atr_multiplier = 3.0  # Stop plus large en range
-                    logger.debug(f"ADX faible ({adx_value:.1f}): multiplicateur ATR 3.0x")
+                    atr_multiplier = ATR_MULTIPLIER_EXTREME  # 3.0 - Stop plus large en range
+                    logger.debug(f"ADX faible ({adx_value:.1f}): multiplicateur ATR {atr_multiplier}x")
             else:
-                atr_multiplier = 2.5  # Par défaut
-                logger.debug(f"ADX non disponible: multiplicateur ATR par défaut 2.5x")
+                atr_multiplier = ATR_MULTIPLIER_VERY_HIGH  # 2.5 - Par défaut
+                logger.debug(f"ADX non disponible: multiplicateur ATR par défaut {atr_multiplier}x")
             
             # Calculer le stop-loss selon le côté
             atr_distance = atr_value * atr_multiplier
@@ -385,9 +386,12 @@ class TechnicalAnalysis:
             if atr_as_percent > 0.5:  # ATR > 50% du prix = probablement en prix absolu aberrant
                 logger.error(f"🚨 ATR ABERRANT {symbol}: {atr_value:.2f} = {atr_as_percent*100:.1f}% du prix {entry_price:.2f}")
                 # Forcer un ATR raisonnable basé sur la volatilité crypto (2-5%)
-                atr_value = entry_price * 0.03  # 3% par défaut
+                # Utiliser ATR_MULTIPLIER_MODERATE (1.5) pour un ATR de 3% de base
+                from shared.src.config import ATR_MULTIPLIER_MODERATE
+                atr_value = entry_price * 0.02  # 2% base ATR pour crypto
+                atr_multiplier = ATR_MULTIPLIER_MODERATE  # 1.5 - Volatilité modérée (standard)
                 atr_distance = atr_value * atr_multiplier
-                logger.warning(f"🔧 ATR corrigé à 3%: nouvelle distance = {atr_distance:.2f}")
+                logger.warning(f"🔧 ATR corrigé à 3% (2% base × 1.5): nouvelle distance = {atr_distance:.2f}")
             
             # DEBUG: Log des valeurs pour diagnostiquer le problème
             logger.info(f"🔍 ATR Debug {symbol}: atr_value={atr_value:.6f}, multiplier={atr_multiplier}x, distance={atr_distance:.6f}, entry_price={entry_price:.6f}")

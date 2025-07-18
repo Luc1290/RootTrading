@@ -278,14 +278,14 @@ class EnhancedRegimeDetector:
                 regime_score += 0.5  # Peut être début de tendance
                 confidence += 0.15
             
-            # Détermination du régime final
+            # Détermination du régime final - STANDARDISÉ
             if regime_score >= 3.0 and confidence >= 0.7:
                 if current_adx > self.adx_strong_trend:
-                    regime = MarketRegime.STRONG_TREND_UP if latest.get('bb_position', 0.5) > 0.6 else MarketRegime.STRONG_TREND_DOWN
+                    regime = MarketRegime.STRONG_TREND_UP if latest.get('bb_position', 0.5) >= 0.55 else MarketRegime.STRONG_TREND_DOWN  # STANDARDISÉ: Acceptable (position neutre-haute)
                 else:
-                    regime = MarketRegime.TREND_UP if latest.get('bb_position', 0.5) > 0.5 else MarketRegime.TREND_DOWN
+                    regime = MarketRegime.TREND_UP if latest.get('bb_position', 0.5) >= 0.55 else MarketRegime.TREND_DOWN  # STANDARDISÉ: Acceptable (position neutre-haute)
             elif regime_score >= 1.5:
-                regime = MarketRegime.WEAK_TREND_UP if latest.get('bb_position', 0.5) > 0.5 else MarketRegime.WEAK_TREND_DOWN
+                regime = MarketRegime.WEAK_TREND_UP if latest.get('bb_position', 0.5) >= 0.55 else MarketRegime.WEAK_TREND_DOWN  # STANDARDISÉ: Acceptable (position neutre-haute)
             elif regime_score <= -1.5:
                 if current_bb_width < self.bb_squeeze_tight:
                     regime = MarketRegime.RANGE_TIGHT
@@ -534,7 +534,7 @@ class EnhancedRegimeDetector:
             trend_confirmation += 1
         
         # Log détaillé pour debug
-        if adx > 30:
+        if adx > self.adx_trend:
             logger.info(f"Direction consensus: +DI={plus_di:.1f} vs -DI={minus_di:.1f} ({di_bullish}), "
                        f"ROC={roc:.1f}% ({roc_bullish}), Angle={trend_angle:.1f}° ({angle_bullish}) "
                        f"=> Bullish={is_bullish} (score: {bullish_count}/3, confirmations: {trend_confirmation}/3)")
@@ -765,12 +765,15 @@ class EnhancedRegimeDetector:
             
         # Adjust based on trend strength (ADX)
         adx = metrics.get('adx', 25)
-        if adx > 50:  # Very strong trend - reduce danger if trend up
+        # Import des seuils standardisés
+        from shared.src.config import ADX_STRONG_TREND_THRESHOLD, ADX_NO_TREND_THRESHOLD
+        
+        if adx > ADX_STRONG_TREND_THRESHOLD:  # Very strong trend - reduce danger if trend up
             if regime in [MarketRegime.STRONG_TREND_UP, MarketRegime.TREND_UP]:
                 base_danger -= 0.5
             else:  # Strong downtrend - increase danger
                 base_danger += 0.5
-        elif adx < 15:  # Very weak trend - increase danger (choppy)
+        elif adx < ADX_NO_TREND_THRESHOLD:  # Very weak trend - increase danger (choppy)
             base_danger += 1.0
             
         # Cap between 0 and 10

@@ -146,12 +146,14 @@ class EnhancedCooldownManager:
             elif volatility > 0.03:  # Haute volatilité
                 base *= 0.7  # Réduire le cooldown
         
-        # Ajuster selon le volume
+        # Ajuster selon le volume - SEUILS STANDARDISÉS
         if volume_ratio:
             if volume_ratio < 0.5:  # Volume faible
                 base *= 1.5
-            elif volume_ratio > 2.0:  # Volume élevé
+            elif volume_ratio > 2.0:  # STANDARDISÉ: Excellent (début pump confirmé)
                 base *= 0.8
+            elif volume_ratio > 1.5:  # STANDARDISÉ: Très bon
+                base *= 0.9
         
         # Limiter entre 5 et 60 minutes
         return max(5, min(60, int(base)))

@@ -47,11 +47,11 @@ class BreakoutProStrategy(BaseStrategy):
         # Paramètres Breakout avancés
         symbol_params = self.params.get(symbol, {}) if self.params else {}
         self.lookback_periods = symbol_params.get('lookback_periods', 50)  # Plus long pour S/R
-        self.min_breakout_percent = symbol_params.get('breakout_min_percent', 1.5)
-        self.min_volume_multiplier = symbol_params.get('min_volume_multiplier', 1.3)  # Assoupli de 2.0 à 1.3
+        self.min_breakout_percent = symbol_params.get('breakout_min_percent', 0.8)  # ASSOUPLI de 1.5 à 0.8
+        self.min_volume_multiplier = symbol_params.get('min_volume_multiplier', 1.0)  # ASSOUPLI de 1.3 à 1.0
         self.false_breakout_retest_periods = symbol_params.get('retest_periods', 5)
-        self.sr_strength_threshold = symbol_params.get('sr_strength', 3)  # Nombre de touches minimum
-        self.confluence_threshold = symbol_params.get('confluence_threshold', 45.0)  # Assoupli de 55 à 45
+        self.sr_strength_threshold = symbol_params.get('sr_strength', 2)  # ASSOUPLI de 3 à 2
+        self.confluence_threshold = symbol_params.get('confluence_threshold', 35.0)  # ASSOUPLI de 45 à 35
         
         # Historique pour S/R dynamiques
         self.sr_levels = {'supports': [], 'resistances': []}
@@ -379,34 +379,35 @@ class BreakoutProStrategy(BaseStrategy):
         }
         
         try:
-            # 1. Volume explosion (critère principal pour breakouts)
+            # 1. Volume explosion (critère principal pour breakouts) - SEUILS STANDARDISÉS
             if volume_ratio and volume_ratio >= self.min_volume_multiplier:
-                if volume_ratio >= 2.5:
+                if volume_ratio >= 2.0:  # STANDARDISÉ: Excellent (début pump confirmé)
                     context['score'] += 35
                     context['confidence_boost'] += 0.15
-                    context['details'].append(f"Volume explosion ({volume_ratio:.1f}x)")
-                elif volume_ratio >= 2.0:
+                    context['details'].append(f"Volume excellent ({volume_ratio:.1f}x)")
+                elif volume_ratio >= 1.5:  # STANDARDISÉ: Très bon
                     context['score'] += 30
                     context['confidence_boost'] += 0.12
-                    context['details'].append(f"Volume très élevé ({volume_ratio:.1f}x)")
+                    context['details'].append(f"Volume très bon ({volume_ratio:.1f}x)")
                 else:
                     context['score'] += 20
                     context['confidence_boost'] += 0.08
-                    context['details'].append(f"Volume élevé ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio >= 1.2:
+                    context['details'].append(f"Volume bon ({volume_ratio:.1f}x)")
+            elif volume_ratio and volume_ratio >= 1.2:  # STANDARDISÉ: Bon
                 context['score'] += 10
-                context['details'].append(f"Volume modéré ({volume_ratio:.1f}x)")
+                context['details'].append(f"Volume bon ({volume_ratio:.1f}x)")
             else:
                 context['score'] -= 15  # Pénalité forte pour volume faible
                 context['details'].append(f"Volume insuffisant ({volume_ratio or 0:.1f}x)")
             
             # 2. Volatilité (ATR) - breakouts nécessitent volatilité
+            from shared.src.config import ATR_THRESHOLD_VERY_HIGH, ATR_THRESHOLD_MODERATE
             if atr:
-                if atr >= 0.006:  # Haute volatilité
+                if atr >= ATR_THRESHOLD_VERY_HIGH:  # 0.006 - Volatilité très élevée
                     context['score'] += 20
                     context['confidence_boost'] += 0.08
                     context['details'].append(f"Volatilité haute ({atr:.4f})")
-                elif atr >= 0.003:
+                elif atr >= ATR_THRESHOLD_MODERATE:
                     context['score'] += 15
                     context['confidence_boost'] += 0.05
                     context['details'].append(f"Volatilité normale ({atr:.4f})")
@@ -643,10 +644,10 @@ class BreakoutProStrategy(BaseStrategy):
         # Contexte
         base_confidence += context['confidence_boost']
         
-        # Volume (critère principal)
-        if volume_ratio and volume_ratio >= 2.0:
+        # Volume (critère principal) - SEUILS STANDARDISÉS
+        if volume_ratio and volume_ratio >= 2.0:  # STANDARDISÉ: Excellent
             base_confidence += 0.12
-        elif volume_ratio and volume_ratio >= 1.5:
+        elif volume_ratio and volume_ratio >= 1.5:  # STANDARDISÉ: Très bon
             base_confidence += 0.08
         
         # Momentum directionnel
