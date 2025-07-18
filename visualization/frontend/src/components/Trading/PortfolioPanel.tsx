@@ -43,30 +43,50 @@ function PortfolioPanel() {
       setLoading(true);
       setError(null);
       
-      // Récupérer les vraies données du portfolio
-      const [summaryResponse, balancesResponse, performanceResponse] = await Promise.all([
+      // Récupérer les vraies données depuis les bonnes APIs
+      const [summaryResponse, traderStatsResponse, tradeHistoryResponse] = await Promise.all([
         apiService.getPortfolioSummary(),
-        apiService.getPortfolioBalances(),
-        apiService.getPortfolioPerformance('daily')
+        apiService.getTraderStats().catch(() => ({ stats: null })),
+        apiService.getTradeHistory(1, 100).catch(() => ({ trades: [] }))
       ]);
 
-      // Transformer les données pour les métriques
-      const summary = summaryResponse;
-      const balances = balancesResponse;
-      const performance = performanceResponse?.data || [];
-
+      // Données du portfolio (balances réelles)
+      const balances = summaryResponse.balances || [];
+      const totalValue = summaryResponse.total_value || 0;
+      
+      // Données du trader (statistiques réelles)
+      const traderStats = traderStatsResponse.stats;
+      
+      // Données des trades (profits/pertes réels)
+      const trades = tradeHistoryResponse.trades || [];
+      const completedTrades = trades.filter((t: any) => t.status === 'completed' && t.profit_loss !== null);
+      
+      // Calculer les PnL réels
+      const totalPnl = completedTrades.reduce((sum: number, trade: any) => sum + parseFloat(trade.profit_loss || '0'), 0);
+      const winningTrades = completedTrades.filter((t: any) => parseFloat(t.profit_loss || '0') > 0);
+      const calculatedWinRate = completedTrades.length > 0 ? (winningTrades.length / completedTrades.length) * 100 : 0;
+      
+      // PnL journalier (trades des dernières 24h)
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const dailyTrades = completedTrades.filter((t: any) => new Date(t.completed_at) > oneDayAgo);
+      const dailyPnl = dailyTrades.reduce((sum: number, trade: any) => sum + parseFloat(trade.profit_loss || '0'), 0);
+      
+      // Calculer les métriques réelles basées sur les vraies données
+      const usdcBalance = balances.find((b: any) => b.asset === 'USDC')?.total || 0;
+      const investedValue = totalValue - usdcBalance;
+      
       const realMetrics: PortfolioMetrics = {
-        total_value: summary.total_value || 0,
-        available_balance: summary.available_balance || 0,
-        invested_balance: summary.invested_balance || 0,
-        total_pnl: summary.total_pnl || 0,
-        total_pnl_percentage: summary.total_pnl_percentage || 0,
-        daily_pnl: summary.daily_pnl || 0,
-        daily_pnl_percentage: summary.daily_pnl_percentage || 0,
-        total_trades: summary.total_trades || 0,
-        win_rate: summary.win_rate || 0,
-        sharpe_ratio: summary.sharpe_ratio || 0,
-        max_drawdown: summary.max_drawdown || 0
+        total_value: totalValue,
+        available_balance: usdcBalance,
+        invested_balance: investedValue,
+        total_pnl: totalPnl,
+        total_pnl_percentage: totalValue > 0 ? (totalPnl / (totalValue - totalPnl)) * 100 : 0,
+        daily_pnl: dailyPnl,
+        daily_pnl_percentage: totalValue > 0 ? (dailyPnl / totalValue) * 100 : 0,
+        total_trades: traderStats?.executor_stats?.total_orders || completedTrades.length,
+        win_rate: calculatedWinRate,
+        sharpe_ratio: 0, // Nécessite calcul plus complexe
+        max_drawdown: 0 // Nécessite analyse temporelle
       };
 
       // Transformer les balances en positions
@@ -79,7 +99,7 @@ function PortfolioPanel() {
           current_price: balance.value_usdc / balance.total,
           pnl: 0, // Sera calculé avec les données de performance
           pnl_percentage: 0,
-          allocation_percentage: summary.total_value > 0 ? (balance.value_usdc / summary.total_value) * 100 : 0,
+          allocation_percentage: totalValue > 0 ? (balance.value_usdc / totalValue) * 100 : 0,
           last_updated: new Date().toISOString()
         }));
 

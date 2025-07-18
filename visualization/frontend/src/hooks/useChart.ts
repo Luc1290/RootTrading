@@ -72,8 +72,13 @@ export function useChart(options: UseChartOptions = {}) {
     [refetch, isUserInteracting, setIsLoading, setLastUpdate]
   );
   
-  // Force update function - defined before handlers
+  // Force update function with cancellation protection
   const forceUpdate = useCallback(async () => {
+    if (isLoading) {
+      console.log('Update already in progress, skipping...');
+      return;
+    }
+    
     setIsLoading(true);
     try {
       await refetch();
@@ -83,7 +88,7 @@ export function useChart(options: UseChartOptions = {}) {
     } finally {
       setIsLoading(false);
     }
-  }, [refetch, setIsLoading, setLastUpdate]);
+  }, [refetch, setIsLoading, setLastUpdate, isLoading]);
   
   // Mise à jour automatique
   useEffect(() => {
@@ -108,7 +113,7 @@ export function useChart(options: UseChartOptions = {}) {
     }
   }, [config.symbol, config.interval, enableWebSocket, isConnected, subscribe, unsubscribe]);
   
-  // Handlers pour les changements de configuration
+  // Handlers pour les changements de configuration avec debounce
   const handleSymbolChange = useCallback((symbol: TradingSymbol) => {
     // Clear data immediately to avoid showing stale data
     useChartStore.setState({ 
@@ -119,8 +124,11 @@ export function useChart(options: UseChartOptions = {}) {
     });
     updateSymbol(symbol);
     resetZoom();
-    // Force immediate update instead of debounced
-    forceUpdate();
+    
+    // Use debounced update to prevent race conditions
+    setTimeout(() => {
+      forceUpdate();
+    }, 100);
   }, [updateSymbol, resetZoom, forceUpdate]);
   
   const handleIntervalChange = useCallback((interval: TimeInterval) => {
@@ -133,8 +141,11 @@ export function useChart(options: UseChartOptions = {}) {
     });
     updateIntervalConfig(interval);
     resetZoom();
-    // Force immediate update instead of debounced
-    forceUpdate();
+    
+    // Use debounced update to prevent race conditions
+    setTimeout(() => {
+      forceUpdate();
+    }, 100);
   }, [updateIntervalConfig, resetZoom, forceUpdate]);
   
   const handleSignalFilterChange = useCallback((filter: string) => {

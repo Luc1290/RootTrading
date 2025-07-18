@@ -447,16 +447,21 @@ def _register_portfolio_routes(app: FastAPI):
         for row in result:
             is_completed = row['status'] == 'completed'
             
+            # Gérer les valeurs NULL de la base de données
+            entry_price = float(row['entry_price']) if row['entry_price'] is not None else 0.0
+            exit_price = row['exit_price'] if is_completed else row['current_price']
+            current_price = float(exit_price) if exit_price is not None else entry_price
+            
             position = {
                 "symbol": row['symbol'],
                 "side": "LONG",
-                "quantity": float(row['quantity']),
-                "entry_price": float(row['entry_price']),
-                "current_price": float(row['exit_price'] if is_completed else row['current_price']) if (row['exit_price'] if is_completed else row['current_price']) else float(row['entry_price']),
-                "pnl": float(row['pnl']) if row['pnl'] else 0.0,
-                "pnl_percentage": float(row['pnl_percentage']) if row['pnl_percentage'] else 0.0,
-                "value": float(row['current_value']) if row['current_value'] else 0.0,
-                "margin_used": float(row['current_value']) if row['current_value'] else 0.0,
+                "quantity": float(row['quantity']) if row['quantity'] is not None else 0.0,
+                "entry_price": entry_price,
+                "current_price": current_price,
+                "pnl": float(row['pnl']) if row['pnl'] is not None else 0.0,
+                "pnl_percentage": float(row['pnl_percentage']) if row['pnl_percentage'] is not None else 0.0,
+                "value": float(row['current_value']) if row['current_value'] is not None else 0.0,
+                "margin_used": float(row['current_value']) if row['current_value'] is not None else 0.0,
                 "timestamp": row['created_at'].isoformat() if row['created_at'] else None,
                 "completed_at": row['completed_at'].isoformat() if row['completed_at'] else None,
                 "status": "COMPLETED" if is_completed else "ACTIVE",
@@ -605,6 +610,76 @@ def _register_portfolio_routes(app: FastAPI):
         SharedCache.clear('portfolio_summary')
         
         return {"status": "success", "message": f"{len(balances)} soldes mis à jour"}
+
+    @app.get("/symbols/owned")
+    async def get_owned_symbols_with_variations(
+        portfolio: PortfolioModel = Depends(get_portfolio_model),
+        response: Response = None
+    ):
+        """
+        Récupère tous les symboles possédés avec leurs variations de prix 24h.
+        """
+        import requests
+        
+        # Récupérer tous les soldes non nuls
+        balances = portfolio.get_latest_balances()
+        owned_assets = [balance.asset for balance in balances if balance.total > 0 and balance.asset != 'USDC']
+        
+        if not owned_assets:
+            return []
+        
+        # Récupérer les variations de prix pour chaque symbole
+        symbols_with_variations = []
+        
+        for asset in owned_assets:
+            symbol = f"{asset}USDC"
+            try:
+                # Appel à l'API visualization pour récupérer 24h de données (24 heures en 1h = 24 points)
+                viz_response = requests.get(
+                    f"http://visualization:5009/api/charts/market/{symbol}?interval=1h&limit=24",
+                    timeout=5
+                )
+                
+                if viz_response.status_code == 200:
+                    data = viz_response.json()
+                    price_change_24h = data.get('price_change_24h', 0.0)
+                    latest_price = data.get('latest_price', 0.0)
+                    
+                    print(f"Prix récupéré pour {symbol}: {latest_price}, variation: {price_change_24h}%")
+                    
+                    symbols_with_variations.append({
+                        "symbol": symbol,
+                        "asset": asset,
+                        "price": latest_price,
+                        "price_change_24h": price_change_24h
+                    })
+                else:
+                    print(f"Erreur API pour {symbol}: HTTP {viz_response.status_code}")
+                    # Symbole sans données de marché
+                    symbols_with_variations.append({
+                        "symbol": symbol,
+                        "asset": asset,
+                        "price": 0.0,
+                        "price_change_24h": 0.0
+                    })
+            except Exception as e:
+                print(f"Erreur réseau pour {symbol}: {e}")
+                symbols_with_variations.append({
+                    "symbol": symbol,
+                    "asset": asset,
+                    "price": 0.0,
+                    "price_change_24h": 0.0
+                })
+        
+        # Trier par valeur décroissante du portfolio
+        balance_dict = {b.asset: b.value_usdc for b in balances}
+        symbols_with_variations.sort(key=lambda x: balance_dict.get(x['asset'], 0), reverse=True)
+        
+        # Cache pour 30 secondes
+        if response:
+            response.headers["Cache-Control"] = "public, max-age=30"
+        
+        return symbols_with_variations
 
 
 def _register_diagnostic_routes(app: FastAPI):

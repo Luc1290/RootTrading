@@ -12,7 +12,7 @@ function VolumeChart({ height = 150 }: VolumeChartProps) {
   const chartRef = useRef<IChartApi | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   
-  const { marketData, zoomState } = useChartStore();
+  const { marketData, zoomState, config } = useChartStore();
   
   // Initialisation du graphique
   useEffect(() => {
@@ -79,6 +79,19 @@ function VolumeChart({ height = 150 }: VolumeChartProps) {
       chart.remove();
     };
   }, [height]);
+  
+  // Nettoyage lors du changement de symbole ou interval
+  useEffect(() => {
+    if (!volumeSeriesRef.current) return;
+    
+    try {
+      // Nettoyer toutes les données de volume
+      volumeSeriesRef.current.setData([]);
+    } catch (error) {
+      console.error('Error during Volume cleanup:', error);
+    }
+    
+  }, [config.symbol, config.interval]);
   
   // Mise à jour des données de volume
   useEffect(() => {

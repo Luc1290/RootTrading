@@ -92,6 +92,10 @@ class ApiService {
     return this.request(`http://localhost:8000/positions/recent?hours=${hours}`);
   }
 
+  async getOwnedSymbolsWithVariations(): Promise<any> {
+    return this.request(`http://localhost:8000/symbols/owned`);
+  }
+
   // Trader API (port 5002)
   async getTraderStats(): Promise<any> {
     return this.request(`http://localhost:5002/stats`);
@@ -107,20 +111,7 @@ class ApiService {
 
   // Alertes système (diagnostic multi-services)
   async getSystemAlerts(): Promise<any> {
-    try {
-      const [portfolioHealth, traderHealth] = await Promise.all([
-        this.request(`http://localhost:8000/health`).catch(() => ({ status: 'offline', service: 'portfolio' })),
-        this.request(`http://localhost:5002/health`).catch(() => ({ status: 'offline', service: 'trader' }))
-      ]);
-
-      return {
-        portfolio: portfolioHealth,
-        trader: traderHealth
-      };
-    } catch (error) {
-      console.error('System alerts fetch error:', error);
-      return { portfolio: { status: 'error' }, trader: { status: 'error' } };
-    }
+    return this.request('/api/system/alerts');
   }
   
   // Symboles disponibles

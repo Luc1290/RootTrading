@@ -84,6 +84,42 @@ async def health_check():
         "postgres_connected": data_manager.is_postgres_connected() if data_manager else False
     }
 
+@app.get("/api/system/alerts")
+async def get_system_alerts():
+    """Get system health alerts from all services"""
+    import aiohttp
+    
+    async def fetch_service_health(url: str, service_name: str):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data
+                    else:
+                        return {"status": "error", "service": service_name, "error": f"HTTP {response.status}"}
+        except Exception as e:
+            return {"status": "offline", "service": service_name, "error": str(e)}
+    
+    # Appels vers les services Docker
+    portfolio_health, trader_health = await asyncio.gather(
+        fetch_service_health("http://portfolio:8000/health", "portfolio"),
+        fetch_service_health("http://trader:5002/health", "trader"),
+        return_exceptions=True
+    )
+    
+    # Gérer les exceptions
+    if isinstance(portfolio_health, Exception):
+        portfolio_health = {"status": "offline", "service": "portfolio", "error": str(portfolio_health)}
+    if isinstance(trader_health, Exception):
+        trader_health = {"status": "offline", "service": "trader", "error": str(trader_health)}
+    
+    return {
+        "portfolio": portfolio_health,
+        "trader": trader_health,
+        "timestamp": datetime.utcnow().isoformat() + 'Z'
+    }
+
 @app.get("/api/charts/market/{symbol}")
 async def get_market_chart(
     symbol: str,

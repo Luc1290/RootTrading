@@ -1,30 +1,121 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useChart } from '@/hooks/useChart';
-import { useAvailableSymbols } from '@/hooks/useApi';
+import { apiService } from '@/services/api';
 import type { TradingSymbol } from '@/types';
+
+interface OwnedSymbol {
+  symbol: string;
+  asset: string;
+  price: number;
+  price_change_24h: number;
+}
 
 function SymbolSelector() {
   const { config, handleSymbolChange } = useChart();
-  const { data: symbolsData } = useAvailableSymbols();
-  
-  const symbols = symbolsData?.symbols || ['BTCUSDC', 'ETHUSDC', 'SOLUSDC', 'XRPUSDC'];
-  
+  const [ownedSymbols, setOwnedSymbols] = useState<OwnedSymbol[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchOwnedSymbols();
+    const interval = setInterval(fetchOwnedSymbols, 30000); // Refresh every 30s
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchOwnedSymbols = async () => {
+    try {
+      const symbols = await apiService.getOwnedSymbolsWithVariations();
+      setOwnedSymbols(symbols || []);
+    } catch (error) {
+      console.error('Error fetching owned symbols:', error);
+      // Fallback aux symboles par défaut
+      setOwnedSymbols([
+        { symbol: 'BTCUSDC', asset: 'BTC', price: 119000, price_change_24h: -0.6 },
+        { symbol: 'ETHUSDC', asset: 'ETH', price: 3400, price_change_24h: -0.9 },
+        { symbol: 'SOLUSDC', asset: 'SOL', price: 173, price_change_24h: 2.1 }
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatPercentage = (value: number): string => {
+    const sign = value > 0 ? '+' : '';
+    return `${sign}${value.toFixed(2)}%`;
+  };
+
+  const formatPrice = (price: number): string => {
+    if (price >= 1000) {
+      return `$${(price / 1000).toFixed(1)}k`;
+    }
+    return `$${price.toFixed(2)}`;
+  };
+
+  const getVariationColor = (change: number): string => {
+    if (change > 0) return 'text-green-400';
+    if (change < 0) return 'text-red-400';
+    return 'text-gray-400';
+  };
+
+  const getVariationBg = (change: number): string => {
+    if (change > 0) return 'bg-green-900/30 border-green-700/50';
+    if (change < 0) return 'bg-red-900/30 border-red-700/50';
+    return 'bg-gray-900/30 border-gray-700/50';
+  };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col space-y-2">
+        <label className="text-xs text-gray-300 font-medium">Symboles Possédés</label>
+        <div className="flex items-center justify-center p-4 bg-dark-300 rounded-lg">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-500"></div>
+          <span className="ml-2 text-gray-400">Chargement des symboles...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col space-y-1">
+    <div className="flex flex-col space-y-2">
       <label className="text-xs text-gray-300 font-medium">
-        Symbole
+        Symboles Possédés ({ownedSymbols.length}) - Variations 24h
       </label>
-      <select
-        value={config.symbol}
-        onChange={(e) => handleSymbolChange(e.target.value as TradingSymbol)}
-        className="select min-w-[120px]"
-      >
-        {symbols.map((symbol) => (
-          <option key={symbol} value={symbol}>
-            {symbol.replace('USDC', '/USDC')}
-          </option>
+      
+      <div className="flex flex-wrap gap-2 p-3 bg-dark-300 rounded-lg max-h-32 overflow-y-auto">
+        {ownedSymbols.map((symbolData) => (
+          <button
+            key={symbolData.symbol}
+            onClick={() => handleSymbolChange(symbolData.symbol as TradingSymbol)}
+            className={`flex flex-col items-center p-2 rounded-lg border transition-all duration-200 hover:scale-105 min-w-[80px] ${
+              config.symbol === symbolData.symbol 
+                ? 'bg-primary-900/50 border-primary-500 ring-1 ring-primary-500' 
+                : `${getVariationBg(symbolData.price_change_24h)} hover:bg-dark-200`
+            }`}
+          >
+            {/* Symbole */}
+            <div className="text-white font-bold text-sm">
+              {symbolData.asset}
+            </div>
+            
+            {/* Prix */}
+            {symbolData.price > 0 && (
+              <div className="text-gray-300 text-xs">
+                {formatPrice(symbolData.price)}
+              </div>
+            )}
+            
+            {/* Variation */}
+            <div className={`text-xs font-medium ${getVariationColor(symbolData.price_change_24h)}`}>
+              {formatPercentage(symbolData.price_change_24h)}
+            </div>
+          </button>
         ))}
-      </select>
+        
+        {ownedSymbols.length === 0 && (
+          <div className="text-center text-gray-400 py-4 w-full">
+            Aucun symbole possédé trouvé
+          </div>
+        )}
+      </div>
     </div>
   );
 }

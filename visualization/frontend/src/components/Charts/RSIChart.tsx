@@ -15,7 +15,7 @@ function RSIChart({ height = 200 }: RSIChartProps) {
   const oversoldLineRef = useRef<ISeriesApi<'Line'> | null>(null);
   const neutralLineRef = useRef<ISeriesApi<'Line'> | null>(null);
   
-  const { marketData, indicators, zoomState } = useChartStore();
+  const { marketData, indicators, zoomState, config } = useChartStore();
   
   // Initialisation du graphique
   useEffect(() => {
@@ -118,6 +118,22 @@ function RSIChart({ height = 200 }: RSIChartProps) {
       chart.remove();
     };
   }, [height]);
+  
+  // Nettoyage lors du changement de symbole ou interval
+  useEffect(() => {
+    if (!rsiSeriesRef.current) return;
+    
+    try {
+      // Nettoyer toutes les données
+      rsiSeriesRef.current.setData([]);
+      overboughtLineRef.current?.setData([]);
+      oversoldLineRef.current?.setData([]);
+      neutralLineRef.current?.setData([]);
+    } catch (error) {
+      console.error('Error during RSI cleanup:', error);
+    }
+    
+  }, [config.symbol, config.interval]);
   
   // Mise à jour des données RSI
   useEffect(() => {

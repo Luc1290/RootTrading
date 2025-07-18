@@ -149,6 +149,44 @@ function MarketChart({ height = 750 }: MarketChartProps) {
     };
   }, [height]);
   
+  // Nettoyage complet lors du changement de symbole ou interval
+  useEffect(() => {
+    if (!chartRef.current || !candlestickSeriesRef.current) return;
+    
+    try {
+      // Nettoyer toutes les données des séries existantes
+      candlestickSeriesRef.current.setData([]);
+      
+      // Nettoyer les séries EMA
+      Object.values(emaSeriesRef.current).forEach(series => {
+        if (series && chartRef.current) {
+          try {
+            chartRef.current.removeSeries(series);
+          } catch (e) {
+            console.warn('Error removing EMA series:', e);
+          }
+        }
+      });
+      emaSeriesRef.current = {};
+      
+      // Nettoyer les séries de signaux
+      Object.values(signalSeriesRef.current).forEach(series => {
+        if (series && chartRef.current) {
+          try {
+            chartRef.current.removeSeries(series);
+          } catch (e) {
+            console.warn('Error removing signal series:', e);
+          }
+        }
+      });
+      signalSeriesRef.current = {};
+      
+    } catch (error) {
+      console.error('Error during chart cleanup:', error);
+    }
+    
+  }, [config.symbol, config.interval]); // Se déclenche quand symbole OU interval change
+  
   // Mise à jour des données candlestick
   useEffect(() => {
     if (!marketData || !candlestickSeriesRef.current) return;

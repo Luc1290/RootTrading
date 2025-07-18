@@ -15,7 +15,7 @@ function MACDChart({ height = 200 }: MACDChartProps) {
   const histogramSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const zeroLineRef = useRef<ISeriesApi<'Line'> | null>(null);
   
-  const { marketData, indicators, zoomState } = useChartStore();
+  const { marketData, indicators, zoomState, config } = useChartStore();
   
   // Initialisation du graphique
   useEffect(() => {
@@ -123,6 +123,22 @@ function MACDChart({ height = 200 }: MACDChartProps) {
       chart.remove();
     };
   }, [height]);
+  
+  // Nettoyage lors du changement de symbole ou interval
+  useEffect(() => {
+    if (!macdSeriesRef.current || !signalSeriesRef.current || !histogramSeriesRef.current) return;
+    
+    try {
+      // Nettoyer toutes les données
+      macdSeriesRef.current.setData([]);
+      signalSeriesRef.current.setData([]);
+      histogramSeriesRef.current.setData([]);
+      zeroLineRef.current?.setData([]);
+    } catch (error) {
+      console.error('Error during MACD cleanup:', error);
+    }
+    
+  }, [config.symbol, config.interval]);
   
   // Mise à jour des données MACD
   useEffect(() => {

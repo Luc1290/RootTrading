@@ -214,10 +214,18 @@ class ChartService:
         if len(candles) < 2:
             return 0
         
+        # Utiliser le premier et dernier prix disponibles
+        # Si on a 24h de données (24 points en 1h), c'est vraiment 24h
+        # Si on a moins, c'est la période disponible
         first_close = candles[0]["close"]
         last_close = candles[-1]["close"]
         
         if first_close == 0:
             return 0
             
-        return ((last_close - first_close) / first_close) * 100
+        change_percent = ((last_close - first_close) / first_close) * 100
+        
+        # Log pour debug
+        logger.debug(f"Price change calculation: {first_close} -> {last_close} = {change_percent:.2f}% ({len(candles)} points)")
+        
+        return change_percent

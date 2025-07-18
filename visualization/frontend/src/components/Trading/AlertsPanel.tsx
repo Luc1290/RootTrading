@@ -30,33 +30,38 @@ function AlertsPanel() {
       // Récupérer les vraies données de santé des services
       const healthResponse = await apiService.getSystemAlerts();
       
-      // Transformer les données de santé en alertes
       const realAlerts: SystemAlert[] = [];
       
       // Traiter les alertes du portfolio
       if (healthResponse.portfolio) {
+        const isPortfolioHealthy = healthResponse.portfolio.status === 'ok' || healthResponse.portfolio.status === 'healthy';
         const portfolioAlert: SystemAlert = {
           id: `portfolio_${Date.now()}`,
-          type: healthResponse.portfolio.status === 'ok' ? 'success' : 'error',
+          type: isPortfolioHealthy ? 'success' : 'error',
           service: 'portfolio',
-          message: healthResponse.portfolio.status === 'ok' ? 'Service Portfolio opérationnel' : 'Problème avec le service Portfolio',
+          message: isPortfolioHealthy ? 'Service Portfolio opérationnel' : `Service Portfolio: ${healthResponse.portfolio.status}`,
           timestamp: new Date().toISOString(),
-          resolved: healthResponse.portfolio.status === 'ok',
-          details: healthResponse.portfolio.database ? `DB: ${healthResponse.portfolio.database}` : 'Pas de détails disponibles'
+          resolved: isPortfolioHealthy,
+          details: isPortfolioHealthy 
+            ? `DB: ${healthResponse.portfolio.database || 'OK'}, Uptime: ${healthResponse.portfolio.uptime || 'N/A'}` 
+            : `Erreur: ${healthResponse.portfolio.error || healthResponse.portfolio.status}`
         };
         realAlerts.push(portfolioAlert);
       }
       
       // Traiter les alertes du trader
       if (healthResponse.trader) {
+        const isTraderHealthy = healthResponse.trader.status === 'healthy' || healthResponse.trader.status === 'ok';
         const traderAlert: SystemAlert = {
           id: `trader_${Date.now()}`,
-          type: healthResponse.trader.status === 'healthy' ? 'success' : 'error',
+          type: isTraderHealthy ? 'success' : 'error',
           service: 'trader',
-          message: healthResponse.trader.status === 'healthy' ? 'Service Trader opérationnel' : 'Problème avec le service Trader',
+          message: isTraderHealthy ? 'Service Trader opérationnel' : `Service Trader: ${healthResponse.trader.status}`,
           timestamp: new Date().toISOString(),
-          resolved: healthResponse.trader.status === 'healthy',
-          details: healthResponse.trader.mode ? `Mode: ${healthResponse.trader.mode}, Symboles: ${healthResponse.trader.symbols?.length || 0}` : 'Service non disponible'
+          resolved: isTraderHealthy,
+          details: isTraderHealthy 
+            ? `Mode: ${healthResponse.trader.mode || 'N/A'}, Symboles: ${healthResponse.trader.symbols?.length || 0}, Uptime: ${Math.floor((healthResponse.trader.uptime || 0) / 3600)}h`
+            : `Erreur: ${healthResponse.trader.error || healthResponse.trader.status}`
         };
         realAlerts.push(traderAlert);
       }
@@ -70,7 +75,7 @@ function AlertsPanel() {
           message: 'Surveillance des services en cours',
           timestamp: new Date().toISOString(),
           resolved: true,
-          details: 'Aucune alerte critique détectée'
+          details: 'Monitoring des services en cours d\'initialisation'
         });
       }
 
