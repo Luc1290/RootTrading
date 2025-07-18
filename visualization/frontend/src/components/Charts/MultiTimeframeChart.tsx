@@ -14,9 +14,9 @@ interface TimeframeData {
 function MultiTimeframeChart() {
   const { config } = useChartStore();
   const [timeframes, setTimeframes] = useState<TimeframeData[]>([
-    { interval: '1h', label: '1H', data: null, loading: true, error: null },
-    { interval: '4h', label: '4H', data: null, loading: true, error: null },
-    { interval: '1d', label: '1D', data: null, loading: true, error: null },
+    { interval: '3m', label: '3M', data: null, loading: true, error: null },
+    { interval: '5m', label: '5M', data: null, loading: true, error: null },
+    { interval: '15m', label: '15M', data: null, loading: true, error: null },
   ]);
 
   useEffect(() => {

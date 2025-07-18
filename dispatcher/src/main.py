@@ -220,7 +220,7 @@ class DispatcherService:
             self.topics = []
             
             # Topics de données de marché multi-timeframes pour chaque symbole
-            timeframes = ['1m', '5m', '15m', '1h', '4h']
+            timeframes = ['1m', '3m', '5m', '15m']
             for symbol in self.symbols:
                 # Topics multi-timeframes
                 for tf in timeframes:

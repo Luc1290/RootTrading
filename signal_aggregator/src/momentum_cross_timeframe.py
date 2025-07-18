@@ -91,17 +91,11 @@ class MomentumCrossTimeframe:
                 'lookback': 100,
                 'sensitivity': 'medium'
             },
-            '1h': {
+            '3m': {
                 'weight': 0.25,
                 'role': 'trend_momentum',
-                'lookback': 150,
-                'sensitivity': 'medium-low'
-            },
-            '4h': {
-                'weight': 0.05,
-                'role': 'macro_momentum',
-                'lookback': 200,
-                'sensitivity': 'low'
+                'lookback': 80,
+                'sensitivity': 'medium'
             }
         }
         
@@ -365,8 +359,7 @@ class MomentumCrossTimeframe:
                 '1m': 5.0,
                 '5m': 2.0,
                 '15m': 1.0,
-                '1h': 0.5,
-                '4h': 0.2
+                '3m': 0.5
             }.get(config.get('timeframe', '15m'), 1.0)
             
             return float(np.tanh(price_momentum * timeframe_factor / 100))
@@ -582,7 +575,7 @@ class MomentumCrossTimeframe:
             divergences = []
             
             # Comparer les timeframes majeurs
-            major_timeframes = ['5m', '15m', '1h']
+            major_timeframes = ['1m', '3m', '5m']
             available_tf = [tf for tf in major_timeframes if tf in timeframe_momentums]
             
             if len(available_tf) < 2:
@@ -660,7 +653,7 @@ class MomentumCrossTimeframe:
             continuation_factors.append(momentum_alignment * 0.4)
             
             # 2. Force des momentums principaux
-            main_timeframes = ['15m', '1h']
+            main_timeframes = ['1m', '5m']
             main_strength = 0.0
             main_count = 0
             
@@ -702,7 +695,7 @@ class MomentumCrossTimeframe:
             
             # 2. Décélération sur timeframes majeurs
             major_decelerating = 0
-            for tf in ['15m', '1h']:
+            for tf in ['5m', '15m']:
                 if tf in timeframe_momentums:
                     direction = timeframe_momentums[tf].direction
                     if direction in [MomentumDirection.DECELERATING_UP, MomentumDirection.DECELERATING_DOWN]:

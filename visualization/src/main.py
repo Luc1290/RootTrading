@@ -134,11 +134,10 @@ async def get_market_chart(
         if limit is None:
             timeframe_limits = {
                 "1m": 2880,    # 48 heures de données pour le dézoom
+                "3m": 960,     # 48 heures de données
                 "5m": 2016,    # 7 jours de données
                 "15m": 1344,   # 14 jours de données  
                 "30m": 1440,   # 30 jours de données
-                "1h": 720,     # 30 jours de données
-                "4h": 720,     # 120 jours de données
                 "1d": 365      # 1 an de données
             }
             limit = timeframe_limits.get(interval, 2880)
@@ -204,11 +203,10 @@ async def get_indicators_chart(
         if limit is None:
             timeframe_limits = {
                 "1m": 2880,    # 48 heures de données pour le dézoom
+                "3m": 960,     # 48 heures de données
                 "5m": 2016,    # 7 jours de données
                 "15m": 1344,   # 14 jours de données  
                 "30m": 1440,   # 30 jours de données
-                "1h": 720,     # 30 jours de données
-                "4h": 720,     # 120 jours de données
                 "1d": 365      # 1 an de données
             }
             limit = timeframe_limits.get(interval, 2880)

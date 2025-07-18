@@ -52,7 +52,7 @@ class BinanceWebSocket:
         self.base_url = "wss://stream.binance.com:9443/ws"
         
         # Multi-timeframes et données enrichies pour trading précis
-        self.timeframes = ['1m', '5m', '15m', '1h', '4h']  # Timeframes multiples
+        self.timeframes = ['1m', '3m', '5m', '15m']  # Timeframes optimisés pour scalping
         self.stream_paths = []
         
         for symbol in self.symbols:

@@ -7,11 +7,10 @@ function IntervalSelector() {
   
   const intervals: { value: TimeInterval; label: string }[] = [
     { value: '1m', label: '1 minute' },
+    { value: '3m', label: '3 minutes' },
     { value: '5m', label: '5 minutes' },
     { value: '15m', label: '15 minutes' },
     { value: '30m', label: '30 minutes' },
-    { value: '1h', label: '1 heure' },
-    { value: '4h', label: '4 heures' },
   ];
   
   return (

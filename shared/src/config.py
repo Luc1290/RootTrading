@@ -49,7 +49,7 @@ DEFAULT_SYMBOL = "BTCUSDC"
 SYMBOLS = ["BTCUSDC", "ETHUSDC", "SOLUSDC", "XRPUSDC", "ADAUSDC", "AVAXUSDC", "DOGEUSDC", "LINKUSDC", "AAVEUSDC", "SUIUSDC", "PEPEUSDC", "BONKUSDC", "LDOUSDC"]
 INTERVAL = "1m"
 VALIDATION_INTERVAL = "5m"
-SCALPING_INTERVALS = ["1m", "5m", "15m", "1h", "4h"]
+SCALPING_INTERVALS = ["1m", "3m", "5m", "15m"]
 TRADING_MODE = os.getenv("TRADING_MODE", "demo")  # 'demo' ou 'live' - reste dans .env car peut changer
 
 # Allocation dynamique maintenant gérée par le Coordinator

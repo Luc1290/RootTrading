@@ -6,7 +6,7 @@ interface SignalsFiltersProps {
     symbol: TradingSymbol | 'all';
     type: 'all' | 'buy' | 'sell';
     strategy: string;
-    period: '1h' | '24h' | '7d' | '30d';
+    period: '24h' | '7d' | '30d';
   };
   availableSymbols: TradingSymbol[];
   availableStrategies: string[];
@@ -83,10 +83,9 @@ function SignalsFilters({
           </label>
           <select
             value={filters.period}
-            onChange={(e) => onFilterChange({ period: e.target.value as '1h' | '24h' | '7d' | '30d' })}
+            onChange={(e) => onFilterChange({ period: e.target.value as '24h' | '7d' | '30d' })}
             className="w-full bg-dark-100 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           >
-            <option value="1h">Dernière heure</option>
             <option value="24h">Dernières 24h</option>
             <option value="7d">7 derniers jours</option>
             <option value="30d">30 derniers jours</option>

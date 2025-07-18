@@ -158,7 +158,7 @@ async def sync_historical_to_realtime_cache(ws_client):
     from shared.src.technical_indicators import indicator_cache
     
     try:
-        timeframes = ['1m', '5m', '15m', '1h', '4h']
+        timeframes = ['1m', '3m', '5m', '15m']
         synced_count = 0
         indicator_types = set()
         
@@ -239,7 +239,7 @@ async def restore_indicators_from_db():
             SELECT * FROM latest_data
         """
         
-        timeframes = ['1m', '5m', '15m', '1h', '4h']
+        timeframes = ['1m', '3m', '5m', '15m']
         result = await conn.fetch(query, SYMBOLS, timeframes)
         
         # Restaurer les indicateurs dans le cache
@@ -348,7 +348,7 @@ async def main():
                 # Forcer un calcul point par point pour remplir le cache
                 init_fetcher = UltraDataFetcher()
                 for symbol in SYMBOLS:
-                    for timeframe in ['1m', '5m', '15m', '1h', '4h']:
+                    for timeframe in ['1m', '3m', '5m', '15m']:
                         try:
                             # Utiliser UltraDataFetcher pour récupérer et calculer
                             await init_fetcher._fetch_ultra_enriched_data(symbol, timeframe)
@@ -363,7 +363,7 @@ async def main():
         # Vérifier la synchronisation
         final_cache_stats = {"total": 0, "symbols": set()}
         for symbol in SYMBOLS:
-            for timeframe in ['1m', '5m', '15m', '1h', '4h']:
+            for timeframe in ['1m', '3m', '5m', '15m']:
                 indicators = indicator_cache.get_all_indicators(symbol, timeframe)
                 final_cache_stats["total"] += len(indicators)
                 if indicators:

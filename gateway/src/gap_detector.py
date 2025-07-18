@@ -59,8 +59,7 @@ class GapDetector:
             '1m': 60,
             '5m': 300,
             '15m': 900,
-            '1h': 3600,
-            '4h': 14400,
+            '3m': 180,
             '1d': 86400
         }.get(timeframe, 60)
         
@@ -189,7 +188,7 @@ class GapDetector:
         if symbols is None:
             symbols = SYMBOLS
             
-        timeframes = ['1m', '5m', '15m', '1h', '4h']
+        timeframes = ['1m', '3m', '5m', '15m']
         all_gaps = {}
         total_gaps = 0
         
@@ -288,8 +287,7 @@ class GapDetector:
             '1m': 1,
             '5m': 5,
             '15m': 15,
-            '1h': 60,
-            '4h': 240,
+            '3m': 3,
             '1d': 1440
         }.get(timeframe, 1)
         

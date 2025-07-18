@@ -63,10 +63,10 @@ export type ChartType = 'market' | 'volume' | 'rsi' | 'macd' | 'performance';
 
 export type WebSocketStatus = 'connected' | 'disconnected' | 'connecting' | 'error';
 
-export type TimeInterval = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d' | string;
+export type TimeInterval = '1m' | '3m' | '5m' | '15m' | '30m' | '1d' | string;
 
 export type TradingSymbol = 'BTCUSDC' | 'ETHUSDC' | 'SOLUSDC' | 'XRPUSDC' | string;
 
 export type SignalFilter = 'all' | 'Aggregated_2' | 'Aggregated_3' | 'Aggregated_4' | 'Aggregated_2,Aggregated_3,Aggregated_4' | string;
 
-export type PerformancePeriod = '1h' | '24h' | '7d' | '30d' | string;
+export type PerformancePeriod = '24h' | '7d' | '30d' | string;

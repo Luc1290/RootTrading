@@ -90,11 +90,11 @@ class DataManager:
         # Convertir l'intervalle en minutes pour l'agrégation
         interval_minutes = {
             "1m": 1,
+            "3m": 3,
             "5m": 5,
             "15m": 15,
             "30m": 30,
-            "1h": 60,
-            "4h": 240
+            "1d": 1440
         }.get(interval, 1)
         
         if interval_minutes == 1:
@@ -179,7 +179,7 @@ class DataManager:
                 FROM aggregated
             """
         
-        params = [symbol, interval]
+        params = [symbol, "1m"]  # Toujours utiliser "1m" comme timeframe dans la DB
         
         if start_time:
             query += f" AND time >= ${len(params) + 1}"
@@ -418,7 +418,6 @@ class DataManager:
             
         # Convert period to timedelta
         period_map = {
-            "1h": timedelta(hours=1),
             "24h": timedelta(days=1),
             "7d": timedelta(days=7),
             "30d": timedelta(days=30)

@@ -46,32 +46,27 @@ class MultiTimeframeConfluence:
         self.redis = redis_client
         self.indicators = TechnicalIndicators()
         
-        # Configuration des timeframes avec pondérations
+        # Configuration des timeframes avec pondérations optimisées pour scalping
         self.timeframes = {
             '1m': {
-                'weight': 0.20,
+                'weight': 0.30,
                 'role': 'entry_timing',
                 'min_data_points': 20
             },
+            '3m': {
+                'weight': 0.35,
+                'role': 'signal_confirmation',
+                'min_data_points': 40
+            },
             '5m': {
-                'weight': 0.30,
-                'role': 'signal_validation', 
+                'weight': 0.25,
+                'role': 'trend_validation', 
                 'min_data_points': 50
             },
             '15m': {
-                'weight': 0.25,
-                'role': 'trend_confirmation',
-                'min_data_points': 100
-            },
-            '1h': {
-                'weight': 0.15,
-                'role': 'market_context',
-                'min_data_points': 150
-            },
-            '4h': {
                 'weight': 0.10,
-                'role': 'macro_trend',
-                'min_data_points': 200
+                'role': 'market_context',
+                'min_data_points': 100
             }
         }
         

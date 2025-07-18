@@ -193,10 +193,17 @@ function MACDChart({ height = 200 }: MACDChartProps) {
   useEffect(() => {
     if (!chartRef.current || !zoomState.xRange) return;
     
-    chartRef.current.timeScale().setVisibleRange({
-      from: zoomState.xRange[0] as Time,
-      to: zoomState.xRange[1] as Time,
-    });
+    // Vérifier que les valeurs ne sont pas null
+    if (zoomState.xRange[0] && zoomState.xRange[1]) {
+      try {
+        chartRef.current.timeScale().setVisibleRange({
+          from: zoomState.xRange[0] as Time,
+          to: zoomState.xRange[1] as Time,
+        });
+      } catch (error) {
+        console.warn('Error setting visible range:', error);
+      }
+    }
   }, [zoomState.xRange]);
   
   const currentMACD = indicators?.macd?.[indicators.macd.length - 1];

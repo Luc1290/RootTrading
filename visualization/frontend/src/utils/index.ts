@@ -109,8 +109,7 @@ export function getDefaultTimeRange(interval: string): number {
     '5m': 24 * 60 * 60 * 1000,    // 24 heures
     '15m': 48 * 60 * 60 * 1000,   // 48 heures
     '30m': 7 * 24 * 60 * 60 * 1000, // 7 jours
-    '1h': 7 * 24 * 60 * 60 * 1000,  // 7 jours
-    '4h': 30 * 24 * 60 * 60 * 1000, // 30 jours
+    '3m': 6 * 60 * 60 * 1000,  // 6 heures
     '1d': 90 * 24 * 60 * 60 * 1000, // 90 jours
   };
   

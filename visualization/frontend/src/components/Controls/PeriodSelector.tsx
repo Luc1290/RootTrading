@@ -6,7 +6,6 @@ function PeriodSelector() {
   const { config, handlePeriodChange } = useChart();
   
   const periods: { value: PerformancePeriod; label: string }[] = [
-    { value: '1h', label: '1 Heure' },
     { value: '24h', label: '24 Heures' },
     { value: '7d', label: '7 Jours' },
     { value: '30d', label: '30 Jours' },

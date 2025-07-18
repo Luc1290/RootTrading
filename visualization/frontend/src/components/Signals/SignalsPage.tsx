@@ -23,7 +23,7 @@ function SignalsPage() {
     symbol: 'all' as TradingSymbol | 'all',
     type: 'all' as 'all' | 'buy' | 'sell',
     strategy: 'all',
-    period: '24h' as '1h' | '24h' | '7d' | '30d',
+    period: '24h' as '24h' | '7d' | '30d',
   });
 
   // Charger les symboles disponibles
@@ -91,7 +91,6 @@ function SignalsPage() {
     // Filtre par période
     const now = Date.now();
     const periodHours = {
-      '1h': 1,
       '24h': 24,
       '7d': 24 * 7,
       '30d': 24 * 30,

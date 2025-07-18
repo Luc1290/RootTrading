@@ -189,8 +189,7 @@ function PerformanceChart({ height = 300 }: PerformanceChartProps) {
       <div className="absolute top-2 right-2 z-10 bg-black/70 backdrop-blur-sm rounded-md px-3 py-1 text-sm">
         <span className="text-gray-300">Période: </span>
         <span className="text-white font-medium">
-          {config.period === '1h' ? '1 Heure' :
-           config.period === '24h' ? '24 Heures' :
+          {config.period === '24h' ? '24 Heures' :
            config.period === '7d' ? '7 Jours' :
            config.period === '30d' ? '30 Jours' : config.period}
         </span>

@@ -24,7 +24,36 @@ function SymbolSelector() {
   const fetchOwnedSymbols = async () => {
     try {
       const symbols = await apiService.getOwnedSymbolsWithVariations();
-      setOwnedSymbols(symbols || []);
+      
+      // Liste des symboles autorisés (correspond à la config Python)
+      const allowedSymbols = [
+        'BTCUSDC', 'ETHUSDC', 'SOLUSDC', 'XRPUSDC', 'ADAUSDC', 
+        'AVAXUSDC', 'DOGEUSDC', 'LINKUSDC', 'AAVEUSDC', 'SUIUSDC', 
+        'PEPEUSDC', 'BONKUSDC', 'LDOUSDC'
+      ];
+      
+      // Créer un Map pour accès rapide aux données du portfolio
+      const portfolioData = new Map();
+      (symbols || []).forEach((symbol: OwnedSymbol) => {
+        portfolioData.set(symbol.symbol, symbol);
+      });
+      
+      // Créer la liste complète avec tous les symboles autorisés
+      const validSymbols = allowedSymbols.map(symbol => {
+        const portfolioSymbol = portfolioData.get(symbol);
+        if (portfolioSymbol) {
+          return portfolioSymbol;
+        }
+        // Si pas dans le portfolio, créer un symbole avec prix 0
+        return {
+          symbol: symbol,
+          asset: symbol.replace('USDC', ''),
+          price: 0,
+          price_change_24h: 0
+        };
+      });
+      
+      setOwnedSymbols(validSymbols);
     } catch (error) {
       console.error('Error fetching owned symbols:', error);
       // Fallback aux symboles par défaut

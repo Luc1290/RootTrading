@@ -54,7 +54,7 @@ class MessageRouter:
         }
         
         # Support multi-timeframes
-        self.timeframes = ['1m', '5m', '15m', '1h', '4h']
+        self.timeframes = ['1m', '3m', '5m', '15m']
         
         # Cache pour les données enrichies par symbole/timeframe
         self.enriched_data_cache = {}
@@ -398,8 +398,8 @@ class MessageRouter:
 
             # Clé de déduplication adaptée au type de message
             if topic.startswith("analyzer.signals"):
-                # Pour les signaux : topic + symbol + side + timestamp
-                dedup_key = f"{topic}:{message.get('symbol')}:{message.get('side')}:{message.get('timestamp')}"
+                # Pour les signaux : topic + symbol + side + strategy + timestamp
+                dedup_key = f"{topic}:{message.get('symbol')}:{message.get('side')}:{message.get('strategy')}:{message.get('timestamp')}"
             else:
                 # Pour les données de marché : topic + timestamp + close (si présent)
                 dedup_key = f"{topic}:{message.get('close_time') or message.get('start_time')}:{message.get('close')}"

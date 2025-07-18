@@ -115,6 +115,11 @@ export function useChart(options: UseChartOptions = {}) {
   
   // Handlers pour les changements de configuration avec debounce
   const handleSymbolChange = useCallback((symbol: TradingSymbol) => {
+    // Prevent multiple calls for the same symbol
+    if (config.symbol === symbol) {
+      return;
+    }
+    
     // Clear data immediately to avoid showing stale data
     useChartStore.setState({ 
       marketData: null, 
@@ -126,12 +131,15 @@ export function useChart(options: UseChartOptions = {}) {
     resetZoom();
     
     // Use debounced update to prevent race conditions
-    setTimeout(() => {
-      forceUpdate();
-    }, 100);
-  }, [updateSymbol, resetZoom, forceUpdate]);
+    debouncedUpdate();
+  }, [updateSymbol, resetZoom, debouncedUpdate, config.symbol]);
   
   const handleIntervalChange = useCallback((interval: TimeInterval) => {
+    // Prevent multiple calls for the same interval
+    if (config.interval === interval) {
+      return;
+    }
+    
     // Clear data immediately to avoid showing stale data
     useChartStore.setState({ 
       marketData: null, 
@@ -143,10 +151,8 @@ export function useChart(options: UseChartOptions = {}) {
     resetZoom();
     
     // Use debounced update to prevent race conditions
-    setTimeout(() => {
-      forceUpdate();
-    }, 100);
-  }, [updateIntervalConfig, resetZoom, forceUpdate]);
+    debouncedUpdate();
+  }, [updateIntervalConfig, resetZoom, debouncedUpdate, config.interval]);
   
   const handleSignalFilterChange = useCallback((filter: string) => {
     updateSignalFilter(filter);

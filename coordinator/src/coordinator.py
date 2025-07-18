@@ -166,7 +166,10 @@ class Coordinator:
                 if usdc_balance < self.min_absolute_trade_usdc:
                     return False, f"Balance USDC insuffisante: {usdc_balance:.2f} < {self.min_absolute_trade_usdc}"
                 
-                # Note: Pas de vérification de position - le coordinator exécute les signaux
+                # Vérifier s'il y a déjà un cycle actif pour ce symbole
+                active_cycle = self._check_active_cycle(signal.symbol)
+                if active_cycle:
+                    return False, f"Cycle déjà actif pour {signal.symbol}: {active_cycle}"
                 
             else:  # SELL
                 # Pour un SELL, on a besoin de la crypto
@@ -322,6 +325,31 @@ class Coordinator:
             return 'ETH'
         else:
             return 'USDC'  # Par défaut
+    
+    def _check_active_cycle(self, symbol: str) -> Optional[str]:
+        """
+        Vérifie s'il y a un cycle actif pour ce symbole.
+        
+        Args:
+            symbol: Symbole à vérifier (ex: 'BTCUSDC')
+            
+        Returns:
+            ID du cycle actif si trouvé, None sinon
+        """
+        try:
+            # Appeler le service trader pour vérifier les cycles actifs
+            response = self.service_client.get_active_cycles(symbol)
+            
+            if response and response.get('active_cycles'):
+                # Retourner l'ID du premier cycle actif trouvé
+                active_cycle = response['active_cycles'][0]
+                return active_cycle.get('id', 'unknown')
+            
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Erreur vérification cycle actif pour {symbol}: {str(e)}")
+            return None
     
     def get_stats(self) -> Dict[str, Any]:
         """Retourne les statistiques du coordinator."""

@@ -1013,7 +1013,7 @@ class EnhancedRegimeDetector:
                     logger.warning(f"⚠️ Historique insuffisant pour {symbol}: {len(history)} points (min: 50)")
             
             # Fallback : récupérer les données enrichies actuelles de différentes timeframes
-            timeframes = ['1m', '5m', '15m', '1h']
+            timeframes = ['1m', '3m', '5m', '15m']
             all_data = []
             
             for tf in timeframes:

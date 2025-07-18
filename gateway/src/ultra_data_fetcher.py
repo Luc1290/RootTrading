@@ -30,7 +30,7 @@ class UltraDataFetcher:
     
     def __init__(self):
         self.symbols = SYMBOLS
-        self.timeframes = ['1m', '5m', '15m', '1h', '4h']  # Multi-timeframes pour confluence
+        self.timeframes = ['1m', '3m', '5m', '15m']  # Multi-timeframes pour confluence
         self.redis_client = RedisClient()
         self.running = False
         
@@ -143,8 +143,7 @@ class UltraDataFetcher:
                 '1m': 1000,   # 16.7 heures → EMA/SMA 200 ultra-précis
                 '5m': 1000,   # 3.5 jours → Tendances moyennes parfaites
                 '15m': 800,   # 8.3 jours → Indicateurs long terme solides
-                '1h': 500,    # 20.8 jours → Tendance mensuelle
-                '4h': 300     # 50 jours → Tendance long terme
+                '3m': 400     # 20 heures → Tendance court terme
             }
             limit = timeframe_limits.get(timeframe, 100)
             klines = await self._fetch_klines(symbol, timeframe, limit=limit)
@@ -669,8 +668,7 @@ class UltraDataFetcher:
             '1m': 2000,   # 33.3 heures → Intraday ultra-précis
             '5m': 1500,   # 5.2 jours → Pattern detection parfait
             '15m': 1000,  # 10.4 jours → Swing trading optimal  
-            '1h': 720,    # 30 jours → Tendance mensuelle complète
-            '4h': 500     # 83.3 jours → Cycle long terme
+            '3m': 600     # 30 heures → Tendance court terme
         }
         
         total_expected = 0
@@ -799,7 +797,7 @@ class UltraDataFetcher:
             
             # Calculer combien de klines maximum pour cette période
             interval_seconds = {
-                '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400
+                '1m': 60, '3m': 180, '5m': 300, '15m': 900
             }.get(timeframe, 60)
             
             duration_seconds = (end_time - start_time).total_seconds()
