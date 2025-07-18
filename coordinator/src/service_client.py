@@ -3,7 +3,7 @@ Client centralisé pour les appels aux services externes.
 Évite la duplication de code et centralise la gestion des erreurs et retry.
 """
 import logging
-import requests
+import requests  # type: ignore
 import time
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
@@ -51,7 +51,7 @@ class CircuitBreaker:
             return True
             
         if self.state == "OPEN":
-            if datetime.now() - self.last_failure_time > timedelta(seconds=self.reset_timeout):
+            if self.last_failure_time is not None and datetime.now() - self.last_failure_time > timedelta(seconds=self.reset_timeout):
                 self.state = "HALF_OPEN"
                 logger.info("Circuit breaker passé en HALF_OPEN")
                 return True
@@ -90,11 +90,11 @@ class ServiceClient:
         }
         
         # Cache simple avec TTL
-        self._cache = {}
-        self._cache_ttl = {}
+        self._cache: Dict[str, Any] = {}
+        self._cache_ttl: Dict[str, float] = {}
         
     def _make_request(self, service: str, endpoint: str, method: str = "GET",
-                     json_data: Dict = None, params: Dict = None) -> Optional[Dict[str, Any]]:
+                     json_data: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         """
         Effectue une requête HTTP avec retry et circuit breaker.
         
@@ -201,7 +201,7 @@ class ServiceClient:
     
     def reinforce_cycle(self, cycle_id: str, symbol: str, side: str, 
                        quantity: float, price: Optional[float] = None,
-                       metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+                       metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Renforce un cycle existant via DCA.
         
@@ -236,7 +236,7 @@ class ServiceClient:
         else:
             return {"success": False, "error": "Service indisponible"}
     
-    def close_cycle(self, cycle_id: str, close_data: Dict[str, Any] = None) -> Dict[str, Any]:
+    def close_cycle(self, cycle_id: str, close_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Ferme un cycle existant via le trader.
         
@@ -337,14 +337,14 @@ class ServiceClient:
         
         # Cache de 5 secondes pour le résumé
         if cache_key in self._cache:
-            if time.time() - self._cache_ttl[cache_key] < 5.0:
+            if datetime.now().timestamp() - self._cache_ttl[cache_key] < 5.0:
                 return self._cache[cache_key]
         
         response = self._make_request("portfolio", "/summary")
         
         if response:
             self._cache[cache_key] = response
-            self._cache_ttl[cache_key] = time.time()
+            self._cache_ttl[cache_key] = datetime.now().timestamp()
             return response
             
         return {}

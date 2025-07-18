@@ -27,7 +27,7 @@ class StrategyLoader:
     Découvre, instancie et exécute les stratégies disponibles.
     """
     
-    def __init__(self, symbols: List[str] = None, strategy_dir: str = None):
+    def __init__(self, symbols: Optional[List[str]] = None, strategy_dir: Optional[str] = None):
         """
         Initialise le chargeur de stratégies.
         
@@ -90,7 +90,7 @@ class StrategyLoader:
         total_strategies = sum(len(strategies) for strategies in self.strategies.values())
         logger.info(f"📊 Total: {total_strategies} stratégies chargées pour {len(self.symbols)} symboles")
     
-    def process_market_data(self, data: Dict[str, Any], indicators: Dict[str, Any] = None) -> List[Dict]:
+    def process_market_data(self, data: Dict[str, Any], indicators: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
         Traite les données de marché avec les stratégies ultra-précises refactorisées.
         
@@ -146,23 +146,24 @@ class StrategyLoader:
                     # Valider les champs obligatoires
                     required_fields = ['strategy', 'symbol', 'side', 'price', 'confidence']
                     missing_fields = [field for field in required_fields 
-                                    if field not in signal_dict or signal_dict[field] is None]
+                                    if signal_dict is not None and (field not in signal_dict or signal_dict[field] is None)]
                 
                     if missing_fields:
                         logger.warning(f"❌ Signal incomplet généré par {strategy_name}, " 
                                     f"champs manquants: {missing_fields}")
                     else:
                         # Signal valide
-                        signals.append(signal_dict)
-                        logger.info(f"✅ Signal ultra-précis: {signal_dict['side'].value} {symbol} @ {signal_dict['price']:.4f} "
-                                  f"({strategy_name}, conf: {signal_dict['confidence']:.2f})")
+                        if signal_dict is not None:
+                            signals.append(signal_dict)
+                            logger.info(f"✅ Signal ultra-précis: {signal_dict['side'].value} {symbol} @ {signal_dict['price']:.4f} "
+                                      f"({strategy_name}, conf: {signal_dict['confidence']:.2f})")
                     
             except Exception as e:
                 logger.error(f"❌ Erreur stratégie {strategy_name} pour {symbol}: {e}")
                 import traceback
                 logger.debug(traceback.format_exc())
 
-        return signals
+        return [s for s in signals if s is not None]
     
     def get_strategy_list(self) -> Dict[str, List[str]]:
         """

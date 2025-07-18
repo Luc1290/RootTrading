@@ -17,7 +17,7 @@ class SignalProcessor:
     def __init__(self, redis_client):
         self.redis = redis_client
         
-    async def process_institutional_signal(self, signal: Dict[str, Any]) -> Dict[str, Any]:
+    async def process_institutional_signal(self, signal: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Traitement express pour signaux de qualité institutionnelle (95+ points)"""
         try:
             symbol = signal['symbol']
@@ -79,7 +79,7 @@ class SignalProcessor:
             logger.error(f"❌ Erreur traitement signal institutionnel: {e}")
             return None
             
-    async def process_excellent_signal(self, signal: Dict[str, Any], cooldown_setter) -> Dict[str, Any]:
+    async def process_excellent_signal(self, signal: Dict[str, Any], cooldown_setter) -> Optional[Dict[str, Any]]:
         """Traitement prioritaire pour signaux excellents (85+ points)"""
         try:
             symbol = signal['symbol']

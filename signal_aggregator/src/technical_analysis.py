@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class TechnicalAnalysis:
     """Classe pour l'analyse technique et le calcul d'indicateurs"""
     
-    def __init__(self, redis_client, ema_incremental_cache: Dict = None):
+    def __init__(self, redis_client, ema_incremental_cache: Optional[Dict] = None):
         self.redis = redis_client
         self.ema_incremental_cache = ema_incremental_cache or {}
     
@@ -34,7 +34,7 @@ class TechnicalAnalysis:
             market_data_key = f"market_data:{symbol}:5m"
             data_5m = self.redis.get(market_data_key)
             
-            context = {
+            context: Dict[str, Any] = {
                 'macd': None,
                 'obv': None, 
                 'roc': None,
@@ -123,7 +123,7 @@ class TechnicalAnalysis:
             logger.error(f"Erreur validation MACD: {e}")
             return None
     
-    async def get_atr(self, symbol: str) -> Dict[str, float]:
+    async def get_atr(self, symbol: str) -> Dict[str, float | None]:
         """
         Récupère l'ATR (Average True Range) pour un symbole depuis Redis.
         Utilise la méthode centralisée de TechnicalIndicators.
@@ -488,7 +488,7 @@ class TechnicalAnalysis:
             logger.error(f"Erreur récupération ADX pour {symbol}: {e}")
             return None
     
-    def get_or_calculate_indicator_incremental(self, symbol: str, current_candle: Dict, indicator_type: str, **params) -> Optional[float]:
+    def get_or_calculate_indicator_incremental(self, symbol: str, current_candle: Dict, indicator_type: str, **params) -> Union[Optional[float], Dict[str, float | None]]:
         """
         Méthode générique pour calculer n'importe quel indicateur de manière incrémentale.
         Évite les dents de scie pour MACD, RSI, ATR, Stochastic, etc.
@@ -578,8 +578,9 @@ class TechnicalAnalysis:
                 period = params.get('period', 20)
                 prev_sma = cache.get(f'sma_{period}')
                 
-                from shared.src.technical_indicators import calculate_sma_incremental
-                new_sma = calculate_sma_incremental(current_candle['close'], prev_sma, period)
+                from shared.src.technical_indicators import TechnicalIndicators
+                indicators = TechnicalIndicators()
+                new_sma = indicators.calculate_sma_incremental(current_candle['close'], prev_sma, period)
                 
                 cache[f'sma_{period}'] = new_sma
                 return new_sma

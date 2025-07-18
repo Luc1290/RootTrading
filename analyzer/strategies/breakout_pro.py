@@ -5,7 +5,7 @@ Intègre volume, momentum, structure de marché et analyse multi-timeframes.
 """
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List, Tuple, Union
 import numpy as np
 import pandas as pd
 
@@ -21,9 +21,9 @@ from .base_strategy import BaseStrategy
 
 # Import des modules d'analyse avancée
 try:
-    import redis
+    import redis  # type: ignore
 except ImportError:
-    redis = None
+    redis = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class BreakoutProStrategy(BaseStrategy):
     - Liquidity zones et order blocks
     """
     
-    def __init__(self, symbol: str, params: Dict[str, Any] = None):
+    def __init__(self, symbol: str, params: Optional[Dict[str, Any]] = None):
         super().__init__(symbol, params)
         
         # Paramètres Breakout avancés
@@ -55,8 +55,8 @@ class BreakoutProStrategy(BaseStrategy):
         self.confluence_threshold = symbol_params.get('confluence_threshold', 35.0)  # ASSOUPLI de 45 à 35
         
         # Historique pour S/R dynamiques
-        self.sr_levels = {'supports': [], 'resistances': []}
-        self.breakout_history = []
+        self.sr_levels: Dict[str, List[float]] = {'supports': [], 'resistances': []}
+        self.breakout_history: List[Dict[str, Any]] = []
         self.max_sr_levels = 5
         
         # Connexion Redis pour analyses avancées
@@ -114,7 +114,7 @@ class BreakoutProStrategy(BaseStrategy):
             
             # Analyser le contexte breakout
             context_analysis = self._analyze_breakout_context(
-                symbol, volume_ratio, atr, momentum_10, adx, rsi, bb_width
+                symbol, volume_ratio or 0.0, atr or 0.0, momentum_10 or 0.0, adx or 0.0, rsi or 0.0, bb_width or 0.0
             )
             
             # NOUVEAU: Calculer la position du prix dans son range
@@ -131,7 +131,7 @@ class BreakoutProStrategy(BaseStrategy):
                 # Vérifier la position du prix avant de générer le signal
                 if not self.should_filter_signal_by_price_position(OrderSide.BUY, price_position, df):
                     confidence = self._calculate_breakout_confidence(
-                        breakout_analysis, context_analysis, volume_ratio, momentum_10, True
+                        breakout_analysis, context_analysis, volume_ratio or 0.0, momentum_10 or 0.0, True
                     )
                     
                     signal = self.create_signal(
@@ -171,7 +171,7 @@ class BreakoutProStrategy(BaseStrategy):
                 # Vérifier la position du prix avant de générer le signal
                 if not self.should_filter_signal_by_price_position(OrderSide.SELL, price_position, df):
                     confidence = self._calculate_breakout_confidence(
-                        breakdown_analysis, context_analysis, volume_ratio, momentum_10, False
+                        breakdown_analysis, context_analysis, volume_ratio or 0.0, momentum_10 or 0.0, False
                     )
                     
                     signal = self.create_signal(
@@ -206,7 +206,7 @@ class BreakoutProStrategy(BaseStrategy):
             if signal:
                 logger.info(f"🎯 Breakout Pro {symbol}: {signal.side} @ {current_price:.4f} "
                           f"(Niveau: {signal.metadata.get('resistance_level', signal.metadata.get('support_level', 0)):.4f}, "
-                          f"Volume: {volume_ratio:.1f}x, Context: {context_analysis['score']:.1f}, "
+                          f"Volume: {volume_ratio or 0:.1f}x, Context: {context_analysis['score']:.1f}, "
                           f"Conf: {signal.confidence:.2f})")
                 
                 # Convertir StrategySignal en dict pour compatibilité
@@ -229,7 +229,7 @@ class BreakoutProStrategy(BaseStrategy):
     
     def _analyze_dynamic_sr_levels(self, df: pd.DataFrame) -> Dict:
         """Analyse les niveaux de support/résistance dynamiques"""
-        sr_analysis = {
+        sr_analysis: Dict[str, Any] = {
             'supports': [],
             'resistances': [],
             'strongest_support': None,
@@ -251,23 +251,27 @@ class BreakoutProStrategy(BaseStrategy):
             support_levels = self._find_pivot_lows(lows, window=5)
             
             # Calculer la force des niveaux (nombre de touches)
+            resistances_list = []
             for level in resistance_levels:
                 touches = self._count_level_touches(closes, level, tolerance=0.002)
                 if touches >= self.sr_strength_threshold:
-                    sr_analysis['resistances'].append({
+                    resistances_list.append({
                         'level': level,
                         'touches': touches,
                         'strength': touches / len(recent_data) * 100
                     })
+            sr_analysis['resistances'] = resistances_list
             
+            supports_list = []
             for level in support_levels:
                 touches = self._count_level_touches(closes, level, tolerance=0.002)
                 if touches >= self.sr_strength_threshold:
-                    sr_analysis['supports'].append({
+                    supports_list.append({
                         'level': level,
                         'touches': touches,
                         'strength': touches / len(recent_data) * 100
                     })
+            sr_analysis['supports'] = supports_list
             
             # Trier par force et garder les plus forts
             sr_analysis['resistances'] = sorted(sr_analysis['resistances'], 
@@ -372,7 +376,7 @@ class BreakoutProStrategy(BaseStrategy):
     def _analyze_breakout_context(self, symbol: str, volume_ratio: float, atr: float, 
                                  momentum_10: float, adx: float, rsi: float, bb_width: float) -> Dict:
         """Analyse le contexte pour valider les breakouts"""
-        context = {
+        context: Dict[str, Any] = {
             'score': 0.0,
             'confidence_boost': 0.0,
             'confluence_score': 0.0,
@@ -381,14 +385,17 @@ class BreakoutProStrategy(BaseStrategy):
         
         try:
             # 1. Volume explosion (critère principal pour breakouts) - SEUILS CONTEXTUELS ADAPTATIFS
-            if volume_ratio:
+            score = float(context['score'])
+            confidence_boost = float(context['confidence_boost'])
+            
+            if volume_ratio > 0:
                 try:
                     # Détection contexte spécifique pour breakouts
                     contextual_threshold, context_name, contextual_score = volume_context_detector.get_contextual_volume_threshold(
                         base_volume_ratio=volume_ratio,
-                        rsi=latest_data.get('rsi'),
-                        cci=latest_data.get('cci'),
-                        adx=latest_data.get('adx'),
+                        rsi=rsi,
+                        cci=0.0,  # CCI not available in parameters
+                        adx=adx,
                         signal_type="BUY",
                         price_trend="breakout"  # Contexte spécifique breakout
                     )
@@ -399,128 +406,129 @@ class BreakoutProStrategy(BaseStrategy):
                     
                     # Scoring contextuel pour breakouts (critère CRITIQUE)
                     if volume_ratio >= 2.0:  # Excellent absolu - explosion volume
-                        context['score'] += 35
-                        context['confidence_boost'] += 0.15
+                        score += 35
+                        confidence_boost += 0.15
                         context['details'].append(f"Volume explosion ({volume_ratio:.1f}x) - {context_name}")
                     elif volume_ratio >= 1.5:  # Très bon - fort volume
-                        context['score'] += 30
-                        context['confidence_boost'] += 0.12
+                        score += 30
+                        confidence_boost += 0.12
                         context['details'].append(f"Volume fort ({volume_ratio:.1f}x) - {context_name}")
                     elif volume_ratio >= contextual_threshold:
                         # Volume acceptable selon le contexte market
                         score_bonus = int(contextual_score * 25)  # 0-25 points (plus élevé pour breakouts)
                         confidence_bonus = contextual_score * 0.10  # 0-0.10 boost
-                        context['score'] += score_bonus
-                        context['confidence_boost'] += confidence_bonus
+                        score += score_bonus
+                        confidence_boost += confidence_bonus
                         context['details'].append(f"Volume {volume_quality.lower()} breakout ({volume_ratio:.1f}x) - {context_name}")
                     elif volume_ratio >= self.min_volume_multiplier:
                         # Volume minimum breakout respecté mais pas idéal
-                        context['score'] += 15
-                        context['confidence_boost'] += 0.05
+                        score += 15
+                        confidence_boost += 0.05
                         context['details'].append(f"Volume minimum breakout ({volume_ratio:.1f}x) - {context_name}")
                     else:
                         # Volume vraiment insuffisant pour breakout valide
                         # Appliquer une tolérance réduite si contexte favorable
                         if context_name in ["deep_oversold", "moderate_oversold"] and volume_ratio >= 0.8:
                             # Tolérance spéciale pour oversold avec breakout
-                            context['score'] += 5
+                            score += 5
                             context['details'].append(f"Volume toléré breakout oversold ({volume_ratio:.1f}x) - {context_name}")
                         else:
-                            context['score'] -= 15  # Pénalité forte pour breakouts sans volume
+                            score -= 15  # Pénalité forte pour breakouts sans volume
                             context['details'].append(f"Volume insuffisant breakout ({volume_ratio:.1f}x) - {context_name} (min: {self.min_volume_multiplier})")
                         
                 except Exception as e:
                     # Fallback sur logique standard si erreur contextuelle
                     if volume_ratio >= self.min_volume_multiplier:
                         if volume_ratio >= 2.0:
-                            context['score'] += 35
-                            context['confidence_boost'] += 0.15
+                            score += 35
+                            confidence_boost += 0.15
                             context['details'].append(f"Volume excellent ({volume_ratio:.1f}x) - standard")
                         elif volume_ratio >= 1.5:
-                            context['score'] += 30
-                            context['confidence_boost'] += 0.12
+                            score += 30
+                            confidence_boost += 0.12
                             context['details'].append(f"Volume très bon ({volume_ratio:.1f}x) - standard")
                         else:
-                            context['score'] += 20
-                            context['confidence_boost'] += 0.08
+                            score += 20
+                            confidence_boost += 0.08
                             context['details'].append(f"Volume bon ({volume_ratio:.1f}x) - standard")
                     else:
-                        context['score'] -= 15
+                        score -= 15
                         context['details'].append(f"Volume insuffisant ({volume_ratio:.1f}x) - standard")
             else:
-                context['score'] -= 15  # Pénalité forte pour volume manquant
+                score -= 15  # Pénalité forte pour volume manquant
                 context['details'].append("Volume non disponible pour breakout")
             
             # 2. Volatilité (ATR) - breakouts nécessitent volatilité
             from shared.src.config import ATR_THRESHOLD_VERY_HIGH, ATR_THRESHOLD_MODERATE
-            if atr:
+            if atr > 0:
                 if atr >= ATR_THRESHOLD_VERY_HIGH:  # 0.006 - Volatilité très élevée
-                    context['score'] += 20
-                    context['confidence_boost'] += 0.08
+                    score += 20
+                    confidence_boost += 0.08
                     context['details'].append(f"Volatilité haute ({atr:.4f})")
                 elif atr >= ATR_THRESHOLD_MODERATE:
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
+                    score += 15
+                    confidence_boost += 0.05
                     context['details'].append(f"Volatilité normale ({atr:.4f})")
                 else:
-                    context['score'] -= 5
+                    score -= 5
                     context['details'].append(f"Volatilité faible ({atr:.4f})")
             
             # 3. Momentum directionnel
-            if momentum_10:
-                momentum_strength = abs(momentum_10)
-                if momentum_strength > 1.5:
-                    context['score'] += 25
-                    context['confidence_boost'] += 0.1
-                    context['details'].append(f"Momentum très fort ({momentum_10:.2f})")
-                elif momentum_strength > 0.8:
-                    context['score'] += 20
-                    context['confidence_boost'] += 0.08
-                    context['details'].append(f"Momentum fort ({momentum_10:.2f})")
-                elif momentum_strength > 0.3:
-                    context['score'] += 10
-                    context['details'].append(f"Momentum modéré ({momentum_10:.2f})")
-                else:
-                    context['score'] -= 5
-                    context['details'].append(f"Momentum faible ({momentum_10:.2f})")
+            momentum_strength = abs(momentum_10)
+            if momentum_strength > 1.5:
+                score += 25
+                confidence_boost += 0.1
+                context['details'].append(f"Momentum très fort ({momentum_10:.2f})")
+            elif momentum_strength > 0.8:
+                score += 20
+                confidence_boost += 0.08
+                context['details'].append(f"Momentum fort ({momentum_10:.2f})")
+            elif momentum_strength > 0.3:
+                score += 10
+                context['details'].append(f"Momentum modéré ({momentum_10:.2f})")
+            else:
+                score -= 5
+                context['details'].append(f"Momentum faible ({momentum_10:.2f})")
             
             # 4. Force de tendance (ADX)
-            if adx:
-                from shared.src.config import ADX_TREND_THRESHOLD, ADX_WEAK_TREND_THRESHOLD
-                if adx >= ADX_TREND_THRESHOLD:
-                    context['score'] += 20
-                    context['confidence_boost'] += 0.08
-                    context['details'].append(f"Tendance forte ({adx:.1f})")
-                elif adx >= ADX_WEAK_TREND_THRESHOLD:
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
-                    context['details'].append(f"Tendance modérée ({adx:.1f})")
-                else:
-                    context['score'] += 5
-                    context['details'].append(f"Tendance faible ({adx:.1f})")
+            from shared.src.config import ADX_TREND_THRESHOLD, ADX_WEAK_TREND_THRESHOLD
+            if adx >= ADX_TREND_THRESHOLD:
+                score += 20
+                confidence_boost += 0.08
+                context['details'].append(f"Tendance forte ({adx:.1f})")
+            elif adx >= ADX_WEAK_TREND_THRESHOLD:
+                score += 15
+                confidence_boost += 0.05
+                context['details'].append(f"Tendance modérée ({adx:.1f})")
+            else:
+                score += 5
+                context['details'].append(f"Tendance faible ({adx:.1f})")
             
             # 5. RSI pour momentum extremes
-            if rsi:
-                # RSI extrêmes = bon contexte pour breakouts
-                if rsi <= 30 or rsi >= 70:
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
-                    context['details'].append(f"RSI extrême ({rsi:.1f})")
-                else:
-                    context['score'] += 5
-                    context['details'].append(f"RSI neutre ({rsi:.1f})")
+            # RSI extrêmes = bon contexte pour breakouts
+            if rsi <= 30 or rsi >= 70:
+                score += 15
+                confidence_boost += 0.05
+                context['details'].append(f"RSI extrême ({rsi:.1f})")
+            else:
+                score += 5
+                context['details'].append(f"RSI neutre ({rsi:.1f})")
+            
+            # Update context with computed values
+            context['score'] = score
+            context['confidence_boost'] = confidence_boost
             
             # 6. Bollinger expansion (breakouts aiment l'expansion)
-            if bb_width:
+            if bb_width > 0:
                 if bb_width >= 0.04:  # Forte expansion
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
+                    score += 15
+                    confidence_boost += 0.05
                     context['details'].append(f"BB expansion ({bb_width:.3f})")
                 elif bb_width >= 0.025:
-                    context['score'] += 10
+                    score += 10
                     context['details'].append(f"BB normale ({bb_width:.3f})")
                 else:
-                    context['score'] -= 5  # Squeeze = mauvais pour breakouts
+                    score -= 5  # Squeeze = mauvais pour breakouts
                     context['details'].append(f"BB compression ({bb_width:.3f})")
             
             # 7. Confluence multi-timeframes
@@ -531,17 +539,17 @@ class BreakoutProStrategy(BaseStrategy):
                     context['confluence_score'] = confluence_score
                     
                     if confluence_score >= 60:
-                        context['score'] += 20
-                        context['confidence_boost'] += 0.08
+                        score += 20
+                        confidence_boost += 0.08
                         context['details'].append(f"Confluence forte ({confluence_score:.1f}%)")
                     elif confluence_score >= 45:
-                        context['score'] += 10
-                        context['confidence_boost'] += 0.03
+                        score += 10
+                        confidence_boost += 0.03
                         context['details'].append(f"Confluence modérée ({confluence_score:.1f}%)")
             
-            # Normaliser
-            context['score'] = max(0, min(100, context['score']))
-            context['confidence_boost'] = max(0, min(0.3, context['confidence_boost']))
+            # Normaliser et assigner les valeurs finales
+            context['score'] = max(0.0, min(100.0, score))
+            context['confidence_boost'] = max(0.0, min(0.3, confidence_boost))
             
         except Exception as e:
             logger.error(f"❌ Erreur analyse contexte breakout: {e}")
@@ -735,7 +743,7 @@ class BreakoutProStrategy(BaseStrategy):
             
             if cached:
                 import json
-                return json.loads(cached)
+                return json.loads(str(cached))
             
         except Exception as e:
             logger.debug(f"Confluence non disponible pour {symbol}: {e}")

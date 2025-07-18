@@ -119,15 +119,15 @@ class RedisClientPool:
         self.redis = Redis(connection_pool=self.connection_pool)
         
         # Pour stocker les abonnements PubSub actifs et leurs messages
-        self.pubsub_connections = {}
-        self.pubsub_threads = {}
-        self.pubsub_callbacks = {}
-        self.pubsub_channels = {}
-        self.pubsub_stop_events = {}
+        self.pubsub_connections: Dict[str, Any] = {}
+        self.pubsub_threads: Dict[str, threading.Thread] = {}
+        self.pubsub_callbacks: Dict[str, Callable] = {}
+        self.pubsub_channels: Dict[str, List[str]] = {}
+        self.pubsub_stop_events: Dict[str, threading.Event] = {}
         
         # Message queue pour chaque PubSub (évite les blocages lors des callbacks)
-        self.message_queues = {}
-        self.processor_threads = {}
+        self.message_queues: Dict[str, Queue] = {}
+        self.processor_threads: Dict[str, threading.Thread] = {}
         
         # Verrou pour les opérations pubsub
         self.pubsub_lock = threading.RLock()
@@ -153,7 +153,7 @@ class RedisClientPool:
                 connection_params['password'] = self.password
         
             # Créer le pool avec 5 connexions minimum et 50 maximum
-            pool = ConnectionPool(**connection_params, max_connections=50)
+            pool = ConnectionPool(max_connections=50, **connection_params)
             
             # Tester le pool de connexions
             test_redis = Redis(connection_pool=pool)
@@ -332,7 +332,7 @@ class RedisClientPool:
         pubsub.subscribe(*channels)
         
         # Créer une queue de messages et un drapeau d'arrêt
-        message_queue = Queue()
+        message_queue: Queue = Queue()
         stop_event = threading.Event()
         
         # Stocker les références

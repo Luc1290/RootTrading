@@ -4,7 +4,7 @@ Définit les structures de données et les interactions avec la base de données
 """
 import logging
 import time
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional, Union, Tuple
 from datetime import datetime
 import psycopg2
 from psycopg2 import pool
@@ -58,7 +58,7 @@ class DBManager:
                 raise
         return cls._pool
     
-    def __init__(self, db_url: str = None):
+    def __init__(self, db_url: Optional[str] = None):
         """
         Initialise le gestionnaire de base de données.
         
@@ -151,8 +151,8 @@ class DBManager:
             
             return self.conn is not None
     
-    def execute_query(self, query: str, params: tuple = None, fetch_one: bool = False, 
-                     fetch_all: bool = False, commit: bool = False, retry: int = 1) -> Union[List[Dict], Dict, None]:
+    def execute_query(self, query: str, params: Optional[Tuple[Any, ...]] = None, fetch_one: bool = False, 
+                     fetch_all: bool = False, commit: bool = False, retry: int = 1) -> Union[List[Dict[str, Any]], Dict[str, Any], bool, None]:
         """
         Exécute une requête SQL avec retry.
         
@@ -186,21 +186,24 @@ class DBManager:
                 if params:
                     logger.debug(f"Paramètres: {params}")
 
-                with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                    cursor.execute(query, params)
-                    
-                    if fetch_one:
-                        result = cursor.fetchone()
-                    elif fetch_all:
-                        result = cursor.fetchall()
-                    else:
-                        # Pour les requêtes UPDATE/INSERT/DELETE, retourner True au lieu de None
-                        result = True
-                    
-                    if commit:
-                        self.conn.commit()
-                    
-                    return result
+                if self.conn:
+                    with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                        cursor.execute(query, params)
+                        
+                        if fetch_one:
+                            result = cursor.fetchone()
+                        elif fetch_all:
+                            result = cursor.fetchall()
+                        else:
+                            # Pour les requêtes UPDATE/INSERT/DELETE, retourner True au lieu de None
+                            result = True
+                        
+                        if commit and self.conn:
+                            self.conn.commit()
+                        
+                        return result
+                else:
+                    return None
             
             except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
                 # Erreurs de connexion, on peut réessayer
@@ -214,7 +217,8 @@ class DBManager:
                         self.pool.putconn(self.conn, close=True)
                     else:
                         try:
-                            self.conn.close()
+                            if self.conn:
+                                self.conn.close()
                         except:
                             pass
                 except:
@@ -238,7 +242,8 @@ class DBManager:
                 import traceback
                 logger.error(traceback.format_exc())
                 try:
-                    self.conn.rollback()
+                    if self.conn:
+                        self.conn.rollback()
                 except:
                     pass
                 return None
@@ -268,19 +273,23 @@ class DBManager:
             return False
         
         try:
-            with self.conn.cursor() as cursor:
-                # Utiliser execute_values pour les performances
-                execute_values(cursor, query, params_list, page_size=page_size)
-                
-                if commit:
-                    self.conn.commit()
-                
-                return True
+            if self.conn:
+                with self.conn.cursor() as cursor:
+                    # Utiliser execute_values pour les performances
+                    execute_values(cursor, query, params_list, page_size=page_size)
+                    
+                    if commit and self.conn:
+                        self.conn.commit()
+                    
+                    return True
+            else:
+                return False
         
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'exécution par lots: {str(e)}")
             try:
-                self.conn.rollback()
+                if self.conn:
+                    self.conn.rollback()
             except:
                 pass
             return False
@@ -307,18 +316,22 @@ class DBManager:
                 return False
             
             try:
-                with self.conn.cursor() as cursor:
-                    cursor.executemany(query, params_list)
-                    
-                    if commit:
-                        self.conn.commit()
-                    
-                    return True
+                if self.conn:
+                    with self.conn.cursor() as cursor:
+                        cursor.executemany(query, params_list)
+                        
+                        if commit and self.conn:
+                            self.conn.commit()
+                        
+                        return True
+                else:
+                    return False
             
             except Exception as e:
                 logger.error(f"❌ Erreur lors de l'exécution multiple: {str(e)}")
                 try:
-                    self.conn.rollback()
+                    if self.conn:
+                        self.conn.rollback()
                 except:
                     pass
                 return False
@@ -350,8 +363,8 @@ class DBManager:
 class SharedCache:
     """Cache à mémoire partagée pour stocker des résultats fréquemment demandés."""
     
-    _cache = {}
-    _locks = {}
+    _cache: Dict[str, Tuple[float, Any]] = {}
+    _locks: Dict[str, Any] = {}
     
     @classmethod
     def get(cls, key: str, max_age: int = 5):
@@ -387,7 +400,7 @@ class SharedCache:
         cls._cache[key] = (current_time, data)
     
     @classmethod
-    def clear(cls, prefix: str = None):
+    def clear(cls, prefix: Optional[str] = None):
         """
         Efface le cache ou une partie du cache.
         
@@ -409,7 +422,7 @@ class PortfolioModel:
     Fournit des méthodes pour accéder et manipuler les données du portefeuille.
     """
     
-    def __init__(self, db_manager: DBManager = None):
+    def __init__(self, db_manager: Optional[DBManager] = None):
         """
         Initialise le modèle de portefeuille.
         
@@ -654,7 +667,7 @@ class PortfolioModel:
         WHERE 1=1
         """
         
-        params = []
+        params: List[Any] = []
         
         # Ajouter les filtres si spécifiés
         if symbol:
@@ -799,7 +812,7 @@ class PortfolioModel:
             )
             """
             count_result = self.db.execute_query(count_query, fetch_one=True)
-            count_to_delete = count_result.get('count_to_delete', 0) if count_result else 0
+            count_to_delete = count_result.get('count_to_delete', 0) if count_result and isinstance(count_result, dict) else 0
             
             if count_to_delete > 0:
                 # Maintenant supprimer les enregistrements
@@ -835,7 +848,7 @@ class PortfolioModel:
         FROM strategy_configs
         WHERE 1=1
         """
-        params = []
+        params: List[Any] = []
         
         if name:
             query += " AND name = %s"

@@ -43,7 +43,7 @@ class BinanceExecutor:
         
         # Variables pour le mode démo
         self.demo_order_id = 10000000  # ID de départ pour les ordres démo
-        self.demo_trades = {}  # Historique des trades en mode démo
+        self.demo_trades: Dict[str, Any] = {}  # Historique des trades en mode démo
         
         # Calculer le décalage temporel avec le serveur Binance
         self.time_offset = self.utils.get_time_offset()

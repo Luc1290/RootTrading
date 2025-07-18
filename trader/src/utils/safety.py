@@ -5,7 +5,7 @@ Fournit des mécanismes pour éviter les erreurs et problèmes.
 import logging
 import time
 import functools
-from typing import Dict, Any, Callable, Optional, TypeVar, List
+from typing import Dict, Any, Callable, Optional, TypeVar, List, Type
 import traceback
 import threading
 
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar('T')
 
 def retry(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0,
-          exceptions: List[Exception] = [Exception]) -> Callable:
+          exceptions: List[Type[Exception]] = [Exception]) -> Callable:
     """
     Décorateur pour retenter une fonction en cas d'échec.
     
@@ -188,7 +188,7 @@ def safe_execute(func: Callable, *args, **kwargs) -> Optional[Any]:
         logger.error(traceback.format_exc())
         return None
 
-def notify_error(message: str, additional_info: Dict[str, Any] = None) -> None:
+def notify_error(message: str, additional_info: Optional[Dict[str, Any]] = None) -> None:
     """
     Notifie une erreur via Redis.
     

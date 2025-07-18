@@ -52,7 +52,7 @@ class AnalyzerManager:
     Distribue l'analyse des données de marché sur plusieurs processus/threads.
     """
     
-    def __init__(self, symbols: List[str] = None, max_workers: int = None, use_threads: bool = False):
+    def __init__(self, symbols: Optional[List[str]] = None, max_workers: Optional[int] = None, use_threads: bool = False):
         """
         Initialise le gestionnaire d'analyse.
         
@@ -103,7 +103,7 @@ class AnalyzerManager:
             )
             logger.info("✅ Analyseur optimisé initialisé")
         else:
-            self.optimized_analyzer = None
+            self.optimized_analyzer: Optional[OptimizedAnalyzer] = None
         
         # Événement d'arrêt
         self.stop_event = mp.Event() if not use_threads else threading.Event()
@@ -278,7 +278,7 @@ class AnalyzerManager:
                                     # Assurer que tous les champs requis sont présents et correctement formatés
                                     side_value = signal.side.value if hasattr(signal.side, 'value') else str(signal.side)
                                     strength_value = signal.strength.value if hasattr(signal.strength, 'value') else "MODERATE"
-                                    timestamp_value = signal.timestamp.isoformat() if hasattr(signal.timestamp, 'isoformat') else datetime.now().isoformat()
+                                    timestamp_value = signal.timestamp.isoformat() if hasattr(signal.timestamp, 'isoformat') else datetime.datetime.now().isoformat()
                 
                                     # Créer un dictionnaire avec les données du signal
                                     signal_dict = {

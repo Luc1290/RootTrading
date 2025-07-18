@@ -86,6 +86,7 @@ class OrderExecutor:
                 price=price,
                 client_order_id=order_id,
                 strategy=strategy,
+                leverage=1,  # Mode SPOT, pas de levier
                 demo=self.binance_executor.demo_mode
             )
             

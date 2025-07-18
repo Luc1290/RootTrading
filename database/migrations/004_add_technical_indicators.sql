@@ -46,7 +46,7 @@ CREATE INDEX IF NOT EXISTS market_data_enhanced_idx ON market_data (enhanced, ul
 COMMENT ON COLUMN market_data.rsi_14 IS 'RSI 14 périodes';
 COMMENT ON COLUMN market_data.ema_12 IS 'EMA 12 périodes';
 COMMENT ON COLUMN market_data.ema_26 IS 'EMA 26 périodes';
-COMMENT ON COLUMN market_data.macd_line IS 'MACD Line (EMA12 - EMA26)';
+COMMENT ON COLUMN market_data.macd_line IS 'MACD Line (EMA7 - EMA26)';
 COMMENT ON COLUMN market_data.macd_signal IS 'MACD Signal Line (EMA9 du MACD)';
 COMMENT ON COLUMN market_data.bb_upper IS 'Bollinger Band supérieure';
 COMMENT ON COLUMN market_data.bb_lower IS 'Bollinger Band inférieure';

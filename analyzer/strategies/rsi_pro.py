@@ -5,7 +5,7 @@ Intègre ADX, CCI, Williams %R, VWAP et analyse de structure pour des signaux pr
 """
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 import numpy as np
 import pandas as pd
 
@@ -20,9 +20,9 @@ from .base_strategy import BaseStrategy
 
 # Import des modules d'analyse avancée
 try:
-    import redis
+    import redis  # type: ignore
 except ImportError:
-    redis = None
+    redis = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class RSIProStrategy(BaseStrategy):
     - Structure de marché
     """
     
-    def __init__(self, symbol: str, params: Dict[str, Any] = None):
+    def __init__(self, symbol: str, params: Optional[Dict[str, Any]] = None):
         super().__init__(symbol, params)
         
         # Paramètres RSI avancés
@@ -55,8 +55,8 @@ class RSIProStrategy(BaseStrategy):
         self.confluence_threshold = symbol_params.get('confluence_threshold', 35.0)  # ASSOUPLI de 45 à 35
         
         # Historique pour détection de divergences
-        self.price_history = []
-        self.rsi_history = []
+        self.price_history: List[float] = []
+        self.rsi_history: List[float] = []
         self.max_history = 20
         
         # Connexion Redis pour analyses avancées
@@ -118,8 +118,8 @@ class RSIProStrategy(BaseStrategy):
             
             # Analyser le contexte multi-timeframes
             context_analysis = self._analyze_rsi_context(
-                symbol, current_rsi, adx, cci, williams_r, vwap, 
-                volume_ratio, momentum_10, bb_position
+                symbol, current_rsi, adx or 0.0, cci or 0.0, williams_r or 0.0, vwap or 0.0, 
+                volume_ratio or 0.0, momentum_10 or 0.0, bb_position or 0.0
             )
             
             # Détecter les divergences
@@ -135,7 +135,7 @@ class RSIProStrategy(BaseStrategy):
                 # Vérifier la position du prix avant de générer le signal
                 if not self.should_filter_signal_by_price_position(OrderSide.BUY, price_position, df):
                     confidence = self._calculate_bullish_confidence(
-                        current_rsi, context_analysis, divergence_analysis, current_price, vwap
+                        current_rsi, context_analysis, divergence_analysis, current_price, vwap or 0.0
                     )
                     
                     signal = self.create_signal(
@@ -169,7 +169,7 @@ class RSIProStrategy(BaseStrategy):
                 # Vérifier la position du prix avant de générer le signal
                 if not self.should_filter_signal_by_price_position(OrderSide.SELL, price_position, df):
                     confidence = self._calculate_bearish_confidence(
-                        current_rsi, context_analysis, divergence_analysis, current_price, vwap
+                        current_rsi, context_analysis, divergence_analysis, current_price, vwap or 0.0
                     )
                     
                     signal = self.create_signal(
@@ -233,46 +233,44 @@ class RSIProStrategy(BaseStrategy):
         try:
             # 1. Force de tendance (ADX)
             from shared.src.config import ADX_NO_TREND_THRESHOLD, ADX_WEAK_TREND_THRESHOLD
-            if adx and adx >= self.min_adx:
+            if adx >= self.min_adx:
                 context['score'] += 20
                 context['confidence_boost'] += 0.05
                 context['details'].append(f"ADX tendance ({adx:.1f})")
-            elif adx and adx >= ADX_NO_TREND_THRESHOLD:
+            elif adx >= ADX_NO_TREND_THRESHOLD:
                 context['score'] += 10
                 context['details'].append(f"ADX faible ({adx:.1f})")
             else:
                 context['score'] -= 5
-                context['details'].append(f"ADX insuffisant ({adx or 0:.1f})")
+                context['details'].append(f"ADX insuffisant ({adx:.1f})")
             
             # 2. Confirmation CCI
-            if cci:
-                if abs(cci) > 100:  # CCI extrême
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
-                    context['details'].append(f"CCI extrême ({cci:.1f})")
-                elif abs(cci) > 50:
-                    context['score'] += 10
-                    context['details'].append(f"CCI actif ({cci:.1f})")
-                else:
-                    context['score'] += 5
-                    context['details'].append(f"CCI neutre ({cci:.1f})")
+            if abs(cci) > 100:  # CCI extrême
+                context['score'] += 15
+                context['confidence_boost'] += 0.05
+                context['details'].append(f"CCI extrême ({cci:.1f})")
+            elif abs(cci) > 50:
+                context['score'] += 10
+                context['details'].append(f"CCI actif ({cci:.1f})")
+            else:
+                context['score'] += 5
+                context['details'].append(f"CCI neutre ({cci:.1f})")
             
             # 3. Williams %R pour timing
-            if williams_r:
-                if williams_r <= -80:  # Extrême oversold
-                    context['score'] += 20
-                    context['confidence_boost'] += 0.08
-                    context['details'].append(f"Williams oversold ({williams_r:.1f})")
-                elif williams_r >= -20:  # Extrême overbought
-                    context['score'] += 20
-                    context['confidence_boost'] += 0.08
-                    context['details'].append(f"Williams overbought ({williams_r:.1f})")
-                else:
-                    context['score'] += 5
-                    context['details'].append(f"Williams neutre ({williams_r:.1f})")
+            if williams_r <= -80:  # Extrême oversold
+                context['score'] += 20
+                context['confidence_boost'] += 0.08
+                context['details'].append(f"Williams oversold ({williams_r:.1f})")
+            elif williams_r >= -20:  # Extrême overbought
+                context['score'] += 20
+                context['confidence_boost'] += 0.08
+                context['details'].append(f"Williams overbought ({williams_r:.1f})")
+            else:
+                context['score'] += 5
+                context['details'].append(f"Williams neutre ({williams_r:.1f})")
             
             # 4. VWAP direction
-            if self.price_history and vwap:
+            if self.price_history and vwap > 0:
                 current_price = self.price_history[-1]
                 vwap_distance = (current_price - vwap) / vwap * 100
                 
@@ -285,44 +283,42 @@ class RSIProStrategy(BaseStrategy):
                     context['details'].append(f"Prix proche VWAP ({vwap_distance:+.1f}%)")
             
             # 5. Volume confirmation - SEUILS STANDARDISÉS
-            if volume_ratio and volume_ratio > 1.5:  # STANDARDISÉ: Très bon
+            if volume_ratio > 1.5:  # STANDARDISÉ: Très bon
                 context['score'] += 25
                 context['confidence_boost'] += 0.1
                 context['details'].append(f"Volume très bon ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio > 1.2:  # STANDARDISÉ: Bon
+            elif volume_ratio > 1.2:  # STANDARDISÉ: Bon
                 context['score'] += 20
                 context['confidence_boost'] += 0.08
                 context['details'].append(f"Volume bon ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio > 1.0:  # STANDARDISÉ: Acceptable
+            elif volume_ratio > 1.0:  # STANDARDISÉ: Acceptable
                 context['score'] += 10
                 context['details'].append(f"Volume acceptable ({volume_ratio:.1f}x)")
             else:
                 context['score'] -= 3  # Assoupli de -5 à -3
-                context['details'].append(f"Volume faible ({volume_ratio or 0:.1f}x)")
+                context['details'].append(f"Volume faible ({volume_ratio:.1f}x)")
             
             # 6. Momentum support
-            if momentum_10:
-                momentum_strength = abs(momentum_10)
-                if momentum_strength > 1.5:
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
-                    context['details'].append(f"Momentum fort ({momentum_10:.2f})")
-                elif momentum_strength > 0.8:
-                    context['score'] += 10
-                    context['details'].append(f"Momentum modéré ({momentum_10:.2f})")
-                else:
-                    context['score'] += 2
-                    context['details'].append(f"Momentum faible ({momentum_10:.2f})")
+            momentum_strength = abs(momentum_10)
+            if momentum_strength > 1.5:
+                context['score'] += 15
+                context['confidence_boost'] += 0.05
+                context['details'].append(f"Momentum fort ({momentum_10:.2f})")
+            elif momentum_strength > 0.8:
+                context['score'] += 10
+                context['details'].append(f"Momentum modéré ({momentum_10:.2f})")
+            else:
+                context['score'] += 2
+                context['details'].append(f"Momentum faible ({momentum_10:.2f})")
             
             # 7. Position Bollinger
-            if bb_position is not None:
-                if bb_position <= 0.15 or bb_position >= 0.85:  # Zones extrêmes
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
-                    context['details'].append(f"BB position extrême ({bb_position:.2f})")
-                else:
-                    context['score'] += 5
-                    context['details'].append(f"BB position normale ({bb_position:.2f})")
+            if bb_position <= 0.15 or bb_position >= 0.85:  # Zones extrêmes
+                context['score'] += 15
+                context['confidence_boost'] += 0.05
+                context['details'].append(f"BB position extrême ({bb_position:.2f})")
+            else:
+                context['score'] += 5
+                context['details'].append(f"BB position normale ({bb_position:.2f})")
             
             # 8. Confluence multi-timeframes
             if self.redis_client:
@@ -341,8 +337,8 @@ class RSIProStrategy(BaseStrategy):
                         context['details'].append(f"Confluence modérée ({confluence_score:.1f}%)")
             
             # Normaliser
-            context['score'] = max(0, min(100, context['score']))
-            context['confidence_boost'] = max(0, min(0.25, context['confidence_boost']))
+            context['score'] = max(0.0, min(100.0, context['score']))
+            context['confidence_boost'] = max(0.0, min(0.25, context['confidence_boost']))
             
         except Exception as e:
             logger.error(f"❌ Erreur analyse contexte RSI: {e}")
@@ -521,7 +517,7 @@ class RSIProStrategy(BaseStrategy):
             
             if cached:
                 import json
-                return json.loads(cached)
+                return json.loads(str(cached))
             
         except Exception as e:
             logger.debug(f"Confluence non disponible pour {symbol}: {e}")

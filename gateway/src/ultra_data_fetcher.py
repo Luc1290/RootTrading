@@ -8,8 +8,9 @@ import logging
 import json
 import time
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 import aiohttp
+from aiohttp import ClientTimeout
 import sys
 import os
 
@@ -180,7 +181,8 @@ class UltraDataFetcher:
             url = f"{self.base_url}{self.klines_endpoint}"
             
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=params, timeout=15) as response:
+                timeout = ClientTimeout(total=15)
+                async with session.get(url, params=params, timeout=timeout) as response:
                     if response.status == 200:
                         return await response.json()
                     else:
@@ -418,9 +420,9 @@ class UltraDataFetcher:
             return {}
             
         return {
-            'macd_line': round(result['macd_line'], 6),
-            'macd_signal': round(result['macd_signal'], 6),
-            'macd_histogram': round(result['macd_histogram'], 6)
+            'macd_line': round(result['macd_line'] or 0.0, 6),
+            'macd_signal': round(result['macd_signal'] or 0.0, 6),
+            'macd_histogram': round(result['macd_histogram'] or 0.0, 6)
         }
     
     def _calculate_bollinger_bands(self, prices: List[float], period: int, std_dev: float) -> Dict:
@@ -432,11 +434,11 @@ class UltraDataFetcher:
             return {}
             
         return {
-            'bb_upper': round(result['bb_upper'], 6),
-            'bb_middle': round(result['bb_middle'], 6),
-            'bb_lower': round(result['bb_lower'], 6),
-            'bb_position': round(result['bb_position'], 3),
-            'bb_width': round(result['bb_width'], 2)
+            'bb_upper': round(result['bb_upper'] or 0.0, 6),
+            'bb_middle': round(result['bb_middle'] or 0.0, 6),
+            'bb_lower': round(result['bb_lower'] or 0.0, 6),
+            'bb_position': round(result['bb_position'] or 0.0, 3),
+            'bb_width': round(result['bb_width'] or 0.0, 2)
         }
     
     def _calculate_adx(self, highs: List[float], lows: List[float], closes: List[float], period: int = 14) -> Optional[float]:
@@ -814,7 +816,8 @@ class UltraDataFetcher:
             url = f"{self.base_url}{self.klines_endpoint}"
             
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=params, timeout=15) as response:
+                timeout = ClientTimeout(total=15)
+                async with session.get(url, params=params, timeout=timeout) as response:
                     if response.status == 200:
                         klines = await response.json()
                         logger.debug(f"📚 Gap fill {symbol} {timeframe}: {len(klines)} klines récupérées "
@@ -833,7 +836,7 @@ class UltraDataFetcher:
         Récupère les klines historiques avec pagination pour les gros volumes.
         Binance limite à 1000 klines par requête.
         """
-        all_klines = []
+        all_klines: List[Any] = []
         max_per_request = 1000
         
         try:
@@ -897,7 +900,8 @@ class UltraDataFetcher:
             url = f"{self.base_url}{self.klines_endpoint}"
             
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=params, timeout=15) as response:
+                timeout = ClientTimeout(total=15)
+                async with session.get(url, params=params, timeout=timeout) as response:
                     if response.status == 200:
                         return await response.json()
                     else:

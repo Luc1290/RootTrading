@@ -142,6 +142,9 @@ async def get_market_chart(
             }
             limit = timeframe_limits.get(interval, 2880)
         
+        if chart_service is None:
+            raise HTTPException(status_code=503, detail="Chart service not available")
+            
         data = await chart_service.get_market_chart(
             symbol=symbol,
             interval=interval,
@@ -163,6 +166,9 @@ async def get_signals_chart(
 ):
     """Get trading signals overlaid on price chart"""
     try:
+        if chart_service is None:
+            raise HTTPException(status_code=503, detail="Chart service not available")
+            
         data = await chart_service.get_signals_chart(
             symbol=symbol,
             strategy=strategy,
@@ -181,6 +187,9 @@ async def get_performance_chart(
 ):
     """Get portfolio performance chart"""
     try:
+        if chart_service is None:
+            raise HTTPException(status_code=503, detail="Chart service not available")
+            
         data = await chart_service.get_performance_chart(
             period=period,
             metric=metric
@@ -212,6 +221,9 @@ async def get_indicators_chart(
             limit = timeframe_limits.get(interval, 2880)
             
         indicator_list = indicators.split(",")
+        if chart_service is None:
+            raise HTTPException(status_code=503, detail="Chart service not available")
+            
         data = await chart_service.get_indicators_chart(
             symbol=symbol,
             indicators=indicator_list,
@@ -226,28 +238,36 @@ async def get_indicators_chart(
 @app.websocket("/ws/charts/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str):
     """WebSocket endpoint for real-time chart updates"""
+    if websocket_hub is None:
+        await websocket.close(code=1011, reason="WebSocket service not available")
+        return
+        
     await websocket_hub.connect(websocket, client_id)
     try:
         while True:
             data = await websocket.receive_json()
             
             if data.get("action") == "subscribe":
-                await websocket_hub.subscribe_client(
-                    client_id,
-                    data.get("channel"),
-                    data.get("params", {})
-                )
+                if websocket_hub is not None:
+                    await websocket_hub.subscribe_client(
+                        client_id,
+                        data.get("channel"),
+                        data.get("params", {})
+                    )
             elif data.get("action") == "unsubscribe":
-                await websocket_hub.unsubscribe_client(
-                    client_id,
-                    data.get("channel")
-                )
+                if websocket_hub is not None:
+                    await websocket_hub.unsubscribe_client(
+                        client_id,
+                        data.get("channel")
+                    )
                 
     except WebSocketDisconnect:
-        await websocket_hub.disconnect(client_id)
+        if websocket_hub is not None:
+            await websocket_hub.disconnect(client_id)
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
-        await websocket_hub.disconnect(client_id)
+        if websocket_hub is not None:
+            await websocket_hub.disconnect(client_id)
 
 @app.get("/api/available-symbols")
 async def get_available_symbols():

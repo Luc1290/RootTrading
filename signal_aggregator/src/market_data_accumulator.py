@@ -5,7 +5,7 @@ Sépare la logique d'accumulation de données du signal aggregator principal.
 """
 
 import logging
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from collections import defaultdict, deque
 from datetime import datetime
 import time
@@ -18,8 +18,8 @@ class MarketDataAccumulator:
     
     def __init__(self, max_history: int = 200):
         self.max_history = max_history
-        self.data_history = defaultdict(lambda: deque(maxlen=max_history))
-        self.last_update = defaultdict(float)
+        self.data_history: defaultdict[str, deque[Dict[str, Any]]] = defaultdict(lambda: deque(maxlen=max_history))
+        self.last_update: defaultdict[str, float] = defaultdict(float)
     
     def add_market_data(self, symbol: str, data: Dict[str, Any]) -> None:
         """Ajoute des données de marché à l'historique"""
@@ -42,7 +42,7 @@ class MarketDataAccumulator:
         except Exception as e:
             logger.error(f"Erreur ajout données historiques {symbol}: {e}")
     
-    def get_history(self, symbol: str, limit: int = None) -> List[Dict[str, Any]]:
+    def get_history(self, symbol: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Récupère l'historique des données pour un symbole"""
         history = list(self.data_history[symbol])
         if limit and len(history) > limit:
@@ -53,7 +53,7 @@ class MarketDataAccumulator:
         """Retourne le nombre de points historiques disponibles"""
         return len(self.data_history[symbol])
     
-    def clear_history(self, symbol: str = None) -> None:
+    def clear_history(self, symbol: Optional[str] = None) -> None:
         """Efface l'historique pour un symbole ou tous les symboles"""
         if symbol:
             if symbol in self.data_history:

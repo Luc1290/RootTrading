@@ -211,7 +211,7 @@ class TechnicalIndicators:
                 logger.warning(f"Erreur talib EMA series: {e}, utilisation fallback")
         
         # Calcul manuel incrémental
-        ema_series = [None] * len(prices_array)
+        ema_series: list[float | None] = [None] * len(prices_array)
         alpha = 2.0 / (period + 1)
         
         # Première valeur EMA = première valeur de prix (à l'index period-1)
@@ -224,7 +224,8 @@ class TechnicalIndicators:
             for i in range(period, len(prices_array)):
                 prev_ema = ema_series[i - 1]
                 current_price = float(prices_array[i])
-                ema_series[i] = alpha * current_price + (1 - alpha) * prev_ema
+                if prev_ema is not None:
+                    ema_series[i] = alpha * current_price + (1 - alpha) * prev_ema
                 
         return ema_series
     
@@ -453,7 +454,7 @@ class TechnicalIndicators:
             try:
                 bb_upper, bb_middle, bb_lower = talib.BBANDS(
                     prices_array, timeperiod=period, nbdevup=std_dev, 
-                    nbdevdn=std_dev, matype=0
+                    nbdevdn=std_dev, matype=talib.MA_Type.SMA
                 )
                 
                 upper = float(bb_upper[-1]) if not np.isnan(bb_upper[-1]) else None
@@ -649,7 +650,7 @@ class TechnicalIndicators:
                 logger.warning(f"Erreur talib SMA series: {e}, utilisation fallback")
         
         # Calcul manuel optimisé
-        sma_series = [None] * len(prices_array)
+        sma_series: list[float | None] = [None] * len(prices_array)
         
         if len(prices_array) >= period:
             # Première valeur SMA
@@ -660,7 +661,8 @@ class TechnicalIndicators:
                 prev_sma = sma_series[i - 1]
                 new_price = float(prices_array[i])
                 old_price = float(prices_array[i - period])
-                sma_series[i] = prev_sma + (new_price - old_price) / period
+                if prev_sma is not None:
+                    sma_series[i] = prev_sma + (new_price - old_price) / period
                 
         return sma_series
     
@@ -970,10 +972,10 @@ class TechnicalIndicators:
                 return None, None
             
             # Calculer les bandes supérieures et inférieures
-            upper_bands = []
-            lower_bands = []
-            supertrend_values = []
-            directions = []
+            upper_bands: list[float] = []
+            lower_bands: list[float] = []
+            supertrend_values: list[float] = []
+            directions: list[int] = []
             
             for i, atr in enumerate(atr_series):
                 current_idx = period + i
@@ -1137,7 +1139,8 @@ class TechnicalIndicators:
                 bb_upper, bb_middle, bb_lower = talib.BBANDS(closes_array, 
                                                             timeperiod=20, 
                                                             nbdevup=2, 
-                                                            nbdevdn=2)
+                                                            nbdevdn=2,
+                                                            matype=talib.MA_Type.SMA)
                 indicators['bb_upper'] = bb_upper
                 indicators['bb_middle'] = bb_middle
                 indicators['bb_lower'] = bb_lower
@@ -1279,57 +1282,88 @@ class TechnicalIndicators:
             
             # SMAs
             for period in [20, 50]:
-                indicators[f'sma_{period}'] = self.calculate_sma(closes, period)
+                sma_value = self.calculate_sma(closes, period)
+                if sma_value is not None:
+                    indicators[f'sma_{period}'] = sma_value
                 
             # MACD
             macd_data = self.calculate_macd(closes)
-            indicators.update(macd_data)
+            for key, value in macd_data.items():
+                if value is not None:
+                    indicators[key] = value
             
             # Bollinger Bands
             bb_data = self.calculate_bollinger_bands(closes)
-            indicators.update(bb_data)
+            for key, value in bb_data.items():
+                if value is not None:
+                    indicators[key] = value
             
             # ATR
-            indicators['atr_14'] = self.calculate_atr(highs, lows, closes, 14)
+            atr_value = self.calculate_atr(highs, lows, closes, 14)
+            if atr_value is not None:
+                indicators['atr_14'] = atr_value
             
             # ADX et Directional Indicators
             adx, plus_di, minus_di = self.calculate_adx_smoothed(highs, lows, closes, 14)
             if adx is not None:
                 indicators['adx_14'] = adx
+            if plus_di is not None:
                 indicators['plus_di'] = plus_di
+            if minus_di is not None:
                 indicators['minus_di'] = minus_di
             
             # Stochastic
             stoch_k, stoch_d = self.calculate_stochastic(highs, lows, closes)
             if stoch_k is not None:
                 indicators['stoch_k'] = stoch_k
+            if stoch_d is not None:
                 indicators['stoch_d'] = stoch_d
             
             # ROC multiple périodes
-            indicators['roc_10'] = self.calculate_roc(closes, 10)
-            indicators['roc_20'] = self.calculate_roc(closes, 20)
+            roc_10 = self.calculate_roc(closes, 10)
+            if roc_10 is not None:
+                indicators['roc_10'] = roc_10
+            roc_20 = self.calculate_roc(closes, 20)
+            if roc_20 is not None:
+                indicators['roc_20'] = roc_20
             
             # OBV
-            indicators['obv'] = self.calculate_obv(closes, volumes)
+            obv_value = self.calculate_obv(closes, volumes)
+            if obv_value is not None:
+                indicators['obv'] = obv_value
             
             # Stochastic RSI
-            indicators['stoch_rsi'] = self.calculate_stoch_rsi(closes, 14)
+            stoch_rsi_value = self.calculate_stoch_rsi(closes, 14)
+            if stoch_rsi_value is not None:
+                indicators['stoch_rsi'] = stoch_rsi_value
             
             # MFI (Money Flow Index)
-            indicators['mfi_14'] = self.calculate_mfi(highs, lows, closes, volumes, 14)
+            mfi_value = self.calculate_mfi(highs, lows, closes, volumes, 14)
+            if mfi_value is not None:
+                indicators['mfi_14'] = mfi_value
             
             # Williams %R
-            indicators['williams_r'] = self.calculate_williams_r(highs, lows, closes, 14)
+            williams_r_value = self.calculate_williams_r(highs, lows, closes, 14)
+            if williams_r_value is not None:
+                indicators['williams_r'] = williams_r_value
             
             # CCI (Commodity Channel Index)
-            indicators['cci_20'] = self.calculate_cci(highs, lows, closes, 20)
+            cci_value = self.calculate_cci(highs, lows, closes, 20)
+            if cci_value is not None:
+                indicators['cci_20'] = cci_value
             
             # VWAP
-            indicators['vwap_10'] = self.calculate_vwap(highs, lows, closes, volumes, 10)
+            vwap_value = self.calculate_vwap(highs, lows, closes, volumes, 10)
+            if vwap_value is not None:
+                indicators['vwap_10'] = vwap_value
             
             # Indicateurs supplémentaires
-            indicators['trend_angle'] = self.calculate_trend_angle(closes, 10)
-            indicators['pivot_count'] = self.calculate_pivot_count(highs, lows, 5)
+            trend_angle = self.calculate_trend_angle(closes, 10)
+            if trend_angle is not None:
+                indicators['trend_angle'] = trend_angle
+            pivot_count = self.calculate_pivot_count(highs, lows, 5)
+            if pivot_count is not None:
+                indicators['pivot_count'] = pivot_count
             
             # Métriques additionnelles
             if len(closes) >= 10:
@@ -1564,9 +1598,9 @@ class TechnicalIndicators:
                     
                     money_flow = typical_price * volumes[i]
                     if typical_price > prev_typical:
-                        money_flows.append((money_flow, 0))  # positive
+                        money_flows.append((money_flow, 0.0))  # positive
                     else:
-                        money_flows.append((0, money_flow))  # negative
+                        money_flows.append((0.0, money_flow))  # negative
                 
                 if len(money_flows) < period:
                     return None
@@ -1848,7 +1882,7 @@ class IndicatorCache:
             # Mode normal: NE PAS effacer, juste log
             logger.info(f"📊 Cache préservé pour {symbol} (continuité des indicateurs)")
     
-    def restore_from_redis(self, symbol: str = None):
+    def restore_from_redis(self, symbol: Optional[str] = None):
         """
         Restaure le cache depuis Redis au démarrage
         
@@ -2043,8 +2077,9 @@ def calculate_indicators_incremental(symbol: str, timeframe: str, current_candle
     for period in [7, 26, 99]:
         prev_ema = indicator_cache.get(symbol, timeframe, f'ema_{period}')
         new_ema = indicators.calculate_ema_incremental(current_price, prev_ema, period)
-        result[f'ema_{period}'] = new_ema
-        indicator_cache.set(symbol, timeframe, f'ema_{period}', new_ema)
+        if new_ema is not None:
+            result[f'ema_{period}'] = new_ema
+            indicator_cache.set(symbol, timeframe, f'ema_{period}', new_ema)
     
     # MACD incrémental
     prev_ema_fast = indicator_cache.get(symbol, timeframe, 'macd_ema_fast')
@@ -2055,11 +2090,10 @@ def calculate_indicators_incremental(symbol: str, timeframe: str, current_candle
         current_price, prev_ema_fast, prev_ema_slow, prev_macd_signal
     )
     
-    result.update({
-        'macd_line': macd_result['macd_line'],
-        'macd_signal': macd_result['macd_signal'],
-        'macd_histogram': macd_result['macd_histogram']
-    })
+    # Ajouter seulement les valeurs non-None
+    for key in ['macd_line', 'macd_signal', 'macd_histogram']:
+        if macd_result[key] is not None:
+            result[key] = macd_result[key]
     
     # Mettre à jour le cache MACD
     indicator_cache.set(symbol, timeframe, 'macd_ema_fast', macd_result['ema_fast'])
@@ -2070,9 +2104,13 @@ def calculate_indicators_incremental(symbol: str, timeframe: str, current_candle
     for period in [20, 50]:
         prev_sma = indicator_cache.get(symbol, timeframe, f'sma_{period}')
         # Pour SMA, on a besoin du prix le plus ancien, simplification ici
-        result[f'sma_{period}'] = indicators.calculate_sma_incremental(current_price, prev_sma, period)
+        sma_value = indicators.calculate_sma_incremental(current_price, prev_sma, period)
+        if sma_value is not None:
+            result[f'sma_{period}'] = sma_value
     
     # Autres indicateurs qui ne nécessitent pas de cache (recalcul acceptable)
-    result['rsi_14'] = indicators.calculate_rsi([current_price], 14)  # Simplifié
+    rsi_value = indicators.calculate_rsi([current_price], 14)  # Simplifié
+    if rsi_value is not None:
+        result['rsi_14'] = rsi_value
     
     return result

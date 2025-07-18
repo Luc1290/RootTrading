@@ -9,6 +9,7 @@ import threading
 import time
 from typing import Dict, Any, Callable, List, Optional
 import queue
+from threading import Thread
 
 # Ajouter le répertoire parent au path pour les imports
 import sys
@@ -30,7 +31,7 @@ class RedisSubscriber:
     Reçoit les données de marché et publie les signaux de trading.
     """
     
-    def __init__(self, symbols: List[str] = None):
+    def __init__(self, symbols: Optional[List[str]] = None):
         """
         Initialise le subscriber Redis.
         
@@ -51,10 +52,10 @@ class RedisSubscriber:
             self.market_data_channels.append(channel)
         
         # File d'attente thread-safe pour les données de marché
-        self.market_data_queue = queue.Queue()
+        self.market_data_queue: queue.Queue[tuple[str, Dict[str, Any]]] = queue.Queue()
         
         # Thread pour le traitement des données
-        self.processing_thread = None
+        self.processing_thread: Optional[Thread] = None
         self.stop_event = threading.Event()
         
         logger.info(f"✅ RedisSubscriber DB-first initialisé pour {len(self.symbols)} symboles: {', '.join(self.symbols)}")
@@ -117,7 +118,7 @@ class RedisSubscriber:
             
             # Démarrer le thread de traitement des données
             self.stop_event.clear()
-            self.processing_thread = threading.Thread(
+            self.processing_thread = Thread(
                 target=self._processing_loop,
                 args=(callback,),
                 daemon=True
@@ -219,7 +220,7 @@ class RedisSubscriber:
             logger.info("Thread de traitement arrêté")
         
         # Se désabonner des canaux Redis
-        self.redis_client.unsubscribe()
+        self.redis_client.unsubscribe("analyzer_client")
         
         # Fermer la connexion Redis
         self.redis_client.close()

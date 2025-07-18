@@ -5,7 +5,7 @@ Intègre RSI, MACD, CCI, momentum et analyse cross-timeframes pour retournements
 """
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List, Tuple, Union
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
@@ -21,9 +21,9 @@ from .base_strategy import BaseStrategy
 
 # Import des modules d'analyse avancée
 try:
-    import redis
+    import redis  # type: ignore
 except ImportError:
-    redis = None
+    redis = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ class ReversalDivergenceProStrategy(BaseStrategy):
     - Multiple divergences simultanées = signal renforcé
     """
     
-    def __init__(self, symbol: str, params: Dict[str, Any] = None):
+    def __init__(self, symbol: str, params: Optional[Dict[str, Any]] = None):
         super().__init__(symbol, params)
         
         # Paramètres divergence avancés
@@ -67,11 +67,11 @@ class ReversalDivergenceProStrategy(BaseStrategy):
         self.multiple_div_bonus = symbol_params.get('multiple_div_bonus', 0.15)  # Bonus multi-divergences
         
         # Historique pour divergences
-        self.price_history = []
-        self.rsi_history = []
-        self.macd_history = []
-        self.cci_history = []
-        self.momentum_history = []
+        self.price_history: List[float] = []
+        self.rsi_history: List[float] = []
+        self.macd_history: List[float] = []
+        self.cci_history: List[float] = []
+        self.momentum_history: List[float] = []
         self.max_history = 30
         
         # Connexion Redis pour analyses avancées
@@ -130,7 +130,7 @@ class ReversalDivergenceProStrategy(BaseStrategy):
             bb_position = self._get_current_indicator(indicators, 'bb_position')
             
             # Mettre à jour l'historique
-            self._update_history(current_price, rsi, macd_line, cci, momentum_10)
+            self._update_history(current_price, rsi or 0.0, macd_line or 0.0, cci or 0.0, momentum_10 or 0.0)
             
             # Détecter toutes les divergences
             all_divergences = self._detect_all_divergences()
@@ -140,7 +140,7 @@ class ReversalDivergenceProStrategy(BaseStrategy):
             
             # Analyser le contexte
             context_analysis = self._analyze_divergence_context(
-                symbol, volume_ratio, adx, williams_r, bb_position
+                symbol, volume_ratio or 0.0, adx or 0.0, williams_r or 0.0, bb_position or 0.0
             )
             
             # NOUVEAU: Calculer la position du prix dans son range
@@ -154,7 +154,7 @@ class ReversalDivergenceProStrategy(BaseStrategy):
                 # Vérifier la position du prix avant de générer le signal
                 if not self.should_filter_signal_by_price_position(OrderSide.BUY, price_position, df):
                     confidence = self._calculate_divergence_confidence(
-                        bullish_divergences, structure_analysis, context_analysis, volume_ratio, True
+                        bullish_divergences, structure_analysis, context_analysis, volume_ratio or 0.0, True
                     )
                     
                     # Préparer métadonnées détaillées
@@ -182,7 +182,18 @@ class ReversalDivergenceProStrategy(BaseStrategy):
                     )
                     # Enregistrer prix d'entrée pour protection défensive
                     self.last_entry_price = current_price
-                    return signal
+                    
+                    # Convertir StrategySignal en dict pour compatibilité
+                    return {
+                        'strategy': signal.strategy,
+                        'symbol': signal.symbol,
+                        'side': signal.side,
+                        'timestamp': signal.timestamp.isoformat(),
+                        'price': signal.price,
+                        'confidence': signal.confidence,
+                        'strength': signal.strength,
+                        'metadata': signal.metadata
+                    }
                     
                 else:
                     logger.info(f"📊 Divergence Pro {symbol}: Signal BUY techniquement valide mais filtré "
@@ -195,7 +206,7 @@ class ReversalDivergenceProStrategy(BaseStrategy):
                     # Vérifier la position du prix avant de générer le signal
                     if not self.should_filter_signal_by_price_position(OrderSide.SELL, price_position, df):
                         confidence = self._calculate_divergence_confidence(
-                            bearish_divergences, structure_analysis, context_analysis, volume_ratio, False
+                            bearish_divergences, structure_analysis, context_analysis, volume_ratio or 0.0, False
                         )
                         
                         # Préparer métadonnées détaillées
@@ -226,8 +237,8 @@ class ReversalDivergenceProStrategy(BaseStrategy):
                                   f"(position prix: {price_position:.2f})")
             
             if signal:
-                div_count = signal.metadata['divergence_count']
-                indicators_str = signal.metadata['reason'].split(': ')[-1].rstrip(')')
+                div_count = signal.metadata.get('divergence_count', 0)
+                indicators_str = signal.metadata.get('reason', '').split(': ')[-1].rstrip(')')
                 logger.info(f"🎯 Divergence Pro {symbol}: {signal.side} @ {current_price:.4f} "
                           f"({div_count} div: {indicators_str}, Context: {context_analysis['score']:.1f}, "
                           f"Conf: {signal.confidence:.2f})")
@@ -266,7 +277,7 @@ class ReversalDivergenceProStrategy(BaseStrategy):
     
     def _detect_all_divergences(self) -> List[DivergenceSignal]:
         """Détecte toutes les divergences sur tous les indicateurs"""
-        all_divergences = []
+        all_divergences: List[DivergenceSignal] = []
         
         if len(self.price_history) < self.lookback_periods:
             return all_divergences
@@ -469,64 +480,61 @@ class ReversalDivergenceProStrategy(BaseStrategy):
         
         try:
             # 1. Volume confirmation (critique pour retournements) - SEUILS STANDARDISÉS
-            if volume_ratio and volume_ratio > 1.5:  # STANDARDISÉ: Très bon
+            if volume_ratio > 1.5:  # STANDARDISÉ: Très bon
                 context['score'] += 25
                 context['confidence_boost'] += 0.1
                 context['details'].append(f"Volume très bon ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio > 1.2:  # STANDARDISÉ: Bon
+            elif volume_ratio > 1.2:  # STANDARDISÉ: Bon
                 context['score'] += 20
                 context['confidence_boost'] += 0.08
                 context['details'].append(f"Volume bon ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio > 1.0:  # STANDARDISÉ: Acceptable
+            elif volume_ratio > 1.0:  # STANDARDISÉ: Acceptable
                 context['score'] += 15
                 context['confidence_boost'] += 0.05
                 context['details'].append(f"Volume acceptable ({volume_ratio:.1f}x)")
             else:
                 context['score'] -= 10
-                context['details'].append(f"Volume faible ({volume_ratio or 0:.1f}x)")
+                context['details'].append(f"Volume faible ({volume_ratio:.1f}x)")
             
             # 2. Force de tendance (ADX) - divergences meilleures en fin de tendance
-            if adx:
-                from shared.src.config import ADX_STRONG_TREND_THRESHOLD, ADX_TREND_THRESHOLD
-                if adx >= ADX_STRONG_TREND_THRESHOLD:  # Tendance très forte = potentiel retournement
-                    context['score'] += 20
-                    context['confidence_boost'] += 0.08
-                    context['details'].append(f"ADX fort - retournement potentiel ({adx:.1f})")
-                elif adx >= ADX_TREND_THRESHOLD:
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
-                    context['details'].append(f"ADX modéré ({adx:.1f})")
-                else:
-                    context['score'] += 5
-                    context['details'].append(f"ADX faible ({adx:.1f})")
+            from shared.src.config import ADX_STRONG_TREND_THRESHOLD, ADX_TREND_THRESHOLD
+            if adx >= ADX_STRONG_TREND_THRESHOLD:  # Tendance très forte = potentiel retournement
+                context['score'] += 20
+                context['confidence_boost'] += 0.08
+                context['details'].append(f"ADX fort - retournement potentiel ({adx:.1f})")
+            elif adx >= ADX_TREND_THRESHOLD:
+                context['score'] += 15
+                context['confidence_boost'] += 0.05
+                context['details'].append(f"ADX modéré ({adx:.1f})")
+            else:
+                context['score'] += 5
+                context['details'].append(f"ADX faible ({adx:.1f})")
             
             # 3. Williams %R pour zones extrêmes
-            if williams_r:
-                if williams_r <= -85 or williams_r >= -15:  # Zones extrêmes = bon pour retournements
-                    context['score'] += 20
-                    context['confidence_boost'] += 0.08
-                    context['details'].append(f"Williams extrême ({williams_r:.1f})")
-                elif williams_r <= -75 or williams_r >= -25:
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
-                    context['details'].append(f"Williams favorable ({williams_r:.1f})")
-                else:
-                    context['score'] += 5
-                    context['details'].append(f"Williams neutre ({williams_r:.1f})")
+            if williams_r <= -85 or williams_r >= -15:  # Zones extrêmes = bon pour retournements
+                context['score'] += 20
+                context['confidence_boost'] += 0.08
+                context['details'].append(f"Williams extrême ({williams_r:.1f})")
+            elif williams_r <= -75 or williams_r >= -25:
+                context['score'] += 15
+                context['confidence_boost'] += 0.05
+                context['details'].append(f"Williams favorable ({williams_r:.1f})")
+            else:
+                context['score'] += 5
+                context['details'].append(f"Williams neutre ({williams_r:.1f})")
             
             # 4. Position Bollinger pour extrêmes - STANDARDISÉ
-            if bb_position is not None:
-                if bb_position <= 0.15 or bb_position >= 0.85:  # STANDARDISÉ: Excellent
-                    context['score'] += 20
-                    context['confidence_boost'] += 0.08
-                    context['details'].append(f"BB position extrême ({bb_position:.2f})")
-                elif bb_position <= 0.25 or bb_position >= 0.75:  # STANDARDISÉ: Très bon
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
-                    context['details'].append(f"BB position favorable ({bb_position:.2f})")
-                else:
-                    context['score'] += 5
-                    context['details'].append(f"BB position neutre ({bb_position:.2f})")
+            if bb_position <= 0.15 or bb_position >= 0.85:  # STANDARDISÉ: Excellent
+                context['score'] += 20
+                context['confidence_boost'] += 0.08
+                context['details'].append(f"BB position extrême ({bb_position:.2f})")
+            elif bb_position <= 0.25 or bb_position >= 0.75:  # STANDARDISÉ: Très bon
+                context['score'] += 15
+                context['confidence_boost'] += 0.05
+                context['details'].append(f"BB position favorable ({bb_position:.2f})")
+            else:
+                context['score'] += 5
+                context['details'].append(f"BB position neutre ({bb_position:.2f})")
             
             # 5. Confluence multi-timeframes
             if self.redis_client:
@@ -544,8 +552,8 @@ class ReversalDivergenceProStrategy(BaseStrategy):
                         context['details'].append(f"Confluence modérée ({confluence_score:.1f}%)")
             
             # Normaliser
-            context['score'] = max(0, min(100, context['score']))
-            context['confidence_boost'] = max(0, min(0.25, context['confidence_boost']))
+            context['score'] = max(0.0, min(100.0, context['score']))
+            context['confidence_boost'] = max(0.0, min(0.25, context['confidence_boost']))
             
         except Exception as e:
             logger.error(f"❌ Erreur analyse contexte divergence: {e}")
@@ -620,7 +628,7 @@ class ReversalDivergenceProStrategy(BaseStrategy):
         
         # Force moyenne des divergences
         if divergences:
-            avg_strength = np.mean([d.strength for d in divergences])
+            avg_strength = float(np.mean([d.strength for d in divergences]))
             base_confidence += avg_strength * 0.2
             
             # Bonus pour divergences multiples
@@ -639,9 +647,9 @@ class ReversalDivergenceProStrategy(BaseStrategy):
         base_confidence += structure['favorability'] * 0.1
         
         # Volume confirmation - SEUILS STANDARDISÉS
-        if volume_ratio and volume_ratio > 1.5:  # STANDARDISÉ: Très bon
+        if volume_ratio > 1.5:  # STANDARDISÉ: Très bon
             base_confidence += 0.08
-        elif volume_ratio and volume_ratio > 1.2:  # STANDARDISÉ: Bon
+        elif volume_ratio > 1.2:  # STANDARDISÉ: Bon
             base_confidence += 0.05
         
         # Probabilité de retournement
@@ -658,7 +666,7 @@ class ReversalDivergenceProStrategy(BaseStrategy):
         strongest = max(divergences, key=lambda d: d.strength)
         
         # Force moyenne
-        avg_strength = np.mean([d.strength for d in divergences])
+        avg_strength = float(np.mean([d.strength for d in divergences]))
         
         # Indicateurs impliqués
         indicators = list(set(d.indicator for d in divergences))
@@ -681,7 +689,7 @@ class ReversalDivergenceProStrategy(BaseStrategy):
             
             if cached:
                 import json
-                return json.loads(cached)
+                return json.loads(str(cached))
             
         except Exception as e:
             logger.debug(f"Confluence non disponible pour {symbol}: {e}")

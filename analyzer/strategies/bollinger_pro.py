@@ -5,7 +5,7 @@ Intègre ATR, volume, momentum et analyse multi-timeframes pour timing précis.
 """
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 import numpy as np
 import pandas as pd
 
@@ -21,9 +21,9 @@ from .base_strategy import BaseStrategy
 
 # Import des modules d'analyse avancée
 try:
-    import redis
+    import redis  # type: ignore
 except ImportError:
-    redis = None
+    redis = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class BollingerProStrategy(BaseStrategy):
     - Mean reversion vs trend following
     """
     
-    def __init__(self, symbol: str, params: Dict[str, Any] = None):
+    def __init__(self, symbol: str, params: Optional[Dict[str, Any]] = None):
         super().__init__(symbol, params)
         
         # Paramètres Bollinger avancés
@@ -58,8 +58,8 @@ class BollingerProStrategy(BaseStrategy):
         self.confluence_threshold = symbol_params.get('confluence_threshold', 30.0)  # ASSOUPLI de 40 à 30
         
         # Historique pour détection de patterns
-        self.bb_width_history = []
-        self.bb_position_history = []
+        self.bb_width_history: List[float] = []
+        self.bb_position_history: List[float] = []
         self.max_history = 15
         
         # Connexion Redis pour analyses avancées
@@ -120,15 +120,15 @@ class BollingerProStrategy(BaseStrategy):
             adx = self._get_current_indicator(indicators, 'adx_14')
             
             # Mettre à jour l'historique
-            self._update_history(bb_width, bb_position)
+            self._update_history(bb_width or 0.0, bb_position or 0.0)
             
             # Analyser le pattern Bollinger
             pattern_analysis = self._analyze_bollinger_pattern()
             
             # Analyser le contexte
             context_analysis = self._analyze_bollinger_context(
-                symbol, bb_width, bb_position, atr, volume_ratio, 
-                momentum_10, rsi, adx
+                symbol, bb_width or 0.0, bb_position or 0.0, atr or 0.0, volume_ratio or 0.0, 
+                momentum_10 or 0.0, rsi or 0.0, adx or 0.0
             )
             
             # NOUVEAU: Calculer la position du prix dans son range
@@ -138,13 +138,13 @@ class BollingerProStrategy(BaseStrategy):
             
             # SIGNAL D'ACHAT - Conditions favorables
             if self._is_bullish_bollinger_signal(
-                bb_position, bb_width, pattern_analysis, context_analysis, current_price, bb_middle
+                bb_position or 0.0, bb_width or 0.0, pattern_analysis, context_analysis, current_price, bb_middle or 0.0
             ):
                 # Vérifier la position du prix avant de générer le signal
                 if not self.should_filter_signal_by_price_position(OrderSide.BUY, price_position, df):
                     confidence = self._calculate_bullish_confidence(
-                        bb_position, bb_width, pattern_analysis, context_analysis, 
-                        volume_ratio, momentum_10
+                        bb_position or 0.0, bb_width or 0.0, pattern_analysis, context_analysis, 
+                        volume_ratio or 0.0, momentum_10 or 0.0
                     )
                     
                     signal = self.create_signal(
@@ -177,13 +177,13 @@ class BollingerProStrategy(BaseStrategy):
             
             # SIGNAL DE VENTE - Conditions favorables
             elif self._is_bearish_bollinger_signal(
-                bb_position, bb_width, pattern_analysis, context_analysis, current_price, bb_middle
+                bb_position or 0.0, bb_width or 0.0, pattern_analysis, context_analysis, current_price, bb_middle or 0.0
             ):
                 # Vérifier la position du prix avant de générer le signal
                 if not self.should_filter_signal_by_price_position(OrderSide.SELL, price_position, df):
                     confidence = self._calculate_bearish_confidence(
-                        bb_position, bb_width, pattern_analysis, context_analysis, 
-                        volume_ratio, momentum_10
+                        bb_position or 0.0, bb_width or 0.0, pattern_analysis, context_analysis, 
+                        volume_ratio or 0.0, momentum_10 or 0.0
                     )
                     
                     signal = self.create_signal(
@@ -335,13 +335,13 @@ class BollingerProStrategy(BaseStrategy):
             if volume_ratio:
                 try:
                     # Détection contexte spécifique pour Bollinger patterns
-                    bollinger_context = self._get_bollinger_volume_context(pattern_analysis)
+                    bollinger_context = self._get_bollinger_volume_context({'type': 'normal', 'signal_type': 'none'})
                     
                     contextual_threshold, context_name, contextual_score = volume_context_detector.get_contextual_volume_threshold(
                         base_volume_ratio=volume_ratio,
-                        rsi=latest_data.get('rsi'),
-                        cci=latest_data.get('cci'),
-                        adx=latest_data.get('adx'),
+                        rsi=rsi,
+                        cci=0.0,
+                        adx=adx,
                         signal_type="BUY",
                         price_trend=bollinger_context  # Contexte Bollinger spécifique
                     )
@@ -351,115 +351,147 @@ class BollingerProStrategy(BaseStrategy):
                     )
                     
                     # Scoring contextuel pour Bollinger
+                    score = float(context['score'])
+                    confidence_boost = float(context['confidence_boost'])
+                    
                     if volume_ratio >= 2.0:  # Excellent absolu
-                        context['score'] += 25
-                        context['confidence_boost'] += 0.1
+                        score += 25
+                        confidence_boost += 0.1
                         context['details'].append(f"Volume excellent ({volume_ratio:.1f}x) - {bollinger_context}")
                     elif volume_ratio >= 1.5:  # Très bon
-                        context['score'] += 20
-                        context['confidence_boost'] += 0.08
+                        score += 20
+                        confidence_boost += 0.08
                         context['details'].append(f"Volume très bon ({volume_ratio:.1f}x) - {bollinger_context}")
                     elif volume_ratio >= contextual_threshold:
                         # Score contextuel adaptatif
                         score_bonus = int(contextual_score * 20)  # 0-20 points
                         confidence_bonus = contextual_score * 0.08  # 0-0.08 boost
-                        context['score'] += score_bonus
-                        context['confidence_boost'] += confidence_bonus
+                        score += score_bonus
+                        confidence_boost += confidence_bonus
                         context['details'].append(f"Volume {volume_quality.lower()} ({volume_ratio:.1f}x) - {bollinger_context}")
                     elif volume_ratio >= 0.7:  # Volume faible mais utilisable pour mean reversion
-                        if pattern_analysis['signal_type'] == 'mean_reversion':
-                            # Mean reversion tolère volume plus faible
-                            context['score'] += 8
-                            context['details'].append(f"Volume faible acceptable mean reversion ({volume_ratio:.1f}x)")
-                        else:
-                            context['score'] += 3
-                            context['details'].append(f"Volume faible ({volume_ratio:.1f}x) - {bollinger_context}")
+                        # Mean reversion tolère volume plus faible
+                        score += 8
+                        context['details'].append(f"Volume faible acceptable mean reversion ({volume_ratio:.1f}x)")
                     else:
                         # Volume vraiment faible
-                        if pattern_analysis['signal_type'] == 'breakout':
-                            context['score'] -= 10  # Pénalité forte pour breakout sans volume
-                            context['details'].append(f"Volume insuffisant breakout ({volume_ratio:.1f}x)")
-                        else:
-                            context['score'] -= 5  # Pénalité standard
-                            context['details'].append(f"Volume faible ({volume_ratio:.1f}x) - {bollinger_context}")
+                        score -= 10  # Pénalité forte pour breakout sans volume
+                        context['details'].append(f"Volume insuffisant breakout ({volume_ratio:.1f}x)")
+                        
+                    context['score'] = score
+                    context['confidence_boost'] = confidence_boost
                         
                 except Exception as e:
                     # Fallback sur logique standard si erreur contextuelle
+                    score = float(context['score'])
+                    confidence_boost = float(context['confidence_boost'])
+                    
                     if volume_ratio >= 1.5:
-                        context['score'] += 20
-                        context['confidence_boost'] += 0.08
+                        score += 20
+                        confidence_boost += 0.08
                         context['details'].append(f"Volume très bon ({volume_ratio:.1f}x) - standard")
                     elif volume_ratio >= 1.0:
-                        context['score'] += 10
+                        score += 10
                         context['details'].append(f"Volume acceptable ({volume_ratio:.1f}x) - standard")
                     else:
-                        context['score'] -= 5
+                        score -= 5
                         context['details'].append(f"Volume faible ({volume_ratio:.1f}x) - standard")
+                        
+                    context['score'] = score
+                    context['confidence_boost'] = confidence_boost
             else:
-                context['score'] -= 5
+                score = float(context['score'])
+                score -= 5
+                context['score'] = score
                 context['details'].append("Volume non disponible")
             
             # 3. Momentum support
             if momentum_10:
+                score = float(context['score'])
+                confidence_boost = float(context['confidence_boost'])
+                
                 momentum_strength = abs(momentum_10)
                 if momentum_strength > 1.5:
-                    context['score'] += 20
-                    context['confidence_boost'] += 0.08
+                    score += 20
+                    confidence_boost += 0.08
                     context['details'].append(f"Momentum fort ({momentum_10:.2f})")
                 elif momentum_strength > 0.8:
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
+                    score += 15
+                    confidence_boost += 0.05
                     context['details'].append(f"Momentum modéré ({momentum_10:.2f})")
                 else:
-                    context['score'] += 5
+                    score += 5
                     context['details'].append(f"Momentum faible ({momentum_10:.2f})")
+                    
+                context['score'] = score
+                context['confidence_boost'] = confidence_boost
             
             # 4. RSI confirmation
             if rsi:
+                score = float(context['score'])
+                confidence_boost = float(context['confidence_boost'])
+                
                 if rsi <= 30 or rsi >= 70:  # Zones extrêmes
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
+                    score += 15
+                    confidence_boost += 0.05
                     context['details'].append(f"RSI extrême ({rsi:.1f})")
                 elif rsi <= 40 or rsi >= 60:
-                    context['score'] += 10
+                    score += 10
                     context['details'].append(f"RSI actif ({rsi:.1f})")
                 else:
-                    context['score'] += 5
+                    score += 5
                     context['details'].append(f"RSI neutre ({rsi:.1f})")
+                    
+                context['score'] = score
+                context['confidence_boost'] = confidence_boost
             
             # 5. Tendance (ADX)
             if adx:
+                score = float(context['score'])
+                confidence_boost = float(context['confidence_boost'])
+                
                 from shared.src.config import ADX_TREND_THRESHOLD, ADX_WEAK_TREND_THRESHOLD
                 if adx >= ADX_TREND_THRESHOLD:
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
+                    score += 15
+                    confidence_boost += 0.05
                     context['details'].append(f"ADX tendance ({adx:.1f})")
                 elif adx >= ADX_WEAK_TREND_THRESHOLD:
-                    context['score'] += 10
+                    score += 10
                     context['details'].append(f"ADX modéré ({adx:.1f})")
                 else:
-                    context['score'] += 5
+                    score += 5
                     context['details'].append(f"ADX faible ({adx:.1f})")
+                    
+                context['score'] = score
+                context['confidence_boost'] = confidence_boost
             
             # 6. Confluence multi-timeframes
             if self.redis_client:
                 confluence_data = self._get_confluence_analysis(symbol)
                 if confluence_data:
+                    score = float(context['score'])
+                    confidence_boost = float(context['confidence_boost'])
+                    
                     confluence_score = confluence_data.get('confluence_score', 0)
                     context['confluence_score'] = confluence_score
                     
                     if confluence_score >= 60:
-                        context['score'] += 20
-                        context['confidence_boost'] += 0.08
+                        score += 20
+                        confidence_boost += 0.08
                         context['details'].append(f"Confluence forte ({confluence_score:.1f}%)")
                     elif confluence_score >= 45:
-                        context['score'] += 10
-                        context['confidence_boost'] += 0.03
+                        score += 10
+                        confidence_boost += 0.03
                         context['details'].append(f"Confluence modérée ({confluence_score:.1f}%)")
+                        
+                    context['score'] = score
+                    context['confidence_boost'] = confidence_boost
             
             # Normaliser
-            context['score'] = max(0, min(100, context['score']))
-            context['confidence_boost'] = max(0, min(0.25, context['confidence_boost']))
+            score = float(context['score'])
+            confidence_boost = float(context['confidence_boost'])
+            context['score'] = max(0.0, min(100.0, score))
+            context['confidence_boost'] = max(0.0, min(0.25, confidence_boost))
             
         except Exception as e:
             logger.error(f"❌ Erreur analyse contexte Bollinger: {e}")
@@ -623,7 +655,7 @@ class BollingerProStrategy(BaseStrategy):
             
             if cached:
                 import json
-                return json.loads(cached)
+                return json.loads(str(cached))
             
         except Exception as e:
             logger.debug(f"Confluence non disponible pour {symbol}: {e}")

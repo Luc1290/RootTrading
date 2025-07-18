@@ -173,7 +173,7 @@ class IndicatorCoherenceValidator:
             macd_signal = indicators.get('macd_signal')
             macd_histogram = indicators.get('macd_histogram')
             
-            if not all([macd_line, macd_signal, macd_histogram]):
+            if not all([macd_line is not None, macd_signal is not None, macd_histogram is not None]):
                 return 0.5, "MACD incomplet"
             
             macd_line_val = float(macd_line)
@@ -221,7 +221,7 @@ class IndicatorCoherenceValidator:
             ema_26 = indicators.get('ema_26')
             ema_99 = indicators.get('ema_99')
             
-            if not all([ema_7, ema_26, ema_99]):
+            if not all([ema_7 is not None, ema_26 is not None, ema_99 is not None]):
                 return 0.5, "EMAs incomplètes"
             
             ema_7_val = float(ema_7)

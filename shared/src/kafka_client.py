@@ -8,6 +8,8 @@ import time
 import random
 from typing import Dict, Any, Callable, List, Optional, Union, Set
 from queue import Queue, Empty
+import queue
+import threading
 
 from confluent_kafka import Producer, Consumer, KafkaError, KafkaException
 from confluent_kafka.admin import AdminClient, NewTopic
@@ -115,18 +117,18 @@ class KafkaClientPool:
         self._admin_client = None
         
         # Dictionnaires pour suivre les consommateurs
-        self.consumers = {}
-        self.consumer_threads = {}
-        self.processor_threads = {}
-        self.message_queues = {}
-        self.stop_events = {}
-        self.topic_maps = {}
+        self.consumers: Dict[str, Any] = {}
+        self.consumer_threads: Dict[str, threading.Thread] = {}
+        self.processor_threads: Dict[str, threading.Thread] = {}
+        self.message_queues: Dict[str, queue.Queue] = {}
+        self.stop_events: Dict[str, threading.Event] = {}
+        self.topic_maps: Dict[str, Dict[str, Any]] = {}
         
         # Métriques
         self.metrics = KafkaMetrics()
         
         # Cache des topics existants
-        self._existing_topics_cache = set()
+        self._existing_topics_cache: Set[str] = set()
         self._topics_cache_time = 0
         self._topics_cache_lock = threading.RLock()
         
@@ -268,7 +270,7 @@ class KafkaClientPool:
             try:
                 topics = self.admin_client.list_topics(timeout=10).topics.keys()
                 self._existing_topics_cache = set(topics)
-                self._topics_cache_time = current_time
+                self._topics_cache_time = int(current_time)
                 return self._existing_topics_cache
             except Exception as e:
                 logger.error(f"❌ Erreur lors de la récupération des topics: {str(e)}")
@@ -500,8 +502,8 @@ class KafkaClientPool:
             'resolved': resolved_topics
         }
         
-        # Créer une file d'attente pour les messages
-        message_queue = Queue(maxsize=batch_size * 10)
+        # Créer une file d'attente pour les messages (augmentée pour multi-crypto)
+        message_queue: Queue = Queue(maxsize=batch_size * 50)
         self.message_queues[consumer_id] = message_queue
         
         # Créer un event pour signaler l'arrêt

@@ -5,7 +5,7 @@ Intègre ADX, volume, Williams %R, et analyse de régime pour des signaux préci
 """
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 import numpy as np
 import pandas as pd
 
@@ -20,17 +20,17 @@ from .base_strategy import BaseStrategy
 
 # Import des modules d'analyse avancée
 try:
-    import redis
+    import redis  # type: ignore
 except ImportError:
-    redis = None
+    redis = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
 class EMACrossProStrategy(BaseStrategy):
     """
     Stratégie EMA Cross Pro - Croisements avec contexte multi-timeframes et momentum
-    BUY: EMA12 croise au-dessus EMA26 + confluence + momentum haussier + structure favorable
-    SELL: EMA12 croise en-dessous EMA26 + confluence + momentum baissier + structure favorable
+    BUY: EMA7 croise au-dessus EMA26 + confluence + momentum haussier + structure favorable
+    SELL: EMA7 croise en-dessous EMA26 + confluence + momentum baissier + structure favorable
     
     Intègre :
     - Analyse multi-timeframes (confluence)
@@ -42,7 +42,7 @@ class EMACrossProStrategy(BaseStrategy):
     - Régime adaptatif
     """
     
-    def __init__(self, symbol: str, params: Dict[str, Any] = None):
+    def __init__(self, symbol: str, params: Optional[Dict[str, Any]] = None):
         super().__init__(symbol, params)
         
         # Paramètres EMA avancés
@@ -116,7 +116,7 @@ class EMACrossProStrategy(BaseStrategy):
             current_price = df['close'].iloc[-1]
             
             # Analyser le contexte multi-timeframes
-            context_analysis = self._analyze_market_context(symbol, adx, williams_r, volume_ratio, bb_width, momentum_10)
+            context_analysis = self._analyze_market_context(symbol, adx or 0.0, williams_r or 0.0, volume_ratio or 0.0, bb_width or 0.0, momentum_10 or 0.0)
             
             # NOUVEAU: Calculer la position du prix dans son range
             price_position = self.calculate_price_position_in_range(df)
@@ -238,7 +238,7 @@ class EMACrossProStrategy(BaseStrategy):
         try:
             # 1. Force de tendance (ADX)
             from shared.src.config import ADX_STRONG_TREND_THRESHOLD, ADX_TREND_THRESHOLD
-            if adx and adx >= self.min_adx:
+            if adx >= self.min_adx:
                 if adx >= ADX_STRONG_TREND_THRESHOLD:
                     context['score'] += 25
                     context['confidence_boost'] += 0.1
@@ -252,70 +252,67 @@ class EMACrossProStrategy(BaseStrategy):
                     context['details'].append(f"ADX faible ({adx:.1f})")
             else:
                 context['score'] -= 10
-                context['details'].append(f"ADX insuffisant ({adx or 0:.1f})")
+                context['details'].append(f"ADX insuffisant ({adx:.1f})")
             
             # 2. Timing d'entrée (Williams %R)
-            if williams_r:
-                if williams_r <= -80:  # Zone de survente
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
-                    context['details'].append(f"Williams oversold ({williams_r:.1f})")
-                elif williams_r >= -20:  # Zone de surachat
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
-                    context['details'].append(f"Williams overbought ({williams_r:.1f})")
-                else:
-                    context['score'] += 5
-                    context['details'].append(f"Williams neutre ({williams_r:.1f})")
+            if williams_r <= -80:  # Zone de survente
+                context['score'] += 15
+                context['confidence_boost'] += 0.05
+                context['details'].append(f"Williams oversold ({williams_r:.1f})")
+            elif williams_r >= -20:  # Zone de surachat
+                context['score'] += 15
+                context['confidence_boost'] += 0.05
+                context['details'].append(f"Williams overbought ({williams_r:.1f})")
+            else:
+                context['score'] += 5
+                context['details'].append(f"Williams neutre ({williams_r:.1f})")
             
             # 3. Confirmation de volume - SEUILS STANDARDISÉS
-            if volume_ratio and volume_ratio > 1.5:  # STANDARDISÉ: Très bon
+            if volume_ratio > 1.5:  # STANDARDISÉ: Très bon
                 context['score'] += 25
                 context['confidence_boost'] += 0.1
                 context['details'].append(f"Volume très bon ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio > 1.2:  # STANDARDISÉ: Bon
+            elif volume_ratio > 1.2:  # STANDARDISÉ: Bon
                 context['score'] += 20
                 context['confidence_boost'] += 0.08
                 context['details'].append(f"Volume bon ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio > 1.0:  # STANDARDISÉ: Acceptable
+            elif volume_ratio > 1.0:  # STANDARDISÉ: Acceptable
                 context['score'] += 15
                 context['confidence_boost'] += 0.05
                 context['details'].append(f"Volume acceptable ({volume_ratio:.1f}x)")
-            elif volume_ratio and volume_ratio > 0.8:  # Faible mais utilisable
+            elif volume_ratio > 0.8:  # Faible mais utilisable
                 context['score'] += 10
                 context['details'].append(f"Volume faible ({volume_ratio:.1f}x)")
             else:
                 context['score'] -= 5
-                context['details'].append(f"Volume faible ({volume_ratio or 0:.1f}x)")
+                context['details'].append(f"Volume faible ({volume_ratio:.1f}x)")
             
             # 4. Volatilité (Bollinger width)
-            if bb_width:
-                if bb_width > 0.03:  # Expansion
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
-                    context['details'].append(f"Volatilité élevée ({bb_width:.3f})")
-                elif bb_width < 0.015:  # Compression
-                    context['score'] -= 5
-                    context['details'].append(f"Volatilité faible ({bb_width:.3f})")
-                else:
-                    context['score'] += 5
-                    context['details'].append(f"Volatilité normale ({bb_width:.3f})")
+            if bb_width > 0.03:  # Expansion
+                context['score'] += 15
+                context['confidence_boost'] += 0.05
+                context['details'].append(f"Volatilité élevée ({bb_width:.3f})")
+            elif bb_width < 0.015:  # Compression
+                context['score'] -= 5
+                context['details'].append(f"Volatilité faible ({bb_width:.3f})")
+            else:
+                context['score'] += 5
+                context['details'].append(f"Volatilité normale ({bb_width:.3f})")
             
             # 5. Momentum directionnel
-            if momentum_10:
-                momentum_strength = abs(momentum_10)
-                if momentum_strength > 1.0:
-                    context['score'] += 15
-                    context['momentum_score'] = momentum_strength
-                    context['confidence_boost'] += 0.05
-                    context['details'].append(f"Momentum fort ({momentum_10:.2f})")
-                elif momentum_strength > 0.5:
-                    context['score'] += 10
-                    context['momentum_score'] = momentum_strength
-                    context['details'].append(f"Momentum modéré ({momentum_10:.2f})")
-                else:
-                    context['score'] += 2
-                    context['details'].append(f"Momentum faible ({momentum_10:.2f})")
+            momentum_strength = abs(momentum_10)
+            if momentum_strength > 1.0:
+                context['score'] += 15
+                context['momentum_score'] = momentum_strength
+                context['confidence_boost'] += 0.05
+                context['details'].append(f"Momentum fort ({momentum_10:.2f})")
+            elif momentum_strength > 0.5:
+                context['score'] += 10
+                context['momentum_score'] = momentum_strength
+                context['details'].append(f"Momentum modéré ({momentum_10:.2f})")
+            else:
+                context['score'] += 2
+                context['details'].append(f"Momentum faible ({momentum_10:.2f})")
             
             # 6. Analyse multi-timeframes (si Redis disponible)
             if self.redis_client:
@@ -337,8 +334,8 @@ class EMACrossProStrategy(BaseStrategy):
                         context['details'].append(f"Confluence faible ({confluence_score:.1f}%)")
             
             # Normaliser le score (0-100)
-            context['score'] = max(0, min(100, context['score']))
-            context['confidence_boost'] = max(0, min(0.25, context['confidence_boost']))
+            context['score'] = max(0.0, min(100.0, context['score']))
+            context['confidence_boost'] = max(0.0, min(0.25, context['confidence_boost']))
             
         except Exception as e:
             logger.error(f"❌ Erreur analyse contexte EMA: {e}")
@@ -393,7 +390,7 @@ class EMACrossProStrategy(BaseStrategy):
             
             if cached:
                 import json
-                return json.loads(cached)
+                return json.loads(str(cached))
             
         except Exception as e:
             logger.debug(f"Confluence non disponible pour {symbol}: {e}")

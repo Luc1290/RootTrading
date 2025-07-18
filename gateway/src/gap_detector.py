@@ -178,7 +178,7 @@ class GapDetector:
                 
             return gaps
             
-    async def detect_all_gaps(self, symbols: List[str] = None, lookback_hours: int = 24) -> Dict:
+    async def detect_all_gaps(self, symbols: Optional[List[str]] = None, lookback_hours: int = 24) -> Dict:
         """
         Détecte tous les gaps pour tous les symboles et timeframes
         
@@ -189,7 +189,7 @@ class GapDetector:
             symbols = SYMBOLS
             
         timeframes = ['1m', '3m', '5m', '15m']
-        all_gaps = {}
+        all_gaps: Dict[str, List[Dict[str, Any]]] = {}
         total_gaps = 0
         
         logger.info(f"🔍 Détection des gaps sur {lookback_hours}h pour {len(symbols)} symboles...")
@@ -360,7 +360,7 @@ class GapDetector:
         Returns:
             Dict avec structure: {symbol: {timeframe: [fetch_periods]}}
         """
-        filling_plan = {}
+        filling_plan: Dict[str, List[Tuple[datetime, datetime]]] = {}
         total_requests = 0
         
         for symbol, timeframe_gaps in all_gaps.items():

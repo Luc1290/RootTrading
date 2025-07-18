@@ -8,6 +8,7 @@ import time
 import threading
 from collections import deque
 from typing import Dict, Any, List, Optional, Tuple
+import asyncio
 
 from shared.src.config import SYMBOLS
 from shared.src.redis_client import RedisClient
@@ -22,7 +23,7 @@ class MessageRouter:
     Reçoit les messages Kafka et les publie sur les canaux Redis appropriés.
     """
     
-    def __init__(self, redis_client: RedisClient = None):
+    def __init__(self, redis_client: Optional[RedisClient] = None):
         """
         Initialise le router de messages.
         
@@ -57,7 +58,7 @@ class MessageRouter:
         self.timeframes = ['1m', '3m', '5m', '15m']
         
         # Cache pour les données enrichies par symbole/timeframe
-        self.enriched_data_cache = {}
+        self.enriched_data_cache: Dict[str, Dict[str, Any]] = {}
         for symbol in SYMBOLS:
             self.enriched_data_cache[symbol] = {}
             for tf in self.timeframes:
@@ -71,10 +72,10 @@ class MessageRouter:
                 self.market_data_channel_cache[topic] = f"{self.redis_prefix}:{self.topic_to_channel['market.data']}:{symbol.lower()}:{tf}"
         
         # File d'attente séparée pour les messages haute priorité
-        self.high_priority_queue = deque(maxlen=5000)
+        self.high_priority_queue: deque = deque(maxlen=5000)
         
         # File d'attente pour les messages en cas de panne Redis
-        self.message_queue = deque(maxlen=10000)  # Limiter à 10 000 messages
+        self.message_queue: deque = deque(maxlen=10000)  # Limiter à 10 000 messages
         self.queue_lock = threading.Lock()
         self.queue_processor_running = True
         
@@ -109,7 +110,7 @@ class MessageRouter:
         self.message_sequence = 0
         
         # --- Déduplication courte (1 s) --------------------
-        self._dedup_cache = {}       # {clé: timestamp}
+        self._dedup_cache: Dict[str, float] = {}       # {clé: timestamp}
         self._dedup_ttl   = 1.0      # secondes
         
         logger.info("✅ MessageRouter initialisé avec support priorité")
@@ -375,7 +376,7 @@ class MessageRouter:
         
         return transformed
     
-    def route_message(self, topic: str, message: Dict[str, Any], priority: str = None) -> bool:
+    def route_message(self, topic: str, message: Dict[str, Any], priority: Optional[str] = None) -> bool:
         """
         Route un message Kafka vers le canal Redis approprié avec gestion de priorité.
         

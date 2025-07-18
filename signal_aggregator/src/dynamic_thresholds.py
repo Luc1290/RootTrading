@@ -203,7 +203,7 @@ class DynamicThresholdManager:
             'target_rate': self.target_signal_rate
         }
     
-    def get_statistics(self) -> Dict[str, any]:
+    def get_statistics(self) -> Dict[str, Any]:
         """Retourne les statistiques des seuils dynamiques"""
         if len(self.confidence_history) == 0:
             return {

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class DatabaseManager:
     """Gestionnaire de base de données pour accéder aux données enrichies"""
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.db_pool: Optional[asyncpg.Pool] = None
         self.db_connection: Optional[asyncpg.Connection] = None  # Connexion unique dédiée
         self.running = False
@@ -91,7 +91,7 @@ class DatabaseManager:
             self.running = False
             self.db_connection = None
     
-    async def close(self):
+    async def close(self) -> None:
         """Ferme les connexions"""
         self.running = False
         if self.db_connection:

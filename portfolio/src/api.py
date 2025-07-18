@@ -204,7 +204,7 @@ def _register_portfolio_routes(app: FastAPI):
     @app.get("/summary", response_model=PortfolioSummary)
     async def get_portfolio_summary(
         portfolio: PortfolioModel = Depends(get_portfolio_model),
-        response: Response = None
+        response: Optional[Response] = None
     ):
         """
         Récupère un résumé du portefeuille avec cache mémoire.
@@ -242,7 +242,7 @@ def _register_portfolio_routes(app: FastAPI):
     @app.get("/balances", response_model=List[AssetBalance])
     async def get_balances(
         portfolio: PortfolioModel = Depends(get_portfolio_model),
-        response: Response = None
+        response: Optional[Response] = None
     ):
         """
         Récupère les soldes actuels du portefeuille.
@@ -265,7 +265,7 @@ def _register_portfolio_routes(app: FastAPI):
     async def get_balance_by_asset(
         asset: str = Path(..., description="Actif à récupérer (BTC, ETH, USDC, etc.)"),
         portfolio: PortfolioModel = Depends(get_portfolio_model),
-        response: Response = None
+        response: Optional[Response] = None
     ):
         """
         Récupère le solde pour un actif spécifique.
@@ -308,7 +308,7 @@ def _register_portfolio_routes(app: FastAPI):
     @app.get("/positions/active")
     async def get_active_positions(
         portfolio: PortfolioModel = Depends(get_portfolio_model),
-        response: Response = None
+        response: Optional[Response] = None
     ):
         """
         Récupère les positions actives avec le PnL réel calculé.
@@ -381,7 +381,7 @@ def _register_portfolio_routes(app: FastAPI):
     async def get_recent_positions(
         hours: int = Query(24, ge=1, le=168, description="Nombre d'heures en arrière"),
         portfolio: PortfolioModel = Depends(get_portfolio_model),
-        response: Response = None
+        response: Optional[Response] = None
     ):
         """
         Récupère les positions actives ET récemment fermées.
@@ -484,7 +484,7 @@ def _register_portfolio_routes(app: FastAPI):
         start_date: Optional[str] = Query(None, description="Date de début (format ISO)"),
         end_date: Optional[str] = Query(None, description="Date de fin (format ISO)"),
         portfolio: PortfolioModel = Depends(get_portfolio_model),
-        response: Response = None
+        response: Optional[Response] = None
     ):
         """
         Récupère l'historique des trades avec pagination et filtrage.
@@ -523,7 +523,7 @@ def _register_portfolio_routes(app: FastAPI):
         SELECT COUNT(*) as total FROM trade_cycles tc WHERE 1=1
         """
         
-        params = []
+        params: List[Any] = []
         
         if symbol:
             count_query += " AND tc.symbol = %s"
@@ -560,7 +560,7 @@ def _register_portfolio_routes(app: FastAPI):
         period: str = Path(..., description="Période ('daily', 'weekly', 'monthly')"),
         limit: int = Query(30, ge=1, le=365, description="Nombre de périodes à récupérer"),
         portfolio: PortfolioModel = Depends(get_portfolio_model),
-        response: Response = None
+        response: Optional[Response] = None
     ):
         """
         Récupère les statistiques de performance.
@@ -614,12 +614,12 @@ def _register_portfolio_routes(app: FastAPI):
     @app.get("/symbols/owned")
     async def get_owned_symbols_with_variations(
         portfolio: PortfolioModel = Depends(get_portfolio_model),
-        response: Response = None
+        response: Optional[Response] = None
     ):
         """
         Récupère tous les symboles possédés avec leurs variations de prix 24h.
         """
-        import requests
+        import requests  # type: ignore
         
         # Récupérer tous les soldes non nuls
         balances = portfolio.get_latest_balances()

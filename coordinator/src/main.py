@@ -10,7 +10,7 @@ import os
 import threading
 from typing import Dict, Any
 from flask import Flask, jsonify
-import requests
+import requests  # type: ignore
 from urllib.parse import urljoin
 
 # Ajouter le répertoire parent au path pour les imports

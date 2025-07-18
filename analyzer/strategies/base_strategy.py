@@ -31,7 +31,7 @@ class BaseStrategy(ABC):
     Les stratégies concrètes doivent hériter de cette classe et implémenter ses méthodes.
     """
     
-    def __init__(self, symbol: str, params: Dict[str, Any] = None):
+    def __init__(self, symbol: str, params: Optional[Dict[str, Any]] = None):
         """
         Initialise la stratégie de base.
         
@@ -42,7 +42,7 @@ class BaseStrategy(ABC):
         self.symbol = symbol
         self.params = params or {}
         self.buffer_size = self.params.get('buffer_size', 100)  # Taille par défaut du buffer
-        self.data_buffer = deque(maxlen=self.buffer_size)  # Buffer circulaire pour stocker les données
+        self.data_buffer: Deque[Dict[str, Any]] = deque(maxlen=self.buffer_size)  # Buffer circulaire pour stocker les données
         self.last_signal_time: Optional[datetime] = None
         self.signal_cooldown = self.params.get('signal_cooldown', 30)  # Temps min entre signaux (sec) - réduit pour stratégies Pro
         
@@ -212,7 +212,7 @@ class BaseStrategy(ABC):
         return min(self.buffer_size, 20)
     
     def create_signal(self, side: OrderSide, price: float, confidence: float = 0.7, 
-                    metadata: Dict[str, Any] = None) -> StrategySignal:
+                    metadata: Optional[Dict[str, Any]] = None) -> Optional[StrategySignal]:
         """
         Crée un objet signal standardisé avec protection contre les effondrements.
         
@@ -348,8 +348,8 @@ class BaseStrategy(ABC):
             logger.error(f"Erreur calcul position dans range: {e}")
             return 0.5
     
-    def should_filter_signal_by_price_position(self, side: OrderSide, price_position: float = None,
-                                             df: pd.DataFrame = None) -> bool:
+    def should_filter_signal_by_price_position(self, side: OrderSide, price_position: Optional[float] = None,
+                                             df: Optional[pd.DataFrame] = None) -> bool:
         """
         Détermine si un signal devrait être filtré basé sur la position du prix dans son range.
         Inclut une logique intelligente pour les pumps/momentum.
@@ -395,7 +395,7 @@ class BaseStrategy(ABC):
         
         return False
     
-    def _detect_pump_conditions(self, df: pd.DataFrame = None) -> Dict[str, any]:
+    def _detect_pump_conditions(self, df: Optional[pd.DataFrame] = None) -> Dict[str, Any]:
         """
         Détecte les conditions de pump/momentum pour assouplir les filtres de position.
         
@@ -476,7 +476,7 @@ class BaseStrategy(ABC):
             logger.error(f"Erreur détection pump: {e}")
             return {'is_pump': False, 'volume_ratio': 1.0, 'momentum_score': 0.0}
     
-    def should_skip_low_volatility(self, atr_percent: float = None) -> bool:
+    def should_skip_low_volatility(self, atr_percent: Optional[float] = None) -> bool:
         """
         Détermine si un signal doit être ignoré en raison d'une faible volatilité.
         Utile pour éviter les faux signaux dans les zones de consolidation.
@@ -507,7 +507,7 @@ class BaseStrategy(ABC):
         return False
     
     def calculate_dynamic_stop(self, entry_price: float, side: OrderSide, 
-                             atr_percent: float = None) -> Dict[str, float]:
+                             atr_percent: Optional[float] = None) -> Dict[str, float]:
         """
         Calcule seulement le stop dynamique basé sur l'ATR (plus de target avec TrailingStop pur).
         

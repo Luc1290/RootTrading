@@ -23,7 +23,7 @@ class OrderManager:
     Plus de cycles complexes : juste exécuter les ordres du coordinator.
     """
     
-    def __init__(self, symbols: List[str] = None):
+    def __init__(self, symbols: Optional[List[str]] = None):
         """
         Initialise le gestionnaire d'ordres.
         
@@ -51,17 +51,17 @@ class OrderManager:
         )
         
         # Cache des derniers prix
-        self.last_prices = {}
+        self.last_prices: Dict[str, float] = {}
         self.last_price_update = time.time()
         
         # Configuration pour les pauses de trading
-        self.paused_symbols = set()
-        self.paused_strategies = set()
+        self.paused_symbols: set[str] = set()
+        self.paused_strategies: set[str] = set()
         self.paused_all = False
         
         logger.info(f"✅ OrderManager initialisé (mode simplifié) pour {len(self.symbols)} symboles")
     
-    def is_trading_paused(self, symbol: str, strategy: str = None) -> bool:
+    def is_trading_paused(self, symbol: str, strategy: Optional[str] = None) -> bool:
         """
         Vérifie si le trading est en pause.
         
@@ -144,7 +144,7 @@ class OrderManager:
             strategy = order_data.get("strategy", "Manual")
             
             # Vérifier si le trading est en pause
-            if self.is_trading_paused(symbol, strategy):
+            if symbol and self.is_trading_paused(symbol, strategy):
                 logger.warning(f"❌ Trading en pause pour {symbol}/{strategy}")
                 return None
             

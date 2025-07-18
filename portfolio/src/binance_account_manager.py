@@ -7,7 +7,7 @@ import logging
 import time
 import hmac
 import hashlib
-import requests
+import requests  # type: ignore
 import json
 from typing import Dict, List, Any, Optional, Tuple
 import traceback
@@ -51,7 +51,7 @@ class BinanceAccountManager:
         self.request_timeout = 30  # Timeout en secondes pour les requêtes HTTP
         
         # Cache des prix
-        self._prices_cache = {}
+        self._prices_cache: Dict[str, float] = {}
         self._prices_cache_time = 0
         self._prices_cache_ttl = 60  # Durée de vie du cache en secondes
         
@@ -81,7 +81,7 @@ class BinanceAccountManager:
         return signature
     
     def _make_request(self, endpoint: str, method: str = "GET", signed: bool = False, 
-                     params: Dict[str, Any] = None, max_retries: int = 3) -> Dict[str, Any]:
+                     params: Optional[Dict[str, Any]] = None, max_retries: int = 3) -> Dict[str, Any]:
         """
         Effectue une requête vers l'API Binance avec retry automatique.
         
@@ -279,7 +279,7 @@ class BinanceAccountManager:
             
             # Mettre à jour le cache
             self._prices_cache = prices
-            self._prices_cache_time = current_time
+            self._prices_cache_time = int(current_time)
             
             logger.info(f"Récupéré les prix pour {len(prices)} symboles depuis Binance")
             return prices
@@ -352,7 +352,8 @@ class BinanceAccountManager:
             params["symbol"] = symbol
         
         try:
-            return self._make_request(endpoint, signed=True, params=params)
+            result = self._make_request(endpoint, signed=True, params=params)
+            return result if isinstance(result, list) else [result] if result else []
             
         except BinanceApiError as e:
             logger.error(f"❌ Erreur lors de la récupération des ordres ouverts: {str(e)}")
@@ -383,7 +384,8 @@ class BinanceAccountManager:
         }
         
         try:
-            return self._make_request(endpoint, signed=True, params=params)
+            result = self._make_request(endpoint, signed=True, params=params)
+            return result if isinstance(result, list) else [result] if result else []
             
         except BinanceApiError as e:
             logger.error(f"❌ Erreur lors de la récupération de l'historique des ordres: {str(e)}")

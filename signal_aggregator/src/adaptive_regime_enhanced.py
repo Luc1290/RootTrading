@@ -2,7 +2,7 @@
 import logging
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime, timedelta
 import json
 from enum import Enum
@@ -64,7 +64,7 @@ class RegimeTransition:
 class AdaptiveRegimeEnhanced:
     """Système de régime adaptatif amélioré avec ML et analyse comportementale"""
     
-    def __init__(self, redis_client):
+    def __init__(self, redis_client) -> None:
         self.redis = redis_client
         self.indicators = TechnicalIndicators()
         
@@ -275,7 +275,7 @@ class AdaptiveRegimeEnhanced:
             logger.error(f"❌ Erreur récupération historique {symbol}: {e}")
             return []
     
-    def _simulate_historical_data_for_adaptation(self, symbol: str, periods: int) -> List[Dict]:
+    def _simulate_historical_data_for_adaptation(self, symbol: str, periods: int) -> List[Dict[str, Any]]:
         """Simule des données historiques pour l'adaptation (temporaire)"""
         try:
             # Déterminer les caractéristiques du symbole

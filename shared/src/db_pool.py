@@ -54,7 +54,7 @@ class DBMetrics:
         # Protection thread
         self._lock = threading.RLock()
     
-    def record_query(self, duration: float, query_type: str = None, query_text: str = None):
+    def record_query(self, duration: float, query_type: Optional[str] = None, query_text: Optional[str] = None):
         """
         Enregistre une requête exécutée.
         
@@ -96,7 +96,7 @@ class DBMetrics:
         with self._lock:
             self.transaction_count += 1
     
-    def record_error(self, error: Exception, query_text: str = None):
+    def record_error(self, error: Exception, query_text: Optional[str] = None):
         """
         Enregistre une erreur de base de données.
         
@@ -216,10 +216,10 @@ class AdvancedConnectionPool:
         self.dsn = dsn
         
         # Créer un pool pour les connexions disponibles
-        self.available_connections = queue.Queue(maxsize=max_connections)
+        self.available_connections: queue.Queue = queue.Queue(maxsize=max_connections)
         
         # Dictionnaire des connexions en cours d'utilisation
-        self.in_use_connections = {}
+        self.in_use_connections: Dict[int, ConnectionWrapper] = {}
         
         # Verrou pour l'accès au pool
         self.lock = threading.RLock()

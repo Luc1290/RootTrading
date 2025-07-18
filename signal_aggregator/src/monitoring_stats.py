@@ -1,7 +1,7 @@
 """
 Système de monitoring et statistiques par régime et stratégie
 """
-from typing import Dict, List, Optional, DefaultDict
+from typing import Dict, List, Optional, DefaultDict, Any
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 import json
@@ -148,7 +148,7 @@ class SignalMonitoringStats:
         rejected = sum(self.rejected_signals[r][strategy] for r in self.rejected_signals)
         return accepted + rejected
     
-    def get_regime_performance(self, regime: str) -> Dict[str, any]:
+    def get_regime_performance(self, regime: str) -> Dict[str, Any]:
         """Retourne les performances par stratégie pour un régime donné"""
         strategies_stats = {}
         
@@ -190,7 +190,7 @@ class SignalMonitoringStats:
         
         return len(recent_signals) / max(1, duration_hours)
     
-    def get_comprehensive_report(self) -> Dict[str, any]:
+    def get_comprehensive_report(self) -> Dict[str, Any]:
         """Génère un rapport complet des statistiques"""
         report = {
             'summary': {
@@ -218,7 +218,7 @@ class SignalMonitoringStats:
             report['by_regime'][regime] = self.get_regime_performance(regime)
         
         # Analyse par stratégie
-        all_strategies = set()
+        all_strategies: set[str] = set()
         for regime_strategies in self.accepted_signals.values():
             all_strategies.update(regime_strategies.keys())
         for regime_strategies in self.rejected_signals.values():
@@ -271,7 +271,7 @@ class SignalMonitoringStats:
         
         return worst_regime
     
-    def _analyze_trends(self) -> Dict[str, any]:
+    def _analyze_trends(self) -> Dict[str, Any]:
         """Analyse les tendances temporelles"""
         if len(self.signal_history) < 10:
             return {'status': 'insufficient_data'}
@@ -301,18 +301,18 @@ class SignalMonitoringStats:
     
     def _get_most_active_regime(self) -> Optional[str]:
         """Trouve le régime le plus actif"""
-        regime_counts = defaultdict(int)
+        regime_counts: defaultdict[str, int] = defaultdict(int)
         
         for regime in self.accepted_signals:
             regime_counts[regime] += sum(self.accepted_signals[regime].values())
         for regime in self.rejected_signals:
             regime_counts[regime] += sum(self.rejected_signals[regime].values())
         
-        return max(regime_counts, key=regime_counts.get) if regime_counts else None
+        return max(regime_counts, key=lambda x: regime_counts[x]) if regime_counts else None
     
     def _get_most_successful_strategy(self) -> Optional[str]:
         """Trouve la stratégie avec le meilleur taux d'acceptation"""
-        all_strategies = set()
+        all_strategies: set[str] = set()
         for regime_strategies in self.accepted_signals.values():
             all_strategies.update(regime_strategies.keys())
         for regime_strategies in self.rejected_signals.values():

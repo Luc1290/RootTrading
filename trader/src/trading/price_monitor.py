@@ -42,7 +42,7 @@ class PriceMonitor:
         self.price_lock = threading.RLock()
         
         # Thread de vérification pour les timeouts
-        self.check_thread = None
+        self.check_thread: Optional[threading.Thread] = None
         self.running = False
         
         logger.info(f"✅ PriceMonitor initialisé pour {len(self.symbols)} symboles")

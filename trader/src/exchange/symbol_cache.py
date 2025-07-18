@@ -136,7 +136,7 @@ class SymbolConstraintsCache:
         with self._lock:
             current_time = time.time()
             
-            stats = {
+            stats: Dict[str, Any] = {
                 'total_entries': len(self._cache),
                 'ttl_seconds': self.ttl_seconds,
                 'symbols': list(self._cache.keys()),

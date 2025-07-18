@@ -302,7 +302,7 @@ class MarketStructureDetector:
                 weighted_votes[structure] += weight
             
             # Retourner la structure avec le plus de votes
-            return max(weighted_votes, key=weighted_votes.get)
+            return max(weighted_votes, key=lambda x: weighted_votes[x])
             
         except Exception as e:
             logger.error(f"❌ Erreur détection type structure: {e}")
@@ -445,7 +445,7 @@ class MarketStructureDetector:
             swings = self._detect_swing_points(data)
             
             # Grouper les swings par prix similaire
-            price_clusters = {}
+            price_clusters: Dict[float, List[Dict]] = {}
             threshold = self.support_resistance_threshold
             
             for swing in swings:
@@ -514,13 +514,15 @@ class MarketStructureDetector:
                 else:
                     # Fusionner le groupe actuel
                     merged_level = self._merge_level_group(current_group)
-                    merged.append(merged_level)
+                    if merged_level is not None:
+                        merged.append(merged_level)
                     current_group = [level]
             
             # Fusionner le dernier groupe
             if current_group:
                 merged_level = self._merge_level_group(current_group)
-                merged.append(merged_level)
+                if merged_level is not None:
+                    merged.append(merged_level)
             
             return merged
             
@@ -528,7 +530,7 @@ class MarketStructureDetector:
             logger.error(f"❌ Erreur fusion niveaux: {e}")
             return levels  # Retourner les originaux en cas d'erreur
     
-    def _merge_level_group(self, group: List[KeyLevel]) -> KeyLevel:
+    def _merge_level_group(self, group: List[KeyLevel]) -> Optional[KeyLevel]:
         """Fusionne un groupe de niveaux similaires"""
         try:
             if not group:

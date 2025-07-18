@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class SignalValidator:
     """Classe pour valider les signaux de trading selon différents critères"""
     
-    def __init__(self, redis_client, ema_incremental_cache: Dict = None):
+    def __init__(self, redis_client, ema_incremental_cache: Optional[Dict] = None):
         self.redis = redis_client
         self.ema_incremental_cache = ema_incremental_cache or {}
         
@@ -146,8 +146,8 @@ class SignalValidator:
                 # NOUVEAU: Validation BUY pour DEBUT DE PUMP (détection précoce)
                 if trend_5m == "STRONG_BEARISH" and ema_21_velocity < -0.01:  # Crash violent
                     rejection_reason = "crash violent en cours, éviter le couteau qui tombe"
-                elif not price_above_ema50 and trend_5m in ["STRONG_BEARISH", "WEAK_BEARISH"]:
-                    rejection_reason = f"prix sous EMA50 ({distance_to_ema50:.2f}%) en tendance baissière"
+                elif not price_above_ema99 and trend_5m in ["STRONG_BEARISH", "WEAK_BEARISH"]:
+                    rejection_reason = f"prix sous EMA99 ({distance_to_ema99:.2f}%) en tendance baissière"
                 # DETECTER DEBUT DE PUMP: Vélocité EMA21 qui accélère après consolidation
                 elif trend_5m == "NEUTRAL" and ema_21_velocity > 0.005:  # Accélération depuis neutre
                     # C'est bon pour BUY - pump qui démarre
@@ -374,8 +374,8 @@ class SignalValidator:
         correlation_score = 1.0
         
         # Vérifier que les signaux pointent dans la même direction générale
-        price_targets = []
-        stop_losses = []
+        price_targets: list[float] = []
+        stop_losses: list[float] = []
         
         for signal in signals:
             metadata = signal.get('metadata', {})

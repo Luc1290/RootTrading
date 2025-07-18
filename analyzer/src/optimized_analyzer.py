@@ -4,7 +4,7 @@ au lieu de les recalculer. Plus rapide et sans duplication.
 """
 import asyncio
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Union
 import pandas as pd
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -48,7 +48,7 @@ class OptimizedAnalyzer:
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
         # Construire le dictionnaire de résultats
-        all_signals = {}
+        all_signals: Dict[str, List[Any]] = {}
         for i, symbol in enumerate(symbols):
             if isinstance(results[i], Exception):
                 logger.error(f"❌ Erreur lors de l'analyse de {symbol}: {results[i]}")
@@ -57,7 +57,7 @@ class OptimizedAnalyzer:
                 all_signals[symbol] = results[i] or []
         
         elapsed = time.time() - start_time
-        total_signals = sum(len(signals) for signals in all_signals.values())
+        total_signals = sum(len(signals) if isinstance(signals, list) else 0 for signals in all_signals.values())
         
         logger.info(f"⚡ Analyse optimisée de {len(symbols)} symboles en {elapsed:.2f}s - {total_signals} signaux générés")
         

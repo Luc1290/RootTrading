@@ -8,7 +8,7 @@ import time
 import hmac
 import hashlib
 import uuid
-import requests
+import requests  # type: ignore
 from decimal import Decimal, getcontext, ROUND_DOWN
 from urllib.parse import urlencode
 from datetime import datetime
@@ -92,7 +92,7 @@ class BinanceUtils:
             if not demo_mode:
                 account_url = f"{self.BASE_URL}{self.API_V3}/account"
                 timestamp = int(time.time() * 1000)
-                params = {"timestamp": timestamp}
+                params: Dict[str, Any] = {"timestamp": timestamp}
                 params["signature"] = self.generate_signature(params)
                 
                 response = self.session.get(account_url, params=params)
@@ -544,7 +544,7 @@ class BinanceUtils:
             account_url = f"{self.BASE_URL}{self.API_V3}/account"
             timestamp = int(time.time() * 1000) + time_offset
             
-            params = {"timestamp": timestamp}
+            params: Dict[str, Any] = {"timestamp": timestamp}
             params["signature"] = self.generate_signature(params)
             
             response = self.session.get(account_url, params=params)
@@ -630,7 +630,7 @@ class BinanceUtils:
             orders_url = f"{self.BASE_URL}{self.API_V3}/openOrders"
             timestamp = int(time.time() * 1000) + time_offset
             
-            params = {"timestamp": timestamp}
+            params: Dict[str, Any] = {"timestamp": timestamp}
             
             # Ajouter le symbole si spécifié
             if symbol:

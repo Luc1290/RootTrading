@@ -515,7 +515,7 @@ class MomentumCrossTimeframe:
             
             # Retourner la direction avec le plus de votes
             if direction_votes:
-                return max(direction_votes, key=direction_votes.get)
+                return max(direction_votes, key=lambda x: direction_votes[x])
             else:
                 return MomentumDirection.NEUTRAL
                 
@@ -553,7 +553,7 @@ class MomentumCrossTimeframe:
             
             # Calculer la variance des vélocités
             velocities = [momentum.velocity for momentum in timeframe_momentums.values()]
-            velocity_std = np.std(velocities)
+            velocity_std = float(np.std(velocities))
             
             # Calculer l'alignement directionnel
             directions = [momentum.direction for momentum in timeframe_momentums.values()]
@@ -572,7 +572,7 @@ class MomentumCrossTimeframe:
     def _detect_momentum_divergences(self, timeframe_momentums: Dict[str, TimeframeMomentum], symbol: str) -> List[MomentumDivergence]:
         """Détecte les divergences de momentum entre timeframes"""
         try:
-            divergences = []
+            divergences: List[MomentumDivergence] = []
             
             # Comparer les timeframes majeurs
             major_timeframes = ['1m', '3m', '5m']

@@ -38,7 +38,7 @@ class StrategySignal(BaseModel):
     price: float
     confidence: Optional[float] = None
     strength: Optional[SignalStrength] = None
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=lambda: {})
     
     class Config:
         use_enum_values = True
@@ -101,7 +101,7 @@ class TradeCycle(BaseModel):
     completed_at: Optional[datetime] = None
     confirmed: bool = False
     demo: bool = False
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=lambda: {})
     
     class Config:
         use_enum_values = True

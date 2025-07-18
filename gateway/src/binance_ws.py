@@ -8,7 +8,7 @@ import time
 from typing import Dict, Any, Callable, List, Optional, Tuple
 import asyncio
 import websockets
-from websockets.exceptions import ConnectionClosed, InvalidStatusCode
+from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 # Importer les clients partagés
 import sys
@@ -30,7 +30,7 @@ class BinanceWebSocket:
     Récupère les données en temps réel via WebSocket et les transmet via Kafka.
     """
     
-    def __init__(self, symbols: List[str] = None, interval: str = INTERVAL, kafka_client: KafkaClient = None):
+    def __init__(self, symbols: Optional[List[str]] = None, interval: str = INTERVAL, kafka_client: Optional[KafkaClient] = None):
         """
         Initialise la connexion WebSocket Binance.
         
@@ -42,10 +42,10 @@ class BinanceWebSocket:
         self.symbols = symbols or SYMBOLS
         self.interval = interval
         self.kafka_client = kafka_client or get_producer()   # utilise le producteur singleton
-        self.ws = None
+        self.ws: Optional[websockets.WebSocketServerProtocol] = None
         self.running = False
         self.reconnect_delay = 1  # Secondes, pour backoff exponentiel
-        self.last_message_time = 0
+        self.last_message_time = 0.0
         self.heartbeat_interval = 60  # Secondes
         
         # URL de l'API WebSocket Binance
@@ -66,19 +66,19 @@ class BinanceWebSocket:
             self.stream_paths.append(f"{symbol_lower}@depth5")
             
         # Cache pour données enrichies
-        self.ticker_cache = {}
-        self.orderbook_cache = {}
+        self.ticker_cache: Dict[str, Any] = {}
+        self.orderbook_cache: Dict[str, Any] = {}
         
         # ULTRA-AVANCÉ : Buffers pour calculs techniques en temps réel
-        self.price_buffers = {}
-        self.volume_buffers = {}
-        self.high_buffers = {}
-        self.low_buffers = {}
-        self.rsi_buffers = {}
-        self.macd_buffers = {}
+        self.price_buffers: Dict[str, List[float]] = {}
+        self.volume_buffers: Dict[str, List[float]] = {}
+        self.high_buffers: Dict[str, List[float]] = {}
+        self.low_buffers: Dict[str, List[float]] = {}
+        self.rsi_buffers: Dict[str, List[float]] = {}
+        self.macd_buffers: Dict[str, Dict[str, List[float]]] = {}
         
         # 🚀 NOUVEAU : Cache pour indicateurs incrémentaux (évite dents de scie)
-        self.incremental_cache = {}
+        self.incremental_cache: Dict[str, Dict[str, Any]] = {}
         
         # Initialiser les buffers pour chaque symbole/timeframe
         for symbol in self.symbols:
@@ -107,7 +107,7 @@ class BinanceWebSocket:
         self.redis_client = None
         self._init_redis_for_buffers()
         self.buffer_save_interval = 300  # 5 minutes
-        self.last_buffer_save_time = 0
+        self.last_buffer_save_time = 0.0
         
         logger.info(f"🔥 Gateway ULTRA-AVANCÉ : {len(self.stream_paths)} streams + indicateurs temps réel")
     
@@ -128,11 +128,15 @@ class BinanceWebSocket:
                 "id": int(time.time() * 1000)
             }
             
-            await self.ws.send(json.dumps(subscribe_msg))
+            if self.ws:
+                await self.ws.send(json.dumps(subscribe_msg))
             logger.info(f"Abonnement envoyé pour: {', '.join(self.stream_paths)}")
             
             # Attendre la confirmation d'abonnement
-            response = await self.ws.recv()
+            if self.ws:
+                response = await self.ws.recv()
+            else:
+                return
             response_data = json.loads(response)
             
             if 'result' in response_data and response_data['result'] is None:
@@ -788,7 +792,7 @@ class BinanceWebSocket:
         """Calcule un score de sentiment global (-1 = très bearish, +1 = très bullish)"""
         
         # Composants du sentiment
-        ratio_score = 0
+        ratio_score = 0.0
         if bid_ask_ratio > 1.2:
             ratio_score = 0.3  # Plus de volume bid = bullish
         elif bid_ask_ratio < 0.8:
@@ -803,10 +807,10 @@ class BinanceWebSocket:
         elif ask_strength > bid_strength * 1.2:
             depth_score = -0.2  # Résistance plus forte
         else:
-            depth_score = 0
+            depth_score = 0.0
             
         # Wall advantage
-        wall_score = 0
+        wall_score = 0.0
         if bid_walls > ask_walls:
             wall_score = 0.1  # Plus de murs bid
         elif ask_walls > bid_walls:
@@ -1007,7 +1011,7 @@ class BinanceWebSocket:
             self.kafka_client.close()
             logger.info("Client Kafka fermé")
 
-    def _calculate_smooth_indicators(self, symbol: str, timeframe: str, candle_data: Dict, all_indicators: Dict = None) -> Dict:
+    def _calculate_smooth_indicators(self, symbol: str, timeframe: str, candle_data: Dict, all_indicators: Optional[Dict[Any, Any]] = None) -> Dict:
         """
         🚀 NOUVEAU : Calcule EMA/MACD de manière incrémentale pour éviter les dents de scie.
         

@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 import json
 import numpy as np
+import pandas as pd
 import time
 
 # Import des modules séparés
@@ -768,16 +769,19 @@ class SignalAggregator:
             if adaptive_thresholds and adaptive_thresholds.confidence > 0.7:
                 final_regime = adaptive_regime
                 final_metrics = adaptive_metrics
-                logger.info(f"🧠 Utilisation régime adaptatif pour {symbol}: {adaptive_regime.value} (conf={adaptive_thresholds.confidence:.2f})")
+                logger.info(f"🧠 Utilisation régime adaptatif pour {symbol}: {adaptive_regime.value if adaptive_regime else 'None'} (conf={adaptive_thresholds.confidence:.2f})")
             else:
                 final_regime = regime
                 final_metrics = regime_metrics
                 logger.info(f"📊 Utilisation régime standard pour {symbol}: {regime.value}")
             
             # ÉTAPE 4: Calculer le score global de qualité du signal
-            global_quality_score = self._calculate_global_quality_score(
-                confluence_analysis, structure_analysis, momentum_analysis, final_regime, adaptive_thresholds
-            )
+            if hasattr(self, '_calculate_global_quality_score'):
+                global_quality_score = await self._calculate_global_quality_score(
+                    confluence_analysis, structure_analysis, momentum_analysis, final_regime, adaptive_thresholds
+                )
+            else:
+                global_quality_score = 50.0  # Score neutre par défaut
             
             # ÉTAPE 5: Filtrage selon la qualité globale
             if global_quality_score < 30:  # Seuil minimum
@@ -788,9 +792,18 @@ class SignalAggregator:
             regime_weights = self.enhanced_regime_detector.get_strategy_weights_for_regime(final_regime)
             
             # ÉTAPE 7: Ajuster les poids selon les analyses multi-timeframe
-            confluence_weight_modifier = self._get_confluence_weight_modifier(confluence_analysis)
-            structure_weight_modifier = self._get_structure_weight_modifier(structure_analysis)
-            momentum_weight_modifier = self._get_momentum_weight_modifier(momentum_analysis)
+            # Ces modificateurs ne sont calculés que dans EnhancedSignalAggregator
+            confluence_weight_modifier = 1.0
+            structure_weight_modifier = 1.0  
+            momentum_weight_modifier = 1.0
+            
+            # Si on est dans EnhancedSignalAggregator, utiliser les vraies méthodes
+            if hasattr(self, '_get_confluence_weight_modifier'):
+                confluence_weight_modifier = await self._get_confluence_weight_modifier(confluence_analysis)
+            if hasattr(self, '_get_structure_weight_modifier'):
+                structure_weight_modifier = await self._get_structure_weight_modifier(structure_analysis)
+            if hasattr(self, '_get_momentum_weight_modifier'):
+                momentum_weight_modifier = await self._get_momentum_weight_modifier(momentum_analysis)
             
             logger.info(f"🎯 Modificateurs de poids pour {symbol}: "
                        f"confluence={confluence_weight_modifier:.2f}, "
@@ -1059,9 +1072,9 @@ class SignalAggregator:
                 logger.info(f"✅ Signal {side} {symbol}[{strategy}] autorisé malgré debounce - confluence multi-stratégies en cours")
                 debounce_check = True
             else:
-                debounce_check = await self._check_signal_debounce(symbol, side, strategy=strategy, confidence=confidence)
+                debounce_check = await self._check_signal_debounce(symbol, side)
         else:
-            debounce_check = await self._check_signal_debounce(symbol, side, strategy=strategy, confidence=confidence)
+            debounce_check = await self._check_signal_debounce(symbol, side)
         
         if not debounce_check:
             logger.info(f"Signal {side} {symbol} de {strategy} rejeté par filtre debounce")
@@ -1073,7 +1086,7 @@ class SignalAggregator:
             current_price = signals[0].get('price', 0) if signals else 0
             
             # Récupérer les indicateurs pour validation
-            recent_data = await self.get_recent_market_data(symbol, limit=50)
+            recent_data = await self.get_recent_market_data(symbol, limit=50) if hasattr(self, 'get_recent_market_data') else None
             allow_buy = False
             
             if recent_data and len(recent_data) >= 20:
@@ -1195,9 +1208,9 @@ class SignalAggregator:
                         'momentum_alignment': momentum_analysis.momentum_alignment if momentum_analysis else 0
                     },
                     'adaptive_regime': {
-                        'regime': adaptive_regime.value if 'adaptive_regime' in locals() else regime.value,
-                        'confidence': adaptive_thresholds.confidence if 'adaptive_thresholds' in locals() else 0,
-                        'used_adaptive': adaptive_thresholds.confidence > 0.7 if 'adaptive_thresholds' in locals() else False
+                        'regime': adaptive_regime.value if adaptive_regime and hasattr(adaptive_regime, 'value') else (regime.value if hasattr(regime, 'value') else str(regime)),
+                        'confidence': adaptive_thresholds.confidence if adaptive_thresholds and hasattr(adaptive_thresholds, 'confidence') else 0,
+                        'used_adaptive': adaptive_thresholds.confidence > 0.7 if adaptive_thresholds and hasattr(adaptive_thresholds, 'confidence') else False
                     },
                     'weight_modifiers': {
                         'confluence_modifier': confluence_weight_modifier,
@@ -1389,7 +1402,7 @@ class EnhancedSignalAggregator(SignalAggregator):
             logger.error(f"Erreur récupération résumé performances: {e}")
             return {}
 
-    async def _check_signal_debounce(self, symbol: str, side: str, strategy: str = None, interval: str = None, confidence: float = 0.0) -> bool:
+    async def _check_signal_debounce(self, symbol: str, side: str, strategy: Optional[str] = None, interval: Optional[str] = None, confidence: float = 0.0) -> bool:
         """
         Vérifie si un signal respecte le délai de debounce pour éviter les signaux groupés
         
@@ -1503,7 +1516,7 @@ class EnhancedSignalAggregator(SignalAggregator):
             logger.error(f"Erreur dans check_signal_debounce: {e}")
             return True  # En cas d'erreur, laisser passer le signal
     
-    def _calculate_global_quality_score(self, confluence_analysis, structure_analysis, 
+    async def _calculate_global_quality_score(self, confluence_analysis, structure_analysis, 
                                        momentum_analysis, regime, adaptive_thresholds) -> float:
         """Calcule le score global de qualité du signal"""
         try:
@@ -1543,7 +1556,7 @@ class EnhancedSignalAggregator(SignalAggregator):
             logger.error(f"❌ Erreur calcul score qualité globale: {e}")
             return 50.0  # Score neutre en cas d'erreur
     
-    def _get_confluence_weight_modifier(self, confluence_analysis) -> float:
+    async def _get_confluence_weight_modifier(self, confluence_analysis) -> float:
         """Calcule le modificateur de poids basé sur l'analyse de confluence"""
         try:
             if not confluence_analysis:
@@ -1565,7 +1578,7 @@ class EnhancedSignalAggregator(SignalAggregator):
             logger.error(f"❌ Erreur calcul modificateur confluence: {e}")
             return 1.0
     
-    def _get_structure_weight_modifier(self, structure_analysis) -> float:
+    async def _get_structure_weight_modifier(self, structure_analysis) -> float:
         """Calcule le modificateur de poids basé sur l'analyse de structure"""
         try:
             if not structure_analysis:
@@ -1584,7 +1597,7 @@ class EnhancedSignalAggregator(SignalAggregator):
             logger.error(f"❌ Erreur calcul modificateur structure: {e}")
             return 1.0
     
-    def _get_momentum_weight_modifier(self, momentum_analysis) -> float:
+    async def _get_momentum_weight_modifier(self, momentum_analysis) -> float:
         """Calcule le modificateur de poids basé sur l'analyse de momentum"""
         try:
             if not momentum_analysis:
@@ -1603,3 +1616,15 @@ class EnhancedSignalAggregator(SignalAggregator):
         except Exception as e:
             logger.error(f"❌ Erreur calcul modificateur momentum: {e}")
             return 1.0
+    
+    async def get_recent_market_data(self, symbol: str, limit: int = 50) -> Optional[List[Dict]]:
+        """Récupère les données de marché récentes depuis l'accumulateur"""
+        try:
+            if hasattr(self, 'market_data_accumulator'):
+                history = self.market_data_accumulator.get_history(symbol)
+                if history and len(history) > 0:
+                    return list(history)[-limit:]  # Derniers `limit` éléments
+            return None
+        except Exception as e:
+            logger.error(f"Erreur récupération données récentes pour {symbol}: {e}")
+            return None

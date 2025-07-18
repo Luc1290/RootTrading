@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import Dict, Set, Optional
+from typing import Dict, Set, Optional, List, Any
 from fastapi import WebSocket
 from datetime import datetime, timedelta
 from data_manager import DataManager
@@ -15,7 +15,7 @@ class WebSocketHub:
         self.subscriptions: Dict[str, Set[str]] = {}  # client_id -> set of channels
         self.channel_clients: Dict[str, Set[str]] = {}  # channel -> set of client_ids
         self._running = False
-        self._tasks = []
+        self._tasks: List[asyncio.Task] = []
         
     async def start(self):
         """Start the WebSocket hub"""
@@ -76,7 +76,7 @@ class WebSocketHub:
                 
             logger.info(f"Client {client_id} disconnected")
             
-    async def subscribe_client(self, client_id: str, channel: str, params: Dict = None):
+    async def subscribe_client(self, client_id: str, channel: str, params: Optional[Dict[Any, Any]] = None):
         """Subscribe a client to a channel"""
         if client_id not in self.connections:
             return
@@ -169,7 +169,7 @@ class WebSocketHub:
             
         await self.data_manager.subscribe_to_channel("signals:aggregated", signal_callback)
         
-    async def _start_market_updates(self, channel: str, params: Dict = None):
+    async def _start_market_updates(self, channel: str, params: Optional[Dict[Any, Any]] = None):
         """Start periodic market data updates for a channel"""
         parts = channel.split(":")
         if len(parts) < 3:
@@ -201,7 +201,7 @@ class WebSocketHub:
         task = asyncio.create_task(update_loop())
         self._tasks.append(task)
         
-    async def _start_signal_updates(self, channel: str, params: Dict = None):
+    async def _start_signal_updates(self, channel: str, params: Optional[Dict[Any, Any]] = None):
         """Start periodic signal updates for a channel"""
         symbol = params.get("symbol") if params else None
         
@@ -227,7 +227,7 @@ class WebSocketHub:
         task = asyncio.create_task(update_loop())
         self._tasks.append(task)
         
-    async def _start_performance_updates(self, channel: str, params: Dict = None):
+    async def _start_performance_updates(self, channel: str, params: Optional[Dict[Any, Any]] = None):
         """Start periodic performance updates"""
         async def update_loop():
             while self._running and channel in self.channel_clients and self.channel_clients[channel]:

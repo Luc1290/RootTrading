@@ -53,33 +53,45 @@ class CycleManager:
             
             if not all([symbol, side, price > 0, quantity > 0]):
                 logger.warning(f"⚠️ Données de trade incomplètes: {trade_data}")
-                return
+                return None
             
             # Convertir side en OrderSide si nécessaire
             if isinstance(side, str):
                 side = OrderSide(side.upper())
             
             if side == OrderSide.BUY:
-                return self._handle_buy_trade(
-                    symbol=symbol,
-                    price=price,
-                    quantity=quantity,
-                    order_id=order_id,
-                    strategy=strategy
-                )
+                if symbol and order_id:
+                    return self._handle_buy_trade(
+                        symbol=symbol,
+                        price=price,
+                        quantity=quantity,
+                        order_id=order_id,
+                        strategy=strategy
+                    )
+                else:
+                    logger.warning(f"⚠️ Symbol ou order_id manquant pour BUY: symbol={symbol}, order_id={order_id}")
+                    return None
             elif side == OrderSide.SELL:
-                return self._handle_sell_trade(
-                    symbol=symbol,
-                    price=price,
-                    quantity=quantity,
-                    order_id=order_id,
-                    strategy=strategy
-                )
+                if symbol and order_id:
+                    return self._handle_sell_trade(
+                        symbol=symbol,
+                        price=price,
+                        quantity=quantity,
+                        order_id=order_id,
+                        strategy=strategy
+                    )
+                else:
+                    logger.warning(f"⚠️ Symbol ou order_id manquant pour SELL: symbol={symbol}, order_id={order_id}")
+                    return None
                 
         except Exception as e:
             logger.error(f"❌ Erreur dans process_trade_execution: {str(e)}")
             # On ne propage pas l'erreur pour ne pas impacter le trading
             return None
+            
+        # Fallback par défaut si aucun côté reconnu
+        logger.warning(f"⚠️ Side non reconnu: {side}")
+        return None
     
     def _handle_buy_trade(self, symbol: str, price: Decimal, quantity: Decimal, 
                          order_id: str, strategy: str) -> Optional[str]:

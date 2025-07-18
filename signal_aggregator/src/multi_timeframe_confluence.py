@@ -651,7 +651,7 @@ class MultiTimeframeConfluence:
             momentums = [signal.momentum for signal in timeframe_signals.values()]
             if momentums:
                 momentum_std = np.std(momentums)
-                momentum_risk = momentum_std * 7  # Réduit de 10 à 7
+                momentum_risk = float(momentum_std * 7)  # Réduit de 10 à 7
                 risk_factors.append(min(4.0, momentum_risk))  # Cap augmenté à 4.0
             
             # 4. Risque de conflit de timeframes

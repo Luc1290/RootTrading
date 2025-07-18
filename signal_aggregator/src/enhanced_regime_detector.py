@@ -325,7 +325,7 @@ class EnhancedRegimeDetector:
             
             if not market_data:
                 logger.warning(f"⚠️ Aucune donnée Redis trouvée pour {symbol}")
-                return MarketRegime.UNDEFINED, {'data_source': 'redis_fallback', 'error': 'no_data'}
+                return MarketRegime.UNDEFINED, {}
             
             # Parser les données
             if isinstance(market_data, str):
@@ -351,10 +351,9 @@ class EnhancedRegimeDetector:
                 regime = MarketRegime.UNDEFINED
             
             metrics = {
-                'adx': current_adx,
-                'rsi': current_rsi, 
-                'bb_width': current_bb_width,
-                'data_source': 'redis_fallback'
+                'adx': float(current_adx),
+                'rsi': float(current_rsi), 
+                'bb_width': float(current_bb_width)
             }
             
             logger.info(f"📊 Régime calculé depuis Redis pour {symbol}: {regime.value}")
@@ -362,7 +361,7 @@ class EnhancedRegimeDetector:
             
         except Exception as e:
             logger.error(f"❌ Erreur calcul régime depuis Redis pour {symbol}: {e}")
-            return MarketRegime.UNDEFINED, {'data_source': 'error', 'error': str(e)}
+            return MarketRegime.UNDEFINED, {}
 
     async def _calculate_detailed_regime(self, symbol: str) -> Tuple[MarketRegime, Dict[str, float]]:
         """Calcul détaillé du régime avec multiples indicateurs"""

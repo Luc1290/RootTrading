@@ -16,7 +16,7 @@ class DatabasePersister:
     Service de persistance des données de marché en base.
     """
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.db_pool: Optional[asyncpg.Pool] = None
         self.running = False
         self.loop = None

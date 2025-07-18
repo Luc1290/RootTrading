@@ -183,11 +183,11 @@ class DataManager:
         
         if start_time:
             query += f" AND time >= ${len(params) + 1}"
-            params.append(start_time)
+            params.append(start_time.isoformat() if isinstance(start_time, datetime) else start_time)
             
         if end_time:
             query += f" AND time <= ${len(params) + 1}"
-            params.append(end_time)
+            params.append(end_time.isoformat() if isinstance(end_time, datetime) else end_time)
             
         if interval_minutes == 1:
             query += " ORDER BY time DESC"
@@ -196,7 +196,7 @@ class DataManager:
         
         if limit:
             query += f" LIMIT ${len(params) + 1}"
-            params.append(limit)
+            params.append(str(limit))
             
         try:
             async with self.postgres_pool.acquire() as conn:
@@ -289,11 +289,11 @@ class DataManager:
             
         if start_time:
             query += f" AND timestamp >= ${len(params) + 1}"
-            params.append(start_time)
+            params.append(start_time.isoformat() if isinstance(start_time, datetime) else start_time)
             
         if end_time:
             query += f" AND timestamp <= ${len(params) + 1}"
-            params.append(end_time)
+            params.append(end_time.isoformat() if isinstance(end_time, datetime) else end_time)
             
         query += " ORDER BY timestamp DESC LIMIT 10000"  # Plus de signaux historiques
         
@@ -446,7 +446,7 @@ class DataManager:
                 pnl_percentages = []
                 
                 for row in rows:
-                    pnl_cumsum += float(row["pnl_usdt"]) if row["pnl_usdt"] else 0
+                    pnl_cumsum = float(pnl_cumsum + (float(row["pnl_usdt"]) if row["pnl_usdt"] else 0))
                     balances.append(1000 + pnl_cumsum)  # Starting balance assumption
                     pnl_values.append(pnl_cumsum)
                     pnl_percentages.append(float(row["pnl_percentage"]) if row["pnl_percentage"] else 0)

@@ -27,7 +27,7 @@ class EnhancedCooldownManager:
         self.last_signals = {}  # {symbol: {'side': 'BUY/SELL', 'time': datetime, 'price': float}}
         
     def check_cooldown(self, symbol: str, new_side: str, 
-                      current_price: float = None) -> Tuple[bool, str]:
+                      current_price: Optional[float] = None) -> Tuple[bool, str]:
         """
         Vérifie si un nouveau signal respecte les périodes de cooldown
         
@@ -89,7 +89,7 @@ class EnhancedCooldownManager:
             return True, ""  # En cas d'erreur, on laisse passer
     
     def set_cooldown(self, symbol: str, side: str, duration_minutes: Optional[int] = None,
-                    price: float = None, is_spike: bool = False):
+                    price: Optional[float] = None, is_spike: bool = False):
         """
         Définit un cooldown pour un symbole
         
@@ -124,8 +124,8 @@ class EnhancedCooldownManager:
         except Exception as e:
             logger.error(f"Erreur set_cooldown: {e}")
     
-    def get_adaptive_cooldown(self, symbol: str, volatility: float = None, 
-                            volume_ratio: float = None) -> int:
+    def get_adaptive_cooldown(self, symbol: str, volatility: Optional[float] = None, 
+                            volume_ratio: Optional[float] = None) -> int:
         """
         Calcule un cooldown adaptatif basé sur les conditions du marché
         
