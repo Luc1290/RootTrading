@@ -137,7 +137,7 @@ class BollingerProStrategy(BaseStrategy):
             
             # SIGNAL D'ACHAT - Conditions favorables
             if self._is_bullish_bollinger_signal(
-                bb_position or 0.0, bb_width or 0.0, pattern_analysis, context_analysis, current_price, bb_middle or 0.0
+                bb_position or 0.0, bb_width or 0.0, pattern_analysis, context_analysis, current_price, bb_middle or 0.0, momentum_10 or 0.0
             ):
                 # Vérifier la position du prix avant de générer le signal
                 if not self.should_filter_signal_by_price_position(OrderSide.BUY, price_position, df):
@@ -546,7 +546,7 @@ class BollingerProStrategy(BaseStrategy):
         return context
     
     def _is_bullish_bollinger_signal(self, bb_position: float, bb_width: float, 
-                                    pattern: Dict, context: Dict, price: float, bb_middle: float) -> bool:
+                                    pattern: Dict, context: Dict, price: float, bb_middle: float, momentum_10: float = 0.0) -> bool:
         """Détermine si les conditions d'achat Bollinger sont remplies"""
         
         # Score de contexte minimum assoupli
@@ -575,8 +575,10 @@ class BollingerProStrategy(BaseStrategy):
             return context['score'] > 40  # ASSOUPLI de 50 à 40
         
         # 4. NOUVEAU: Détection de début de pump (oversold qui remonte) - STANDARDISÉ
-        if bb_position <= 0.35 and pattern['type'] == 'expanding' and price > bb_middle:  # STANDARDISÉ: Bon (position basse)
-            return context['score'] > 35  # ASSOUPLI de 45 à 35
+        # RENFORCÉ: Vérifier que c'est vraiment un rebond, pas une expansion baissière
+        if (bb_position <= 0.35 and pattern['type'] == 'expanding' and price > bb_middle and  # STANDARDISÉ: Bon (position basse)
+            momentum_10 > -0.1):  # AJOUTÉ: momentum pas trop négatif (début rebond)
+            return context['score'] > 40  # LÉGÈREMENT renforcé de 35 à 40
         
         # 5. NOUVEAU: Condition générale pour positions basses - STANDARDISÉ
         if bb_position <= 0.25 and context['score'] > 50:  # STANDARDISÉ: Très bon (bas de bande)

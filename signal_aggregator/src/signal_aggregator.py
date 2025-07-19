@@ -284,11 +284,20 @@ class SignalAggregator:
             # qui utilise enhanced_regime_detector - pas besoin de dupliquer
             
             # NOUVEAU: Validation de cohérence des indicateurs
-            # CORRECTION: Passer les métadonnées du signal au lieu des indicateurs techniques
+            # CORRECTION: Utiliser les vrais indicateurs récupérés depuis Redis
             signal_metadata = signal.get('metadata', {})
+            
+            # Fusionner indicateurs Redis + metadata signal pour validation complète
+            combined_indicators = {**indicators, **signal_metadata}
+            
+            # Ajouter indicateurs de contexte depuis metadata si pas dans indicators Redis
+            for key in ['momentum_10', 'volume_trend', 'rsi', 'cci', 'adx']:
+                if key not in combined_indicators and key in signal_metadata:
+                    combined_indicators[key] = signal_metadata[key]
+            
             is_coherent, coherence_score, coherence_reason = self.coherence_validator.validate_signal_coherence(
                 signal['side'], 
-                signal_metadata
+                combined_indicators  # CORRIGÉ: utiliser indicateurs complets
             )
             
             if not is_coherent:
@@ -1119,39 +1128,73 @@ class SignalAggregator:
                               f"pas de conditions exceptionnelles pour acheter en downtrend")
                 return None
 
-        # FILTRE CRITIQUE: Assouplir pour les SELL (vente au sommet)
-        if confluence_analysis and confluence_analysis.recommended_action == 'AVOID':
-            # Pour SELL, on accepte avec des critères assouplis
-            if side == 'SELL':
-                # Accepter si RSI > 65 ou Bollinger position > 0.85 ou volume élevé
-                # Récupérer RSI depuis les indicateurs ou metadata du signal
-                rsi_val = 50  # valeur par défaut
-                if momentum_analysis and hasattr(momentum_analysis, 'timeframe_momentums'):
-                    # Essayer de récupérer le RSI momentum
-                    primary_tf = momentum_analysis.timeframe_momentums.get('15m')
-                    if primary_tf and hasattr(primary_tf, 'rsi_momentum'):
-                        rsi_val = primary_tf.rsi_momentum * 100  # Convertir en échelle 0-100
-                elif signals and len(signals) > 0:
-                    # Récupérer depuis metadata du signal
-                    signal_metadata = signals[0].get('metadata', {})
-                    rsi_val = signal_metadata.get('rsi', 50)
-                bb_position = confluence_analysis.bb_position if hasattr(confluence_analysis, 'bb_position') else 0.5
-                volume_summary = self.signal_metrics.extract_volume_summary(signals)
-                volume_ratio = volume_summary.get('avg_volume_ratio', 1.0)
-                
-                if rsi_val > 65 or bb_position >= 0.75 or volume_ratio > 1.5:  # STANDARDISÉ: Très bon (haut de bande)
-                    logger.info(f"✅ Signal SELL {symbol} autorisé malgré AVOID - "
-                               f"conditions de pump détectées (RSI: {rsi_val:.1f}, BB: {bb_position:.2f}, Vol: {volume_ratio:.1f})")
-                else:
-                    logger.warning(f"❌ Signal SELL {symbol} BLOQUÉ: confluence AVOID sans conditions de pump")
-                    return None
-            else:
-                # Pour BUY, on reste plus strict
-                logger.warning(f"❌ Signal {side} {symbol} BLOQUÉ: confluence_analysis recommande AVOID "
-                              f"(risk: {confluence_analysis.risk_level:.1f}, "
-                              f"confluence: {confluence_analysis.confluence_score:.1f}%, "
-                              f"strength: {confluence_analysis.strength_rating})")
+        # FILTRE INTELLIGENT: Distinguer chute en cours vs vrai creux
+        if confluence_analysis and side == 'BUY':
+            # Détecter une chute active (pas un vrai creux)
+            confluence_weak = (confluence_analysis.strength_rating == 'WEAK' and 
+                             confluence_analysis.recommended_action in ['AVOID', 'HOLD'])
+            
+            structure_bearish_active = (structure_analysis and 
+                                      hasattr(structure_analysis, 'structure_type') and 
+                                      'LL' in str(structure_analysis.structure_type) and 
+                                      structure_analysis.bias == 'bearish')
+            
+            # Récupérer momentum depuis les signaux
+            momentum_negative = False
+            if signals and len(signals) > 0:
+                signal_metadata = signals[0].get('metadata', {})
+                momentum_val = signal_metadata.get('momentum_10', 0)
+                momentum_negative = momentum_val < -0.1  # Momentum encore négatif
+            
+            # Récupérer bb_position depuis les signaux
+            not_extreme_oversold = True
+            if signals and len(signals) > 0:
+                signal_metadata = signals[0].get('metadata', {})
+                bb_pos = signal_metadata.get('bb_position', 0.5)
+                not_extreme_oversold = bb_pos > 0.15  # Pas un oversold extrême
+            
+            # BLOQUER uniquement si c'est clairement une chute en cours (pas un creux)
+            if confluence_weak and structure_bearish_active and momentum_negative and not_extreme_oversold:
+                logger.warning(f"❌ Signal BUY {symbol} BLOQUÉ: chute active détectée - "
+                              f"confluence {confluence_analysis.strength_rating} ({confluence_analysis.confluence_score:.1f}%), "
+                              f"structure {structure_analysis.structure_type} {structure_analysis.bias}, "
+                              f"momentum {momentum_val:.2f}, bb_pos {bb_pos:.3f}")
                 return None
+            elif confluence_weak and structure_bearish_active:
+                logger.info(f"✅ Signal BUY {symbol} AUTORISÉ malgré structure baissière - "
+                           f"conditions de vrai creux détectées (momentum: {momentum_val:.2f}, bb_pos: {bb_pos:.3f})")
+        
+        # Assouplir pour les SELL (vente au sommet)
+        if confluence_analysis and confluence_analysis.recommended_action == 'AVOID' and side == 'SELL':
+            # Accepter si RSI > 65 ou Bollinger position > 0.85 ou volume élevé
+            # Récupérer RSI depuis les indicateurs ou metadata du signal
+            rsi_val = 50  # valeur par défaut
+            if momentum_analysis and hasattr(momentum_analysis, 'timeframe_momentums'):
+                # Essayer de récupérer le RSI momentum
+                primary_tf = momentum_analysis.timeframe_momentums.get('15m')
+                if primary_tf and hasattr(primary_tf, 'rsi_momentum'):
+                    rsi_val = primary_tf.rsi_momentum * 100  # Convertir en échelle 0-100
+            elif signals and len(signals) > 0:
+                # Récupérer depuis metadata du signal
+                signal_metadata = signals[0].get('metadata', {})
+                rsi_val = signal_metadata.get('rsi', 50)
+            bb_position = confluence_analysis.bb_position if hasattr(confluence_analysis, 'bb_position') else 0.5
+            volume_summary = self.signal_metrics.extract_volume_summary(signals)
+            volume_ratio = volume_summary.get('avg_volume_ratio', 1.0)
+            
+            if rsi_val > 65 or bb_position >= 0.75 or volume_ratio > 1.5:  # STANDARDISÉ: Très bon (haut de bande)
+                logger.info(f"✅ Signal SELL {symbol} autorisé malgré AVOID - "
+                           f"conditions de pump détectées (RSI: {rsi_val:.1f}, BB: {bb_position:.2f}, Vol: {volume_ratio:.1f})")
+            else:
+                logger.warning(f"❌ Signal SELL {symbol} BLOQUÉ: confluence AVOID sans conditions de pump")
+                return None
+        elif confluence_analysis and confluence_analysis.recommended_action == 'AVOID' and side == 'BUY':
+            # Pour BUY, on reste plus strict
+            logger.warning(f"❌ Signal {side} {symbol} BLOQUÉ: confluence_analysis recommande AVOID "
+                          f"(risk: {confluence_analysis.risk_level:.1f}, "
+                          f"confluence: {confluence_analysis.confluence_score:.1f}%, "
+                          f"strength: {confluence_analysis.strength_rating})")
+            return None
         
         return {
             'symbol': symbol,

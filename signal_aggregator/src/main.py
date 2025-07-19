@@ -197,7 +197,7 @@ class SignalAggregatorService:
                     # Récupérer les vraies données historiques depuis la DB (250 derniers points 5m)
                     query = """
                         SELECT time, symbol, timeframe, open, high, low, close, volume,
-                               rsi_14, ema_7, ema_26, macd_line, macd_signal, bb_upper, bb_lower, atr_14  -- MIGRATION BINANCE
+                               rsi_14, ema_7, ema_26, ema_99, macd_line, macd_signal, macd_histogram, bb_upper, bb_lower, atr_14  -- MIGRATION BINANCE
                         FROM market_data 
                         WHERE symbol = $1 AND timeframe = '5m' AND enhanced = true
                         ORDER BY time DESC 
@@ -227,8 +227,10 @@ class SignalAggregatorService:
                                         'rsi_14': float(row['rsi_14']) if row['rsi_14'] else None,
                                         'ema_7': float(row['ema_7']) if row['ema_7'] else None,  # MIGRATION BINANCE
                                         'ema_26': float(row['ema_26']) if row['ema_26'] else None,
+                                        'ema_99': float(row['ema_99']) if row['ema_99'] else None,
                                         'macd_line': float(row['macd_line']) if row['macd_line'] else None,
                                         'macd_signal': float(row['macd_signal']) if row['macd_signal'] else None,
+                                        'macd_histogram': float(row['macd_histogram']) if row['macd_histogram'] else None,
                                         'bb_upper': float(row['bb_upper']) if row['bb_upper'] else None,
                                         'bb_lower': float(row['bb_lower']) if row['bb_lower'] else None,
                                         'atr_14': float(row['atr_14']) if row['atr_14'] else None,

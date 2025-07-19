@@ -286,7 +286,7 @@ class SignalValidator:
         Returns:
             True si divergence détectée (signal à rejeter), False sinon
         """
-        if not rsi or len(prices) < 10:
+        if rsi is None or len(prices) < 10:
             return False
         
         try:

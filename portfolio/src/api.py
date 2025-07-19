@@ -203,8 +203,8 @@ def _register_portfolio_routes(app: FastAPI):
     
     @app.get("/summary", response_model=PortfolioSummary)
     async def get_portfolio_summary(
-        portfolio: PortfolioModel = Depends(get_portfolio_model),
-        response: Optional[Response] = None
+        response: Response,
+        portfolio: PortfolioModel = Depends(get_portfolio_model)
     ):
         """
         Récupère un résumé du portefeuille avec cache mémoire.
@@ -218,9 +218,8 @@ def _register_portfolio_routes(app: FastAPI):
         
         if cached_summary:
             logger.debug("📦 Résumé du portfolio servi depuis le cache")
-            if response:
-                response.headers["X-Cache"] = "HIT"
-                response.headers["Cache-Control"] = "public, max-age=5"
+            response.headers["X-Cache"] = "HIT"
+            response.headers["Cache-Control"] = "public, max-age=5"
             return cached_summary
         
         # Si pas en cache, récupérer depuis la DB
@@ -232,17 +231,16 @@ def _register_portfolio_routes(app: FastAPI):
         # Mettre en cache pour 2 secondes
         api_cache.set(cache_key, summary, ttl=2.0)
         
-        # Ajouter des en-têtes de cache
-        if response:
-            response.headers["X-Cache"] = "MISS"
-            response.headers["Cache-Control"] = "public, max-age=5"
+        # Ajouter les headers de cache
+        response.headers["X-Cache"] = "MISS"
+        response.headers["Cache-Control"] = "public, max-age=5"
         
         return summary
 
     @app.get("/balances", response_model=List[AssetBalance])
     async def get_balances(
-        portfolio: PortfolioModel = Depends(get_portfolio_model),
-        response: Optional[Response] = None
+        response: Response,
+        portfolio: PortfolioModel = Depends(get_portfolio_model)
     ):
         """
         Récupère les soldes actuels du portefeuille.
@@ -256,16 +254,15 @@ def _register_portfolio_routes(app: FastAPI):
             raise HTTPException(status_code=404, detail="Aucun solde trouvé")
         
         # Ajouter des en-têtes de cache
-        if response:
-            response.headers["Cache-Control"] = "public, max-age=5"
+        response.headers["Cache-Control"] = "public, max-age=5"
         
         return balances
 
     @app.get("/balance/{asset}")
     async def get_balance_by_asset(
+        response: Response,
         asset: str = Path(..., description="Actif à récupérer (BTC, ETH, USDC, etc.)"),
-        portfolio: PortfolioModel = Depends(get_portfolio_model),
-        response: Optional[Response] = None
+        portfolio: PortfolioModel = Depends(get_portfolio_model)
     ):
         """
         Récupère le solde pour un actif spécifique.
@@ -283,8 +280,6 @@ def _register_portfolio_routes(app: FastAPI):
         for balance in balances:
             if balance.asset == asset:
                 # Ajouter des en-têtes de cache
-                if response:
-                    response.headers["Cache-Control"] = "public, max-age=5"
                 
                 return {
                     "asset": balance.asset,
@@ -307,8 +302,8 @@ def _register_portfolio_routes(app: FastAPI):
 
     @app.get("/positions/active")
     async def get_active_positions(
-        portfolio: PortfolioModel = Depends(get_portfolio_model),
-        response: Optional[Response] = None
+        response: Response,
+        portfolio: PortfolioModel = Depends(get_portfolio_model)
     ):
         """
         Récupère les positions actives avec le PnL réel calculé.
@@ -372,16 +367,15 @@ def _register_portfolio_routes(app: FastAPI):
             positions.append(position)
         
         # Cache pour 5 secondes
-        if response:
-            response.headers["Cache-Control"] = "public, max-age=5"
+        response.headers["Cache-Control"] = "public, max-age=5"
         
         return positions
 
     @app.get("/positions/recent")
     async def get_recent_positions(
+        response: Response,
         hours: int = Query(24, ge=1, le=168, description="Nombre d'heures en arrière"),
-        portfolio: PortfolioModel = Depends(get_portfolio_model),
-        response: Optional[Response] = None
+        portfolio: PortfolioModel = Depends(get_portfolio_model)
     ):
         """
         Récupère les positions actives ET récemment fermées.
@@ -470,21 +464,20 @@ def _register_portfolio_routes(app: FastAPI):
             positions.append(position)
         
         # Cache pour 10 secondes (données moins critiques)
-        if response:
-            response.headers["Cache-Control"] = "public, max-age=10"
+        response.headers["Cache-Control"] = "public, max-age=10"
         
         return positions
 
     @app.get("/trades", response_model=TradeHistoryResponse)
     async def get_trade_history(
+        response: Response,
         page: int = Query(1, ge=1, description="Numéro de page"),
         page_size: int = Query(50, ge=1, le=200, description="Taille de la page"),
         symbol: Optional[str] = Query(None, description="Filtrer par symbole"),
         strategy: Optional[str] = Query(None, description="Filtrer par stratégie"),
         start_date: Optional[str] = Query(None, description="Date de début (format ISO)"),
         end_date: Optional[str] = Query(None, description="Date de fin (format ISO)"),
-        portfolio: PortfolioModel = Depends(get_portfolio_model),
-        response: Optional[Response] = None
+        portfolio: PortfolioModel = Depends(get_portfolio_model)
     ):
         """
         Récupère l'historique des trades avec pagination et filtrage.
@@ -557,10 +550,10 @@ def _register_portfolio_routes(app: FastAPI):
 
     @app.get("/performance/{period}", response_model=PerformanceResponse)
     async def get_performance(
+        response: Response,
         period: str = Path(..., description="Période ('daily', 'weekly', 'monthly')"),
         limit: int = Query(30, ge=1, le=365, description="Nombre de périodes à récupérer"),
-        portfolio: PortfolioModel = Depends(get_portfolio_model),
-        response: Optional[Response] = None
+        portfolio: PortfolioModel = Depends(get_portfolio_model)
     ):
         """
         Récupère les statistiques de performance.
@@ -571,8 +564,7 @@ def _register_portfolio_routes(app: FastAPI):
         stats = portfolio.get_performance_stats(period=period, limit=limit)
         
         # Les données de performance peuvent être mises en cache plus longtemps
-        if response:
-            response.headers["Cache-Control"] = "public, max-age=60"
+        response.headers["Cache-Control"] = "public, max-age=60"
         
         return PerformanceResponse(data=stats, period=period)
 
@@ -613,8 +605,8 @@ def _register_portfolio_routes(app: FastAPI):
 
     @app.get("/symbols/owned")
     async def get_owned_symbols_with_variations(
-        portfolio: PortfolioModel = Depends(get_portfolio_model),
-        response: Optional[Response] = None
+        response: Response,
+        portfolio: PortfolioModel = Depends(get_portfolio_model)
     ):
         """
         Récupère tous les symboles possédés avec leurs variations de prix 24h.
@@ -676,8 +668,7 @@ def _register_portfolio_routes(app: FastAPI):
         symbols_with_variations.sort(key=lambda x: balance_dict.get(x['asset'], 0), reverse=True)
         
         # Cache pour 30 secondes
-        if response:
-            response.headers["Cache-Control"] = "public, max-age=30"
+        response.headers["Cache-Control"] = "public, max-age=30"
         
         return symbols_with_variations
 

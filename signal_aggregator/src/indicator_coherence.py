@@ -118,7 +118,7 @@ class IndicatorCoherenceValidator:
         """
         try:
             rsi = indicators.get('rsi_14')
-            if not rsi:
+            if rsi is None:
                 return 0.5, "RSI non disponible"
             
             rsi_val = float(rsi)
@@ -272,7 +272,7 @@ class IndicatorCoherenceValidator:
             volume_ratio = indicators.get('volume_ratio')
             volume_trend = indicators.get('volume_trend')
             
-            if not volume_ratio:
+            if volume_ratio is None:
                 return 0.5, "Volume non disponible"
             
             volume_ratio_val = float(volume_ratio)

@@ -115,7 +115,7 @@ class TechnicalAnalysis:
         """
         try:
             macd_data = technical_context.get('macd')
-            if not macd_data or not macd_data.get('macd_line'):
+            if not macd_data or macd_data.get('macd_line') is None:
                 return None
                 
             macd_line = macd_data['macd_line']
