@@ -164,7 +164,7 @@ class EnhancedCooldownManager:
         try:
             ttl = self.redis.ttl(key)
             return max(0, ttl if ttl else 0)
-        except:
+        except Exception:
             return 0
     
     def clear_cooldown(self, symbol: str):

@@ -151,9 +151,8 @@ class Coordinator:
             if not balances:
                 return False, "Impossible de récupérer les balances"
             
-            # Extraire les assets
+            # Extraire l'asset de base (quote toujours USDC)
             base_asset = self._get_base_asset(signal.symbol)
-            quote_asset = self._get_quote_asset(signal.symbol)
             
             if signal.side == OrderSide.BUY:
                 # Pour un BUY, on a besoin d'USDC

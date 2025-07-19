@@ -53,6 +53,9 @@ class RegimeFiltering:
             # NOUVEAU: Récupérer données techniques pour validation Enhanced
             technical_context = await self.technical_analysis.get_technical_context(symbol) if self.technical_analysis else {}
             
+            # Analyser le contexte technique pour ajustements
+            technical_adjustment = self._analyze_technical_context(technical_context, side)
+            
             # Seuils adaptatifs selon le régime Enhanced + contexte technique
             if regime.name == 'STRONG_TREND_UP':
                 # Tendance haussière forte: ATTENTION - éviter d'acheter au sommet
@@ -166,6 +169,12 @@ class RegimeFiltering:
                     min_confidence *= 0.9
                     logger.info(f"✨ Signal ultra-confluent très bon (score={signal_score:.1f}): seuils ajustés pour {symbol}")
             
+            # Appliquer ajustements techniques aux seuils
+            min_confidence = min(0.95, max(0.5, min_confidence + technical_adjustment['confidence_adjustment']))
+            if technical_adjustment['strength_relaxation'] and 'moderate' not in required_strength:
+                required_strength.append('moderate')
+                logger.debug(f"🔧 Contexte technique: seuils ajustés (conf: {technical_adjustment['confidence_adjustment']:+.2f}) pour {symbol}")
+            
             # Appliquer les filtres
             if signal_confidence < min_confidence:
                 logger.info(f"🚫 Signal rejeté en {regime.name}: confiance {signal_confidence:.2f} < {min_confidence:.2f} "
@@ -208,6 +217,60 @@ class RegimeFiltering:
             MarketRegime.UNDEFINED: 0.95  # ULTRA PRUDENT si indéfini (augmenté de 0.8 à 0.95)
         }
         return thresholds.get(regime, 0.5)
+    
+    def _analyze_technical_context(self, technical_context: dict, signal_side: str) -> dict:
+        """
+        Analyse le contexte technique pour ajuster les seuils de filtrage
+        """
+        try:
+            if not technical_context:
+                return {'confidence_adjustment': 0.0, 'strength_relaxation': False}
+            
+            adjustment = 0.0
+            strength_relaxation = False
+            
+            # Analyser RSI pour détection surachat/survente
+            rsi = technical_context.get('rsi', 50)
+            if signal_side == 'BUY' and rsi <= 30:  # Survente
+                adjustment += 0.05  # Bonus pour BUY en survente
+                strength_relaxation = True
+            elif signal_side == 'SELL' and rsi >= 70:  # Surachat
+                adjustment += 0.05  # Bonus pour SELL en surachat
+                strength_relaxation = True
+            elif (signal_side == 'BUY' and rsi >= 70) or (signal_side == 'SELL' and rsi <= 30):
+                adjustment -= 0.05  # Malus si contraire à RSI
+            
+            # Analyser volatilité (ATR)
+            atr_percent = technical_context.get('atr_percent', 0)
+            if atr_percent > 3.0:  # Volatilité élevée
+                adjustment -= 0.03  # Plus prudent en haute volatilité
+            elif atr_percent < 1.0:  # Volatilité faible
+                adjustment += 0.02  # Plus permissif en basse volatilité
+            
+            # Analyser volume
+            volume_ratio = technical_context.get('volume_ratio', 1.0)
+            if volume_ratio > 2.0:  # Volume élevé
+                adjustment += 0.03  # Bonus pour volume élevé
+                strength_relaxation = True
+            elif volume_ratio < 0.7:  # Volume faible
+                adjustment -= 0.02  # Malus pour volume faible
+            
+            # Analyser divergences
+            if technical_context.get('bullish_divergence') and signal_side == 'BUY':
+                adjustment += 0.05
+                strength_relaxation = True
+            elif technical_context.get('bearish_divergence') and signal_side == 'SELL':
+                adjustment += 0.05
+                strength_relaxation = True
+            
+            return {
+                'confidence_adjustment': max(-0.1, min(0.1, adjustment)),  # Limiter à ±0.1
+                'strength_relaxation': strength_relaxation
+            }
+            
+        except Exception as e:
+            logger.error(f"Erreur analyse contexte technique: {e}")
+            return {'confidence_adjustment': 0.0, 'strength_relaxation': False}
     
     def get_single_strategy_threshold(self, regime: Any) -> float:
         """Retourne le seuil de confiance pour les signaux d'une seule stratégie selon le régime"""

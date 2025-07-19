@@ -108,7 +108,7 @@ class SignalValidator:
             # Calculer la force de la tendance
             trend_strength = abs(ema_21 - ema_99) / ema_99 if ema_99 > 0 else 0
             
-            # Classification sophistiquée de la tendance
+            # Classification sophistiquée de la tendance avec force
             # MIGRATION BINANCE: EMA 99 au lieu de 50
             if ema_21 > ema_99 * 1.015:  # +1.5% = forte haussière
                 trend_5m = "STRONG_BULLISH"
@@ -120,6 +120,11 @@ class SignalValidator:
                 trend_5m = "WEAK_BEARISH"
             else:
                 trend_5m = "NEUTRAL"
+            
+            # Utiliser trend_strength pour ajuster les validations
+            # Plus la tendance est forte, plus on est strict sur les signaux contre-tendance
+            trend_strength_threshold = 0.02  # 2% de force minimum pour tendance forte
+            is_strong_trend = trend_strength > trend_strength_threshold
             
             # Détecter si la tendance s'affaiblit (divergence)
             trend_weakening = False
@@ -148,6 +153,9 @@ class SignalValidator:
                     rejection_reason = "crash violent en cours, éviter le couteau qui tombe"
                 elif not price_above_ema99 and trend_5m in ["STRONG_BEARISH", "WEAK_BEARISH"]:
                     rejection_reason = f"prix sous EMA99 ({distance_to_ema99:.2f}%) en tendance baissière"
+                # Être plus strict en tendance forte contre le signal
+                elif is_strong_trend and trend_5m in ["STRONG_BEARISH", "WEAK_BEARISH"] and distance_to_ema21 < -0.5:
+                    rejection_reason = f"tendance baissière forte ({trend_strength*100:.1f}%), signal BUY trop risqué"
                 # DETECTER DEBUT DE PUMP: Vélocité EMA21 qui accélère après consolidation
                 elif trend_5m == "NEUTRAL" and ema_21_velocity > 0.005:  # Accélération depuis neutre
                     # C'est bon pour BUY - pump qui démarre
@@ -237,17 +245,17 @@ class SignalValidator:
                 rsi_buy_threshold = 85  # Plus strict
                 rsi_sell_threshold = 15
             
-            # Validation RSI pour timing pump
+            # Validation RSI pour timing pump avec seuils adaptatifs
             rsi_5m = data_5m.get('rsi_14')
             if rsi_5m:
-                if side == "BUY" and rsi_5m > 70:  # Éviter d'acheter en surachat
-                    logger.info(f"Signal BUY {symbol} rejeté : RSI 5m surachat ({rsi_5m:.1f}), pump déjà avancé")
+                if side == "BUY" and rsi_5m > rsi_buy_threshold:  # Utilisation du seuil adaptatif
+                    logger.info(f"Signal BUY {symbol} rejeté : RSI 5m surachat ({rsi_5m:.1f} > {rsi_buy_threshold}), pump déjà avancé")
                     return False
-                elif side == "SELL" and rsi_5m < 60:  # Vendre seulement en zone haute
+                elif side == "SELL" and rsi_5m < (100 - rsi_sell_threshold):  # Seuil adaptatif pour SELL
                     # Vérifier si c'est une vente défensive avant de rejeter
                     defensive_sell_rsi = self._check_defensive_sell_conditions(symbol, data_5m, prices)
                     if not defensive_sell_rsi:
-                        logger.info(f"Signal SELL {symbol} rejeté : RSI 5m pas assez haut ({rsi_5m:.1f}), pump pas terminé")
+                        logger.info(f"Signal SELL {symbol} rejeté : RSI 5m pas assez haut ({rsi_5m:.1f} < {100-rsi_sell_threshold}), pump pas terminé")
                         return False
 
             logger.debug(f"Signal {side} {symbol} validé par analyse multi-indicateurs 5m - tendance={trend_5m} BB={bb_position} ATR={atr_percent:.1f}%")
@@ -297,6 +305,10 @@ class SignalValidator:
                 elif price_trend_up and rsi < 50:
                     logger.info(f"⚠️ Divergence potentielle {symbol}: prix ↑ mais RSI={rsi:.1f} < 50")
                     return True
+                # Divergence subtile: prix monte mais RSI reste en zone neutre haute (essoufflement)
+                elif price_trend_up and rsi_neutral_high:
+                    logger.info(f"⚠️ Divergence subtile {symbol}: prix ↑ mais RSI={rsi:.1f} stagne en zone neutre haute")
+                    return True
                     
             # Divergences haussières (prix baisse, RSI se renforce)
             elif side == "SELL":
@@ -307,6 +319,10 @@ class SignalValidator:
                 # Prix baisse mais RSI stagne ou monte
                 elif price_trend_down and rsi > 50:
                     logger.info(f"⚠️ Divergence potentielle {symbol}: prix ↓ mais RSI={rsi:.1f} > 50")
+                    return True
+                # Divergence subtile: prix baisse mais RSI reste en zone neutre basse (rebond potentiel)
+                elif price_trend_down and rsi_neutral_low:
+                    logger.info(f"⚠️ Divergence subtile {symbol}: prix ↓ mais RSI={rsi:.1f} stagne en zone neutre basse")
                     return True
             
             return False
@@ -383,6 +399,8 @@ class SignalValidator:
             # Extraire les niveaux clés
             if 'stop_price' in metadata:
                 stop_losses.append(metadata['stop_price'])
+            if 'target_price' in metadata:
+                price_targets.append(metadata['target_price'])
             
             # Analyser les indicateurs sous-jacents
             if 'rsi' in metadata:
@@ -400,6 +418,15 @@ class SignalValidator:
             stop_std = np.std(stop_losses) / np.mean(stop_losses)
             if stop_std > 0.02:  # Plus de 2% d'écart
                 correlation_score *= 0.8
+        
+        # Vérifier la cohérence des price targets
+        if len(price_targets) >= 2:
+            target_std = np.std(price_targets) / np.mean(price_targets)
+            if target_std > 0.03:  # Plus de 3% d'écart entre les cibles
+                correlation_score *= 0.8
+            else:
+                # Bonus si les cibles sont cohérentes
+                correlation_score *= 1.1
         
         return correlation_score
     

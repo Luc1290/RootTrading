@@ -567,7 +567,7 @@ class DBConnectionPool:
                             pool_stats = self.connection_pool.get_stats()
                             logger.critical(f"Diagnostic: {pool_stats['in_use_connections']}/{pool_stats['total_connections']} "
                                           f"connexions utilisées ({pool_stats['usage_percent']:.1f}%)")
-                        except:
+                        except Exception:
                             pass
                 
                 logger.error(f"❌ Erreur lors de l'obtention d'une connexion: {str(e)}")
@@ -622,7 +622,7 @@ class DBConnectionPool:
             try:
                 if conn and not conn.closed:
                     conn.close()
-            except:
+            except Exception:
                 pass
     
     def close(self):

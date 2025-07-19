@@ -129,9 +129,9 @@ class DBManager:
                 else:
                     try:
                         self.conn.close()
-                    except:
+                    except Exception:
                         pass
-            except:
+            except Exception:
                 pass
             
             self.conn = None
@@ -218,9 +218,9 @@ class DBManager:
                         try:
                             if self.conn:
                                 self.conn.close()
-                        except:
+                        except Exception:
                             pass
-                except:
+                except Exception:
                     pass
                 
                 self.conn = None
@@ -243,7 +243,7 @@ class DBManager:
                 try:
                     if self.conn:
                         self.conn.rollback()
-                except:
+                except Exception:
                     pass
                 return None
         
@@ -289,7 +289,7 @@ class DBManager:
             try:
                 if self.conn:
                     self.conn.rollback()
-            except:
+            except Exception:
                 pass
             return False
     
@@ -331,7 +331,7 @@ class DBManager:
                 try:
                     if self.conn:
                         self.conn.rollback()
-                except:
+                except Exception:
                     pass
                 return False
         else:

@@ -66,7 +66,7 @@ def _handle_cycle_completed(channel, data):
         pnl = float(data.get("pnl", 0.0))
         
         logger.info(f"💰 [MONITORING] Cycle complété: {cycle_id} | "
-                   f"Symbol: {symbol} | PnL: {pnl:.2f} | "
+                   f"Symbol: {symbol} | Qty: {quantity:.6f} | PnL: {pnl:.2f} | "
                    f"Entry: {entry_price} -> Exit: {exit_price}")
         
     except Exception as e:

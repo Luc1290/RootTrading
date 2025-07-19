@@ -376,7 +376,7 @@ class MarketStructureDetector:
             high_trend = self._calculate_price_trend([h['price'] for h in highs[-3:]])
             
             # Analyser la tendance des lows  
-            low_trend = self._calculate_price_trend([l['price'] for l in lows[-3:]])
+            low_trend = self._calculate_price_trend([low['price'] for low in lows[-3:]])
             
             # Déterminer la structure
             if high_trend > 0.01 and low_trend > 0.01:  # HH et HL
@@ -506,7 +506,7 @@ class MarketStructureDetector:
             
             for level in levels[1:]:
                 # Vérifier si le niveau est proche du groupe actuel
-                group_avg_price = sum(l.price for l in current_group) / len(current_group)
+                group_avg_price = sum(level.price for level in current_group) / len(current_group)
                 
                 if abs(level.price - group_avg_price) / group_avg_price < threshold:
                     current_group.append(level)
@@ -776,8 +776,8 @@ class MarketStructureDetector:
                 return 'bearish'
             else:
                 # Analyser les niveaux pour déterminer le biais
-                resistance_levels = [l for l in key_levels if l.level_type == 'resistance']
-                support_levels = [l for l in key_levels if l.level_type == 'support']
+                resistance_levels = [level for level in key_levels if level.level_type == 'resistance']
+                support_levels = [level for level in key_levels if level.level_type == 'support']
                 
                 if len(support_levels) > len(resistance_levels):
                     return 'bullish'

@@ -18,22 +18,12 @@ from signal_processor import SignalProcessor
 from technical_analysis import TechnicalAnalysis
 from regime_filtering import RegimeFiltering
 from signal_metrics import SignalMetrics
-# from trend_filter import TrendFilter  # Supprimé - doublon avec regime_filtering
 from enhanced_cooldown import EnhancedCooldownManager
 from spike_detector import SpikeDetector
 from indicator_coherence import IndicatorCoherenceValidator
-
-logger = logging.getLogger(__name__)
-
-# Type alias pour le regime de marché
-if TYPE_CHECKING:
-    from enhanced_regime_detector import MarketRegime
-    MarketRegimeType = Union[MarketRegime, Any]
-else:
-    MarketRegimeType = Any
-
 from enhanced_regime_detector import EnhancedRegimeDetector, MarketRegime
 
+logger = logging.getLogger(__name__)
 
 class SignalAggregator:
     """Aggregates multiple strategy signals and resolves conflicts"""
@@ -604,7 +594,7 @@ class SignalAggregator:
             # Si les signaux sont trop équilibrés (40-60%), rejeter
             if 0.4 <= buy_ratio <= 0.6:
                 logger.warning(f"⚠️ Signaux contradictoires pour {symbol}: "
-                             f"{len(BUY_signals)} BUY vs {len(SELL_signals)} SELL - REJET")
+                             f"{len(BUY_signals)} BUY ({buy_ratio:.1%}) vs {len(SELL_signals)} SELL ({sell_ratio:.1%}) - REJET")
                 return None
             
             # Si un côté domine fortement (>70%), l'accepter mais réduire la confiance
@@ -668,6 +658,10 @@ class SignalAggregator:
         
         # NOUVEAU: Volume-based confidence boost (classique)
         confidence = self.signal_metrics.apply_volume_boost(confidence, signals)
+        
+        # Update metadata with main strategy info
+        if main_strategy != 'SignalAggregator':
+            logger.debug(f"📊 Signal principal: {main_strategy} pour {symbol}")
         
         # Bonus multi-stratégies
         confidence = self.signal_metrics.apply_multi_strategy_bonus(confidence, contributing_strategies)
@@ -815,6 +809,10 @@ class SignalAggregator:
             final_metrics = regime_metrics
             regime_weights = self.enhanced_regime_detector.get_strategy_weights_for_regime(final_regime)
             confluence_weight_modifier = 1.0
+            
+            # Use final_metrics for fallback analysis
+            if final_metrics and 'volatility' in final_metrics:
+                logger.debug(f"📊 Utilisation métriques fallback: volatilité={final_metrics['volatility']:.3f}")
             structure_weight_modifier = 1.0
             momentum_weight_modifier = 1.0
             global_quality_score = 50  # Score neutre en cas d'erreur
@@ -1010,6 +1008,9 @@ class SignalAggregator:
         
         # Performance-based adaptive boost
         confidence = await self.signal_metrics.apply_performance_boost(confidence, contributing_strategies)
+        
+        # Use main_strategy for enhanced metadata
+        enhanced_strategy_name = f"Enhanced_{main_strategy}" if main_strategy != 'SignalAggregator' else 'EnhancedAggregated'
         
         # Regime-adaptive confidence boost
         confidence = self.regime_filtering.apply_regime_confidence_boost(confidence, regime, regime_metrics)
@@ -1279,6 +1280,11 @@ class SignalAggregator:
         # Séparer les signaux par type
         trend_signals = [s for s in signals if s['strategy'] in trend_strategies]
         reversal_signals = [s for s in signals if s['strategy'] in reversal_strategies]
+        adaptive_signals = [s for s in signals if s['strategy'] in adaptive_strategies]
+        
+        # Use adaptive_strategies for coherence check
+        if adaptive_signals:
+            logger.debug(f"📊 Signaux adaptatifs détectés: {len(adaptive_signals)} de {adaptive_strategies}")
         
         # Si pas de mélange, c'est cohérent
         if not trend_signals or not reversal_signals:
@@ -1436,6 +1442,9 @@ class EnhancedSignalAggregator(SignalAggregator):
             candle_duration = interval_map.get(interval, timedelta(minutes=15))
             
             # Debounce fixe en minutes (plus lié aux bougies)
+            # Utiliser candle_duration pour ajuster le debounce selon l'intervalle
+            candle_minutes = candle_duration.total_seconds() / 60
+            
             # Adaptatif basé sur l'ADX pour ajuster selon les conditions de marché
             current_adx = await self.technical_analysis._get_current_adx(symbol)
             base_same_minutes = self.debounce_periods['same_side_minutes']
@@ -1467,9 +1476,10 @@ class EnhancedSignalAggregator(SignalAggregator):
                 adx_multiplier = 1.0  # Fallback si ADX non disponible
                 trend_strength = "inconnue"
             
-            # Appliquer multiplicateur (résultat en minutes)
-            debounce_same_minutes = int(base_same_minutes * adx_multiplier)
-            debounce_opposite_minutes = int(base_opposite_minutes * adx_multiplier)
+            # Appliquer multiplicateur et ajuster selon la durée des bougies
+            candle_factor = max(0.5, candle_minutes / 15.0)  # Factor basé sur 15min de référence
+            debounce_same_minutes = int(base_same_minutes * adx_multiplier * candle_factor)
+            debounce_opposite_minutes = int(base_opposite_minutes * adx_multiplier * candle_factor)
             
             logger.debug(f"📊 Debounce adaptatif {symbol}[{strategy}]: ADX={current_adx:.1f} (tendance {trend_strength}), signal {signal_strength_desc} (conf={confidence:.2f}) → même={debounce_same_minutes}min, opposé={debounce_opposite_minutes}min")
             

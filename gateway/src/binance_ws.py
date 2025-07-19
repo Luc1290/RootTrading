@@ -346,7 +346,7 @@ class BinanceWebSocket:
                 len(self.volume_buffers[symbol][timeframe])
             ]
             
-            if not all(l == final_lengths[0] for l in final_lengths):
+            if not all(length == final_lengths[0] for length in final_lengths):
                 logger.error(f"❌ ERREUR CRITIQUE: Buffers encore désalignés après correction {symbol} {timeframe}: {final_lengths}")
                 # Force synchronization as last resort
                 min_final_len = min(final_lengths)
@@ -372,7 +372,7 @@ class BinanceWebSocket:
         if len(prices) >= 1:  # Même avec 1 seul point, on peut utiliser l'historique !
             # Vérifier que tous les buffers sont bien alignés
             all_lengths = [len(prices), len(highs), len(lows), len(volumes)]
-            if all(l == all_lengths[0] for l in all_lengths):
+            if all(length == all_lengths[0] for length in all_lengths):
                 logger.info(f"📊 HYBRIDE WebSocket {symbol} {timeframe}: buffers=[P:{len(prices)},H:{len(highs)},L:{len(lows)},V:{len(volumes)}] → calcul COMPLET avec historique ✅ ALIGNÉS")
             else:
                 logger.error(f"❌ BUFFERS DÉSALIGNÉS {symbol} {timeframe}: [P:{len(prices)},H:{len(highs)},L:{len(lows)},V:{len(volumes)}] - ARRÊT DU CALCUL")
@@ -1220,7 +1220,7 @@ class BinanceWebSocket:
         try:
             # 🔧 CORRECTION CRITIQUE: Aligner les buffers actuels AVANT extension
             current_lengths = [len(current_prices), len(current_highs), len(current_lows), len(current_volumes)]
-            if not all(l == current_lengths[0] for l in current_lengths):
+            if not all(length == current_lengths[0] for length in current_lengths):
                 logger.warning(f"🔧 Désalignement détecté avant extension {symbol} {timeframe}: P:{len(current_prices)} H:{len(current_highs)} L:{len(current_lows)} V:{len(current_volumes)}")
                 
                 # Aligner à la longueur minimum
@@ -1287,7 +1287,7 @@ class BinanceWebSocket:
             
             # 🔧 VALIDATION FINALE: Vérifier l'alignement post-extension
             extended_lengths = [len(extended_prices), len(extended_highs), len(extended_lows), len(extended_volumes)]
-            if not all(l == extended_lengths[0] for l in extended_lengths):
+            if not all(length == extended_lengths[0] for length in extended_lengths):
                 logger.error(f"❌ DÉSALIGNEMENT CRITIQUE après extension {symbol} {timeframe}: P:{len(extended_prices)} H:{len(extended_highs)} L:{len(extended_lows)} V:{len(extended_volumes)}")
                 
                 # Force l'alignement final
@@ -1508,7 +1508,7 @@ class BinanceWebSocket:
                     lengths = [price_len, high_len, low_len, volume_len]
                     
                     # Détecter les problèmes
-                    if not all(l == lengths[0] for l in lengths):
+                    if not all(length == lengths[0] for length in lengths):
                         total_issues += 1
                         min_len = min(lengths)
                         max_len = max(lengths)

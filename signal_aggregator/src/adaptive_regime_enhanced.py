@@ -543,7 +543,6 @@ class AdaptiveRegimeEnhanced:
         """Adapte les seuils aux caractéristiques du marché"""
         try:
             crypto_type = self._classify_crypto_type(symbol)
-            base_patterns = self.crypto_regime_patterns[crypto_type]
             
             # Seuils par défaut
             thresholds = AdaptiveThresholds(symbol=symbol)

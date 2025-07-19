@@ -203,7 +203,6 @@ class EnhancedRegimeDetector:
             current_bb_width = latest.get('bb_width', 0.02)
             current_atr = latest.get('atr_14', 0)
             current_close = latest.get('close', 0)
-            current_volume = latest.get('volume', 0)
             volume_ratio = latest.get('volume_ratio', 1.0)
             
             # Calculs additionnels si ADX disponible dans DB
@@ -440,16 +439,44 @@ class EnhancedRegimeDetector:
                 pivot_low_count = self._count_pivots_local(df['low'].values[-50:], is_low=True)
                 pivot_count = pivot_high_count + pivot_low_count
             
-            # Compiler les métriques
+            # Calculs enrichis avec les bandes Bollinger (méthode raw data)
+            current_close = closes[-1]
+            bb_upper = bb_data['bb_upper']
+            bb_lower = bb_data['bb_lower'] 
+            bb_middle = bb_data['bb_middle']
+            
+            bb_distance_to_upper = abs(current_close - bb_upper) / bb_upper if bb_upper else 0
+            bb_distance_to_lower = abs(current_close - bb_lower) / bb_lower if bb_lower else 0
+            bb_squeeze_strength = 1 - current_bb_width if current_bb_width else 0
+            price_vs_middle = (current_close - bb_middle) / bb_middle if bb_middle else 0
+            
+            # Validation des breakouts/breakdowns avec volume
+            bb_breakout_confirmed = False
+            bb_breakdown_confirmed = False
+            if bb_upper and bb_lower and volume_ratio > 1.5:
+                if current_close > bb_upper:
+                    bb_breakout_confirmed = True
+                elif current_close < bb_lower:
+                    bb_breakdown_confirmed = True
+            
+            # Compiler les métriques enrichies
             metrics = {
                 'adx': current_adx,
                 'plus_di': plus_di,
                 'minus_di': minus_di,
                 'bb_width': current_bb_width,
                 'bb_position': bb_position,
+                'bb_distance_to_upper': bb_distance_to_upper,
+                'bb_distance_to_lower': bb_distance_to_lower,
+                'bb_squeeze_strength': bb_squeeze_strength,
+                'price_vs_middle': price_vs_middle,
+                'bb_breakout_confirmed': bb_breakout_confirmed,
+                'bb_breakdown_confirmed': bb_breakdown_confirmed,
                 'rsi': current_rsi,
                 'roc': current_roc,
                 'volume_ratio': volume_ratio,
+                'current_volume': current_volume,
+                'avg_volume': avg_volume,
                 'trend_angle': trend_angle,
                 'pivot_count': pivot_count
             }
@@ -457,9 +484,10 @@ class EnhancedRegimeDetector:
             # Déterminer le régime
             regime = self._determine_regime(metrics)
             
-            logger.info(f"Régime {symbol}: {regime.value} | ADX={current_adx:.1f}, "
+            logger.info(f"Régime {symbol} (Raw data): {regime.value} | ADX={current_adx:.1f}, "
                        f"+DI={plus_di:.1f}, -DI={minus_di:.1f}, ROC={current_roc:.1f}%, "
-                       f"RSI={current_rsi:.1f}, Angle={trend_angle:.1f}°")
+                       f"RSI={current_rsi:.1f}, BB_pos={bb_position:.2f}, Vol={volume_ratio:.1f}x, "
+                       f"Squeeze={bb_squeeze_strength:.2f}, Breakout={'✅' if bb_breakout_confirmed else '❌'}")
             
             return regime, metrics
             
@@ -710,7 +738,7 @@ class EnhancedRegimeDetector:
                 cached = await self.redis.get(cache_key)
                 if cached:
                     return float(cached)
-            except:
+            except Exception:
                 pass  # Continue without cache if Redis fails
                 
             # Calculate danger level based on current regime and metrics
@@ -720,7 +748,7 @@ class EnhancedRegimeDetector:
             # Cache for 1 minute
             try:
                 await self.redis.set(cache_key, str(danger_level), expiration=60)
-            except:
+            except Exception:
                 pass  # Continue without cache if Redis fails
             
             return danger_level
@@ -783,7 +811,7 @@ class EnhancedRegimeDetector:
         try:
             recovery_key = f"recovery_period:{symbol}"
             return bool(await self.redis.get(recovery_key))
-        except:
+        except Exception:
             return False
         
     async def is_opportunity_period(self, symbol: str) -> bool:
@@ -791,7 +819,7 @@ class EnhancedRegimeDetector:
         try:
             opportunity_key = f"opportunity_period:{symbol}"
             return bool(await self.redis.get(opportunity_key))
-        except:
+        except Exception:
             return False
 
     def set_market_data_accumulator(self, accumulator) -> None:
@@ -882,16 +910,39 @@ class EnhancedRegimeDetector:
                 trend_angle = last_candle.get('trend_angle', 0.0)
                 pivot_count = last_candle.get('pivot_count', 0)
             
-            # Compiler les métriques
+            # Calculs enrichis avec les bandes Bollinger
+            bb_distance_to_upper = abs(current_close - bb_upper) / bb_upper if bb_upper else 0
+            bb_distance_to_lower = abs(current_close - bb_lower) / bb_lower if bb_lower else 0
+            bb_squeeze_strength = 1 - bb_width if bb_width else 0  # Plus proche de 1 = squeeze plus fort
+            price_vs_middle = (current_close - bb_middle) / bb_middle if bb_middle else 0
+            
+            # Validation des breakouts/breakdowns Bollinger
+            bb_breakout_confirmed = False
+            bb_breakdown_confirmed = False
+            if bb_upper and bb_lower and volume_ratio > 1.5:  # Volume confirme le mouvement
+                if current_close > bb_upper:
+                    bb_breakout_confirmed = True
+                elif current_close < bb_lower:
+                    bb_breakdown_confirmed = True
+            
+            # Compiler les métriques enrichies
             metrics = {
                 'adx': current_adx,
                 'plus_di': plus_di,
                 'minus_di': minus_di,
                 'bb_width': bb_width,
                 'bb_position': bb_position,
+                'bb_distance_to_upper': bb_distance_to_upper,
+                'bb_distance_to_lower': bb_distance_to_lower,
+                'bb_squeeze_strength': bb_squeeze_strength,
+                'price_vs_middle': price_vs_middle,
+                'bb_breakout_confirmed': bb_breakout_confirmed,
+                'bb_breakdown_confirmed': bb_breakdown_confirmed,
                 'rsi': current_rsi,
                 'roc': current_roc,
                 'volume_ratio': volume_ratio,
+                'current_volume': current_volume,
+                'avg_volume': avg_volume,
                 'trend_angle': trend_angle,
                 'pivot_count': pivot_count
             }
@@ -901,7 +952,8 @@ class EnhancedRegimeDetector:
             
             logger.info(f"📊 Régime {symbol} (DB enrichie): {regime.value} | ADX={current_adx:.1f}, "
                        f"+DI={plus_di:.1f}, -DI={minus_di:.1f}, ROC={current_roc:.1f}%, "
-                       f"RSI={current_rsi:.1f}, Angle={trend_angle:.1f}°")
+                       f"RSI={current_rsi:.1f}, BB_pos={bb_position:.2f}, Vol={volume_ratio:.1f}x, "
+                       f"Squeeze={bb_squeeze_strength:.2f}, Breakout={'✅' if bb_breakout_confirmed else '❌'}")
             
             return regime, metrics
             

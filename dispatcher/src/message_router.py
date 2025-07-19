@@ -561,7 +561,7 @@ class MessageRouter:
                 high_priority_size = len(self.high_priority_queue)
                 if queue_size > 0 or high_priority_size > 0:
                     logger.warning(f"⚠️ Messages non traités lors de la fermeture: {queue_size} normaux, {high_priority_size} haute priorité")
-        except:
+        except Exception:
             pass
         
         # Fermer les clients Redis

@@ -199,26 +199,51 @@ class CrashProtection:
                 macd_signal = df['macd_signal'].iloc[-1]
                 macd_negative = macd < macd_signal and macd < 0
             
-            # Conditions d'effondrement
-            if rsi_current < self.RSI_COLLAPSE_THRESHOLD:  # STANDARDISÉ: RSI < 20
+            # Conditions d'effondrement - intégrer MACD pour confirmation
+            if rsi_current < self.RSI_COLLAPSE_THRESHOLD:  # STANDARDISÉ: RSI < 15
+                # Vérifier si MACD confirme l'effondrement
+                priority = 4 if macd_negative else 3  # Priority max si MACD confirme
+                description = f"RSI effondré {rsi_current:.0f} (chute {rsi_drop:.0f})"
+                if macd_negative:
+                    description += " + MACD divergence baissière"
+                
                 return {
                     "is_collapse": True,
                     "type": "MOMENTUM_COLLAPSE",
-                    "description": f"RSI effondré {rsi_current:.0f} (chute {rsi_drop:.0f})",
-                    "severity": "ÉLEVÉ",
-                    "priority": 3,
+                    "description": description,
+                    "severity": "CRITIQUE" if macd_negative else "ÉLEVÉ",
+                    "priority": priority,
                     "rsi_current": rsi_current,
-                    "rsi_drop": rsi_drop
+                    "rsi_drop": rsi_drop,
+                    "macd_confirmation": macd_negative
                 }
             elif rsi_drop > 20:  # RSI a chuté de 20+ points
+                # MACD peut confirmer la chute brutale
+                priority = 3 if macd_negative else 2
+                description = f"RSI chute brutale -{rsi_drop:.0f} points"
+                if macd_negative:
+                    description += " + MACD divergence"
+                
                 return {
                     "is_collapse": True,
                     "type": "RSI_CHUTE",
-                    "description": f"RSI chute brutale -{rsi_drop:.0f} points",
+                    "description": description,
+                    "severity": "ÉLEVÉ" if macd_negative else "MODÉRÉ",
+                    "priority": priority,
+                    "rsi_current": rsi_current,
+                    "rsi_drop": rsi_drop,
+                    "macd_confirmation": macd_negative
+                }
+            elif macd_negative and rsi_current < 25:  # NOUVEAU: MACD divergence + RSI faible
+                return {
+                    "is_collapse": True,
+                    "type": "MACD_DIVERGENCE",
+                    "description": f"MACD divergence baissière + RSI faible ({rsi_current:.0f})",
                     "severity": "MODÉRÉ",
                     "priority": 2,
                     "rsi_current": rsi_current,
-                    "rsi_drop": rsi_drop
+                    "rsi_drop": rsi_drop,
+                    "macd_confirmation": True
                 }
             
             return {"is_collapse": False}

@@ -54,6 +54,21 @@ class TechnicalAnalysis:
             if len(prices) < 30:  # Minimum pour les calculs
                 return context
             
+            # Utiliser highs/lows pour calculer des niveaux de support/résistance
+            if len(highs) >= 20 and len(lows) >= 20:
+                # Support/résistance sur les 20 dernières bougies
+                context['resistance_level'] = max(highs[-20:])
+                context['support_level'] = min(lows[-20:])
+                
+                # True Range actuel
+                if len(prices) >= 2:
+                    current_tr = max(
+                        highs[-1] - lows[-1],
+                        abs(highs[-1] - prices[-2]),
+                        abs(lows[-1] - prices[-2])
+                    )
+                    context['current_true_range'] = current_tr
+            
             # Calculer MACD
             macd_data = indicators.calculate_macd(prices)
             if macd_data['macd_line'] is not None:
@@ -65,16 +80,16 @@ class TechnicalAnalysis:
                     obv_value = indicators.calculate_obv(prices, volumes)
                     if obv_value is not None:
                         context['obv'] = obv_value
-                except:
-                    pass  # OBV optionnel
+                except (ValueError, TypeError, IndexError, ZeroDivisionError) as e:
+                    logger.debug(f"Erreur calcul OBV pour {symbol}: {e}")  # OBV optionnel
             
             # Calculer ROC
             try:
                 roc_value = indicators.calculate_roc(prices, period=10)
                 if roc_value is not None:
                     context['roc'] = roc_value
-            except:
-                pass  # ROC optionnel
+            except (ValueError, TypeError, IndexError, ZeroDivisionError) as e:
+                logger.debug(f"Erreur calcul ROC pour {symbol}: {e}")  # ROC optionnel
             
             # Ajouter le volume ratio si disponible
             volume_ratio = data_5m.get('volume_ratio', 1.0)
@@ -541,7 +556,10 @@ class TechnicalAnalysis:
                 if prev_price is None:
                     # Première fois : utiliser valeur neutre
                     cache['prev_close'] = current_candle['close']
-                    return 50.0
+                    # Initialiser avec une valeur de base ou utiliser prev_rsi si disponible
+                    initial_rsi = prev_rsi if prev_rsi is not None else 50.0
+                    cache[f'rsi_{period}'] = initial_rsi
+                    return initial_rsi
                 
                 # Calculer gain/perte pour cette période
                 price_change = current_candle['close'] - prev_price

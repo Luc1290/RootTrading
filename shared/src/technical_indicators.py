@@ -722,8 +722,6 @@ class TechnicalIndicators:
         try:
             # Calcul du True Range (TR)
             high_low = highs_array - lows_array
-            high_close = np.abs(highs_array[1:] - closes_array[:-1])
-            low_close = np.abs(lows_array[1:] - closes_array[:-1])
             
             # Combine les arrays pour le TR
             tr = np.zeros(len(highs_array))
@@ -1034,7 +1032,6 @@ class TechnicalIndicators:
                 else:
                     # Calcul basé sur direction précédente et règles de changement
                     prev_direction = directions[-1]
-                    prev_supertrend = supertrend_values[-1]
                     
                     if prev_direction == 1:  # Était en tendance haussière
                         if current_close <= final_lower:
@@ -1748,7 +1745,7 @@ class TechnicalIndicators:
             
             # Vérification post-alignement
             post_lengths = [len(arr) for arr in aligned_arrays]
-            if all(l == min_length for l in post_lengths):
+            if all(length == min_length for length in post_lengths):
                 logger.info(f"✅ Post-alignement réussi: {post_lengths}")
             else:
                 logger.error(f"❌ Échec post-alignement: {post_lengths}")

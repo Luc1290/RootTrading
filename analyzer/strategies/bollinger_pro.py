@@ -264,31 +264,47 @@ class BollingerProStrategy(BaseStrategy):
             avg_width = np.mean(self.bb_width_history[-5:])
             width_trend = np.mean(np.diff(self.bb_width_history[-5:]))
             
-            # Détection de squeeze
-            if current_width <= self.squeeze_threshold:
+            # Détection de squeeze - logique hybride (absolue + relative)
+            relative_squeeze = current_width < avg_width * 0.75  # 25% en dessous moyenne
+            absolute_squeeze = current_width <= self.squeeze_threshold
+            
+            if absolute_squeeze or relative_squeeze:
                 pattern['type'] = 'squeeze'
-                pattern['strength'] = (self.squeeze_threshold - current_width) / self.squeeze_threshold
-                pattern['confidence'] = 0.8
+                # Force basée sur écart à la moyenne ET seuil absolu
+                if absolute_squeeze:
+                    pattern['strength'] = (self.squeeze_threshold - current_width) / self.squeeze_threshold
+                else:
+                    pattern['strength'] = (avg_width - current_width) / avg_width
+                pattern['confidence'] = 0.85 if absolute_squeeze and relative_squeeze else 0.8
                 pattern['signal_type'] = 'breakout'  # Préparer breakout
             
-            # Détection d'expansion
-            elif current_width >= self.expansion_threshold:
+            # Détection d'expansion - logique hybride (absolue + relative)
+            elif current_width >= self.expansion_threshold or current_width > avg_width * 1.3:
                 pattern['type'] = 'expansion'
-                pattern['strength'] = min(1.0, (current_width - self.expansion_threshold) / self.expansion_threshold)
+                if current_width >= self.expansion_threshold:
+                    pattern['strength'] = min(1.0, (current_width - self.expansion_threshold) / self.expansion_threshold)
+                else:
+                    pattern['strength'] = min(1.0, (current_width - avg_width) / avg_width)
                 pattern['confidence'] = 0.7
                 pattern['signal_type'] = 'mean_reversion'  # Retour vers moyenne
             
-            # Expansion en cours
-            elif width_trend > 0.002:  # Width augmente
+            # Expansion en cours - considérer contexte relatif
+            elif width_trend > 0.002 or (current_width > avg_width * 1.1 and width_trend > 0):
                 pattern['type'] = 'expanding'
                 pattern['strength'] = min(1.0, width_trend * 500)
+                # Boost si expansion au-dessus moyenne
+                if current_width > avg_width * 1.1:
+                    pattern['strength'] = min(1.0, pattern['strength'] + 0.2)
                 pattern['confidence'] = 0.6
                 pattern['signal_type'] = 'trend_following'
             
-            # Contraction en cours
-            elif width_trend < -0.002:  # Width diminue
+            # Contraction en cours - considérer contexte relatif
+            elif width_trend < -0.002 or (current_width < avg_width * 0.9 and width_trend < 0):
                 pattern['type'] = 'contracting'
                 pattern['strength'] = min(1.0, abs(width_trend) * 500)
+                # Boost si contraction en dessous moyenne
+                if current_width < avg_width * 0.9:
+                    pattern['strength'] = min(1.0, pattern['strength'] + 0.2)
                 pattern['confidence'] = 0.5
                 pattern['signal_type'] = 'breakout'  # Se prépare au breakout
             

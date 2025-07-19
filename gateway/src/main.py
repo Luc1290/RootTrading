@@ -280,7 +280,6 @@ async def main():
     Fonction principale qui démarre le Gateway.
     """
     global ws_client
-    validation_fetcher = None
     
     # Parser les arguments
     args = parse_arguments()
@@ -290,9 +289,6 @@ async def main():
     
     # Démarrer le serveur HTTP
     http_runner = await start_http_server()
-    
-    # Obtenir le producteur Kafka
-    producer = get_producer()
     
     try:
         # Initialiser les données ultra-enrichies au démarrage si demandé

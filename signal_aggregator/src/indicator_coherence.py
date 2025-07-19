@@ -296,35 +296,58 @@ class IndicatorCoherenceValidator:
                 volume_ratio_val, context_name
             )
             
+            # Analyse de la tendance volume pour bonus/malus
+            volume_trend_bonus = 0.0
+            volume_trend_info = ""
+            if volume_trend is not None:
+                trend_val = float(volume_trend)
+                if signal_side == 'BUY' and trend_val > 0.1:  # Volume croissant pour BUY
+                    volume_trend_bonus = 0.1
+                    volume_trend_info = " (tendance volume ↗️)"
+                elif signal_side == 'SELL' and trend_val > 0.1:  # Volume croissant pour SELL aussi bon
+                    volume_trend_bonus = 0.1
+                    volume_trend_info = " (tendance volume ↗️)"
+                elif trend_val < -0.1:  # Volume décroissant = malus
+                    volume_trend_bonus = -0.05
+                    volume_trend_info = " (tendance volume ↘️)"
+            
             if signal_side == 'BUY':
-                # Pour BUY, utiliser les seuils contextuels
+                # Pour BUY, utiliser les seuils contextuels + bonus tendance
                 if volume_ratio_val > 2.0:
-                    return 1.0, f"Volume excellent ({volume_quality}) - Contexte: {context_name}"
+                    score = min(1.0, 1.0 + volume_trend_bonus)
+                    return score, f"Volume excellent ({volume_quality}) - Contexte: {context_name}{volume_trend_info}"
                 elif volume_ratio_val > 1.5:
-                    return 0.9, f"Volume très bon ({volume_quality}) - Contexte: {context_name}"
+                    score = min(1.0, 0.9 + volume_trend_bonus)
+                    return score, f"Volume très bon ({volume_quality}) - Contexte: {context_name}{volume_trend_info}"
                 elif volume_ratio_val > 1.2:
-                    return 0.8, f"Volume bon ({volume_quality}) - Contexte: {context_name}"
+                    score = min(1.0, 0.8 + volume_trend_bonus)
+                    return score, f"Volume bon ({volume_quality}) - Contexte: {context_name}{volume_trend_info}"
                 elif volume_ratio_val >= contextual_threshold:
-                    # Utiliser le score contextuel calculé
-                    score = max(0.5, contextual_score)  # Score minimum de 0.5
-                    return score, f"Volume {volume_quality.lower()} (contexte: {context_name})"
+                    # Utiliser le score contextuel calculé + bonus
+                    score = min(1.0, max(0.5, contextual_score + volume_trend_bonus))
+                    return score, f"Volume {volume_quality.lower()} (contexte: {context_name}){volume_trend_info}"
                 else:
                     # En dessous du seuil contextuel
-                    penalty_score = max(0.3, (volume_ratio_val / contextual_threshold) * 0.5)
-                    return penalty_score, f"Volume insuffisant pour {context_name} (seuil: {contextual_threshold:.2f})"
+                    penalty_score = min(1.0, max(0.3, (volume_ratio_val / contextual_threshold) * 0.5 + volume_trend_bonus))
+                    return penalty_score, f"Volume insuffisant pour {context_name} (seuil: {contextual_threshold:.2f}){volume_trend_info}"
             
             else:  # SELL
-                # Pour SELL, logique différente - volume peut diminuer (essoufflement)
+                # Pour SELL, logique différente - volume peut diminuer (essoufflement) + bonus tendance
                 if volume_ratio_val > 2.5:
-                    return 0.7, f"Volume très élevé ({volume_quality}), pump peut continuer - Contexte: {context_name}"
+                    score = min(1.0, 0.7 + volume_trend_bonus)
+                    return score, f"Volume très élevé ({volume_quality}), pump peut continuer - Contexte: {context_name}{volume_trend_info}"
                 elif volume_ratio_val > 2.0:
-                    return 1.0, f"Volume excellent ({volume_quality}) - Contexte: {context_name}"
+                    score = min(1.0, 1.0 + volume_trend_bonus)
+                    return score, f"Volume excellent ({volume_quality}) - Contexte: {context_name}{volume_trend_info}"
                 elif volume_ratio_val > 1.5:
-                    return 0.9, f"Volume très bon ({volume_quality}) - Contexte: {context_name}"
+                    score = min(1.0, 0.9 + volume_trend_bonus)
+                    return score, f"Volume très bon ({volume_quality}) - Contexte: {context_name}{volume_trend_info}"
                 elif volume_ratio_val > 1.0:
-                    return 0.8, f"Volume bon ({volume_quality}) - Contexte: {context_name}"
+                    score = min(1.0, 0.8 + volume_trend_bonus)
+                    return score, f"Volume bon ({volume_quality}) - Contexte: {context_name}{volume_trend_info}"
                 else:
-                    return 0.9, f"Volume faible ({volume_quality}) = essoufflement - Contexte: {context_name}"
+                    score = min(1.0, 0.9 + volume_trend_bonus)
+                    return score, f"Volume faible ({volume_quality}) = essoufflement - Contexte: {context_name}{volume_trend_info}"
                 
         except Exception as e:
             logger.error(f"Erreur check volume contextuel: {e}")

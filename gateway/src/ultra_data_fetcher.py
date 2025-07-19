@@ -1135,9 +1135,6 @@ class UltraDataFetcher:
             if not klines:
                 return {}
             
-            # Prendre la dernière kline comme données actuelles (plus récente)
-            latest_kline = klines[-1]
-            
             # Traiter comme une kline normale pour obtenir les indicateurs
             enriched_data = await self._process_ultra_enriched_klines(klines, symbol, timeframe)
             

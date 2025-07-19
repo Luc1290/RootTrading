@@ -139,7 +139,7 @@ class BinanceAccountManager:
                 try:
                     error_data = e.response.json()
                     error_message = f"{error_message}: {error_data.get('msg', str(error_data))}"
-                except:
+                except Exception:
                     error_message = f"{error_message}: {e.response.text}"
                 
                 # Déterminer si on doit réessayer
