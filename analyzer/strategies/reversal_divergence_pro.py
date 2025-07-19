@@ -183,16 +183,19 @@ class ReversalDivergenceProStrategy(BaseStrategy):
                     self.last_entry_price = current_price
                     
                     # Convertir StrategySignal en dict pour compatibilité
-                    return {
-                        'strategy': signal.strategy,
-                        'symbol': signal.symbol,
-                        'side': signal.side,
-                        'timestamp': signal.timestamp.isoformat(),
-                        'price': signal.price,
-                        'confidence': signal.confidence,
-                        'strength': signal.strength,
-                        'metadata': signal.metadata
-                    }
+                    if signal is not None:
+                        return {
+                            'strategy': signal.strategy,
+                            'symbol': signal.symbol,
+                            'side': signal.side,
+                            'timestamp': signal.timestamp.isoformat(),
+                            'price': signal.price,
+                            'confidence': signal.confidence,
+                            'strength': signal.strength,
+                            'metadata': signal.metadata
+                        }
+                    else:
+                        return None
                     
                 else:
                     logger.info(f"📊 Divergence Pro {symbol}: Signal BUY techniquement valide mais filtré "

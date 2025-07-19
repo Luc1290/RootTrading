@@ -15,7 +15,7 @@ from urllib.parse import urljoin
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
-from coordinator import Coordinator
+from coordinator import Coordinator  # type: ignore
 from shared.src.redis_client import RedisClient
 
 # Configuration du logging

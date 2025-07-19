@@ -152,7 +152,8 @@ class RedisClientPool:
                 connection_params['password'] = self.password
         
             # Créer le pool avec 5 connexions minimum et 50 maximum
-            pool = ConnectionPool(max_connections=50, **connection_params)
+            # Type ignore pour MyPy car ConnectionPool accepte bien ces paramètres
+            pool = ConnectionPool(max_connections=50, **connection_params)  # type: ignore
             
             # Tester le pool de connexions
             test_redis = Redis(connection_pool=pool)

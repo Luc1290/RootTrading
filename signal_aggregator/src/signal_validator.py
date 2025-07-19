@@ -126,15 +126,22 @@ class SignalValidator:
             trend_strength_threshold = 0.02  # 2% de force minimum pour tendance forte
             is_strong_trend = trend_strength > trend_strength_threshold
             
-            # Détecter si la tendance s'affaiblit (divergence)
+            # Détecter si la tendance s'affaiblit (divergence avec velocités croisées)
             trend_weakening = False
-            if trend_5m in ["STRONG_BULLISH", "WEAK_BULLISH"] and ema_21_velocity < 0:
-                trend_weakening = True  # Tendance haussière qui ralentit
-            elif trend_5m in ["STRONG_BEARISH", "WEAK_BEARISH"] and ema_21_velocity > 0:
-                trend_weakening = True  # Tendance baissière qui ralentit
+            velocity_divergence = False
             
-            # DEBUG: Log détaillé pour comprendre les rejets
-            logger.info(f"🔍 {symbol} | Prix={current_price:.4f} | EMA21={ema_21:.4f} | EMA99={ema_99:.4f} | Tendance={trend_5m} | Signal={side} | Velocity21={ema_21_velocity*100:.2f}% | Weakening={trend_weakening}")
+            # Divergence de vélocité: EMA21 et EMA99 vont dans des directions opposées
+            if (ema_21_velocity > 0 and ema_99_velocity < 0) or (ema_21_velocity < 0 and ema_99_velocity > 0):
+                velocity_divergence = True
+            
+            # Tendance qui s'affaiblit: vélocité 21 ralentit ou diverge
+            if trend_5m in ["STRONG_BULLISH", "WEAK_BULLISH"] and (ema_21_velocity < 0 or velocity_divergence):
+                trend_weakening = True  # Tendance haussière qui ralentit ou diverge
+            elif trend_5m in ["STRONG_BEARISH", "WEAK_BEARISH"] and (ema_21_velocity > 0 or velocity_divergence):
+                trend_weakening = True  # Tendance baissière qui ralentit ou diverge
+            
+            # DEBUG: Log détaillé pour comprendre les rejets avec les deux vélocités
+            logger.info(f"🔍 {symbol} | Prix={current_price:.4f} | EMA21={ema_21:.4f} | EMA99={ema_99:.4f} | Tendance={trend_5m} | Signal={side} | V21={ema_21_velocity*100:.2f}% | V99={ema_99_velocity*100:.2f}% | Div={velocity_divergence} | Weak={trend_weakening}")
             
             # LOGIQUE SOPHISTIQUÉE DE VALIDATION
             rejection_reason = None

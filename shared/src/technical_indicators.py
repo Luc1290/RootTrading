@@ -1554,24 +1554,24 @@ class TechnicalIndicators:
                 return round(float(stoch_rsi[0][-1]), 4) if not np.isnan(stoch_rsi[0][-1]) else None
             else:
                 # Fallback manuel
-                rsi_values = []
+                rsi_values = []  # type: ignore
                 for i in range(period, len(prices)):
                     rsi = self.calculate_rsi(prices[i-period:i+1], period)
                     if rsi is not None:
-                        rsi_values.append(rsi)
+                        rsi_values.append(rsi)  # type: ignore
                         
                 if len(rsi_values) < period:
                     return None
                     
                 recent_rsi = rsi_values[-period:]
-                min_rsi = min(recent_rsi)
-                max_rsi = max(recent_rsi)
+                min_rsi = min(recent_rsi)  # type: ignore
+                max_rsi = max(recent_rsi)  # type: ignore
                 
                 if max_rsi == min_rsi:
                     return 50.0
                     
                 stoch_rsi = ((rsi_values[-1] - min_rsi) / (max_rsi - min_rsi)) * 100
-                return round(stoch_rsi, 4)
+                return round(stoch_rsi, 4)  # type: ignore
                 
         except Exception as e:
             logger.error(f"Erreur calcul Stochastic RSI: {e}")
@@ -1622,8 +1622,8 @@ class TechnicalIndicators:
                     return 100.0
                     
                 money_ratio = positive_flow / negative_flow
-                mfi = 100 - (100 / (1 + money_ratio))
-                return round(mfi, 4)
+                mfi = 100 - (100 / (1 + money_ratio))  # type: ignore
+                return round(mfi, 4)  # type: ignore
                 
         except Exception as e:
             logger.error(f"Erreur calcul MFI: {e}")

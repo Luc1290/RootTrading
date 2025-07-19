@@ -385,7 +385,6 @@ class EnhancedRegimeDetector:
             highs = df['high'].values.tolist()
             lows = df['low'].values.tolist()
             closes = df['close'].values.tolist()
-            volumes = df['volume'].values.tolist()
             
             # 1. ADX pour la force de tendance (avec lissage)
             current_adx, plus_di, minus_di = self.indicators.calculate_adx_smoothed(highs, lows, closes, 14)
@@ -974,7 +973,6 @@ class EnhancedRegimeDetector:
             highs = df['high'].values.tolist()
             lows = df['low'].values.tolist()
             closes = df['close'].values.tolist()
-            volumes = df['volume'].values.tolist()
             
             # Calculs complets avec le module partagé (avec lissage ADX)
             current_adx, plus_di, minus_di = self.indicators.calculate_adx_smoothed(highs, lows, closes, 14)

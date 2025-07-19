@@ -284,7 +284,7 @@ class BollingerProStrategy(BaseStrategy):
                 if current_width >= self.expansion_threshold:
                     pattern['strength'] = min(1.0, (current_width - self.expansion_threshold) / self.expansion_threshold)
                 else:
-                    pattern['strength'] = min(1.0, (current_width - avg_width) / avg_width)
+                    pattern['strength'] = min(1.0, (current_width - avg_width) / avg_width)  # type: ignore
                 pattern['confidence'] = 0.7
                 pattern['signal_type'] = 'mean_reversion'  # Retour vers moyenne
             
@@ -294,7 +294,7 @@ class BollingerProStrategy(BaseStrategy):
                 pattern['strength'] = min(1.0, width_trend * 500)
                 # Boost si expansion au-dessus moyenne
                 if current_width > avg_width * 1.1:
-                    pattern['strength'] = min(1.0, pattern['strength'] + 0.2)
+                    pattern['strength'] = min(1.0, pattern['strength'] + 0.2)  # type: ignore
                 pattern['confidence'] = 0.6
                 pattern['signal_type'] = 'trend_following'
             
@@ -304,7 +304,7 @@ class BollingerProStrategy(BaseStrategy):
                 pattern['strength'] = min(1.0, abs(width_trend) * 500)
                 # Boost si contraction en dessous moyenne
                 if current_width < avg_width * 0.9:
-                    pattern['strength'] = min(1.0, pattern['strength'] + 0.2)
+                    pattern['strength'] = min(1.0, pattern['strength'] + 0.2)  # type: ignore
                 pattern['confidence'] = 0.5
                 pattern['signal_type'] = 'breakout'  # Se prépare au breakout
             

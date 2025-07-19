@@ -5,7 +5,7 @@ Agrège les signaux de plusieurs stratégies et résout les conflits.
 """
 
 import logging
-from typing import Dict, List, Optional, Any, TYPE_CHECKING, Union
+from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 import json
@@ -1003,14 +1003,9 @@ class SignalAggregator:
         # Get the latest price from one of the signals
         current_price = signals[0]['price'] if signals else 0.0
         
-        # Create main strategy name from contributing strategies
-        main_strategy = contributing_strategies[0] if contributing_strategies else 'SignalAggregator'
-        
         # Performance-based adaptive boost
         confidence = await self.signal_metrics.apply_performance_boost(confidence, contributing_strategies)
         
-        # Use main_strategy for enhanced metadata
-        enhanced_strategy_name = f"Enhanced_{main_strategy}" if main_strategy != 'SignalAggregator' else 'EnhancedAggregated'
         
         # Regime-adaptive confidence boost
         confidence = self.regime_filtering.apply_regime_confidence_boost(confidence, regime, regime_metrics)

@@ -202,7 +202,11 @@ class BinanceAccountManager:
             BinanceApiError: Si la requête échoue
         """
         endpoint = "/api/v3/account"
-        return self._make_request(endpoint, signed=True)
+        result = self._make_request(endpoint, signed=True)
+        # _make_request peut retourner list ou dict, on s'attend à dict pour account info
+        if isinstance(result, list):
+            raise BinanceApiError("Réponse inattendue: liste au lieu de dict pour account info")
+        return result
     
     def get_balances(self) -> List[Dict[str, Any]]:
         """
@@ -270,11 +274,12 @@ class BinanceAccountManager:
             assert isinstance(response, list), "Response should be a list for ticker/price endpoint"
             
             # Convertir la réponse en dictionnaire {symbole: prix}
-            prices = {}
+            prices: Dict[str, float] = {}
             for item in response:
                 symbol = item.get("symbol")
-                price = float(item.get("price", 0))
-                prices[symbol] = price
+                if symbol is not None:  # Vérifier que symbol n'est pas None
+                    price = float(item.get("price", 0))
+                    prices[symbol] = price
             
             # Mettre à jour le cache
             self._prices_cache = prices
@@ -321,7 +326,11 @@ class BinanceAccountManager:
         try:
             endpoint = "/api/v3/ticker/24hr"
             params = {"symbol": symbol}
-            return self._make_request(endpoint, params=params)
+            result = self._make_request(endpoint, params=params)
+            # Pour un symbole spécifique, l'API retourne un dict, pas une liste
+            if isinstance(result, list):
+                raise BinanceApiError("Réponse inattendue: liste au lieu de dict pour ticker symbol")
+            return result
             
         except BinanceApiError as e:
             logger.error(f"❌ Erreur lors de la récupération des informations pour {symbol}: {str(e)}")

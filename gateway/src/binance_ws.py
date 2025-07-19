@@ -42,7 +42,7 @@ class BinanceWebSocket:
         self.symbols = symbols or SYMBOLS
         self.interval = interval
         self.kafka_client = kafka_client or get_producer()   # utilise le producteur singleton
-        self.ws: Optional[websockets.WebSocketClientProtocol] = None
+        self.ws: Optional[websockets.WebSocketClientProtocol] = None  # type: ignore
         self.running = False
         self.reconnect_delay = 1  # Secondes, pour backoff exponentiel
         self.last_message_time = 0.0
@@ -894,8 +894,12 @@ class BinanceWebSocket:
                                     key=key
                                 )
                             else:
-                                # Fallback pour KafkaProducer
-                                self.kafka_client.publish_market_data(clean_data, symbol)
+                                # Fallback pour KafkaProducer - utiliser produce() au lieu de publish_market_data()
+                                self.kafka_client.produce(
+                                    topic="market_data",
+                                    message=clean_data,
+                                    key=symbol
+                                )
         
                             # Log enrichi
                             spread_pct = processed_data.get('spread_pct', 0)

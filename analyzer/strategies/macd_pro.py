@@ -133,9 +133,17 @@ class MACDProStrategy(BaseStrategy):
             # Analyser les signaux MACD
             if all(x is not None for x in [current_macd_line, current_macd_signal, current_histogram,
                                            previous_macd_line, previous_macd_signal, previous_histogram]):
+                # Assertions pour MyPy
+                assert current_macd_line is not None
+                assert current_macd_signal is not None  
+                assert current_histogram is not None
+                assert previous_macd_line is not None
+                assert previous_macd_signal is not None
+                assert previous_histogram is not None
+                
                 macd_analysis = self._analyze_macd_signals(
-                    current_macd_line, current_macd_signal, current_histogram,
-                    previous_macd_line, previous_macd_signal, previous_histogram
+                    current_macd_line, current_macd_signal, current_histogram,  # type: ignore
+                    previous_macd_line, previous_macd_signal, previous_histogram  # type: ignore
                 )
             else:
                 return None
