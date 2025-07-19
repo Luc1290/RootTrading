@@ -14,6 +14,7 @@ services:
   # Services d'infrastructure
   redis:
     image: redis:6-alpine
+    container_name: roottrading-redis-1
     command: redis-server --appendonly yes
     ports:
       - "6379:6379"
@@ -30,6 +31,7 @@ services:
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.0.1
+    container_name: roottrading-zookeeper-1
     volumes:
       - zookeeper-data:/var/lib/zookeeper/data
     environment:
@@ -46,6 +48,7 @@ services:
 
   kafka:
     image: confluentinc/cp-kafka:7.0.1
+    container_name: roottrading-kafka-1
     ports:
       - "9092:9092"
     environment:
@@ -72,6 +75,7 @@ services:
 
   db:
     image: timescale/timescaledb:latest-pg14
+    container_name: roottrading-db-1
     environment:
       POSTGRES_USER: ${PGUSER:-postgres}
       POSTGRES_PASSWORD: ${PGPASSWORD:-postgres}
@@ -81,8 +85,6 @@ services:
     volumes:
       - db-data:/var/lib/postgresql/data
       - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-      - ./database/migrations:/docker-entrypoint-initdb.d/migrations
-      - ./database/apply_migrations.sh:/docker-entrypoint-initdb.d/02-apply-migrations.sh
     ports:
       - "5432:5432"
     restart: unless-stopped
@@ -96,6 +98,7 @@ services:
 
   # Services d'application de base
   dispatcher:
+    container_name: roottrading-dispatcher-1
     build:
       context: .  # Point sur le répertoire racine du projet
       dockerfile: dispatcher/Dockerfile  # Chemin vers le Dockerfile
@@ -121,6 +124,7 @@ services:
       - roottrading-net
 
   gateway:
+    container_name: roottrading-gateway-1
     build:
       context: .  # Point sur le répertoire racine du projet
       dockerfile: gateway/Dockerfile  # Chemin vers le Dockerfile
@@ -147,6 +151,7 @@ services:
 
   # Services de traitement
   analyzer:
+    container_name: roottrading-analyzer-1
     build:
       context: .  # Point sur le répertoire racine du projet
       dockerfile: analyzer/Dockerfile  # Chemin vers le Dockerfile
@@ -175,6 +180,7 @@ services:
       - roottrading-net
 
   signal_aggregator:
+    container_name: roottrading-signal-aggregator-1
     build:
       context: .  # Point sur le répertoire racine du projet
       dockerfile: signal_aggregator/Dockerfile  # Chemin vers le Dockerfile
@@ -203,6 +209,7 @@ services:
       - roottrading-net
 
   trader:
+    container_name: roottrading-trader-1
     build:
       context: .  # Point sur le répertoire racine du projet
       dockerfile: trader/Dockerfile  # Chemin vers le Dockerfile
@@ -232,6 +239,7 @@ services:
       - roottrading-net
 
   portfolio:
+    container_name: roottrading-portfolio-1
     build:
       context: .  # Point sur le répertoire racine du projet
       dockerfile: portfolio/Dockerfile  # Chemin vers le Dockerfile
@@ -260,6 +268,7 @@ services:
       - roottrading-net
 
   coordinator:
+    container_name: roottrading-coordinator-1
     build:
       context: .  # Point sur le répertoire racine du projet
       dockerfile: coordinator/Dockerfile  # Chemin vers le Dockerfile
@@ -289,6 +298,7 @@ services:
       - roottrading-net
 
   visualization:
+    container_name: roottrading-visualization-1
     build:
       context: .
       dockerfile: visualization/Dockerfile

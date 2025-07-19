@@ -35,9 +35,7 @@
       "Bash(npm install:*)",
       "Bash(docker ps:*)",
       "Bash(mypy:*)",
-      "Bash(ruff check:*)",
-      "Bash(docker run:*)",
-      "Bash(sudo apt:*)"
+      "Bash(ruff check:*)"
     ],
     "deny": []
   }

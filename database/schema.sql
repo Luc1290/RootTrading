@@ -16,9 +16,9 @@ CREATE TABLE IF NOT EXISTS trade_executions (
     symbol VARCHAR(20) NOT NULL,
     side VARCHAR(10) NOT NULL CHECK (side IN ('BUY', 'SELL')),
     status VARCHAR(20) NOT NULL CHECK (status IN ('NEW', 'PARTIALLY_FILLED', 'FILLED', 'CANCELED', 'REJECTED', 'EXPIRED', 'PENDING_CANCEL')),
-    price NUMERIC(16, 8) NOT NULL,
-    quantity NUMERIC(16, 8) NOT NULL,
-    quote_quantity NUMERIC(16, 8) NOT NULL,
+    price NUMERIC(20, 12) NOT NULL,
+    quantity NUMERIC(20, 8) NOT NULL,
+    quote_quantity NUMERIC(20, 8) NOT NULL,
     fee NUMERIC(16, 8),
     fee_asset VARCHAR(10),
     role VARCHAR(10) CHECK (role IN ('maker', 'taker')),
@@ -52,13 +52,13 @@ CREATE TABLE IF NOT EXISTS trade_cycles (
     side VARCHAR(4) NOT NULL CHECK (side IN ('BUY', 'SELL')),
     entry_order_id VARCHAR(50),
     exit_order_id VARCHAR(50),
-    entry_price NUMERIC(16, 8),
-    exit_price NUMERIC(16, 8),
-    quantity NUMERIC(16, 8),
-    stop_price NUMERIC(16, 8),
+    entry_price NUMERIC(20, 12),
+    exit_price NUMERIC(20, 12),
+    quantity NUMERIC(20, 8),
+    stop_price NUMERIC(20, 12),
     trailing_delta NUMERIC(16, 8),
-    min_price NUMERIC(16, 8),
-    max_price NUMERIC(16, 8),
+    min_price NUMERIC(20, 12),
+    max_price NUMERIC(20, 12),
     profit_loss NUMERIC(16, 8),
     profit_loss_percent NUMERIC(16, 8),
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -123,9 +123,9 @@ CREATE TABLE IF NOT EXISTS market_data (
     high NUMERIC(16, 8) NOT NULL,
     low NUMERIC(16, 8) NOT NULL,
     close NUMERIC(16, 8) NOT NULL,
-    volume NUMERIC(16, 8) NOT NULL,
+    volume NUMERIC(20, 8) NOT NULL,
     PRIMARY KEY (time, symbol, timeframe),
-    CONSTRAINT valid_timeframe_check CHECK (timeframe IN ('1m', '5m', '15m', '1h', '4h', '1d'))
+    CONSTRAINT valid_timeframe_check CHECK (timeframe IN ('1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M'))
 );
 
 -- Convertir market_data en table hypertable (TimescaleDB)
@@ -780,6 +780,63 @@ COMMENT ON TABLE binance_constraints IS 'Cache des contraintes de trading Binanc
 
 -- Politique de rétention pour TimescaleDB (données de marché)
 SELECT add_retention_policy('market_data', INTERVAL '1 year');
+
+-- ==========================================
+-- MIGRATIONS INTÉGRÉES AU SCHÉMA
+-- ==========================================
+
+-- Migration 004: Indicateurs techniques
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS rsi_14 NUMERIC(8,4);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS ema_12 NUMERIC(16,8);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS ema_26 NUMERIC(16,8);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS ema_50 NUMERIC(16,8);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS sma_20 NUMERIC(16,8);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS sma_50 NUMERIC(16,8);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS macd_line NUMERIC(16,8);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS macd_signal NUMERIC(16,8);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS macd_histogram NUMERIC(16,8);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS bb_upper NUMERIC(16,8);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS bb_middle NUMERIC(16,8);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS bb_lower NUMERIC(16,8);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS bb_position NUMERIC(8,4);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS bb_width NUMERIC(8,4);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS atr_14 NUMERIC(16,8);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS momentum_10 NUMERIC(8,4);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS volume_ratio NUMERIC(8,4);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS avg_volume_20 NUMERIC(20,8);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS stoch_rsi NUMERIC(8,4);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS adx_14 NUMERIC(8,4);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS williams_r NUMERIC(8,4);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS cci_20 NUMERIC(8,4);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS vwap_10 NUMERIC(16,8);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS enhanced BOOLEAN DEFAULT FALSE;
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS ultra_enriched BOOLEAN DEFAULT FALSE;
+
+-- Migration 005: Indicateurs supplémentaires
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS plus_di NUMERIC(8,4);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS minus_di NUMERIC(8,4);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS stoch_k NUMERIC(8,4);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS stoch_d NUMERIC(8,4);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS roc_10 NUMERIC(8,4);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS roc_20 NUMERIC(8,4);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS obv NUMERIC(24,8);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS mfi_14 NUMERIC(8,4);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS trend_angle NUMERIC(8,4);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS pivot_count INTEGER;
+
+-- Migration 007: EMA Binance
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS ema_7 NUMERIC(16,8);
+ALTER TABLE market_data ADD COLUMN IF NOT EXISTS ema_99 NUMERIC(16,8);
+
+-- Migration 002: Side pour trade_cycles
+ALTER TABLE trade_cycles ADD COLUMN IF NOT EXISTS side VARCHAR(4) CHECK (side IN ('BUY', 'SELL'));
+
+-- Migration 003: Colonnes trade_executions
+ALTER TABLE trade_executions ADD COLUMN IF NOT EXISTS id VARCHAR(50);
+ALTER TABLE trade_executions ADD COLUMN IF NOT EXISTS metadata JSONB;
+
+-- Index pour les données enrichies
+CREATE INDEX IF NOT EXISTS market_data_enhanced_idx ON market_data (enhanced, ultra_enriched, symbol, time DESC);
 
 -- Exécuter ANALYZE pour mettre à jour les statistiques
 ANALYZE;
