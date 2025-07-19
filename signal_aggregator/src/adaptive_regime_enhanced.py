@@ -257,10 +257,18 @@ class AdaptiveRegimeEnhanced:
                     elif isinstance(parsed, dict):
                         all_data.append(parsed)
             
-            # Simuler des données historiques si nécessaire (temporaire)
+            # ❌ SIMULATION SUPPRIMÉE : utiliser uniquement les vraies données
+            # Si données insuffisantes dans Redis, essayer la DB
             if len(all_data) < self.adaptation_config['min_data_points']:
-                simulated_data = self._simulate_historical_data_for_adaptation(symbol, 200)
-                all_data.extend(simulated_data)
+                logger.info(f"💾 Données Redis insuffisantes pour {symbol}: {len(all_data)}/{self.adaptation_config['min_data_points']}, tentative DB...")
+                
+                # Fallback vers la base de données
+                db_data = await self._get_historical_from_db(symbol, '15m', 200)
+                if db_data:
+                    all_data.extend(db_data)
+                    logger.info(f"✅ DB: +{len(db_data)} points ajoutés pour {symbol} (total: {len(all_data)})")
+                else:
+                    logger.warning(f"⚠️ Aucune donnée disponible en DB pour {symbol}")
             
             # Trier par timestamp et retourner les plus récents
             if all_data:
@@ -273,58 +281,147 @@ class AdaptiveRegimeEnhanced:
             logger.error(f"❌ Erreur récupération historique {symbol}: {e}")
             return []
     
-    def _simulate_historical_data_for_adaptation(self, symbol: str, periods: int) -> List[Dict[str, Any]]:
-        """Simule des données historiques pour l'adaptation (temporaire)"""
+    async def _get_historical_from_db(self, symbol: str, timeframe: str, limit: int) -> List[Dict]:
+        """Récupère les données historiques depuis PostgreSQL (fallback)"""
         try:
-            # Déterminer les caractéristiques du symbole
-            crypto_type = self._classify_crypto_type(symbol)
-            base_volatility = self.crypto_regime_patterns[crypto_type]['volatility_factor']
+            from shared.src.db_pool import fetch_all
             
-            # Simuler des données avec volatilité et tendances réalistes
-            historical = []
-            base_price = 100.0  # Prix de base
+            query = """
+                SELECT 
+                    EXTRACT(epoch FROM time) as timestamp,
+                    time, symbol, open, high, low, close, volume,
+                    rsi_14, ema_7, ema_26, ema_99, sma_20, sma_50,
+                    macd_line, macd_signal, macd_histogram,
+                    bb_upper, bb_middle, bb_lower, bb_position, bb_width,
+                    atr_14, adx_14, plus_di, minus_di,
+                    momentum_10, volume_ratio, avg_volume_20
+                FROM market_data 
+                WHERE symbol = %s AND timeframe = %s AND enhanced = true
+                ORDER BY time DESC 
+                LIMIT %s
+            """
             
-            for i in range(periods):
-                # Tendance à long terme
-                trend = np.sin(i / 50) * 0.1  # Tendance cyclique
-                
-                # Volatilité adaptée au type de crypto
-                daily_change = np.random.normal(trend, base_volatility * 0.02)
-                
-                # Calculer OHLCV
-                open_price = base_price
-                close_price = open_price * (1 + daily_change)
-                high_price = max(open_price, close_price) * (1 + abs(np.random.normal(0, 0.01)))
-                low_price = min(open_price, close_price) * (1 - abs(np.random.normal(0, 0.01)))
-                
-                # Volume simulé
-                volume = np.random.uniform(100000, 1000000)
-                
-                # Indicateurs simulés
-                adx = max(10, min(60, np.random.normal(25, 10)))
-                rsi = max(20, min(80, np.random.normal(50, 15)))
-                bb_width = max(0.01, min(0.1, np.random.normal(0.03, 0.01)))
-                
-                candle = {
-                    'timestamp': datetime.now().timestamp() - (periods - i) * 900,  # 15min intervals
-                    'open': open_price,
-                    'high': high_price,
-                    'low': low_price,
-                    'close': close_price,
-                    'volume': volume,
-                    'adx_14': adx,
-                    'rsi_14': rsi,
-                    'bb_width': bb_width
-                }
-                
-                historical.append(candle)
-                base_price = close_price  # Continuer avec le prix de clôture
+            rows = fetch_all(query, (symbol, timeframe, limit), dict_result=True)
             
-            return historical
+            if rows:
+                # Convertir en format JSON compatible
+                data = []
+                for row in rows:
+                    row_dict = {}
+                    for key, value in row.items():
+                        if value is not None and hasattr(value, '__float__'):
+                            row_dict[key] = float(value)
+                        else:
+                            row_dict[key] = value
+                    data.append(row_dict)
+                
+                # Retourner dans l'ordre chronologique (plus ancien en premier)
+                return list(reversed(data))
+            
+            return []
             
         except Exception as e:
-            logger.error(f"❌ Erreur simulation données historiques: {e}")
+            logger.error(f"❌ Erreur DB fallback pour {symbol}: {e}")
             return []
+    
+    def _calculate_real_btc_correlation(self, symbol: str, historical_data: List[Dict[str, Any]]) -> float:
+        """
+        Calcule la corrélation réelle avec le marché global (tous les actifs ROOT).
+        
+        Args:
+            symbol: Symbole à analyser
+            historical_data: Données historiques du symbole
+            
+        Returns:
+            Corrélation moyenne avec le marché (0.0 à 1.0)
+        """
+        try:
+            if not historical_data or len(historical_data) < 10:
+                return self._get_default_market_correlation(symbol)
+            
+            # Tous les symboles ROOT pour calculer la corrélation marché
+            from shared.src.config import SYMBOLS
+            market_symbols = [s for s in SYMBOLS if s != symbol]  # Exclure le symbole lui-même
+            
+            correlations = []
+            symbol_returns = self._calculate_returns(historical_data)
+            
+            if not symbol_returns or len(symbol_returns) < 5:
+                return self._get_default_market_correlation(symbol)
+            
+            # Calculer corrélation avec chaque actif du portefeuille
+            for market_symbol in market_symbols[:8]:  # Limiter à 8 actifs pour performance
+                try:
+                    market_key = f"historical:{market_symbol}:15m"
+                    market_data = self.redis.get(market_key)
+                    
+                    if market_data:
+                        if isinstance(market_data, str):
+                            market_historical = json.loads(market_data)
+                        else:
+                            market_historical = market_data
+                        
+                        market_returns = self._calculate_returns(market_historical)
+                        
+                        if market_returns and len(market_returns) >= 5:
+                            # Corrélation sur période commune
+                            min_len = min(len(symbol_returns), len(market_returns))
+                            if min_len >= 5:
+                                corr = np.corrcoef(
+                                    symbol_returns[-min_len:], 
+                                    market_returns[-min_len:]
+                                )[0, 1]
+                                
+                                if not np.isnan(corr):
+                                    correlations.append(abs(corr))
+                
+                except Exception as e:
+                    logger.debug(f"Erreur corrélation {symbol}-{market_symbol}: {e}")
+                    continue
+            
+            # Retourner corrélation moyenne si on a des données
+            if correlations:
+                avg_correlation = np.mean(correlations)
+                logger.debug(f"Corrélation marché {symbol}: {avg_correlation:.3f} (sur {len(correlations)} actifs)")
+                return float(avg_correlation)
+            
+            # Fallback sur estimation
+            return self._get_default_market_correlation(symbol)
+                
+        except Exception as e:
+            logger.warning(f"Erreur calcul corrélation marché pour {symbol}: {e}")
+            return self._get_default_market_correlation(symbol)
+    
+    def _calculate_returns(self, historical_data: List[Dict[str, Any]]) -> List[float]:
+        """Calcule les rendements (returns) à partir des données historiques"""
+        try:
+            returns = []
+            for i in range(1, len(historical_data)):
+                if 'close' in historical_data[i] and 'close' in historical_data[i-1]:
+                    prev_close = float(historical_data[i-1]['close'])
+                    curr_close = float(historical_data[i]['close'])
+                    if prev_close > 0:
+                        return_pct = (curr_close - prev_close) / prev_close
+                        returns.append(return_pct)
+            return returns
+        except Exception as e:
+            logger.debug(f"Erreur calcul returns: {e}")
+            return []
+    
+    def _get_default_market_correlation(self, symbol: str) -> float:
+        """Valeurs de corrélation par défaut basées sur l'actif"""
+        if 'BTC' in symbol:
+            return 1.0  # BTC = référence marché
+        elif 'ETH' in symbol:
+            return 0.85  # ETH très corrélé
+        elif symbol in ['SOLUSDC', 'AVAXUSDC', 'LINKUSDC', 'AAVEUSDC']:
+            return 0.70  # L1/DeFi modérément corrélés
+        elif symbol in ['SUIUSDC', 'ADAUSDC']:
+            return 0.65  # Nouveaux L1
+        elif symbol in ['PEPEUSDC', 'BONKUSDC', 'DOGEUSDC']:
+            return 0.45  # Memecoins moins corrélés
+        else:
+            return 0.60  # Défaut conservative
     
     def _classify_crypto_type(self, symbol: str) -> str:
         """Classifie le type de crypto pour adapter les paramètres"""
@@ -363,8 +460,8 @@ class AdaptiveRegimeEnhanced:
             # Fréquence des breakouts
             breakout_frequency = self._calculate_breakout_frequency(historical_data)
             
-            # Corrélation avec BTC (simulée)
-            correlation_btc = np.random.uniform(0.3, 0.8)  # À remplacer par vraie corrélation
+            # Corrélation avec BTC réelle (calculée sur données historiques)
+            correlation_btc = self._calculate_real_btc_correlation(symbol, historical_data)
             
             # Catégorie market cap (basée sur le symbole)
             market_cap_category = self._determine_market_cap_category(symbol)

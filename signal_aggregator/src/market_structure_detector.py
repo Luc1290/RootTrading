@@ -4,6 +4,7 @@ import numpy as np
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 import json
+import asyncio
 from enum import Enum
 from dataclasses import dataclass
 from shared.src.technical_indicators import TechnicalIndicators
@@ -78,13 +79,13 @@ class MarketStructureDetector:
         self.redis = redis_client
         self.indicators = TechnicalIndicators()
         
-        # Configuration des timeframes pour l'analyse de structure
+        # Configuration des timeframes pour l'analyse de structure (adapté aux TF disponibles en DB)
         self.structure_timeframes = {
-            '5m': {'weight': 0.15, 'lookback_periods': 100},
-            '15m': {'weight': 0.25, 'lookback_periods': 200},
-            '1h': {'weight': 0.35, 'lookback_periods': 300},
-            '4h': {'weight': 0.20, 'lookback_periods': 500},
-            '1d': {'weight': 0.05, 'lookback_periods': 100}
+            '1m': {'weight': 0.10, 'lookback_periods': 100},   # Court terme - bruit
+            '3m': {'weight': 0.20, 'lookback_periods': 150},   # Court terme - filtrage
+            '5m': {'weight': 0.30, 'lookback_periods': 200},   # Moyen terme - principal
+            '15m': {'weight': 0.35, 'lookback_periods': 300},  # Long terme - tendance
+            # Timeframes indisponibles en DB: '1h', '4h', '1d' remplacés par TF existants
         }
         
         # Paramètres de détection
@@ -189,7 +190,7 @@ class MarketStructureDetector:
     async def _get_historical_data(self, symbol: str, timeframe: str, limit: int) -> List[Dict]:
         """Récupère les données historiques pour un timeframe"""
         try:
-            # Essayer Redis d'abord (données enrichies)
+            # 1. Essayer Redis d'abord (données enrichies)
             key = f"historical:{symbol}:{timeframe}"
             historical = self.redis.get(key)
             
@@ -201,73 +202,74 @@ class MarketStructureDetector:
                 
                 if isinstance(data, list) and len(data) >= limit // 2:
                     return data[-limit:]
-            
-            # Fallback: construire à partir des données actuelles
-            # (simulation pour le développement)
-            current_key = f"market_data:{symbol}:{timeframe}"
-            current_data = self.redis.get(current_key)
-            
-            if current_data:
-                if isinstance(current_data, str):
-                    current = json.loads(current_data)
                 else:
-                    current = current_data
-                
-                # Simuler des données historiques (à remplacer par vraie DB)
-                return self._simulate_historical_data(current, limit)
+                    logger.debug(f"Redis insuffisant pour {symbol}:{timeframe} ({len(data) if data else 0}/{limit})")
             
+            # 2. Fallback vers la base de données
+            logger.info(f"💾 Fallback DB pour {symbol}:{timeframe} (limit: {limit})")
+            db_data = await self._get_historical_from_db(symbol, timeframe, limit)
+            
+            if db_data and len(db_data) >= 10:  # Au moins 10 points pour une analyse valide
+                logger.info(f"✅ DB: {len(db_data)} points récupérés pour {symbol}:{timeframe}")
+                return db_data[-limit:]  # Retourner les plus récents
+            
+            # 3. Données vraiment insuffisantes
+            logger.warning(f"⚠️ Données insuffisantes pour {symbol}:{timeframe} (Redis: {len(historical) if historical else 0}, DB: {len(db_data) if db_data else 0})")
             return []
             
         except Exception as e:
             logger.error(f"❌ Erreur récupération historique {timeframe}: {e}")
             return []
     
-    def _simulate_historical_data(self, current_data: Dict, periods: int) -> List[Dict]:
-        """Simule des données historiques (temporaire)"""
+    async def _get_historical_from_db(self, symbol: str, timeframe: str, limit: int) -> List[Dict]:
+        """Récupère les données historiques depuis la base de données"""
         try:
-            if not current_data or 'close' not in current_data:
-                return []
+            from shared.src.db_pool import fetch_all
             
-            current_price = float(current_data['close'])
-            historical = []
+            # Requête pour récupérer les données enrichies
+            query = """
+                SELECT 
+                    EXTRACT(epoch FROM time) as timestamp,
+                    time, symbol, open, high, low, close, volume,
+                    rsi_14, ema_7, ema_26, ema_99, sma_20, sma_50,
+                    macd_line, macd_signal, macd_histogram,
+                    bb_upper, bb_middle, bb_lower, bb_position, bb_width,
+                    atr_14, adx_14, plus_di, minus_di,
+                    momentum_10, volume_ratio, avg_volume_20
+                FROM market_data 
+                WHERE symbol = %s AND timeframe = %s AND enhanced = true
+                ORDER BY time DESC 
+                LIMIT %s
+            """
             
-            # Générer des données OHLCV simulées avec variation réaliste
-            for i in range(periods):
-                # Variation aléatoire mais réaliste pour crypto
-                base_change = np.random.normal(0, 0.02)  # 2% volatilité moyenne
-                
-                open_price = current_price * (1 + base_change)
-                high_variation = abs(np.random.normal(0, 0.01))
-                low_variation = abs(np.random.normal(0, 0.01))
-                
-                high_price = open_price * (1 + high_variation)
-                low_price = open_price * (1 - low_variation)
-                close_change = np.random.normal(0, 0.015)
-                close_price = open_price * (1 + close_change)
-                
-                # Assurer high >= max(open, close) et low <= min(open, close)
-                high_price = max(high_price, open_price, close_price)
-                low_price = min(low_price, open_price, close_price)
-                
-                volume = np.random.uniform(100000, 1000000)
-                
-                candle = {
-                    'timestamp': datetime.now().timestamp() - (periods - i) * 300,  # 5min intervals
-                    'open': open_price,
-                    'high': high_price,
-                    'low': low_price,
-                    'close': close_price,
-                    'volume': volume
-                }
-                
-                historical.append(candle)
-                current_price = close_price  # Chain pour la prochaine bougie
+            # Exécuter la requête
+            rows = fetch_all(query, (symbol, timeframe, limit), dict_result=True)
             
-            return historical
+            if rows:
+                # Convertir en format attendu (timestamp Unix)
+                data = []
+                for row in rows:
+                    # Convertir les Decimal en float pour JSON
+                    row_dict = {}
+                    for key, value in row.items():
+                        if value is not None:
+                            if hasattr(value, '__float__'):  # Decimal, float, etc.
+                                row_dict[key] = float(value)
+                            else:
+                                row_dict[key] = value
+                        else:
+                            row_dict[key] = value
+                    data.append(row_dict)
+                
+                # Inverser pour avoir les plus anciens en premier
+                return list(reversed(data))
+            
+            return []
             
         except Exception as e:
-            logger.error(f"❌ Erreur simulation données historiques: {e}")
+            logger.error(f"❌ Erreur récupération DB pour {symbol}:{timeframe}: {e}")
             return []
+    
     
     def _detect_market_structure_type(self, timeframe_data: Dict[str, List[Dict]]) -> StructureType:
         """Détecte le type de structure de marché global"""

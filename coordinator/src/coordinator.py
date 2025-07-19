@@ -4,6 +4,7 @@ Rôle : Valider la faisabilité des signaux et les transmettre au trader.
 """
 import logging
 import time
+import json
 from typing import Dict, Any, Optional
 
 from shared.src.redis_client import RedisClient
@@ -38,6 +39,9 @@ class Coordinator:
         self.base_allocation_percent = 8.0  # 8% par défaut du capital total
         self.max_trade_percent = 15.0  # 15% maximum du capital total
         self.min_absolute_trade_usdc = 10.0  # 10 USDC minimum Binance
+        
+        # Configuration trailing sell
+        self.sell_margin = 0.002  # 0.2% de marge pour éviter vente sur bruit
         
         # Stats
         self.stats = {
@@ -164,12 +168,26 @@ class Coordinator:
                 if usdc_balance < self.min_absolute_trade_usdc:
                     return False, f"Balance USDC insuffisante: {usdc_balance:.2f} < {self.min_absolute_trade_usdc}"
                 
-                # Vérifier s'il y a déjà un cycle actif pour ce symbole
-                active_cycle = self._check_active_cycle(signal.symbol)
-                if active_cycle:
-                    return False, f"Cycle déjà actif pour {signal.symbol}: {active_cycle}"
+                # FILTRE 2ème BUY: Attendre le deuxième BUY pour exécuter
+                buy_count = self._get_symbol_buy_count(signal.symbol)
+                if buy_count == 0:
+                    # Premier BUY : marquer et attendre
+                    self._mark_first_buy_pending(signal.symbol, signal)
+                    return False, f"Premier BUY pour {signal.symbol} marqué, attente du 2ème BUY"
+                elif buy_count >= 1:
+                    # Deuxième BUY ou plus : exécuter
+                    logger.info(f"✅ 2ème BUY détecté pour {signal.symbol}, exécution autorisée")
+                    # Vérifier s'il y a déjà un cycle actif pour ce symbole
+                    active_cycle = self._check_active_cycle(signal.symbol)
+                    if active_cycle:
+                        return False, f"Cycle déjà actif pour {signal.symbol}: {active_cycle}"
                 
             else:  # SELL
+                # FILTRE TRAILING SELL: Vérifier si on doit vendre maintenant (AVANT balance)
+                should_sell, sell_reason = self._check_trailing_sell(signal)
+                if not should_sell:
+                    return False, sell_reason
+                
                 # Pour un SELL, on a besoin de la crypto
                 if isinstance(balances, dict):
                     crypto_balance = balances.get(base_asset, {}).get('free', 0)
@@ -348,6 +366,218 @@ class Coordinator:
         except Exception as e:
             logger.warning(f"Erreur vérification cycle actif pour {symbol}: {str(e)}")
             return None
+    
+    def _get_symbol_buy_count(self, symbol: str) -> int:
+        """
+        Compte le nombre de BUY en attente pour un symbole.
+        
+        Args:
+            symbol: Symbole à vérifier
+            
+        Returns:
+            Nombre de BUY en attente
+        """
+        try:
+            pending_key = f"pending_buy:{symbol}"
+            count = self.redis_client.get(pending_key)
+            return int(count) if count else 0
+        except Exception as e:
+            logger.error(f"Erreur récupération buy count pour {symbol}: {e}")
+            return 0
+    
+    def _mark_first_buy_pending(self, symbol: str, signal: StrategySignal) -> None:
+        """
+        Marque le premier BUY en attente et stocke le signal.
+        
+        Args:
+            symbol: Symbole du signal
+            signal: Signal à marquer
+        """
+        try:
+            pending_key = f"pending_buy:{symbol}"
+            signal_key = f"pending_buy_signal:{symbol}"
+            
+            # Convertir le signal en dict pour stockage
+            side_value = signal.side.value if hasattr(signal.side, 'value') else str(signal.side)
+            timestamp_str = signal.timestamp.isoformat() if hasattr(signal.timestamp, 'isoformat') else str(signal.timestamp)
+            signal_dict = {
+                "symbol": signal.symbol,
+                "side": side_value,
+                "price": signal.price,
+                "strategy": signal.strategy,
+                "timestamp": timestamp_str,
+                "confidence": signal.confidence,
+                "metadata": signal.metadata
+            }
+            
+            # Stocker le count et le signal avec TTL de 10 minutes
+            self.redis_client.set(pending_key, "1", expiration=600)
+            self.redis_client.set(signal_key, json.dumps(signal_dict), expiration=600)
+            
+            logger.info(f"📝 Premier BUY marqué pour {symbol}, attente du 2ème (TTL: 10min)")
+        except Exception as e:
+            logger.error(f"Erreur marquage premier BUY pour {symbol}: {e}")
+    
+    def _check_trailing_sell(self, signal: StrategySignal) -> tuple[bool, str]:
+        """
+        Vérifie si on doit exécuter le SELL selon la logique de trailing sell.
+        
+        Args:
+            signal: Signal SELL à vérifier
+            
+        Returns:
+            (should_sell, reason)
+        """
+        logger.info(f"🔍 DEBUT _check_trailing_sell pour {signal.symbol} @ {signal.price}")
+        try:
+            # Récupérer la position active pour vérifier si elle est gagnante
+            logger.info(f"🔍 Appel get_active_cycles pour {signal.symbol}")
+            active_positions = self.service_client.get_active_cycles(signal.symbol)
+            logger.info(f"🔍 Résultat get_active_cycles: {active_positions}")
+            
+            if not active_positions:
+                # Pas de position active, autoriser le SELL
+                logger.info(f"✅ Pas de position active pour {signal.symbol}, SELL autorisé")
+                return True, "Pas de position active, SELL autorisé"
+            
+            logger.info(f"🔍 Position active trouvée: {active_positions[0]}")
+            position = active_positions[0]
+            entry_price = float(position.get('entry_price', 0))
+            current_price = signal.price
+            logger.info(f"🔍 Prix entrée: {entry_price:.4f}, Prix actuel: {current_price:.4f}")
+            
+            # Si position perdante, vendre immédiatement
+            if current_price <= entry_price:
+                logger.info(f"📉 Position perdante pour {signal.symbol}: {current_price:.4f} ≤ {entry_price:.4f}, SELL immédiat")
+                return True, "Position perdante, SELL immédiat"
+            
+            logger.info(f"🔍 Position gagnante détectée, vérification trailing sell")
+            # Position gagnante : appliquer logique trailing sell
+            previous_sell_price = self._get_previous_sell_price(signal.symbol)
+            logger.info(f"🔍 Prix SELL précédent: {previous_sell_price}")
+            
+            if previous_sell_price is None:
+                # Premier SELL gagnant : stocker comme référence, ne pas vendre
+                logger.info(f"🔍 Premier SELL gagnant, stockage référence")
+                self._update_sell_reference(signal.symbol, current_price)
+                logger.info(f"🎯 Premier SELL gagnant pour {signal.symbol} @ {current_price:.4f}, stocké comme référence")
+                return False, f"Position gagnante, premier SELL @ {current_price:.4f} stocké comme référence"
+            
+            # Comparer avec le SELL précédent (avec marge de tolérance)
+            sell_threshold = previous_sell_price * (1 - self.sell_margin)
+            logger.info(f"🔍 Seuil de vente calculé: {sell_threshold:.4f} (marge {self.sell_margin*100:.1f}%)")
+            
+            if current_price > previous_sell_price:
+                # Prix monte : mettre à jour référence, ne pas vendre
+                logger.info(f"🔍 Prix monte, mise à jour référence")
+                self._update_sell_reference(signal.symbol, current_price)
+                logger.info(f"📈 Prix monte pour {signal.symbol}: {current_price:.4f} > {previous_sell_price:.4f}, référence mise à jour")
+                return False, f"Prix monte ({current_price:.4f} > {previous_sell_price:.4f}), référence mise à jour"
+            elif current_price > sell_threshold:
+                # Prix légèrement en baisse mais dans la marge de tolérance
+                logger.info(f"🟡 Prix stable pour {signal.symbol}: {current_price:.4f} > seuil {sell_threshold:.4f} (marge {self.sell_margin*100:.1f}%), GARDE")
+                return False, f"Prix dans marge de tolérance ({current_price:.4f} > {sell_threshold:.4f}), position gardée"
+            else:
+                # Prix baisse significativement : VENDRE !
+                logger.info(f"🔍 Prix baisse significative, nettoyage référence")
+                logger.info(f"📉 Prix baisse significative pour {signal.symbol}: {current_price:.4f} ≤ {sell_threshold:.4f}, SELL exécuté !")
+                # Nettoyer la référence après vente
+                self._clear_sell_reference(signal.symbol)
+                return True, f"Prix baisse significative ({current_price:.4f} ≤ {sell_threshold:.4f}), SELL exécuté"
+            
+        except Exception as e:
+            logger.error(f"❌ EXCEPTION dans _check_trailing_sell pour {signal.symbol}: {str(e)}")
+            logger.error(f"❌ Type exception: {type(e).__name__}")
+            import traceback
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
+            # En cas d'erreur, autoriser le SELL par sécurité
+            return True, f"Erreur technique, SELL autorisé par défaut"
+    
+    def _get_previous_sell_price(self, symbol: str) -> Optional[float]:
+        """
+        Récupère le prix du SELL précédent stocké en référence.
+        
+        Args:
+            symbol: Symbole à vérifier
+            
+        Returns:
+            Prix du SELL précédent ou None
+        """
+        try:
+            ref_key = f"sell_reference:{symbol}"
+            price_data = self.redis_client.get(ref_key)
+            
+            if not price_data:
+                return None
+            
+            logger.debug(f"🔍 Récupération sell reference {symbol}: type={type(price_data)}, data={price_data}")
+            
+            # Gérer tous les cas possibles de retour Redis
+            if isinstance(price_data, dict):
+                # Déjà un dictionnaire Python
+                if "price" in price_data:
+                    return float(price_data["price"])
+                else:
+                    logger.warning(f"Clé 'price' manquante dans dict Redis pour {symbol}: {price_data}")
+                    return None
+            
+            elif isinstance(price_data, (str, bytes)):
+                # String JSON à parser
+                try:
+                    if isinstance(price_data, bytes):
+                        price_data = price_data.decode('utf-8')
+                    
+                    parsed_data = json.loads(price_data)
+                    if isinstance(parsed_data, dict) and "price" in parsed_data:
+                        return float(parsed_data["price"])
+                    else:
+                        logger.warning(f"Format JSON invalide pour {symbol}: {parsed_data}")
+                        return None
+                except json.JSONDecodeError as e:
+                    logger.error(f"Erreur JSON decode pour {symbol}: {e}, data: {price_data}")
+                    return None
+            
+            else:
+                logger.warning(f"Type Redis inattendu pour {symbol}: {type(price_data)}, data: {price_data}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Erreur récupération sell reference pour {symbol}: {e}")
+            logger.error(f"Type: {type(price_data) if 'price_data' in locals() else 'undefined'}, Data: {price_data if 'price_data' in locals() else 'undefined'}")
+            return None
+    
+    def _update_sell_reference(self, symbol: str, price: float) -> None:
+        """
+        Met à jour la référence de prix SELL pour un symbole.
+        
+        Args:
+            symbol: Symbole
+            price: Nouveau prix de référence
+        """
+        try:
+            ref_key = f"sell_reference:{symbol}"
+            ref_data = {
+                "price": price,
+                "timestamp": int(time.time() * 1000)
+            }
+            # TTL de 2 heures pour éviter les références obsolètes
+            self.redis_client.set(ref_key, json.dumps(ref_data), expiration=7200)
+        except Exception as e:
+            logger.error(f"Erreur mise à jour sell reference pour {symbol}: {e}")
+    
+    def _clear_sell_reference(self, symbol: str) -> None:
+        """
+        Supprime la référence de prix SELL pour un symbole.
+        
+        Args:
+            symbol: Symbole
+        """
+        try:
+            ref_key = f"sell_reference:{symbol}"
+            self.redis_client.delete(ref_key)
+            logger.info(f"🧹 Référence SELL supprimée pour {symbol}")
+        except Exception as e:
+            logger.error(f"Erreur suppression sell reference pour {symbol}: {e}")
     
     def get_stats(self) -> Dict[str, Any]:
         """Retourne les statistiques du coordinator."""

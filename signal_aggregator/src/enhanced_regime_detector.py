@@ -225,18 +225,21 @@ class EnhancedRegimeDetector:
             confidence = 0.0
             
             # 1. ADX - Force de tendance (poids principal)
-            if current_adx > self.adx_strong_trend:
+            if current_adx > self.adx_strong_trend:  # > 35
                 regime_score += 3.0
                 confidence += 0.4
-            elif current_adx > self.adx_trend:
+            elif current_adx > self.adx_trend:  # > 25
                 regime_score += 2.0
                 confidence += 0.3
-            elif current_adx > self.adx_weak_trend:
+            elif current_adx > self.adx_weak_trend:  # > 20
                 regime_score += 1.0
                 confidence += 0.2
-            elif current_adx < self.adx_no_trend:
-                regime_score -= 1.0
+            elif current_adx >= self.adx_no_trend:  # >= 15 (FIX: cas 15-20 traité)
+                regime_score += 0.5  # Tendance très faible mais présente
                 confidence += 0.15
+            else:  # < 15
+                regime_score -= 1.0  # Pas de tendance claire
+                confidence += 0.1
             
             # 2. Bollinger Bands - Volatilité et compression
             if current_bb_width < self.bb_squeeze_tight:
@@ -277,21 +280,28 @@ class EnhancedRegimeDetector:
                 regime_score += 0.5  # Peut être début de tendance
                 confidence += 0.15
             
-            # Détermination du régime final - STANDARDISÉ
+            # Détermination du régime final - STANDARDISÉ avec FIX ADX 15-20
             if regime_score >= 3.0 and confidence >= 0.7:
                 if current_adx > self.adx_strong_trend:
-                    regime = MarketRegime.STRONG_TREND_UP if latest.get('bb_position', 0.5) >= 0.55 else MarketRegime.STRONG_TREND_DOWN  # STANDARDISÉ: Acceptable (position neutre-haute)
+                    regime = MarketRegime.STRONG_TREND_UP if latest.get('bb_position', 0.5) >= 0.55 else MarketRegime.STRONG_TREND_DOWN
                 else:
-                    regime = MarketRegime.TREND_UP if latest.get('bb_position', 0.5) >= 0.55 else MarketRegime.TREND_DOWN  # STANDARDISÉ: Acceptable (position neutre-haute)
+                    regime = MarketRegime.TREND_UP if latest.get('bb_position', 0.5) >= 0.55 else MarketRegime.TREND_DOWN
             elif regime_score >= 1.5:
-                regime = MarketRegime.WEAK_TREND_UP if latest.get('bb_position', 0.5) >= 0.55 else MarketRegime.WEAK_TREND_DOWN  # STANDARDISÉ: Acceptable (position neutre-haute)
+                regime = MarketRegime.WEAK_TREND_UP if latest.get('bb_position', 0.5) >= 0.55 else MarketRegime.WEAK_TREND_DOWN
+            elif regime_score >= 0.3:  # FIX: ajout cas ADX 15-20 (score ~0.5)
+                # Tendance très faible détectée (ADX 15-20)
+                regime = MarketRegime.WEAK_TREND_UP if latest.get('bb_position', 0.5) >= 0.55 else MarketRegime.WEAK_TREND_DOWN
             elif regime_score <= -1.5:
                 if current_bb_width < self.bb_squeeze_tight:
                     regime = MarketRegime.RANGE_TIGHT
                 else:
                     regime = MarketRegime.RANGE_VOLATILE
             else:
-                regime = MarketRegime.UNDEFINED
+                # Score neutre (-1.5 < score < 0.3) : analyser selon BB
+                if current_bb_width < self.bb_squeeze_tight:
+                    regime = MarketRegime.RANGE_TIGHT
+                else:
+                    regime = MarketRegime.RANGE_VOLATILE
             
             # Métriques détaillées
             metrics = {
@@ -337,13 +347,19 @@ class EnhancedRegimeDetector:
             current_adx = data.get('adx', 25)
             current_bb_width = data.get('bb_width', 0.025)
             
-            # Calcul du régime avec seuils ADX corrects (ADX 39.5 doit être TREND_UP)
-            if current_adx >= self.adx_strong_trend:  # >= 42
+            # Calcul du régime avec seuils ADX corrects - FIX: ADX 17.1 ne doit plus être UNDEFINED
+            if current_adx >= self.adx_strong_trend:  # >= 35
                 regime = MarketRegime.STRONG_TREND_UP if current_rsi > 50 else MarketRegime.STRONG_TREND_DOWN
-            elif current_adx >= self.adx_trend:  # >= 32, ADX 39.5 sera ici !
+            elif current_adx >= self.adx_trend:  # >= 25
                 regime = MarketRegime.TREND_UP if current_rsi > 50 else MarketRegime.TREND_DOWN
-            elif current_adx >= self.adx_weak_trend:  # >= 23
+            elif current_adx >= self.adx_weak_trend:  # >= 20
                 regime = MarketRegime.WEAK_TREND_UP if current_rsi > 50 else MarketRegime.WEAK_TREND_DOWN
+            elif current_adx >= self.adx_no_trend:  # >= 15 (FIX: cas 15-20 traité)
+                # Tendance très faible - utiliser d'autres indicateurs
+                if current_bb_width < 0.015:
+                    regime = MarketRegime.RANGE_TIGHT
+                else:
+                    regime = MarketRegime.WEAK_TREND_UP if current_rsi > 50 else MarketRegime.WEAK_TREND_DOWN
             elif current_bb_width < 0.015:
                 regime = MarketRegime.RANGE_TIGHT
             else:
@@ -596,14 +612,25 @@ class EnhancedRegimeDetector:
                 else:
                     return MarketRegime.RANGE_TIGHT
         
-        # ADX < 30 : logique existante
-        if adx >= self.adx_weak_trend:
+        # ADX modéré à faible : analyser selon les seuils standards
+        if adx >= self.adx_weak_trend:  # >= 20
             if trend_angle > 5 or roc > 5:
                 return MarketRegime.WEAK_TREND_UP
             elif trend_angle < -5 or roc < -5:
                 return MarketRegime.WEAK_TREND_DOWN
+        elif adx >= self.adx_no_trend:  # >= 15 (FIX: cas 15-20 traité)
+            # ADX entre 15-20 : tendance très faible mais présente
+            if trend_angle > 3 or roc > 3:  # Seuils plus bas pour tendance faible
+                return MarketRegime.WEAK_TREND_UP
+            elif trend_angle < -3 or roc < -3:
+                return MarketRegime.WEAK_TREND_DOWN
+            # Pas de tendance claire : utiliser BB
+            elif bb_width < self.bb_squeeze_tight:
+                return MarketRegime.RANGE_TIGHT
+            else:
+                return MarketRegime.RANGE_VOLATILE
         
-        # Marché en range
+        # ADX < 15 : marché en range
         if bb_width < self.bb_squeeze_tight:
             return MarketRegime.RANGE_TIGHT
         elif bb_width > self.bb_expansion:
