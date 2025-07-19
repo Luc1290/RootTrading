@@ -9,7 +9,6 @@ import random
 from typing import Dict, Any, Callable, List, Optional, Union, Set
 from queue import Queue, Empty
 import queue
-import threading
 
 from confluent_kafka import Producer, Consumer, KafkaError, KafkaException
 from confluent_kafka.admin import AdminClient, NewTopic

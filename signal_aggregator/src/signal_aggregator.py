@@ -9,9 +9,7 @@ from typing import Dict, List, Optional, Any, TYPE_CHECKING, Union
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 import json
-import numpy as np
 import pandas as pd
-import time
 
 # Import des modules séparés
 from market_data_accumulator import MarketDataAccumulator

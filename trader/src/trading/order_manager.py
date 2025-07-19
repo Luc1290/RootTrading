@@ -7,7 +7,6 @@ import time
 from typing import Dict, List, Any, Optional
 
 from shared.src.config import SYMBOLS, TRADING_MODE
-from shared.src.enums import OrderSide
 from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY
 
 from trader.src.exchange.binance_executor import BinanceExecutor

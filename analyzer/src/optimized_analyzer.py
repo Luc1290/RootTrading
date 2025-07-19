@@ -4,7 +4,7 @@ au lieu de les recalculer. Plus rapide et sans duplication.
 """
 import asyncio
 import logging
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional
 import pandas as pd
 import time
 from concurrent.futures import ThreadPoolExecutor

@@ -105,7 +105,7 @@ def circuit_breaker(failure_threshold: int = 3, reset_timeout: float = 60.0) -> 
                 
                 return result
                 
-            except Exception as e:
+            except Exception:
                 # Incrémenter le compteur d'échecs
                 with state["lock"]:
                     state["failures"] += 1

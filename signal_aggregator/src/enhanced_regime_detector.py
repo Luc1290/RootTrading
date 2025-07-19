@@ -2,8 +2,8 @@
 import logging
 import pandas as pd
 import numpy as np
-from typing import Dict, Optional, Tuple, List
-from datetime import datetime, timedelta
+from typing import Dict, Tuple, List
+from datetime import datetime
 import json
 from enum import Enum
 from shared.src.technical_indicators import TechnicalIndicators
@@ -928,12 +928,12 @@ class EnhancedRegimeDetector:
             current_adx, plus_di, minus_di = self.indicators.calculate_adx_smoothed(highs, lows, closes, 14)
             
             if current_adx is None or plus_di is None or minus_di is None:
-                logger.warning(f"ADX/DI non valides fallback")
+                logger.warning("ADX/DI non valides fallback")
                 return MarketRegime.UNDEFINED, {}
             
             bb_data = self.indicators.calculate_bollinger_bands(closes, 20, 2.0)
             if bb_data['bb_upper'] is None:
-                logger.warning(f"Bollinger Bands non valides fallback")
+                logger.warning("Bollinger Bands non valides fallback")
                 return MarketRegime.UNDEFINED, {}
                 
             current_bb_width = bb_data['bb_width']
@@ -941,7 +941,7 @@ class EnhancedRegimeDetector:
             
             current_rsi = self.indicators.calculate_rsi(closes, 14)
             if current_rsi is None:
-                logger.warning(f"RSI non valide fallback")
+                logger.warning("RSI non valide fallback")
                 return MarketRegime.UNDEFINED, {}
             
             current_roc = self.indicators.calculate_roc(closes, 10)

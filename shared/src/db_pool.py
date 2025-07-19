@@ -7,11 +7,11 @@ import time
 import random
 import threading
 import queue
-from typing import Optional, Any, Dict, Union, List, Tuple
+from typing import Optional, Any, Dict
 from contextlib import contextmanager
 
 import psycopg2
-from psycopg2 import pool, extensions, extras
+from psycopg2 import extensions, extras
 from psycopg2.extras import RealDictCursor, DictCursor
 
 # Importer la configuration
@@ -515,7 +515,7 @@ class DBConnectionPool:
                     
                     # Logguer les requêtes lentes si présentes
                     if db_stats['slow_queries']:
-                        logger.warning(f"⚠️ Top requêtes lentes: " + 
+                        logger.warning("⚠️ Top requêtes lentes: " + 
                                       ", ".join([f"{q['type']} ({q['duration']:.3f}s)" for q in db_stats['slow_queries'][:3]]))
                     
                     # Réinitialiser certaines métriques

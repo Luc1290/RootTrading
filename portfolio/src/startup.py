@@ -2,7 +2,6 @@
 Module de démarrage pour le service Portfolio.
 Contient la logique de synchronisation initiale avec Binance.
 """
-import asyncio
 import logging
 
 from models import DBManager, SharedCache

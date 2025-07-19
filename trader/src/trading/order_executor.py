@@ -3,7 +3,6 @@ Exécuteur d'ordres simplifié pour le trader.
 Logique simple : reçoit ordre du coordinator → exécute sur Binance → stocke historique.
 """
 import logging
-import time
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List

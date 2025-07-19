@@ -4,8 +4,7 @@ RSI avec contexte multi-timeframes, momentum, divergences et confluence avancée
 Intègre ADX, CCI, Williams %R, VWAP et analyse de structure pour des signaux précis.
 """
 import logging
-from datetime import datetime
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List
 import numpy as np
 import pandas as pd
 
@@ -13,7 +12,7 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
-from shared.src.enums import OrderSide, SignalStrength
+from shared.src.enums import OrderSide
 from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB
 
 from .base_strategy import BaseStrategy
@@ -221,9 +220,9 @@ class RSIProStrategy(BaseStrategy):
     
     def _analyze_rsi_context(self, symbol: str, rsi: float, adx: float, cci: float, 
                             williams_r: float, vwap: float, volume_ratio: float, 
-                            momentum_10: float, bb_position: float) -> Dict:
+                            momentum_10: float, bb_position: float) -> Dict[str, Any]:
         """Analyse le contexte pour valider les signaux RSI"""
-        context = {
+        context: Dict[str, Any] = {
             'score': 0.0,
             'confidence_boost': 0.0,
             'confluence_score': 0.0,
@@ -232,42 +231,60 @@ class RSIProStrategy(BaseStrategy):
         
         try:
             # 1. Force de tendance (ADX)
-            from shared.src.config import ADX_NO_TREND_THRESHOLD, ADX_WEAK_TREND_THRESHOLD
+            from shared.src.config import ADX_NO_TREND_THRESHOLD
             if adx >= self.min_adx:
-                context['score'] += 20
-                context['confidence_boost'] += 0.05
-                context['details'].append(f"ADX tendance ({adx:.1f})")
+                context['score'] = float(context['score']) + 20
+                context['confidence_boost'] = float(context['confidence_boost']) + 0.05
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"ADX tendance ({adx:.1f})")
             elif adx >= ADX_NO_TREND_THRESHOLD:
-                context['score'] += 10
-                context['details'].append(f"ADX faible ({adx:.1f})")
+                context['score'] = float(context['score']) + 10
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"ADX faible ({adx:.1f})")
             else:
-                context['score'] -= 5
-                context['details'].append(f"ADX insuffisant ({adx:.1f})")
+                context['score'] = float(context['score']) - 5
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"ADX insuffisant ({adx:.1f})")
             
             # 2. Confirmation CCI
             if abs(cci) > 100:  # CCI extrême
-                context['score'] += 15
-                context['confidence_boost'] += 0.05
-                context['details'].append(f"CCI extrême ({cci:.1f})")
+                context['score'] = float(context['score']) + 15
+                context['confidence_boost'] = float(context['confidence_boost']) + 0.05
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"CCI extrême ({cci:.1f})")
             elif abs(cci) > 50:
-                context['score'] += 10
-                context['details'].append(f"CCI actif ({cci:.1f})")
+                context['score'] = float(context['score']) + 10
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"CCI actif ({cci:.1f})")
             else:
-                context['score'] += 5
-                context['details'].append(f"CCI neutre ({cci:.1f})")
+                context['score'] = float(context['score']) + 5
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"CCI neutre ({cci:.1f})")
             
             # 3. Williams %R pour timing
             if williams_r <= -80:  # Extrême oversold
-                context['score'] += 20
-                context['confidence_boost'] += 0.08
-                context['details'].append(f"Williams oversold ({williams_r:.1f})")
+                context['score'] = float(context['score']) + 20
+                context['confidence_boost'] = float(context['confidence_boost']) + 0.08
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"Williams oversold ({williams_r:.1f})")
             elif williams_r >= -20:  # Extrême overbought
-                context['score'] += 20
-                context['confidence_boost'] += 0.08
-                context['details'].append(f"Williams overbought ({williams_r:.1f})")
+                context['score'] = float(context['score']) + 20
+                context['confidence_boost'] = float(context['confidence_boost']) + 0.08
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"Williams overbought ({williams_r:.1f})")
             else:
-                context['score'] += 5
-                context['details'].append(f"Williams neutre ({williams_r:.1f})")
+                context['score'] = float(context['score']) + 5
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"Williams neutre ({williams_r:.1f})")
             
             # 4. VWAP direction
             if self.price_history and vwap > 0:
@@ -275,50 +292,72 @@ class RSIProStrategy(BaseStrategy):
                 vwap_distance = (current_price - vwap) / vwap * 100
                 
                 if abs(vwap_distance) > 2:  # Prix éloigné du VWAP
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
-                    context['details'].append(f"Prix vs VWAP ({vwap_distance:+.1f}%)")
+                    context['score'] = float(context['score']) + 15
+                    context['confidence_boost'] = float(context['confidence_boost']) + 0.05
+                    details_list = context.get('details', [])
+                    if isinstance(details_list, list):
+                        details_list.append(f"Prix vs VWAP ({vwap_distance:+.1f}%)")
                 else:
-                    context['score'] += 5
-                    context['details'].append(f"Prix proche VWAP ({vwap_distance:+.1f}%)")
+                    context['score'] = float(context['score']) + 5
+                    details_list = context.get('details', [])
+                    if isinstance(details_list, list):
+                        details_list.append(f"Prix proche VWAP ({vwap_distance:+.1f}%)")
             
             # 5. Volume confirmation - SEUILS STANDARDISÉS
             if volume_ratio > 1.5:  # STANDARDISÉ: Très bon
-                context['score'] += 25
-                context['confidence_boost'] += 0.1
-                context['details'].append(f"Volume très bon ({volume_ratio:.1f}x)")
+                context['score'] = float(context['score']) + 25
+                context['confidence_boost'] = float(context['confidence_boost']) + 0.1
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"Volume très bon ({volume_ratio:.1f}x)")
             elif volume_ratio > 1.2:  # STANDARDISÉ: Bon
-                context['score'] += 20
-                context['confidence_boost'] += 0.08
-                context['details'].append(f"Volume bon ({volume_ratio:.1f}x)")
+                context['score'] = float(context['score']) + 20
+                context['confidence_boost'] = float(context['confidence_boost']) + 0.08
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"Volume bon ({volume_ratio:.1f}x)")
             elif volume_ratio > 1.0:  # STANDARDISÉ: Acceptable
-                context['score'] += 10
-                context['details'].append(f"Volume acceptable ({volume_ratio:.1f}x)")
+                context['score'] = float(context['score']) + 10
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"Volume acceptable ({volume_ratio:.1f}x)")
             else:
-                context['score'] -= 3  # Assoupli de -5 à -3
-                context['details'].append(f"Volume faible ({volume_ratio:.1f}x)")
+                context['score'] = float(context['score']) - 3  # Assoupli de -5 à -3
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"Volume faible ({volume_ratio:.1f}x)")
             
             # 6. Momentum support
             momentum_strength = abs(momentum_10)
             if momentum_strength > 1.5:
-                context['score'] += 15
-                context['confidence_boost'] += 0.05
-                context['details'].append(f"Momentum fort ({momentum_10:.2f})")
+                context['score'] = float(context['score']) + 15
+                context['confidence_boost'] = float(context['confidence_boost']) + 0.05
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"Momentum fort ({momentum_10:.2f})")
             elif momentum_strength > 0.8:
-                context['score'] += 10
-                context['details'].append(f"Momentum modéré ({momentum_10:.2f})")
+                context['score'] = float(context['score']) + 10
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"Momentum modéré ({momentum_10:.2f})")
             else:
-                context['score'] += 2
-                context['details'].append(f"Momentum faible ({momentum_10:.2f})")
+                context['score'] = float(context['score']) + 2
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"Momentum faible ({momentum_10:.2f})")
             
             # 7. Position Bollinger
             if bb_position <= 0.15 or bb_position >= 0.85:  # Zones extrêmes
-                context['score'] += 15
-                context['confidence_boost'] += 0.05
-                context['details'].append(f"BB position extrême ({bb_position:.2f})")
+                context['score'] = float(context['score']) + 15
+                context['confidence_boost'] = float(context['confidence_boost']) + 0.05
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"BB position extrême ({bb_position:.2f})")
             else:
-                context['score'] += 5
-                context['details'].append(f"BB position normale ({bb_position:.2f})")
+                context['score'] = float(context['score']) + 5
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"BB position normale ({bb_position:.2f})")
             
             # 8. Confluence multi-timeframes
             if self.redis_client:
@@ -328,17 +367,21 @@ class RSIProStrategy(BaseStrategy):
                     context['confluence_score'] = confluence_score
                     
                     if confluence_score >= 60:
-                        context['score'] += 20
-                        context['confidence_boost'] += 0.08
-                        context['details'].append(f"Confluence forte ({confluence_score:.1f}%)")
+                        context['score'] = float(context['score']) + 20
+                        context['confidence_boost'] = float(context['confidence_boost']) + 0.08
+                        details_list = context.get('details', [])
+                        if isinstance(details_list, list):
+                            details_list.append(f"Confluence forte ({confluence_score:.1f}%)")
                     elif confluence_score >= 45:
-                        context['score'] += 10
-                        context['confidence_boost'] += 0.03
-                        context['details'].append(f"Confluence modérée ({confluence_score:.1f}%)")
+                        context['score'] = float(context['score']) + 10
+                        context['confidence_boost'] = float(context['confidence_boost']) + 0.03
+                        details_list = context.get('details', [])
+                        if isinstance(details_list, list):
+                            details_list.append(f"Confluence modérée ({confluence_score:.1f}%)")
             
             # Normaliser
-            context['score'] = max(0.0, min(100.0, context['score']))
-            context['confidence_boost'] = max(0.0, min(0.25, context['confidence_boost']))
+            context['score'] = max(0.0, min(100.0, float(context['score'])))
+            context['confidence_boost'] = max(0.0, min(0.25, float(context['confidence_boost'])))
             
         except Exception as e:
             logger.error(f"❌ Erreur analyse contexte RSI: {e}")

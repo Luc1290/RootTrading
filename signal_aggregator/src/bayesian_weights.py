@@ -1,12 +1,11 @@
 """
 Système de pondération bayésienne adaptative pour les stratégies
 """
-import numpy as np
-from typing import Dict, List, Optional
+from typing import Dict, List
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 import math
 
 logger = logging.getLogger(__name__)

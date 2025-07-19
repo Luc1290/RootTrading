@@ -2,10 +2,9 @@
 Gap Detector - Module de détection et remplissage intelligent des données manquantes
 Optimise le rechargement après coupure en ne chargeant que les données manquantes
 """
-import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple
 import asyncpg
 from shared.src.config import get_db_config, SYMBOLS
 

@@ -4,9 +4,6 @@ import logging
 import sys
 import os
 import json
-import time
-from typing import Dict, List, Optional
-from datetime import datetime, timezone
 from aiohttp import web # Import aiohttp
 
 # Ajouter le chemin vers les modules partagés et src
@@ -14,9 +11,8 @@ sys.path.insert(0, '/app')
 sys.path.insert(0, '/app/src')
 
 # Imports directs des modules locaux
-from signal_aggregator import SignalAggregator, EnhancedSignalAggregator  # type: ignore[attr-defined]
+from signal_aggregator import EnhancedSignalAggregator  # type: ignore[attr-defined]
 
-from enhanced_regime_detector import EnhancedRegimeDetector
 from performance_tracker import PerformanceTracker
 from db_manager import DatabaseManager
 from shared.src.kafka_client import KafkaClient

@@ -9,12 +9,12 @@ import hmac
 import hashlib
 import uuid
 import requests  # type: ignore
-from decimal import Decimal, getcontext, ROUND_DOWN
+from decimal import getcontext
 from urllib.parse import urlencode
 from datetime import datetime
-from typing import Dict, Any, Optional, List, Tuple, Union
+from typing import Dict, Any, Optional, List, Tuple
 
-from shared.src.enums import OrderSide, OrderStatus, TradeRole
+from shared.src.enums import OrderSide, OrderStatus
 from shared.src.schemas import TradeOrder, TradeExecution
 
 # Configuration de la précision décimale
@@ -323,7 +323,7 @@ class BinanceUtils:
                     error_msg = error_data.get("msg", "Unknown error")
                     error_code = error_data.get("code", 0)
                     logger.error(f"Erreur Binance {response.status_code}: {error_code} - {error_msg}")
-                except:
+                except (ValueError, KeyError, TypeError):
                     error_msg = f"HTTP {response.status_code}"
                     logger.error(f"Erreur Binance {response.status_code}: {error_msg}")
                 
@@ -508,7 +508,7 @@ class BinanceUtils:
             if response.status_code != 200:
                 try:
                     error_msg = response.json().get("msg", "Unknown error")
-                except:
+                except (ValueError, KeyError, TypeError):
                     error_msg = f"HTTP {response.status_code}"
                 
                 logger.error(f"Erreur Binance lors de l'annulation: {error_msg}")

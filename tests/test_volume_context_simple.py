@@ -67,7 +67,7 @@ def test_ton_cas():
     rsi = 25
     cci = -220
     
-    print(f"📊 Données:")
+    print("📊 Données:")
     print(f"   Volume ratio: {volume_ratio}")
     print(f"   RSI: {rsi}")
     print(f"   CCI: {cci}")
@@ -77,7 +77,7 @@ def test_ton_cas():
     context_name, confidence = detect_context_simple(rsi=rsi, cci=cci, volume_ratio=volume_ratio)
     context = VOLUME_CONTEXTS_SIMULATION[context_name]
     
-    print(f"🧠 Détection contexte:")
+    print("🧠 Détection contexte:")
     print(f"   Contexte: {context_name}")
     print(f"   Description: {context['description']}")
     print(f"   Confiance: {confidence:.1f}")
@@ -86,7 +86,7 @@ def test_ton_cas():
     # Calcul score
     contextual_score = calculate_contextual_score(volume_ratio, context_name)
     
-    print(f"⚖️  Évaluation volume:")
+    print("⚖️  Évaluation volume:")
     print(f"   Seuil minimum: {context['min_ratio']}")
     print(f"   Seuil idéal: {context['ideal_ratio']}")
     print(f"   Volume actuel: {volume_ratio}")
@@ -97,14 +97,14 @@ def test_ton_cas():
     is_valid = volume_ratio >= context["min_ratio"]
     old_logic_valid = volume_ratio >= 1.0  # Ancienne logique fixe
     
-    print(f"✅ RÉSULTATS:")
+    print("✅ RÉSULTATS:")
     print(f"   Ancienne logique (seuil fixe 1.0): {'✅ ACCEPTÉ' if old_logic_valid else '❌ REJETÉ'}")
     print(f"   Nouvelle logique contextuelle: {'✅ ACCEPTÉ' if is_valid else '❌ REJETÉ'}")
     
     if is_valid and not old_logic_valid:
-        print(f"   🎉 AMÉLIORATION: Signal maintenant accepté grâce au contexte!")
+        print("   🎉 AMÉLIORATION: Signal maintenant accepté grâce au contexte!")
     elif is_valid:
-        print(f"   🔄 MAINTENU: Signal accepté (comme avant mais avec contexte)")
+        print("   🔄 MAINTENU: Signal accepté (comme avant mais avec contexte)")
     
     print()
 

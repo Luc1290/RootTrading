@@ -10,13 +10,12 @@ import time
 import os
 import threading
 import psutil
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
 from shared.src.config import SYMBOLS, LOG_LEVEL
-from shared.src.redis_client import RedisClient
 
 from analyzer.src.optimized_analyzer import OptimizedAnalyzer
 from analyzer.src.strategy_loader import StrategyLoader
@@ -281,7 +280,6 @@ class AnalyzerService:
                     try:
                         # Convertir en StrategySignal et publier
                         from shared.src.schemas import StrategySignal, SignalStrength
-                        from shared.src.enums import OrderSide
                         
                         strategy_signal = StrategySignal(
                             strategy=signal_dict['strategy'],

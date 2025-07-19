@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 import logging
-import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Tuple
-from datetime import datetime
 import json
-from enum import Enum
 from dataclasses import dataclass
 from shared.src.technical_indicators import TechnicalIndicators
 from shared.src.config import (
     MACD_HISTOGRAM_VERY_STRONG, MACD_HISTOGRAM_STRONG, MACD_HISTOGRAM_MODERATE, 
-    MACD_HISTOGRAM_WEAK, MACD_HISTOGRAM_NEUTRAL
+    MACD_HISTOGRAM_WEAK
 )
 from enhanced_regime_detector import MarketRegime
 

@@ -5,7 +5,7 @@ Ce module analyse les conditions du marché (RSI, CCI, ADX, volatilité) pour d�
 le contexte approprié et ajuster automatiquement les seuils de validation volume.
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 from dataclasses import dataclass
 from .config import VOLUME_CONTEXTS, VOLUME_BUILDUP_CONFIG, ADX_WEAK_TREND_THRESHOLD
 

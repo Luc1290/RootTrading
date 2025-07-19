@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from flask import request, jsonify, Blueprint, current_app
 
 from shared.src.config import TRADING_MODE
-from shared.src.enums import OrderSide
 from shared.src.db_pool import get_db_metrics
 
 logger = logging.getLogger(__name__)

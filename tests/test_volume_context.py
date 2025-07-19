@@ -25,8 +25,8 @@ def test_volume_context_deep_oversold():
     
     volume_quality = volume_context_detector.get_volume_quality_description(1.06, context_name)
     
-    print(f"Volume ratio: 1.06")
-    print(f"RSI: 25, CCI: -220, ADX: 15")
+    print("Volume ratio: 1.06")
+    print("RSI: 25, CCI: -220, ADX: 15")
     print(f"Contexte détecté: {context_name}")
     print(f"Seuil contextuel: {contextual_threshold}")
     print(f"Score contextuel: {contextual_score:.3f}")
@@ -50,8 +50,8 @@ def test_volume_context_moderate_oversold():
     
     volume_quality = volume_context_detector.get_volume_quality_description(0.9, context_name)
     
-    print(f"Volume ratio: 0.9")
-    print(f"RSI: 35, CCI: -160, ADX: 22")
+    print("Volume ratio: 0.9")
+    print("RSI: 35, CCI: -160, ADX: 22")
     print(f"Contexte détecté: {context_name}")
     print(f"Seuil contextuel: {contextual_threshold}")
     print(f"Score contextuel: {contextual_score:.3f}")
@@ -79,8 +79,8 @@ def test_volume_context_breakout():
     
     volume_quality = volume_context_detector.get_volume_quality_description(1.3, context_name)
     
-    print(f"Volume ratio: 1.3")
-    print(f"RSI: 55, CCI: -50, ADX: 30")
+    print("Volume ratio: 1.3")
+    print("RSI: 55, CCI: -50, ADX: 30")
     print(f"Volume history: {volume_history}")
     print(f"Contexte détecté: {context_name}")
     print(f"Seuil contextuel: {contextual_threshold}")
@@ -105,8 +105,8 @@ def test_volume_context_low_volatility():
     
     volume_quality = volume_context_detector.get_volume_quality_description(0.95, context_name)
     
-    print(f"Volume ratio: 0.95")
-    print(f"RSI: 45, CCI: -80, ADX: 12 (marché calme)")
+    print("Volume ratio: 0.95")
+    print("RSI: 45, CCI: -80, ADX: 12 (marché calme)")
     print(f"Contexte détecté: {context_name}")
     print(f"Seuil contextuel: {contextual_threshold}")
     print(f"Score contextuel: {contextual_score:.3f}")
@@ -126,7 +126,7 @@ def test_volume_tolerance():
         adx=18
     )
     
-    print(f"RSI: 28, CCI: -210, ADX: 18")
+    print("RSI: 28, CCI: -210, ADX: 18")
     print(f"Tolérance applicable: {'✅ OUI' if apply_tolerance else '❌ NON'}")
     print(f"Facteur de réduction: {tolerance_factor}")
     print(f"Nouveau seuil suggéré: {1.0 * tolerance_factor:.2f} (au lieu de 1.0)")

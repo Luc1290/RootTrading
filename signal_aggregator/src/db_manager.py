@@ -7,7 +7,7 @@ import asyncio
 import asyncpg
 import json
 from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 from shared.src.config import get_db_config
 
 logger = logging.getLogger(__name__)

@@ -8,7 +8,6 @@ import sys
 import time
 import os
 import threading
-from typing import Dict, Any
 from flask import Flask, jsonify
 import requests  # type: ignore
 from urllib.parse import urljoin
@@ -59,7 +58,7 @@ class CoordinatorService:
         self.app = Flask(__name__)
         self.setup_routes()
         
-        logger.info(f"✅ CoordinatorService initialisé (version simplifiée)")
+        logger.info("✅ CoordinatorService initialisé (version simplifiée)")
     
     def setup_routes(self):
         """Configure les routes de l'API Flask."""

@@ -3,8 +3,7 @@ Schémas partagés pour la validation des données entre microservices.
 Utilise Pydantic pour définir et valider la structure des messages.
 """
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Union
-from enum import Enum
+from typing import Dict, List, Optional, Any
 
 from pydantic import BaseModel, Field, validator
 

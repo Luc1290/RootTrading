@@ -4,7 +4,7 @@ Module d'exécution principal des ordres sur Binance.
 Version simplifiée qui délègue les tâches spécifiques à d'autres modules.
 """
 import logging
-from typing import Dict, Any, Optional, List, Tuple, Union
+from typing import Dict, Any, Optional, Tuple
 from datetime import datetime
 
 # Imports des modules internes

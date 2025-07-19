@@ -2,9 +2,8 @@
 Module de détection de spikes et génération de signaux de take-profit automatiques
 """
 import logging
-from typing import Dict, Optional, Tuple, List
-from datetime import datetime, timedelta
-import numpy as np
+from typing import Dict, Tuple
+from datetime import datetime
 import json
 
 import sys
@@ -13,7 +12,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 
 from shared.src.config import (
     MACD_HISTOGRAM_VERY_STRONG, MACD_HISTOGRAM_STRONG, MACD_HISTOGRAM_MODERATE, 
-    MACD_HISTOGRAM_WEAK, MACD_HISTOGRAM_NEUTRAL
+    MACD_HISTOGRAM_WEAK
 )
 
 logger = logging.getLogger(__name__)

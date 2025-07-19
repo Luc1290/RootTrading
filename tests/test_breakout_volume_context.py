@@ -156,7 +156,7 @@ def test_breakout_volume_scenarios():
         elif score < old_score:
             print(f"   ⚠️  RÉDUCTION: {score - old_score} points")
         else:
-            print(f"   🔄 MAINTENU: Score identique")
+            print("   🔄 MAINTENU: Score identique")
         
         print()
 

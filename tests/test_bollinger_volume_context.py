@@ -190,13 +190,13 @@ def test_bollinger_patterns():
         elif score < old_score:
             print(f"   ⚠️  RÉDUCTION: {score - old_score} points")
         else:
-            print(f"   🔄 MAINTENU: Score identique")
+            print("   🔄 MAINTENU: Score identique")
         
         # Spécificité Bollinger
         if case['signal_type'] == 'mean_reversion' and case['volume'] >= 0.7:
-            print(f"   💡 SPÉCIFICITÉ: Mean reversion tolère volume faible")
+            print("   💡 SPÉCIFICITÉ: Mean reversion tolère volume faible")
         elif case['signal_type'] == 'breakout' and case['volume'] < 1.3:
-            print(f"   ⚠️  SPÉCIFICITÉ: Breakout nécessite volume élevé")
+            print("   ⚠️  SPÉCIFICITÉ: Breakout nécessite volume élevé")
         
         print()
 

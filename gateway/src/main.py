@@ -297,7 +297,7 @@ async def main():
     try:
         # Initialiser les données ultra-enrichies au démarrage si demandé
         if not args.skip_init:
-            logger.info(f"🔥 Initialisation des données ultra-enrichies multi-timeframes...")
+            logger.info("🔥 Initialisation des données ultra-enrichies multi-timeframes...")
             
             # Créer l'UltraDataFetcher pour l'initialisation
             init_fetcher = UltraDataFetcher()
@@ -309,15 +309,15 @@ async def main():
                 logger.info(f"📚 Chargement de 5 jours de données historiques ({mode_desc})...")
                 
                 await init_fetcher.load_historical_data(days=5, use_gap_detection=use_gap_detection)
-                logger.info(f"✅ Données historiques chargées avec succès")
+                logger.info("✅ Données historiques chargées avec succès")
             except Exception as e:
                 logger.error(f"❌ Erreur chargement données historiques: {e}")
-                logger.warning(f"⚠️ Poursuite sans données historiques complètes")
+                logger.warning("⚠️ Poursuite sans données historiques complètes")
             
             # Exécuter un cycle d'initialisation pour remplir les caches Redis
             try:
                 await init_fetcher._fetch_initialization_data()
-                logger.info(f"✅ Données ultra-enrichies initialisées avec succès")
+                logger.info("✅ Données ultra-enrichies initialisées avec succès")
             except Exception as e:
                 logger.warning(f"⚠️ Erreur lors de l'initialisation: {e}")
         else:

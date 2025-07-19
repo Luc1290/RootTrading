@@ -5,7 +5,7 @@ Contient la logique de filtrage adaptative selon les conditions de marché.
 """
 
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from enhanced_regime_detector import MarketRegime
 
 logger = logging.getLogger(__name__)

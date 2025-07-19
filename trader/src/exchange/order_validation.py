@@ -4,7 +4,6 @@ Validation des ordres avant envoi à Binance.
 S'assure que les ordres respectent les contraintes de l'exchange.
 """
 import logging
-from typing import Dict, Any, Optional
 
 from shared.src.schemas import TradeOrder
 from trader.src.exchange.constraints import BinanceSymbolConstraints

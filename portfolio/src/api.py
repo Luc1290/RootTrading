@@ -12,7 +12,7 @@ import time
 from fastapi import FastAPI, Query, Path, HTTPException, Depends, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from contextlib import asynccontextmanager
 import psutil
 import os

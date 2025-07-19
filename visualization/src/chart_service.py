@@ -1,6 +1,6 @@
 import logging
 from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 import numpy as np
 from data_manager import DataManager
 

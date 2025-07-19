@@ -4,8 +4,7 @@ Divergences multi-indicateurs avec détection fractale, confluence et structure 
 Intègre RSI, MACD, CCI, momentum et analyse cross-timeframes pour retournements précis.
 """
 import logging
-from datetime import datetime
-from typing import Dict, Any, Optional, List, Tuple, Union
+from typing import Dict, Any, Optional, List, Tuple
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
@@ -14,7 +13,7 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
-from shared.src.enums import OrderSide, SignalStrength
+from shared.src.enums import OrderSide
 from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB
 
 from .base_strategy import BaseStrategy
@@ -237,8 +236,9 @@ class ReversalDivergenceProStrategy(BaseStrategy):
                                   f"(position prix: {price_position:.2f})")
             
             if signal:
-                div_count = signal.metadata.get('divergence_count', 0)
-                indicators_str = signal.metadata.get('reason', '').split(': ')[-1].rstrip(')')
+                metadata = signal.metadata if signal.metadata else {}
+                div_count = metadata.get('divergence_count', 0)
+                indicators_str = metadata.get('reason', '').split(': ')[-1].rstrip(')')
                 logger.info(f"🎯 Divergence Pro {symbol}: {signal.side} @ {current_price:.4f} "
                           f"({div_count} div: {indicators_str}, Context: {context_analysis['score']:.1f}, "
                           f"Conf: {signal.confidence:.2f})")
@@ -469,9 +469,9 @@ class ReversalDivergenceProStrategy(BaseStrategy):
         return structure
     
     def _analyze_divergence_context(self, symbol: str, volume_ratio: float, adx: float, 
-                                   williams_r: float, bb_position: float) -> Dict:
+                                   williams_r: float, bb_position: float) -> Dict[str, Any]:
         """Analyse le contexte pour valider les divergences"""
-        context = {
+        context: Dict[str, Any] = {
             'score': 0.0,
             'confidence_boost': 0.0,
             'confluence_score': 0.0,
@@ -481,60 +481,86 @@ class ReversalDivergenceProStrategy(BaseStrategy):
         try:
             # 1. Volume confirmation (critique pour retournements) - SEUILS STANDARDISÉS
             if volume_ratio > 1.5:  # STANDARDISÉ: Très bon
-                context['score'] += 25
-                context['confidence_boost'] += 0.1
-                context['details'].append(f"Volume très bon ({volume_ratio:.1f}x)")
+                context['score'] = float(context['score']) + 25
+                context['confidence_boost'] = float(context['confidence_boost']) + 0.1
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"Volume très bon ({volume_ratio:.1f}x)")
             elif volume_ratio > 1.2:  # STANDARDISÉ: Bon
-                context['score'] += 20
-                context['confidence_boost'] += 0.08
-                context['details'].append(f"Volume bon ({volume_ratio:.1f}x)")
+                context['score'] = float(context['score']) + 20
+                context['confidence_boost'] = float(context['confidence_boost']) + 0.08
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"Volume bon ({volume_ratio:.1f}x)")
             elif volume_ratio > 1.0:  # STANDARDISÉ: Acceptable
-                context['score'] += 15
-                context['confidence_boost'] += 0.05
-                context['details'].append(f"Volume acceptable ({volume_ratio:.1f}x)")
+                context['score'] = float(context['score']) + 15
+                context['confidence_boost'] = float(context['confidence_boost']) + 0.05
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"Volume acceptable ({volume_ratio:.1f}x)")
             else:
-                context['score'] -= 10
-                context['details'].append(f"Volume faible ({volume_ratio:.1f}x)")
+                context['score'] = float(context['score']) - 10
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"Volume faible ({volume_ratio:.1f}x)")
             
             # 2. Force de tendance (ADX) - divergences meilleures en fin de tendance
             from shared.src.config import ADX_STRONG_TREND_THRESHOLD, ADX_TREND_THRESHOLD
             if adx >= ADX_STRONG_TREND_THRESHOLD:  # Tendance très forte = potentiel retournement
-                context['score'] += 20
-                context['confidence_boost'] += 0.08
-                context['details'].append(f"ADX fort - retournement potentiel ({adx:.1f})")
+                context['score'] = float(context['score']) + 20
+                context['confidence_boost'] = float(context['confidence_boost']) + 0.08
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"ADX fort - retournement potentiel ({adx:.1f})")
             elif adx >= ADX_TREND_THRESHOLD:
-                context['score'] += 15
-                context['confidence_boost'] += 0.05
-                context['details'].append(f"ADX modéré ({adx:.1f})")
+                context['score'] = float(context['score']) + 15
+                context['confidence_boost'] = float(context['confidence_boost']) + 0.05
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"ADX modéré ({adx:.1f})")
             else:
-                context['score'] += 5
-                context['details'].append(f"ADX faible ({adx:.1f})")
+                context['score'] = float(context['score']) + 5
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"ADX faible ({adx:.1f})")
             
             # 3. Williams %R pour zones extrêmes
             if williams_r <= -85 or williams_r >= -15:  # Zones extrêmes = bon pour retournements
-                context['score'] += 20
-                context['confidence_boost'] += 0.08
-                context['details'].append(f"Williams extrême ({williams_r:.1f})")
+                context['score'] = float(context['score']) + 20
+                context['confidence_boost'] = float(context['confidence_boost']) + 0.08
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"Williams extrême ({williams_r:.1f})")
             elif williams_r <= -75 or williams_r >= -25:
-                context['score'] += 15
-                context['confidence_boost'] += 0.05
-                context['details'].append(f"Williams favorable ({williams_r:.1f})")
+                context['score'] = float(context['score']) + 15
+                context['confidence_boost'] = float(context['confidence_boost']) + 0.05
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"Williams favorable ({williams_r:.1f})")
             else:
-                context['score'] += 5
-                context['details'].append(f"Williams neutre ({williams_r:.1f})")
+                context['score'] = float(context['score']) + 5
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"Williams neutre ({williams_r:.1f})")
             
             # 4. Position Bollinger pour extrêmes - STANDARDISÉ
             if bb_position <= 0.15 or bb_position >= 0.85:  # STANDARDISÉ: Excellent
-                context['score'] += 20
-                context['confidence_boost'] += 0.08
-                context['details'].append(f"BB position extrême ({bb_position:.2f})")
+                context['score'] = float(context['score']) + 20
+                context['confidence_boost'] = float(context['confidence_boost']) + 0.08
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"BB position extrême ({bb_position:.2f})")
             elif bb_position <= 0.25 or bb_position >= 0.75:  # STANDARDISÉ: Très bon
-                context['score'] += 15
-                context['confidence_boost'] += 0.05
-                context['details'].append(f"BB position favorable ({bb_position:.2f})")
+                context['score'] = float(context['score']) + 15
+                context['confidence_boost'] = float(context['confidence_boost']) + 0.05
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"BB position favorable ({bb_position:.2f})")
             else:
-                context['score'] += 5
-                context['details'].append(f"BB position neutre ({bb_position:.2f})")
+                context['score'] = float(context['score']) + 5
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"BB position neutre ({bb_position:.2f})")
             
             # 5. Confluence multi-timeframes
             if self.redis_client:
@@ -544,16 +570,20 @@ class ReversalDivergenceProStrategy(BaseStrategy):
                     context['confluence_score'] = confluence_score
                     
                     if confluence_score >= 55:
-                        context['score'] += 15
-                        context['confidence_boost'] += 0.05
-                        context['details'].append(f"Confluence favorable ({confluence_score:.1f}%)")
+                        context['score'] = float(context['score']) + 15
+                        context['confidence_boost'] = float(context['confidence_boost']) + 0.05
+                        details_list = context.get('details', [])
+                        if isinstance(details_list, list):
+                            details_list.append(f"Confluence favorable ({confluence_score:.1f}%)")
                     elif confluence_score >= 40:
-                        context['score'] += 8
-                        context['details'].append(f"Confluence modérée ({confluence_score:.1f}%)")
+                        context['score'] = float(context['score']) + 8
+                        details_list = context.get('details', [])
+                        if isinstance(details_list, list):
+                            details_list.append(f"Confluence modérée ({confluence_score:.1f}%)")
             
             # Normaliser
-            context['score'] = max(0.0, min(100.0, context['score']))
-            context['confidence_boost'] = max(0.0, min(0.25, context['confidence_boost']))
+            context['score'] = max(0.0, min(100.0, float(context['score'])))
+            context['confidence_boost'] = max(0.0, min(0.25, float(context['confidence_boost'])))
             
         except Exception as e:
             logger.error(f"❌ Erreur analyse contexte divergence: {e}")

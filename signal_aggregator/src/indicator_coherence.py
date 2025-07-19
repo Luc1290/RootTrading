@@ -3,8 +3,7 @@ Module de vérification de cohérence entre indicateurs
 S'assure que RSI et MACD sont alignés pour confirmer les signaux
 """
 import logging
-from typing import Dict, Optional, Tuple
-import numpy as np
+from typing import Dict, Tuple
 
 import sys
 import os

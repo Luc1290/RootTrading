@@ -6,7 +6,6 @@ Contient toute la logique de scoring et d'amélioration des signaux.
 
 import logging
 from typing import Dict, List, Any
-import numpy as np
 
 logger = logging.getLogger(__name__)
 

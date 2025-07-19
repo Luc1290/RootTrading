@@ -4,15 +4,14 @@ Optimisé pour les performances et la résilience.
 """
 import json
 import logging
-from typing import Any, Dict, Callable, Optional, List, Union, Tuple
+from typing import Any, Dict, Callable, Optional, List, Union
 import threading
 import time
 import random
 from queue import Queue, Empty
 
-import redis
 from redis import Redis, ConnectionPool
-from redis.exceptions import ConnectionError, TimeoutError, RedisError
+from redis.exceptions import ConnectionError, TimeoutError
 
 from .config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB
 import numpy as np

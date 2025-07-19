@@ -9,7 +9,6 @@ from datetime import datetime
 import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import RealDictCursor, execute_values
-from decimal import Decimal
 
 # Importer les modules partagés
 import sys

@@ -4,8 +4,7 @@ Module de gestion de cooldown amélioré
 """
 import logging
 from typing import Dict, Optional, Tuple
-from datetime import datetime, timedelta, timezone
-import json
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 

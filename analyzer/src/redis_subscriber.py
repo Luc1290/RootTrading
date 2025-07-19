@@ -3,7 +3,6 @@ Module de gestion des abonnements Redis pour l'analyzer.
 S'abonne aux canaux Redis pour recevoir les données de marché et publier les signaux.
 """
 import datetime
-import json
 import logging
 import threading
 import time
@@ -16,7 +15,7 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
-from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB, CHANNEL_PREFIX, SYMBOLS
+from shared.src.config import CHANNEL_PREFIX, SYMBOLS
 from shared.src.redis_client import RedisClient
 from shared.src.kafka_client import KafkaClient
 from shared.src.schemas import StrategySignal

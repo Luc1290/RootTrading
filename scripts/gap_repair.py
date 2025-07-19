@@ -7,7 +7,6 @@ import asyncio
 import argparse
 import sys
 import os
-from datetime import datetime, timedelta
 
 # Ajouter le répertoire parent au path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
@@ -43,7 +42,7 @@ async def main():
     # Déterminer les symboles à vérifier
     symbols_to_check = [args.symbol] if args.symbol else SYMBOLS
     
-    logger.info(f"🔍 Démarrage de la détection de gaps...")
+    logger.info("🔍 Démarrage de la détection de gaps...")
     logger.info(f"📊 Symboles: {', '.join(symbols_to_check)}")
     logger.info(f"⏰ Timeframe: {args.timeframe}")
     logger.info(f"📅 Période: {args.hours} heures en arrière")

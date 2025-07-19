@@ -10,7 +10,6 @@ import sys
 import time
 import os
 import uvicorn
-from contextlib import asynccontextmanager
 
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))

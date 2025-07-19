@@ -3,12 +3,10 @@ Module de routage des messages entre Kafka et Redis.
 Transforme et route les messages vers les canaux appropriés.
 """
 import logging
-import json
 import time
 import threading
 from collections import deque
 from typing import Dict, Any, List, Optional, Tuple
-import asyncio
 
 from shared.src.config import SYMBOLS
 from shared.src.redis_client import RedisClient

@@ -1,7 +1,7 @@
 """
 Système de monitoring et statistiques par régime et stratégie
 """
-from typing import Dict, List, Optional, DefaultDict, Any
+from typing import Dict, Optional, DefaultDict, Any
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 import json
@@ -52,7 +52,7 @@ class SignalMonitoringStats:
                     for strategy, count in strategies.items():
                         self.rejected_signals[regime][strategy] = count
                 
-                logger.info(f"📊 Statistiques de monitoring chargées")
+                logger.info("📊 Statistiques de monitoring chargées")
         except Exception as e:
             logger.error(f"Erreur chargement stats monitoring: {e}")
     

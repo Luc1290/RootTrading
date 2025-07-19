@@ -4,8 +4,7 @@ Breakout avec détection de niveaux S/R dynamiques, false breakout filter et con
 Intègre volume, momentum, structure de marché et analyse multi-timeframes.
 """
 import logging
-from datetime import datetime
-from typing import Dict, Any, Optional, List, Tuple, Union
+from typing import Dict, Any, Optional, List
 import numpy as np
 import pandas as pd
 
@@ -13,7 +12,7 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
-from shared.src.enums import OrderSide, SignalStrength
+from shared.src.enums import OrderSide
 from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB
 from shared.src.volume_context_detector import volume_context_detector
 
@@ -204,8 +203,10 @@ class BreakoutProStrategy(BaseStrategy):
             # Avant c'était un else forcé - maintenant on peut avoir NO SIGNAL
             
             if signal:
+                metadata = signal.metadata if signal.metadata else {}
+                resistance_level = metadata.get('resistance_level', metadata.get('support_level', 0))
                 logger.info(f"🎯 Breakout Pro {symbol}: {signal.side} @ {current_price:.4f} "
-                          f"(Niveau: {signal.metadata.get('resistance_level', signal.metadata.get('support_level', 0)):.4f}, "
+                          f"(Niveau: {resistance_level:.4f}, "
                           f"Volume: {volume_ratio or 0:.1f}x, Context: {context_analysis['score']:.1f}, "
                           f"Conf: {signal.confidence:.2f})")
                 
@@ -436,7 +437,7 @@ class BreakoutProStrategy(BaseStrategy):
                             score -= 15  # Pénalité forte pour breakouts sans volume
                             context['details'].append(f"Volume insuffisant breakout ({volume_ratio:.1f}x) - {context_name} (min: {self.min_volume_multiplier})")
                         
-                except Exception as e:
+                except Exception:
                     # Fallback sur logique standard si erreur contextuelle
                     if volume_ratio >= self.min_volume_multiplier:
                         if volume_ratio >= 2.0:

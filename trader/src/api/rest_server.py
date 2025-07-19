@@ -4,8 +4,6 @@ Expose des endpoints pour interagir avec le système de trading.
 """
 import logging
 import threading
-from typing import Optional
-import time
 import psutil
 import os
 from flask import Flask

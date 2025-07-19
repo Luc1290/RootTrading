@@ -5,7 +5,6 @@ Rôle : Valider la faisabilité des signaux et les transmettre au trader.
 import logging
 import time
 from typing import Dict, Any, Optional
-from decimal import Decimal
 
 from shared.src.redis_client import RedisClient
 from shared.src.enums import OrderSide

@@ -7,8 +7,8 @@ import asyncio
 import logging
 import json
 import time
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, Any
+from datetime import datetime
+from typing import Dict, List, Optional, Any
 import aiohttp
 from aiohttp import ClientTimeout
 import sys
@@ -654,7 +654,7 @@ class UltraDataFetcher:
                 if gap_filling_plan:
                     # Estimer le temps de remplissage
                     estimated_time = detector.estimate_fill_time(gap_filling_plan)
-                    logger.info(f"🎯 Mode intelligent: Remplissage ciblé des gaps uniquement")
+                    logger.info("🎯 Mode intelligent: Remplissage ciblé des gaps uniquement")
                     logger.info(f"⏱️ Temps estimé: {estimated_time:.1f}s ({estimated_time/60:.1f} minutes)")
                 else:
                     logger.info("✅ Aucun gap détecté - données déjà complètes")
@@ -927,7 +927,7 @@ class UltraDataFetcher:
         Returns:
             Liste des points enrichis avec indicateurs calculés correctement
         """
-        from shared.src.technical_indicators import indicator_cache, indicators, TechnicalIndicators
+        from shared.src.technical_indicators import indicator_cache, TechnicalIndicators
         import numpy as np
         
         enriched_points = []
@@ -1076,7 +1076,6 @@ class UltraDataFetcher:
         Returns:
             Dictionnaire avec tous les indicateurs calculés
         """
-        from shared.src.technical_indicators import indicators
         
         try:
             # Créer des listes avec ce point unique pour compatibilité avec les fonctions existantes

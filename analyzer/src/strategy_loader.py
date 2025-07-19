@@ -7,14 +7,12 @@ import importlib
 import os
 import sys
 import inspect
-from typing import Dict, List, Any, Type, Optional
-import time
+from typing import Dict, List, Any, Optional
 
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
 from shared.src.config import SYMBOLS
-from shared.src.schemas import StrategySignal
 
 from analyzer.strategies.base_strategy import BaseStrategy
 

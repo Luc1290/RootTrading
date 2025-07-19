@@ -2,7 +2,6 @@
 Module Kafka Producer pour le Gateway.
 Convertit les données WebSocket Binance en messages Kafka.
 """
-import json
 import logging
 import time
 from typing import Dict, Any, Optional

@@ -6,7 +6,7 @@ Contient toutes les méthodes de validation extraites du signal_aggregator princ
 
 import logging
 from typing import Dict, List, Any, Optional
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 import json
 import numpy as np
 
@@ -481,11 +481,11 @@ class SignalValidator:
             # Récupérer les prix récents
             try:
                 symbol_prices = self.redis.lrange(f"prices_1h:{symbol}", 0, 24)
-                btc_prices = self.redis.lrange(f"prices_1h:BTCUSDC", 0, 24)
+                btc_prices = self.redis.lrange("prices_1h:BTCUSDC", 0, 24)
             except AttributeError:
                 # Fallback pour RedisClientPool customisé
                 symbol_prices_str = self.redis.get(f"prices_1h:{symbol}")
-                btc_prices_str = self.redis.get(f"prices_1h:BTCUSDC")
+                btc_prices_str = self.redis.get("prices_1h:BTCUSDC")
                 
                 symbol_prices = []
                 btc_prices = []
@@ -541,7 +541,7 @@ class SignalValidator:
             min_confidence = min_confidence_threshold
         
         if signal.get('confidence', 0) < min_confidence:
-            logger.debug(f"Signal filtré: confiance insuffisante pendant heures creuses")
+            logger.debug("Signal filtré: confiance insuffisante pendant heures creuses")
             return False
         
         # 2. Vérifier le spread bid/ask

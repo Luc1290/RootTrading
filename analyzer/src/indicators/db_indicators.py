@@ -2,12 +2,9 @@
 Module pour récupérer les indicateurs techniques depuis la base de données
 au lieu de les recalculer. Optimise les performances et évite la duplication.
 """
-import asyncio
-import asyncpg
 import numpy as np
 import pandas as pd
-from typing import Dict, Optional, List, Tuple
-from datetime import datetime, timedelta
+from typing import Dict, Optional, List
 import logging
 import os
 import sys

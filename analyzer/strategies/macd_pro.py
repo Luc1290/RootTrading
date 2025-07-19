@@ -4,7 +4,6 @@ MACD avec détection de divergences, analyse de momentum et confluence multi-tim
 Intègre histogramme, signal quality, momentum acceleration et structure de marché.
 """
 import logging
-from datetime import datetime
 from typing import Dict, Any, Optional, List
 import numpy as np
 import pandas as pd
@@ -13,11 +12,11 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
-from shared.src.enums import OrderSide, SignalStrength
+from shared.src.enums import OrderSide
 from shared.src.config import (
     REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB,
     MACD_HISTOGRAM_VERY_STRONG, MACD_HISTOGRAM_STRONG, MACD_HISTOGRAM_MODERATE, 
-    MACD_HISTOGRAM_WEAK, MACD_HISTOGRAM_NEUTRAL
+    MACD_HISTOGRAM_WEAK
 )
 from shared.src.volume_context_detector import volume_context_detector
 
@@ -25,9 +24,9 @@ from .base_strategy import BaseStrategy
 
 # Import des modules d'analyse avancée
 try:
-    import redis
+    import redis  # type: ignore
 except ImportError:
-    redis = None
+    redis = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +46,7 @@ class MACDProStrategy(BaseStrategy):
     - Zero line crosses et signal line crosses
     """
     
-    def __init__(self, symbol: str, params: Dict[str, Any] = None):
+    def __init__(self, symbol: str, params: Optional[Dict[str, Any]] = None):
         super().__init__(symbol, params)
         
         # Paramètres MACD avancés - SEUILS STANDARDISÉS
@@ -59,9 +58,9 @@ class MACDProStrategy(BaseStrategy):
         self.confluence_threshold = symbol_params.get('confluence_threshold', 30.0)  # ASSOUPLI de 40 à 30
         
         # Historique pour divergences
-        self.price_history = []
-        self.macd_line_history = []
-        self.macd_histogram_history = []
+        self.price_history: List[float] = []
+        self.macd_line_history: List[float] = []
+        self.macd_histogram_history: List[float] = []
         self.max_history = 20
         
         # Connexion Redis pour analyses avancées
@@ -128,20 +127,26 @@ class MACDProStrategy(BaseStrategy):
             williams_r = self._get_current_indicator(indicators, 'williams_r')
             
             # Mettre à jour l'historique
-            self._update_history(current_price, current_macd_line, current_histogram)
+            if current_macd_line is not None and current_histogram is not None:
+                self._update_history(current_price, current_macd_line, current_histogram)
             
             # Analyser les signaux MACD
-            macd_analysis = self._analyze_macd_signals(
-                current_macd_line, current_macd_signal, current_histogram,
-                previous_macd_line, previous_macd_signal, previous_histogram
-            )
+            if all(x is not None for x in [current_macd_line, current_macd_signal, current_histogram,
+                                           previous_macd_line, previous_macd_signal, previous_histogram]):
+                macd_analysis = self._analyze_macd_signals(
+                    current_macd_line, current_macd_signal, current_histogram,
+                    previous_macd_line, previous_macd_signal, previous_histogram
+                )
+            else:
+                return None
             
             # Analyser les divergences
             divergence_analysis = self._detect_macd_divergences()
             
             # Analyser le contexte
             context_analysis = self._analyze_macd_context(
-                symbol, adx, volume_ratio, momentum_10, rsi, williams_r
+                symbol, adx or 0.0, volume_ratio or 0.0, momentum_10 or 0.0, 
+                rsi or 0.0, williams_r or 0.0
             )
             
             # NOUVEAU: Calculer la position du prix dans son range
@@ -155,7 +160,7 @@ class MACDProStrategy(BaseStrategy):
                 if not self.should_filter_signal_by_price_position(OrderSide.BUY, price_position, df):
                     confidence = self._calculate_bullish_confidence(
                         macd_analysis, divergence_analysis, context_analysis, 
-                        volume_ratio, current_histogram
+                        volume_ratio or 0.0, current_histogram or 0.0
                     )
                     
                     signal = self.create_signal(
@@ -191,7 +196,7 @@ class MACDProStrategy(BaseStrategy):
                 if not self.should_filter_signal_by_price_position(OrderSide.SELL, price_position, df):
                     confidence = self._calculate_bearish_confidence(
                         macd_analysis, divergence_analysis, context_analysis, 
-                        volume_ratio, current_histogram
+                        volume_ratio or 0.0, current_histogram or 0.0
                     )
                     
                     signal = self.create_signal(
@@ -375,9 +380,9 @@ class MACDProStrategy(BaseStrategy):
         return divergence
     
     def _analyze_macd_context(self, symbol: str, adx: float, volume_ratio: float, 
-                             momentum_10: float, rsi: float, williams_r: float) -> Dict:
+                             momentum_10: float, rsi: float, williams_r: float) -> Dict[str, Any]:
         """Analyse le contexte pour valider les signaux MACD"""
-        context = {
+        context: Dict[str, Any] = {
             'score': 0.0,
             'confidence_boost': 0.0,
             'confluence_score': 0.0,
@@ -389,19 +394,27 @@ class MACDProStrategy(BaseStrategy):
             from shared.src.config import ADX_STRONG_TREND_THRESHOLD, ADX_WEAK_TREND_THRESHOLD
             if adx and adx >= self.min_adx:
                 if adx >= ADX_STRONG_TREND_THRESHOLD:
-                    context['score'] += 25
-                    context['confidence_boost'] += 0.08
-                    context['details'].append(f"ADX fort ({adx:.1f})")
+                    context['score'] = float(context['score']) + 25
+                    context['confidence_boost'] = float(context['confidence_boost']) + 0.08
+                    details_list = context.get('details', [])
+                    if isinstance(details_list, list):
+                        details_list.append(f"ADX fort ({adx:.1f})")
                 else:
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
-                    context['details'].append(f"ADX modéré ({adx:.1f})")
+                    context['score'] = float(context['score']) + 15
+                    context['confidence_boost'] = float(context['confidence_boost']) + 0.05
+                    details_list = context.get('details', [])
+                    if isinstance(details_list, list):
+                        details_list.append(f"ADX modéré ({adx:.1f})")
             elif adx and adx >= ADX_WEAK_TREND_THRESHOLD:
-                context['score'] += 5
-                context['details'].append(f"ADX faible ({adx:.1f})")
+                context['score'] = float(context['score']) + 5
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"ADX faible ({adx:.1f})")
             else:
-                context['score'] -= 10
-                context['details'].append(f"ADX insuffisant ({adx or 0:.1f})")
+                context['score'] = float(context['score']) - 10
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append(f"ADX insuffisant ({adx or 0:.1f})")
             
             # 2. Volume confirmation - SEUILS CONTEXTUELS ADAPTATIFS
             if volume_ratio:
@@ -409,9 +422,9 @@ class MACDProStrategy(BaseStrategy):
                     # Détection du contexte market pour volume adaptatif
                     contextual_threshold, context_name, contextual_score = volume_context_detector.get_contextual_volume_threshold(
                         base_volume_ratio=volume_ratio,
-                        rsi=latest_data.get('rsi'),
-                        cci=latest_data.get('cci'),
-                        adx=latest_data.get('adx'),
+                        rsi=rsi,
+                        cci=0.0,
+                        adx=adx,
                         signal_type="BUY"
                     )
                     
@@ -421,81 +434,113 @@ class MACDProStrategy(BaseStrategy):
                     
                     # Scoring contextuel du volume
                     if volume_ratio >= 2.0:  # Excellent absolu
-                        context['score'] += 30
-                        context['confidence_boost'] += 0.12
-                        context['details'].append(f"Volume excellent ({volume_ratio:.1f}x) - {context_name}")
+                        context['score'] = float(context['score']) + 30
+                        context['confidence_boost'] = float(context['confidence_boost']) + 0.12
+                        details_list = context.get('details', [])
+                        if isinstance(details_list, list):
+                            details_list.append(f"Volume excellent ({volume_ratio:.1f}x) - {context_name}")
                     elif volume_ratio >= 1.5:  # Très bon
-                        context['score'] += 25
-                        context['confidence_boost'] += 0.1
-                        context['details'].append(f"Volume très bon ({volume_ratio:.1f}x) - {context_name}")
+                        context['score'] = float(context['score']) + 25
+                        context['confidence_boost'] = float(context['confidence_boost']) + 0.1
+                        details_list = context.get('details', [])
+                        if isinstance(details_list, list):
+                            details_list.append(f"Volume très bon ({volume_ratio:.1f}x) - {context_name}")
                     elif volume_ratio >= 1.2:  # Bon
-                        context['score'] += 20
-                        context['confidence_boost'] += 0.08
-                        context['details'].append(f"Volume bon ({volume_ratio:.1f}x) - {context_name}")
+                        context['score'] = float(context['score']) + 20
+                        context['confidence_boost'] = float(context['confidence_boost']) + 0.08
+                        details_list = context.get('details', [])
+                        if isinstance(details_list, list):
+                            details_list.append(f"Volume bon ({volume_ratio:.1f}x) - {context_name}")
                     elif volume_ratio >= contextual_threshold:  # Contextuel acceptable
                         # Score basé sur la qualité contextuelle
                         score_bonus = int(contextual_score * 20)  # 0-20 points
                         confidence_bonus = contextual_score * 0.06  # 0-0.06 boost
-                        context['score'] += score_bonus
-                        context['confidence_boost'] += confidence_bonus
-                        context['details'].append(f"Volume {volume_quality.lower()} ({volume_ratio:.1f}x) - {context_name}")
+                        context['score'] = float(context['score']) + score_bonus
+                        context['confidence_boost'] = float(context['confidence_boost']) + confidence_bonus
+                        details_list = context.get('details', [])
+                        if isinstance(details_list, list):
+                            details_list.append(f"Volume {volume_quality.lower()} ({volume_ratio:.1f}x) - {context_name}")
                     else:
                         # En dessous du seuil contextuel mais pas forcément éliminatoire
                         penalty = min(5, int((1 - volume_ratio/contextual_threshold) * 10))
-                        context['score'] -= penalty
-                        context['details'].append(f"Volume {volume_quality.lower()} ({volume_ratio:.1f}x) - {context_name}")
+                        context['score'] = float(context['score']) - penalty
+                        details_list = context.get('details', [])
+                        if isinstance(details_list, list):
+                            details_list.append(f"Volume {volume_quality.lower()} ({volume_ratio:.1f}x) - {context_name}")
                         
-                except Exception as e:
+                except Exception:
                     # Fallback sur la logique standard si erreur
                     if volume_ratio >= 1.0:
-                        context['score'] += 15
-                        context['confidence_boost'] += 0.05
-                        context['details'].append(f"Volume acceptable ({volume_ratio:.1f}x) - standard")
+                        context['score'] = float(context['score']) + 15
+                        context['confidence_boost'] = float(context['confidence_boost']) + 0.05
+                        details_list = context.get('details', [])
+                        if isinstance(details_list, list):
+                            details_list.append(f"Volume acceptable ({volume_ratio:.1f}x) - standard")
                     else:
-                        context['score'] -= 5
-                        context['details'].append(f"Volume faible ({volume_ratio:.1f}x) - standard")
+                        context['score'] = float(context['score']) - 5
+                        details_list = context.get('details', [])
+                        if isinstance(details_list, list):
+                            details_list.append(f"Volume faible ({volume_ratio:.1f}x) - standard")
                         
             else:
-                context['score'] -= 5
-                context['details'].append("Volume non disponible")
+                context['score'] = float(context['score']) - 5
+                details_list = context.get('details', [])
+                if isinstance(details_list, list):
+                    details_list.append("Volume non disponible")
             
             # 3. Momentum général
             if momentum_10:
                 momentum_strength = abs(momentum_10)
                 if momentum_strength > 1.2:
-                    context['score'] += 20
-                    context['confidence_boost'] += 0.08
-                    context['details'].append(f"Momentum très fort ({momentum_10:.2f})")
+                    context['score'] = float(context['score']) + 20
+                    context['confidence_boost'] = float(context['confidence_boost']) + 0.08
+                    details_list = context.get('details', [])
+                    if isinstance(details_list, list):
+                        details_list.append(f"Momentum très fort ({momentum_10:.2f})")
                 elif momentum_strength > 0.6:
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
-                    context['details'].append(f"Momentum fort ({momentum_10:.2f})")
+                    context['score'] = float(context['score']) + 15
+                    context['confidence_boost'] = float(context['confidence_boost']) + 0.05
+                    details_list = context.get('details', [])
+                    if isinstance(details_list, list):
+                        details_list.append(f"Momentum fort ({momentum_10:.2f})")
                 elif momentum_strength > 0.3:
-                    context['score'] += 10
-                    context['details'].append(f"Momentum modéré ({momentum_10:.2f})")
+                    context['score'] = float(context['score']) + 10
+                    details_list = context.get('details', [])
+                    if isinstance(details_list, list):
+                        details_list.append(f"Momentum modéré ({momentum_10:.2f})")
                 else:
-                    context['score'] += 2
-                    context['details'].append(f"Momentum faible ({momentum_10:.2f})")
+                    context['score'] = float(context['score']) + 2
+                    details_list = context.get('details', [])
+                    if isinstance(details_list, list):
+                        details_list.append(f"Momentum faible ({momentum_10:.2f})")
             
             # 4. RSI support
             if rsi:
                 if rsi <= 35 or rsi >= 65:  # Zones favorables pour MACD
-                    context['score'] += 15
-                    context['confidence_boost'] += 0.05
-                    context['details'].append(f"RSI favorable ({rsi:.1f})")
+                    context['score'] = float(context['score']) + 15
+                    context['confidence_boost'] = float(context['confidence_boost']) + 0.05
+                    details_list = context.get('details', [])
+                    if isinstance(details_list, list):
+                        details_list.append(f"RSI favorable ({rsi:.1f})")
                 else:
-                    context['score'] += 5
-                    context['details'].append(f"RSI neutre ({rsi:.1f})")
+                    context['score'] = float(context['score']) + 5
+                    details_list = context.get('details', [])
+                    if isinstance(details_list, list):
+                        details_list.append(f"RSI neutre ({rsi:.1f})")
             
             # 5. Williams %R timing
             if williams_r:
                 if williams_r <= -75 or williams_r >= -25:
-                    context['score'] += 10
-                    context['confidence_boost'] += 0.03
-                    context['details'].append(f"Williams timing ({williams_r:.1f})")
+                    context['score'] = float(context['score']) + 10
+                    context['confidence_boost'] = float(context['confidence_boost']) + 0.03
+                    details_list = context.get('details', [])
+                    if isinstance(details_list, list):
+                        details_list.append(f"Williams timing ({williams_r:.1f})")
                 else:
-                    context['score'] += 5
-                    context['details'].append(f"Williams neutre ({williams_r:.1f})")
+                    context['score'] = float(context['score']) + 5
+                    details_list = context.get('details', [])
+                    if isinstance(details_list, list):
+                        details_list.append(f"Williams neutre ({williams_r:.1f})")
             
             # 6. Confluence multi-timeframes
             if self.redis_client:
@@ -505,17 +550,21 @@ class MACDProStrategy(BaseStrategy):
                     context['confluence_score'] = confluence_score
                     
                     if confluence_score >= 60:
-                        context['score'] += 20
-                        context['confidence_boost'] += 0.08
-                        context['details'].append(f"Confluence forte ({confluence_score:.1f}%)")
+                        context['score'] = float(context['score']) + 20
+                        context['confidence_boost'] = float(context['confidence_boost']) + 0.08
+                        details_list = context.get('details', [])
+                        if isinstance(details_list, list):
+                            details_list.append(f"Confluence forte ({confluence_score:.1f}%)")
                     elif confluence_score >= 45:
-                        context['score'] += 10
-                        context['confidence_boost'] += 0.03
-                        context['details'].append(f"Confluence modérée ({confluence_score:.1f}%)")
+                        context['score'] = float(context['score']) + 10
+                        context['confidence_boost'] = float(context['confidence_boost']) + 0.03
+                        details_list = context.get('details', [])
+                        if isinstance(details_list, list):
+                            details_list.append(f"Confluence modérée ({confluence_score:.1f}%)")
             
             # Normaliser
-            context['score'] = max(0, min(100, context['score']))
-            context['confidence_boost'] = max(0, min(0.25, context['confidence_boost']))
+            context['score'] = max(0.0, min(100.0, float(context['score'])))
+            context['confidence_boost'] = max(0.0, min(0.25, float(context['confidence_boost'])))
             
         except Exception as e:
             logger.error(f"❌ Erreur analyse contexte MACD: {e}")
@@ -678,7 +727,7 @@ class MACDProStrategy(BaseStrategy):
             
             if cached:
                 import json
-                return json.loads(cached)
+                return json.loads(str(cached))
             
         except Exception as e:
             logger.debug(f"Confluence non disponible pour {symbol}: {e}")

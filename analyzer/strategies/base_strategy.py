@@ -17,7 +17,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
 from shared.src.enums import OrderSide, SignalStrength
-from shared.src.schemas import StrategySignal, MarketData
+from shared.src.schemas import StrategySignal
 
 # Importer le module de protection contre les crashes
 from .crash_protection import CrashProtection

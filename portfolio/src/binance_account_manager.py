@@ -8,11 +8,9 @@ import time
 import hmac
 import hashlib
 import requests  # type: ignore
-import json
-from typing import Dict, List, Any, Optional, Tuple, Union
+from typing import Dict, List, Any, Optional, Union
 import traceback
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
 from functools import lru_cache
 
 # Configuration du logging

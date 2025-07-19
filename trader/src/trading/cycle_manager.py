@@ -328,7 +328,7 @@ class CycleManager:
                 
                 try:
                     metadata = json.loads(result[4]) if result[4] else {}
-                except:
+                except (json.JSONDecodeError, TypeError):
                     metadata = {}
                 
                 # Calculer le nouveau prix moyen pondéré
@@ -395,11 +395,10 @@ class CycleManager:
                     return
                 
                 entry_price = Decimal(str(result[0]))
-                quantity = Decimal(str(result[1]))
                 
                 try:
                     metadata = json.loads(result[2]) if result[2] else {}
-                except:
+                except (json.JSONDecodeError, TypeError):
                     metadata = {}
                 
                 # Calculer le P&L
@@ -478,7 +477,7 @@ class CycleManager:
                 
                 try:
                     metadata = json.loads(cycle_data.get('metadata', '{}') or '{}')
-                except:
+                except (json.JSONDecodeError, TypeError):
                     metadata = {}
                 
                 metadata['partial_from_cycle'] = cycle_id

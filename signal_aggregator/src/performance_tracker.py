@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import logging
-from typing import Dict, Optional
+from typing import Dict
 from datetime import datetime, timedelta
 import json
 import numpy as np

@@ -799,7 +799,7 @@ class TechnicalIndicators:
         """
         try:
             # Importer la configuration
-            from shared.src.config import ADX_HYBRID_MODE, ADX_SMOOTHING_PERIOD
+            from shared.src.config import ADX_HYBRID_MODE
             
             # Calculer ADX standard
             raw_adx, plus_di, minus_di = self.calculate_adx(highs, lows, closes, period)

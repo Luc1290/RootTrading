@@ -5,7 +5,7 @@ Reçoit les données de marché en temps réel et les transmet au Kafka producer
 import json
 import logging
 import time
-from typing import Dict, Any, Callable, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple
 import asyncio
 import websockets
 from websockets.exceptions import ConnectionClosed, InvalidStatus
@@ -15,7 +15,7 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
-from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY, SYMBOLS, INTERVAL, KAFKA_TOPIC_MARKET_DATA
+from shared.src.config import SYMBOLS, INTERVAL
 from shared.src.kafka_client import KafkaClient
 from gateway.src.kafka_producer import get_producer   # NEW
 

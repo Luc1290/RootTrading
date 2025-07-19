@@ -10,20 +10,16 @@ import time
 import datetime
 import signal
 import threading
-from typing import Dict, List, Any, Optional, Callable
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from typing import Dict, List, Any, Optional
 import queue
-from functools import partial
 from multiprocessing import Manager as MPManager
 
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
 from shared.src.config import SYMBOLS
-from shared.src.schemas import StrategySignal
-from shared.src.enums import OrderSide, SignalStrength
 
-from analyzer.src.strategy_loader import StrategyLoader, get_strategy_loader
+from analyzer.src.strategy_loader import get_strategy_loader
 from analyzer.src.redis_subscriber import RedisSubscriber
 
 # Configuration du logging

@@ -1,7 +1,7 @@
 """
 Définition des énumérations partagées entre les microservices.
 """
-from enum import Enum, auto
+from enum import Enum
 
 class OrderSide(str, Enum):
     """Type d'ordre: achat ou vente."""
