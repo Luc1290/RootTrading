@@ -476,7 +476,7 @@ class PortfolioModel:
         
         result = self.db.execute_query(query, fetch_all=True, retry=2)
         
-        if not result:
+        if not result or not isinstance(result, list):
             return []
         
         # Convertir en objets AssetBalance
@@ -603,7 +603,7 @@ class PortfolioModel:
         """
         known_assets_result = self.db.execute_query(known_assets_query, fetch_all=True)
         
-        if known_assets_result:
+        if known_assets_result and isinstance(known_assets_result, list):
             # Pour chaque actif connu mais absent de Binance, ajouter une entrée à 0
             for row in known_assets_result:
                 asset = row['asset']
@@ -693,7 +693,7 @@ class PortfolioModel:
         # Exécuter la requête
         result = self.db.execute_query(query, tuple(params), fetch_all=True)
         
-        return result or []
+        return result if isinstance(result, list) else []
     
     def get_performance_stats(self, period: str = 'daily', 
                              limit: int = 30) -> List[Dict[str, Any]]:
@@ -741,7 +741,7 @@ class PortfolioModel:
         if result:
             SharedCache.set(cache_key, result)
             
-        return result or []
+        return result if isinstance(result, list) else []
     
     def get_strategy_performance(self) -> List[Dict[str, Any]]:
         """
@@ -766,7 +766,7 @@ class PortfolioModel:
         if result:
             SharedCache.set(cache_key, result)
             
-        return result or []
+        return result if isinstance(result, list) else []
     
     def get_symbol_performance(self) -> List[Dict[str, Any]]:
         """
@@ -791,7 +791,7 @@ class PortfolioModel:
         if result:
             SharedCache.set(cache_key, result)
             
-        return result or []
+        return result if isinstance(result, list) else []
     
     def _cleanup_old_records(self) -> None:
         """
@@ -855,7 +855,7 @@ class PortfolioModel:
             params.append(name)
             
         result = self.db.execute_query(query, tuple(params), fetch_all=True)
-        return result or []
+        return result if isinstance(result, list) else []
 
     def close(self) -> None:
         """

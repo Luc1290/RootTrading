@@ -330,7 +330,7 @@ class TechnicalIndicators:
         min_required = max(self.macd_slow, self.macd_fast) + self.macd_signal
         
         if len(prices_array) < min_required:
-            empty_series = [None] * len(prices_array)
+            empty_series: List[Optional[float]] = [None] * len(prices_array)
             return {
                 'macd_line': empty_series,
                 'macd_signal': empty_series, 
@@ -358,10 +358,15 @@ class TechnicalIndicators:
         ema_fast_series = self.calculate_ema_series(prices_array, self.macd_fast)
         ema_slow_series = self.calculate_ema_series(prices_array, self.macd_slow)
         
-        macd_line_series = []
+        macd_line_series: List[Optional[float]] = []
         for i in range(len(prices_array)):
             if ema_fast_series[i] is not None and ema_slow_series[i] is not None:
-                macd_line_series.append(ema_fast_series[i] - ema_slow_series[i])
+                # Type assertions for mypy
+                fast_val = ema_fast_series[i]
+                slow_val = ema_slow_series[i]
+                assert fast_val is not None
+                assert slow_val is not None
+                macd_line_series.append(fast_val - slow_val)
             else:
                 macd_line_series.append(None)
         
@@ -369,10 +374,15 @@ class TechnicalIndicators:
         macd_signal_series = self.calculate_ema_series(macd_line_series, self.macd_signal)
         
         # Histogram = MACD - Signal
-        macd_histogram_series = []
+        macd_histogram_series: List[Optional[float]] = []
         for i in range(len(prices_array)):
             if macd_line_series[i] is not None and macd_signal_series[i] is not None:
-                macd_histogram_series.append(macd_line_series[i] - macd_signal_series[i])
+                # Type assertions for mypy
+                line_val = macd_line_series[i]
+                signal_val = macd_signal_series[i]
+                assert line_val is not None
+                assert signal_val is not None
+                macd_histogram_series.append(line_val - signal_val)
             else:
                 macd_histogram_series.append(None)
         
@@ -1367,7 +1377,9 @@ class TechnicalIndicators:
             
             # Métriques additionnelles
             if len(closes) >= 10:
-                indicators['momentum_10'] = self._calculate_momentum(closes, 10)
+                momentum_val = self._calculate_momentum(closes, 10)
+                if momentum_val is not None:
+                    indicators['momentum_10'] = momentum_val
                 
             if len(volumes) >= 20:
                 vol_analysis = self._analyze_volume(volumes)
@@ -2070,8 +2082,11 @@ def calculate_indicators_incremental(symbol: str, timeframe: str, current_candle
     Returns:
         Dict avec tous les indicateurs calculés de manière incrémentale
     """
-    result = {}
+    result: Dict[str, Any] = {}
     current_price = current_candle['close']
+    
+    if current_price is None:
+        return result
     
     # EMA 7, 26, 99
     for period in [7, 26, 99]:

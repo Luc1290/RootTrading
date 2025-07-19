@@ -176,6 +176,11 @@ class IndicatorCoherenceValidator:
             if not all([macd_line is not None, macd_signal is not None, macd_histogram is not None]):
                 return 0.5, "MACD incomplet"
             
+            # Assertions pour mypy
+            assert macd_line is not None
+            assert macd_signal is not None
+            assert macd_histogram is not None
+            
             macd_line_val = float(macd_line)
             macd_signal_val = float(macd_signal)
             macd_histogram_val = float(macd_histogram)
@@ -223,6 +228,11 @@ class IndicatorCoherenceValidator:
             
             if not all([ema_7 is not None, ema_26 is not None, ema_99 is not None]):
                 return 0.5, "EMAs incomplètes"
+            
+            # Assertions pour mypy
+            assert ema_7 is not None
+            assert ema_26 is not None
+            assert ema_99 is not None
             
             ema_7_val = float(ema_7)
             ema_26_val = float(ema_26)

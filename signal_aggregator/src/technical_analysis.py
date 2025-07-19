@@ -6,7 +6,7 @@ Contient toutes les méthodes d'analyse technique extraites du signal_aggregator
 
 import logging
 import math
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -488,7 +488,7 @@ class TechnicalAnalysis:
             logger.error(f"Erreur récupération ADX pour {symbol}: {e}")
             return None
     
-    def get_or_calculate_indicator_incremental(self, symbol: str, current_candle: Dict, indicator_type: str, **params) -> Union[Optional[float], Dict[str, float | None]]:
+    def get_or_calculate_indicator_incremental(self, symbol: str, current_candle: Dict, indicator_type: str, **params) -> Union[Optional[float], Dict[str, Union[float, None]]]:
         """
         Méthode générique pour calculer n'importe quel indicateur de manière incrémentale.
         Évite les dents de scie pour MACD, RSI, ATR, Stochastic, etc.

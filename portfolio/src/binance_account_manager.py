@@ -9,7 +9,7 @@ import hmac
 import hashlib
 import requests  # type: ignore
 import json
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Union
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
@@ -81,7 +81,7 @@ class BinanceAccountManager:
         return signature
     
     def _make_request(self, endpoint: str, method: str = "GET", signed: bool = False, 
-                     params: Optional[Dict[str, Any]] = None, max_retries: int = 3) -> Dict[str, Any]:
+                     params: Optional[Dict[str, Any]] = None, max_retries: int = 3) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """
         Effectue une requête vers l'API Binance avec retry automatique.
         
@@ -269,6 +269,7 @@ class BinanceAccountManager:
         try:
             endpoint = "/api/v3/ticker/price"
             response = self._make_request(endpoint)
+            assert isinstance(response, list), "Response should be a list for ticker/price endpoint"
             
             # Convertir la réponse en dictionnaire {symbole: prix}
             prices = {}

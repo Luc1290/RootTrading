@@ -440,7 +440,7 @@ class DataManager:
             async with self.postgres_pool.acquire() as conn:
                 rows = await conn.fetch(query, start_time)
                 
-                pnl_cumsum = 0
+                pnl_cumsum = 0.0
                 balances = []
                 pnl_values = []
                 pnl_percentages = []

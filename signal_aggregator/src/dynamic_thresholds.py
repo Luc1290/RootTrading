@@ -2,7 +2,7 @@
 Système de seuils dynamiques basés sur les percentiles historiques
 """
 import numpy as np
-from typing import List, Dict, Optional, Deque
+from typing import List, Dict, Optional, Deque, Any
 from collections import deque
 from datetime import datetime, timedelta
 import json

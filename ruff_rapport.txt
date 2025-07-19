@@ -1,0 +1,2909 @@
+analyzer\src\indicators\db_indicators.py:5:8: F401 [*] `asyncio` imported but unused
+  |
+3 | au lieu de les recalculer. Optimise les performances et évite la duplication.
+4 | """
+5 | import asyncio
+  |        ^^^^^^^ F401
+6 | import asyncpg
+7 | import numpy as np
+  |
+  = help: Remove unused import: `asyncio`
+
+analyzer\src\indicators\db_indicators.py:6:8: F401 [*] `asyncpg` imported but unused
+  |
+4 | """
+5 | import asyncio
+6 | import asyncpg
+  |        ^^^^^^^ F401
+7 | import numpy as np
+8 | import pandas as pd
+  |
+  = help: Remove unused import: `asyncpg`
+
+analyzer\src\indicators\db_indicators.py:9:42: F401 [*] `typing.Tuple` imported but unused
+   |
+ 7 | import numpy as np
+ 8 | import pandas as pd
+ 9 | from typing import Dict, Optional, List, Tuple
+   |                                          ^^^^^ F401
+10 | from datetime import datetime, timedelta
+11 | import logging
+   |
+   = help: Remove unused import: `typing.Tuple`
+
+analyzer\src\indicators\db_indicators.py:10:22: F401 [*] `datetime.datetime` imported but unused
+   |
+ 8 | import pandas as pd
+ 9 | from typing import Dict, Optional, List, Tuple
+10 | from datetime import datetime, timedelta
+   |                      ^^^^^^^^ F401
+11 | import logging
+12 | import os
+   |
+   = help: Remove unused import
+
+analyzer\src\indicators\db_indicators.py:10:32: F401 [*] `datetime.timedelta` imported but unused
+   |
+ 8 | import pandas as pd
+ 9 | from typing import Dict, Optional, List, Tuple
+10 | from datetime import datetime, timedelta
+   |                                ^^^^^^^^^ F401
+11 | import logging
+12 | import os
+   |
+   = help: Remove unused import
+
+analyzer\src\main.py:13:35: F401 [*] `flask.request` imported but unused
+   |
+11 | import threading
+12 | import psutil
+13 | from flask import Flask, jsonify, request
+   |                                   ^^^^^^^ F401
+14 |
+15 | # Ajouter le répertoire parent au path pour les imports
+   |
+   = help: Remove unused import: `flask.request`
+
+analyzer\src\main.py:19:37: F401 [*] `shared.src.redis_client.RedisClient` imported but unused
+   |
+18 | from shared.src.config import SYMBOLS, LOG_LEVEL
+19 | from shared.src.redis_client import RedisClient
+   |                                     ^^^^^^^^^^^ F401
+20 |
+21 | from analyzer.src.optimized_analyzer import OptimizedAnalyzer
+   |
+   = help: Remove unused import: `shared.src.redis_client.RedisClient`
+
+analyzer\src\main.py:284:54: F401 [*] `shared.src.enums.OrderSide` imported but unused
+    |
+282 |                         # Convertir en StrategySignal et publier
+283 |                         from shared.src.schemas import StrategySignal, SignalStrength
+284 |                         from shared.src.enums import OrderSide
+    |                                                      ^^^^^^^^^ F401
+285 |                         
+286 |                         strategy_signal = StrategySignal(
+    |
+    = help: Remove unused import: `shared.src.enums.OrderSide`
+
+analyzer\src\multiproc_manager.py:13:47: F401 [*] `typing.Callable` imported but unused
+   |
+11 | import signal
+12 | import threading
+13 | from typing import Dict, List, Any, Optional, Callable
+   |                                               ^^^^^^^^ F401
+14 | from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+15 | import queue
+   |
+   = help: Remove unused import: `typing.Callable`
+
+analyzer\src\multiproc_manager.py:14:32: F401 [*] `concurrent.futures.ProcessPoolExecutor` imported but unused
+   |
+12 | import threading
+13 | from typing import Dict, List, Any, Optional, Callable
+14 | from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+   |                                ^^^^^^^^^^^^^^^^^^^ F401
+15 | import queue
+16 | from functools import partial
+   |
+   = help: Remove unused import
+
+analyzer\src\multiproc_manager.py:14:53: F401 [*] `concurrent.futures.ThreadPoolExecutor` imported but unused
+   |
+12 | import threading
+13 | from typing import Dict, List, Any, Optional, Callable
+14 | from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+   |                                                     ^^^^^^^^^^^^^^^^^^ F401
+15 | import queue
+16 | from functools import partial
+   |
+   = help: Remove unused import
+
+analyzer\src\multiproc_manager.py:14:73: F401 [*] `concurrent.futures.as_completed` imported but unused
+   |
+12 | import threading
+13 | from typing import Dict, List, Any, Optional, Callable
+14 | from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+   |                                                                         ^^^^^^^^^^^^ F401
+15 | import queue
+16 | from functools import partial
+   |
+   = help: Remove unused import
+
+analyzer\src\multiproc_manager.py:16:23: F401 [*] `functools.partial` imported but unused
+   |
+14 | from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+15 | import queue
+16 | from functools import partial
+   |                       ^^^^^^^ F401
+17 | from multiprocessing import Manager as MPManager
+   |
+   = help: Remove unused import: `functools.partial`
+
+analyzer\src\multiproc_manager.py:23:32: F401 [*] `shared.src.schemas.StrategySignal` imported but unused
+   |
+22 | from shared.src.config import SYMBOLS
+23 | from shared.src.schemas import StrategySignal
+   |                                ^^^^^^^^^^^^^^ F401
+24 | from shared.src.enums import OrderSide, SignalStrength
+   |
+   = help: Remove unused import: `shared.src.schemas.StrategySignal`
+
+analyzer\src\multiproc_manager.py:24:30: F401 [*] `shared.src.enums.OrderSide` imported but unused
+   |
+22 | from shared.src.config import SYMBOLS
+23 | from shared.src.schemas import StrategySignal
+24 | from shared.src.enums import OrderSide, SignalStrength
+   |                              ^^^^^^^^^ F401
+25 |
+26 | from analyzer.src.strategy_loader import StrategyLoader, get_strategy_loader
+   |
+   = help: Remove unused import
+
+analyzer\src\multiproc_manager.py:24:41: F401 [*] `shared.src.enums.SignalStrength` imported but unused
+   |
+22 | from shared.src.config import SYMBOLS
+23 | from shared.src.schemas import StrategySignal
+24 | from shared.src.enums import OrderSide, SignalStrength
+   |                                         ^^^^^^^^^^^^^^ F401
+25 |
+26 | from analyzer.src.strategy_loader import StrategyLoader, get_strategy_loader
+   |
+   = help: Remove unused import
+
+analyzer\src\multiproc_manager.py:26:42: F401 [*] `analyzer.src.strategy_loader.StrategyLoader` imported but unused
+   |
+24 | from shared.src.enums import OrderSide, SignalStrength
+25 |
+26 | from analyzer.src.strategy_loader import StrategyLoader, get_strategy_loader
+   |                                          ^^^^^^^^^^^^^^ F401
+27 | from analyzer.src.redis_subscriber import RedisSubscriber
+   |
+   = help: Remove unused import: `analyzer.src.strategy_loader.StrategyLoader`
+
+analyzer\src\optimized_analyzer.py:7:47: F401 [*] `typing.Union` imported but unused
+  |
+5 | import asyncio
+6 | import logging
+7 | from typing import Dict, List, Any, Optional, Union
+  |                                               ^^^^^ F401
+8 | import pandas as pd
+9 | import time
+  |
+  = help: Remove unused import: `typing.Union`
+
+analyzer\src\redis_subscriber.py:6:8: F401 [*] `json` imported but unused
+  |
+4 | """
+5 | import datetime
+6 | import json
+  |        ^^^^ F401
+7 | import logging
+8 | import threading
+  |
+  = help: Remove unused import: `json`
+
+analyzer\src\redis_subscriber.py:19:31: F401 [*] `shared.src.config.REDIS_HOST` imported but unused
+   |
+17 | sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+18 |
+19 | from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB, CHANNEL_PREFIX, SYMBOLS
+   |                               ^^^^^^^^^^ F401
+20 | from shared.src.redis_client import RedisClient
+21 | from shared.src.kafka_client import KafkaClient
+   |
+   = help: Remove unused import
+
+analyzer\src\redis_subscriber.py:19:43: F401 [*] `shared.src.config.REDIS_PORT` imported but unused
+   |
+17 | sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+18 |
+19 | from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB, CHANNEL_PREFIX, SYMBOLS
+   |                                           ^^^^^^^^^^ F401
+20 | from shared.src.redis_client import RedisClient
+21 | from shared.src.kafka_client import KafkaClient
+   |
+   = help: Remove unused import
+
+analyzer\src\redis_subscriber.py:19:55: F401 [*] `shared.src.config.REDIS_PASSWORD` imported but unused
+   |
+17 | sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+18 |
+19 | from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB, CHANNEL_PREFIX, SYMBOLS
+   |                                                       ^^^^^^^^^^^^^^ F401
+20 | from shared.src.redis_client import RedisClient
+21 | from shared.src.kafka_client import KafkaClient
+   |
+   = help: Remove unused import
+
+analyzer\src\redis_subscriber.py:19:71: F401 [*] `shared.src.config.REDIS_DB` imported but unused
+   |
+17 | sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+18 |
+19 | from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB, CHANNEL_PREFIX, SYMBOLS
+   |                                                                       ^^^^^^^^ F401
+20 | from shared.src.redis_client import RedisClient
+21 | from shared.src.kafka_client import KafkaClient
+   |
+   = help: Remove unused import
+
+analyzer\src\strategy_loader.py:10:37: F401 [*] `typing.Type` imported but unused
+   |
+ 8 | import sys
+ 9 | import inspect
+10 | from typing import Dict, List, Any, Type, Optional
+   |                                     ^^^^ F401
+11 | import time
+   |
+   = help: Remove unused import: `typing.Type`
+
+analyzer\src\strategy_loader.py:11:8: F401 [*] `time` imported but unused
+   |
+ 9 | import inspect
+10 | from typing import Dict, List, Any, Type, Optional
+11 | import time
+   |        ^^^^ F401
+12 |
+13 | # Ajouter le répertoire parent au path pour les imports
+   |
+   = help: Remove unused import: `time`
+
+analyzer\src\strategy_loader.py:17:32: F401 [*] `shared.src.schemas.StrategySignal` imported but unused
+   |
+16 | from shared.src.config import SYMBOLS
+17 | from shared.src.schemas import StrategySignal
+   |                                ^^^^^^^^^^^^^^ F401
+18 |
+19 | from analyzer.strategies.base_strategy import BaseStrategy
+   |
+   = help: Remove unused import: `shared.src.schemas.StrategySignal`
+
+analyzer\strategies\base_strategy.py:20:48: F401 [*] `shared.src.schemas.MarketData` imported but unused
+   |
+19 | from shared.src.enums import OrderSide, SignalStrength
+20 | from shared.src.schemas import StrategySignal, MarketData
+   |                                                ^^^^^^^^^^ F401
+21 |
+22 | # Importer le module de protection contre les crashes
+   |
+   = help: Remove unused import: `shared.src.schemas.MarketData`
+
+analyzer\strategies\bollinger_pro.py:7:22: F401 [*] `datetime.datetime` imported but unused
+  |
+5 | """
+6 | import logging
+7 | from datetime import datetime
+  |                      ^^^^^^^^ F401
+8 | from typing import Dict, Any, Optional, List, Union
+9 | import numpy as np
+  |
+  = help: Remove unused import: `datetime.datetime`
+
+analyzer\strategies\bollinger_pro.py:8:47: F401 [*] `typing.Union` imported but unused
+   |
+ 6 | import logging
+ 7 | from datetime import datetime
+ 8 | from typing import Dict, Any, Optional, List, Union
+   |                                               ^^^^^ F401
+ 9 | import numpy as np
+10 | import pandas as pd
+   |
+   = help: Remove unused import: `typing.Union`
+
+analyzer\strategies\bollinger_pro.py:16:41: F401 [*] `shared.src.enums.SignalStrength` imported but unused
+   |
+14 | sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+15 |
+16 | from shared.src.enums import OrderSide, SignalStrength
+   |                                         ^^^^^^^^^^^^^^ F401
+17 | from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB
+18 | from shared.src.volume_context_detector import volume_context_detector
+   |
+   = help: Remove unused import: `shared.src.enums.SignalStrength`
+
+analyzer\strategies\bollinger_pro.py:265:13: F841 Local variable `avg_width` is assigned to but never used
+    |
+264 |             current_width = self.bb_width_history[-1]
+265 |             avg_width = np.mean(self.bb_width_history[-5:])
+    |             ^^^^^^^^^ F841
+266 |             width_trend = np.mean(np.diff(self.bb_width_history[-5:]))
+    |
+    = help: Remove assignment to unused variable `avg_width`
+
+analyzer\strategies\bollinger_pro.py:384:37: F841 [*] Local variable `e` is assigned to but never used
+    |
+382 |                     context['confidence_boost'] = confidence_boost
+383 |                         
+384 |                 except Exception as e:
+    |                                     ^ F841
+385 |                     # Fallback sur logique standard si erreur contextuelle
+386 |                     score = float(context['score'])
+    |
+    = help: Remove assignment to unused variable `e`
+
+analyzer\strategies\breakout_pro.py:7:22: F401 [*] `datetime.datetime` imported but unused
+  |
+5 | """
+6 | import logging
+7 | from datetime import datetime
+  |                      ^^^^^^^^ F401
+8 | from typing import Dict, Any, Optional, List, Tuple, Union
+9 | import numpy as np
+  |
+  = help: Remove unused import: `datetime.datetime`
+
+analyzer\strategies\breakout_pro.py:8:47: F401 [*] `typing.Tuple` imported but unused
+   |
+ 6 | import logging
+ 7 | from datetime import datetime
+ 8 | from typing import Dict, Any, Optional, List, Tuple, Union
+   |                                               ^^^^^ F401
+ 9 | import numpy as np
+10 | import pandas as pd
+   |
+   = help: Remove unused import
+
+analyzer\strategies\breakout_pro.py:8:54: F401 [*] `typing.Union` imported but unused
+   |
+ 6 | import logging
+ 7 | from datetime import datetime
+ 8 | from typing import Dict, Any, Optional, List, Tuple, Union
+   |                                                      ^^^^^ F401
+ 9 | import numpy as np
+10 | import pandas as pd
+   |
+   = help: Remove unused import
+
+analyzer\strategies\breakout_pro.py:16:41: F401 [*] `shared.src.enums.SignalStrength` imported but unused
+   |
+14 | sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+15 |
+16 | from shared.src.enums import OrderSide, SignalStrength
+   |                                         ^^^^^^^^^^^^^^ F401
+17 | from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB
+18 | from shared.src.volume_context_detector import volume_context_detector
+   |
+   = help: Remove unused import: `shared.src.enums.SignalStrength`
+
+analyzer\strategies\breakout_pro.py:439:37: F841 [*] Local variable `e` is assigned to but never used
+    |
+437 | …                 context['details'].append(f"Volume insuffisant breakout ({volume_ratio:.1f}x) - {context_name} (min: {self.min_volu…
+438 | …             
+439 | …     except Exception as e:
+    |                           ^ F841
+440 | …         # Fallback sur logique standard si erreur contextuelle
+441 | …         if volume_ratio >= self.min_volume_multiplier:
+    |
+    = help: Remove assignment to unused variable `e`
+
+analyzer\strategies\crash_protection.py:8:17: F401 [*] `numpy` imported but unused
+   |
+ 7 | import pandas as pd
+ 8 | import numpy as np
+   |                 ^^ F401
+ 9 | from typing import Dict, List, Optional, Tuple
+10 | from datetime import datetime, timedelta
+   |
+   = help: Remove unused import: `numpy`
+
+analyzer\strategies\crash_protection.py:9:26: F401 [*] `typing.List` imported but unused
+   |
+ 7 | import pandas as pd
+ 8 | import numpy as np
+ 9 | from typing import Dict, List, Optional, Tuple
+   |                          ^^^^ F401
+10 | from datetime import datetime, timedelta
+11 | import logging
+   |
+   = help: Remove unused import
+
+analyzer\strategies\crash_protection.py:9:42: F401 [*] `typing.Tuple` imported but unused
+   |
+ 7 | import pandas as pd
+ 8 | import numpy as np
+ 9 | from typing import Dict, List, Optional, Tuple
+   |                                          ^^^^^ F401
+10 | from datetime import datetime, timedelta
+11 | import logging
+   |
+   = help: Remove unused import
+
+analyzer\strategies\crash_protection.py:10:32: F401 [*] `datetime.timedelta` imported but unused
+   |
+ 8 | import numpy as np
+ 9 | from typing import Dict, List, Optional, Tuple
+10 | from datetime import datetime, timedelta
+   |                                ^^^^^^^^^ F401
+11 | import logging
+   |
+   = help: Remove unused import: `datetime.timedelta`
+
+analyzer\strategies\crash_protection.py:201:17: F841 Local variable `macd_negative` is assigned to but never used
+    |
+199 |                 macd = df['macd'].iloc[-1]
+200 |                 macd_signal = df['macd_signal'].iloc[-1]
+201 |                 macd_negative = macd < macd_signal and macd < 0
+    |                 ^^^^^^^^^^^^^ F841
+202 |             
+203 |             # Conditions d'effondrement
+    |
+    = help: Remove assignment to unused variable `macd_negative`
+
+analyzer\strategies\ema_cross_pro.py:7:22: F401 [*] `datetime.datetime` imported but unused
+  |
+5 | """
+6 | import logging
+7 | from datetime import datetime
+  |                      ^^^^^^^^ F401
+8 | from typing import Dict, Any, Optional, List, Union
+9 | import numpy as np
+  |
+  = help: Remove unused import: `datetime.datetime`
+
+analyzer\strategies\ema_cross_pro.py:8:41: F401 [*] `typing.List` imported but unused
+   |
+ 6 | import logging
+ 7 | from datetime import datetime
+ 8 | from typing import Dict, Any, Optional, List, Union
+   |                                         ^^^^ F401
+ 9 | import numpy as np
+10 | import pandas as pd
+   |
+   = help: Remove unused import
+
+analyzer\strategies\ema_cross_pro.py:8:47: F401 [*] `typing.Union` imported but unused
+   |
+ 6 | import logging
+ 7 | from datetime import datetime
+ 8 | from typing import Dict, Any, Optional, List, Union
+   |                                               ^^^^^ F401
+ 9 | import numpy as np
+10 | import pandas as pd
+   |
+   = help: Remove unused import
+
+analyzer\strategies\ema_cross_pro.py:16:41: F401 [*] `shared.src.enums.SignalStrength` imported but unused
+   |
+14 | sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+15 |
+16 | from shared.src.enums import OrderSide, SignalStrength
+   |                                         ^^^^^^^^^^^^^^ F401
+17 | from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB
+   |
+   = help: Remove unused import: `shared.src.enums.SignalStrength`
+
+analyzer\strategies\macd_pro.py:7:22: F401 [*] `datetime.datetime` imported but unused
+  |
+5 | """
+6 | import logging
+7 | from datetime import datetime
+  |                      ^^^^^^^^ F401
+8 | from typing import Dict, Any, Optional, List
+9 | import numpy as np
+  |
+  = help: Remove unused import: `datetime.datetime`
+
+analyzer\strategies\macd_pro.py:8:41: F401 [*] `typing.List` imported but unused
+   |
+ 6 | import logging
+ 7 | from datetime import datetime
+ 8 | from typing import Dict, Any, Optional, List
+   |                                         ^^^^ F401
+ 9 | import numpy as np
+10 | import pandas as pd
+   |
+   = help: Remove unused import: `typing.List`
+
+analyzer\strategies\macd_pro.py:16:41: F401 [*] `shared.src.enums.SignalStrength` imported but unused
+   |
+14 | sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+15 |
+16 | from shared.src.enums import OrderSide, SignalStrength
+   |                                         ^^^^^^^^^^^^^^ F401
+17 | from shared.src.config import (
+18 |     REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB,
+   |
+   = help: Remove unused import: `shared.src.enums.SignalStrength`
+
+analyzer\strategies\macd_pro.py:20:26: F401 [*] `shared.src.config.MACD_HISTOGRAM_NEUTRAL` imported but unused
+   |
+18 |     REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB,
+19 |     MACD_HISTOGRAM_VERY_STRONG, MACD_HISTOGRAM_STRONG, MACD_HISTOGRAM_MODERATE, 
+20 |     MACD_HISTOGRAM_WEAK, MACD_HISTOGRAM_NEUTRAL
+   |                          ^^^^^^^^^^^^^^^^^^^^^^ F401
+21 | )
+22 | from shared.src.volume_context_detector import volume_context_detector
+   |
+   = help: Remove unused import: `shared.src.config.MACD_HISTOGRAM_NEUTRAL`
+
+analyzer\strategies\macd_pro.py:412:29: F821 Undefined name `latest_data`
+    |
+410 |                     contextual_threshold, context_name, contextual_score = volume_context_detector.get_contextual_volume_threshold(
+411 |                         base_volume_ratio=volume_ratio,
+412 |                         rsi=latest_data.get('rsi'),
+    |                             ^^^^^^^^^^^ F821
+413 |                         cci=latest_data.get('cci'),
+414 |                         adx=latest_data.get('adx'),
+    |
+
+analyzer\strategies\macd_pro.py:413:29: F821 Undefined name `latest_data`
+    |
+411 |                         base_volume_ratio=volume_ratio,
+412 |                         rsi=latest_data.get('rsi'),
+413 |                         cci=latest_data.get('cci'),
+    |                             ^^^^^^^^^^^ F821
+414 |                         adx=latest_data.get('adx'),
+415 |                         signal_type="BUY"
+    |
+
+analyzer\strategies\macd_pro.py:414:29: F821 Undefined name `latest_data`
+    |
+412 |                         rsi=latest_data.get('rsi'),
+413 |                         cci=latest_data.get('cci'),
+414 |                         adx=latest_data.get('adx'),
+    |                             ^^^^^^^^^^^ F821
+415 |                         signal_type="BUY"
+416 |                     )
+    |
+
+analyzer\strategies\macd_pro.py:448:37: F841 [*] Local variable `e` is assigned to but never used
+    |
+446 |                         context['details'].append(f"Volume {volume_quality.lower()} ({volume_ratio:.1f}x) - {context_name}")
+447 |                         
+448 |                 except Exception as e:
+    |                                     ^ F841
+449 |                     # Fallback sur la logique standard si erreur
+450 |                     if volume_ratio >= 1.0:
+    |
+    = help: Remove assignment to unused variable `e`
+
+analyzer\strategies\reversal_divergence_pro.py:7:22: F401 [*] `datetime.datetime` imported but unused
+  |
+5 | """
+6 | import logging
+7 | from datetime import datetime
+  |                      ^^^^^^^^ F401
+8 | from typing import Dict, Any, Optional, List, Tuple, Union
+9 | import numpy as np
+  |
+  = help: Remove unused import: `datetime.datetime`
+
+analyzer\strategies\reversal_divergence_pro.py:8:54: F401 [*] `typing.Union` imported but unused
+   |
+ 6 | import logging
+ 7 | from datetime import datetime
+ 8 | from typing import Dict, Any, Optional, List, Tuple, Union
+   |                                                      ^^^^^ F401
+ 9 | import numpy as np
+10 | import pandas as pd
+   |
+   = help: Remove unused import: `typing.Union`
+
+analyzer\strategies\reversal_divergence_pro.py:17:41: F401 [*] `shared.src.enums.SignalStrength` imported but unused
+   |
+15 | sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+16 |
+17 | from shared.src.enums import OrderSide, SignalStrength
+   |                                         ^^^^^^^^^^^^^^ F401
+18 | from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB
+   |
+   = help: Remove unused import: `shared.src.enums.SignalStrength`
+
+analyzer\strategies\rsi_pro.py:7:22: F401 [*] `datetime.datetime` imported but unused
+  |
+5 | """
+6 | import logging
+7 | from datetime import datetime
+  |                      ^^^^^^^^ F401
+8 | from typing import Dict, Any, Optional, List, Union
+9 | import numpy as np
+  |
+  = help: Remove unused import: `datetime.datetime`
+
+analyzer\strategies\rsi_pro.py:8:47: F401 [*] `typing.Union` imported but unused
+   |
+ 6 | import logging
+ 7 | from datetime import datetime
+ 8 | from typing import Dict, Any, Optional, List, Union
+   |                                               ^^^^^ F401
+ 9 | import numpy as np
+10 | import pandas as pd
+   |
+   = help: Remove unused import: `typing.Union`
+
+analyzer\strategies\rsi_pro.py:16:41: F401 [*] `shared.src.enums.SignalStrength` imported but unused
+   |
+14 | sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+15 |
+16 | from shared.src.enums import OrderSide, SignalStrength
+   |                                         ^^^^^^^^^^^^^^ F401
+17 | from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB
+   |
+   = help: Remove unused import: `shared.src.enums.SignalStrength`
+
+analyzer\strategies\rsi_pro.py:235:67: F401 [*] `shared.src.config.ADX_WEAK_TREND_THRESHOLD` imported but unused
+    |
+233 |         try:
+234 |             # 1. Force de tendance (ADX)
+235 |             from shared.src.config import ADX_NO_TREND_THRESHOLD, ADX_WEAK_TREND_THRESHOLD
+    |                                                                   ^^^^^^^^^^^^^^^^^^^^^^^^ F401
+236 |             if adx >= self.min_adx:
+237 |                 context['score'] += 20
+    |
+    = help: Remove unused import: `shared.src.config.ADX_WEAK_TREND_THRESHOLD`
+
+coordinator\src\coordinator.py:8:21: F401 [*] `decimal.Decimal` imported but unused
+   |
+ 6 | import time
+ 7 | from typing import Dict, Any, Optional
+ 8 | from decimal import Decimal
+   |                     ^^^^^^^ F401
+ 9 |
+10 | from shared.src.redis_client import RedisClient
+   |
+   = help: Remove unused import: `decimal.Decimal`
+
+coordinator\src\coordinator.py:157:13: F841 Local variable `quote_asset` is assigned to but never used
+    |
+155 |             # Extraire les assets
+156 |             base_asset = self._get_base_asset(signal.symbol)
+157 |             quote_asset = self._get_quote_asset(signal.symbol)
+    |             ^^^^^^^^^^^ F841
+158 |             
+159 |             if signal.side == OrderSide.BUY:
+    |
+    = help: Remove assignment to unused variable `quote_asset`
+
+coordinator\src\main.py:11:20: F401 [*] `typing.Dict` imported but unused
+   |
+ 9 | import os
+10 | import threading
+11 | from typing import Dict, Any
+   |                    ^^^^ F401
+12 | from flask import Flask, jsonify
+13 | import requests  # type: ignore
+   |
+   = help: Remove unused import
+
+coordinator\src\main.py:11:26: F401 [*] `typing.Any` imported but unused
+   |
+ 9 | import os
+10 | import threading
+11 | from typing import Dict, Any
+   |                          ^^^ F401
+12 | from flask import Flask, jsonify
+13 | import requests  # type: ignore
+   |
+   = help: Remove unused import
+
+coordinator\src\main.py:62:21: F541 [*] f-string without any placeholders
+   |
+60 |         self.setup_routes()
+61 |         
+62 |         logger.info(f"✅ CoordinatorService initialisé (version simplifiée)")
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+63 |     
+64 |     def setup_routes(self):
+   |
+   = help: Remove extraneous `f` prefix
+
+dispatcher\src\message_router.py:6:8: F401 [*] `json` imported but unused
+  |
+4 | """
+5 | import logging
+6 | import json
+  |        ^^^^ F401
+7 | import time
+8 | import threading
+  |
+  = help: Remove unused import: `json`
+
+dispatcher\src\message_router.py:11:8: F401 [*] `asyncio` imported but unused
+   |
+ 9 | from collections import deque
+10 | from typing import Dict, Any, List, Optional, Tuple
+11 | import asyncio
+   |        ^^^^^^^ F401
+12 |
+13 | from shared.src.config import SYMBOLS
+   |
+   = help: Remove unused import: `asyncio`
+
+dispatcher\src\message_router.py:566:9: E722 Do not use bare `except`
+    |
+564 | …             if queue_size > 0 or high_priority_size > 0:
+565 | …                 logger.warning(f"⚠️ Messages non traités lors de la fermeture: {queue_size} normaux, {high_priority_size} haute pri…r
+566 | …     except:
+    |       ^^^^^^ E722
+567 | …         pass
+    |
+
+gateway\src\binance_ws.py:8:31: F401 [*] `typing.Callable` imported but unused
+   |
+ 6 | import logging
+ 7 | import time
+ 8 | from typing import Dict, Any, Callable, List, Optional, Tuple
+   |                               ^^^^^^^^ F401
+ 9 | import asyncio
+10 | import websockets
+   |
+   = help: Remove unused import: `typing.Callable`
+
+gateway\src\binance_ws.py:11:53: F401 [*] `websockets.exceptions.InvalidStatus` imported but unused
+   |
+ 9 | import asyncio
+10 | import websockets
+11 | from websockets.exceptions import ConnectionClosed, InvalidStatus
+   |                                                     ^^^^^^^^^^^^^ F401
+12 |
+13 | # Importer les clients partagés
+   |
+   = help: Remove unused import: `websockets.exceptions.InvalidStatus`
+
+gateway\src\binance_ws.py:18:31: F401 [*] `shared.src.config.BINANCE_API_KEY` imported but unused
+   |
+16 | sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+17 |
+18 | from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY, SYMBOLS, INTERVAL, KAFKA_TOPIC_MARKET_DATA
+   |                               ^^^^^^^^^^^^^^^ F401
+19 | from shared.src.kafka_client import KafkaClient
+20 | from gateway.src.kafka_producer import get_producer   # NEW
+   |
+   = help: Remove unused import
+
+gateway\src\binance_ws.py:18:48: F401 [*] `shared.src.config.BINANCE_SECRET_KEY` imported but unused
+   |
+16 | sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+17 |
+18 | from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY, SYMBOLS, INTERVAL, KAFKA_TOPIC_MARKET_DATA
+   |                                                ^^^^^^^^^^^^^^^^^^ F401
+19 | from shared.src.kafka_client import KafkaClient
+20 | from gateway.src.kafka_producer import get_producer   # NEW
+   |
+   = help: Remove unused import
+
+gateway\src\binance_ws.py:18:87: F401 [*] `shared.src.config.KAFKA_TOPIC_MARKET_DATA` imported but unused
+   |
+16 | sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+17 |
+18 | from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY, SYMBOLS, INTERVAL, KAFKA_TOPIC_MARKET_DATA
+   |                                                                                       ^^^^^^^^^^^^^^^^^^^^^^^ F401
+19 | from shared.src.kafka_client import KafkaClient
+20 | from gateway.src.kafka_producer import get_producer   # NEW
+   |
+   = help: Remove unused import
+
+gateway\src\binance_ws.py:150:35: F821 Undefined name `InvalidStatusCode`
+    |
+148 |             self.reconnect_delay = 1
+149 |             
+150 |         except (ConnectionClosed, InvalidStatusCode) as e:
+    |                                   ^^^^^^^^^^^^^^^^^ F821
+151 |             logger.error(f"❌ Erreur lors de la connexion WebSocket: {str(e)}")
+152 |             await self._handle_reconnect()
+    |
+
+gateway\src\binance_ws.py:349:50: E741 Ambiguous variable name: `l`
+    |
+347 | …     ]
+348 | …     
+349 | …     if not all(l == final_lengths[0] for l in final_lengths):
+    |                                            ^ E741
+350 | …         logger.error(f"❌ ERREUR CRITIQUE: Buffers encore désalignés après correction {symbol} {timeframe}: {final_lengths}")
+351 | …         # Force synchronization as last resort
+    |
+
+gateway\src\binance_ws.py:375:44: E741 Ambiguous variable name: `l`
+    |
+373 | …     # Vérifier que tous les buffers sont bien alignés
+374 | …     all_lengths = [len(prices), len(highs), len(lows), len(volumes)]
+375 | …     if all(l == all_lengths[0] for l in all_lengths):
+    |                                      ^ E741
+376 | …         logger.info(f"📊 HYBRIDE WebSocket {symbol} {timeframe}: buffers=[P:{len(prices)},H:{len(highs)},L:{len(lows)},V:{len(volume…
+377 | …     else:
+    |
+
+gateway\src\binance_ws.py:1219:52: E741 Ambiguous variable name: `l`
+     |
+1217 | …     # 🔧 CORRECTION CRITIQUE: Aligner les buffers actuels AVANT extension
+1218 | …     current_lengths = [len(current_prices), len(current_highs), len(current_lows), len(current_volumes)]
+1219 | …     if not all(l == current_lengths[0] for l in current_lengths):
+     |                                              ^ E741
+1220 | …         logger.warning(f"🔧 Désalignement détecté avant extension {symbol} {timeframe}: P:{len(current_prices)} H:{len(current_high…
+     |
+
+gateway\src\binance_ws.py:1286:53: E741 Ambiguous variable name: `l`
+     |
+1284 | …     # 🔧 VALIDATION FINALE: Vérifier l'alignement post-extension
+1285 | …     extended_lengths = [len(extended_prices), len(extended_highs), len(extended_lows), len(extended_volumes)]
+1286 | …     if not all(l == extended_lengths[0] for l in extended_lengths):
+     |                                               ^ E741
+1287 | …         logger.error(f"❌ DÉSALIGNEMENT CRITIQUE après extension {symbol} {timeframe}: P:{len(extended_prices)} H:{len(extended_hig…
+     |
+
+gateway\src\binance_ws.py:1507:52: E741 Ambiguous variable name: `l`
+     |
+1506 |                     # Détecter les problèmes
+1507 |                     if not all(l == lengths[0] for l in lengths):
+     |                                                    ^ E741
+1508 |                         total_issues += 1
+1509 |                         min_len = min(lengths)
+     |
+
+gateway\src\gap_detector.py:5:8: F401 [*] `asyncio` imported but unused
+  |
+3 | Optimise le rechargement après coupure en ne chargeant que les données manquantes
+4 | """
+5 | import asyncio
+  |        ^^^^^^^ F401
+6 | import logging
+7 | from datetime import datetime, timedelta
+  |
+  = help: Remove unused import: `asyncio`
+
+gateway\src\gap_detector.py:192:44: F821 Undefined name `Any`
+    |
+191 |         timeframes = ['1m', '3m', '5m', '15m']
+192 |         all_gaps: Dict[str, List[Dict[str, Any]]] = {}
+    |                                            ^^^ F821
+193 |         total_gaps = 0
+    |
+
+gateway\src\kafka_producer.py:5:8: F401 [*] `json` imported but unused
+  |
+3 | Convertit les données WebSocket Binance en messages Kafka.
+4 | """
+5 | import json
+  |        ^^^^ F401
+6 | import logging
+7 | import time
+  |
+  = help: Remove unused import: `json`
+
+gateway\src\main.py:283:5: F841 Local variable `validation_fetcher` is assigned to but never used
+    |
+281 |     """
+282 |     global ws_client
+283 |     validation_fetcher = None
+    |     ^^^^^^^^^^^^^^^^^^ F841
+284 |     
+285 |     # Parser les arguments
+    |
+    = help: Remove assignment to unused variable `validation_fetcher`
+
+gateway\src\main.py:295:5: F841 Local variable `producer` is assigned to but never used
+    |
+294 |     # Obtenir le producteur Kafka
+295 |     producer = get_producer()
+    |     ^^^^^^^^ F841
+296 |     
+297 |     try:
+    |
+    = help: Remove assignment to unused variable `producer`
+
+gateway\src\main.py:300:25: F541 [*] f-string without any placeholders
+    |
+298 |         # Initialiser les données ultra-enrichies au démarrage si demandé
+299 |         if not args.skip_init:
+300 |             logger.info(f"🔥 Initialisation des données ultra-enrichies multi-timeframes...")
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+301 |             
+302 |             # Créer l'UltraDataFetcher pour l'initialisation
+    |
+    = help: Remove extraneous `f` prefix
+
+gateway\src\main.py:312:29: F541 [*] f-string without any placeholders
+    |
+311 |                 await init_fetcher.load_historical_data(days=5, use_gap_detection=use_gap_detection)
+312 |                 logger.info(f"✅ Données historiques chargées avec succès")
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+313 |             except Exception as e:
+314 |                 logger.error(f"❌ Erreur chargement données historiques: {e}")
+    |
+    = help: Remove extraneous `f` prefix
+
+gateway\src\main.py:315:32: F541 [*] f-string without any placeholders
+    |
+313 |             except Exception as e:
+314 |                 logger.error(f"❌ Erreur chargement données historiques: {e}")
+315 |                 logger.warning(f"⚠️ Poursuite sans données historiques complètes")
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+316 |             
+317 |             # Exécuter un cycle d'initialisation pour remplir les caches Redis
+    |
+    = help: Remove extraneous `f` prefix
+
+gateway\src\main.py:320:29: F541 [*] f-string without any placeholders
+    |
+318 |             try:
+319 |                 await init_fetcher._fetch_initialization_data()
+320 |                 logger.info(f"✅ Données ultra-enrichies initialisées avec succès")
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+321 |             except Exception as e:
+322 |                 logger.warning(f"⚠️ Erreur lors de l'initialisation: {e}")
+    |
+    = help: Remove extraneous `f` prefix
+
+gateway\src\ultra_data_fetcher.py:10:32: F401 [*] `datetime.timedelta` imported but unused
+   |
+ 8 | import json
+ 9 | import time
+10 | from datetime import datetime, timedelta
+   |                                ^^^^^^^^^ F401
+11 | from typing import Dict, List, Optional, Tuple, Any
+12 | import aiohttp
+   |
+   = help: Remove unused import: `datetime.timedelta`
+
+gateway\src\ultra_data_fetcher.py:11:42: F401 [*] `typing.Tuple` imported but unused
+   |
+ 9 | import time
+10 | from datetime import datetime, timedelta
+11 | from typing import Dict, List, Optional, Tuple, Any
+   |                                          ^^^^^ F401
+12 | import aiohttp
+13 | from aiohttp import ClientTimeout
+   |
+   = help: Remove unused import: `typing.Tuple`
+
+gateway\src\ultra_data_fetcher.py:655:33: F541 [*] f-string without any placeholders
+    |
+653 |                     # Estimer le temps de remplissage
+654 |                     estimated_time = detector.estimate_fill_time(gap_filling_plan)
+655 |                     logger.info(f"🎯 Mode intelligent: Remplissage ciblé des gaps uniquement")
+    |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+656 |                     logger.info(f"⏱️ Temps estimé: {estimated_time:.1f}s ({estimated_time/60:.1f} minutes)")
+657 |                 else:
+    |
+    = help: Remove extraneous `f` prefix
+
+gateway\src\ultra_data_fetcher.py:928:70: F401 [*] `shared.src.technical_indicators.indicators` imported but unused
+    |
+926 |             Liste des points enrichis avec indicateurs calculés correctement
+927 |         """
+928 |         from shared.src.technical_indicators import indicator_cache, indicators, TechnicalIndicators
+    |                                                                      ^^^^^^^^^^ F401
+929 |         import numpy as np
+    |
+    = help: Remove unused import: `shared.src.technical_indicators.indicators`
+
+gateway\src\ultra_data_fetcher.py:1077:53: F401 [*] `shared.src.technical_indicators.indicators` imported but unused
+     |
+1075 |             Dictionnaire avec tous les indicateurs calculés
+1076 |         """
+1077 |         from shared.src.technical_indicators import indicators
+     |                                                     ^^^^^^^^^^ F401
+1078 |         
+1079 |         try:
+     |
+     = help: Remove unused import: `shared.src.technical_indicators.indicators`
+
+gateway\src\ultra_data_fetcher.py:1138:13: F841 Local variable `latest_kline` is assigned to but never used
+     |
+1137 |             # Prendre la dernière kline comme données actuelles (plus récente)
+1138 |             latest_kline = klines[-1]
+     |             ^^^^^^^^^^^^ F841
+1139 |             
+1140 |             # Traiter comme une kline normale pour obtenir les indicateurs
+     |
+     = help: Remove assignment to unused variable `latest_kline`
+
+portfolio\src\api.py:15:33: F401 [*] `pydantic.Field` imported but unused
+   |
+13 | from fastapi.middleware.cors import CORSMiddleware
+14 | from fastapi.middleware.gzip import GZipMiddleware
+15 | from pydantic import BaseModel, Field
+   |                                 ^^^^^ F401
+16 | from contextlib import asynccontextmanager
+17 | import psutil
+   |
+   = help: Remove unused import: `pydantic.Field`
+
+portfolio\src\binance_account_manager.py:11:8: F401 [*] `json` imported but unused
+   |
+ 9 | import hashlib
+10 | import requests  # type: ignore
+11 | import json
+   |        ^^^^ F401
+12 | from typing import Dict, List, Any, Optional, Tuple
+13 | import traceback
+   |
+   = help: Remove unused import: `json`
+
+portfolio\src\binance_account_manager.py:12:47: F401 [*] `typing.Tuple` imported but unused
+   |
+10 | import requests  # type: ignore
+11 | import json
+12 | from typing import Dict, List, Any, Optional, Tuple
+   |                                               ^^^^^ F401
+13 | import traceback
+14 | from concurrent.futures import ThreadPoolExecutor
+   |
+   = help: Remove unused import: `typing.Tuple`
+
+portfolio\src\binance_account_manager.py:15:22: F401 [*] `datetime.datetime` imported but unused
+   |
+13 | import traceback
+14 | from concurrent.futures import ThreadPoolExecutor
+15 | from datetime import datetime, timedelta
+   |                      ^^^^^^^^ F401
+16 | from functools import lru_cache
+   |
+   = help: Remove unused import
+
+portfolio\src\binance_account_manager.py:15:32: F401 [*] `datetime.timedelta` imported but unused
+   |
+13 | import traceback
+14 | from concurrent.futures import ThreadPoolExecutor
+15 | from datetime import datetime, timedelta
+   |                                ^^^^^^^^^ F401
+16 | from functools import lru_cache
+   |
+   = help: Remove unused import
+
+portfolio\src\binance_account_manager.py:144:17: E722 Do not use bare `except`
+    |
+142 |                     error_data = e.response.json()
+143 |                     error_message = f"{error_message}: {error_data.get('msg', str(error_data))}"
+144 |                 except:
+    |                 ^^^^^^ E722
+145 |                     error_message = f"{error_message}: {e.response.text}"
+    |
+
+portfolio\src\main.py:13:24: F401 [*] `contextlib.asynccontextmanager` imported but unused
+   |
+11 | import os
+12 | import uvicorn
+13 | from contextlib import asynccontextmanager
+   |                        ^^^^^^^^^^^^^^^^^^^ F401
+14 |
+15 | # Ajouter le répertoire parent au path pour les imports
+   |
+   = help: Remove unused import: `contextlib.asynccontextmanager`
+
+portfolio\src\models.py:12:21: F401 [*] `decimal.Decimal` imported but unused
+   |
+10 | from psycopg2 import pool
+11 | from psycopg2.extras import RealDictCursor, execute_values
+12 | from decimal import Decimal
+   |                     ^^^^^^^ F401
+13 |
+14 | # Importer les modules partagés
+   |
+   = help: Remove unused import: `decimal.Decimal`
+
+portfolio\src\models.py:133:21: E722 Do not use bare `except`
+    |
+131 |                     try:
+132 |                         self.conn.close()
+133 |                     except:
+    |                     ^^^^^^ E722
+134 |                         pass
+135 |             except:
+    |
+
+portfolio\src\models.py:135:13: E722 Do not use bare `except`
+    |
+133 |                     except:
+134 |                         pass
+135 |             except:
+    |             ^^^^^^ E722
+136 |                 pass
+    |
+
+portfolio\src\models.py:222:25: E722 Do not use bare `except`
+    |
+220 |                             if self.conn:
+221 |                                 self.conn.close()
+222 |                         except:
+    |                         ^^^^^^ E722
+223 |                             pass
+224 |                 except:
+    |
+
+portfolio\src\models.py:224:17: E722 Do not use bare `except`
+    |
+222 |                         except:
+223 |                             pass
+224 |                 except:
+    |                 ^^^^^^ E722
+225 |                     pass
+    |
+
+portfolio\src\models.py:247:17: E722 Do not use bare `except`
+    |
+245 |                     if self.conn:
+246 |                         self.conn.rollback()
+247 |                 except:
+    |                 ^^^^^^ E722
+248 |                     pass
+249 |                 return None
+    |
+
+portfolio\src\models.py:293:13: E722 Do not use bare `except`
+    |
+291 |                 if self.conn:
+292 |                     self.conn.rollback()
+293 |             except:
+    |             ^^^^^^ E722
+294 |                 pass
+295 |             return False
+    |
+
+portfolio\src\models.py:335:17: E722 Do not use bare `except`
+    |
+333 |                     if self.conn:
+334 |                         self.conn.rollback()
+335 |                 except:
+    |                 ^^^^^^ E722
+336 |                     pass
+337 |                 return False
+    |
+
+portfolio\src\redis_subscriber.py:65:9: F841 Local variable `quantity` is assigned to but never used
+   |
+63 |         entry_price = float(data.get("entry_price", 0.0))
+64 |         exit_price = float(data.get("exit_price", 0.0))
+65 |         quantity = float(data.get("quantity", 0.0))
+   |         ^^^^^^^^ F841
+66 |         pnl = float(data.get("pnl", 0.0))
+   |
+   = help: Remove assignment to unused variable `quantity`
+
+portfolio\src\startup.py:5:8: F401 [*] `asyncio` imported but unused
+  |
+3 | Contient la logique de synchronisation initiale avec Binance.
+4 | """
+5 | import asyncio
+  |        ^^^^^^^ F401
+6 | import logging
+  |
+  = help: Remove unused import: `asyncio`
+
+scripts\gap_repair.py:10:22: F401 [*] `datetime.datetime` imported but unused
+   |
+ 8 | import sys
+ 9 | import os
+10 | from datetime import datetime, timedelta
+   |                      ^^^^^^^^ F401
+11 |
+12 | # Ajouter le répertoire parent au path
+   |
+   = help: Remove unused import
+
+scripts\gap_repair.py:10:32: F401 [*] `datetime.timedelta` imported but unused
+   |
+ 8 | import sys
+ 9 | import os
+10 | from datetime import datetime, timedelta
+   |                                ^^^^^^^^^ F401
+11 |
+12 | # Ajouter le répertoire parent au path
+   |
+   = help: Remove unused import
+
+scripts\gap_repair.py:46:17: F541 [*] f-string without any placeholders
+   |
+44 |     symbols_to_check = [args.symbol] if args.symbol else SYMBOLS
+45 |     
+46 |     logger.info(f"🔍 Démarrage de la détection de gaps...")
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+47 |     logger.info(f"📊 Symboles: {', '.join(symbols_to_check)}")
+48 |     logger.info(f"⏰ Timeframe: {args.timeframe}")
+   |
+   = help: Remove extraneous `f` prefix
+
+shared\src\db_pool.py:10:41: F401 [*] `typing.Union` imported but unused
+   |
+ 8 | import threading
+ 9 | import queue
+10 | from typing import Optional, Any, Dict, Union, List, Tuple
+   |                                         ^^^^^ F401
+11 | from contextlib import contextmanager
+   |
+   = help: Remove unused import
+
+shared\src\db_pool.py:10:48: F401 [*] `typing.List` imported but unused
+   |
+ 8 | import threading
+ 9 | import queue
+10 | from typing import Optional, Any, Dict, Union, List, Tuple
+   |                                                ^^^^ F401
+11 | from contextlib import contextmanager
+   |
+   = help: Remove unused import
+
+shared\src\db_pool.py:10:54: F401 [*] `typing.Tuple` imported but unused
+   |
+ 8 | import threading
+ 9 | import queue
+10 | from typing import Optional, Any, Dict, Union, List, Tuple
+   |                                                      ^^^^^ F401
+11 | from contextlib import contextmanager
+   |
+   = help: Remove unused import
+
+shared\src\db_pool.py:14:22: F401 [*] `psycopg2.pool` imported but unused
+   |
+13 | import psycopg2
+14 | from psycopg2 import pool, extensions, extras
+   |                      ^^^^ F401
+15 | from psycopg2.extras import RealDictCursor, DictCursor
+   |
+   = help: Remove unused import: `psycopg2.pool`
+
+shared\src\db_pool.py:153:36: F811 Redefinition of unused `pool` from line 14
+    |
+151 |     Wrapper autour d'une connexion pour suivre son utilisation.
+152 |     """
+153 |     def __init__(self, connection, pool):
+    |                                    ^^^^ F811
+154 |         self.connection = connection
+155 |         self.pool = pool
+    |
+    = help: Remove definition: `pool`
+
+shared\src\db_pool.py:518:40: F541 [*] f-string without any placeholders
+    |
+516 |                     # Logguer les requêtes lentes si présentes
+517 |                     if db_stats['slow_queries']:
+518 |                         logger.warning(f"⚠️ Top requêtes lentes: " + 
+    |                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+519 |                                       ", ".join([f"{q['type']} ({q['duration']:.3f}s)" for q in db_stats['slow_queries'][:3]]))
+    |
+    = help: Remove extraneous `f` prefix
+
+shared\src\db_pool.py:570:25: E722 Do not use bare `except`
+    |
+568 |                             logger.critical(f"Diagnostic: {pool_stats['in_use_connections']}/{pool_stats['total_connections']} "
+569 |                                           f"connexions utilisées ({pool_stats['usage_percent']:.1f}%)")
+570 |                         except:
+    |                         ^^^^^^ E722
+571 |                             pass
+    |
+
+shared\src\db_pool.py:625:13: E722 Do not use bare `except`
+    |
+623 |                 if conn and not conn.closed:
+624 |                     conn.close()
+625 |             except:
+    |             ^^^^^^ E722
+626 |                 pass
+    |
+
+shared\src\db_pool.py:987:5: F811 Redefinition of unused `pool` from line 14
+    |
+985 |         Dictionnaire des métriques
+986 |     """
+987 |     pool = DBConnectionPool.get_instance()
+    |     ^^^^ F811
+988 |     return pool.get_diagnostics()
+    |
+    = help: Remove definition: `pool`
+
+shared\src\enums.py:4:24: F401 [*] `enum.auto` imported but unused
+  |
+2 | Définition des énumérations partagées entre les microservices.
+3 | """
+4 | from enum import Enum, auto
+  |                        ^^^^ F401
+5 |
+6 | class OrderSide(str, Enum):
+  |
+  = help: Remove unused import: `enum.auto`
+
+shared\src\kafka_client.py:12:8: F811 [*] Redefinition of unused `threading` from line 6
+   |
+10 | from queue import Queue, Empty
+11 | import queue
+12 | import threading
+   |        ^^^^^^^^^ F811
+13 |
+14 | from confluent_kafka import Producer, Consumer, KafkaError, KafkaException
+   |
+   = help: Remove definition: `threading`
+
+shared\src\redis_client.py:7:64: F401 [*] `typing.Tuple` imported but unused
+  |
+5 | import json
+6 | import logging
+7 | from typing import Any, Dict, Callable, Optional, List, Union, Tuple
+  |                                                                ^^^^^ F401
+8 | import threading
+9 | import time
+  |
+  = help: Remove unused import: `typing.Tuple`
+
+shared\src\redis_client.py:13:8: F401 [*] `redis` imported but unused
+   |
+11 | from queue import Queue, Empty
+12 |
+13 | import redis
+   |        ^^^^^ F401
+14 | from redis import Redis, ConnectionPool
+15 | from redis.exceptions import ConnectionError, TimeoutError, RedisError
+   |
+   = help: Remove unused import: `redis`
+
+shared\src\redis_client.py:15:61: F401 [*] `redis.exceptions.RedisError` imported but unused
+   |
+13 | import redis
+14 | from redis import Redis, ConnectionPool
+15 | from redis.exceptions import ConnectionError, TimeoutError, RedisError
+   |                                                             ^^^^^^^^^^ F401
+16 |
+17 | from .config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB
+   |
+   = help: Remove unused import: `redis.exceptions.RedisError`
+
+shared\src\schemas.py:6:47: F401 [*] `typing.Union` imported but unused
+  |
+4 | """
+5 | from datetime import datetime
+6 | from typing import Dict, List, Optional, Any, Union
+  |                                               ^^^^^ F401
+7 | from enum import Enum
+  |
+  = help: Remove unused import: `typing.Union`
+
+shared\src\schemas.py:7:18: F401 [*] `enum.Enum` imported but unused
+  |
+5 | from datetime import datetime
+6 | from typing import Dict, List, Optional, Any, Union
+7 | from enum import Enum
+  |                  ^^^^ F401
+8 |
+9 | from pydantic import BaseModel, Field, validator
+  |
+  = help: Remove unused import: `enum.Enum`
+
+shared\src\technical_indicators.py:715:13: F841 Local variable `high_close` is assigned to but never used
+    |
+713 |             # Calcul du True Range (TR)
+714 |             high_low = highs_array - lows_array
+715 |             high_close = np.abs(highs_array[1:] - closes_array[:-1])
+    |             ^^^^^^^^^^ F841
+716 |             low_close = np.abs(lows_array[1:] - closes_array[:-1])
+    |
+    = help: Remove assignment to unused variable `high_close`
+
+shared\src\technical_indicators.py:716:13: F841 Local variable `low_close` is assigned to but never used
+    |
+714 |             high_low = highs_array - lows_array
+715 |             high_close = np.abs(highs_array[1:] - closes_array[:-1])
+716 |             low_close = np.abs(lows_array[1:] - closes_array[:-1])
+    |             ^^^^^^^^^ F841
+717 |             
+718 |             # Combine les arrays pour le TR
+    |
+    = help: Remove assignment to unused variable `low_close`
+
+shared\src\technical_indicators.py:792:60: F401 [*] `shared.src.config.ADX_SMOOTHING_PERIOD` imported but unused
+    |
+790 |         try:
+791 |             # Importer la configuration
+792 |             from shared.src.config import ADX_HYBRID_MODE, ADX_SMOOTHING_PERIOD
+    |                                                            ^^^^^^^^^^^^^^^^^^^^ F401
+793 |             
+794 |             # Calculer ADX standard
+    |
+    = help: Remove unused import: `shared.src.config.ADX_SMOOTHING_PERIOD`
+
+shared\src\technical_indicators.py:1027:21: F841 Local variable `prev_supertrend` is assigned to but never used
+     |
+1025 |                     # Calcul basé sur direction précédente et règles de changement
+1026 |                     prev_direction = directions[-1]
+1027 |                     prev_supertrend = supertrend_values[-1]
+     |                     ^^^^^^^^^^^^^^^ F841
+1028 |                     
+1029 |                     if prev_direction == 1:  # Était en tendance haussière
+     |
+     = help: Remove assignment to unused variable `prev_supertrend`
+
+shared\src\technical_indicators.py:1739:40: E741 Ambiguous variable name: `l`
+     |
+1737 |             # Vérification post-alignement
+1738 |             post_lengths = [len(arr) for arr in aligned_arrays]
+1739 |             if all(l == min_length for l in post_lengths):
+     |                                        ^ E741
+1740 |                 logger.info(f"✅ Post-alignement réussi: {post_lengths}")
+1741 |             else:
+     |
+
+shared\src\volume_context_detector.py:8:20: F401 [*] `typing.Dict` imported but unused
+   |
+ 6 | """
+ 7 |
+ 8 | from typing import Dict, List, Optional, Tuple
+   |                    ^^^^ F401
+ 9 | from dataclasses import dataclass
+10 | from .config import VOLUME_CONTEXTS, VOLUME_BUILDUP_CONFIG, ADX_WEAK_TREND_THRESHOLD
+   |
+   = help: Remove unused import: `typing.Dict`
+
+signal_aggregator\src\adaptive_regime_enhanced.py:3:18: F401 [*] `pandas` imported but unused
+  |
+1 | #!/usr/bin/env python3
+2 | import logging
+3 | import pandas as pd
+  |                  ^^ F401
+4 | import numpy as np
+5 | from typing import Dict, List, Optional, Tuple, Any
+  |
+  = help: Remove unused import: `pandas`
+
+signal_aggregator\src\adaptive_regime_enhanced.py:8:18: F401 [*] `enum.Enum` imported but unused
+   |
+ 6 | from datetime import datetime, timedelta
+ 7 | import json
+ 8 | from enum import Enum
+   |                  ^^^^ F401
+ 9 | from dataclasses import dataclass, field
+10 | from shared.src.technical_indicators import TechnicalIndicators
+   |
+   = help: Remove unused import: `enum.Enum`
+
+signal_aggregator\src\adaptive_regime_enhanced.py:548:13: F841 Local variable `base_patterns` is assigned to but never used
+    |
+546 |         try:
+547 |             crypto_type = self._classify_crypto_type(symbol)
+548 |             base_patterns = self.crypto_regime_patterns[crypto_type]
+    |             ^^^^^^^^^^^^^ F841
+549 |             
+550 |             # Seuils par défaut
+    |
+    = help: Remove assignment to unused variable `base_patterns`
+
+signal_aggregator\src\bayesian_weights.py:4:17: F401 [*] `numpy` imported but unused
+  |
+2 | Système de pondération bayésienne adaptative pour les stratégies
+3 | """
+4 | import numpy as np
+  |                 ^^ F401
+5 | from typing import Dict, List, Optional
+6 | import json
+  |
+  = help: Remove unused import: `numpy`
+
+signal_aggregator\src\bayesian_weights.py:5:32: F401 [*] `typing.Optional` imported but unused
+  |
+3 | """
+4 | import numpy as np
+5 | from typing import Dict, List, Optional
+  |                                ^^^^^^^^ F401
+6 | import json
+7 | import logging
+  |
+  = help: Remove unused import: `typing.Optional`
+
+signal_aggregator\src\bayesian_weights.py:9:32: F401 [*] `datetime.timedelta` imported but unused
+   |
+ 7 | import logging
+ 8 | from dataclasses import dataclass, field
+ 9 | from datetime import datetime, timedelta
+   |                                ^^^^^^^^^ F401
+10 | import math
+   |
+   = help: Remove unused import: `datetime.timedelta`
+
+signal_aggregator\src\db_manager.py:10:32: F401 [*] `datetime.timedelta` imported but unused
+   |
+ 8 | import json
+ 9 | from typing import Dict, List, Any, Optional
+10 | from datetime import datetime, timedelta
+   |                                ^^^^^^^^^ F401
+11 | from shared.src.config import get_db_config
+   |
+   = help: Remove unused import: `datetime.timedelta`
+
+signal_aggregator\src\dynamic_thresholds.py:5:20: F401 [*] `typing.List` imported but unused
+  |
+3 | """
+4 | import numpy as np
+5 | from typing import List, Dict, Optional, Deque
+  |                    ^^^^ F401
+6 | from collections import deque
+7 | from datetime import datetime, timedelta
+  |
+  = help: Remove unused import: `typing.List`
+
+signal_aggregator\src\dynamic_thresholds.py:7:32: F401 [*] `datetime.timedelta` imported but unused
+  |
+5 | from typing import List, Dict, Optional, Deque
+6 | from collections import deque
+7 | from datetime import datetime, timedelta
+  |                                ^^^^^^^^^ F401
+8 | import json
+9 | import logging
+  |
+  = help: Remove unused import: `datetime.timedelta`
+
+signal_aggregator\src\dynamic_thresholds.py:206:43: F821 Undefined name `Any`
+    |
+204 |         }
+205 |     
+206 |     def get_statistics(self) -> Dict[str, Any]:
+    |                                           ^^^ F821
+207 |         """Retourne les statistiques des seuils dynamiques"""
+208 |         if len(self.confidence_history) == 0:
+    |
+
+signal_aggregator\src\enhanced_cooldown.py:7:32: F401 [*] `datetime.timedelta` imported but unused
+  |
+5 | import logging
+6 | from typing import Dict, Optional, Tuple
+7 | from datetime import datetime, timedelta, timezone
+  |                                ^^^^^^^^^ F401
+8 | import json
+  |
+  = help: Remove unused import: `datetime.timedelta`
+
+signal_aggregator\src\enhanced_cooldown.py:8:8: F401 [*] `json` imported but unused
+   |
+ 6 | from typing import Dict, Optional, Tuple
+ 7 | from datetime import datetime, timedelta, timezone
+ 8 | import json
+   |        ^^^^ F401
+ 9 |
+10 | logger = logging.getLogger(__name__)
+   |
+   = help: Remove unused import: `json`
+
+signal_aggregator\src\enhanced_cooldown.py:168:9: E722 Do not use bare `except`
+    |
+166 |             ttl = self.redis.ttl(key)
+167 |             return max(0, ttl if ttl else 0)
+168 |         except:
+    |         ^^^^^^ E722
+169 |             return 0
+    |
+
+signal_aggregator\src\enhanced_regime_detector.py:5:26: F401 [*] `typing.Optional` imported but unused
+  |
+3 | import pandas as pd
+4 | import numpy as np
+5 | from typing import Dict, Optional, Tuple, List
+  |                          ^^^^^^^^ F401
+6 | from datetime import datetime, timedelta
+7 | import json
+  |
+  = help: Remove unused import: `typing.Optional`
+
+signal_aggregator\src\enhanced_regime_detector.py:6:32: F401 [*] `datetime.timedelta` imported but unused
+  |
+4 | import numpy as np
+5 | from typing import Dict, Optional, Tuple, List
+6 | from datetime import datetime, timedelta
+  |                                ^^^^^^^^^ F401
+7 | import json
+8 | from enum import Enum
+  |
+  = help: Remove unused import: `datetime.timedelta`
+
+signal_aggregator\src\enhanced_regime_detector.py:206:13: F841 Local variable `current_volume` is assigned to but never used
+    |
+204 |             current_atr = latest.get('atr_14', 0)
+205 |             current_close = latest.get('close', 0)
+206 |             current_volume = latest.get('volume', 0)
+    |             ^^^^^^^^^^^^^^ F841
+207 |             volume_ratio = latest.get('volume_ratio', 1.0)
+    |
+    = help: Remove assignment to unused variable `current_volume`
+
+signal_aggregator\src\enhanced_regime_detector.py:389:13: F841 Local variable `volumes` is assigned to but never used
+    |
+387 |             lows = df['low'].values.tolist()
+388 |             closes = df['close'].values.tolist()
+389 |             volumes = df['volume'].values.tolist()
+    |             ^^^^^^^ F841
+390 |             
+391 |             # 1. ADX pour la force de tendance (avec lissage)
+    |
+    = help: Remove assignment to unused variable `volumes`
+
+signal_aggregator\src\enhanced_regime_detector.py:713:13: E722 Do not use bare `except`
+    |
+711 |                 if cached:
+712 |                     return float(cached)
+713 |             except:
+    |             ^^^^^^ E722
+714 |                 pass  # Continue without cache if Redis fails
+    |
+
+signal_aggregator\src\enhanced_regime_detector.py:723:13: E722 Do not use bare `except`
+    |
+721 |             try:
+722 |                 await self.redis.set(cache_key, str(danger_level), expiration=60)
+723 |             except:
+    |             ^^^^^^ E722
+724 |                 pass  # Continue without cache if Redis fails
+    |
+
+signal_aggregator\src\enhanced_regime_detector.py:786:9: E722 Do not use bare `except`
+    |
+784 |             recovery_key = f"recovery_period:{symbol}"
+785 |             return bool(await self.redis.get(recovery_key))
+786 |         except:
+    |         ^^^^^^ E722
+787 |             return False
+    |
+
+signal_aggregator\src\enhanced_regime_detector.py:794:9: E722 Do not use bare `except`
+    |
+792 |             opportunity_key = f"opportunity_period:{symbol}"
+793 |             return bool(await self.redis.get(opportunity_key))
+794 |         except:
+    |         ^^^^^^ E722
+795 |             return False
+    |
+
+signal_aggregator\src\enhanced_regime_detector.py:843:13: F841 Local variable `bb_upper` is assigned to but never used
+    |
+841 |             # Extraire les indicateurs pré-calculés
+842 |             current_rsi = latest_candle.get('rsi_14')
+843 |             bb_upper = latest_candle.get('bb_upper')
+    |             ^^^^^^^^ F841
+844 |             bb_lower = latest_candle.get('bb_lower')
+845 |             bb_middle = latest_candle.get('bb_middle')
+    |
+    = help: Remove assignment to unused variable `bb_upper`
+
+signal_aggregator\src\enhanced_regime_detector.py:844:13: F841 Local variable `bb_lower` is assigned to but never used
+    |
+842 |             current_rsi = latest_candle.get('rsi_14')
+843 |             bb_upper = latest_candle.get('bb_upper')
+844 |             bb_lower = latest_candle.get('bb_lower')
+    |             ^^^^^^^^ F841
+845 |             bb_middle = latest_candle.get('bb_middle')
+846 |             bb_width = latest_candle.get('bb_width')
+    |
+    = help: Remove assignment to unused variable `bb_lower`
+
+signal_aggregator\src\enhanced_regime_detector.py:845:13: F841 Local variable `bb_middle` is assigned to but never used
+    |
+843 |             bb_upper = latest_candle.get('bb_upper')
+844 |             bb_lower = latest_candle.get('bb_lower')
+845 |             bb_middle = latest_candle.get('bb_middle')
+    |             ^^^^^^^^^ F841
+846 |             bb_width = latest_candle.get('bb_width')
+847 |             bb_position = latest_candle.get('bb_position')
+    |
+    = help: Remove assignment to unused variable `bb_middle`
+
+signal_aggregator\src\enhanced_regime_detector.py:848:13: F841 Local variable `current_close` is assigned to but never used
+    |
+846 |             bb_width = latest_candle.get('bb_width')
+847 |             bb_position = latest_candle.get('bb_position')
+848 |             current_close = latest_candle['close']
+    |             ^^^^^^^^^^^^^ F841
+849 |             
+850 |             # Calculer les indicateurs manquants (ADX, ROC) avec le module partagé
+    |
+    = help: Remove assignment to unused variable `current_close`
+
+signal_aggregator\src\enhanced_regime_detector.py:925:13: F841 Local variable `volumes` is assigned to but never used
+    |
+923 |             lows = df['low'].values.tolist()
+924 |             closes = df['close'].values.tolist()
+925 |             volumes = df['volume'].values.tolist()
+    |             ^^^^^^^ F841
+926 |             
+927 |             # Calculs complets avec le module partagé (avec lissage ADX)
+    |
+    = help: Remove assignment to unused variable `volumes`
+
+signal_aggregator\src\enhanced_regime_detector.py:931:32: F541 [*] f-string without any placeholders
+    |
+930 |             if current_adx is None or plus_di is None or minus_di is None:
+931 |                 logger.warning(f"ADX/DI non valides fallback")
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+932 |                 return MarketRegime.UNDEFINED, {}
+    |
+    = help: Remove extraneous `f` prefix
+
+signal_aggregator\src\enhanced_regime_detector.py:936:32: F541 [*] f-string without any placeholders
+    |
+934 |             bb_data = self.indicators.calculate_bollinger_bands(closes, 20, 2.0)
+935 |             if bb_data['bb_upper'] is None:
+936 |                 logger.warning(f"Bollinger Bands non valides fallback")
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+937 |                 return MarketRegime.UNDEFINED, {}
+    |
+    = help: Remove extraneous `f` prefix
+
+signal_aggregator\src\enhanced_regime_detector.py:944:32: F541 [*] f-string without any placeholders
+    |
+942 |             current_rsi = self.indicators.calculate_rsi(closes, 14)
+943 |             if current_rsi is None:
+944 |                 logger.warning(f"RSI non valide fallback")
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+945 |                 return MarketRegime.UNDEFINED, {}
+    |
+    = help: Remove extraneous `f` prefix
+
+signal_aggregator\src\indicator_coherence.py:6:26: F401 [*] `typing.Optional` imported but unused
+  |
+4 | """
+5 | import logging
+6 | from typing import Dict, Optional, Tuple
+  |                          ^^^^^^^^ F401
+7 | import numpy as np
+  |
+  = help: Remove unused import: `typing.Optional`
+
+signal_aggregator\src\indicator_coherence.py:7:17: F401 [*] `numpy` imported but unused
+  |
+5 | import logging
+6 | from typing import Dict, Optional, Tuple
+7 | import numpy as np
+  |                 ^^ F401
+8 |
+9 | import sys
+  |
+  = help: Remove unused import: `numpy`
+
+signal_aggregator\src\indicator_coherence.py:264:13: F841 Local variable `volume_trend` is assigned to but never used
+    |
+262 |         try:
+263 |             volume_ratio = indicators.get('volume_ratio')
+264 |             volume_trend = indicators.get('volume_trend')
+    |             ^^^^^^^^^^^^ F841
+265 |             
+266 |             if not volume_ratio:
+    |
+    = help: Remove assignment to unused variable `volume_trend`
+
+signal_aggregator\src\main.py:7:8: F401 [*] `time` imported but unused
+  |
+5 | import os
+6 | import json
+7 | import time
+  |        ^^^^ F401
+8 | from typing import Dict, List, Optional
+9 | from datetime import datetime, timezone
+  |
+  = help: Remove unused import: `time`
+
+signal_aggregator\src\main.py:8:20: F401 [*] `typing.Dict` imported but unused
+   |
+ 6 | import json
+ 7 | import time
+ 8 | from typing import Dict, List, Optional
+   |                    ^^^^ F401
+ 9 | from datetime import datetime, timezone
+10 | from aiohttp import web # Import aiohttp
+   |
+   = help: Remove unused import
+
+signal_aggregator\src\main.py:8:26: F401 [*] `typing.List` imported but unused
+   |
+ 6 | import json
+ 7 | import time
+ 8 | from typing import Dict, List, Optional
+   |                          ^^^^ F401
+ 9 | from datetime import datetime, timezone
+10 | from aiohttp import web # Import aiohttp
+   |
+   = help: Remove unused import
+
+signal_aggregator\src\main.py:8:32: F401 [*] `typing.Optional` imported but unused
+   |
+ 6 | import json
+ 7 | import time
+ 8 | from typing import Dict, List, Optional
+   |                                ^^^^^^^^ F401
+ 9 | from datetime import datetime, timezone
+10 | from aiohttp import web # Import aiohttp
+   |
+   = help: Remove unused import
+
+signal_aggregator\src\main.py:9:22: F401 [*] `datetime.datetime` imported but unused
+   |
+ 7 | import time
+ 8 | from typing import Dict, List, Optional
+ 9 | from datetime import datetime, timezone
+   |                      ^^^^^^^^ F401
+10 | from aiohttp import web # Import aiohttp
+   |
+   = help: Remove unused import
+
+signal_aggregator\src\main.py:9:32: F401 [*] `datetime.timezone` imported but unused
+   |
+ 7 | import time
+ 8 | from typing import Dict, List, Optional
+ 9 | from datetime import datetime, timezone
+   |                                ^^^^^^^^ F401
+10 | from aiohttp import web # Import aiohttp
+   |
+   = help: Remove unused import
+
+signal_aggregator\src\main.py:16:31: F401 [*] `signal_aggregator.SignalAggregator` imported but unused
+   |
+14 | sys.path.insert(0, '/app/src')
+15 |
+16 | from signal_aggregator import SignalAggregator, EnhancedSignalAggregator
+   |                               ^^^^^^^^^^^^^^^^ F401
+17 | from enhanced_regime_detector import EnhancedRegimeDetector
+18 | from performance_tracker import PerformanceTracker
+   |
+   = help: Remove unused import: `signal_aggregator.SignalAggregator`
+
+signal_aggregator\src\main.py:17:38: F401 [*] `enhanced_regime_detector.EnhancedRegimeDetector` imported but unused
+   |
+16 | from signal_aggregator import SignalAggregator, EnhancedSignalAggregator
+17 | from enhanced_regime_detector import EnhancedRegimeDetector
+   |                                      ^^^^^^^^^^^^^^^^^^^^^^ F401
+18 | from performance_tracker import PerformanceTracker
+19 | from db_manager import DatabaseManager
+   |
+   = help: Remove unused import: `enhanced_regime_detector.EnhancedRegimeDetector`
+
+signal_aggregator\src\market_structure_detector.py:3:18: F401 [*] `pandas` imported but unused
+  |
+1 | #!/usr/bin/env python3
+2 | import logging
+3 | import pandas as pd
+  |                  ^^ F401
+4 | import numpy as np
+5 | from typing import Dict, List, Optional, Tuple, NamedTuple
+  |
+  = help: Remove unused import: `pandas`
+
+signal_aggregator\src\market_structure_detector.py:5:49: F401 [*] `typing.NamedTuple` imported but unused
+  |
+3 | import pandas as pd
+4 | import numpy as np
+5 | from typing import Dict, List, Optional, Tuple, NamedTuple
+  |                                                 ^^^^^^^^^^ F401
+6 | from datetime import datetime, timedelta
+7 | import json
+  |
+  = help: Remove unused import: `typing.NamedTuple`
+
+signal_aggregator\src\market_structure_detector.py:6:32: F401 [*] `datetime.timedelta` imported but unused
+  |
+4 | import numpy as np
+5 | from typing import Dict, List, Optional, Tuple, NamedTuple
+6 | from datetime import datetime, timedelta
+  |                                ^^^^^^^^^ F401
+7 | import json
+8 | from enum import Enum
+  |
+  = help: Remove unused import: `datetime.timedelta`
+
+signal_aggregator\src\market_structure_detector.py:380:69: E741 Ambiguous variable name: `l`
+    |
+379 |             # Analyser la tendance des lows  
+380 |             low_trend = self._calculate_price_trend([l['price'] for l in lows[-3:]])
+    |                                                                     ^ E741
+381 |             
+382 |             # Déterminer la structure
+    |
+
+signal_aggregator\src\market_structure_detector.py:510:51: E741 Ambiguous variable name: `l`
+    |
+508 |             for level in levels[1:]:
+509 |                 # Vérifier si le niveau est proche du groupe actuel
+510 |                 group_avg_price = sum(l.price for l in current_group) / len(current_group)
+    |                                                   ^ E741
+511 |                 
+512 |                 if abs(level.price - group_avg_price) / group_avg_price < threshold:
+    |
+
+signal_aggregator\src\market_structure_detector.py:780:44: E741 Ambiguous variable name: `l`
+    |
+778 |             else:
+779 |                 # Analyser les niveaux pour déterminer le biais
+780 |                 resistance_levels = [l for l in key_levels if l.level_type == 'resistance']
+    |                                            ^ E741
+781 |                 support_levels = [l for l in key_levels if l.level_type == 'support']
+    |
+
+signal_aggregator\src\market_structure_detector.py:781:41: E741 Ambiguous variable name: `l`
+    |
+779 |                 # Analyser les niveaux pour déterminer le biais
+780 |                 resistance_levels = [l for l in key_levels if l.level_type == 'resistance']
+781 |                 support_levels = [l for l in key_levels if l.level_type == 'support']
+    |                                         ^ E741
+782 |                 
+783 |                 if len(support_levels) > len(resistance_levels):
+    |
+
+signal_aggregator\src\momentum_cross_timeframe.py:3:18: F401 [*] `pandas` imported but unused
+  |
+1 | #!/usr/bin/env python3
+2 | import logging
+3 | import pandas as pd
+  |                  ^^ F401
+4 | import numpy as np
+5 | from typing import Dict, List, Optional, Tuple, NamedTuple
+  |
+  = help: Remove unused import: `pandas`
+
+signal_aggregator\src\momentum_cross_timeframe.py:5:42: F401 [*] `typing.Tuple` imported but unused
+  |
+3 | import pandas as pd
+4 | import numpy as np
+5 | from typing import Dict, List, Optional, Tuple, NamedTuple
+  |                                          ^^^^^ F401
+6 | from datetime import datetime, timedelta
+7 | import json
+  |
+  = help: Remove unused import
+
+signal_aggregator\src\momentum_cross_timeframe.py:5:49: F401 [*] `typing.NamedTuple` imported but unused
+  |
+3 | import pandas as pd
+4 | import numpy as np
+5 | from typing import Dict, List, Optional, Tuple, NamedTuple
+  |                                                 ^^^^^^^^^^ F401
+6 | from datetime import datetime, timedelta
+7 | import json
+  |
+  = help: Remove unused import
+
+signal_aggregator\src\momentum_cross_timeframe.py:6:22: F401 [*] `datetime.datetime` imported but unused
+  |
+4 | import numpy as np
+5 | from typing import Dict, List, Optional, Tuple, NamedTuple
+6 | from datetime import datetime, timedelta
+  |                      ^^^^^^^^ F401
+7 | import json
+8 | from enum import Enum
+  |
+  = help: Remove unused import
+
+signal_aggregator\src\momentum_cross_timeframe.py:6:32: F401 [*] `datetime.timedelta` imported but unused
+  |
+4 | import numpy as np
+5 | from typing import Dict, List, Optional, Tuple, NamedTuple
+6 | from datetime import datetime, timedelta
+  |                                ^^^^^^^^^ F401
+7 | import json
+8 | from enum import Enum
+  |
+  = help: Remove unused import
+
+signal_aggregator\src\monitoring_stats.py:4:26: F401 [*] `typing.List` imported but unused
+  |
+2 | Système de monitoring et statistiques par régime et stratégie
+3 | """
+4 | from typing import Dict, List, Optional, DefaultDict, Any
+  |                          ^^^^ F401
+5 | from collections import defaultdict, deque
+6 | from datetime import datetime, timedelta
+  |
+  = help: Remove unused import: `typing.List`
+
+signal_aggregator\src\monitoring_stats.py:55:29: F541 [*] f-string without any placeholders
+   |
+53 |                         self.rejected_signals[regime][strategy] = count
+54 |                 
+55 |                 logger.info(f"📊 Statistiques de monitoring chargées")
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+56 |         except Exception as e:
+57 |             logger.error(f"Erreur chargement stats monitoring: {e}")
+   |
+   = help: Remove extraneous `f` prefix
+
+signal_aggregator\src\multi_timeframe_confluence.py:3:18: F401 [*] `pandas` imported but unused
+  |
+1 | #!/usr/bin/env python3
+2 | import logging
+3 | import pandas as pd
+  |                  ^^ F401
+4 | import numpy as np
+5 | from typing import Dict, List, Optional, Tuple
+  |
+  = help: Remove unused import: `pandas`
+
+signal_aggregator\src\multi_timeframe_confluence.py:6:22: F401 [*] `datetime.datetime` imported but unused
+  |
+4 | import numpy as np
+5 | from typing import Dict, List, Optional, Tuple
+6 | from datetime import datetime
+  |                      ^^^^^^^^ F401
+7 | import json
+8 | from enum import Enum
+  |
+  = help: Remove unused import: `datetime.datetime`
+
+signal_aggregator\src\multi_timeframe_confluence.py:8:18: F401 [*] `enum.Enum` imported but unused
+   |
+ 6 | from datetime import datetime
+ 7 | import json
+ 8 | from enum import Enum
+   |                  ^^^^ F401
+ 9 | from dataclasses import dataclass
+10 | from shared.src.technical_indicators import TechnicalIndicators
+   |
+   = help: Remove unused import: `enum.Enum`
+
+signal_aggregator\src\multi_timeframe_confluence.py:13:26: F401 [*] `shared.src.config.MACD_HISTOGRAM_NEUTRAL` imported but unused
+   |
+11 | from shared.src.config import (
+12 |     MACD_HISTOGRAM_VERY_STRONG, MACD_HISTOGRAM_STRONG, MACD_HISTOGRAM_MODERATE, 
+13 |     MACD_HISTOGRAM_WEAK, MACD_HISTOGRAM_NEUTRAL
+   |                          ^^^^^^^^^^^^^^^^^^^^^^ F401
+14 | )
+15 | from enhanced_regime_detector import MarketRegime
+   |
+   = help: Remove unused import: `shared.src.config.MACD_HISTOGRAM_NEUTRAL`
+
+signal_aggregator\src\performance_tracker.py:3:26: F401 [*] `typing.Optional` imported but unused
+  |
+1 | #!/usr/bin/env python3
+2 | import logging
+3 | from typing import Dict, Optional
+  |                          ^^^^^^^^ F401
+4 | from datetime import datetime, timedelta
+5 | import json
+  |
+  = help: Remove unused import: `typing.Optional`
+
+signal_aggregator\src\regime_filtering.py:8:41: F401 [*] `typing.List` imported but unused
+  |
+7 | import logging
+8 | from typing import Dict, Any, Optional, List
+  |                                         ^^^^ F401
+9 | from enhanced_regime_detector import MarketRegime
+  |
+  = help: Remove unused import: `typing.List`
+
+signal_aggregator\src\regime_filtering.py:54:13: F841 Local variable `technical_context` is assigned to but never used
+   |
+53 |             # NOUVEAU: Récupérer données techniques pour validation Enhanced
+54 |             technical_context = await self.technical_analysis.get_technical_context(symbol) if self.technical_analysis else {}
+   |             ^^^^^^^^^^^^^^^^^ F841
+55 |             
+56 |             # Seuils adaptatifs selon le régime Enhanced + contexte technique
+   |
+   = help: Remove assignment to unused variable `technical_context`
+
+signal_aggregator\src\signal_aggregator.py:12:17: F401 [*] `numpy` imported but unused
+   |
+10 | from collections import defaultdict
+11 | import json
+12 | import numpy as np
+   |                 ^^ F401
+13 | import pandas as pd
+14 | import time
+   |
+   = help: Remove unused import: `numpy`
+
+signal_aggregator\src\signal_aggregator.py:14:8: F401 [*] `time` imported but unused
+   |
+12 | import numpy as np
+13 | import pandas as pd
+14 | import time
+   |        ^^^^ F401
+15 |
+16 | # Import des modules séparés
+   |
+   = help: Remove unused import: `time`
+
+signal_aggregator\src\signal_aggregator.py:37:1: E402 Module level import not at top of file
+   |
+35 |     MarketRegimeType = Any
+36 |
+37 | from enhanced_regime_detector import EnhancedRegimeDetector, MarketRegime
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ E402
+   |
+
+signal_aggregator\src\signal_aggregator.py:604:13: F841 Local variable `sell_ratio` is assigned to but never used
+    |
+602 |             total_signals = len(BUY_signals) + len(SELL_signals)
+603 |             buy_ratio = len(BUY_signals) / total_signals
+604 |             sell_ratio = len(SELL_signals) / total_signals
+    |             ^^^^^^^^^^ F841
+605 |             
+606 |             # Si les signaux sont trop équilibrés (40-60%), rejeter
+    |
+    = help: Remove assignment to unused variable `sell_ratio`
+
+signal_aggregator\src\signal_aggregator.py:669:9: F841 Local variable `main_strategy` is assigned to but never used
+    |
+668 |         # Create main strategy name from contributing strategies
+669 |         main_strategy = contributing_strategies[0] if contributing_strategies else 'SignalAggregator'
+    |         ^^^^^^^^^^^^^ F841
+670 |         
+671 |         # NOUVEAU: Volume-based confidence boost (classique)
+    |
+    = help: Remove assignment to unused variable `main_strategy`
+
+signal_aggregator\src\signal_aggregator.py:817:13: F841 Local variable `final_metrics` is assigned to but never used
+    |
+815 |             # Fallback vers analyse standard
+816 |             final_regime = regime
+817 |             final_metrics = regime_metrics
+    |             ^^^^^^^^^^^^^ F841
+818 |             regime_weights = self.enhanced_regime_detector.get_strategy_weights_for_regime(final_regime)
+819 |             confluence_weight_modifier = 1.0
+    |
+    = help: Remove assignment to unused variable `final_metrics`
+
+signal_aggregator\src\signal_aggregator.py:1011:9: F841 Local variable `main_strategy` is assigned to but never used
+     |
+1010 |         # Create main strategy name from contributing strategies
+1011 |         main_strategy = contributing_strategies[0] if contributing_strategies else 'SignalAggregator'
+     |         ^^^^^^^^^^^^^ F841
+1012 |         
+1013 |         # Performance-based adaptive boost
+     |
+     = help: Remove assignment to unused variable `main_strategy`
+
+signal_aggregator\src\signal_aggregator.py:1279:9: F841 Local variable `adaptive_strategies` is assigned to but never used
+     |
+1277 |         trend_strategies = ['EMA_Cross', 'MACD', 'Breakout']
+1278 |         reversal_strategies = ['RSI', 'Bollinger', 'Divergence']
+1279 |         adaptive_strategies = ['Ride_or_React']  # S'adapte au contexte
+     |         ^^^^^^^^^^^^^^^^^^^ F841
+1280 |         
+1281 |         # Séparer les signaux par type
+     |
+     = help: Remove assignment to unused variable `adaptive_strategies`
+
+signal_aggregator\src\signal_aggregator.py:1438:13: F841 Local variable `candle_duration` is assigned to but never used
+     |
+1436 |                 interval = self.redis.get(market_key) or '15m'  # Par défaut 15m pour swing trading
+1437 |             
+1438 |             candle_duration = interval_map.get(interval, timedelta(minutes=15))
+     |             ^^^^^^^^^^^^^^^ F841
+1439 |             
+1440 |             # Debounce fixe en minutes (plus lié aux bougies)
+     |
+     = help: Remove assignment to unused variable `candle_duration`
+
+signal_aggregator\src\signal_metrics.py:9:17: F401 [*] `numpy` imported but unused
+   |
+ 7 | import logging
+ 8 | from typing import Dict, List, Any
+ 9 | import numpy as np
+   |                 ^^ F401
+10 |
+11 | logger = logging.getLogger(__name__)
+   |
+   = help: Remove unused import: `numpy`
+
+signal_aggregator\src\signal_validator.py:9:42: F401 [*] `datetime.timedelta` imported but unused
+   |
+ 7 | import logging
+ 8 | from typing import Dict, List, Any, Optional
+ 9 | from datetime import datetime, timezone, timedelta
+   |                                          ^^^^^^^^^ F401
+10 | import json
+11 | import numpy as np
+   |
+   = help: Remove unused import: `datetime.timedelta`
+
+signal_aggregator\src\signal_validator.py:102:13: F841 Local variable `ema_99_velocity` is assigned to but never used
+    |
+100 |             # Calculer vélocité avec EMAs lisses
+101 |             ema_21_velocity = (ema_21 - ema_21_prev) / ema_21_prev if ema_21_prev > 0 else 0
+102 |             ema_99_velocity = (ema_99 - ema_99_prev) / ema_99_prev if ema_99_prev > 0 else 0
+    |             ^^^^^^^^^^^^^^^ F841
+103 |             
+104 |             # Stocker les valeurs actuelles comme "précédentes" pour le prochain calcul
+    |
+    = help: Remove assignment to unused variable `ema_99_velocity`
+
+signal_aggregator\src\signal_validator.py:109:13: F841 Local variable `trend_strength` is assigned to but never used
+    |
+108 |             # Calculer la force de la tendance
+109 |             trend_strength = abs(ema_21 - ema_99) / ema_99 if ema_99 > 0 else 0
+    |             ^^^^^^^^^^^^^^ F841
+110 |             
+111 |             # Classification sophistiquée de la tendance
+    |
+    = help: Remove assignment to unused variable `trend_strength`
+
+signal_aggregator\src\signal_validator.py:237:17: F841 Local variable `rsi_buy_threshold` is assigned to but never used
+    |
+235 |                 rsi_sell_threshold = 20
+236 |             else:  # Faible volatilité
+237 |                 rsi_buy_threshold = 85  # Plus strict
+    |                 ^^^^^^^^^^^^^^^^^ F841
+238 |                 rsi_sell_threshold = 15
+    |
+    = help: Remove assignment to unused variable `rsi_buy_threshold`
+
+signal_aggregator\src\signal_validator.py:238:17: F841 Local variable `rsi_sell_threshold` is assigned to but never used
+    |
+236 |             else:  # Faible volatilité
+237 |                 rsi_buy_threshold = 85  # Plus strict
+238 |                 rsi_sell_threshold = 15
+    |                 ^^^^^^^^^^^^^^^^^^ F841
+239 |             
+240 |             # Validation RSI pour timing pump
+    |
+    = help: Remove assignment to unused variable `rsi_sell_threshold`
+
+signal_aggregator\src\signal_validator.py:287:13: F841 Local variable `rsi_neutral_high` is assigned to but never used
+    |
+285 |             rsi_overbought = rsi > 70
+286 |             rsi_oversold = rsi < 30
+287 |             rsi_neutral_high = 60 < rsi < 70
+    |             ^^^^^^^^^^^^^^^^ F841
+288 |             rsi_neutral_low = 30 < rsi < 40
+    |
+    = help: Remove assignment to unused variable `rsi_neutral_high`
+
+signal_aggregator\src\signal_validator.py:288:13: F841 Local variable `rsi_neutral_low` is assigned to but never used
+    |
+286 |             rsi_oversold = rsi < 30
+287 |             rsi_neutral_high = 60 < rsi < 70
+288 |             rsi_neutral_low = 30 < rsi < 40
+    |             ^^^^^^^^^^^^^^^ F841
+289 |             
+290 |             # Divergences baissières (prix monte, RSI faiblit)
+    |
+    = help: Remove assignment to unused variable `rsi_neutral_low`
+
+signal_aggregator\src\signal_validator.py:377:9: F841 Local variable `price_targets` is assigned to but never used
+    |
+376 |         # Vérifier que les signaux pointent dans la même direction générale
+377 |         price_targets: list[float] = []
+    |         ^^^^^^^^^^^^^ F841
+378 |         stop_losses: list[float] = []
+    |
+    = help: Remove assignment to unused variable `price_targets`
+
+signal_aggregator\src\signal_validator.py:484:48: F541 [*] f-string without any placeholders
+    |
+482 |             try:
+483 |                 symbol_prices = self.redis.lrange(f"prices_1h:{symbol}", 0, 24)
+484 |                 btc_prices = self.redis.lrange(f"prices_1h:BTCUSDC", 0, 24)
+    |                                                ^^^^^^^^^^^^^^^^^^^^ F541
+485 |             except AttributeError:
+486 |                 # Fallback pour RedisClientPool customisé
+    |
+    = help: Remove extraneous `f` prefix
+
+signal_aggregator\src\signal_validator.py:488:49: F541 [*] f-string without any placeholders
+    |
+486 |                 # Fallback pour RedisClientPool customisé
+487 |                 symbol_prices_str = self.redis.get(f"prices_1h:{symbol}")
+488 |                 btc_prices_str = self.redis.get(f"prices_1h:BTCUSDC")
+    |                                                 ^^^^^^^^^^^^^^^^^^^^ F541
+489 |                 
+490 |                 symbol_prices = []
+    |
+    = help: Remove extraneous `f` prefix
+
+signal_aggregator\src\signal_validator.py:544:26: F541 [*] f-string without any placeholders
+    |
+543 |         if signal.get('confidence', 0) < min_confidence:
+544 |             logger.debug(f"Signal filtré: confiance insuffisante pendant heures creuses")
+    |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+545 |             return False
+    |
+    = help: Remove extraneous `f` prefix
+
+signal_aggregator\src\spike_detector.py:5:26: F401 [*] `typing.Optional` imported but unused
+  |
+3 | """
+4 | import logging
+5 | from typing import Dict, Optional, Tuple, List
+  |                          ^^^^^^^^ F401
+6 | from datetime import datetime, timedelta
+7 | import numpy as np
+  |
+  = help: Remove unused import
+
+signal_aggregator\src\spike_detector.py:5:43: F401 [*] `typing.List` imported but unused
+  |
+3 | """
+4 | import logging
+5 | from typing import Dict, Optional, Tuple, List
+  |                                           ^^^^ F401
+6 | from datetime import datetime, timedelta
+7 | import numpy as np
+  |
+  = help: Remove unused import
+
+signal_aggregator\src\spike_detector.py:6:32: F401 [*] `datetime.timedelta` imported but unused
+  |
+4 | import logging
+5 | from typing import Dict, Optional, Tuple, List
+6 | from datetime import datetime, timedelta
+  |                                ^^^^^^^^^ F401
+7 | import numpy as np
+8 | import json
+  |
+  = help: Remove unused import: `datetime.timedelta`
+
+signal_aggregator\src\spike_detector.py:7:17: F401 [*] `numpy` imported but unused
+  |
+5 | from typing import Dict, Optional, Tuple, List
+6 | from datetime import datetime, timedelta
+7 | import numpy as np
+  |                 ^^ F401
+8 | import json
+  |
+  = help: Remove unused import: `numpy`
+
+signal_aggregator\src\spike_detector.py:16:26: F401 [*] `shared.src.config.MACD_HISTOGRAM_NEUTRAL` imported but unused
+   |
+14 | from shared.src.config import (
+15 |     MACD_HISTOGRAM_VERY_STRONG, MACD_HISTOGRAM_STRONG, MACD_HISTOGRAM_MODERATE, 
+16 |     MACD_HISTOGRAM_WEAK, MACD_HISTOGRAM_NEUTRAL
+   |                          ^^^^^^^^^^^^^^^^^^^^^^ F401
+17 | )
+   |
+   = help: Remove unused import: `shared.src.config.MACD_HISTOGRAM_NEUTRAL`
+
+signal_aggregator\src\technical_analysis.py:51:13: F841 Local variable `highs` is assigned to but never used
+   |
+49 |             prices = data_5m.get('prices', [])
+50 |             volumes = data_5m.get('volumes', [])
+51 |             highs = data_5m.get('highs', [])
+   |             ^^^^^ F841
+52 |             lows = data_5m.get('lows', [])
+   |
+   = help: Remove assignment to unused variable `highs`
+
+signal_aggregator\src\technical_analysis.py:52:13: F841 Local variable `lows` is assigned to but never used
+   |
+50 |             volumes = data_5m.get('volumes', [])
+51 |             highs = data_5m.get('highs', [])
+52 |             lows = data_5m.get('lows', [])
+   |             ^^^^ F841
+53 |             
+54 |             if len(prices) < 30:  # Minimum pour les calculs
+   |
+   = help: Remove assignment to unused variable `lows`
+
+signal_aggregator\src\technical_analysis.py:68:17: E722 Do not use bare `except`
+   |
+66 |                     if obv_value is not None:
+67 |                         context['obv'] = obv_value
+68 |                 except:
+   |                 ^^^^^^ E722
+69 |                     pass  # OBV optionnel
+   |
+
+signal_aggregator\src\technical_analysis.py:76:13: E722 Do not use bare `except`
+   |
+74 |                 if roc_value is not None:
+75 |                     context['roc'] = roc_value
+76 |             except:
+   |             ^^^^^^ E722
+77 |                 pass  # ROC optionnel
+   |
+
+signal_aggregator\src\technical_analysis.py:491:123: F821 Undefined name `Union`
+    |
+489 | …
+490 | …
+491 | …str, current_candle: Dict, indicator_type: str, **params) -> Union[Optional[float], Dict[str, float | None]]:
+    |                                                               ^^^^^ F821
+492 | …
+493 | …teur de manière incrémentale.
+    |
+
+signal_aggregator\src\technical_analysis.py:536:17: F841 Local variable `prev_rsi` is assigned to but never used
+    |
+534 |                 # RSI incrémental (nécessite historique de gains/pertes)
+535 |                 period = params.get('period', 14)
+536 |                 prev_rsi = cache.get(f'rsi_{period}')
+    |                 ^^^^^^^^ F841
+537 |                 prev_avg_gain = cache.get(f'rsi_{period}_avg_gain')
+538 |                 prev_avg_loss = cache.get(f'rsi_{period}_avg_loss')
+    |
+    = help: Remove assignment to unused variable `prev_rsi`
+
+tests\test_bollinger_volume_context.py:193:19: F541 [*] f-string without any placeholders
+    |
+191 |             print(f"   ⚠️  RÉDUCTION: {score - old_score} points")
+192 |         else:
+193 |             print(f"   🔄 MAINTENU: Score identique")
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+194 |         
+195 |         # Spécificité Bollinger
+    |
+    = help: Remove extraneous `f` prefix
+
+tests\test_bollinger_volume_context.py:197:19: F541 [*] f-string without any placeholders
+    |
+195 |         # Spécificité Bollinger
+196 |         if case['signal_type'] == 'mean_reversion' and case['volume'] >= 0.7:
+197 |             print(f"   💡 SPÉCIFICITÉ: Mean reversion tolère volume faible")
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+198 |         elif case['signal_type'] == 'breakout' and case['volume'] < 1.3:
+199 |             print(f"   ⚠️  SPÉCIFICITÉ: Breakout nécessite volume élevé")
+    |
+    = help: Remove extraneous `f` prefix
+
+tests\test_bollinger_volume_context.py:199:19: F541 [*] f-string without any placeholders
+    |
+197 |             print(f"   💡 SPÉCIFICITÉ: Mean reversion tolère volume faible")
+198 |         elif case['signal_type'] == 'breakout' and case['volume'] < 1.3:
+199 |             print(f"   ⚠️  SPÉCIFICITÉ: Breakout nécessite volume élevé")
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+200 |         
+201 |         print()
+    |
+    = help: Remove extraneous `f` prefix
+
+tests\test_breakout_volume_context.py:159:19: F541 [*] f-string without any placeholders
+    |
+157 |             print(f"   ⚠️  RÉDUCTION: {score - old_score} points")
+158 |         else:
+159 |             print(f"   🔄 MAINTENU: Score identique")
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+160 |         
+161 |         print()
+    |
+    = help: Remove extraneous `f` prefix
+
+tests\test_volume_context.py:28:11: F541 [*] f-string without any placeholders
+   |
+26 |     volume_quality = volume_context_detector.get_volume_quality_description(1.06, context_name)
+27 |     
+28 |     print(f"Volume ratio: 1.06")
+   |           ^^^^^^^^^^^^^^^^^^^^^ F541
+29 |     print(f"RSI: 25, CCI: -220, ADX: 15")
+30 |     print(f"Contexte détecté: {context_name}")
+   |
+   = help: Remove extraneous `f` prefix
+
+tests\test_volume_context.py:29:11: F541 [*] f-string without any placeholders
+   |
+28 |     print(f"Volume ratio: 1.06")
+29 |     print(f"RSI: 25, CCI: -220, ADX: 15")
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+30 |     print(f"Contexte détecté: {context_name}")
+31 |     print(f"Seuil contextuel: {contextual_threshold}")
+   |
+   = help: Remove extraneous `f` prefix
+
+tests\test_volume_context.py:53:11: F541 [*] f-string without any placeholders
+   |
+51 |     volume_quality = volume_context_detector.get_volume_quality_description(0.9, context_name)
+52 |     
+53 |     print(f"Volume ratio: 0.9")
+   |           ^^^^^^^^^^^^^^^^^^^^ F541
+54 |     print(f"RSI: 35, CCI: -160, ADX: 22")
+55 |     print(f"Contexte détecté: {context_name}")
+   |
+   = help: Remove extraneous `f` prefix
+
+tests\test_volume_context.py:54:11: F541 [*] f-string without any placeholders
+   |
+53 |     print(f"Volume ratio: 0.9")
+54 |     print(f"RSI: 35, CCI: -160, ADX: 22")
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+55 |     print(f"Contexte détecté: {context_name}")
+56 |     print(f"Seuil contextuel: {contextual_threshold}")
+   |
+   = help: Remove extraneous `f` prefix
+
+tests\test_volume_context.py:82:11: F541 [*] f-string without any placeholders
+   |
+80 |     volume_quality = volume_context_detector.get_volume_quality_description(1.3, context_name)
+81 |     
+82 |     print(f"Volume ratio: 1.3")
+   |           ^^^^^^^^^^^^^^^^^^^^ F541
+83 |     print(f"RSI: 55, CCI: -50, ADX: 30")
+84 |     print(f"Volume history: {volume_history}")
+   |
+   = help: Remove extraneous `f` prefix
+
+tests\test_volume_context.py:83:11: F541 [*] f-string without any placeholders
+   |
+82 |     print(f"Volume ratio: 1.3")
+83 |     print(f"RSI: 55, CCI: -50, ADX: 30")
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+84 |     print(f"Volume history: {volume_history}")
+85 |     print(f"Contexte détecté: {context_name}")
+   |
+   = help: Remove extraneous `f` prefix
+
+tests\test_volume_context.py:108:11: F541 [*] f-string without any placeholders
+    |
+106 |     volume_quality = volume_context_detector.get_volume_quality_description(0.95, context_name)
+107 |     
+108 |     print(f"Volume ratio: 0.95")
+    |           ^^^^^^^^^^^^^^^^^^^^^ F541
+109 |     print(f"RSI: 45, CCI: -80, ADX: 12 (marché calme)")
+110 |     print(f"Contexte détecté: {context_name}")
+    |
+    = help: Remove extraneous `f` prefix
+
+tests\test_volume_context.py:109:11: F541 [*] f-string without any placeholders
+    |
+108 |     print(f"Volume ratio: 0.95")
+109 |     print(f"RSI: 45, CCI: -80, ADX: 12 (marché calme)")
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+110 |     print(f"Contexte détecté: {context_name}")
+111 |     print(f"Seuil contextuel: {contextual_threshold}")
+    |
+    = help: Remove extraneous `f` prefix
+
+tests\test_volume_context.py:129:11: F541 [*] f-string without any placeholders
+    |
+127 |     )
+128 |     
+129 |     print(f"RSI: 28, CCI: -210, ADX: 18")
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+130 |     print(f"Tolérance applicable: {'✅ OUI' if apply_tolerance else '❌ NON'}")
+131 |     print(f"Facteur de réduction: {tolerance_factor}")
+    |
+    = help: Remove extraneous `f` prefix
+
+tests\test_volume_context_simple.py:70:11: F541 [*] f-string without any placeholders
+   |
+68 |     cci = -220
+69 |     
+70 |     print(f"📊 Données:")
+   |           ^^^^^^^^^^^^^^ F541
+71 |     print(f"   Volume ratio: {volume_ratio}")
+72 |     print(f"   RSI: {rsi}")
+   |
+   = help: Remove extraneous `f` prefix
+
+tests\test_volume_context_simple.py:80:11: F541 [*] f-string without any placeholders
+   |
+78 |     context = VOLUME_CONTEXTS_SIMULATION[context_name]
+79 |     
+80 |     print(f"🧠 Détection contexte:")
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+81 |     print(f"   Contexte: {context_name}")
+82 |     print(f"   Description: {context['description']}")
+   |
+   = help: Remove extraneous `f` prefix
+
+tests\test_volume_context_simple.py:89:11: F541 [*] f-string without any placeholders
+   |
+87 |     contextual_score = calculate_contextual_score(volume_ratio, context_name)
+88 |     
+89 |     print(f"⚖️  Évaluation volume:")
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^ F541
+90 |     print(f"   Seuil minimum: {context['min_ratio']}")
+91 |     print(f"   Seuil idéal: {context['ideal_ratio']}")
+   |
+   = help: Remove extraneous `f` prefix
+
+tests\test_volume_context_simple.py:100:11: F541 [*] f-string without any placeholders
+    |
+ 98 |     old_logic_valid = volume_ratio >= 1.0  # Ancienne logique fixe
+ 99 |     
+100 |     print(f"✅ RÉSULTATS:")
+    |           ^^^^^^^^^^^^^^^^ F541
+101 |     print(f"   Ancienne logique (seuil fixe 1.0): {'✅ ACCEPTÉ' if old_logic_valid else '❌ REJETÉ'}")
+102 |     print(f"   Nouvelle logique contextuelle: {'✅ ACCEPTÉ' if is_valid else '❌ REJETÉ'}")
+    |
+    = help: Remove extraneous `f` prefix
+
+tests\test_volume_context_simple.py:105:15: F541 [*] f-string without any placeholders
+    |
+104 |     if is_valid and not old_logic_valid:
+105 |         print(f"   🎉 AMÉLIORATION: Signal maintenant accepté grâce au contexte!")
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+106 |     elif is_valid:
+107 |         print(f"   🔄 MAINTENU: Signal accepté (comme avant mais avec contexte)")
+    |
+    = help: Remove extraneous `f` prefix
+
+tests\test_volume_context_simple.py:107:15: F541 [*] f-string without any placeholders
+    |
+105 |         print(f"   🎉 AMÉLIORATION: Signal maintenant accepté grâce au contexte!")
+106 |     elif is_valid:
+107 |         print(f"   🔄 MAINTENU: Signal accepté (comme avant mais avec contexte)")
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ F541
+108 |     
+109 |     print()
+    |
+    = help: Remove extraneous `f` prefix
+
+tests\test_volume_context_simple.py:133:9: F841 Local variable `contextual_score` is assigned to but never used
+    |
+131 |         )
+132 |         context = VOLUME_CONTEXTS_SIMULATION[context_name]
+133 |         contextual_score = calculate_contextual_score(case['volume'], context_name)
+    |         ^^^^^^^^^^^^^^^^ F841
+134 |         
+135 |         is_valid = case['volume'] >= context["min_ratio"]
+    |
+    = help: Remove assignment to unused variable `contextual_score`
+
+trader\src\api\rest_server.py:7:20: F401 [*] `typing.Optional` imported but unused
+  |
+5 | import logging
+6 | import threading
+7 | from typing import Optional
+  |                    ^^^^^^^^ F401
+8 | import time
+9 | import psutil
+  |
+  = help: Remove unused import: `typing.Optional`
+
+trader\src\api\rest_server.py:8:8: F401 [*] `time` imported but unused
+   |
+ 6 | import threading
+ 7 | from typing import Optional
+ 8 | import time
+   |        ^^^^ F401
+ 9 | import psutil
+10 | import os
+   |
+   = help: Remove unused import: `time`
+
+trader\src\api\routes.py:11:30: F401 [*] `shared.src.enums.OrderSide` imported but unused
+   |
+10 | from shared.src.config import TRADING_MODE
+11 | from shared.src.enums import OrderSide
+   |                              ^^^^^^^^^ F401
+12 | from shared.src.db_pool import get_db_metrics
+   |
+   = help: Remove unused import: `shared.src.enums.OrderSide`
+
+trader\src\exchange\binance_executor.py:7:41: F401 [*] `typing.List` imported but unused
+  |
+5 | """
+6 | import logging
+7 | from typing import Dict, Any, Optional, List, Tuple, Union
+  |                                         ^^^^ F401
+8 | from datetime import datetime
+  |
+  = help: Remove unused import
+
+trader\src\exchange\binance_executor.py:7:54: F401 [*] `typing.Union` imported but unused
+  |
+5 | """
+6 | import logging
+7 | from typing import Dict, Any, Optional, List, Tuple, Union
+  |                                                      ^^^^^ F401
+8 | from datetime import datetime
+  |
+  = help: Remove unused import
+
+trader\src\exchange\binance_utils.py:12:21: F401 [*] `decimal.Decimal` imported but unused
+   |
+10 | import uuid
+11 | import requests  # type: ignore
+12 | from decimal import Decimal, getcontext, ROUND_DOWN
+   |                     ^^^^^^^ F401
+13 | from urllib.parse import urlencode
+14 | from datetime import datetime
+   |
+   = help: Remove unused import
+
+trader\src\exchange\binance_utils.py:12:42: F401 [*] `decimal.ROUND_DOWN` imported but unused
+   |
+10 | import uuid
+11 | import requests  # type: ignore
+12 | from decimal import Decimal, getcontext, ROUND_DOWN
+   |                                          ^^^^^^^^^^ F401
+13 | from urllib.parse import urlencode
+14 | from datetime import datetime
+   |
+   = help: Remove unused import
+
+trader\src\exchange\binance_utils.py:15:54: F401 [*] `typing.Union` imported but unused
+   |
+13 | from urllib.parse import urlencode
+14 | from datetime import datetime
+15 | from typing import Dict, Any, Optional, List, Tuple, Union
+   |                                                      ^^^^^ F401
+16 |
+17 | from shared.src.enums import OrderSide, OrderStatus, TradeRole
+   |
+   = help: Remove unused import: `typing.Union`
+
+trader\src\exchange\binance_utils.py:17:54: F401 [*] `shared.src.enums.TradeRole` imported but unused
+   |
+15 | from typing import Dict, Any, Optional, List, Tuple, Union
+16 |
+17 | from shared.src.enums import OrderSide, OrderStatus, TradeRole
+   |                                                      ^^^^^^^^^ F401
+18 | from shared.src.schemas import TradeOrder, TradeExecution
+   |
+   = help: Remove unused import: `shared.src.enums.TradeRole`
+
+trader\src\exchange\binance_utils.py:326:17: E722 Do not use bare `except`
+    |
+324 |                     error_code = error_data.get("code", 0)
+325 |                     logger.error(f"Erreur Binance {response.status_code}: {error_code} - {error_msg}")
+326 |                 except:
+    |                 ^^^^^^ E722
+327 |                     error_msg = f"HTTP {response.status_code}"
+328 |                     logger.error(f"Erreur Binance {response.status_code}: {error_msg}")
+    |
+
+trader\src\exchange\binance_utils.py:511:17: E722 Do not use bare `except`
+    |
+509 |                 try:
+510 |                     error_msg = response.json().get("msg", "Unknown error")
+511 |                 except:
+    |                 ^^^^^^ E722
+512 |                     error_msg = f"HTTP {response.status_code}"
+    |
+
+trader\src\exchange\order_validation.py:7:20: F401 [*] `typing.Dict` imported but unused
+  |
+5 | """
+6 | import logging
+7 | from typing import Dict, Any, Optional
+  |                    ^^^^ F401
+8 |
+9 | from shared.src.schemas import TradeOrder
+  |
+  = help: Remove unused import
+
+trader\src\exchange\order_validation.py:7:26: F401 [*] `typing.Any` imported but unused
+  |
+5 | """
+6 | import logging
+7 | from typing import Dict, Any, Optional
+  |                          ^^^ F401
+8 |
+9 | from shared.src.schemas import TradeOrder
+  |
+  = help: Remove unused import
+
+trader\src\exchange\order_validation.py:7:31: F401 [*] `typing.Optional` imported but unused
+  |
+5 | """
+6 | import logging
+7 | from typing import Dict, Any, Optional
+  |                               ^^^^^^^^ F401
+8 |
+9 | from shared.src.schemas import TradeOrder
+  |
+  = help: Remove unused import
+
+trader\src\trading\cycle_manager.py:331:17: E722 Do not use bare `except`
+    |
+329 |                 try:
+330 |                     metadata = json.loads(result[4]) if result[4] else {}
+331 |                 except:
+    |                 ^^^^^^ E722
+332 |                     metadata = {}
+    |
+
+trader\src\trading\cycle_manager.py:398:17: F841 Local variable `quantity` is assigned to but never used
+    |
+397 |                 entry_price = Decimal(str(result[0]))
+398 |                 quantity = Decimal(str(result[1]))
+    |                 ^^^^^^^^ F841
+399 |                 
+400 |                 try:
+    |
+    = help: Remove assignment to unused variable `quantity`
+
+trader\src\trading\cycle_manager.py:402:17: E722 Do not use bare `except`
+    |
+400 |                 try:
+401 |                     metadata = json.loads(result[2]) if result[2] else {}
+402 |                 except:
+    |                 ^^^^^^ E722
+403 |                     metadata = {}
+    |
+
+trader\src\trading\cycle_manager.py:481:17: E722 Do not use bare `except`
+    |
+479 |                 try:
+480 |                     metadata = json.loads(cycle_data.get('metadata', '{}') or '{}')
+481 |                 except:
+    |                 ^^^^^^ E722
+482 |                     metadata = {}
+    |
+
+trader\src\trading\order_executor.py:6:8: F401 [*] `time` imported but unused
+  |
+4 | """
+5 | import logging
+6 | import time
+  |        ^^^^ F401
+7 | import uuid
+8 | from datetime import datetime, timezone
+  |
+  = help: Remove unused import: `time`
+
+trader\src\trading\order_manager.py:10:30: F401 [*] `shared.src.enums.OrderSide` imported but unused
+   |
+ 9 | from shared.src.config import SYMBOLS, TRADING_MODE
+10 | from shared.src.enums import OrderSide
+   |                              ^^^^^^^^^ F401
+11 | from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY
+   |
+   = help: Remove unused import: `shared.src.enums.OrderSide`
+
+trader\src\utils\safety.py:108:33: F841 [*] Local variable `e` is assigned to but never used
+    |
+106 |                 return result
+107 |                 
+108 |             except Exception as e:
+    |                                 ^ F841
+109 |                 # Incrémenter le compteur d'échecs
+110 |                 with state["lock"]:
+    |
+    = help: Remove assignment to unused variable `e`
+
+visualization\src\chart_service.py:3:32: F401 [*] `datetime.timedelta` imported but unused
+  |
+1 | import logging
+2 | from typing import Dict, List, Any, Optional
+3 | from datetime import datetime, timedelta
+  |                                ^^^^^^^^^ F401
+4 | import numpy as np
+5 | from data_manager import DataManager
+  |
+  = help: Remove unused import: `datetime.timedelta`
+
+visualization\src\main.py:7:20: F401 [*] `typing.List` imported but unused
+  |
+5 | from fastapi.responses import HTMLResponse
+6 | from contextlib import asynccontextmanager
+7 | from typing import List, Dict, Any, Optional
+  |                    ^^^^ F401
+8 | from datetime import datetime, timedelta
+9 | import asyncio
+  |
+  = help: Remove unused import
+
+visualization\src\main.py:7:26: F401 [*] `typing.Dict` imported but unused
+  |
+5 | from fastapi.responses import HTMLResponse
+6 | from contextlib import asynccontextmanager
+7 | from typing import List, Dict, Any, Optional
+  |                          ^^^^ F401
+8 | from datetime import datetime, timedelta
+9 | import asyncio
+  |
+  = help: Remove unused import
+
+visualization\src\main.py:7:32: F401 [*] `typing.Any` imported but unused
+  |
+5 | from fastapi.responses import HTMLResponse
+6 | from contextlib import asynccontextmanager
+7 | from typing import List, Dict, Any, Optional
+  |                                ^^^ F401
+8 | from datetime import datetime, timedelta
+9 | import asyncio
+  |
+  = help: Remove unused import
+
+visualization\src\main.py:8:32: F401 [*] `datetime.timedelta` imported but unused
+   |
+ 6 | from contextlib import asynccontextmanager
+ 7 | from typing import List, Dict, Any, Optional
+ 8 | from datetime import datetime, timedelta
+   |                                ^^^^^^^^^ F401
+ 9 | import asyncio
+10 | import logging
+   |
+   = help: Remove unused import: `datetime.timedelta`
+
+visualization\src\websocket_hub.py:2:8: F401 [*] `json` imported but unused
+  |
+1 | import asyncio
+2 | import json
+  |        ^^^^ F401
+3 | import logging
+4 | from typing import Dict, Set, Optional, List, Any
+  |
+  = help: Remove unused import: `json`
+
+Found 277 errors.
+[*] 196 fixable with the `--fix` option (38 hidden fixes can be enabled with the `--unsafe-fixes` option).

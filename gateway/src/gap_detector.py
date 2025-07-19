@@ -5,7 +5,7 @@ Optimise le rechargement après coupure en ne chargeant que les données manquan
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 import asyncpg
 from shared.src.config import get_db_config, SYMBOLS
 
@@ -189,7 +189,7 @@ class GapDetector:
             symbols = SYMBOLS
             
         timeframes = ['1m', '3m', '5m', '15m']
-        all_gaps: Dict[str, List[Dict[str, Any]]] = {}
+        all_gaps: Dict[str, Dict[str, List[Tuple[datetime, datetime]]]] = {}
         total_gaps = 0
         
         logger.info(f"🔍 Détection des gaps sur {lookback_hours}h pour {len(symbols)} symboles...")
@@ -360,7 +360,7 @@ class GapDetector:
         Returns:
             Dict avec structure: {symbol: {timeframe: [fetch_periods]}}
         """
-        filling_plan: Dict[str, List[Tuple[datetime, datetime]]] = {}
+        filling_plan: Dict[str, Dict[str, List[Tuple[datetime, datetime]]]] = {}
         total_requests = 0
         
         for symbol, timeframe_gaps in all_gaps.items():

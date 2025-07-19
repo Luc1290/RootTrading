@@ -175,7 +175,7 @@ class UltraDataFetcher:
             params = {
                 'symbol': symbol,
                 'interval': timeframe,
-                'limit': limit
+                'limit': str(limit)
             }
             
             url = f"{self.base_url}{self.klines_endpoint}"
@@ -297,13 +297,14 @@ class UltraDataFetcher:
         try:
             params = {
                 'symbol': symbol,
-                'limit': 20  # Top 20 niveaux
+                'limit': '20'  # Top 20 niveaux
             }
             
             url = f"{self.base_url}{self.depth_endpoint}"
             
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=params, timeout=10) as response:
+                timeout = ClientTimeout(total=10)
+                async with session.get(url, params=params, timeout=timeout) as response:
                     if response.status == 200:
                         orderbook = await response.json()
                         sentiment_data = self._analyze_orderbook_sentiment(orderbook)
@@ -324,7 +325,8 @@ class UltraDataFetcher:
             url = f"{self.base_url}{self.ticker_endpoint}"
             
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=params, timeout=10) as response:
+                timeout = ClientTimeout(total=10)
+                async with session.get(url, params=params, timeout=timeout) as response:
                     if response.status == 200:
                         ticker = await response.json()
                         
@@ -808,9 +810,9 @@ class UltraDataFetcher:
             params = {
                 'symbol': symbol,
                 'interval': timeframe,
-                'startTime': start_timestamp,
-                'endTime': end_timestamp,
-                'limit': max_klines
+                'startTime': str(start_timestamp),
+                'endTime': str(end_timestamp),
+                'limit': str(max_klines)
             }
             
             url = f"{self.base_url}{self.klines_endpoint}"
@@ -891,11 +893,11 @@ class UltraDataFetcher:
             params = {
                 'symbol': symbol,
                 'interval': timeframe,
-                'limit': limit
+                'limit': str(limit)
             }
             
             if end_time:
-                params['endTime'] = end_time
+                params['endTime'] = str(end_time)
             
             url = f"{self.base_url}{self.klines_endpoint}"
             

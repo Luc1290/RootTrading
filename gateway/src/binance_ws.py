@@ -42,7 +42,7 @@ class BinanceWebSocket:
         self.symbols = symbols or SYMBOLS
         self.interval = interval
         self.kafka_client = kafka_client or get_producer()   # utilise le producteur singleton
-        self.ws: Optional[websockets.WebSocketServerProtocol] = None
+        self.ws: Optional[websockets.WebSocketClientProtocol] = None
         self.running = False
         self.reconnect_delay = 1  # Secondes, pour backoff exponentiel
         self.last_message_time = 0.0
@@ -70,12 +70,12 @@ class BinanceWebSocket:
         self.orderbook_cache: Dict[str, Any] = {}
         
         # ULTRA-AVANCÉ : Buffers pour calculs techniques en temps réel
-        self.price_buffers: Dict[str, List[float]] = {}
-        self.volume_buffers: Dict[str, List[float]] = {}
-        self.high_buffers: Dict[str, List[float]] = {}
-        self.low_buffers: Dict[str, List[float]] = {}
-        self.rsi_buffers: Dict[str, List[float]] = {}
-        self.macd_buffers: Dict[str, Dict[str, List[float]]] = {}
+        self.price_buffers: Dict[str, Dict[str, List[float]]] = {}
+        self.volume_buffers: Dict[str, Dict[str, List[float]]] = {}
+        self.high_buffers: Dict[str, Dict[str, List[float]]] = {}
+        self.low_buffers: Dict[str, Dict[str, List[float]]] = {}
+        self.rsi_buffers: Dict[str, Dict[str, List[float]]] = {}
+        self.macd_buffers: Dict[str, Dict[str, Any]] = {}
         
         # 🚀 NOUVEAU : Cache pour indicateurs incrémentaux (évite dents de scie)
         self.incremental_cache: Dict[str, Dict[str, Any]] = {}
@@ -147,7 +147,7 @@ class BinanceWebSocket:
             # Réinitialiser le délai de reconnexion
             self.reconnect_delay = 1
             
-        except (ConnectionClosed, InvalidStatusCode) as e:
+        except (ConnectionClosed, InvalidStatus) as e:
             logger.error(f"❌ Erreur lors de la connexion WebSocket: {str(e)}")
             await self._handle_reconnect()
         except Exception as e:
@@ -554,7 +554,7 @@ class BinanceWebSocket:
     def _calculate_atr(self, symbol: str, timeframe: str, period: int) -> Optional[float]:
         """Calcule l'ATR (Average True Range)"""
         # Pour l'ATR, on a besoin des high/low précédents, simplifié ici
-        prices = self.price_buffers[symbol][timeframe]
+        prices = self.price_buffers.get(symbol, {}).get(timeframe, [])
         if len(prices) < period + 1:
             return None
             
@@ -573,9 +573,9 @@ class BinanceWebSocket:
         if timeframe not in self.high_buffers[symbol] or timeframe not in self.low_buffers[symbol]:
             return None
             
-        highs = self.high_buffers[symbol][timeframe]
-        lows = self.low_buffers[symbol][timeframe]
-        closes = self.price_buffers[symbol][timeframe]
+        highs = self.high_buffers.get(symbol, {}).get(timeframe, [])
+        lows = self.low_buffers.get(symbol, {}).get(timeframe, [])
+        closes = self.price_buffers.get(symbol, {}).get(timeframe, [])
         
         if len(highs) < period + 1 or len(lows) < period + 1 or len(closes) < period + 1:
             return None
@@ -594,7 +594,7 @@ class BinanceWebSocket:
         
     def _calculate_williams_r(self, symbol: str, timeframe: str, period: int) -> Optional[float]:
         """Calcule Williams %R"""
-        prices = self.price_buffers[symbol][timeframe]
+        prices = self.price_buffers.get(symbol, {}).get(timeframe, [])
         if len(prices) < period:
             return None
             
@@ -610,7 +610,7 @@ class BinanceWebSocket:
         
     def _calculate_cci(self, symbol: str, timeframe: str, period: int) -> Optional[float]:
         """Calcule CCI (Commodity Channel Index)"""
-        prices = self.price_buffers[symbol][timeframe]
+        prices = self.price_buffers.get(symbol, {}).get(timeframe, [])
         if len(prices) < period:
             return None
             
@@ -886,12 +886,16 @@ class BinanceWebSocket:
                             # Log des clés pour débogage
                             logger.debug(f"Données envoyées à Kafka - Clés: {list(clean_data.keys())}")
 
-                            # Publier avec la nouvelle méthode
-                            self.kafka_client.publish_to_topic(
-                                topic=topic,
-                                data=clean_data,
-                                key=key
-                            )
+                            # Publier avec la méthode appropriée
+                            if hasattr(self.kafka_client, 'publish_to_topic'):
+                                self.kafka_client.publish_to_topic(
+                                    topic=topic,
+                                    data=clean_data,
+                                    key=key
+                                )
+                            else:
+                                # Fallback pour KafkaProducer
+                                self.kafka_client.publish_market_data(clean_data, symbol)
         
                             # Log enrichi
                             spread_pct = processed_data.get('spread_pct', 0)

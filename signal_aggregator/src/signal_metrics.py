@@ -199,7 +199,7 @@ class SignalMetrics:
                 if volume_score and isinstance(volume_score, (int, float)):
                     volume_scores.append(float(volume_score))
             
-            summary = {
+            summary: Dict[str, Any] = {
                 'signals_with_volume': len(volume_ratios),
                 'total_signals': len(signals)
             }

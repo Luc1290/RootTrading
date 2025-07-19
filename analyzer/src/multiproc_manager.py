@@ -95,6 +95,9 @@ class AnalyzerManager:
         # Créer le chargeur de stratégies
         self.strategy_loader = get_strategy_loader()
         
+        # Déclarer l'attribut avec son type
+        self.optimized_analyzer: Optional[OptimizedAnalyzer] = None
+        
         # Initialiser l'analyseur optimisé si disponible
         if OPTIMIZATIONS_AVAILABLE:
             self.optimized_analyzer = OptimizedAnalyzer(
@@ -103,7 +106,7 @@ class AnalyzerManager:
             )
             logger.info("✅ Analyseur optimisé initialisé")
         else:
-            self.optimized_analyzer: Optional[OptimizedAnalyzer] = None
+            self.optimized_analyzer = None
         
         # Événement d'arrêt
         self.stop_event = mp.Event() if not use_threads else threading.Event()

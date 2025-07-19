@@ -245,6 +245,10 @@ class DatabaseManager:
                 params = [symbol, interval, limit]
             
             # Utiliser le pool de connexions pour éviter les conflits de concurrence
+            if not self._connection_pool:
+                logger.warning(f"Pool de connexions non disponible pour {symbol}")
+                return []
+                
             try:
                 async with self._connection_pool.acquire() as connection:
                     rows = await connection.fetch(query, *params)

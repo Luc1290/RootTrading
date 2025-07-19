@@ -54,7 +54,9 @@ class OptimizedAnalyzer:
                 logger.error(f"❌ Erreur lors de l'analyse de {symbol}: {results[i]}")
                 all_signals[symbol] = []
             else:
-                all_signals[symbol] = results[i] or []
+                # S'assurer que c'est une liste
+                result = results[i]
+                all_signals[symbol] = result if isinstance(result, list) else []
         
         elapsed = time.time() - start_time
         total_signals = sum(len(signals) if isinstance(signals, list) else 0 for signals in all_signals.values())

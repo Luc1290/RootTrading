@@ -13,7 +13,9 @@ from aiohttp import web # Import aiohttp
 sys.path.insert(0, '/app')
 sys.path.insert(0, '/app/src')
 
-from signal_aggregator import SignalAggregator, EnhancedSignalAggregator
+# Imports directs des modules locaux
+from signal_aggregator import SignalAggregator, EnhancedSignalAggregator  # type: ignore[attr-defined]
+
 from enhanced_regime_detector import EnhancedRegimeDetector
 from performance_tracker import PerformanceTracker
 from db_manager import DatabaseManager

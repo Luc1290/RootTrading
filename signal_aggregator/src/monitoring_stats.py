@@ -240,7 +240,7 @@ class SignalMonitoringStats:
     def _find_best_regime_for_strategy(self, strategy: str) -> Optional[str]:
         """Trouve le régime avec le meilleur taux d'acceptation pour une stratégie"""
         best_regime = None
-        best_rate = -1
+        best_rate = -1.0
         
         for regime in self.accepted_signals:
             if strategy in self.accepted_signals[regime] or strategy in self.rejected_signals[regime]:
@@ -319,7 +319,7 @@ class SignalMonitoringStats:
             all_strategies.update(regime_strategies.keys())
         
         best_strategy = None
-        best_rate = -1
+        best_rate = -1.0
         
         for strategy in all_strategies:
             total = self.get_total_signals_for_strategy(strategy)

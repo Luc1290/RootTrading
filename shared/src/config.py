@@ -60,7 +60,7 @@ TRADING_MODE = os.getenv("TRADING_MODE", "demo")  # 'demo' ou 'live' - reste dan
 
 # Paramètres pour TechnicalIndicators (nécessaires pour compatibilité)
 # Les stratégies Pro gèrent leurs propres paramètres avancés
-STRATEGY_PARAMS = {
+STRATEGY_PARAMS: Dict[str, Dict[str, Any]] = {
     # Paramètres de base pour TechnicalIndicators
     "rsi": {
         "window": 14,
