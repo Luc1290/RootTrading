@@ -46,6 +46,16 @@ function Header() {
               >
                 📊 Signaux
               </Link>
+              <Link
+                to="/cycles"
+                className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
+                  location.pathname === '/cycles'
+                    ? 'bg-primary-500 text-white'
+                    : 'text-primary-100 hover:bg-primary-500/20 hover:text-white'
+                }`}
+              >
+                🔄 Cycles
+              </Link>
             </nav>
           </div>
           

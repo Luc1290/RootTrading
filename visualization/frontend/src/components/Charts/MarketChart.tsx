@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { createChart, ColorType, IChartApi, ISeriesApi, CandlestickData, LineData, Time } from 'lightweight-charts';
+import { createChart, ColorType, IChartApi, ISeriesApi, CandlestickData, LineData, Time, LineStyle } from 'lightweight-charts';
 import { useChartStore } from '@/stores/useChartStore';
 import { useChart } from '@/hooks/useChart';
 import { formatNumber } from '@/utils';
+import { apiService } from '@/services/api';
+import type { TradeCycle } from '@/components/Cycles/CyclesPage';
 
 interface MarketChartProps {
   height?: number;
@@ -36,6 +38,10 @@ function MarketChart({ height = 750 }: MarketChartProps) {
   }>({});
   
   const { marketData, signals, indicators, config, zoomState, setZoomState, setIsUserInteracting } = useChartStore();
+  
+  // État pour les cycles de trading
+  const [tradeCycles, setTradeCycles] = useState<TradeCycle[]>([]);
+  const cycleSeriesRef = useRef<(ISeriesApi<'Line'> | ISeriesApi<'Area'>)[]>([]);
   
   // Configuration de la précision basée sur le symbole
   const getPriceFormat = () => {
@@ -149,6 +155,22 @@ function MarketChart({ height = 750 }: MarketChartProps) {
     };
   }, [height]);
   
+  // Récupérer les cycles de trading pour le symbole actuel
+  useEffect(() => {
+    const loadCycles = async () => {
+      try {
+        const response = await apiService.getTradeCycles(config.symbol);
+        setTradeCycles(response.cycles);
+      } catch (error) {
+        console.error('Error loading trade cycles:', error);
+      }
+    };
+    
+    if (config.symbol) {
+      loadCycles();
+    }
+  }, [config.symbol]);
+  
   // Nettoyage complet lors du changement de symbole ou interval
   useEffect(() => {
     if (!chartRef.current || !candlestickSeriesRef.current) return;
@@ -180,6 +202,18 @@ function MarketChart({ height = 750 }: MarketChartProps) {
         }
       });
       signalSeriesRef.current = {};
+      
+      // Nettoyer les séries de cycles
+      cycleSeriesRef.current.forEach(series => {
+        if (chartRef.current) {
+          try {
+            chartRef.current.removeSeries(series);
+          } catch (e) {
+            console.warn('Error removing cycle series:', e);
+          }
+        }
+      });
+      cycleSeriesRef.current = [];
       
     } catch (error) {
       console.error('Error during chart cleanup:', error);
@@ -361,6 +395,139 @@ function MarketChart({ height = 750 }: MarketChartProps) {
     });
   }, [signals, config.signalFilter]);
   
+  // Afficher les cycles de trading sur le graphique
+  useEffect(() => {
+    if (!chartRef.current || !marketData || tradeCycles.length === 0) return;
+    
+    // Nettoyer les anciennes séries de cycles
+    cycleSeriesRef.current.forEach(series => {
+      if (chartRef.current) {
+        try {
+          chartRef.current.removeSeries(series);
+        } catch (e) {
+          console.warn('Error removing cycle series:', e);
+        }
+      }
+    });
+    cycleSeriesRef.current = [];
+    
+    // Créer des zones colorées pour chaque cycle
+    tradeCycles.forEach(cycle => {
+      if (!cycle.entry_price || !chartRef.current) return;
+      
+      // Déterminer les timestamps de début et fin
+      const startTime = Math.floor(new Date(cycle.created_at).getTime() / 1000) as Time;
+      let endTime: Time;
+      
+      if (cycle.completed_at) {
+        endTime = Math.floor(new Date(cycle.completed_at).getTime() / 1000) as Time;
+      } else {
+        // Si le cycle est actif, étendre jusqu'au dernier timestamp disponible
+        endTime = Math.floor(new Date(marketData.timestamps[marketData.timestamps.length - 1]).getTime() / 1000) as Time;
+      }
+      
+      // Créer une série de lignes pour marquer la période
+      const topLineSeries = chartRef.current.addLineSeries({
+        color: cycle.status === 'completed' 
+          ? (cycle.profit_loss && cycle.profit_loss > 0 ? 'rgba(0, 255, 136, 0.6)' : 'rgba(255, 68, 68, 0.6)')
+          : 'rgba(33, 150, 243, 0.6)',
+        lineWidth: 2,
+        lineStyle: LineStyle.Solid,
+        priceScaleId: 'right',
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      
+      const bottomLineSeries = chartRef.current.addLineSeries({
+        color: cycle.status === 'completed' 
+          ? (cycle.profit_loss && cycle.profit_loss > 0 ? 'rgba(0, 255, 136, 0.6)' : 'rgba(255, 68, 68, 0.6)')
+          : 'rgba(33, 150, 243, 0.6)',
+        lineWidth: 2,
+        lineStyle: LineStyle.Solid,
+        priceScaleId: 'right',
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      
+      // Trouver les prix min et max dans cette période
+      const pricesInPeriod = marketData.timestamps
+        .map((ts, idx) => {
+          const time = Math.floor(new Date(ts).getTime() / 1000);
+          const startTimeNum = startTime as number;
+          const endTimeNum = endTime as number;
+          if (time >= startTimeNum && time <= endTimeNum) {
+            return {
+              high: marketData.high[idx],
+              low: marketData.low[idx]
+            };
+          }
+          return null;
+        })
+        .filter(p => p !== null);
+      
+      if (pricesInPeriod.length > 0) {
+        const maxPrice = Math.max(...pricesInPeriod.map(p => p!.high));
+        const minPrice = Math.min(...pricesInPeriod.map(p => p!.low));
+        const padding = (maxPrice - minPrice) * 0.1;
+        
+        // Créer les lignes supérieures et inférieures
+        topLineSeries.setData([
+          { time: startTime, value: maxPrice + padding },
+          { time: endTime, value: maxPrice + padding }
+        ]);
+        
+        bottomLineSeries.setData([
+          { time: startTime, value: minPrice - padding },
+          { time: endTime, value: minPrice - padding }
+        ]);
+        
+        // Créer une zone remplie entre les deux lignes
+        if (chartRef.current) {
+          const fillSeries = chartRef.current.addAreaSeries({
+            topColor: cycle.status === 'completed' 
+              ? (cycle.profit_loss && cycle.profit_loss > 0 ? 'rgba(0, 255, 136, 0.25)' : 'rgba(255, 68, 68, 0.25)')
+              : 'rgba(33, 150, 243, 0.25)',
+            bottomColor: cycle.status === 'completed' 
+              ? (cycle.profit_loss && cycle.profit_loss > 0 ? 'rgba(0, 255, 136, 0.05)' : 'rgba(255, 68, 68, 0.05)')
+              : 'rgba(33, 150, 243, 0.05)',
+            lineColor: cycle.status === 'completed' 
+              ? (cycle.profit_loss && cycle.profit_loss > 0 ? 'rgba(0, 255, 136, 0.7)' : 'rgba(255, 68, 68, 0.7)')
+              : 'rgba(33, 150, 243, 0.7)',
+            lineWidth: 2,
+            lineStyle: LineStyle.Solid,
+            priceScaleId: 'right',
+            priceLineVisible: false,
+            lastValueVisible: false,
+            crosshairMarkerVisible: false,
+          });
+          
+          // Données pour remplir la zone
+          const areaData = [];
+          const startTimeNum = startTime as number;
+          const endTimeNum = endTime as number;
+          for (let i = 0; i < marketData.timestamps.length; i++) {
+            const time = Math.floor(new Date(marketData.timestamps[i]).getTime() / 1000);
+            if (time >= startTimeNum && time <= endTimeNum) {
+              areaData.push({
+                time: time as Time,
+                value: marketData.high[i] * 1.01 // Légèrement au-dessus du prix
+              });
+            }
+          }
+          
+          if (areaData.length > 0) {
+            fillSeries.setData(areaData);
+            cycleSeriesRef.current.push(fillSeries);
+          }
+        }
+        
+        cycleSeriesRef.current.push(topLineSeries, bottomLineSeries);
+      }
+    });
+  }, [tradeCycles, marketData]);
+  
   // Application du zoom
   useEffect(() => {
     if (!chartRef.current) return;
@@ -461,6 +628,22 @@ function MarketChart({ height = 750 }: MarketChartProps) {
         >
           Reset
         </button>
+      </div>
+      
+      {/* Légende des cycles */}
+      <div className="absolute bottom-2 right-2 z-10 bg-black/70 backdrop-blur-sm rounded-md px-3 py-2 text-xs space-y-1">
+        <div className="flex items-center space-x-2">
+          <div className="w-3 h-3 bg-blue-500/30 rounded"></div>
+          <span className="text-gray-300">Cycle actif</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <div className="w-3 h-3 bg-green-500/30 rounded"></div>
+          <span className="text-gray-300">Cycle gagnant</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <div className="w-3 h-3 bg-red-500/30 rounded"></div>
+          <span className="text-gray-300">Cycle perdant</span>
+        </div>
       </div>
     </div>
   );

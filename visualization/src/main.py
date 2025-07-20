@@ -289,6 +289,27 @@ async def get_available_indicators():
         ]
     }
 
+@app.get("/api/trade-cycles")
+async def get_trade_cycles(
+    symbol: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 100
+):
+    """Get trade cycles from database"""
+    try:
+        if data_manager is None:
+            raise HTTPException(status_code=503, detail="Data service not available")
+        
+        cycles = await data_manager.get_trade_cycles(
+            symbol=symbol,
+            status=status,
+            limit=limit
+        )
+        return {"cycles": cycles}
+    except Exception as e:
+        logger.error(f"Error getting trade cycles: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ============================================================================
 # Routes Proxy pour les autres services
 # ============================================================================

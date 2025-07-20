@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import Layout from '@/components/Layout';
 import Dashboard from '@/components/Dashboard';
 import SignalsPage from '@/components/Signals/SignalsPage';
+import CyclesPage from '@/components/Cycles/CyclesPage';
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/signals" element={<SignalsPage />} />
+            <Route path="/cycles" element={<CyclesPage />} />
           </Routes>
         </Layout>
       </Router>

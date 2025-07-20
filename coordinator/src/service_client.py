@@ -174,6 +174,15 @@ class ServiceClient:
             logger.warning(f"Erreur récupération positions actives: {str(e)}")
             return []
     
+    def get_all_active_cycles(self) -> List[Dict[str, Any]]:
+        """
+        Récupère toutes les positions actives depuis le portfolio service.
+        
+        Returns:
+            Liste de toutes les positions actives
+        """
+        return self.get_active_cycles(symbol=None)
+    
     def create_order(self, order_data: Dict[str, Any]) -> Optional[str]:
         """
         Crée un nouvel ordre via le trader.

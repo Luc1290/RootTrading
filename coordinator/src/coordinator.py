@@ -5,6 +5,8 @@ Rôle : Valider la faisabilité des signaux et les transmettre au trader.
 import logging
 import time
 import json
+import asyncio
+import threading
 from typing import Dict, Any, Optional
 
 from shared.src.redis_client import RedisClient
@@ -32,6 +34,10 @@ class Coordinator:
         self.service_client = ServiceClient(trader_api_url, portfolio_api_url)
         self.redis_client = RedisClient()
         
+        # Thread de monitoring stop-loss
+        self.stop_loss_active = True
+        self.stop_loss_thread = None
+        
         # Configuration dynamique basée sur le capital total
         self.fee_rate = 0.001  # 0.1% de frais estimés par trade
         
@@ -41,7 +47,11 @@ class Coordinator:
         self.min_absolute_trade_usdc = 10.0  # 10 USDC minimum Binance
         
         # Configuration trailing sell
-        self.sell_margin = 0.002  # 0.2% de marge pour éviter vente sur bruit
+        self.sell_margin = 0.004  # 0.4% de marge pour laisser plus de marge aux pumps
+        
+        # Configuration stop-loss automatique
+        self.stop_loss_percent = 0.015  # 1.5% de perte maximale tolérée
+        self.price_check_interval = 60  # Vérification des prix toutes les 60 secondes (aligné sur la fréquence des données)
         
         # Stats
         self.stats = {
@@ -52,7 +62,10 @@ class Coordinator:
             "errors": 0
         }
         
-        logger.info("✅ Coordinator initialisé (version simplifiée)")
+        # Démarrer le monitoring stop-loss
+        self.start_stop_loss_monitoring()
+        
+        logger.info("✅ Coordinator initialisé (version simplifiée) avec stop-loss automatique")
     
     def process_signal(self, channel: str, data: Dict[str, Any]) -> None:
         """
@@ -168,19 +181,10 @@ class Coordinator:
                 if usdc_balance < self.min_absolute_trade_usdc:
                     return False, f"Balance USDC insuffisante: {usdc_balance:.2f} < {self.min_absolute_trade_usdc}"
                 
-                # FILTRE 2ème BUY: Attendre le deuxième BUY pour exécuter
-                buy_count = self._get_symbol_buy_count(signal.symbol)
-                if buy_count == 0:
-                    # Premier BUY : marquer et attendre
-                    self._mark_first_buy_pending(signal.symbol, signal)
-                    return False, f"Premier BUY pour {signal.symbol} marqué, attente du 2ème BUY"
-                elif buy_count >= 1:
-                    # Deuxième BUY ou plus : exécuter
-                    logger.info(f"✅ 2ème BUY détecté pour {signal.symbol}, exécution autorisée")
-                    # Vérifier s'il y a déjà un cycle actif pour ce symbole
-                    active_cycle = self._check_active_cycle(signal.symbol)
-                    if active_cycle:
-                        return False, f"Cycle déjà actif pour {signal.symbol}: {active_cycle}"
+                # Vérifier s'il y a déjà un cycle actif pour ce symbole
+                active_cycle = self._check_active_cycle(signal.symbol)
+                if active_cycle:
+                    return False, f"Cycle déjà actif pour {signal.symbol}: {active_cycle}"
                 
             else:  # SELL
                 # FILTRE TRAILING SELL: Vérifier si on doit vendre maintenant (AVANT balance)
@@ -367,56 +371,6 @@ class Coordinator:
             logger.warning(f"Erreur vérification cycle actif pour {symbol}: {str(e)}")
             return None
     
-    def _get_symbol_buy_count(self, symbol: str) -> int:
-        """
-        Compte le nombre de BUY en attente pour un symbole.
-        
-        Args:
-            symbol: Symbole à vérifier
-            
-        Returns:
-            Nombre de BUY en attente
-        """
-        try:
-            pending_key = f"pending_buy:{symbol}"
-            count = self.redis_client.get(pending_key)
-            return int(count) if count else 0
-        except Exception as e:
-            logger.error(f"Erreur récupération buy count pour {symbol}: {e}")
-            return 0
-    
-    def _mark_first_buy_pending(self, symbol: str, signal: StrategySignal) -> None:
-        """
-        Marque le premier BUY en attente et stocke le signal.
-        
-        Args:
-            symbol: Symbole du signal
-            signal: Signal à marquer
-        """
-        try:
-            pending_key = f"pending_buy:{symbol}"
-            signal_key = f"pending_buy_signal:{symbol}"
-            
-            # Convertir le signal en dict pour stockage
-            side_value = signal.side.value if hasattr(signal.side, 'value') else str(signal.side)
-            timestamp_str = signal.timestamp.isoformat() if hasattr(signal.timestamp, 'isoformat') else str(signal.timestamp)
-            signal_dict = {
-                "symbol": signal.symbol,
-                "side": side_value,
-                "price": signal.price,
-                "strategy": signal.strategy,
-                "timestamp": timestamp_str,
-                "confidence": signal.confidence,
-                "metadata": signal.metadata
-            }
-            
-            # Stocker le count et le signal avec TTL de 10 minutes
-            self.redis_client.set(pending_key, "1", expiration=600)
-            self.redis_client.set(signal_key, json.dumps(signal_dict), expiration=600)
-            
-            logger.info(f"📝 Premier BUY marqué pour {symbol}, attente du 2ème (TTL: 10min)")
-        except Exception as e:
-            logger.error(f"Erreur marquage premier BUY pour {symbol}: {e}")
     
     def _check_trailing_sell(self, signal: StrategySignal) -> tuple[bool, str]:
         """
@@ -612,3 +566,231 @@ class Coordinator:
     def get_stats(self) -> Dict[str, Any]:
         """Retourne les statistiques du coordinator."""
         return self.stats.copy()
+    
+    def start_stop_loss_monitoring(self) -> None:
+        """Démarre le thread de monitoring stop-loss."""
+        if not self.stop_loss_thread or not self.stop_loss_thread.is_alive():
+            self.stop_loss_thread = threading.Thread(
+                target=self._stop_loss_monitor_loop,
+                daemon=True,
+                name="StopLossMonitor"
+            )
+            self.stop_loss_thread.start()
+            logger.info("🛡️ Monitoring stop-loss démarré")
+    
+    def stop_stop_loss_monitoring(self) -> None:
+        """Arrête le monitoring stop-loss."""
+        self.stop_loss_active = False
+        if self.stop_loss_thread:
+            self.stop_loss_thread.join(timeout=10)
+        logger.info("🛑 Monitoring stop-loss arrêté")
+    
+    def _stop_loss_monitor_loop(self) -> None:
+        """Boucle principale du monitoring stop-loss."""
+        logger.info("🔍 Boucle de monitoring stop-loss active")
+        
+        while self.stop_loss_active:
+            try:
+                self._check_all_positions_stop_loss()
+                time.sleep(self.price_check_interval)
+            except Exception as e:
+                logger.error(f"❌ Erreur dans monitoring stop-loss: {e}")
+                time.sleep(self.price_check_interval * 2)  # Attendre plus longtemps en cas d'erreur
+    
+    def _check_all_positions_stop_loss(self) -> None:
+        """Vérifie toutes les positions actives pour déclenchement stop-loss."""
+        try:
+            # Récupérer toutes les positions actives
+            all_active_cycles = self.service_client.get_all_active_cycles()
+            
+            if not all_active_cycles:
+                return
+            
+            logger.debug(f"🔍 Vérification stop-loss pour {len(all_active_cycles)} positions actives")
+            
+            for cycle in all_active_cycles:
+                try:
+                    self._check_position_stop_loss(cycle)
+                except Exception as e:
+                    logger.error(f"❌ Erreur vérification stop-loss pour cycle {cycle.get('id', 'unknown')}: {e}")
+                    
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération positions actives: {e}")
+    
+    def _check_position_stop_loss(self, cycle: Dict[str, Any]) -> None:
+        """
+        Vérifie une position spécifique et déclenche un stop-loss si nécessaire.
+        Met aussi à jour la référence trailing automatiquement.
+        
+        Args:
+            cycle: Données du cycle de trading
+        """
+        try:
+            symbol = cycle.get('symbol')
+            entry_price = float(cycle.get('entry_price', 0))
+            cycle_id = cycle.get('id')
+            
+            if not symbol or not entry_price:
+                logger.warning(f"⚠️ Données cycle incomplètes: {cycle}")
+                return
+            
+            # Récupérer le prix actuel depuis Redis
+            current_price = self._get_current_price(symbol)
+            if not current_price:
+                logger.warning(f"⚠️ Prix actuel indisponible pour {symbol}")
+                return
+            
+            # 1. VÉRIFICATION STOP-LOSS
+            stop_loss_threshold = entry_price * (1 - self.stop_loss_percent)
+            
+            if current_price <= stop_loss_threshold:
+                precision = self._get_price_precision(current_price)
+                logger.warning(f"🚨 STOP-LOSS DÉCLENCHÉ pour {symbol}!")
+                logger.warning(f"📉 Prix entrée: {entry_price:.{precision}f}")
+                logger.warning(f"📉 Prix actuel: {current_price:.{precision}f}")
+                logger.warning(f"📉 Seuil stop-loss: {stop_loss_threshold:.{precision}f}")
+                logger.warning(f"📉 Perte: {((current_price - entry_price) / entry_price * 100):.2f}%")
+                
+                # Déclencher vente d'urgence
+                self._execute_emergency_sell(symbol, current_price, cycle_id, "STOP_LOSS_AUTO")
+                return
+            
+            # 2. MISE À JOUR AUTOMATIQUE DU TRAILING SELL
+            # Seulement si position gagnante
+            if current_price > entry_price:
+                previous_sell_price = self._get_previous_sell_price(symbol)
+                
+                if previous_sell_price is None or current_price > previous_sell_price:
+                    # Nouveau pic détecté, mettre à jour la référence
+                    self._update_sell_reference(symbol, current_price)
+                    precision = self._get_price_precision(current_price)
+                    logger.debug(f"📈 Trailing auto-mis à jour pour {symbol}: {current_price:.{precision}f}")
+                else:
+                    # Vérifier si on doit déclencher le trailing sell
+                    sell_threshold = previous_sell_price * (1 - self.sell_margin)
+                    
+                    if current_price <= sell_threshold:
+                        precision = self._get_price_precision(current_price)
+                        logger.warning(f"🚨 TRAILING SELL DÉCLENCHÉ pour {symbol}!")
+                        logger.warning(f"📉 Prix référence: {previous_sell_price:.{precision}f}")
+                        logger.warning(f"📉 Prix actuel: {current_price:.{precision}f}")
+                        logger.warning(f"📉 Seuil trailing: {sell_threshold:.{precision}f}")
+                        
+                        # Déclencher vente trailing
+                        self._execute_emergency_sell(symbol, current_price, cycle_id, "TRAILING_SELL_AUTO")
+                        return
+            
+            # Log debug pour positions proches des seuils
+            loss_percent = (entry_price - current_price) / entry_price * 100
+            if loss_percent > (self.stop_loss_percent * 100 * 0.5):  # Si > 50% du seuil
+                precision = self._get_price_precision(current_price)
+                logger.debug(f"⚠️ {symbol} proche stop-loss: {current_price:.{precision}f} (perte {loss_percent:.2f}%)")
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur vérification stop-loss cycle {cycle_id}: {e}")
+    
+    def _get_current_price(self, symbol: str) -> Optional[float]:
+        """
+        Récupère le prix actuel d'un symbole depuis Redis.
+        
+        Args:
+            symbol: Symbole à récupérer
+            
+        Returns:
+            Prix actuel ou None
+        """
+        try:
+            # Essayer de récupérer depuis Redis (ticker)
+            ticker_key = f"ticker:{symbol}"
+            ticker_data = self.redis_client.get(ticker_key)
+            
+            if ticker_data:
+                if isinstance(ticker_data, dict):
+                    return float(ticker_data.get('price', 0))
+                elif isinstance(ticker_data, str):
+                    ticker_dict = json.loads(ticker_data)
+                    return float(ticker_dict.get('price', 0))
+            
+            # Fallback: essayer market_data
+            market_key = f"market_data:{symbol}:1m"
+            market_data = self.redis_client.get(market_key)
+            
+            if market_data:
+                if isinstance(market_data, dict):
+                    return float(market_data.get('close', 0))
+                elif isinstance(market_data, str):
+                    market_dict = json.loads(market_data)
+                    return float(market_dict.get('close', 0))
+            
+            logger.warning(f"⚠️ Prix non trouvé dans Redis pour {symbol}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur récupération prix pour {symbol}: {e}")
+            return None
+    
+    def _execute_emergency_sell(self, symbol: str, current_price: float, cycle_id: str, reason: str) -> None:
+        """
+        Exécute une vente d'urgence (stop-loss).
+        
+        Args:
+            symbol: Symbole à vendre
+            current_price: Prix actuel
+            cycle_id: ID du cycle
+            reason: Raison de la vente
+        """
+        try:
+            logger.warning(f"🚨 VENTE D'URGENCE {symbol} - Raison: {reason}")
+            
+            # Récupérer la balance à vendre
+            balances = self.service_client.get_all_balances()
+            if not balances:
+                logger.error(f"❌ Impossible de récupérer les balances pour vente d'urgence {symbol}")
+                return
+            
+            base_asset = self._get_base_asset(symbol)
+            
+            if isinstance(balances, dict):
+                quantity = balances.get(base_asset, {}).get('free', 0)
+            else:
+                quantity = next((b.get('free', 0) for b in balances if b.get('asset') == base_asset), 0)
+            
+            if quantity <= 0:
+                logger.warning(f"⚠️ Aucune quantité à vendre pour {symbol} (balance: {quantity})")
+                return
+            
+            # Créer ordre de vente d'urgence
+            order_data = {
+                "symbol": symbol,
+                "side": "SELL",
+                "quantity": float(quantity),
+                "price": None,  # Ordre MARKET pour exécution immédiate
+                "strategy": f"STOP_LOSS_AUTO_{reason}",
+                "timestamp": int(time.time() * 1000),
+                "metadata": {
+                    "emergency_sell": True,
+                    "stop_loss_trigger": True,
+                    "cycle_id": cycle_id,
+                    "trigger_price": current_price,
+                    "reason": reason
+                }
+            }
+            
+            # Envoyer l'ordre
+            logger.warning(f"📤 Envoi ordre stop-loss: SELL {quantity:.8f} {symbol} @ MARKET")
+            order_id = self.service_client.create_order(order_data)
+            
+            if order_id:
+                logger.warning(f"✅ Ordre stop-loss créé: {order_id}")
+                self.stats["orders_sent"] += 1
+                
+                # Nettoyer les références Redis liées à ce symbole
+                self._clear_sell_reference(symbol)
+                
+            else:
+                logger.error(f"❌ Échec création ordre stop-loss pour {symbol}")
+                self.stats["errors"] += 1
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur vente d'urgence {symbol}: {e}")
+            self.stats["errors"] += 1

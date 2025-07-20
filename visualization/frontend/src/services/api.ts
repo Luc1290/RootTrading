@@ -119,6 +119,18 @@ class ApiService {
     return this.request('/api/available-symbols');
   }
   
+  // Cycles de trading
+  async getTradeCycles(
+    symbol?: TradingSymbol,
+    status?: string,
+    limit: number = 100
+  ): Promise<{ cycles: any[] }> {
+    let query = `/api/trade-cycles?limit=${limit}`;
+    if (symbol) query += `&symbol=${symbol}`;
+    if (status) query += `&status=${status}`;
+    return this.request(query);
+  }
+  
   // Méthodes spécifiques pour les indicateurs
   async getRSI(
     symbol: TradingSymbol,

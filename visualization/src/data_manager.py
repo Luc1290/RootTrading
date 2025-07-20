@@ -551,3 +551,79 @@ class DataManager:
             logger.error(f"Error fetching available symbols: {e}")
             # Return default symbols on error
             return ["XRPUSDC", "SOLUSDC", "BTCUSDT", "ETHUSDT", "ADAUSDT"]
+    
+    async def get_trade_cycles(
+        self,
+        symbol: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """Get trade cycles from database"""
+        if not self.postgres_pool:
+            return []
+            
+        query = """
+            SELECT 
+                id,
+                symbol,
+                strategy,
+                status,
+                side,
+                entry_order_id,
+                exit_order_id,
+                entry_price,
+                exit_price,
+                quantity,
+                profit_loss,
+                profit_loss_percent,
+                created_at,
+                updated_at,
+                completed_at
+            FROM trade_cycles
+            WHERE 1=1
+        """
+        
+        params = []
+        
+        if symbol:
+            query += f" AND symbol = ${len(params) + 1}"
+            params.append(symbol)
+            
+        if status:
+            query += f" AND status = ${len(params) + 1}"
+            params.append(status)
+            
+        query += " ORDER BY created_at DESC"
+        
+        if limit:
+            query += f" LIMIT ${len(params) + 1}"
+            params.append(limit)
+            
+        try:
+            async with self.postgres_pool.acquire() as conn:
+                rows = await conn.fetch(query, *params)
+                
+                return [
+                    {
+                        "id": row["id"],
+                        "symbol": row["symbol"],
+                        "strategy": row["strategy"],
+                        "status": row["status"],
+                        "side": row["side"],
+                        "entry_order_id": row["entry_order_id"],
+                        "exit_order_id": row["exit_order_id"],
+                        "entry_price": float(row["entry_price"]) if row["entry_price"] else None,
+                        "exit_price": float(row["exit_price"]) if row["exit_price"] else None,
+                        "quantity": float(row["quantity"]) if row["quantity"] else None,
+                        "profit_loss": float(row["profit_loss"]) if row["profit_loss"] else None,
+                        "profit_loss_percent": float(row["profit_loss_percent"]) if row["profit_loss_percent"] else None,
+                        "created_at": row["created_at"].isoformat() + 'Z',
+                        "updated_at": row["updated_at"].isoformat() + 'Z',
+                        "completed_at": row["completed_at"].isoformat() + 'Z' if row["completed_at"] else None
+                    }
+                    for row in rows
+                ]
+                
+        except Exception as e:
+            logger.error(f"Error fetching trade cycles: {e}")
+            return []
