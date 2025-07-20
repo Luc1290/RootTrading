@@ -47,9 +47,9 @@ class RSIProStrategy(BaseStrategy):
         symbol_params = self.params.get(symbol, {}) if self.params else {}
         # SEUILS RSI STANDARDISÉS - Version harmonisée avec tous les modules
         self.oversold_threshold = symbol_params.get('rsi_oversold', 35)  # AJUSTÉ: 35 pour mieux capturer les creux
-        self.overbought_threshold = symbol_params.get('rsi_overbought', 72)  # AJUSTÉ: 72 pour éviter les faux SELL en pump
+        self.overbought_threshold = symbol_params.get('rsi_overbought', 75)  # AUGMENTÉ: 75 pour filtrer les faux SELL (plus strict)
         self.extreme_oversold = symbol_params.get('rsi_extreme_oversold', 20)  # AJUSTÉ: 20 pour les creux profonds
-        self.extreme_overbought = symbol_params.get('rsi_extreme_overbought', 80)  # AJUSTÉ: 80 pour éviter les faux signaux
+        self.extreme_overbought = symbol_params.get('rsi_extreme_overbought', 85)  # AUGMENTÉ: 85 pour vrais sommets uniquement
         self.min_adx = symbol_params.get('min_adx', 15.0)  # ASSOUPLI de 20 à 15
         self.confluence_threshold = symbol_params.get('confluence_threshold', 35.0)  # ASSOUPLI de 45 à 35
         
@@ -495,25 +495,25 @@ class RSIProStrategy(BaseStrategy):
         if rsi < self.overbought_threshold:
             return False
         
-        # Score de contexte minimum
-        if context['score'] < 35:
+        # Score de contexte minimum AUGMENTÉ pour éviter les faux SELL
+        if context['score'] < 55:  # AUGMENTÉ de 35 à 55
             return False
         
-        # Si confluence disponible, la vérifier
+        # Si confluence disponible, la vérifier PLUS STRICTEMENT
         confluence_score = context.get('confluence_score', 0)
-        if confluence_score > 0 and confluence_score < self.confluence_threshold:
+        if confluence_score > 0 and confluence_score < (self.confluence_threshold + 10):  # PLUS STRICT
             return False
         
         # Bonus pour divergence baissière
         if divergence['type'] == 'bearish' and divergence['strength'] > 0.5:
             return True
         
-        # Conditions extrêmes
-        if rsi >= self.extreme_overbought and context['score'] > 50:
+        # Conditions extrêmes PLUS STRICTES
+        if rsi >= self.extreme_overbought and context['score'] > 65:  # AUGMENTÉ de 50 à 65
             return True
         
-        # Conditions standard
-        return context['score'] > 50  # ASSOUPLI de 60 à 50
+        # Conditions standard PLUS STRICTES
+        return context['score'] > 70  # AUGMENTÉ de 50 à 70 pour vrais sommets uniquement
     
     def _calculate_bullish_confidence(self, rsi: float, context: Dict, divergence: Dict, 
                                      price: float, vwap: float) -> float:

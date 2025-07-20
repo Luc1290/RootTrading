@@ -46,7 +46,7 @@ class EMACrossProStrategy(BaseStrategy):
         
         # Paramètres EMA avancés
         symbol_params = self.params.get(symbol, {}) if self.params else {}
-        self.min_gap_percent = symbol_params.get('ema_gap_min', 0.0005)  # AJUSTÉ de 0.001 à 0.0005 pour plus de réactivité
+        self.min_gap_percent = symbol_params.get('ema_gap_min', 0.0008)  # AUGMENTÉ à 0.0008 pour filtrer les micro-croisements
         self.min_adx = symbol_params.get('min_adx', 12.0)  # AJUSTÉ de 15 à 12 pour plus de flexibilité
         self.confluence_threshold = symbol_params.get('confluence_threshold', 25.0)  # AJUSTÉ de 30 à 25 pour plus de signaux
         self.momentum_threshold = symbol_params.get('momentum_threshold', 0.2)  # ASSOUPLI de 0.3 à 0.2
@@ -404,16 +404,16 @@ class EMACrossProStrategy(BaseStrategy):
         """Valide si le contexte est favorable pour un signal de vente"""
         score = context_analysis['score']
         
-        # Conditions minimales assouplis pour SELL
-        if score < 30:  # ASSOUPLI de 35 à 30
+        # Conditions minimales RENFORCÉES pour SELL - éviter les faux signaux
+        if score < 50:  # AUGMENTÉ de 30 à 50 pour filtrer les SELL intempestifs
             return False
         
-        if gap_percent < self.min_gap_percent * 0.5:  # Gap EMA minimum encore plus assoupli
+        if gap_percent < self.min_gap_percent:  # Gap EMA minimum NORMAL (pas assoupli)
             return False
         
-        # Si confluence disponible, l'utiliser - assoupli
+        # Si confluence disponible, l'utiliser - PLUS STRICT
         confluence_score = context_analysis.get('confluence_score', 0)
-        if confluence_score > 0 and confluence_score < (self.confluence_threshold - 10):  # ASSOUPLI de 5 à 10
+        if confluence_score > 0 and confluence_score < self.confluence_threshold:  # STRICT: pas de réduction
             return False
         
         return True

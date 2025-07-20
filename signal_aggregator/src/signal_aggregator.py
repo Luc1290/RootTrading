@@ -355,22 +355,24 @@ class SignalAggregator:
                 # Logique différente pour BUY et SELL
                 signal_side = single_signal.get('side', single_signal.get('signal', {}).get('side', '')).upper()
                 
-                # Pour SELL: seuils plus souples (vente au sommet)
+                # Pour SELL: seuils STRICTS (vente au VRAI sommet uniquement)
                 if signal_side == 'SELL':
-                    if confluence_score > 70 and signal_confidence > 0.85:
+                    if confluence_score > 75 and signal_confidence > 0.88:  # AUGMENTÉ
                         logger.info(f"✨ Signal unique SELL {symbol} AUTORISÉ - "
-                                   f"seuils SELL atteints (confluence: {confluence_score:.1f}%, confiance: {signal_confidence:.2f})")
+                                   f"seuils SELL stricts atteints (confluence: {confluence_score:.1f}%, confiance: {signal_confidence:.2f})")
                         # Continuer avec le traitement
                     else:
-                        # Vérifier conditions spéciales pour SELL
+                        # Vérifier conditions spéciales pour SELL - PLUS STRICT
                         metadata = single_signal.get('metadata', single_signal.get('signal', {}).get('metadata', {}))
                         rsi = metadata.get('rsi', 50)
                         bb_position = metadata.get('bb_position', 0.5)
                         volume_ratio = metadata.get('volume_ratio', 1.0)
+                        adx = metadata.get('adx', 0)
                         
-                        if rsi > 70 or bb_position >= 0.85 or volume_ratio > 2.5:  # STANDARDISÉ: Excellent (très haut, proche bande haute)
+                        # CONDITIONS PLUS STRICTES pour éviter les faux SELL
+                        if (rsi > 75 and bb_position >= 0.90) or (rsi > 72 and volume_ratio > 3.0 and bb_position >= 0.85):
                             logger.info(f"✨ Signal unique SELL {symbol} AUTORISÉ - "
-                                       f"conditions pump détectées (RSI: {rsi}, BB: {bb_position:.2f}, Vol: {volume_ratio:.1f})")
+                                       f"conditions de VRAI sommet détectées (RSI: {rsi}, BB: {bb_position:.2f}, Vol: {volume_ratio:.1f})")
                         else:
                             first_signal_time = self.signal_processor.get_signal_timestamp(single_signal)
                             time_since_first = timestamp - first_signal_time
@@ -379,8 +381,8 @@ class SignalAggregator:
                                 self.signal_buffer[symbol] = []
                                 return None
                             else:
-                                logger.info(f"⚠️ Signal unique SELL {symbol} en attente - pas encore de pump "
-                                           f"(confluence: {confluence_score:.1f}%, RSI: {rsi}, BB: {bb_position:.2f})")
+                                logger.info(f"⚠️ Signal unique SELL {symbol} en attente - pas de vrai sommet "
+                                           f"(confluence: {confluence_score:.1f}%, RSI: {rsi} < 75, BB: {bb_position:.2f} < 0.90)")
                                 return None
                 
                 # Pour BUY: seuils adaptatifs selon la qualité technique
@@ -1128,6 +1130,73 @@ class SignalAggregator:
                               f"pas de conditions exceptionnelles pour acheter en downtrend")
                 return None
 
+        # NOUVEAU FILTRE SYMÉTRIQUE: Bloquer les SELL pendant les tendances haussières fortes
+        if side == 'SELL' and regime in [MarketRegime.STRONG_TREND_UP, MarketRegime.TREND_UP]:
+            # Analyser la force de la tendance haussière et les conditions de momentum
+            current_price = signals[0].get('price', 0) if signals else 0
+            
+            # Récupérer les indicateurs pour validation
+            recent_data = await self.get_recent_market_data(symbol, limit=50) if hasattr(self, 'get_recent_market_data') else None
+            allow_sell = False
+            
+            # Récupérer aussi depuis les indicateurs Redis
+            macd_line = indicators.get('macd_line', 0) if 'indicators' in locals() else 0
+            macd_signal = indicators.get('macd_signal', 0) if 'indicators' in locals() else 0
+            adx_value = indicators.get('adx', 0) if 'indicators' in locals() else 0
+            
+            if recent_data and len(recent_data) >= 20:
+                df = pd.DataFrame(recent_data)
+                
+                # Conditions STRICTES pour autoriser un SELL pendant une tendance haussière:
+                # 1. RSI très overbought (> 75) ET
+                # 2. Volume spike de vente (> 3x) ET  
+                # 3. Résistance technique identifiée OU divergence baissière
+                rsi = df['rsi_14'].iloc[-1] if 'rsi_14' in df.columns else 50
+                volume_avg = df['volume'].tail(20).mean()
+                current_volume = df['volume'].iloc[-1]
+                volume_ratio = current_volume / volume_avg if volume_avg > 0 else 1.0
+                
+                # Résistance: prix proche du high des 50 dernières bougies
+                high_50 = df['high'].tail(50).max()
+                resistance_proximity = (high_50 - current_price) / high_50 if high_50 > 0 else 1.0
+                
+                # MACD divergence bearish OU momentum s'affaiblit
+                macd_bearish = False
+                momentum_weakening = False
+                if 'macd_line' in df.columns and 'macd_signal' in df.columns:
+                    macd_line = df['macd_line'].iloc[-1]
+                    macd_signal = df['macd_signal'].iloc[-1]
+                    macd_hist_current = macd_line - macd_signal
+                    macd_hist_prev = df['macd_line'].iloc[-3] - df['macd_signal'].iloc[-3]
+                    macd_bearish = macd_line < macd_signal or macd_hist_current < macd_hist_prev * 0.7
+                    
+                    # Vérifier si le momentum s'affaiblit
+                    if 'momentum_10' in df.columns:
+                        momentum_current = df['momentum_10'].iloc[-1]
+                        momentum_prev = df['momentum_10'].iloc[-5]
+                        momentum_weakening = momentum_current < momentum_prev * 0.8
+                
+                # Conditions très strictes pour SELL en uptrend
+                if (rsi > 75 and volume_ratio > 2.5 and resistance_proximity < 0.02) or \
+                   (rsi > 70 and macd_bearish and momentum_weakening and volume_ratio > 2.0):
+                    allow_sell = True
+                    logger.info(f"✅ SELL autorisé en TREND_UP pour {symbol}: "
+                               f"RSI overbought ({rsi:.1f}), Volume spike ({volume_ratio:.1f}x), "
+                               f"Résistance proche ({resistance_proximity:.1%}), "
+                               f"MACD bearish: {macd_bearish}, Momentum weak: {momentum_weakening}")
+            
+            # Vérification supplémentaire avec indicateurs Redis
+            elif macd_line > 0 and macd_signal > 0 and macd_line > macd_signal and adx_value > 25:
+                # MACD bullish fort + ADX élevé = tendance haussière confirmée
+                logger.warning(f"❌ Signal SELL {symbol} BLOQUÉ: MACD bullish ({macd_line:.4f} > {macd_signal:.4f}) "
+                              f"et ADX fort ({adx_value:.1f}) - tendance haussière confirmée")
+                return None
+            
+            if not allow_sell:
+                logger.warning(f"❌ Signal SELL {symbol} BLOQUÉ: {regime.value} détecté - "
+                              f"pas de conditions exceptionnelles pour vendre en uptrend")
+                return None
+
         # FILTRE INTELLIGENT: Distinguer chute en cours vs vrai creux
         if confluence_analysis and side == 'BUY':
             # Détecter une chute active (pas un vrai creux)
@@ -1164,9 +1233,9 @@ class SignalAggregator:
                 logger.info(f"✅ Signal BUY {symbol} AUTORISÉ malgré structure baissière - "
                            f"conditions de vrai creux détectées (momentum: {momentum_val:.2f}, bb_pos: {bb_pos:.3f})")
         
-        # Assouplir pour les SELL (vente au sommet)
+        # PLUS STRICT pour les SELL (vente au sommet uniquement)
         if confluence_analysis and confluence_analysis.recommended_action == 'AVOID' and side == 'SELL':
-            # Accepter si RSI > 65 ou Bollinger position > 0.85 ou volume élevé
+            # Accepter SEULEMENT si conditions de VRAI sommet/pump sont réunies
             # Récupérer RSI depuis les indicateurs ou metadata du signal
             rsi_val = 50  # valeur par défaut
             if momentum_analysis and hasattr(momentum_analysis, 'timeframe_momentums'):
@@ -1182,11 +1251,13 @@ class SignalAggregator:
             volume_summary = self.signal_metrics.extract_volume_summary(signals)
             volume_ratio = volume_summary.get('avg_volume_ratio', 1.0)
             
-            if rsi_val > 65 or bb_position >= 0.75 or volume_ratio > 1.5:  # STANDARDISÉ: Très bon (haut de bande)
+            # SEUILS AUGMENTÉS pour éviter les faux SELL
+            if rsi_val > 72 or (bb_position >= 0.90 and volume_ratio > 2.0):  # PLUS STRICT: vrais sommets uniquement
                 logger.info(f"✅ Signal SELL {symbol} autorisé malgré AVOID - "
-                           f"conditions de pump détectées (RSI: {rsi_val:.1f}, BB: {bb_position:.2f}, Vol: {volume_ratio:.1f})")
+                           f"conditions de VRAI sommet détectées (RSI: {rsi_val:.1f}, BB: {bb_position:.2f}, Vol: {volume_ratio:.1f})")
             else:
-                logger.warning(f"❌ Signal SELL {symbol} BLOQUÉ: confluence AVOID sans conditions de pump")
+                logger.warning(f"❌ Signal SELL {symbol} BLOQUÉ: confluence AVOID sans conditions de vrai sommet "
+                              f"(RSI: {rsi_val:.1f} < 72, BB: {bb_position:.2f} < 0.90)")
                 return None
         elif confluence_analysis and confluence_analysis.recommended_action == 'AVOID' and side == 'BUY':
             # Pour BUY, on reste plus strict
