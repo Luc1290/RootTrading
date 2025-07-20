@@ -41,6 +41,10 @@ interface ChartStore {
   lastUpdate: Date | null;
   setLastUpdate: (date: Date) => void;
   
+  // Protection contre les refreshs multiples
+  lastSymbolChange: string | null;
+  lastIntervalChange: string | null;
+  
   // Actions
   setMarketData: (data: MarketData) => void;
   setSignals: (signals: { buy: TradingSignal[]; sell: TradingSignal[] }) => void;
@@ -85,6 +89,8 @@ export const useChartStore = create<ChartStore>()(
     isLoading: false,
     isUserInteracting: false,
     lastUpdate: null,
+    lastSymbolChange: null,
+    lastIntervalChange: null,
     
     // Setters
     setConfig: (config) => set((state) => ({
@@ -114,15 +120,23 @@ export const useChartStore = create<ChartStore>()(
     setPerformanceData: (data) => set({ performanceData: data }),
     
     // Helpers
-    updateSymbol: (symbol) => set((state) => ({
-      config: { ...state.config, symbol },
-      zoomState: { xRange: null, yRange: null }, // Reset zoom sur changement symbole
-    })),
+    updateSymbol: (symbol) => set((state) => {
+      const currentTime = Date.now().toString();
+      return {
+        config: { ...state.config, symbol },
+        zoomState: { xRange: null, yRange: null }, // Reset zoom sur changement symbole
+        lastSymbolChange: currentTime,
+      };
+    }),
     
-    updateInterval: (interval) => set((state) => ({
-      config: { ...state.config, interval },
-      zoomState: { xRange: null, yRange: null }, // Reset zoom sur changement intervalle
-    })),
+    updateInterval: (interval) => set((state) => {
+      const currentTime = Date.now().toString();
+      return {
+        config: { ...state.config, interval },
+        zoomState: { xRange: null, yRange: null }, // Reset zoom sur changement intervalle
+        lastIntervalChange: currentTime,
+      };
+    }),
     
     updateSignalFilter: (signalFilter) => set((state) => ({
       config: { ...state.config, signalFilter },

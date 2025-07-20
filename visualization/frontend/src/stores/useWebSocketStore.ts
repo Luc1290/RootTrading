@@ -119,14 +119,24 @@ export const useWebSocketStore = create<WebSocketStore>()((set, get) => {
     connect: () => {
       const { ws, status } = get();
       
-      if (ws && status === 'connected') {
-        console.log('WebSocket already connected');
+      // Eviter les multiples connexions
+      if ((ws && status === 'connected') || status === 'connecting') {
+        console.log('WebSocket already connected or connecting');
         return;
       }
       
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
+      }
+      
+      // Fermer la connexion existante si elle existe
+      if (ws) {
+        try {
+          ws.close();
+        } catch (e) {
+          console.warn('Error closing existing WebSocket:', e);
+        }
       }
       
       set({ status: 'connecting' });

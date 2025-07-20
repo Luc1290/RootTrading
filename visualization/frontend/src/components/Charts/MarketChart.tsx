@@ -530,7 +530,7 @@ function MarketChart({ height = 750 }: MarketChartProps) {
   
   // Application du zoom
   useEffect(() => {
-    if (!chartRef.current) return;
+    if (!chartRef.current || !marketData || marketData.timestamps.length === 0) return;
     
     // Si xRange est null, c'est un reset intentionnel - on utilise fitContent
     if (!zoomState.xRange) {
@@ -542,13 +542,15 @@ function MarketChart({ height = 750 }: MarketChartProps) {
       return;
     }
     
-    // Vérifier que les valeurs sont des nombres valides
+    // Vérifier que les valeurs sont des nombres valides et que les données existent
     if (
       zoomState.xRange[0] != null && 
       zoomState.xRange[1] != null &&
       typeof zoomState.xRange[0] === 'number' &&
       typeof zoomState.xRange[1] === 'number' &&
-      zoomState.xRange[0] < zoomState.xRange[1]
+      zoomState.xRange[0] < zoomState.xRange[1] &&
+      !isNaN(zoomState.xRange[0]) &&
+      !isNaN(zoomState.xRange[1])
     ) {
       try {
         chartRef.current.timeScale().setVisibleRange({
@@ -559,7 +561,7 @@ function MarketChart({ height = 750 }: MarketChartProps) {
         console.warn('Error setting visible range:', error);
       }
     }
-  }, [zoomState.xRange]);
+  }, [zoomState.xRange, marketData]);
   
   const currentPrice = marketData?.close[marketData.close.length - 1];
   

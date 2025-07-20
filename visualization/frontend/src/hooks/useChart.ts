@@ -5,6 +5,20 @@ import { useWebSocket } from './useWebSocket';
 import { debounce } from '@/utils';
 import type { TradingSymbol, TimeInterval } from '@/types';
 
+// Fonction pour convertir l'intervalle en millisecondes
+const getIntervalMs = (interval: TimeInterval): number => {
+  switch (interval) {
+    case '1m': return 60000;      // 1 minute
+    case '5m': return 300000;     // 5 minutes
+    case '15m': return 900000;    // 15 minutes
+    case '30m': return 1800000;   // 30 minutes
+    case '1h': return 3600000;    // 1 heure
+    case '4h': return 14400000;   // 4 heures
+    case '1d': return 86400000;   // 1 jour
+    default: return 60000;        // Par défaut 1 minute
+  }
+};
+
 interface UseChartOptions {
   autoUpdate?: boolean;
   updateInterval?: number;
@@ -12,7 +26,7 @@ interface UseChartOptions {
 }
 
 export function useChart(options: UseChartOptions = {}) {
-  const { autoUpdate = true, updateInterval = 10000, enableWebSocket = true } = options;
+  const { autoUpdate = true, updateInterval = 60000, enableWebSocket = true } = options;
   
   const {
     config,
@@ -54,10 +68,18 @@ export function useChart(options: UseChartOptions = {}) {
     },
   });
   
-  // Fonction de mise à jour avec debounce
+  // Fonction de mise à jour avec debounce et limite basée sur l'intervalle
   const debouncedUpdate = useCallback(
     debounce(async () => {
       if (isUserInteracting) return;
+      
+      // Ne pas actualiser plus souvent que l'intervalle des données
+      const now = Date.now();
+      const intervalMs = getIntervalMs(config.interval);
+      if (lastUpdate && (now - lastUpdate.getTime()) < intervalMs) {
+        console.log('Skipping update - too frequent for interval:', config.interval);
+        return;
+      }
       
       setIsLoading(true);
       try {
@@ -68,8 +90,8 @@ export function useChart(options: UseChartOptions = {}) {
       } finally {
         setIsLoading(false);
       }
-    }, 1000),
-    [refetch, isUserInteracting, setIsLoading, setLastUpdate]
+    }, 2000),
+    [refetch, isUserInteracting, setIsLoading, setLastUpdate, config.interval, lastUpdate]
   );
   
   // Force update function with cancellation protection
@@ -90,16 +112,22 @@ export function useChart(options: UseChartOptions = {}) {
     }
   }, [refetch, setIsLoading, setLastUpdate, isLoading]);
   
-  // Mise à jour automatique
+  // Mise à jour automatique adaptée à l'intervalle des données
   useEffect(() => {
     if (!autoUpdate) return;
     
+    // Adapter l'intervalle de mise à jour à l'intervalle des données
+    const dataIntervalMs = getIntervalMs(config.interval);
+    const actualUpdateInterval = Math.max(updateInterval, dataIntervalMs);
+    
+    console.log(`Setting update interval to ${actualUpdateInterval}ms for ${config.interval} data`);
+    
     const interval = setInterval(() => {
       debouncedUpdate();
-    }, updateInterval);
+    }, actualUpdateInterval);
     
     return () => clearInterval(interval);
-  }, [autoUpdate, updateInterval, debouncedUpdate]);
+  }, [autoUpdate, updateInterval, debouncedUpdate, config.interval]);
   
   // Abonnement WebSocket
   useEffect(() => {
@@ -130,9 +158,9 @@ export function useChart(options: UseChartOptions = {}) {
     updateSymbol(symbol);
     resetZoom();
     
-    // Use debounced update to prevent race conditions
-    debouncedUpdate();
-  }, [updateSymbol, resetZoom, debouncedUpdate, config.symbol]);
+    // Force immediate update instead of debounced to prevent stale data display
+    forceUpdate();
+  }, [updateSymbol, resetZoom, forceUpdate, config.symbol]);
   
   const handleIntervalChange = useCallback((interval: TimeInterval) => {
     // Prevent multiple calls for the same interval
@@ -150,9 +178,9 @@ export function useChart(options: UseChartOptions = {}) {
     updateIntervalConfig(interval);
     resetZoom();
     
-    // Use debounced update to prevent race conditions
-    debouncedUpdate();
-  }, [updateIntervalConfig, resetZoom, debouncedUpdate, config.interval]);
+    // Force immediate update instead of debounced to prevent stale data display
+    forceUpdate();
+  }, [updateIntervalConfig, resetZoom, forceUpdate, config.interval]);
   
   const handleSignalFilterChange = useCallback((filter: string) => {
     updateSignalFilter(filter);

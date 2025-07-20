@@ -115,7 +115,7 @@ function VolumeChart({ height = 150 }: VolumeChartProps) {
   
   // Synchronisation du zoom avec le graphique principal
   useEffect(() => {
-    if (!chartRef.current) return;
+    if (!chartRef.current || !marketData || marketData.timestamps.length === 0) return;
     
     // Si xRange est null, c'est un reset intentionnel - on utilise fitContent
     if (!zoomState.xRange) {
@@ -127,13 +127,15 @@ function VolumeChart({ height = 150 }: VolumeChartProps) {
       return;
     }
     
-    // Vérifier que les valeurs sont des nombres valides
+    // Vérifier que les valeurs sont des nombres valides et que les données existent
     if (
       zoomState.xRange[0] != null && 
       zoomState.xRange[1] != null &&
       typeof zoomState.xRange[0] === 'number' &&
       typeof zoomState.xRange[1] === 'number' &&
-      zoomState.xRange[0] < zoomState.xRange[1]
+      zoomState.xRange[0] < zoomState.xRange[1] &&
+      !isNaN(zoomState.xRange[0]) &&
+      !isNaN(zoomState.xRange[1])
     ) {
       try {
         chartRef.current.timeScale().setVisibleRange({
@@ -144,7 +146,7 @@ function VolumeChart({ height = 150 }: VolumeChartProps) {
         console.warn('Error setting visible range:', error);
       }
     }
-  }, [zoomState.xRange]);
+  }, [zoomState.xRange, marketData]);
   
   const currentVolume = marketData?.volume[marketData.volume.length - 1];
   
