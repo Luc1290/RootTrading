@@ -444,11 +444,13 @@ class Coordinator:
             position = active_positions[0]
             entry_price = float(position.get('entry_price', 0))
             current_price = signal.price
-            logger.info(f"🔍 Prix entrée: {entry_price:.4f}, Prix actuel: {current_price:.4f}")
+            # Adapter la précision selon le prix
+            precision = self._get_price_precision(current_price)
+            logger.info(f"🔍 Prix entrée: {entry_price:.{precision}f}, Prix actuel: {current_price:.{precision}f}")
             
             # Si position perdante, vendre immédiatement
             if current_price <= entry_price:
-                logger.info(f"📉 Position perdante pour {signal.symbol}: {current_price:.4f} ≤ {entry_price:.4f}, SELL immédiat")
+                logger.info(f"📉 Position perdante pour {signal.symbol}: {current_price:.{precision}f} ≤ {entry_price:.{precision}f}, SELL immédiat")
                 return True, "Position perdante, SELL immédiat"
             
             logger.info(f"🔍 Position gagnante détectée, vérification trailing sell")
@@ -460,30 +462,35 @@ class Coordinator:
                 # Premier SELL gagnant : stocker comme référence, ne pas vendre
                 logger.info(f"🔍 Premier SELL gagnant, stockage référence")
                 self._update_sell_reference(signal.symbol, current_price)
-                logger.info(f"🎯 Premier SELL gagnant pour {signal.symbol} @ {current_price:.4f}, stocké comme référence")
-                return False, f"Position gagnante, premier SELL @ {current_price:.4f} stocké comme référence"
+                precision = self._get_price_precision(current_price)
+                logger.info(f"🎯 Premier SELL gagnant pour {signal.symbol} @ {current_price:.{precision}f}, stocké comme référence")
+                return False, f"Position gagnante, premier SELL @ {current_price:.{precision}f} stocké comme référence"
             
             # Comparer avec le SELL précédent (avec marge de tolérance)
             sell_threshold = previous_sell_price * (1 - self.sell_margin)
-            logger.info(f"🔍 Seuil de vente calculé: {sell_threshold:.4f} (marge {self.sell_margin*100:.1f}%)")
+            
+            # Adapter la précision d'affichage selon le niveau de prix
+            precision = self._get_price_precision(current_price)
+            
+            logger.info(f"🔍 Seuil de vente calculé: {sell_threshold:.{precision}f} (marge {self.sell_margin*100:.1f}%)")
             
             if current_price > previous_sell_price:
                 # Prix monte : mettre à jour référence, ne pas vendre
                 logger.info(f"🔍 Prix monte, mise à jour référence")
                 self._update_sell_reference(signal.symbol, current_price)
-                logger.info(f"📈 Prix monte pour {signal.symbol}: {current_price:.4f} > {previous_sell_price:.4f}, référence mise à jour")
-                return False, f"Prix monte ({current_price:.4f} > {previous_sell_price:.4f}), référence mise à jour"
+                logger.info(f"📈 Prix monte pour {signal.symbol}: {current_price:.{precision}f} > {previous_sell_price:.{precision}f}, référence mise à jour")
+                return False, f"Prix monte ({current_price:.{precision}f} > {previous_sell_price:.{precision}f}), référence mise à jour"
             elif current_price > sell_threshold:
                 # Prix légèrement en baisse mais dans la marge de tolérance
-                logger.info(f"🟡 Prix stable pour {signal.symbol}: {current_price:.4f} > seuil {sell_threshold:.4f} (marge {self.sell_margin*100:.1f}%), GARDE")
-                return False, f"Prix dans marge de tolérance ({current_price:.4f} > {sell_threshold:.4f}), position gardée"
+                logger.info(f"🟡 Prix stable pour {signal.symbol}: {current_price:.{precision}f} > seuil {sell_threshold:.{precision}f} (marge {self.sell_margin*100:.1f}%), GARDE")
+                return False, f"Prix dans marge de tolérance ({current_price:.{precision}f} > {sell_threshold:.{precision}f}), position gardée"
             else:
                 # Prix baisse significativement : VENDRE !
                 logger.info(f"🔍 Prix baisse significative, nettoyage référence")
-                logger.info(f"📉 Prix baisse significative pour {signal.symbol}: {current_price:.4f} ≤ {sell_threshold:.4f}, SELL exécuté !")
+                logger.info(f"📉 Prix baisse significative pour {signal.symbol}: {current_price:.{precision}f} ≤ {sell_threshold:.{precision}f}, SELL exécuté !")
                 # Nettoyer la référence après vente
                 self._clear_sell_reference(signal.symbol)
-                return True, f"Prix baisse significative ({current_price:.4f} ≤ {sell_threshold:.4f}), SELL exécuté"
+                return True, f"Prix baisse significative ({current_price:.{precision}f} ≤ {sell_threshold:.{precision}f}), SELL exécuté"
             
         except Exception as e:
             logger.error(f"❌ EXCEPTION dans _check_trailing_sell pour {signal.symbol}: {str(e)}")
@@ -578,6 +585,29 @@ class Coordinator:
             logger.info(f"🧹 Référence SELL supprimée pour {symbol}")
         except Exception as e:
             logger.error(f"Erreur suppression sell reference pour {symbol}: {e}")
+    
+    def _get_price_precision(self, price: float) -> int:
+        """
+        Détermine la précision d'affichage selon le niveau de prix.
+        
+        Args:
+            price: Prix à analyser
+            
+        Returns:
+            Nombre de décimales à afficher
+        """
+        if price >= 1000:  # BTC, ETH haut
+            return 2  # 17000.12
+        elif price >= 100:  # ETH, SOL, AVAX
+            return 3  # 177.123
+        elif price >= 1:   # ADA, XRP, LINK
+            return 6  # 3.1234
+        elif price >= 0.01:  # Certains altcoins
+            return 6  # 0.12345
+        elif price >= 0.0001:  # DOGE, SHIB
+            return 10  # 0.123456
+        else:  # PEPE, BONK (très petits prix)
+            return 12  # 0.12345678
     
     def get_stats(self) -> Dict[str, Any]:
         """Retourne les statistiques du coordinator."""
