@@ -47,11 +47,11 @@ class BreakoutProStrategy(BaseStrategy):
         # Paramètres Breakout avancés
         symbol_params = self.params.get(symbol, {}) if self.params else {}
         self.lookback_periods = symbol_params.get('lookback_periods', 50)  # Plus long pour S/R
-        self.min_breakout_percent = symbol_params.get('breakout_min_percent', 0.8)  # ASSOUPLI de 1.5 à 0.8
-        self.min_volume_multiplier = symbol_params.get('min_volume_multiplier', 1.0)  # ASSOUPLI de 1.3 à 1.0
+        self.min_breakout_percent = symbol_params.get('breakout_min_percent', 0.5)  # AJUSTÉ de 0.8 à 0.5 pour plus de réactivité
+        self.min_volume_multiplier = symbol_params.get('min_volume_multiplier', 0.8)  # AJUSTÉ de 1.0 à 0.8 pour plus de signaux
         self.false_breakout_retest_periods = symbol_params.get('retest_periods', 5)
         self.sr_strength_threshold = symbol_params.get('sr_strength', 2)  # ASSOUPLI de 3 à 2
-        self.confluence_threshold = symbol_params.get('confluence_threshold', 35.0)  # ASSOUPLI de 45 à 35
+        self.confluence_threshold = symbol_params.get('confluence_threshold', 25.0)  # AJUSTÉ de 35 à 25 pour plus de signaux
         
         # Historique pour S/R dynamiques
         self.sr_levels: Dict[str, List[float]] = {'supports': [], 'resistances': []}
@@ -588,8 +588,8 @@ class BreakoutProStrategy(BaseStrategy):
                 # Vérifier les conditions de validation
                 conditions_met = []
                 
-                # 1. Score de contexte minimum - AUGMENTÉ de 50 à 70
-                if context['score'] >= 70:
+                # 1. Score de contexte minimum - AJUSTÉ de 70 à 40 pour plus de signaux BUY
+                if context['score'] >= 40:
                     conditions_met.append('context')
                 
                 # 2. Structure favorable (uptrend ou neutre)
@@ -614,7 +614,7 @@ class BreakoutProStrategy(BaseStrategy):
                     analysis['is_valid'] = True
                 elif len(conditions_met) >= 2:
                     analysis['false_risk'] = 'medium'
-                    analysis['is_valid'] = context['score'] >= 60  # Plus strict
+                    analysis['is_valid'] = context['score'] >= 35  # AJUSTÉ de 60 à 35 pour plus de signaux
                 else:
                     analysis['false_risk'] = 'high'
                     analysis['is_valid'] = False
@@ -654,8 +654,8 @@ class BreakoutProStrategy(BaseStrategy):
                 # Vérifier les conditions de validation
                 conditions_met = []
                 
-                # 1. Score de contexte minimum - AUGMENTÉ de 50 à 70
-                if context['score'] >= 70:
+                # 1. Score de contexte minimum - AJUSTÉ de 70 à 40 pour plus de signaux BUY
+                if context['score'] >= 40:
                     conditions_met.append('context')
                 
                 # 2. Structure favorable (downtrend ou neutre)
@@ -680,7 +680,7 @@ class BreakoutProStrategy(BaseStrategy):
                     analysis['is_valid'] = True
                 elif len(conditions_met) >= 2:
                     analysis['false_risk'] = 'medium'
-                    analysis['is_valid'] = context['score'] >= 60  # Plus strict
+                    analysis['is_valid'] = context['score'] >= 35  # AJUSTÉ de 60 à 35 pour plus de signaux
                 else:
                     analysis['false_risk'] = 'high'
                     analysis['is_valid'] = False

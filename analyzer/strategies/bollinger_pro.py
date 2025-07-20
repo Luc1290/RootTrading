@@ -54,7 +54,7 @@ class BollingerProStrategy(BaseStrategy):
         self.trend_follow_zone = symbol_params.get('trend_follow_zone', 0.85)  # Zone trend following
         from shared.src.config import ATR_THRESHOLD_LOW
         self.min_atr = symbol_params.get('min_atr', ATR_THRESHOLD_LOW)  # ATR minimum (0.002)
-        self.confluence_threshold = symbol_params.get('confluence_threshold', 30.0)  # ASSOUPLI de 40 à 30
+        self.confluence_threshold = symbol_params.get('confluence_threshold', 25.0)  # AJUSTÉ de 30 à 25 pour plus de signaux
         
         # Historique pour détection de patterns
         self.bb_width_history: List[float] = []
@@ -550,7 +550,7 @@ class BollingerProStrategy(BaseStrategy):
         """Détermine si les conditions d'achat Bollinger sont remplies"""
         
         # Score de contexte minimum assoupli
-        if context['score'] < 20:  # ASSOUPLI de 25 à 20
+        if context['score'] < 15:  # AJUSTÉ de 20 à 15 pour capturer plus de signaux
             return False
         
         # Confluence minimum assouplie
@@ -561,18 +561,18 @@ class BollingerProStrategy(BaseStrategy):
         signal_type = pattern['signal_type']
         
         # 1. Mean reversion (prix bas, retour vers moyenne) - STANDARDISÉ
-        if signal_type == 'mean_reversion' and bb_position <= 0.25:  # STANDARDISÉ: Très bon (bas de bande)
-            return context['score'] > 30  # ASSOUPLI de 40 à 30
+        if signal_type == 'mean_reversion' and bb_position <= 0.30:  # AJUSTÉ de 0.25 à 0.30 pour plus de signaux
+            return context['score'] > 25  # AJUSTÉ de 30 à 25
         
         # 2. Breakout haussier après squeeze - STANDARDISÉ
         if (signal_type == 'breakout' and pattern['type'] in ['squeeze', 'contracting'] and 
-            bb_position > 0.25 and price > bb_middle):  # STANDARDISÉ: Au-dessus de "très bon"
-            return context['score'] > 35  # ASSOUPLI de 50 à 35
+            bb_position > 0.20 and price > bb_middle):  # AJUSTÉ de 0.25 à 0.20 pour plus de réactivité
+            return context['score'] > 30  # AJUSTÉ de 35 à 30
         
         # 3. Trend following - STANDARDISÉ pour capturer les débuts de pump
-        if (signal_type == 'trend_following' and bb_position <= 0.45 and  # STANDARDISÉ: Acceptable (position neutre-basse)
+        if (signal_type == 'trend_following' and bb_position <= 0.50 and  # AJUSTÉ de 0.45 à 0.50 pour plus de flexibilité
             bb_width > self.expansion_threshold):
-            return context['score'] > 40  # ASSOUPLI de 50 à 40
+            return context['score'] > 35  # AJUSTÉ de 40 à 35
         
         # 4. NOUVEAU: Détection de début de pump (oversold qui remonte) - STANDARDISÉ
         # RENFORCÉ: Vérifier que c'est vraiment un rebond, pas une expansion baissière

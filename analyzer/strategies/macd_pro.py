@@ -53,9 +53,9 @@ class MACDProStrategy(BaseStrategy):
         symbol_params = self.params.get(symbol, {}) if self.params else {}
         self.min_histogram_threshold = symbol_params.get('macd_histogram_threshold', MACD_HISTOGRAM_WEAK)  # STANDARDISÉ: Momentum faible
         self.strong_signal_threshold = symbol_params.get('macd_strong_threshold', MACD_HISTOGRAM_VERY_STRONG)  # STANDARDISÉ: Momentum très fort
-        self.min_volume_ratio = symbol_params.get('min_volume_ratio', 0.6)  # ASSOUPLI de 0.8 à 0.6
-        self.min_adx = symbol_params.get('min_adx', 15.0)  # ASSOUPLI de 20 à 15
-        self.confluence_threshold = symbol_params.get('confluence_threshold', 30.0)  # ASSOUPLI de 40 à 30
+        self.min_volume_ratio = symbol_params.get('min_volume_ratio', 0.5)  # AJUSTÉ de 0.6 à 0.5 pour plus de flexibilité
+        self.min_adx = symbol_params.get('min_adx', 12.0)  # AJUSTÉ de 15 à 12 pour plus de signaux
+        self.confluence_threshold = symbol_params.get('confluence_threshold', 25.0)  # AJUSTÉ de 30 à 25 pour plus de signaux
         
         # Historique pour divergences
         self.price_history: List[float] = []
@@ -593,7 +593,7 @@ class MACDProStrategy(BaseStrategy):
             return False
         
         # Score de contexte minimum
-        if context['score'] < 25:  # ASSOUPLI de 30 à 25
+        if context['score'] < 20:  # AJUSTÉ de 25 à 20 pour capturer plus de signaux bullish
             return False
         
         # Confluence minimum si disponible
@@ -603,15 +603,15 @@ class MACDProStrategy(BaseStrategy):
         
         # Signaux forts (zero cross, high quality)
         if signal_type in ['bullish_zero_cross'] or macd_analysis['quality'] == 'high':
-            return context['score'] > 40  # ASSOUPLI de 50 à 40
+            return context['score'] > 30  # AJUSTÉ de 40 à 30 pour plus de réactivité
         
         # Divergence haussière forte
-        if divergence['type'] == 'bullish' and divergence['strength'] > 0.5:  # ASSOUPLI de 0.6 à 0.5
-            return context['score'] > 30  # ASSOUPLI de 40 à 30
+        if divergence['type'] == 'bullish' and divergence['strength'] > 0.4:  # AJUSTÉ de 0.5 à 0.4
+            return context['score'] > 25  # AJUSTÉ de 30 à 25
         
         # Signaux standards
         if signal_type in ['bullish_crossover', 'momentum_bullish']:
-            return context['score'] > 45 and macd_analysis['strength'] > 0.2  # ASSOUPLI de 60 à 45 et 0.3 à 0.2
+            return context['score'] > 35 and macd_analysis['strength'] > 0.15  # AJUSTÉ de 45 à 35 et 0.2 à 0.15
         
         return False
     

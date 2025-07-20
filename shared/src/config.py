@@ -199,8 +199,8 @@ VOLUME_BUILDUP_CONFIG = {
 
 # Signal Aggregator Settings - Optimisés pour stratégies Pro
 SIGNAL_COOLDOWN_MINUTES = 15  # Cooldown plus long pour éviter sur-trading (15min entre signaux)
-VOTE_THRESHOLD = 0.60  # Seuil de vote plus élevé - au moins 60% des stratégies doivent s'accorder
-CONFIDENCE_THRESHOLD = 0.85  # Seuil de confiance élevé - seulement les signaux très forts
+VOTE_THRESHOLD = 0.50  # Seuil de vote équilibré - au moins 50% des stratégies doivent s'accorder
+CONFIDENCE_THRESHOLD = 0.70  # Seuil de confiance modéré - permet plus de signaux BUY tout en restant sélectif
 
 # Configuration des canaux Redis
 CHANNEL_PREFIX = "roottrading"

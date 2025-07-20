@@ -46,9 +46,9 @@ class EMACrossProStrategy(BaseStrategy):
         
         # Paramètres EMA avancés
         symbol_params = self.params.get(symbol, {}) if self.params else {}
-        self.min_gap_percent = symbol_params.get('ema_gap_min', 0.001)  # ASSOUPLI de 0.003 à 0.001
-        self.min_adx = symbol_params.get('min_adx', 15.0)  # ASSOUPLI de 20 à 15
-        self.confluence_threshold = symbol_params.get('confluence_threshold', 30.0)  # ASSOUPLI de 40 à 30
+        self.min_gap_percent = symbol_params.get('ema_gap_min', 0.0005)  # AJUSTÉ de 0.001 à 0.0005 pour plus de réactivité
+        self.min_adx = symbol_params.get('min_adx', 12.0)  # AJUSTÉ de 15 à 12 pour plus de flexibilité
+        self.confluence_threshold = symbol_params.get('confluence_threshold', 25.0)  # AJUSTÉ de 30 à 25 pour plus de signaux
         self.momentum_threshold = symbol_params.get('momentum_threshold', 0.2)  # ASSOUPLI de 0.3 à 0.2
         
         # Connexion Redis pour analyses avancées
@@ -387,7 +387,7 @@ class EMACrossProStrategy(BaseStrategy):
         score = context_analysis['score']
         
         # Conditions minimales
-        if score < 30:  # ASSOUPLI de 40 à 30
+        if score < 20:  # AJUSTÉ de 30 à 20 pour capturer plus de golden cross
             return False
         
         if gap_percent < self.min_gap_percent:  # Gap EMA minimum

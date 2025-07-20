@@ -46,10 +46,10 @@ class RSIProStrategy(BaseStrategy):
         # Paramètres RSI avancés
         symbol_params = self.params.get(symbol, {}) if self.params else {}
         # SEUILS RSI STANDARDISÉS - Version harmonisée avec tous les modules
-        self.oversold_threshold = symbol_params.get('rsi_oversold', 40)  # STANDARDISÉ: 40 pour tous les modules
-        self.overbought_threshold = symbol_params.get('rsi_overbought', 65)  # STANDARDISÉ: 65 pour tous les modules  
-        self.extreme_oversold = symbol_params.get('rsi_extreme_oversold', 25)  # STANDARDISÉ: 25 pour tous les modules
-        self.extreme_overbought = symbol_params.get('rsi_extreme_overbought', 75)  # STANDARDISÉ: 75 pour tous les modules
+        self.oversold_threshold = symbol_params.get('rsi_oversold', 35)  # AJUSTÉ: 35 pour mieux capturer les creux
+        self.overbought_threshold = symbol_params.get('rsi_overbought', 72)  # AJUSTÉ: 72 pour éviter les faux SELL en pump
+        self.extreme_oversold = symbol_params.get('rsi_extreme_oversold', 20)  # AJUSTÉ: 20 pour les creux profonds
+        self.extreme_overbought = symbol_params.get('rsi_extreme_overbought', 80)  # AJUSTÉ: 80 pour éviter les faux signaux
         self.min_adx = symbol_params.get('min_adx', 15.0)  # ASSOUPLI de 20 à 15
         self.confluence_threshold = symbol_params.get('confluence_threshold', 35.0)  # ASSOUPLI de 45 à 35
         
@@ -111,6 +111,7 @@ class RSIProStrategy(BaseStrategy):
             volume_spike = indicators.get('volume_spike', False)
             momentum_10 = self._get_current_indicator(indicators, 'momentum_10')
             bb_position = self._get_current_indicator(indicators, 'bb_position')
+            bb_width = self._get_current_indicator(indicators, 'bb_width')
             
             # Mettre à jour l'historique pour divergences
             self._update_history(current_price, current_rsi)
@@ -165,8 +166,19 @@ class RSIProStrategy(BaseStrategy):
             
             # SIGNAL DE VENTE - RSI overbought avec contexte favorable
             elif self._is_bearish_rsi_signal(current_rsi, context_analysis, divergence_analysis):
+                # NOUVEAU: Vérifier si on est en squeeze (bb_width très faible)
+                is_squeeze = bb_width is not None and bb_width < 0.01  # Squeeze si width < 1%
+                is_pump = (volume_ratio is not None and volume_ratio > 2.0 and 
+                          momentum_10 is not None and momentum_10 > 0.5)
+                
+                if is_squeeze and momentum_10 is not None and momentum_10 > 0:
+                    logger.info(f"🚫 RSI Pro {symbol}: Signal SELL ignoré - squeeze bullish détecté "
+                              f"(width: {bb_width:.3f}, momentum: {momentum_10:.2f})")
+                elif is_pump:
+                    logger.info(f"🚫 RSI Pro {symbol}: Signal SELL ignoré - pump actif détecté "
+                              f"(volume: {volume_ratio:.1f}x, momentum: {momentum_10:.2f})")
                 # Vérifier la position du prix avant de générer le signal
-                if not self.should_filter_signal_by_price_position(OrderSide.SELL, price_position, df):
+                elif not self.should_filter_signal_by_price_position(OrderSide.SELL, price_position, df):
                     confidence = self._calculate_bearish_confidence(
                         current_rsi, context_analysis, divergence_analysis, current_price, vwap or 0.0
                     )
@@ -458,7 +470,7 @@ class RSIProStrategy(BaseStrategy):
             return False
         
         # Score de contexte minimum assoupli
-        if context['score'] < 20:  # ASSOUPLI de 25 à 20 pour beaucoup plus de BUY
+        if context['score'] < 15:  # AJUSTÉ de 20 à 15 pour capturer plus de creux
             return False
         
         # Si confluence disponible, la vérifier - assoupli
@@ -471,11 +483,11 @@ class RSIProStrategy(BaseStrategy):
             return True
         
         # Conditions extrêmes
-        if rsi <= self.extreme_oversold and context['score'] > 35:  # ASSOUPLI de 50 à 35
+        if rsi <= self.extreme_oversold and context['score'] > 25:  # AJUSTÉ de 35 à 25 pour plus de réactivité
             return True
         
         # Conditions standard
-        return context['score'] > 45  # ASSOUPLI de 60 à 45
+        return context['score'] > 35  # AJUSTÉ de 45 à 35 pour capturer plus de creux
     
     def _is_bearish_rsi_signal(self, rsi: float, context: Dict, divergence: Dict) -> bool:
         """Détermine si les conditions de vente RSI sont remplies"""

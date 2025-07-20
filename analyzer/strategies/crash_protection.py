@@ -20,10 +20,10 @@ class CrashProtection:
     """
     
     def __init__(self):
-        # Seuils de protection SELL (crash)
-        self.CRASH_THRESHOLD_5M = -0.05  # -5% en 5 minutes = crash
-        self.RAPID_DROP_THRESHOLD = -0.02  # -2% en 1 minute = chute rapide
-        self.VOLUME_PANIC_MULTIPLIER = 3.0  # Volume 3x supérieur = panique
+        # Seuils de protection SELL (crash) - AJUSTÉS pour crypto volatil
+        self.CRASH_THRESHOLD_5M = -0.08  # -8% en 5 minutes = crash (était -5%)
+        self.RAPID_DROP_THRESHOLD = -0.04  # -4% en 1 minute = chute rapide (était -2%)
+        self.VOLUME_PANIC_MULTIPLIER = 5.0  # Volume 5x supérieur = panique (était 3x)
         self.RSI_COLLAPSE_THRESHOLD = 15   # ASSOUPLI: RSI < 15 = effondrement momentum (pour permettre BUY dans creux normaux)
         # Import des constantes ATR standardisées
         from shared.src.config import ATR_MULTIPLIER_EXTREME
@@ -122,7 +122,7 @@ class CrashProtection:
             change_1m = (current_price - price_1m_ago) / price_1m_ago
             
             # Analyser la sévérité
-            if change_5m <= self.CRASH_THRESHOLD_5M:  # -5% en 5min
+            if change_5m <= self.CRASH_THRESHOLD_5M:  # -8% en 5min
                 return {
                     "is_crash": True,
                     "type": "CRASH_RAPIDE",
@@ -132,7 +132,7 @@ class CrashProtection:
                     "change_5m": change_5m,
                     "change_1m": change_1m
                 }
-            elif change_1m <= self.RAPID_DROP_THRESHOLD:  # -2% en 1min
+            elif change_1m <= self.RAPID_DROP_THRESHOLD:  # -4% en 1min
                 return {
                     "is_crash": True,
                     "type": "CHUTE_RAPIDE", 
@@ -162,13 +162,13 @@ class CrashProtection:
             # Prix en baisse + volume élevé = panique
             price_change = (df['close'].iloc[-1] - df['close'].iloc[-2]) / df['close'].iloc[-2]
             
-            if volume_ratio >= self.VOLUME_PANIC_MULTIPLIER and price_change < -0.005:  # Volume 3x + baisse
+            if volume_ratio >= self.VOLUME_PANIC_MULTIPLIER and price_change < -0.02:  # Volume 5x + baisse significative
                 return {
                     "is_panic": True,
                     "type": "VOLUME_PANIQUE",
                     "description": f"Volume {volume_ratio:.1f}x + baisse {price_change:.1%}",
                     "severity": "ÉLEVÉ",
-                    "priority": 3,
+                    "priority": 2,  # RÉDUIT de 3 à 2 pour éviter les faux signaux
                     "volume_ratio": volume_ratio,
                     "price_change": price_change
                 }
@@ -202,7 +202,7 @@ class CrashProtection:
             # Conditions d'effondrement - intégrer MACD pour confirmation
             if rsi_current < self.RSI_COLLAPSE_THRESHOLD:  # STANDARDISÉ: RSI < 15
                 # Vérifier si MACD confirme l'effondrement
-                priority = 4 if macd_negative else 3  # Priority max si MACD confirme
+                priority = 4 if (macd_negative and rsi_drop > 15) else 2  # Priority 4 seulement si MACD confirme ET chute brutale
                 description = f"RSI effondré {rsi_current:.0f} (chute {rsi_drop:.0f})"
                 if macd_negative:
                     description += " + MACD divergence baissière"
@@ -211,15 +211,15 @@ class CrashProtection:
                     "is_collapse": True,
                     "type": "MOMENTUM_COLLAPSE",
                     "description": description,
-                    "severity": "CRITIQUE" if macd_negative else "ÉLEVÉ",
+                    "severity": "CRITIQUE" if (macd_negative and rsi_drop > 15) else "MODÉRÉ",
                     "priority": priority,
                     "rsi_current": rsi_current,
                     "rsi_drop": rsi_drop,
                     "macd_confirmation": macd_negative
                 }
-            elif rsi_drop > 20:  # RSI a chuté de 20+ points
+            elif rsi_drop > 30:  # RSI a chuté de 30+ points (était 20)
                 # MACD peut confirmer la chute brutale
-                priority = 3 if macd_negative else 2
+                priority = 2 if macd_negative else 1  # RÉDUIT de 3/2 à 2/1
                 description = f"RSI chute brutale -{rsi_drop:.0f} points"
                 if macd_negative:
                     description += " + MACD divergence"
@@ -228,19 +228,19 @@ class CrashProtection:
                     "is_collapse": True,
                     "type": "RSI_CHUTE",
                     "description": description,
-                    "severity": "ÉLEVÉ" if macd_negative else "MODÉRÉ",
+                    "severity": "MODÉRÉ" if macd_negative else "FAIBLE",
                     "priority": priority,
                     "rsi_current": rsi_current,
                     "rsi_drop": rsi_drop,
                     "macd_confirmation": macd_negative
                 }
-            elif macd_negative and rsi_current < 25:  # NOUVEAU: MACD divergence + RSI faible
+            elif macd_negative and rsi_current < 20:  # MACD divergence + RSI très faible (était 25)
                 return {
                     "is_collapse": True,
                     "type": "MACD_DIVERGENCE",
                     "description": f"MACD divergence baissière + RSI faible ({rsi_current:.0f})",
-                    "severity": "MODÉRÉ",
-                    "priority": 2,
+                    "severity": "FAIBLE",
+                    "priority": 1,  # RÉDUIT de 2 à 1
                     "rsi_current": rsi_current,
                     "rsi_drop": rsi_drop,
                     "macd_confirmation": True

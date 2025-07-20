@@ -59,10 +59,10 @@ class ReversalDivergenceProStrategy(BaseStrategy):
         # Paramètres divergence avancés
         symbol_params = self.params.get(symbol, {}) if self.params else {}
         self.lookback_periods = symbol_params.get('div_lookback', 20)
-        self.min_swing_strength = symbol_params.get('min_swing_strength', 3)  # ASSOUPLI de 5 à 3
-        self.min_price_change = symbol_params.get('min_price_change', 1.0)  # ASSOUPLI de 1.5 à 1.0
-        self.min_indicator_change = symbol_params.get('min_indicator_change', 2.0)  # ASSOUPLI de 3.0 à 2.0
-        self.confluence_threshold = symbol_params.get('confluence_threshold', 35.0)  # ASSOUPLI de 45 à 35
+        self.min_swing_strength = symbol_params.get('min_swing_strength', 2)  # AJUSTÉ de 3 à 2 pour plus de détection
+        self.min_price_change = symbol_params.get('min_price_change', 0.7)  # AJUSTÉ de 1.0 à 0.7 pour plus de sensibilité
+        self.min_indicator_change = symbol_params.get('min_indicator_change', 1.5)  # AJUSTÉ de 2.0 à 1.5 pour plus de signaux
+        self.confluence_threshold = symbol_params.get('confluence_threshold', 25.0)  # AJUSTÉ de 35 à 25 pour plus de signaux
         self.multiple_div_bonus = symbol_params.get('multiple_div_bonus', 0.15)  # Bonus multi-divergences
         
         # Historique pour divergences
@@ -601,7 +601,7 @@ class ReversalDivergenceProStrategy(BaseStrategy):
             return False
         
         # Score de contexte minimum
-        if context['score'] < 40:
+        if context['score'] < 25:  # AJUSTÉ de 40 à 25 pour plus de signaux
             return False
         
         # Confluence minimum si disponible
@@ -611,18 +611,18 @@ class ReversalDivergenceProStrategy(BaseStrategy):
         
         # Force des divergences
         avg_strength = np.mean([d.strength for d in divergences])
-        if avg_strength < 0.3:
+        if avg_strength < 0.25:  # AJUSTÉ de 0.3 à 0.25 pour plus de sensibilité
             return False
         
         # Multiple divergences = bonus
         if len(divergences) >= 2:
-            return context['score'] > 50
+            return context['score'] > 30  # AJUSTÉ de 50 à 30
         
         # Divergence unique forte
-        if len(divergences) == 1 and divergences[0].strength > 0.6:
-            return context['score'] > 60
+        if len(divergences) == 1 and divergences[0].strength > 0.5:  # AJUSTÉ de 0.6 à 0.5
+            return context['score'] > 35  # AJUSTÉ de 60 à 35
         
-        return context['score'] > 70
+        return context['score'] > 40  # AJUSTÉ de 70 à 40
     
     def _is_valid_bearish_divergence_signal(self, divergences: List[DivergenceSignal], 
                                            structure: Dict, context: Dict) -> bool:
