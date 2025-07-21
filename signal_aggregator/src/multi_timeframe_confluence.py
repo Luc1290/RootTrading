@@ -50,22 +50,22 @@ class MultiTimeframeConfluence:
         # Configuration des timeframes avec pondérations optimisées pour scalping
         self.timeframes = {
             '1m': {
-                'weight': 0.30,
+                'weight': 0.20,  # Réduit : trop de bruit pour signaux principaux
                 'role': 'entry_timing',
                 'min_data_points': 20
             },
             '3m': {
-                'weight': 0.35,
-                'role': 'signal_confirmation',
+                'weight': 0.45,  # RENFORCÉ : meilleur équilibre signal/bruit  
+                'role': 'primary_signal',  # Changé : devient le timeframe principal
                 'min_data_points': 40
             },
             '5m': {
-                'weight': 0.25,
+                'weight': 0.25,  # Maintenu : bon pour validation tendance
                 'role': 'trend_validation', 
                 'min_data_points': 50
             },
             '15m': {
-                'weight': 0.10,
+                'weight': 0.10,  # Maintenu : contexte général suffisant
                 'role': 'market_context',
                 'min_data_points': 100
             }
@@ -682,12 +682,14 @@ class MultiTimeframeConfluence:
                 # Seuils ajustés pour permettre les signaux BUY de qualité
                 if risk_level > 9.5 or confluence_score < 25.0:
                     return 'AVOID'
-                elif signal_strength > 0.3 and confluence_score > 40.0:
-                    return 'BUY'  # Signal fort pour début pump
-                elif signal_strength > 0.2 and confluence_score > 35.0:
-                    return 'BUY'  # Signal modéré pour début pump
-                elif signal_strength > 0.15 and confluence_score > 30.0:
-                    return 'BUY'  # Signal faible mais confluence acceptable
+                elif signal_strength > 0.4 and confluence_score > 65.0:
+                    return 'BUY'  # Signal fort ET confluence forte requise
+                elif signal_strength > 0.3 and confluence_score > 70.0:
+                    return 'BUY'  # Signal modéré avec confluence élevée
+                elif signal_strength > 0.25 and confluence_score > 80.0:
+                    return 'BUY'  # Signal plus faible mais confluence très haute
+                elif confluence_score > 90.0 and signal_strength > 0.15:  # RESTREINT: Seulement confluence EXCELLENTE
+                    return 'BUY'  # Confluence exceptionnelle (>90%), signal minimum requis
                 else:
                     return 'HOLD'
             

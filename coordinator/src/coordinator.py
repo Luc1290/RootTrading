@@ -49,8 +49,10 @@ class Coordinator:
         # Configuration trailing sell
         self.sell_margin = 0.004  # 0.4% de marge pour laisser plus de marge aux pumps
         
-        # Configuration stop-loss automatique
-        self.stop_loss_percent = 0.015  # 1.5% de perte maximale tolérée
+        # Configuration stop-loss automatique adaptatif
+        self.stop_loss_percent_base = 0.015  # 1.5% de base
+        self.stop_loss_percent_bullish = 0.025  # 2.5% en tendance haussière (plus souple)
+        self.stop_loss_percent_strong_bullish = 0.035  # 3.5% en tendance très haussière (encore plus souple)
         self.price_check_interval = 60  # Vérification des prix toutes les 60 secondes (aligné sur la fréquence des données)
         
         # Stats
@@ -540,6 +542,65 @@ class Coordinator:
         except Exception as e:
             logger.error(f"Erreur suppression sell reference pour {symbol}: {e}")
     
+    def _analyze_symbol_trend(self, symbol: str, current_price: float, entry_price: float) -> str:
+        """
+        Analyse simple de la tendance d'un symbole pour adapter le stop-loss.
+        
+        Args:
+            symbol: Symbole à analyser
+            current_price: Prix actuel
+            entry_price: Prix d'entrée
+            
+        Returns:
+            'STRONG_BULLISH', 'BULLISH', ou 'NEUTRAL'
+        """
+        try:
+            # 1. Performance depuis l'entrée
+            performance_pct = ((current_price - entry_price) / entry_price) * 100
+            
+            # 2. Récupérer l'historique de prix récent depuis Redis
+            price_history_key = f"price_history:{symbol}"
+            try:
+                price_history = self.redis_client.get(price_history_key)
+                if price_history:
+                    if isinstance(price_history, str):
+                        price_history = json.loads(price_history)
+                    
+                    if isinstance(price_history, list) and len(price_history) >= 10:
+                        prices = [float(p) for p in price_history[-20:]]  # 20 derniers prix
+                        
+                        # Calculer la pente de tendance (régression linéaire simple)
+                        n = len(prices)
+                        x_sum = sum(range(n))
+                        y_sum = sum(prices)
+                        xy_sum = sum(i * prices[i] for i in range(n))
+                        x2_sum = sum(i * i for i in range(n))
+                        
+                        if n * x2_sum - x_sum * x_sum != 0:
+                            slope = (n * xy_sum - x_sum * y_sum) / (n * x2_sum - x_sum * x_sum)
+                            slope_pct = (slope / current_price) * 100  # Normaliser
+                        else:
+                            slope_pct = 0
+                    else:
+                        slope_pct = 0
+                else:
+                    slope_pct = 0
+                    
+            except Exception:
+                slope_pct = 0
+            
+            # 3. Logique de classification
+            if performance_pct > 5.0 and slope_pct > 0.1:  # +5% performance + pente positive
+                return "STRONG_BULLISH"
+            elif performance_pct > 2.0 or slope_pct > 0.05:  # +2% ou pente légèrement positive
+                return "BULLISH"
+            else:
+                return "NEUTRAL"
+                
+        except Exception as e:
+            logger.error(f"Erreur analyse tendance {symbol}: {e}")
+            return "NEUTRAL"
+    
     def _get_price_precision(self, price: float) -> int:
         """
         Détermine la précision d'affichage selon le niveau de prix.
@@ -640,15 +701,26 @@ class Coordinator:
                 logger.warning(f"⚠️ Prix actuel indisponible pour {symbol}")
                 return
             
-            # 1. VÉRIFICATION STOP-LOSS
-            stop_loss_threshold = entry_price * (1 - self.stop_loss_percent)
+            # 1. VÉRIFICATION STOP-LOSS ADAPTATIF
+            # Analyser la tendance pour adapter le stop-loss
+            trend_direction = self._analyze_symbol_trend(symbol, current_price, entry_price)
+            
+            # Choisir le bon pourcentage de stop selon la tendance
+            if trend_direction == "STRONG_BULLISH":
+                stop_loss_percent = self.stop_loss_percent_strong_bullish
+            elif trend_direction == "BULLISH":
+                stop_loss_percent = self.stop_loss_percent_bullish
+            else:
+                stop_loss_percent = self.stop_loss_percent_base
+            
+            stop_loss_threshold = entry_price * (1 - stop_loss_percent)
             
             if current_price <= stop_loss_threshold:
                 precision = self._get_price_precision(current_price)
-                logger.warning(f"🚨 STOP-LOSS DÉCLENCHÉ pour {symbol}!")
+                logger.warning(f"🚨 STOP-LOSS DÉCLENCHÉ pour {symbol} (Tendance: {trend_direction})!")
                 logger.warning(f"📉 Prix entrée: {entry_price:.{precision}f}")
                 logger.warning(f"📉 Prix actuel: {current_price:.{precision}f}")
-                logger.warning(f"📉 Seuil stop-loss: {stop_loss_threshold:.{precision}f}")
+                logger.warning(f"📉 Seuil stop-loss: {stop_loss_threshold:.{precision}f} ({stop_loss_percent*100:.1f}%)")
                 logger.warning(f"📉 Perte: {((current_price - entry_price) / entry_price * 100):.2f}%")
                 
                 # Déclencher vente d'urgence
@@ -682,7 +754,9 @@ class Coordinator:
             
             # Log debug pour positions proches des seuils
             loss_percent = (entry_price - current_price) / entry_price * 100
-            if loss_percent > (self.stop_loss_percent * 100 * 0.5):  # Si > 50% du seuil
+            # Utiliser le seuil adaptatif pour l'alerte précoce
+            base_threshold = self.stop_loss_percent_base * 100 * 0.5
+            if loss_percent > base_threshold:  # Si > 50% du seuil de base
                 precision = self._get_price_precision(current_price)
                 logger.debug(f"⚠️ {symbol} proche stop-loss: {current_price:.{precision}f} (perte {loss_percent:.2f}%)")
                 

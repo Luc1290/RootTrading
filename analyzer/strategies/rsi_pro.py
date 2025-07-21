@@ -16,6 +16,8 @@ from shared.src.enums import OrderSide
 from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB
 
 from .base_strategy import BaseStrategy
+from .support_detector import SupportDetector
+from .trend_filter import TrendFilter
 
 # Import des modules d'analyse avancée
 try:
@@ -57,6 +59,10 @@ class RSIProStrategy(BaseStrategy):
         self.price_history: List[float] = []
         self.rsi_history: List[float] = []
         self.max_history = 20
+        
+        # Modules d'amélioration BUY
+        self.support_detector = SupportDetector(lookback_periods=100)
+        self.trend_filter = TrendFilter()
         
         # Connexion Redis pour analyses avancées
         self.redis_client = None

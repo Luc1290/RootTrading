@@ -236,7 +236,7 @@ function MACDChart({ height = 200 }: MACDChartProps) {
   const macdStatus = currentMACD && currentSignal ? getMACDStatus(currentMACD, currentSignal) : null;
   
   return (
-    <div className="relative">
+    <div className="relative macd-chart-container">
       {/* Informations sur le MACD actuel */}
       {currentMACD && currentSignal && macdStatus && (
         <div className="absolute top-2 left-2 z-10 bg-black/70 backdrop-blur-sm rounded-md px-3 py-1 text-sm">

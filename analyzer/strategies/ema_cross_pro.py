@@ -16,6 +16,8 @@ from shared.src.enums import OrderSide
 from shared.src.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB
 
 from .base_strategy import BaseStrategy
+from .support_detector import SupportDetector
+from .trend_filter import TrendFilter
 
 # Import des modules d'analyse avancée
 try:
@@ -46,10 +48,14 @@ class EMACrossProStrategy(BaseStrategy):
         
         # Paramètres EMA avancés
         symbol_params = self.params.get(symbol, {}) if self.params else {}
-        self.min_gap_percent = symbol_params.get('ema_gap_min', 0.0008)  # AUGMENTÉ à 0.0008 pour filtrer les micro-croisements
+        self.min_gap_percent = symbol_params.get('ema_gap_min', 0.0005)  # RECALIBRÉ à 0.0005 pour éviter micro-croisements
         self.min_adx = symbol_params.get('min_adx', 12.0)  # AJUSTÉ de 15 à 12 pour plus de flexibilité
         self.confluence_threshold = symbol_params.get('confluence_threshold', 25.0)  # AJUSTÉ de 30 à 25 pour plus de signaux
         self.momentum_threshold = symbol_params.get('momentum_threshold', 0.2)  # ASSOUPLI de 0.3 à 0.2
+        
+        # Modules d'amélioration BUY
+        self.support_detector = SupportDetector(lookback_periods=100)
+        self.trend_filter = TrendFilter()
         
         # Connexion Redis pour analyses avancées
         self.redis_client = None
@@ -117,7 +123,13 @@ class EMACrossProStrategy(BaseStrategy):
             # Analyser le contexte multi-timeframes
             context_analysis = self._analyze_market_context(symbol, adx or 0.0, williams_r or 0.0, volume_ratio or 0.0, bb_width or 0.0, momentum_10 or 0.0)
             
-            # NOUVEAU: Calculer la position du prix dans son range
+            # NOUVEAU: Analyser la tendance globale
+            trend_analysis = self.trend_filter.analyze_trend(df, indicators)
+            
+            # NOUVEAU: Détecter les supports pour améliorer les BUY
+            support_analysis = self.support_detector.detect_support_levels(df, current_price)
+            
+            # Calculer la position du prix dans son range
             price_position = self.calculate_price_position_in_range(df)
             
             signal = None
@@ -126,14 +138,30 @@ class EMACrossProStrategy(BaseStrategy):
             if (previous_ema7 <= previous_ema26 and current_ema7 > current_ema26):
                 gap_percent = abs(current_ema7 - current_ema26) / current_ema26
                 
-                # Vérifier les conditions de contexte
-                if self._validate_bullish_context(context_analysis, gap_percent):
-                    # Vérifier la position du prix avant de générer le signal
-                    if not self.should_filter_signal_by_price_position(OrderSide.BUY, price_position, df):
-                        # Calculer confiance avec tous les facteurs
+                # Vérifier les conditions de contexte avec amélioration pour BUY
+                if self._validate_bullish_context_enhanced(context_analysis, gap_percent, trend_analysis, support_analysis):
+                    # Vérifier la position du prix avant de générer le signal (assouplie pour BUY en tendance)
+                    should_filter = self.should_filter_signal_by_price_position(OrderSide.BUY, price_position, df)
+                    
+                    # NOUVEAU: Assouplir le filtrage en tendance haussière forte
+                    if should_filter and trend_analysis.get('should_favor_buys', False):
+                        logger.info(f"🚀 {symbol}: Filtrage BUY assoupli car tendance haussière forte")
+                        should_filter = False
+                    
+                    if not should_filter:
+                        # Calculer confiance avec tous les facteurs + améliorations
                         base_confidence = min(0.8, gap_percent * 120 + 0.5)
                         context_boost = context_analysis['confidence_boost']
-                        final_confidence = min(0.95, base_confidence + context_boost)
+                        
+                        # NOUVEAU: Boost tendance
+                        trend_boost_enabled, trend_boost = self.trend_filter.should_boost_buy_signal(trend_analysis)
+                        
+                        # NOUVEAU: Boost support
+                        support_boost_enabled, support_boost = self.support_detector.should_boost_buy_signal(support_analysis, base_confidence)
+                        
+                        final_confidence = min(0.95, base_confidence + context_boost + 
+                                             (trend_boost if trend_boost_enabled else 0) + 
+                                             (support_boost if support_boost_enabled else 0))
                         
                         signal = self.create_signal(
                             side=OrderSide.BUY,
@@ -151,7 +179,15 @@ class EMACrossProStrategy(BaseStrategy):
                                 'confluence_score': context_analysis.get('confluence_score', 0),
                                 'momentum_score': context_analysis.get('momentum_score', 0),
                                 'price_position': price_position,
-                                'reason': f'EMA Golden Cross Pro BINANCE (7: {current_ema7:.4f} > 26: {current_ema26:.4f}) + Contexte favorable'
+                                # NOUVEAU: Métadonnées d'amélioration
+                                'trend_direction': trend_analysis.get('trend_direction', 'NEUTRAL'),
+                                'trend_score': trend_analysis.get('total_score', 50),
+                                'trend_boost': trend_boost if trend_boost_enabled else 0,
+                                'support_strength': support_analysis.get('support_strength', 0),
+                                'support_distance_pct': support_analysis.get('support_distance_pct', 100),
+                                'support_boost': support_boost if support_boost_enabled else 0,
+                                'near_support': support_analysis.get('is_near_support', False),
+                                'reason': f'EMA Golden Cross Pro BINANCE (7: {current_ema7:.4f} > 26: {current_ema26:.4f}) + Tendance {trend_analysis.get("trend_direction", "NEUTRAL")} + Support optimisé'
                             }
                         )
                         # Enregistrer prix d'entrée pour protection défensive
@@ -166,14 +202,19 @@ class EMACrossProStrategy(BaseStrategy):
             elif (previous_ema7 >= previous_ema26 and current_ema7 < current_ema26):
                 gap_percent = abs(current_ema26 - current_ema7) / current_ema26
                 
-                # Vérifier les conditions de contexte
+                # Vérifier les conditions de contexte (inchangé pour SELL)
                 if self._validate_bearish_context(context_analysis, gap_percent):
                     # Vérifier la position du prix avant de générer le signal
                     if not self.should_filter_signal_by_price_position(OrderSide.SELL, price_position, df):
                         # Calculer confiance avec tous les facteurs
                         base_confidence = min(0.8, gap_percent * 120 + 0.5)
                         context_boost = context_analysis['confidence_boost']
-                        final_confidence = min(0.95, base_confidence + context_boost)
+                        
+                        # NOUVEAU: Réduire confiance SELL en tendance haussière
+                        sell_reduce_enabled, sell_reduction = self.trend_filter.should_reduce_sell_signal(trend_analysis)
+                        
+                        final_confidence = max(0.3, min(0.95, base_confidence + context_boost - 
+                                                      (sell_reduction if sell_reduce_enabled else 0)))
                         
                         signal = self.create_signal(
                             side=OrderSide.SELL,
@@ -398,6 +439,57 @@ class EMACrossProStrategy(BaseStrategy):
         if confluence_score > 0 and confluence_score < self.confluence_threshold:
             return False
         
+        return True
+    
+    def _validate_bullish_context_enhanced(self, context_analysis: Dict, gap_percent: float,
+                                         trend_analysis: Dict, support_analysis: Dict) -> bool:
+        """
+        Validation améliorée pour signaux BUY avec tendance et supports
+        Plus permissive en tendance haussière forte
+        """
+        score = context_analysis['score']
+        trend_direction = trend_analysis.get('trend_direction', 'NEUTRAL')
+        trend_score = trend_analysis.get('total_score', 50)
+        
+        # ASSOUPLIR les conditions en tendance haussière forte
+        if trend_direction in ['STRONG_BULLISH', 'BULLISH']:
+            min_score = 15  # Réduction de 20 à 15
+            min_gap = self.min_gap_percent * 0.7  # Réduction du gap minimum de 30%
+        elif trend_direction == 'WEAK_BULLISH' and trend_score >= 50:
+            min_score = 18  # Légère réduction
+            min_gap = self.min_gap_percent * 0.85  # Légère réduction du gap
+        else:
+            min_score = 20  # Conditions normales
+            min_gap = self.min_gap_percent
+        
+        # Conditions de base avec debug
+        if score < min_score:
+            logger.debug(f"❌ BUY rejeté: score {score} < min_score {min_score} (trend: {trend_direction})")
+            return False
+        
+        if gap_percent < min_gap:
+            logger.debug(f"❌ BUY rejeté: gap {gap_percent:.6f} < min_gap {min_gap:.6f} (trend: {trend_direction})")
+            return False
+        
+        # Confluence avec assouplissement en tendance haussière
+        confluence_score = context_analysis.get('confluence_score', 0)
+        if confluence_score > 0:
+            threshold = self.confluence_threshold
+            if trend_direction in ['STRONG_BULLISH', 'BULLISH']:
+                threshold *= 0.8  # Réduction de 20%
+            
+            if confluence_score < threshold:
+                logger.debug(f"❌ BUY rejeté: confluence {confluence_score} < threshold {threshold} (trend: {trend_direction})")
+                return False
+        
+        # BONUS: Valider même avec score plus bas si près d'un support fort
+        if score >= 15 and support_analysis.get('is_near_support', False):
+            support_strength = support_analysis.get('support_strength', 0)
+            if support_strength >= 0.7:  # Support fort
+                logger.info(f"🎯 BUY validé grâce au support fort (score: {score}, support: {support_strength:.2f})")
+                return True
+        
+        logger.debug(f"✅ BUY validé: score {score}, gap {gap_percent:.6f}, trend {trend_direction}, confluence {confluence_score}")
         return True
     
     def _validate_bearish_context(self, context_analysis: Dict, gap_percent: float) -> bool:

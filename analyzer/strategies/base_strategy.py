@@ -44,7 +44,7 @@ class BaseStrategy(ABC):
         self.buffer_size = self.params.get('buffer_size', 100)  # Taille par défaut du buffer
         self.data_buffer: Deque[Dict[str, Any]] = deque(maxlen=self.buffer_size)  # Buffer circulaire pour stocker les données
         self.last_signal_time: Optional[datetime] = None
-        self.signal_cooldown = self.params.get('signal_cooldown', 30)  # Temps min entre signaux (sec) - réduit pour stratégies Pro
+        self.signal_cooldown = self.params.get('signal_cooldown', 30)  # Retour à 30s entre signaux
         
         # Système de protection défensive
         self.crash_protection = CrashProtection()
@@ -367,8 +367,8 @@ class BaseStrategy(ABC):
         
         # Seuils de filtrage (ajustables par stratégie)
         symbol_params = self.params.get(self.symbol, {}) if self.params else {}
-        buy_threshold_high = symbol_params.get('buy_filter_high', 0.85)
-        sell_threshold_low = symbol_params.get('sell_filter_low', 0.05)
+        buy_threshold_high = symbol_params.get('buy_filter_high', 0.75)  # DURCI: 75% au lieu de 85%
+        sell_threshold_low = symbol_params.get('sell_filter_low', 0.15)  # DURCI: 15% au lieu de 5%
         
         # NOUVEAU: Détection de conditions de pump/momentum pour assouplir les filtres BUY
         if side == OrderSide.BUY and price_position > buy_threshold_high:
@@ -459,8 +459,8 @@ class BaseStrategy(ABC):
             if rsi > 85:
                 momentum_score -= 0.3
             
-            # Condition de pump: score >= 0.5 ET volume >= 1.5x (STANDARDISÉ: Très bon)
-            is_pump = momentum_score >= 0.5 and volume_ratio >= 1.5
+            # Condition de pump DURCIE: score >= 0.7 ET volume >= 2.0x (plus strict)
+            is_pump = momentum_score >= 0.7 and volume_ratio >= 2.0
             
             return {
                 'is_pump': is_pump,

@@ -204,7 +204,7 @@ function RSIChart({ height = 200 }: RSIChartProps) {
   const rsiStatus = currentRSI ? getRSIStatus(currentRSI) : null;
   
   return (
-    <div className="relative">
+    <div className="relative rsi-chart-container">
       {/* Informations sur le RSI actuel */}
       {currentRSI && rsiStatus && (
         <div className="absolute top-2 left-2 z-10 bg-black/70 backdrop-blur-sm rounded-md px-3 py-1 text-sm">

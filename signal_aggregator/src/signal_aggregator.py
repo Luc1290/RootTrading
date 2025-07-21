@@ -403,8 +403,8 @@ class SignalAggregator:
                         cci < -100  # CCI en survente
                     )
                     
-                    # Seuils adaptatifs
-                    if confluence_score > 80 and signal_confidence > 0.9:
+                    # Seuils recalibrés pour qualité (réduction sur-trading)
+                    if confluence_score > 85 and signal_confidence > 0.85:  # DURCI: 85% + 0.85 pour éviter sur-trading
                         logger.info(f"✨ Signal unique BUY {symbol} AUTORISÉ par qualité exceptionnelle "
                                    f"(confluence: {confluence_score:.1f}%, confiance: {signal_confidence:.2f})")
                         # Continuer avec le traitement
@@ -699,11 +699,12 @@ class SignalAggregator:
         else:
             trailing_delta = 3.0  # Défaut si pas de stop calculé
         
-        # NOUVEAU: Validation stricte minimum 2 signaux pour confluence (peut être de la même stratégie)
+        # VALIDATION ASSOUPLIE: Autoriser signaux uniques de haute qualité
         if len(contributing_strategies) < 2:
             if len(contributing_strategies) == 1:
-                logger.info(f"❌ Signal insuffisant rejeté (confluence requise): {len(contributing_strategies)} signaux pour {symbol}")
-                return None
+                # Les signaux uniques de haute qualité sont déjà validés plus haut dans le code
+                logger.info(f"✅ Signal unique accepté après validation qualité: {len(contributing_strategies)} signal pour {symbol}")
+                # Continuer avec le traitement du signal unique
             else:
                 logger.info(f"❌ Signal rejeté: aucune stratégie valide pour {symbol}")
                 return None
@@ -1044,11 +1045,12 @@ class SignalAggregator:
         # Trailing stop fixe à 8% pour système crypto pur
         trailing_delta = 8.0  # Crypto optimized (était 3.0%)
         
-        # NOUVEAU: Validation stricte minimum 2 signaux pour confluence (peut être de la même stratégie)
+        # VALIDATION ASSOUPLIE: Autoriser signaux uniques de haute qualité 
         if len(contributing_strategies) < 2:
             if len(contributing_strategies) == 1:
-                logger.info(f"❌ Signal insuffisant rejeté (confluence requise): {len(contributing_strategies)} signaux pour {symbol}")
-                return None
+                # Les signaux uniques de haute qualité sont déjà validés plus haut dans le code
+                logger.info(f"✅ Signal unique accepté après validation qualité: {len(contributing_strategies)} signal pour {symbol}")
+                # Continuer avec le traitement du signal unique
             else:
                 logger.info(f"❌ Signal rejeté: aucune stratégie valide pour {symbol}")
                 return None

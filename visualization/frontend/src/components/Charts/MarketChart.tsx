@@ -566,7 +566,7 @@ function MarketChart({ height = 750 }: MarketChartProps) {
   const currentPrice = marketData?.close[marketData.close.length - 1];
   
   return (
-    <div className="relative">
+    <div className="relative market-chart-container">
       {/* Informations sur le prix actuel */}
       {currentPrice && (
         <div className="absolute top-2 left-2 z-10 bg-black/70 backdrop-blur-sm rounded-md px-3 py-1 text-sm">

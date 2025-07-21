@@ -6,6 +6,7 @@ import PeriodSelector from './PeriodSelector';
 import EMAToggles from './EMAToggles';
 import RefreshButton from './RefreshButton';
 import WebSocketToggle from './WebSocketToggle';
+import SnapshotButton from './SnapshotButton';
 
 function Controls() {
   return (
@@ -18,6 +19,7 @@ function Controls() {
         <EMAToggles />
         
         <div className="flex items-center space-x-2 ml-auto">
+          <SnapshotButton />
           <RefreshButton />
           <WebSocketToggle />
         </div>
