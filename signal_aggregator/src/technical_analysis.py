@@ -7,8 +7,14 @@ Contient toutes les méthodes d'analyse technique extraites du signal_aggregator
 import logging
 import math
 from typing import Dict, List, Any, Optional, Union
-from .shared.technical_utils import TechnicalCalculators
-from .shared.redis_utils import RedisManager
+import sys
+import os
+
+# Add path to shared modules BEFORE imports
+sys.path.append(os.path.dirname(__file__))
+
+from shared.technical_utils import TechnicalCalculators
+from shared.redis_utils import RedisManager
 
 logger = logging.getLogger(__name__)
 

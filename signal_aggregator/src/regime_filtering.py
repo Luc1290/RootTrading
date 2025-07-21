@@ -6,8 +6,14 @@ Contient la logique de filtrage adaptative selon les conditions de marché.
 
 import logging
 from typing import Dict, Any, Optional
+import sys
+import os
+
+# Add path to shared modules BEFORE imports
+sys.path.append(os.path.dirname(__file__))
+
 from enhanced_regime_detector import MarketRegime
-from .shared.technical_utils import SignalValidators
+from shared.technical_utils import SignalValidators
 
 logger = logging.getLogger(__name__)
 

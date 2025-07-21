@@ -10,6 +10,14 @@ from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 import json
 import pandas as pd
+import sys
+import os
+
+# Add path to shared modules BEFORE imports
+sys.path.append(os.path.dirname(__file__))
+
+# Import des utilitaires partagés
+from shared.technical_utils import SignalValidators
 
 # Import des modules séparés
 from market_data_accumulator import MarketDataAccumulator

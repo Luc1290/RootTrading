@@ -6,7 +6,13 @@ Contient toute la logique de scoring et d'amélioration des signaux.
 
 import logging
 from typing import Dict, List, Any
-from .shared.technical_utils import VolumeAnalyzer
+import sys
+import os
+
+# Add path to shared modules BEFORE imports
+sys.path.append(os.path.dirname(__file__))
+
+from shared.technical_utils import VolumeAnalyzer
 
 logger = logging.getLogger(__name__)
 

@@ -7,8 +7,14 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 import math
-from .shared.redis_utils import RedisManager
-from .shared.db_utils import DatabaseUtils
+import sys
+import os
+
+# Add path to shared modules BEFORE imports
+sys.path.append(os.path.dirname(__file__))
+
+from shared.redis_utils import RedisManager
+from shared.db_utils import DatabaseUtils
 
 logger = logging.getLogger(__name__)
 

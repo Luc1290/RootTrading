@@ -9,7 +9,13 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone
 import json
 import numpy as np
-from .shared.technical_utils import TechnicalCalculators, SignalValidators
+import sys
+import os
+
+# Ajouter le chemin vers les modules partagés AVANT les imports
+sys.path.append(os.path.dirname(__file__))
+
+from shared.technical_utils import TechnicalCalculators, SignalValidators
 
 logger = logging.getLogger(__name__)
 

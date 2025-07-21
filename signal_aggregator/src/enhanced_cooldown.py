@@ -5,7 +5,13 @@ Module de gestion de cooldown amélioré
 import logging
 from typing import Dict, Optional, Tuple
 from datetime import datetime, timezone
-from .shared.redis_utils import RedisManager
+import sys
+import os
+
+# Add path to shared modules BEFORE imports
+sys.path.append(os.path.dirname(__file__))
+
+from shared.redis_utils import RedisManager
 
 logger = logging.getLogger(__name__)
 

@@ -8,13 +8,16 @@ import json
 
 import sys
 import os
+
+# Add path to shared modules BEFORE imports
+sys.path.append(os.path.dirname(__file__))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from shared.src.config import (
     MACD_HISTOGRAM_VERY_STRONG, MACD_HISTOGRAM_STRONG, MACD_HISTOGRAM_MODERATE, 
     MACD_HISTOGRAM_WEAK
 )
-from .shared.redis_utils import RedisManager
+from shared.redis_utils import RedisManager
 
 logger = logging.getLogger(__name__)
 

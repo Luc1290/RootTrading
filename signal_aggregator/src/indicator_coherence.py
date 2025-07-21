@@ -4,14 +4,16 @@ S'assure que RSI et MACD sont alignés pour confirmer les signaux
 """
 import logging
 from typing import Dict, Tuple
-
 import sys
 import os
+
+# Add path to shared modules BEFORE imports
+sys.path.append(os.path.dirname(__file__))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from shared.src.config import MACD_HISTOGRAM_WEAK
 from shared.src.volume_context_detector import volume_context_detector
-from .shared.technical_utils import VolumeAnalyzer
+from shared.technical_utils import VolumeAnalyzer
 
 logger = logging.getLogger(__name__)
 

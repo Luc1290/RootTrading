@@ -7,7 +7,13 @@ from collections import deque
 from datetime import datetime
 import json
 import logging
-from .shared.redis_utils import RedisManager
+import sys
+import os
+
+# Add path to shared modules BEFORE imports
+sys.path.append(os.path.dirname(__file__))
+
+from shared.redis_utils import RedisManager
 
 logger = logging.getLogger(__name__)
 

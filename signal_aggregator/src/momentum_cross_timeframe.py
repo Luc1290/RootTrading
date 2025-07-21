@@ -5,8 +5,14 @@ from typing import Dict, List, Optional
 import json
 from enum import Enum
 from dataclasses import dataclass
+import sys
+import os
+
+# Add path to shared modules BEFORE imports
+sys.path.append(os.path.dirname(__file__))
+
 from shared.src.technical_indicators import TechnicalIndicators
-from .shared.redis_utils import RedisManager
+from shared.redis_utils import RedisManager
 
 logger = logging.getLogger(__name__)
 

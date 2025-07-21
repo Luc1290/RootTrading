@@ -7,7 +7,9 @@ Contient les méthodes de traitement spécialisé extraites du signal_aggregator
 import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
-from .shared.technical_utils import TechnicalCalculators
+import sys, os
+sys.path.append(os.path.dirname(__file__))
+from shared.technical_utils import TechnicalCalculators
 
 logger = logging.getLogger(__name__)
 

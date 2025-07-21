@@ -6,9 +6,16 @@ from typing import Dict, Tuple, List
 from datetime import datetime
 import json
 from enum import Enum
-from shared.src.technical_indicators import TechnicalIndicators
+
+import sys
+import os
+
+# Add path to shared modules BEFORE imports
+sys.path.append(os.path.dirname(__file__))
+
 from db_manager import DatabaseManager
-from .shared.redis_utils import RedisManager, SignalCacheManager
+from shared.redis_utils import RedisManager, SignalCacheManager
+from shared.src.technical_indicators import TechnicalIndicators
 
 logger = logging.getLogger(__name__)
 

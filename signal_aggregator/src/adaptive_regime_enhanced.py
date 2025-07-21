@@ -5,13 +5,20 @@ from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime, timedelta
 import json
 from dataclasses import dataclass, field
+
+import sys
+import os
+
+# Add path to shared modules BEFORE imports
+sys.path.append(os.path.dirname(__file__))
+
+from shared.technical_utils import TechnicalCalculators
 from shared.src.technical_indicators import TechnicalIndicators
 from shared.src.config import (
     ADX_NO_TREND_THRESHOLD, ADX_WEAK_TREND_THRESHOLD, 
     ADX_TREND_THRESHOLD, ADX_STRONG_TREND_THRESHOLD
 )
 from enhanced_regime_detector import MarketRegime
-from .shared.technical_utils import TechnicalCalculators
 
 logger = logging.getLogger(__name__)
 

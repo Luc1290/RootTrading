@@ -6,13 +6,13 @@ import os
 import json
 from aiohttp import web # Import aiohttp
 
-# Ajouter le chemin vers les modules partagés et src
+# Add path to shared modules BEFORE imports
 sys.path.insert(0, '/app')
 sys.path.insert(0, '/app/src')
+sys.path.append(os.path.dirname(__file__))
 
 # Imports directs des modules locaux
 from signal_aggregator import EnhancedSignalAggregator  # type: ignore[attr-defined]
-
 from performance_tracker import PerformanceTracker
 from db_manager import DatabaseManager
 from shared.src.kafka_client import KafkaClient
