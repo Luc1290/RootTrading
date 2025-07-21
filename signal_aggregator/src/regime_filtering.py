@@ -7,6 +7,7 @@ Contient la logique de filtrage adaptative selon les conditions de marché.
 import logging
 from typing import Dict, Any, Optional
 from enhanced_regime_detector import MarketRegime
+from .shared.technical_utils import SignalValidators
 
 logger = logging.getLogger(__name__)
 
@@ -182,10 +183,9 @@ class RegimeFiltering:
                 required_strength.append('moderate')
                 logger.debug(f"🔧 Contexte technique: seuils ajustés (conf: {technical_adjustment['confidence_adjustment']:+.2f}) pour {symbol}")
             
-            # Appliquer les filtres
-            if signal_confidence < min_confidence:
-                logger.info(f"🚫 Signal rejeté en {regime.name}: confiance {signal_confidence:.2f} < {min_confidence:.2f} "
-                           f"pour {strategy} {side} {symbol}")
+            # Appliquer les filtres avec utilitaire partagé
+            if not SignalValidators.validate_confidence_threshold(
+                signal_confidence, min_confidence, symbol, strategy):
                 return False
                 
             # NOUVEAU: Accepter les signaux 'moderate' si 2+ stratégies s'accordent

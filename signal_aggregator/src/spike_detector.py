@@ -14,6 +14,7 @@ from shared.src.config import (
     MACD_HISTOGRAM_VERY_STRONG, MACD_HISTOGRAM_STRONG, MACD_HISTOGRAM_MODERATE, 
     MACD_HISTOGRAM_WEAK
 )
+from .shared.redis_utils import RedisManager
 
 logger = logging.getLogger(__name__)
 
@@ -56,17 +57,12 @@ class SpikeDetector:
             - direction: 'up' ou 'down'
         """
         try:
-            # Récupérer l'historique des prix
+            # Récupérer l'historique des prix avec utilitaire partagé
             history_key = f"price_history:{symbol}:{timeframe}"
-            history = self.redis.get(history_key)
+            price_history = RedisManager.get_cached_data(self.redis, history_key)
             
-            if not history:
+            if not price_history:
                 return False, 0.0, 'neutral'
-            
-            if isinstance(history, str):
-                price_history = json.loads(history)
-            else:
-                price_history = history
             
             if not price_history or len(price_history) < 2:
                 return False, 0.0, 'neutral'
@@ -161,15 +157,12 @@ class SpikeDetector:
         Vérifie le momentum actuel (0-1, 1 = fort momentum)
         """
         try:
-            # Récupérer RSI et MACD
+            # Récupérer RSI et MACD avec utilitaire partagé
             indicators_key = f"indicators:{symbol}:15m"
-            indicators = self.redis.get(indicators_key)
+            indicators = RedisManager.get_cached_data(self.redis, indicators_key)
             
             if not indicators:
                 return 0.5  # Momentum neutre par défaut
-            
-            if isinstance(indicators, str):
-                indicators = json.loads(indicators)
             
             rsi = indicators.get('rsi_14', 50)
             macd_histogram = indicators.get('macd_histogram', 0)

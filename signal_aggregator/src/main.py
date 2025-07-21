@@ -17,6 +17,8 @@ from performance_tracker import PerformanceTracker
 from db_manager import DatabaseManager
 from shared.src.kafka_client import KafkaClient
 from shared.src.redis_client import RedisClient
+from shared.redis_utils import RedisManager
+from shared.db_utils import DatabaseUtils
 
 def get_config():
     """Wrapper pour la config"""
@@ -138,11 +140,10 @@ class SignalAggregatorService:
                     # Publish filtered signal on Kafka
                     self.kafka.produce('signals.filtered', aggregated)
                     
-                    # AUSSI publier sur Redis pour le coordinator
-                    self.redis.set(f"signal_filtered:{aggregated['symbol']}", str(aggregated), expiration=300)
+                    # AUSSI publier sur Redis pour le coordinator avec utilitaire partagé
+                    RedisManager.set_cached_data(self.redis, f"signal_filtered:{aggregated['symbol']}", str(aggregated), expiration=300)
                     # Et publier sur le canal Redis que le coordinator écoute
-                    import json
-                    self.redis.publish('roottrading:signals:filtered', json.dumps(aggregated))
+                    RedisManager.publish_json(self.redis, 'roottrading:signals:filtered', aggregated)
                     
                     # Sauvegarder le signal dans la DB
                     if self.db_manager and self.main_loop and not self.main_loop.is_closed():
@@ -204,46 +205,45 @@ class SignalAggregatorService:
                         LIMIT 250
                     """
                     
-                    # Exécuter la requête via le pool de connexions du db_manager
+                    # Exécuter la requête via l'utilitaire DB partagé
                     if self.db_manager and self.db_manager._connection_pool:
-                        async with self.db_manager._connection_pool.acquire() as conn:
-                            rows = await conn.fetch(query, symbol)
+                        rows = await DatabaseUtils.execute_query(self.db_manager._connection_pool, query, symbol)
+                        
+                        if rows:
+                            # Inverser l'ordre pour avoir du plus ancien au plus récent
+                            rows = list(reversed(rows))
                             
-                            if rows:
-                                # Inverser l'ordre pour avoir du plus ancien au plus récent
-                                rows = list(reversed(rows))
+                            for row in rows:
+                                # Convertir la row PostgreSQL en dict pour l'accumulateur
+                                historical_data = {
+                                    'timestamp': row['time'].timestamp(),
+                                    'symbol': row['symbol'],
+                                    'timeframe': row['timeframe'],
+                                    'open': float(row['open']),
+                                    'high': float(row['high']),
+                                    'low': float(row['low']),
+                                    'close': float(row['close']),
+                                    'volume': float(row['volume']),
+                                    'rsi_14': float(row['rsi_14']) if row['rsi_14'] else None,
+                                    'ema_7': float(row['ema_7']) if row['ema_7'] else None,  # MIGRATION BINANCE
+                                    'ema_26': float(row['ema_26']) if row['ema_26'] else None,
+                                    'ema_99': float(row['ema_99']) if row['ema_99'] else None,
+                                    'macd_line': float(row['macd_line']) if row['macd_line'] else None,
+                                    'macd_signal': float(row['macd_signal']) if row['macd_signal'] else None,
+                                    'macd_histogram': float(row['macd_histogram']) if row['macd_histogram'] else None,
+                                    'bb_upper': float(row['bb_upper']) if row['bb_upper'] else None,
+                                    'bb_lower': float(row['bb_lower']) if row['bb_lower'] else None,
+                                    'atr_14': float(row['atr_14']) if row['atr_14'] else None,
+                                    'ultra_enriched': True  # Marquer comme vraies données enrichies
+                                }
                                 
-                                for row in rows:
-                                    # Convertir la row PostgreSQL en dict pour l'accumulateur
-                                    historical_data = {
-                                        'timestamp': row['time'].timestamp(),
-                                        'symbol': row['symbol'],
-                                        'timeframe': row['timeframe'],
-                                        'open': float(row['open']),
-                                        'high': float(row['high']),
-                                        'low': float(row['low']),
-                                        'close': float(row['close']),
-                                        'volume': float(row['volume']),
-                                        'rsi_14': float(row['rsi_14']) if row['rsi_14'] else None,
-                                        'ema_7': float(row['ema_7']) if row['ema_7'] else None,  # MIGRATION BINANCE
-                                        'ema_26': float(row['ema_26']) if row['ema_26'] else None,
-                                        'ema_99': float(row['ema_99']) if row['ema_99'] else None,
-                                        'macd_line': float(row['macd_line']) if row['macd_line'] else None,
-                                        'macd_signal': float(row['macd_signal']) if row['macd_signal'] else None,
-                                        'macd_histogram': float(row['macd_histogram']) if row['macd_histogram'] else None,
-                                        'bb_upper': float(row['bb_upper']) if row['bb_upper'] else None,
-                                        'bb_lower': float(row['bb_lower']) if row['bb_lower'] else None,
-                                        'atr_14': float(row['atr_14']) if row['atr_14'] else None,
-                                        'ultra_enriched': True  # Marquer comme vraies données enrichies
-                                    }
-                                    
-                                    # Ajouter à l'accumulateur
-                                    self.aggregator.market_data_accumulator.add_market_data(symbol, historical_data)
-                                
-                                count = self.aggregator.market_data_accumulator.get_history_count(symbol)
-                                logger.info(f"✅ Vraies données historiques DB chargées pour {symbol}: {count} points")
-                            else:
-                                logger.warning(f"⚠️ Aucune donnée historique trouvée en DB pour {symbol}")
+                                # Ajouter à l'accumulateur
+                                self.aggregator.market_data_accumulator.add_market_data(symbol, historical_data)
+                            
+                            count = self.aggregator.market_data_accumulator.get_history_count(symbol)
+                            logger.info(f"✅ Vraies données historiques DB chargées pour {symbol}: {count} points")
+                        else:
+                            logger.warning(f"⚠️ Aucune donnée historique trouvée en DB pour {symbol}")
                     else:
                         logger.warning("⚠️ Pas de pool de connexion DB disponible")
                         
@@ -253,9 +253,8 @@ class SignalAggregatorService:
                     # Fallback: essayer Redis comme secours (sans simulation)
                     try:
                         redis_key = f"market_data:{symbol}:5m_history"
-                        raw_data = self.redis.get(redis_key)
-                        if raw_data:
-                            historical_list = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
+                        historical_list = RedisManager.get_cached_data(self.redis, redis_key)
+                        if historical_list:
                             if isinstance(historical_list, list):
                                 for data in historical_list[-100:]:  # 100 derniers points
                                     if isinstance(data, dict):

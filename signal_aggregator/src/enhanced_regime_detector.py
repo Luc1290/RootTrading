@@ -8,6 +8,7 @@ import json
 from enum import Enum
 from shared.src.technical_indicators import TechnicalIndicators
 from db_manager import DatabaseManager
+from .shared.redis_utils import RedisManager, SignalCacheManager
 
 logger = logging.getLogger(__name__)
 
@@ -83,28 +84,17 @@ class EnhancedRegimeDetector:
             Tuple (regime, metrics_dict)
         """
         try:
-            # Vérifier le cache d'abord
-            cache_key = f"detailed_regime:{symbol}"
-            cached = self.redis.get(cache_key)
+            # Vérifier le cache d'abord avec utilitaire partagé
+            cached_analysis = SignalCacheManager.get_cached_regime_analysis(self.redis, symbol)
             
-            if cached:
-                # Handle both string and dict cases
-                if isinstance(cached, str):
-                    regime_data = json.loads(cached)
-                else:
-                    regime_data = cached
-                return MarketRegime(regime_data['regime']), regime_data['metrics']
+            if cached_analysis:
+                return MarketRegime(cached_analysis['regime']), cached_analysis['metrics']
             
             # Calculer si pas en cache (version sync)
             regime, metrics = self._calculate_detailed_regime_sync(symbol)
             
-            # Mettre en cache pour 1 minute
-            cache_data = {
-                'regime': regime.value,
-                'metrics': metrics,
-                'timestamp': datetime.now().isoformat()
-            }
-            self.redis.set(cache_key, json.dumps(cache_data), expiration=60)
+            # Mettre en cache avec utilitaire partagé
+            SignalCacheManager.cache_regime_analysis(self.redis, symbol, regime.value, metrics)
             
             return regime, metrics
             

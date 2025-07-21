@@ -8,6 +8,7 @@ import asyncio
 from enum import Enum
 from dataclasses import dataclass
 from shared.src.technical_indicators import TechnicalIndicators
+from .shared.redis_utils import RedisManager
 
 logger = logging.getLogger(__name__)
 
@@ -102,15 +103,11 @@ class MarketStructureDetector:
             MarketStructureAnalysis avec tous les éléments structurels
         """
         try:
-            # Vérifier le cache
+            # Vérifier le cache avec utilitaire partagé
             cache_key = f"market_structure:{symbol}"
-            cached = self.redis.get(cache_key)
+            cached_data = RedisManager.get_cached_data(self.redis, cache_key)
             
-            if cached:
-                if isinstance(cached, str):
-                    cached_data = json.loads(cached)
-                else:
-                    cached_data = cached
+            if cached_data:
                 return self._deserialize_structure_analysis(cached_data)
             
             # Récupérer les données multi-timeframes
@@ -190,15 +187,11 @@ class MarketStructureDetector:
     async def _get_historical_data(self, symbol: str, timeframe: str, limit: int) -> List[Dict]:
         """Récupère les données historiques pour un timeframe"""
         try:
-            # 1. Essayer Redis d'abord (données enrichies)
+            # 1. Essayer Redis d'abord (données enrichies) avec utilitaire partagé
             key = f"historical:{symbol}:{timeframe}"
-            historical = self.redis.get(key)
+            data = RedisManager.get_cached_data(self.redis, key)
             
-            if historical:
-                if isinstance(historical, str):
-                    data = json.loads(historical)
-                else:
-                    data = historical
+            if data:
                 
                 if isinstance(data, list) and len(data) >= limit // 2:
                     return data[-limit:]

@@ -7,6 +7,7 @@ Contient les méthodes de traitement spécialisé extraites du signal_aggregator
 import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
+from .shared.technical_utils import TechnicalCalculators
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +170,7 @@ class SignalProcessor:
     
     async def _get_current_adx(self, symbol: str) -> Optional[float]:
         """
-        Récupère la valeur ADX actuelle depuis Redis
+        Récupère la valeur ADX actuelle depuis Redis - utilise l'implémentation partagée
         
         Args:
             symbol: Symbole concerné
@@ -177,31 +178,7 @@ class SignalProcessor:
         Returns:
             Valeur ADX ou None si non disponible
         """
-        try:
-            # Essayer d'abord les données 1m (plus récentes)
-            market_data_key = f"market_data:{symbol}:1m"
-            data_1m = self.redis.get(market_data_key)
-            
-            if data_1m and isinstance(data_1m, dict):
-                adx = data_1m.get('adx_14')
-                if adx is not None:
-                    return float(adx)
-            
-            # Fallback sur les données 5m
-            market_data_key_5m = f"market_data:{symbol}:5m"
-            data_5m = self.redis.get(market_data_key_5m)
-            
-            if data_5m and isinstance(data_5m, dict):
-                adx = data_5m.get('adx_14')
-                if adx is not None:
-                    return float(adx)
-                    
-            logger.debug(f"ADX non disponible pour {symbol}")
-            return None
-            
-        except Exception as e:
-            logger.error(f"Erreur récupération ADX pour {symbol}: {e}")
-            return None
+        return await TechnicalCalculators.get_current_adx(self.redis, symbol)
     
     def get_signal_timestamp(self, signal: Dict[str, Any]) -> datetime:
         """Extract timestamp from signal with multiple format support"""

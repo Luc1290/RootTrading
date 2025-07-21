@@ -9,6 +9,7 @@ import json
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 from shared.src.config import get_db_config
+from .shared.db_utils import DatabasePoolManager, DatabaseUtils
 
 logger = logging.getLogger(__name__)
 
@@ -33,23 +34,13 @@ class DatabaseManager:
     async def _async_initialize(self):
         """Partie asynchrone de l'initialisation - Pool de connexions"""
         try:
-            db_config = get_db_config()
-            
-            # Créer un pool de connexions pour éviter les problèmes de concurrence
-            self._connection_pool = await asyncpg.create_pool(
-                host=db_config['host'],
-                port=db_config['port'],
-                database=db_config['database'],
-                user=db_config['user'],
-                password=db_config['password'],
+            # Utiliser le gestionnaire de pool partagé
+            self._connection_pool = await DatabasePoolManager.create_pool(
+                service_name='signal_aggregator',
                 min_size=1,
-                max_size=3,  # Limité pour éviter trop de connexions
-                command_timeout=10,
-                server_settings={
-                    'application_name': 'signal_aggregator_pool'
-                }
+                max_size=3,
+                command_timeout=10
             )
-            logger.info("✅ Pool de connexions base de données Signal Aggregator initialisé")
             self.running = True
             return True
         except Exception as e:
@@ -250,8 +241,9 @@ class DatabaseManager:
                 return []
                 
             try:
-                async with self._connection_pool.acquire() as connection:
-                    rows = await connection.fetch(query, *params)
+                # Utiliser l'utilitaire partagé pour les requêtes
+                rows = await DatabaseUtils.execute_query(self._connection_pool, query, *params)
+                return rows
             except asyncio.TimeoutError:
                 logger.warning(f"Timeout requête DB pour {symbol}")
                 return []
@@ -260,6 +252,9 @@ class DatabaseManager:
                     logger.warning(f"Pool de connexions en cours de fermeture pour {symbol}")
                     return []
                 raise  # Re-lever les autres erreurs
+            except Exception as e:
+                logger.error(f"Erreur lors de la récupération des données pour {symbol}: {e}")
+                return []
             
             if not rows:
                 logger.debug(f"Aucune donnée enrichie trouvée pour {symbol}")

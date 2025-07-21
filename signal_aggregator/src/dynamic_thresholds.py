@@ -7,6 +7,7 @@ from collections import deque
 from datetime import datetime
 import json
 import logging
+from .shared.redis_utils import RedisManager
 
 logger = logging.getLogger(__name__)
 
@@ -54,13 +55,9 @@ class DynamicThresholdManager:
     def _load_history(self):
         """Charge l'historique depuis Redis"""
         try:
-            data = self.redis.get("dynamic_threshold_history")
-            if data:
-                # Gérer les deux cas : string JSON ou dict déjà parsé
-                if isinstance(data, str):
-                    history_data = json.loads(data)
-                else:
-                    history_data = data
+            # Utiliser l'utilitaire partagé pour récupération avec désérialisation automatique
+            history_data = RedisManager.get_cached_data(self.redis, "dynamic_threshold_history")
+            if history_data:
                 self.confidence_history = deque(
                     history_data.get('confidence_history', []), 
                     maxlen=self.history_size
@@ -87,13 +84,8 @@ class DynamicThresholdManager:
                 'current_vote_threshold': self.current_vote_threshold,
                 'last_update': datetime.now().isoformat()
             }
-            # Gérer les différents types de clients Redis
-            try:
-                # Client Redis standard qui nécessite JSON
-                self.redis.set("dynamic_threshold_history", json.dumps(data))
-            except (TypeError, AttributeError):
-                # Client Redis custom qui gère directement les objets Python
-                self.redis.set("dynamic_threshold_history", data)
+            # Utiliser l'utilitaire partagé pour mise en cache avec sérialisation automatique
+            RedisManager.set_cached_data(self.redis, "dynamic_threshold_history", data)
         except Exception as e:
             logger.error(f"Erreur sauvegarde historique seuils: {e}")
     

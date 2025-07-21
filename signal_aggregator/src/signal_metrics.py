@@ -6,6 +6,7 @@ Contient toute la logique de scoring et d'amélioration des signaux.
 
 import logging
 from typing import Dict, List, Any
+from .shared.technical_utils import VolumeAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -91,27 +92,15 @@ class SignalMetrics:
             if not volume_ratios and not volume_scores:
                 return confidence  # Pas de données volume, pas de boost
             
-            # Calculer le boost basé sur volume_ratio
+            # Calculer le boost basé sur volume_ratio avec utilitaire partagé
             volume_boost = 1.0
             if volume_ratios:
                 avg_volume_ratio = sum(volume_ratios) / len(volume_ratios)
+                volume_boost = VolumeAnalyzer.calculate_volume_boost(avg_volume_ratio)
                 
-                if avg_volume_ratio >= 2.0:  # STANDARDISÉ: Excellent (début pump confirmé)
-                    # Volume excellent: boost significatif (+15%)
-                    volume_boost = 1.15
-                    logger.info(f"🔊 Volume excellent détecté: ratio={avg_volume_ratio:.1f} -> boost +15%")
-                elif avg_volume_ratio >= 1.5:  # STANDARDISÉ: Très bon
-                    # Volume très bon: boost modéré (+10%)
-                    volume_boost = 1.10
-                    logger.info(f"📢 Volume très bon détecté: ratio={avg_volume_ratio:.1f} -> boost +10%")
-                elif avg_volume_ratio >= 1.2:  # STANDARDISÉ: Bon
-                    # Volume bon: boost léger (+5%)
-                    volume_boost = 1.05
-                    logger.debug(f"📈 Volume bon: ratio={avg_volume_ratio:.1f} -> boost +5%")
-                elif avg_volume_ratio <= 0.5:
-                    # Volume très faible: pénalité (-5%)
-                    volume_boost = 0.95
-                    logger.debug(f"📉 Volume faible: ratio={avg_volume_ratio:.1f} -> malus -5%")
+                # Log avec description
+                _, description = VolumeAnalyzer.analyze_volume_strength({'volume_ratio': avg_volume_ratio})
+                logger.debug(f"📊 {description} -> boost {volume_boost:.2f}x")
             
             # Boost supplémentaire basé sur volume_score des stratégies
             if volume_scores:

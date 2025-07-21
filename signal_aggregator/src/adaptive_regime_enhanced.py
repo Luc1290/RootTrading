@@ -11,6 +11,7 @@ from shared.src.config import (
     ADX_TREND_THRESHOLD, ADX_STRONG_TREND_THRESHOLD
 )
 from enhanced_regime_detector import MarketRegime
+from .shared.technical_utils import TechnicalCalculators
 
 logger = logging.getLogger(__name__)
 
@@ -524,18 +525,8 @@ class AdaptiveRegimeEnhanced:
             return 0.5
     
     def _calculate_ema(self, data: List[float], period: int) -> List[float]:
-        """Calcule une EMA simple"""
-        if len(data) < period:
-            return data
-        
-        alpha = 2.0 / (period + 1)
-        ema = [data[0]]
-        
-        for i in range(1, len(data)):
-            ema_value = alpha * data[i] + (1 - alpha) * ema[-1]
-            ema.append(ema_value)
-        
-        return ema
+        """Calcule une EMA simple - utilise l'implémentation partagée"""
+        return TechnicalCalculators.calculate_ema(data, period)
     
     def _calculate_mean_reversion_tendency(self, closes: List[float]) -> float:
         """Calcule la tendance au mean reversion"""

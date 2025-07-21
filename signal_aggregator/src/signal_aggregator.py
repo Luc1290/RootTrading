@@ -28,13 +28,20 @@ logger = logging.getLogger(__name__)
 class SignalAggregator:
     """Aggregates multiple strategy signals and resolves conflicts"""
     
-    # Strategy groupings by market condition
-    STRATEGY_GROUPS = {
-        'trend': ['EMA_Cross', 'MACD', 'Breakout'],
-        'mean_reversion': ['Bollinger', 'RSI', 'Divergence'],
-        'adaptive': ['Ride_or_React']
-    }
+    # Strategy groupings removed (unused)
     
+    def _record_signal_and_append(self, side: str, weighted_signal: dict, signals_list: list, 
+                                 strategy: str, regime, symbol: str, confidence: float):
+        """Helper pour éviter la duplication de code d'enregistrement de signal"""
+        signals_list.append(weighted_signal)
+        self.monitoring_stats.record_signal_decision(
+            strategy=strategy,
+            regime=regime.name if hasattr(regime, 'name') else str(regime),
+            symbol=symbol,
+            accepted=True,
+            confidence=confidence
+        )
+
     def __init__(self, redis_client, regime_detector, performance_tracker):
         self.redis = redis_client
         self.regime_detector = regime_detector
@@ -426,7 +433,7 @@ class SignalAggregator:
                             return None
             else:
                 # Analyser rapidement si les signaux sont dans la même direction
-                sides = [s.get('side', s.get('side', '')).upper() for s in self.signal_buffer[symbol]]
+                sides = [s.get('side', '').upper() for s in self.signal_buffer[symbol]]
                 unique_sides = set(sides)
                 
                 if len(unique_sides) == 1:
@@ -539,16 +546,13 @@ class SignalAggregator:
                 else:
                     min_threshold = self.min_confidence_threshold
                 
-            if confidence < min_threshold:
-                logger.debug(f"Signal {strategy} filtré: confidence {confidence:.2f} < {min_threshold:.2f} (régime: {regime})")
+            # Valider confiance et side avec utilitaires partagés
+            if not SignalValidators.validate_confidence_threshold(confidence, min_threshold, symbol, strategy):
                 continue
 
-            # Get side (handle both 'side' and 'side' keys)
-            side = signal.get('side', signal.get('side'))
-            if side in ['BUY', 'BUY']:
-                side = 'BUY'
-            elif side in ['SELL', 'SELL']:
-                side = 'SELL'
+            side = signal.get('side', '').upper()
+            if not SignalValidators.validate_signal_side(side, symbol):
+                continue
 
             # Weighted signal
             weighted_signal = {
@@ -560,25 +564,9 @@ class SignalAggregator:
             }
 
             if side == 'BUY':
-                BUY_signals.append(weighted_signal)
-                # Enregistrer l'acceptation dans les stats
-                self.monitoring_stats.record_signal_decision(
-                    strategy=strategy,
-                    regime=regime.name if hasattr(regime, 'name') else str(regime),
-                    symbol=symbol,
-                    accepted=True,
-                    confidence=confidence
-                )
+                self._record_signal_and_append(side, weighted_signal, BUY_signals, strategy, regime, symbol, confidence)
             elif side == 'SELL':
-                SELL_signals.append(weighted_signal)
-                # Enregistrer l'acceptation dans les stats
-                self.monitoring_stats.record_signal_decision(
-                    strategy=strategy,
-                    regime=regime.name if hasattr(regime, 'name') else str(regime),
-                    symbol=symbol,
-                    accepted=True,
-                    confidence=confidence
-                )
+                self._record_signal_and_append(side, weighted_signal, SELL_signals, strategy, regime, symbol, confidence)
 
         # Calculate total scores with quality tracking
         BUY_score = sum(s['score'] for s in BUY_signals)
@@ -638,10 +626,11 @@ class SignalAggregator:
             
         # NOUVEAU: Calcul de stop-loss adaptatif avec ATR dynamique
         stop_loss_sum = 0
+        stop_price = None  # Initialiser stop_price
         atr_stop_loss = await self.technical_analysis.calculate_atr_based_stop_loss(symbol, signals[0]['price'], side)
         
         for signal in signals:
-            signal_side = signal.get('side', signal.get('side'))
+            signal_side = signal.get('side', '').upper()
             if signal_side == side and signal['strategy'] in contributing_strategies:
                 weight = await self.performance_tracker.get_strategy_weight(signal['strategy'])
                 
@@ -867,8 +856,8 @@ class SignalAggregator:
             dynamic_thresholds = self.dynamic_thresholds.get_current_thresholds()
             confidence_threshold = max(confidence_threshold, dynamic_thresholds['confidence_threshold'])
             
-            if confidence < confidence_threshold:
-                logger.debug(f"Signal {strategy} rejeté: confiance {confidence:.2f} < {confidence_threshold:.2f}")
+            # Valider confiance avec utilitaire partagé
+            if not SignalValidators.validate_confidence_threshold(confidence, confidence_threshold, symbol, strategy):
                 # Enregistrer le rejet dans les stats
                 self.monitoring_stats.record_signal_decision(
                     strategy=strategy,
@@ -880,12 +869,10 @@ class SignalAggregator:
                 )
                 continue
 
-            # Get side (handle both 'side' and 'side' keys)
-            side = signal.get('side', signal.get('side'))
-            if side in ['BUY', 'BUY']:
-                side = 'BUY'
-            elif side in ['SELL', 'SELL']:
-                side = 'SELL'
+            # Valider side avec utilitaire partagé
+            side = signal.get('side', '').upper()
+            if not SignalValidators.validate_signal_side(side, symbol):
+                continue
 
             # Enhanced weighted signal with quality boost for ultra-confluent signals
             quality_boost = 1.0
@@ -919,25 +906,9 @@ class SignalAggregator:
             }
 
             if side == 'BUY':
-                BUY_signals.append(weighted_signal)
-                # Enregistrer l'acceptation dans les stats
-                self.monitoring_stats.record_signal_decision(
-                    strategy=strategy,
-                    regime=regime.name if hasattr(regime, 'name') else str(regime),
-                    symbol=symbol,
-                    accepted=True,
-                    confidence=confidence
-                )
+                self._record_signal_and_append(side, weighted_signal, BUY_signals, strategy, regime, symbol, confidence)
             elif side == 'SELL':
-                SELL_signals.append(weighted_signal)
-                # Enregistrer l'acceptation dans les stats
-                self.monitoring_stats.record_signal_decision(
-                    strategy=strategy,
-                    regime=regime.name if hasattr(regime, 'name') else str(regime),
-                    symbol=symbol,
-                    accepted=True,
-                    confidence=confidence
-                )
+                self._record_signal_and_append(side, weighted_signal, SELL_signals, strategy, regime, symbol, confidence)
 
         # NOUVEAU: Vérifier la cohérence entre stratégies trend/reversal
         if not self._check_strategy_coherence(BUY_signals + SELL_signals, regime):
@@ -989,7 +960,7 @@ class SignalAggregator:
         atr_stop_loss = await self.technical_analysis.calculate_atr_based_stop_loss(symbol, signals[0]['price'], side)
         
         for signal in signals:
-            signal_side = signal.get('side', signal.get('side'))
+            signal_side = signal.get('side', '').upper()
             if signal_side == side and signal['strategy'] in contributing_strategies:
                 # Find the corresponding weighted signal
                 weighted_sig = next((s for s in relevant_signals if s['strategy'] == signal['strategy']), None)
@@ -1141,13 +1112,13 @@ class SignalAggregator:
             recent_data = await self.get_recent_market_data(symbol, limit=50) if hasattr(self, 'get_recent_market_data') else None
             allow_sell = False
             
-            # Récupérer aussi depuis les indicateurs Redis
-            macd_line = indicators.get('macd_line', 0) if 'indicators' in locals() else 0
-            macd_signal = indicators.get('macd_signal', 0) if 'indicators' in locals() else 0
-            adx_value = indicators.get('adx', 0) if 'indicators' in locals() else 0
-            
             if recent_data and len(recent_data) >= 20:
                 df = pd.DataFrame(recent_data)
+                
+                # Récupérer les indicateurs depuis le DataFrame
+                macd_line = df['macd_line'].iloc[-1] if 'macd_line' in df.columns else 0
+                macd_signal = df['macd_signal'].iloc[-1] if 'macd_signal' in df.columns else 0
+                adx_value = df['adx'].iloc[-1] if 'adx' in df.columns else 0
                 
                 # Conditions STRICTES pour autoriser un SELL pendant une tendance haussière:
                 # 1. RSI très overbought (> 75) ET
@@ -1476,15 +1447,7 @@ class EnhancedSignalAggregator(SignalAggregator):
         else:
             self.enhanced_mode = True
         
-        # Nouveaux paramètres
-        self.correlation_threshold = 0.7  # Corrélation minimale entre signaux
-        self.divergence_penalty = 0.5  # Pénalité pour signaux divergents
-        self.regime_transition_cooldown = timedelta(minutes=5)
-        self.last_regime_change = {}
-        
-        # Suivi des faux signaux
-        self.false_signal_tracker = defaultdict(int)
-        self.false_signal_threshold = 3  # Max faux signaux avant désactivation temporaire
+        # Paramètres supprimés car non utilisés
         
         # NOUVEAU: Debounce pour éviter les signaux groupés (par stratégie)
         self.signal_debounce = defaultdict(lambda: defaultdict(lambda: {'last_buy': None, 'last_sell': None}))

@@ -9,6 +9,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone
 import json
 import numpy as np
+from .shared.technical_utils import TechnicalCalculators, SignalValidators
 
 logger = logging.getLogger(__name__)
 
@@ -339,17 +340,8 @@ class SignalValidator:
             return False
     
     def _calculate_ema(self, prices: List[float], period: int) -> float:
-        """Calcule une EMA simple (fallback)"""
-        if not prices or period <= 0:
-            return prices[-1] if prices else 0
-        
-        multiplier = 2 / (period + 1)
-        ema = prices[0]
-        
-        for price in prices[1:]:
-            ema = (price * multiplier) + (ema * (1 - multiplier))
-        
-        return ema
+        """Calcule une EMA simple (fallback) - utilise l'implémentation partagée"""
+        return TechnicalCalculators.calculate_single_ema(prices, period)
     
     def _get_or_calculate_ema_incremental(self, symbol: str, current_price: float, period: int) -> float:
         """
@@ -574,8 +566,9 @@ class SignalValidator:
         else:
             min_confidence = min_confidence_threshold
         
-        if signal.get('confidence', 0) < min_confidence:
-            logger.debug("Signal filtré: confiance insuffisante pendant heures creuses")
+        # Utiliser l'utilitaire partagé pour validation confiance
+        if not SignalValidators.validate_confidence_threshold(
+            signal.get('confidence', 0), min_confidence, symbol="heures_creuses"):
             return False
         
         # 2. Vérifier le spread bid/ask

@@ -6,6 +6,7 @@ import json
 from enum import Enum
 from dataclasses import dataclass
 from shared.src.technical_indicators import TechnicalIndicators
+from .shared.redis_utils import RedisManager
 
 logger = logging.getLogger(__name__)
 
@@ -114,15 +115,11 @@ class MomentumCrossTimeframe:
             CrossTimeframeMomentumAnalysis avec analyse complète
         """
         try:
-            # Vérifier le cache
+            # Vérifier le cache avec utilitaire partagé
             cache_key = f"momentum_cross_tf:{symbol}"
-            cached = self.redis.get(cache_key)
+            cached_data = RedisManager.get_cached_data(self.redis, cache_key)
             
-            if cached:
-                if isinstance(cached, str):
-                    cached_data = json.loads(cached)
-                else:
-                    cached_data = cached
+            if cached_data:
                 return self._deserialize_momentum_analysis(cached_data)
             
             # Analyser le momentum pour chaque timeframe
@@ -183,9 +180,9 @@ class MomentumCrossTimeframe:
                 entry_quality=entry_quality
             )
             
-            # Mettre en cache pour 30 secondes
+            # Mettre en cache avec utilitaire partagé
             cache_data = self._serialize_momentum_analysis(analysis)
-            self.redis.set(cache_key, json.dumps(cache_data), expiration=30)
+            RedisManager.set_cached_data(self.redis, cache_key, cache_data, expiration=70)
             
             logger.info(f"⚡ Momentum {symbol}: {momentum_direction.value} | "
                        f"Force: {momentum_strength:.2f} | Alignement: {momentum_alignment:.2f} | "

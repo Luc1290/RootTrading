@@ -7,6 +7,8 @@ Contient toutes les méthodes d'analyse technique extraites du signal_aggregator
 import logging
 import math
 from typing import Dict, List, Any, Optional, Union
+from .shared.technical_utils import TechnicalCalculators
+from .shared.redis_utils import RedisManager
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +32,9 @@ class TechnicalAnalysis:
             from shared.src.technical_indicators import TechnicalIndicators
             indicators = TechnicalIndicators()
             
-            # Récupérer les données 5m depuis Redis
-            market_data_key = f"market_data:{symbol}:5m"
-            data_5m = self.redis.get(market_data_key)
+            # Récupérer les données 3m depuis Redis avec utilitaire partagé
+            market_data_key = f"market_data:{symbol}:3m"
+            data_3m = RedisManager.get_cached_data(self.redis, market_data_key)
             
             context: Dict[str, Any] = {
                 'macd': None,
@@ -42,14 +44,14 @@ class TechnicalAnalysis:
                 'symbol': symbol  # Ajouter le symbol pour validate_obv_trend
             }
             
-            if not data_5m or not isinstance(data_5m, dict):
+            if not data_3m or not isinstance(data_3m, dict):
                 return context
                 
             # Extraire les prix historiques
-            prices = data_5m.get('prices', [])
-            volumes = data_5m.get('volumes', [])
-            highs = data_5m.get('highs', [])
-            lows = data_5m.get('lows', [])
+            prices = data_3m.get('prices', [])
+            volumes = data_3m.get('volumes', [])
+            highs = data_3m.get('highs', [])
+            lows = data_3m.get('lows', [])
             
             if len(prices) < 30:  # Minimum pour les calculs
                 return context
@@ -92,7 +94,7 @@ class TechnicalAnalysis:
                 logger.debug(f"Erreur calcul ROC pour {symbol}: {e}")  # ROC optionnel
             
             # Ajouter le volume ratio si disponible
-            volume_ratio = data_5m.get('volume_ratio', 1.0)
+            volume_ratio = data_3m.get('volume_ratio', 1.0)
             context['volume_ratio'] = volume_ratio
             
             context['available'] = True
@@ -150,17 +152,17 @@ class TechnicalAnalysis:
             Dict avec atr_percent et atr_value
         """
         try:
-            # Récupérer les données 5m depuis Redis
-            market_data_key = f"market_data:{symbol}:5m"
-            data_5m = self.redis.get(market_data_key)
+            # Récupérer les données 3m depuis Redis avec utilitaire partagé
+            market_data_key = f"market_data:{symbol}:3m"
+            data_3m = RedisManager.get_cached_data(self.redis, market_data_key)
             
-            if not data_5m or not isinstance(data_5m, dict):
-                logger.debug(f"Pas de données 5m pour {symbol}, utilisation valeur par défaut ATR")
+            if not data_3m or not isinstance(data_3m, dict):
+                logger.debug(f"Pas de données 3m pour {symbol}, utilisation valeur par défaut ATR")
                 return {"atr_percent": 1.0, "atr_value": None}
             
             # Vérifier si ATR est déjà calculé dans les données
-            atr_value = data_5m.get('atr_14')
-            close_price = data_5m.get('close')
+            atr_value = data_3m.get('atr_14')
+            close_price = data_3m.get('close')
             
             if atr_value and close_price:
                 atr_percent = (float(atr_value) / float(close_price)) * 100
@@ -170,9 +172,9 @@ class TechnicalAnalysis:
                 }
             
             # Fallback: utiliser TechnicalIndicators.calculate_atr() si données OHLC disponibles
-            prices = data_5m.get('prices', [])
-            highs = data_5m.get('highs', [])
-            lows = data_5m.get('lows', [])
+            prices = data_3m.get('prices', [])
+            highs = data_3m.get('highs', [])
+            lows = data_3m.get('lows', [])
             
             if len(prices) >= 15 and len(highs) >= 15 and len(lows) >= 15:
                 from shared.src.technical_indicators import TechnicalIndicators
@@ -351,18 +353,18 @@ class TechnicalAnalysis:
             indicators = TechnicalIndicators()
             
             # Récupérer les données OHLC depuis Redis
-            market_data_key = f"market_data:{symbol}:5m"
-            data_5m = self.redis.get(market_data_key)
-            
-            if not data_5m or not isinstance(data_5m, dict):
-                logger.debug(f"Données 5m non disponibles pour ATR {symbol}")
+            market_data_key = f"market_data:{symbol}:3m"
+            data_3m = self.redis.get(market_data_key)
+
+            if not data_3m or not isinstance(data_3m, dict):
+                logger.debug(f"Données 3m non disponibles pour ATR {symbol}")
                 return None
                 
             # Extraire les données OHLC
-            highs = data_5m.get('highs', [])
-            lows = data_5m.get('lows', [])
-            closes = data_5m.get('closes', data_5m.get('prices', []))
-            
+            highs = data_3m.get('highs', [])
+            lows = data_3m.get('lows', [])
+            closes = data_3m.get('closes', data_3m.get('prices', []))
+
             if len(highs) < 14 or len(lows) < 14 or len(closes) < 14:
                 logger.debug(f"Pas assez de données OHLC pour ATR {symbol}")
                 return None
@@ -469,7 +471,7 @@ class TechnicalAnalysis:
     
     async def _get_current_adx(self, symbol: str) -> Optional[float]:
         """
-        Récupère la valeur ADX actuelle depuis Redis
+        Récupère la valeur ADX actuelle depuis Redis - utilise l'implémentation partagée
         
         Args:
             symbol: Symbole concerné
@@ -477,31 +479,7 @@ class TechnicalAnalysis:
         Returns:
             Valeur ADX ou None si non disponible
         """
-        try:
-            # Essayer d'abord les données 1m (plus récentes)
-            market_data_key = f"market_data:{symbol}:1m"
-            data_1m = self.redis.get(market_data_key)
-            
-            if data_1m and isinstance(data_1m, dict):
-                adx = data_1m.get('adx_14')
-                if adx is not None:
-                    return float(adx)
-            
-            # Fallback sur les données 5m
-            market_data_key_5m = f"market_data:{symbol}:5m"
-            data_5m = self.redis.get(market_data_key_5m)
-            
-            if data_5m and isinstance(data_5m, dict):
-                adx = data_5m.get('adx_14')
-                if adx is not None:
-                    return float(adx)
-                    
-            logger.debug(f"ADX non disponible pour {symbol}")
-            return None
-            
-        except Exception as e:
-            logger.error(f"Erreur récupération ADX pour {symbol}: {e}")
-            return None
+        return await TechnicalCalculators.get_current_adx(self.redis, symbol)
     
     def get_or_calculate_indicator_incremental(self, symbol: str, current_candle: Dict, indicator_type: str, **params) -> Union[Optional[float], Dict[str, Union[float, None]]]:
         """

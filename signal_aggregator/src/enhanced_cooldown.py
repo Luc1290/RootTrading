@@ -5,6 +5,7 @@ Module de gestion de cooldown amélioré
 import logging
 from typing import Dict, Optional, Tuple
 from datetime import datetime, timezone
+from .shared.redis_utils import RedisManager
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +18,9 @@ class EnhancedCooldownManager:
         self.redis = redis_client
         
         # Paramètres de cooldown
-        self.base_cooldown_minutes = 15  # Cooldown de base entre signaux identiques
-        self.opposite_signal_cooldown_minutes = 30  # Cooldown plus long entre signaux opposés
-        self.spike_cooldown_minutes = 60  # Cooldown après un spike important
+        self.base_cooldown_minutes = 2  # Cooldown de base entre signaux identiques
+        self.opposite_signal_cooldown_minutes = 2  # Cooldown plus long entre signaux opposés
+        self.spike_cooldown_minutes = 2  # Cooldown après un spike important
         
         # Cache local pour performance
         self.cooldown_cache = {}
@@ -41,7 +42,7 @@ class EnhancedCooldownManager:
         try:
             # Vérifier le cooldown Redis (distribué)
             cooldown_key = f"signal_cooldown:{symbol}"
-            redis_cooldown = self.redis.get(cooldown_key)
+            redis_cooldown = RedisManager.get_cached_data(self.redis, cooldown_key)
             
             if redis_cooldown:
                 remaining = self._get_remaining_cooldown(cooldown_key)
@@ -76,7 +77,7 @@ class EnhancedCooldownManager:
             
             # Vérifier cooldown de spike
             spike_key = f"spike_cooldown:{symbol}"
-            spike_cooldown = self.redis.get(spike_key)
+            spike_cooldown = RedisManager.get_cached_data(self.redis, spike_key)
             if spike_cooldown:
                 remaining = self._get_remaining_cooldown(spike_key)
                 return False, f"Cooldown post-spike: attendez {remaining:.0f} secondes"
@@ -108,8 +109,8 @@ class EnhancedCooldownManager:
                 duration = duration_minutes or self.base_cooldown_minutes
                 key = f"signal_cooldown:{symbol}"
             
-            # Définir cooldown Redis
-            self.redis.set(key, "1", expiration=int(duration * 60))
+            # Définir cooldown Redis avec utilitaire partagé
+            RedisManager.set_cached_data(self.redis, key, "1", expiration=int(duration * 60))
             
             # Mettre à jour l'historique local
             self.last_signals[symbol] = {
@@ -162,6 +163,7 @@ class EnhancedCooldownManager:
         Retourne le temps restant de cooldown en secondes
         """
         try:
+            # Utiliser TTL direct Redis car pas d'équivalent dans RedisManager
             ttl = self.redis.ttl(key)
             return max(0, ttl if ttl else 0)
         except Exception:
@@ -172,6 +174,7 @@ class EnhancedCooldownManager:
         Efface le cooldown pour un symbole (utilisé en cas d'urgence)
         """
         try:
+            # Utiliser delete direct Redis car pas d'équivalent dans RedisManager
             self.redis.delete(f"signal_cooldown:{symbol}")
             self.redis.delete(f"spike_cooldown:{symbol}")
             if symbol in self.last_signals:

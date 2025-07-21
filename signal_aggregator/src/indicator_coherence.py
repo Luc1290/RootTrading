@@ -11,6 +11,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 
 from shared.src.config import MACD_HISTOGRAM_WEAK
 from shared.src.volume_context_detector import volume_context_detector
+from .shared.technical_utils import VolumeAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -312,42 +313,34 @@ class IndicatorCoherenceValidator:
                     volume_trend_info = " (tendance volume ↘️)"
             
             if signal_side == 'BUY':
-                # Pour BUY, utiliser les seuils contextuels + bonus tendance
-                if volume_ratio_val > 2.0:
-                    score = min(1.0, 1.0 + volume_trend_bonus)
-                    return score, f"Volume excellent ({volume_quality}) - Contexte: {context_name}{volume_trend_info}"
-                elif volume_ratio_val > 1.5:
-                    score = min(1.0, 0.9 + volume_trend_bonus)
-                    return score, f"Volume très bon ({volume_quality}) - Contexte: {context_name}{volume_trend_info}"
-                elif volume_ratio_val > 1.2:
-                    score = min(1.0, 0.8 + volume_trend_bonus)
-                    return score, f"Volume bon ({volume_quality}) - Contexte: {context_name}{volume_trend_info}"
-                elif volume_ratio_val >= contextual_threshold:
-                    # Utiliser le score contextuel calculé + bonus
-                    score = min(1.0, max(0.5, contextual_score + volume_trend_bonus))
-                    return score, f"Volume {volume_quality.lower()} (contexte: {context_name}){volume_trend_info}"
+                # Pour BUY, utiliser les seuils avec utilitaire partagé
+                base_boost = VolumeAnalyzer.calculate_volume_boost(volume_ratio_val)
+                _, description = VolumeAnalyzer.analyze_volume_strength({'volume_ratio': volume_ratio_val})
+                
+                # Ajuster avec bonus tendance et seuil contextuel
+                if volume_ratio_val >= contextual_threshold:
+                    score = min(1.0, base_boost + volume_trend_bonus)
+                    return score, f"{description} - Contexte: {context_name}{volume_trend_info}"
                 else:
                     # En dessous du seuil contextuel
                     penalty_score = min(1.0, max(0.3, (volume_ratio_val / contextual_threshold) * 0.5 + volume_trend_bonus))
                     return penalty_score, f"Volume insuffisant pour {context_name} (seuil: {contextual_threshold:.2f}){volume_trend_info}"
             
             else:  # SELL
-                # Pour SELL, logique différente - volume peut diminuer (essoufflement) + bonus tendance
+                # Pour SELL, utiliser utilitaire partagé avec logique adaptée
+                _, description = VolumeAnalyzer.analyze_volume_strength({'volume_ratio': volume_ratio_val})
+                
+                # Logique SELL: volume élevé peut continuer pump, faible = essoufflement
                 if volume_ratio_val > 2.5:
                     score = min(1.0, 0.7 + volume_trend_bonus)
-                    return score, f"Volume très élevé ({volume_quality}), pump peut continuer - Contexte: {context_name}{volume_trend_info}"
-                elif volume_ratio_val > 2.0:
-                    score = min(1.0, 1.0 + volume_trend_bonus)
-                    return score, f"Volume excellent ({volume_quality}) - Contexte: {context_name}{volume_trend_info}"
-                elif volume_ratio_val > 1.5:
-                    score = min(1.0, 0.9 + volume_trend_bonus)
-                    return score, f"Volume très bon ({volume_quality}) - Contexte: {context_name}{volume_trend_info}"
+                    return score, f"{description}, pump peut continuer - Contexte: {context_name}{volume_trend_info}"
                 elif volume_ratio_val > 1.0:
-                    score = min(1.0, 0.8 + volume_trend_bonus)
-                    return score, f"Volume bon ({volume_quality}) - Contexte: {context_name}{volume_trend_info}"
+                    base_boost = VolumeAnalyzer.calculate_volume_boost(volume_ratio_val)
+                    score = min(1.0, base_boost + volume_trend_bonus)
+                    return score, f"{description} - Contexte: {context_name}{volume_trend_info}"
                 else:
                     score = min(1.0, 0.9 + volume_trend_bonus)
-                    return score, f"Volume faible ({volume_quality}) = essoufflement - Contexte: {context_name}{volume_trend_info}"
+                    return score, f"{description} = essoufflement - Contexte: {context_name}{volume_trend_info}"
                 
         except Exception as e:
             logger.error(f"Erreur check volume contextuel: {e}")

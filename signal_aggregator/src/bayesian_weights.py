@@ -7,6 +7,8 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 import math
+from .shared.redis_utils import RedisManager
+from .shared.db_utils import DatabaseUtils
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +64,8 @@ class BayesianStrategyWeights:
     def _load_performance_data(self):
         """Charge les données de performance depuis Redis"""
         try:
-            data = self.redis.get("strategy_performance_bayesian")
-            if data:
-                loaded_data = json.loads(data)
+            loaded_data = RedisManager.get_cached_data(self.redis, "strategy_performance_bayesian")
+            if loaded_data:
                 for strategy, perf_dict in loaded_data.items():
                     self.performance_data[strategy] = StrategyPerformance(
                         wins=perf_dict.get('wins', 0),
@@ -93,7 +94,7 @@ class BayesianStrategyWeights:
                     'last_update': perf.last_update.isoformat()
                 }
             
-            self.redis.set("strategy_performance_bayesian", json.dumps(data_to_save))
+            RedisManager.set_cached_data(self.redis, "strategy_performance_bayesian", data_to_save)
         except Exception as e:
             logger.error(f"Erreur sauvegarde performances bayésiennes: {e}")
     
@@ -240,13 +241,7 @@ class BayesianStrategyWeights:
     def _load_from_database(self):
         """Charge les performances depuis PostgreSQL"""
         try:
-            # Importer les helpers synchrones
-            import sys
-            import os
-            sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
-            from shared.src.db_pool import fetch_all
-            
-            # Récupérer les performances depuis performance_stats
+            # Récupérer les performances depuis performance_stats avec utilitaire partagé
             query = """
             SELECT 
                 strategy,
@@ -259,7 +254,7 @@ class BayesianStrategyWeights:
             WHERE period = 'daily'
             GROUP BY strategy
             """
-            rows = fetch_all(query, None, dict_result=True)
+            rows = DatabaseUtils.fetch_all(query, None, dict_result=True)
             
             for row in rows:
                 self.performance_data[row['strategy']] = StrategyPerformance(
@@ -281,12 +276,6 @@ class BayesianStrategyWeights:
     def _save_to_database(self):
         """Sauvegarde les performances dans PostgreSQL"""
         try:
-            # Importer les helpers synchrones
-            import sys
-            import os
-            sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
-            from shared.src.db_pool import execute
-            
             for strategy, perf in self.performance_data.items():
                 # Insérer/mettre à jour dans performance_stats
                 # Utiliser période 'realtime' pour les données bayésiennes
@@ -309,7 +298,7 @@ class BayesianStrategyWeights:
                     created_at = NOW()
                 """
                 
-                execute(
+                DatabaseUtils.execute(
                     query,
                     (
                         strategy,

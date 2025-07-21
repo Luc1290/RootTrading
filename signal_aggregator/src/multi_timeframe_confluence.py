@@ -10,6 +10,8 @@ from shared.src.config import (
     MACD_HISTOGRAM_WEAK
 )
 from enhanced_regime_detector import MarketRegime
+from .shared.redis_utils import RedisManager
+from .shared.technical_utils import VolumeAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -87,15 +89,11 @@ class MultiTimeframeConfluence:
             ConfluenceResult avec analyse complète
         """
         try:
-            # Vérifier le cache d'abord
+            # Vérifier le cache d'abord avec utilitaire partagé
             cache_key = f"confluence:{symbol}"
-            cached = self.redis.get(cache_key)
+            cached_data = RedisManager.get_cached_data(self.redis, cache_key)
             
-            if cached:
-                if isinstance(cached, str):
-                    cached_data = json.loads(cached)
-                else:
-                    cached_data = cached
+            if cached_data:
                 return self._deserialize_confluence_result(cached_data)
             
             # Analyser chaque timeframe
@@ -182,14 +180,7 @@ class MultiTimeframeConfluence:
         """Récupère les données de marché pour un timeframe"""
         try:
             key = f"market_data:{symbol}:{timeframe}"
-            data = self.redis.get(key)
-            
-            if not data:
-                return None
-            
-            if isinstance(data, str):
-                return json.loads(data)
-            return data
+            return RedisManager.get_cached_data(self.redis, key)
             
         except Exception as e:
             logger.error(f"❌ Erreur récupération données {timeframe}: {e}")
@@ -396,12 +387,11 @@ class MultiTimeframeConfluence:
             momentum_signals.append(williams_momentum)
             
             # 5. Volume momentum
-            if metrics['volume_spike']:
-                momentum_signals.append(0.8)
-            else:
-                volume_ratio = metrics['volume_ratio']
-                volume_momentum = min(1.0, max(0.0, (volume_ratio - 0.5) * 2))
-                momentum_signals.append(volume_momentum)
+            # Utiliser l'analyseur de volume partagé  
+            volume_boost = VolumeAnalyzer.calculate_volume_boost(metrics['volume_ratio'])
+            # Normaliser le boost (1.0-1.15) vers score momentum (0.0-1.0)
+            volume_momentum = min(1.0, max(0.0, (volume_boost - 0.9) * 5))
+            momentum_signals.append(volume_momentum)
             
             return sum(momentum_signals) / len(momentum_signals) if momentum_signals else 0.0
             
@@ -439,11 +429,11 @@ class MultiTimeframeConfluence:
     def _check_volume_confirmation(self, metrics: Dict) -> bool:
         """Vérifie si le volume confirme le mouvement"""
         try:
-            volume_ratio = metrics['volume_ratio']
-            volume_spike = metrics['volume_spike']
+            # Utiliser l'analyseur de volume partagé pour cohérence
+            volume_boost = VolumeAnalyzer.calculate_volume_boost(metrics['volume_ratio'])
             
-            # Volume élevé = confirmation - SEUILS STANDARDISÉS
-            return volume_spike or volume_ratio > 1.2  # STANDARDISÉ: Bon volume minimum
+            # Confirmer si boost significatif (>= 1.05 = volume bon)
+            return volume_boost >= 1.05 or metrics.get('volume_spike', False)
             
         except Exception as e:
             logger.error(f"❌ Erreur vérification volume: {e}")
