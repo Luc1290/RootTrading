@@ -70,15 +70,3 @@ class TimeFrame(str, Enum):
     ONE_WEEK = "1w"
     ONE_MONTH = "1M"
 
-class MarketCondition(str, Enum):
-    """Condition générale du marché."""
-
-    CONSOLIDATING = "consolidating"      # Marché en consolidation
-    RANGING = "ranging"                  # Marché en range
-    STRONG_TREND_DOWN = "downtrend"      # Forte tendance baissière
-    STRONG_TREND_UP = "up_trend"         # Forte tendance haussière
-    BEARISH = "bearish"                  # Marché baissier
-    BULLISH = "bullish"                  # Marché haussier
-    SIDEWAYS = "sideways"                # Marché latéral
-    HIGH_VOLATILITY = "high_volatility"  # Forte volatilité
-    LOW_VOLATILITY = "low_volatility"    # Faible volatilité

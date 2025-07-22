@@ -249,7 +249,7 @@ class MessageRouter:
     def _transform_message(self, topic: str, message: Dict[str, Any]) -> Dict[str, Any]:
         """
         Transforme le message si nécessaire et assure que tous les champs essentiels sont présents.
-        Optimisé pour les données ultra-enrichies avec 20+ indicateurs techniques.
+        Optimisé pour les données ultra-enrichies avec indicateurs techniques.
 
         Args:
             topic: Topic Kafka source
@@ -258,121 +258,7 @@ class MessageRouter:
         Returns:
             Message transformé et enrichi
         """
-        # Cas spécial pour les données de marché en temps réel (optimisation)
-        is_market_data = topic.startswith("market.data")
-        is_signal_data = topic.startswith("analyzer.signals")
-        is_closed_candle = is_market_data and message.get('is_closed', False)
-        is_enhanced_data = message.get('enhanced', False)
-        
-        # Créer une copie pour éviter de modifier l'original
-        transformed = message.copy() if message else {}
-        
-        # Traitement spécialisé pour données de marché ultra-enrichies
-        if is_market_data:
-            # S'assurer que tous les champs essentiels sont présents
-            if 'symbol' not in transformed:
-                # Extraire le symbole du topic (market.data.solusdc.5m -> SOLUSDC)
-                parts = topic.split('.')
-                if len(parts) >= 3:
-                    transformed['symbol'] = parts[2].upper()
-            
-            # Extraire timeframe du topic si pas présent
-            if 'timeframe' not in transformed:
-                parts = topic.split('.')
-                if len(parts) >= 4:
-                    transformed['timeframe'] = parts[3]
-            
-            # S'assurer que is_closed est présent et de type booléen
-            if 'is_closed' not in transformed:
-                transformed['is_closed'] = False
-            
-            # Traitement optimisé pour données enrichies
-            if is_enhanced_data and is_closed_candle:
-                # Validation rapide des indicateurs critiques
-                critical_indicators = ['rsi_14', 'macd_line', 'ema_7', 'bb_position', 'adx_14']  # MIGRATION BINANCE
-                for indicator in critical_indicators:
-                    if indicator in transformed and not isinstance(transformed[indicator], (int, float, type(None))):
-                        try:
-                            transformed[indicator] = float(transformed[indicator]) if transformed[indicator] is not None else None
-                        except (ValueError, TypeError):
-                            transformed[indicator] = None
-                            
-                # Mise en cache des données enrichies pour confluence
-                symbol = transformed.get('symbol')
-                timeframe = transformed.get('timeframe')
-                if symbol and timeframe and symbol in self.enriched_data_cache:
-                    if timeframe in self.enriched_data_cache[symbol]:
-                        self.enriched_data_cache[symbol][timeframe].append({
-                            'timestamp': transformed.get('close_time', time.time()),
-                            'close': transformed.get('close'),
-                            'rsi_14': transformed.get('rsi_14'),
-                            'macd_line': transformed.get('macd_line'),
-                            'adx_14': transformed.get('adx_14'),
-                            'volume_spike': transformed.get('volume_spike', False)
-                        })
-            else:
-                # Traitement standard pour données non-enrichies
-                for field in ['open', 'high', 'low', 'close', 'volume']:
-                    if field in transformed and not isinstance(transformed[field], (int, float)):
-                        try:
-                            transformed[field] = float(transformed[field])
-                        except (ValueError, TypeError):
-                            transformed[field] = 0.0
-        
-        # Traitement spécialisé pour signaux avec scoring
-        elif is_signal_data:
-            # Valider les champs de signal
-            if 'confidence' in transformed:
-                if transformed['confidence'] is None:
-                    transformed['confidence'] = 0.5
-                elif not isinstance(transformed['confidence'], (int, float)):
-                    try:
-                        transformed['confidence'] = float(transformed['confidence'])
-                    except (ValueError, TypeError):
-                        transformed['confidence'] = 0.5
-                    
-            # Traitement des métadonnées ultra-confluentes
-            if 'metadata' in transformed and isinstance(transformed['metadata'], dict):
-                metadata = transformed['metadata']
-                
-                # Valider les scores si présents
-                if 'total_score' in metadata:
-                    try:
-                        metadata['total_score'] = float(metadata['total_score'])
-                    except (ValueError, TypeError):
-                        metadata['total_score'] = 50.0
-                        
-                # Compter les confirmations
-                if 'total_confirmations' in metadata and isinstance(metadata['total_confirmations'], list):
-                    transformed['confirmation_count'] = len(metadata['total_confirmations'])
-        
-        # Ajouter des métadonnées de routage ultra-enrichies
-        transformed["_routing"] = {
-            "source_topic": topic,
-            "timestamp": time.time(),
-            "sequence": self.message_sequence + 1,
-            "enhanced": is_enhanced_data,
-            "priority": "high" if (is_closed_candle and is_enhanced_data) or is_signal_data else "normal"
-        }
-        
-        # Incrémenter la séquence pour le prochain message
-        self.message_sequence += 1
-        
-        # Logs optimisés pour données critiques
-        if is_closed_candle and is_enhanced_data:
-            symbol = transformed.get('symbol')
-            timeframe = transformed.get('timeframe')
-            close = transformed.get('close')
-            rsi = transformed.get('rsi_14')
-            logger.info(f"📊 ENRICHI {symbol} {timeframe}: close={close:.4f} RSI={rsi:.1f}" if rsi else f"📊 ENRICHI {symbol} {timeframe}: close={close:.4f}")
-        elif is_signal_data:
-            symbol = transformed.get('symbol')
-            side = transformed.get('side')
-            score = transformed.get('metadata', {}).get('total_score')
-            confidence = transformed.get('confidence', 0)
-            logger.info(f"🎯 SIGNAL {symbol}: {side} score={score:.1f} conf={confidence:.2f}" if score else f"🎯 SIGNAL {symbol}: {side} conf={confidence:.2f}")
-        
-        return transformed
+
     
     def route_message(self, topic: str, message: Dict[str, Any], priority: Optional[str] = None) -> bool:
         """
