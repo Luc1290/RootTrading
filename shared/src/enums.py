@@ -43,12 +43,6 @@ class CycleStatus(str, Enum):
     COMPLETED = "completed"              # Cycle terminé avec succès
     CANCELED = "canceled"                # Cycle annulé
     FAILED = "failed"                    # Cycle échoué
-class StrategyMode(str, Enum):
-    """Mode de fonctionnement d'une stratégie."""
-    ACTIVE = "active"    # Stratégie active et générant des signaux
-    MONITORING = "monitoring"  # Stratégie en surveillance sans exécution
-    PAUSED = "paused"    # Stratégie temporairement suspendue
-    DISABLED = "disabled"  # Stratégie désactivée
 
 class SignalStrength(str, Enum):
     """Force du signal généré par une stratégie."""
@@ -78,8 +72,13 @@ class TimeFrame(str, Enum):
 
 class MarketCondition(str, Enum):
     """Condition générale du marché."""
-    BULLISH = "bullish"          # Tendance haussière
-    BEARISH = "bearish"          # Tendance baissière
-    SIDEWAYS = "sideways"        # Marché latéral
+
+    CONSOLIDATING = "consolidating"      # Marché en consolidation
+    RANGING = "ranging"                  # Marché en range
+    STRONG_TREND_DOWN = "downtrend"      # Forte tendance baissière
+    STRONG_TREND_UP = "up_trend"         # Forte tendance haussière
+    BEARISH = "bearish"                  # Marché baissier
+    BULLISH = "bullish"                  # Marché haussier
+    SIDEWAYS = "sideways"                # Marché latéral
     HIGH_VOLATILITY = "high_volatility"  # Forte volatilité
     LOW_VOLATILITY = "low_volatility"    # Faible volatilité
