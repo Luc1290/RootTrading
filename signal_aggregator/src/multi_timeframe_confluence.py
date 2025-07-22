@@ -15,7 +15,7 @@ from shared.src.config import (
     MACD_HISTOGRAM_VERY_STRONG, MACD_HISTOGRAM_STRONG, MACD_HISTOGRAM_MODERATE, 
     MACD_HISTOGRAM_WEAK
 )
-from enhanced_regime_detector import MarketRegime
+from signal_aggregator.src.regime_detector import MarketRegime
 try:
     from .shared.redis_utils import RedisManager
 except ImportError:
