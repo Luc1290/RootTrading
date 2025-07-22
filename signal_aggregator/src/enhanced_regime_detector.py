@@ -5,6 +5,7 @@ import numpy as np
 from typing import Dict, Tuple, List
 from datetime import datetime
 import json
+from decimal import Decimal
 from enum import Enum
 
 import sys
@@ -36,6 +37,20 @@ class MarketRegime(Enum):
     TREND_DOWN = "TREND_DOWN"
     STRONG_TREND_DOWN = "STRONG_TREND_DOWN"
     UNDEFINED = "UNDEFINED"
+
+
+def convert_decimals_to_float(data):
+    """Convertit récursivement tous les Decimal en float dans une structure de données"""
+    if isinstance(data, dict):
+        return {k: convert_decimals_to_float(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [convert_decimals_to_float(item) for item in data]
+    elif isinstance(data, Decimal):
+        return float(data)
+    elif isinstance(data, (np.integer, np.floating)):
+        return float(data)
+    else:
+        return data
 
 
 class EnhancedRegimeDetector:
@@ -106,7 +121,7 @@ class EnhancedRegimeDetector:
             regime, metrics = self._calculate_detailed_regime_sync(symbol)
             
             # Mettre en cache avec utilitaire partagé
-            SignalCacheManager.cache_regime_analysis(self.redis, symbol, regime.value, metrics)
+            SignalCacheManager.cache_regime_analysis(self.redis, symbol, regime.value, convert_decimals_to_float(metrics))
             
             return regime, metrics
             
@@ -149,7 +164,7 @@ class EnhancedRegimeDetector:
             # Mettre en cache pour 1 minute
             cache_data = {
                 'regime': regime.value,
-                'metrics': metrics
+                'metrics': convert_decimals_to_float(metrics)
             }
             # Gérer les différents types de clients Redis
             try:
@@ -307,14 +322,14 @@ class EnhancedRegimeDetector:
             
             # Métriques détaillées
             metrics = {
-                'adx': current_adx,
-                'rsi': current_rsi,
-                'bb_width': current_bb_width,
-                'bb_position': latest.get('bb_position', 0.5),
-                'atr': current_atr,
-                'volume_ratio': volume_ratio,
-                'regime_score': regime_score,
-                'confidence': confidence,
+                'adx': float(current_adx) if current_adx is not None else 0.0,
+                'rsi': float(current_rsi) if current_rsi is not None else 50.0,
+                'bb_width': float(current_bb_width) if current_bb_width is not None else 0.0,
+                'bb_position': float(latest.get('bb_position', 0.5)),
+                'atr': float(current_atr) if current_atr is not None else 0.0,
+                'volume_ratio': float(volume_ratio) if volume_ratio is not None else 1.0,
+                'regime_score': float(regime_score),
+                'confidence': float(confidence),
                 'data_source': 'enriched_db'
             }
             
@@ -478,24 +493,24 @@ class EnhancedRegimeDetector:
             
             # Compiler les métriques enrichies
             metrics = {
-                'adx': current_adx,
-                'plus_di': plus_di,
-                'minus_di': minus_di,
-                'bb_width': current_bb_width,
-                'bb_position': bb_position,
-                'bb_distance_to_upper': bb_distance_to_upper,
-                'bb_distance_to_lower': bb_distance_to_lower,
-                'bb_squeeze_strength': bb_squeeze_strength,
-                'price_vs_middle': price_vs_middle,
+                'adx': float(current_adx) if current_adx is not None else 0.0,
+                'plus_di': float(plus_di) if plus_di is not None else 0.0,
+                'minus_di': float(minus_di) if minus_di is not None else 0.0,
+                'bb_width': float(current_bb_width) if current_bb_width is not None else 0.0,
+                'bb_position': float(bb_position) if bb_position is not None else 0.5,
+                'bb_distance_to_upper': float(bb_distance_to_upper),
+                'bb_distance_to_lower': float(bb_distance_to_lower),
+                'bb_squeeze_strength': float(bb_squeeze_strength),
+                'price_vs_middle': float(price_vs_middle),
                 'bb_breakout_confirmed': bb_breakout_confirmed,
                 'bb_breakdown_confirmed': bb_breakdown_confirmed,
-                'rsi': current_rsi,
-                'roc': current_roc,
-                'volume_ratio': volume_ratio,
-                'current_volume': current_volume,
-                'avg_volume': avg_volume,
-                'trend_angle': trend_angle,
-                'pivot_count': pivot_count
+                'rsi': float(current_rsi) if current_rsi is not None else 50.0,
+                'roc': float(current_roc) if current_roc is not None else 0.0,
+                'volume_ratio': float(volume_ratio),
+                'current_volume': float(current_volume),
+                'avg_volume': float(avg_volume),
+                'trend_angle': float(trend_angle),
+                'pivot_count': int(pivot_count)
             }
             
             # Déterminer le régime
@@ -955,24 +970,24 @@ class EnhancedRegimeDetector:
             
             # Compiler les métriques enrichies
             metrics = {
-                'adx': current_adx,
-                'plus_di': plus_di,
-                'minus_di': minus_di,
-                'bb_width': bb_width,
-                'bb_position': bb_position,
-                'bb_distance_to_upper': bb_distance_to_upper,
-                'bb_distance_to_lower': bb_distance_to_lower,
-                'bb_squeeze_strength': bb_squeeze_strength,
-                'price_vs_middle': price_vs_middle,
+                'adx': float(current_adx) if current_adx is not None else 0.0,
+                'plus_di': float(plus_di) if plus_di is not None else 0.0,
+                'minus_di': float(minus_di) if minus_di is not None else 0.0,
+                'bb_width': float(bb_width) if bb_width is not None else 0.0,
+                'bb_position': float(bb_position) if bb_position is not None else 0.5,
+                'bb_distance_to_upper': float(bb_distance_to_upper),
+                'bb_distance_to_lower': float(bb_distance_to_lower),
+                'bb_squeeze_strength': float(bb_squeeze_strength),
+                'price_vs_middle': float(price_vs_middle),
                 'bb_breakout_confirmed': bb_breakout_confirmed,
                 'bb_breakdown_confirmed': bb_breakdown_confirmed,
-                'rsi': current_rsi,
-                'roc': current_roc,
-                'volume_ratio': volume_ratio,
-                'current_volume': current_volume,
-                'avg_volume': avg_volume,
-                'trend_angle': trend_angle,
-                'pivot_count': pivot_count
+                'rsi': float(current_rsi) if current_rsi is not None else 50.0,
+                'roc': float(current_roc) if current_roc is not None else 0.0,
+                'volume_ratio': float(volume_ratio),
+                'current_volume': float(current_volume),
+                'avg_volume': float(avg_volume),
+                'trend_angle': float(trend_angle) if trend_angle is not None else 0.0,
+                'pivot_count': int(pivot_count) if pivot_count is not None else 0
             }
             
             # Déterminer le régime
@@ -1051,16 +1066,16 @@ class EnhancedRegimeDetector:
                 pivot_count = pivot_high_count + pivot_low_count
             
             metrics = {
-                'adx': current_adx,
-                'plus_di': plus_di,
-                'minus_di': minus_di,
-                'bb_width': current_bb_width,
-                'bb_position': bb_position,
-                'rsi': current_rsi,
-                'roc': current_roc,
-                'volume_ratio': volume_ratio,
-                'trend_angle': trend_angle,
-                'pivot_count': pivot_count
+                'adx': float(current_adx) if current_adx is not None else 0.0,
+                'plus_di': float(plus_di) if plus_di is not None else 0.0,
+                'minus_di': float(minus_di) if minus_di is not None else 0.0,
+                'bb_width': float(current_bb_width) if current_bb_width is not None else 0.0,
+                'bb_position': float(bb_position) if bb_position is not None else 0.5,
+                'rsi': float(current_rsi) if current_rsi is not None else 50.0,
+                'roc': float(current_roc) if current_roc is not None else 0.0,
+                'volume_ratio': float(volume_ratio),
+                'trend_angle': float(trend_angle) if trend_angle is not None else 0.0,
+                'pivot_count': int(pivot_count) if pivot_count is not None else 0
             }
             
             regime = self._determine_regime(metrics)

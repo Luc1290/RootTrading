@@ -20,7 +20,7 @@ try:
 except ImportError:
     GLOBAL_INDICATORS_AVAILABLE = False
     logger = logging.getLogger(__name__)
-    logger.warning("Module technique global non disponible, utilisation des implémentations locales")
+    logger.debug("Module technique global non disponible, utilisation des implémentations locales")
 
 logger = logging.getLogger(__name__)
 

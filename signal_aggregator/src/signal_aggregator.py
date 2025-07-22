@@ -18,11 +18,12 @@ sys.path.append(os.path.dirname(__file__))
 
 # Import des utilitaires partagés
 try:
-    from .shared.technical_utils import SignalValidators
+    from shared.technical_utils import SignalValidators
 except ImportError:
-    # Fallback pour l'exécution dans le conteneur
-    sys.path.append(os.path.join(os.path.dirname(__file__), 'shared'))
-    from technical_utils import SignalValidators
+    try:
+        from technical_utils import SignalValidators
+    except ImportError:
+        from .shared.technical_utils import SignalValidators
 
 # Import des modules séparés
 from market_data_accumulator import MarketDataAccumulator
@@ -35,6 +36,19 @@ from enhanced_cooldown import EnhancedCooldownManager
 from spike_detector import SpikeDetector
 from indicator_coherence import IndicatorCoherenceValidator
 from enhanced_regime_detector import EnhancedRegimeDetector, MarketRegime
+from db_manager import DatabaseManager
+
+# Add path to shared modules
+sys.path.append(os.path.join(os.path.dirname(__file__), 'shared'))
+
+# Import du gestionnaire unifié
+try:
+    from shared.unified_data_manager import UnifiedDataManager, set_unified_data_manager
+except ImportError:
+    try:
+        from unified_data_manager import UnifiedDataManager, set_unified_data_manager
+    except ImportError:
+        from .shared.unified_data_manager import UnifiedDataManager, set_unified_data_manager
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +76,18 @@ class SignalAggregator:
         
         # Accumulateur de données de marché pour construire l'historique
         self.market_data_accumulator = MarketDataAccumulator(max_history=200)
+        
+        # Initialiser le gestionnaire de base de données
+        self.db_manager = DatabaseManager()
+        
+        # Initialiser le gestionnaire de données unifiées
+        self.unified_data_manager = UnifiedDataManager(
+            db_manager=self.db_manager,
+            redis_client=redis_client
+        )
+        # Définir l'instance globale
+        set_unified_data_manager(self.unified_data_manager)
+        logger.info("✅ Gestionnaire de données unifié initialisé")
         
         # Nouveau détecteur de régime amélioré
         self.enhanced_regime_detector = EnhancedRegimeDetector(redis_client)
@@ -315,9 +341,10 @@ class SignalAggregator:
                 if key not in combined_indicators and key in signal_metadata:
                     combined_indicators[key] = signal_metadata[key]
             
-            is_coherent, coherence_score, coherence_reason = self.coherence_validator.validate_signal_coherence(
+            is_coherent, _, coherence_reason = await self.coherence_validator.validate_signal_coherence(
                 signal['side'], 
-                combined_indicators  # CORRIGÉ: utiliser indicateurs complets
+                combined_indicators,  # CORRIGÉ: utiliser indicateurs complets
+                symbol  # NOUVEAU: passer le symbol pour enrichissement des données
             )
             
             if not is_coherent:
@@ -365,7 +392,8 @@ class SignalAggregator:
                 # Calculer/récupérer confluence pour ce signal
                 confluence_analysis = None
                 try:
-                    confluence_analysis = await self.confluence_analyzer.analyze_confluence(symbol)
+                    if self.confluence_analyzer:
+                        confluence_analysis = await self.confluence_analyzer.analyze_confluence(symbol)
                 except Exception as e:
                     logger.debug(f"Confluence non disponible pour signal unique {symbol}: {e}")
                 
@@ -387,7 +415,6 @@ class SignalAggregator:
                         rsi = metadata.get('rsi', 50)
                         bb_position = metadata.get('bb_position', 0.5)
                         volume_ratio = metadata.get('volume_ratio', 1.0)
-                        adx = metadata.get('adx', 0)
                         
                         # CONDITIONS PLUS STRICTES pour éviter les faux SELL
                         if (rsi > 75 and bb_position >= 0.90) or (rsi > 72 and volume_ratio > 3.0 and bb_position >= 0.85):
@@ -795,7 +822,11 @@ class SignalAggregator:
                 return None
             
             # ÉTAPE 6: Obtenir les poids des stratégies pour ce régime
-            regime_weights = self.enhanced_regime_detector.get_strategy_weights_for_regime(final_regime)
+            if final_regime and isinstance(final_regime, MarketRegime):
+                regime_weights = self.enhanced_regime_detector.get_strategy_weights_for_regime(final_regime)
+            else:
+                # Utiliser un régime par défaut si non défini
+                regime_weights = self.enhanced_regime_detector.get_strategy_weights_for_regime(MarketRegime.UNDEFINED)
             
             # ÉTAPE 7: Ajuster les poids selon les analyses multi-timeframe
             # Ces modificateurs ne sont calculés que dans EnhancedSignalAggregator
@@ -1124,6 +1155,9 @@ class SignalAggregator:
             # Récupérer les indicateurs pour validation
             recent_data = await self.get_recent_market_data(symbol, limit=50) if hasattr(self, 'get_recent_market_data') else None
             allow_sell = False
+            adx_value = 0  # Initialiser par défaut
+            macd_line = 0  # Initialiser par défaut
+            macd_signal = 0  # Initialiser par défaut
             
             if recent_data and len(recent_data) >= 20:
                 df = pd.DataFrame(recent_data)

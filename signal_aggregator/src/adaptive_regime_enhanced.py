@@ -468,7 +468,7 @@ class AdaptiveRegimeEnhanced:
             trend_persistence = self._calculate_trend_persistence(historical_data)
             
             # Tendance mean reversion
-            mean_reversion = self._calculate_mean_reversion_tendency(closes)
+            mean_reversion = self._calculate_mean_reversion_tendency(historical_data)
             
             # Fréquence des breakouts
             breakout_frequency = self._calculate_breakout_frequency(historical_data)
@@ -497,25 +497,30 @@ class AdaptiveRegimeEnhanced:
             return self._default_market_characteristics(symbol)
     
     def _calculate_trend_persistence(self, historical_data: List[Dict]) -> float:
-        """Calcule la persistance des tendances"""
+        """Calcule la persistance des tendances en utilisant les EMAs pré-calculées"""
         try:
             if len(historical_data) < 20:
                 return 0.5
             
-            # Calculer les EMA courtes et longues
-            closes = [candle['close'] for candle in historical_data]
-            
-            # Simuler EMA 10 et 20
-            ema_10 = self._calculate_ema(closes, 10)
-            ema_20 = self._calculate_ema(closes, 20)
-            
-            # Compter les périodes où EMA10 > EMA20 (tendance haussière)
+            # Compter les périodes où EMA7 > EMA26 (tendance haussière)
             trend_periods = 0
             trend_changes = 0
             current_trend = None
             
-            for i in range(len(ema_10)):
-                if ema_10[i] > ema_20[i]:
+            for candle in historical_data:
+                # Utiliser les EMAs déjà calculées dans les données enrichies
+                ema_7 = candle.get('ema_7')
+                ema_26 = candle.get('ema_26')
+                
+                # Vérifier que les valeurs existent
+                if ema_7 is None or ema_26 is None:
+                    continue
+                
+                # Convertir en float si nécessaire
+                ema_7 = float(ema_7)
+                ema_26 = float(ema_26)
+                
+                if ema_7 > ema_26:
                     new_trend = 'up'
                 else:
                     new_trend = 'down'
@@ -528,6 +533,11 @@ class AdaptiveRegimeEnhanced:
                 
                 trend_periods += 1
             
+            # Si pas assez de données avec EMAs
+            if trend_periods < 10:
+                logger.warning(f"⚠️ Pas assez de données avec EMAs: {trend_periods} périodes")
+                return 0.5
+            
             # Persistance = 1 - (changements / périodes)
             persistence = 1.0 - (trend_changes / trend_periods) if trend_periods > 0 else 0.5
             return max(0.0, min(1.0, persistence))
@@ -536,35 +546,39 @@ class AdaptiveRegimeEnhanced:
             logger.error(f"❌ Erreur calcul persistance tendance: {e}")
             return 0.5
     
-    def _calculate_ema(self, data: List[float], period: int) -> List[float]:
-        """Calcule une EMA simple - utilise l'implémentation partagée"""
-        return TechnicalCalculators.calculate_ema(data, period)
-    
-    def _calculate_mean_reversion_tendency(self, closes: List[float]) -> float:
-        """Calcule la tendance au mean reversion"""
+    def _calculate_mean_reversion_tendency(self, historical_data: List[Dict]) -> float:
+        """Calcule la tendance au mean reversion en utilisant les SMAs pré-calculées"""
         try:
-            if len(closes) < 20:
+            if len(historical_data) < 20:
                 return 0.5
             
-            # Calculer la moyenne mobile
-            window = 20
-            sma = []
-            for i in range(window - 1, len(closes)):
-                sma.append(np.mean(closes[i-window+1:i+1]))
-            
-            # Calculer combien de fois le prix revient vers la moyenne
+            # Calculer combien de fois le prix revient vers la SMA20
             reversions = 0
             total_opportunities = 0
             
-            for i in range(1, len(sma)):
-                if len(closes) > i + window - 1:
-                    current_price = closes[i + window - 1]
-                    prev_price = closes[i + window - 2]
-                    current_sma = sma[i]
+            for i in range(1, len(historical_data)):
+                current = historical_data[i]
+                prev = historical_data[i-1]
+                
+                # Utiliser les données pré-calculées
+                current_close = current.get('close')
+                prev_close = prev.get('close')
+                current_sma = current.get('sma_20')
+                
+                # Vérifier que toutes les valeurs existent
+                if all(v is not None for v in [current_close, prev_close, current_sma]):
+                    current_close = float(current_close)
+                    prev_close = float(prev_close)
+                    current_sma = float(current_sma)
                     
-                    # Vérifier si le prix s'éloigne puis revient vers la SMA
-                    if abs(prev_price - current_sma) > abs(current_price - current_sma):
+                    # Distance relative à la SMA
+                    prev_distance = abs(prev_close - current_sma) / current_sma if current_sma > 0 else 0
+                    current_distance = abs(current_close - current_sma) / current_sma if current_sma > 0 else 0
+                    
+                    # Le prix se rapproche de la SMA
+                    if prev_distance > current_distance and prev_distance > 0.01:  # Au moins 1% d'écart
                         reversions += 1
+                    
                     total_opportunities += 1
             
             return reversions / total_opportunities if total_opportunities > 0 else 0.5
@@ -574,31 +588,36 @@ class AdaptiveRegimeEnhanced:
             return 0.5
     
     def _calculate_breakout_frequency(self, historical_data: List[Dict]) -> float:
-        """Calcule la fréquence des breakouts"""
+        """Calcule la fréquence des breakouts en utilisant les Bollinger Bands pré-calculées"""
         try:
             if len(historical_data) < 50:
                 return 0.2
             
-            # Calculer les Bollinger Bands
-            closes = [candle['close'] for candle in historical_data]
-            window = 20
-            
             breakouts = 0
             total_periods = 0
             
-            for i in range(window, len(closes)):
-                sma = np.mean(closes[i-window:i])
-                std = np.std(closes[i-window:i])
-                upper_band = sma + 2 * std
-                lower_band = sma - 2 * std
+            for candle in historical_data:
+                # Utiliser les Bollinger Bands pré-calculées
+                current_close = candle.get('close')
+                bb_upper = candle.get('bb_upper')
+                bb_lower = candle.get('bb_lower')
                 
-                current_price = closes[i]
-                
-                # Vérifier breakout
-                if current_price > upper_band or current_price < lower_band:
-                    breakouts += 1
-                
-                total_periods += 1
+                # Vérifier que toutes les valeurs existent
+                if all(v is not None for v in [current_close, bb_upper, bb_lower]):
+                    current_close = float(current_close)
+                    bb_upper = float(bb_upper)
+                    bb_lower = float(bb_lower)
+                    
+                    # Vérifier breakout
+                    if current_close > bb_upper or current_close < bb_lower:
+                        breakouts += 1
+                    
+                    total_periods += 1
+            
+            # Si pas assez de données avec BB
+            if total_periods < 30:
+                logger.warning(f"⚠️ Pas assez de données avec BB: {total_periods} périodes")
+                return 0.2
             
             return breakouts / total_periods if total_periods > 0 else 0.2
             

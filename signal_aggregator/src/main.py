@@ -3,7 +3,7 @@ import asyncio
 import logging
 import sys
 import os
-import json
+from typing import Optional, Any
 from aiohttp import web # Import aiohttp
 
 # Add path to shared modules BEFORE imports
@@ -17,17 +17,40 @@ from performance_tracker import PerformanceTracker
 from db_manager import DatabaseManager
 from shared.src.kafka_client import KafkaClient
 from shared.src.redis_client import RedisClient
+# Add shared path BEFORE any imports
+sys.path.append(os.path.join(os.path.dirname(__file__), 'shared'))
+
+# Imports des utilitaires partagés avec fallbacks robustes
+RedisManager = None
+DatabaseUtils = None
+
+# Tentative d'import relatif d'abord (pour Pylance)
 try:
     from .shared.redis_utils import RedisManager
-except ImportError:
-    # Fallback pour l'exécution dans le conteneur
-    sys.path.append(os.path.join(os.path.dirname(__file__), 'shared'))
-    from redis_utils import RedisManager
-try:
     from .shared.db_utils import DatabaseUtils
 except ImportError:
-    # Fallback pour l'exécution dans le conteneur
-    from db_utils import DatabaseUtils
+    # Tentative d'import absolu
+    try:
+        from shared.redis_utils import RedisManager
+        from shared.db_utils import DatabaseUtils
+    except ImportError:
+        # Fallback final pour l'exécution en conteneur
+        import importlib.util
+        shared_path = os.path.join(os.path.dirname(__file__), 'shared')
+        
+        # Import RedisManager
+        redis_spec = importlib.util.spec_from_file_location("redis_utils", os.path.join(shared_path, "redis_utils.py"))
+        if redis_spec and redis_spec.loader:
+            redis_module = importlib.util.module_from_spec(redis_spec)
+            redis_spec.loader.exec_module(redis_module)
+            RedisManager = redis_module.RedisManager
+        
+        # Import DatabaseUtils
+        db_spec = importlib.util.spec_from_file_location("db_utils", os.path.join(shared_path, "db_utils.py"))
+        if db_spec and db_spec.loader:
+            db_module = importlib.util.module_from_spec(db_spec)
+            db_spec.loader.exec_module(db_module)
+            DatabaseUtils = db_module.DatabaseUtils
 
 def get_config():
     """Wrapper pour la config"""
@@ -46,17 +69,17 @@ logger = logging.getLogger(__name__)
 
 
 class SignalAggregatorService:
-    def __init__(self):
+    def __init__(self) -> None:
         self.config = get_config()
-        self.kafka = None
-        self.redis = None
-        self.aggregator = None
-        self.regime_detector = None
-        self.performance_tracker = None
-        self.db_manager = None
-        self.running = False
-        self.consumer_id = None
-        self.main_loop = None  # Event loop principal qui reste ouvert
+        self.kafka: Optional[Any] = None  # KafkaClient
+        self.redis: Optional[Any] = None  # RedisClient
+        self.aggregator: Optional[Any] = None  # EnhancedSignalAggregator
+        self.regime_detector: Optional[Any] = None  # EnhancedRegimeDetector
+        self.performance_tracker: Optional[Any] = None  # PerformanceTracker
+        self.db_manager: Optional[Any] = None  # DatabaseManager
+        self.running: bool = False
+        self.consumer_id: Optional[str] = None
+        self.main_loop: Optional[asyncio.AbstractEventLoop] = None  # Event loop principal qui reste ouvert
         
     async def start(self):
         """Initialize and start the service"""
@@ -134,7 +157,7 @@ class SignalAggregatorService:
             import concurrent.futures
             
             try:
-                if self.main_loop and not self.main_loop.is_closed():
+                if self.main_loop and not self.main_loop.is_closed() and self.aggregator:
                     # Envoyer la coroutine vers le loop principal thread-safe
                     future = asyncio.run_coroutine_threadsafe(
                         self.aggregator.process_signal(message), 
@@ -142,17 +165,19 @@ class SignalAggregatorService:
                     )
                     aggregated = future.result(timeout=30)  # Timeout de 30s
                 else:
-                    logger.error("❌ Event loop principal non disponible")
+                    logger.error("❌ Event loop principal non disponible ou aggregator non initialisé")
                     return
                 
                 if aggregated:
                     # Publish filtered signal on Kafka
-                    self.kafka.produce('signals.filtered', aggregated)
+                    if self.kafka:
+                        self.kafka.produce('signals.filtered', aggregated)
                     
                     # AUSSI publier sur Redis pour le coordinator avec utilitaire partagé
-                    RedisManager.set_cached_data(self.redis, f"signal_filtered:{aggregated['symbol']}", str(aggregated), expiration=300)
-                    # Et publier sur le canal Redis que le coordinator écoute
-                    RedisManager.publish_json(self.redis, 'roottrading:signals:filtered', aggregated)
+                    if RedisManager and self.redis:
+                        RedisManager.set_cached_data(self.redis, f"signal_filtered:{aggregated['symbol']}", str(aggregated), expiration=300)
+                        # Et publier sur le canal Redis que le coordinator écoute
+                        RedisManager.publish_json(self.redis, 'roottrading:signals:filtered', aggregated)
                     
                     # Sauvegarder le signal dans la DB
                     if self.db_manager and self.main_loop and not self.main_loop.is_closed():
@@ -177,7 +202,8 @@ class SignalAggregatorService:
         """Periodically update market regime detection"""
         while self.running:
             try:
-                await self.regime_detector.update_all_regimes()
+                if self.regime_detector and hasattr(self.regime_detector, 'update_all_regimes'):
+                    await self.regime_detector.update_all_regimes()
                 await asyncio.sleep(60)  # Update every minute
             except Exception as e:
                 logger.error(f"Error updating regimes: {e}")
@@ -187,7 +213,8 @@ class SignalAggregatorService:
         """Periodically update strategy performance metrics"""
         while self.running:
             try:
-                await self.performance_tracker.update_all_metrics()
+                if self.performance_tracker and hasattr(self.performance_tracker, 'update_all_metrics'):
+                    await self.performance_tracker.update_all_metrics()
                 await asyncio.sleep(300)  # Update every 5 minutes
             except Exception as e:
                 logger.error(f"Error updating performance: {e}")
@@ -215,7 +242,7 @@ class SignalAggregatorService:
                     """
                     
                     # Exécuter la requête via l'utilitaire DB partagé
-                    if self.db_manager and self.db_manager._connection_pool:
+                    if self.db_manager and self.db_manager._connection_pool and DatabaseUtils:
                         rows = await DatabaseUtils.execute_query(self.db_manager._connection_pool, query, symbol)
                         
                         if rows:
@@ -247,9 +274,12 @@ class SignalAggregatorService:
                                 }
                                 
                                 # Ajouter à l'accumulateur
-                                self.aggregator.market_data_accumulator.add_market_data(symbol, historical_data)
+                                if self.aggregator and hasattr(self.aggregator, 'market_data_accumulator'):
+                                    self.aggregator.market_data_accumulator.add_market_data(symbol, historical_data)
                             
-                            count = self.aggregator.market_data_accumulator.get_history_count(symbol)
+                            count = 0
+                            if self.aggregator and hasattr(self.aggregator, 'market_data_accumulator'):
+                                count = self.aggregator.market_data_accumulator.get_history_count(symbol)
                             logger.info(f"✅ Vraies données historiques DB chargées pour {symbol}: {count} points")
                         else:
                             logger.warning(f"⚠️ Aucune donnée historique trouvée en DB pour {symbol}")
@@ -261,16 +291,19 @@ class SignalAggregatorService:
                     
                     # Fallback: essayer Redis comme secours (sans simulation)
                     try:
-                        redis_key = f"market_data:{symbol}:5m_history"
-                        historical_list = RedisManager.get_cached_data(self.redis, redis_key)
-                        if historical_list:
-                            if isinstance(historical_list, list):
-                                for data in historical_list[-100:]:  # 100 derniers points
-                                    if isinstance(data, dict):
-                                        self.aggregator.market_data_accumulator.add_market_data(symbol, data)
-                                
-                                count = self.aggregator.market_data_accumulator.get_history_count(symbol)
-                                logger.info(f"✅ Données historiques Redis chargées pour {symbol}: {count} points")
+                        if RedisManager and self.redis:
+                            redis_key = f"market_data:{symbol}:5m_history"
+                            historical_list = RedisManager.get_cached_data(self.redis, redis_key)
+                            if historical_list:
+                                if isinstance(historical_list, list):
+                                    for data in historical_list[-100:]:  # 100 derniers points
+                                        if isinstance(data, dict) and self.aggregator and hasattr(self.aggregator, 'market_data_accumulator'):
+                                            self.aggregator.market_data_accumulator.add_market_data(symbol, data)
+                                    
+                                    count = 0
+                                    if self.aggregator and hasattr(self.aggregator, 'market_data_accumulator'):
+                                        count = self.aggregator.market_data_accumulator.get_history_count(symbol)
+                                    logger.info(f"✅ Données historiques Redis chargées pour {symbol}: {count} points")
                         else:
                             logger.warning(f"⚠️ Pas de données historiques Redis pour {symbol}")
                     except Exception as redis_e:

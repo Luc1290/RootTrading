@@ -6,19 +6,33 @@ import logging
 from typing import Dict, Tuple
 import sys
 import os
+import asyncio
 
 # Add path to shared modules BEFORE imports
 sys.path.append(os.path.dirname(__file__))
+sys.path.append(os.path.join(os.path.dirname(__file__), 'shared'))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from shared.src.config import MACD_HISTOGRAM_WEAK
 from shared.src.volume_context_detector import volume_context_detector
+
+# Import VolumeAnalyzer
 try:
-    from .shared.technical_utils import VolumeAnalyzer
+    from shared.technical_utils import VolumeAnalyzer
 except ImportError:
-    # Fallback pour l'exécution dans le conteneur
-    sys.path.append(os.path.join(os.path.dirname(__file__), 'shared'))
-    from technical_utils import VolumeAnalyzer
+    try:
+        from technical_utils import VolumeAnalyzer
+    except ImportError:
+        from .shared.technical_utils import VolumeAnalyzer
+
+# Import du gestionnaire unifié
+try:
+    from shared.unified_data_manager import get_unified_data_manager
+except ImportError:
+    try:
+        from unified_data_manager import get_unified_data_manager
+    except ImportError:
+        from .shared.unified_data_manager import get_unified_data_manager
 
 logger = logging.getLogger(__name__)
 
@@ -51,18 +65,23 @@ class IndicatorCoherenceValidator:
             }
         }
     
-    def validate_signal_coherence(self, signal_side: str, indicators: Dict) -> Tuple[bool, float, str]:
+    async def validate_signal_coherence(self, signal_side: str, indicators: Dict, symbol: str = None) -> Tuple[bool, float, str]:
         """
         Valide la cohérence d'un signal avec les indicateurs
         
         Args:
             signal_side: 'BUY' ou 'SELL'
             indicators: Dict des indicateurs techniques
+            symbol: Symbole pour enrichissement des données
             
         Returns:
             (is_coherent, coherence_score, reason)
         """
         try:
+            # NOUVEAU: Enrichir les indicateurs avec données unifiées AVANT validation
+            if symbol:
+                indicators = await self._enrich_indicators_with_unified_data(symbol, indicators)
+            
             # NOUVEAU: Vérifier la tendance récente AVANT tout
             if signal_side == 'BUY':
                 trend_check = self._check_recent_trend(indicators)
@@ -449,3 +468,65 @@ class IndicatorCoherenceValidator:
                 'ema': 'EMA7 < EMA26 < EMA99',  # MIGRATION BINANCE
                 'volume': 'Volume contextuel adaptatif (1.0-2.5 selon contexte)'  # NOUVEAU: Contextuel
             }
+    
+    async def _enrich_indicators_with_unified_data(self, symbol: str, indicators: Dict) -> Dict:
+        """
+        Enrichit les indicateurs avec les données unifiées pour assurer la cohérence.
+        """
+        try:
+            # Récupérer le gestionnaire unifié
+            unified_manager = get_unified_data_manager()
+            if not unified_manager:
+                logger.warning("⚠️ Gestionnaire unifié non disponible")
+                return indicators
+            
+            # Récupérer les données unifiées (privilégier DB pour cohérence)
+            unified_data = await unified_manager.get_latest_market_data(
+                symbol=symbol,
+                timeframe="1m",  # Utiliser 1m par défaut pour cohérence avec les signaux
+                prefer_source="db"
+            )
+            
+            if not unified_data:
+                logger.warning(f"⚠️ Pas de données unifiées pour {symbol}")
+                return indicators
+            
+            # Enrichir/corriger les indicateurs avec les données unifiées
+            enriched = indicators.copy()
+            
+            # RSI - CORRECTION PRINCIPALE
+            if unified_data.rsi_14 is not None:
+                old_rsi = enriched.get('rsi_14') or enriched.get('rsi')
+                enriched['rsi_14'] = unified_data.rsi_14
+                enriched['rsi'] = unified_data.rsi_14  # Pour compatibilité
+                if old_rsi and abs(old_rsi - unified_data.rsi_14) > 5:
+                    logger.warning(f"🔧 RSI corrigé pour {symbol}: {old_rsi:.1f} -> {unified_data.rsi_14:.1f}")
+                
+            # ADX
+            if unified_data.adx_14 is not None:
+                old_adx = enriched.get('adx_14') or enriched.get('adx')
+                enriched['adx_14'] = unified_data.adx_14
+                enriched['adx'] = unified_data.adx_14  # Pour compatibilité
+                if old_adx and abs(old_adx - unified_data.adx_14) > 3:
+                    logger.warning(f"🔧 ADX corrigé pour {symbol}: {old_adx:.1f} -> {unified_data.adx_14:.1f}")
+                
+            # Volume
+            if unified_data.volume_ratio is not None:
+                old_vol = enriched.get('volume_ratio')
+                enriched['volume_ratio'] = unified_data.volume_ratio
+                if old_vol and abs(old_vol - unified_data.volume_ratio) > 0.5:
+                    logger.warning(f"🔧 Volume ratio corrigé pour {symbol}: {old_vol:.2f} -> {unified_data.volume_ratio:.2f}")
+                
+            # Momentum
+            if unified_data.momentum_10 is not None:
+                enriched['momentum_10'] = unified_data.momentum_10
+                
+            # Prix actuel
+            enriched['close'] = unified_data.close
+            
+            logger.info(f"✅ Indicateurs enrichis pour {symbol} depuis {unified_data.data_source}")
+            return enriched
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur enrichissement indicateurs: {e}")
+            return indicators
