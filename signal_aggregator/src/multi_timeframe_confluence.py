@@ -16,8 +16,17 @@ from shared.src.config import (
     MACD_HISTOGRAM_WEAK
 )
 from enhanced_regime_detector import MarketRegime
-from shared.redis_utils import RedisManager
-from shared.technical_utils import VolumeAnalyzer
+try:
+    from .shared.redis_utils import RedisManager
+except ImportError:
+    # Fallback pour l'exécution dans le conteneur
+    sys.path.append(os.path.join(os.path.dirname(__file__), 'shared'))
+    from redis_utils import RedisManager
+try:
+    from .shared.technical_utils import VolumeAnalyzer
+except ImportError:
+    # Fallback pour l'exécution dans le conteneur
+    from technical_utils import VolumeAnalyzer
 
 logger = logging.getLogger(__name__)
 

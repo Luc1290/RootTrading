@@ -9,7 +9,12 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 import sys, os
 sys.path.append(os.path.dirname(__file__))
-from shared.technical_utils import TechnicalCalculators
+try:
+    from .shared.technical_utils import TechnicalCalculators
+except ImportError:
+    # Fallback pour l'exécution dans le conteneur
+    sys.path.append(os.path.join(os.path.dirname(__file__), 'shared'))
+    from technical_utils import TechnicalCalculators
 
 logger = logging.getLogger(__name__)
 

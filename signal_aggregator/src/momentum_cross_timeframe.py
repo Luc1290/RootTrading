@@ -12,7 +12,12 @@ import os
 sys.path.append(os.path.dirname(__file__))
 
 from shared.src.technical_indicators import TechnicalIndicators
-from shared.redis_utils import RedisManager
+try:
+    from .shared.redis_utils import RedisManager
+except ImportError:
+    # Fallback pour l'exécution dans le conteneur
+    sys.path.append(os.path.join(os.path.dirname(__file__), 'shared'))
+    from redis_utils import RedisManager
 
 logger = logging.getLogger(__name__)
 

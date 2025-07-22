@@ -15,7 +15,12 @@ import os
 sys.path.append(os.path.dirname(__file__))
 
 from shared.src.config import get_db_config
-from shared.db_utils import DatabasePoolManager, DatabaseUtils
+try:
+    from .shared.db_utils import DatabasePoolManager, DatabaseUtils
+except ImportError:
+    # Fallback pour l'exécution dans le conteneur
+    sys.path.append(os.path.join(os.path.dirname(__file__), 'shared'))
+    from db_utils import DatabasePoolManager, DatabaseUtils
 
 logger = logging.getLogger(__name__)
 

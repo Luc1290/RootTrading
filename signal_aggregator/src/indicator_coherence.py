@@ -13,7 +13,12 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 
 from shared.src.config import MACD_HISTOGRAM_WEAK
 from shared.src.volume_context_detector import volume_context_detector
-from shared.technical_utils import VolumeAnalyzer
+try:
+    from .shared.technical_utils import VolumeAnalyzer
+except ImportError:
+    # Fallback pour l'exécution dans le conteneur
+    sys.path.append(os.path.join(os.path.dirname(__file__), 'shared'))
+    from technical_utils import VolumeAnalyzer
 
 logger = logging.getLogger(__name__)
 

@@ -15,7 +15,12 @@ import os
 # Ajouter le chemin vers les modules partagés AVANT les imports
 sys.path.append(os.path.dirname(__file__))
 
-from shared.technical_utils import TechnicalCalculators, SignalValidators
+try:
+    from .shared.technical_utils import TechnicalCalculators, SignalValidators
+except ImportError:
+    # Fallback pour l'exécution dans le conteneur
+    sys.path.append(os.path.join(os.path.dirname(__file__), 'shared'))
+    from technical_utils import TechnicalCalculators, SignalValidators
 
 logger = logging.getLogger(__name__)
 

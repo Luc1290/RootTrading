@@ -13,8 +13,17 @@ import os
 # Add path to shared modules BEFORE imports
 sys.path.append(os.path.dirname(__file__))
 
-from shared.technical_utils import TechnicalCalculators
-from shared.redis_utils import RedisManager
+try:
+    from .shared.technical_utils import TechnicalCalculators
+except ImportError:
+    # Fallback pour l'exécution dans le conteneur
+    sys.path.append(os.path.join(os.path.dirname(__file__), 'shared'))
+    from technical_utils import TechnicalCalculators
+try:
+    from .shared.redis_utils import RedisManager
+except ImportError:
+    # Fallback pour l'exécution dans le conteneur
+    from redis_utils import RedisManager
 
 logger = logging.getLogger(__name__)
 

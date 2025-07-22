@@ -12,7 +12,12 @@ import os
 # Add path to shared modules BEFORE imports
 sys.path.append(os.path.dirname(__file__))
 
-from shared.technical_utils import VolumeAnalyzer
+try:
+    from .shared.technical_utils import VolumeAnalyzer
+except ImportError:
+    # Fallback pour l'exécution dans le conteneur
+    sys.path.append(os.path.join(os.path.dirname(__file__), 'shared'))
+    from technical_utils import VolumeAnalyzer
 
 logger = logging.getLogger(__name__)
 

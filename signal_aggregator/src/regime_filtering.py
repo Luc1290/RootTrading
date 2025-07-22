@@ -13,7 +13,12 @@ import os
 sys.path.append(os.path.dirname(__file__))
 
 from enhanced_regime_detector import MarketRegime
-from shared.technical_utils import SignalValidators
+try:
+    from .shared.technical_utils import SignalValidators
+except ImportError:
+    # Fallback pour l'exécution dans le conteneur
+    sys.path.append(os.path.join(os.path.dirname(__file__), 'shared'))
+    from technical_utils import SignalValidators
 
 logger = logging.getLogger(__name__)
 

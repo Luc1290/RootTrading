@@ -14,16 +14,17 @@ logger = logging.getLogger(__name__)
 def get_db_config() -> Dict[str, Any]:
     """
     Récupère la configuration de base de données depuis les variables d'environnement
+    Utilise les variables PostgreSQL standard (PGHOST, PGPORT, etc.)
     
     Returns:
         Configuration de base de données
     """
     return {
-        'host': os.getenv('DB_HOST', 'localhost'),
-        'port': int(os.getenv('DB_PORT', '5432')),
-        'database': os.getenv('DB_NAME', 'trading'),
-        'user': os.getenv('DB_USER', 'postgres'),
-        'password': os.getenv('DB_PASSWORD', 'postgres')
+        'host': os.getenv('PGHOST', os.getenv('DB_HOST', 'localhost')),
+        'port': int(os.getenv('PGPORT', os.getenv('DB_PORT', '5432'))),
+        'database': os.getenv('PGDATABASE', os.getenv('DB_NAME', 'trading')),
+        'user': os.getenv('PGUSER', os.getenv('DB_USER', 'postgres')),
+        'password': os.getenv('PGPASSWORD', os.getenv('DB_PASSWORD', 'postgres'))
     }
 
 

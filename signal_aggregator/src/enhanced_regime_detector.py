@@ -14,7 +14,12 @@ import os
 sys.path.append(os.path.dirname(__file__))
 
 from db_manager import DatabaseManager
-from shared.redis_utils import RedisManager, SignalCacheManager
+try:
+    from .shared.redis_utils import RedisManager, SignalCacheManager
+except ImportError:
+    # Fallback pour l'exécution dans le conteneur
+    sys.path.append(os.path.join(os.path.dirname(__file__), 'shared'))
+    from redis_utils import RedisManager, SignalCacheManager
 from shared.src.technical_indicators import TechnicalIndicators
 
 logger = logging.getLogger(__name__)
