@@ -19,7 +19,17 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 
 from shared.src.config import SYMBOLS
 from shared.src.redis_client import RedisClient
-from market_analyzer.technical_indicators import indicators
+
+# Import des nouveaux modules centralisés avec cache
+from market_analyzer.indicators import (
+    calculate_rsi, calculate_ema, calculate_sma,
+    calculate_macd_series, calculate_bollinger_bands_series,
+    calculate_atr, calculate_obv_series, calculate_vwap_series,
+    get_cached_indicators
+)
+from market_analyzer.indicators.momentum.cci import calculate_cci
+from market_analyzer.indicators.oscillators.williams import calculate_williams_r
+from market_analyzer.indicators.trend.adx import calculate_adx
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +41,7 @@ class UltraDataFetcher:
     
     def __init__(self):
         self.symbols = SYMBOLS
-        self.timeframes = ['1m', '3m', '5m', '15m']  # Multi-timeframes pour confluence
+        self.timeframes = ['1m', '3m', '5m', '15m', '1d']  # Multi-timeframes pour confluence
         self.redis_client = RedisClient()
         self.running = False
         
@@ -141,10 +151,11 @@ class UltraDataFetcher:
         try:
             # Récupérer BEAUCOUP plus de klines pour indicateurs ultra-précis
             timeframe_limits = {
-                '1m': 1000,   # 16.7 heures → EMA/SMA 200 ultra-précis
-                '5m': 1000,   # 3.5 jours → Tendances moyennes parfaites
-                '15m': 800,   # 8.3 jours → Indicateurs long terme solides
-                '3m': 400     # 20 heures → Tendance court terme
+                '1m': 2000,   # 16.7 heures → EMA/SMA 200 ultra-précis
+                '5m': 1500,   # 3.5 jours → Tendances moyennes parfaites
+                '15m': 600,   # 8.3 jours → Indicateurs long terme solides
+                '3m': 600,    # 20 heures → Tendance court terme
+                '1d': 50     # 200 jours → Tendances très long terme
             }
             limit = timeframe_limits.get(timeframe, 100)
             klines = await self._fetch_klines(symbol, timeframe, limit=limit)
@@ -197,7 +208,7 @@ class UltraDataFetcher:
     async def _process_ultra_enriched_klines(self, klines: List, symbol: str, timeframe: str) -> Dict:
         """
         Traite les klines avec TOUS les indicateurs ultra-confluents.
-        Utilise le module partagé technical_indicators pour les calculs optimisés.
+        Utilise le module partagé pour les calculs optimisés.
         """
         try:
             # Extraire les prix et volumes
@@ -229,63 +240,118 @@ class UltraDataFetcher:
                 'last_update': time.time()
             }
             
-            # 🚀 HYBRIDE : Calcul incrémental pour EMA/MACD + traditionnel pour le reste
-            logger.debug(f"🔧 Calcul HYBRIDE indicateurs pour {symbol} {timeframe}")
+            # 🚀 NOUVEAU : Utilisation des modules centralisés avec cache Redis
+            logger.debug(f"🔧 Calcul indicateurs avec cache pour {symbol} {timeframe}")
             
-            # 🚀 NOUVEAU : Calcul incrémental pour EMA/MACD (évite dents de scie)
-            incremental_indicators = self._calculate_smooth_indicators_ultra(symbol, timeframe, prices, highs, lows, volumes)
+            # Obtenir l'instance d'indicateurs cachés pour ce symbole
+            cached_indicators = get_cached_indicators(symbol, enable_cache=True)
             
-            # 📊 TRADITIONNEL : Calcul normal pour les autres indicateurs
-            calculated_indicators = indicators.calculate_all_indicators(highs, lows, prices, volumes)
+            # Calculs principaux avec cache automatique
+            calculated_indicators = {}
             
-            # FUSION : Priorité aux incrémentaux (EMA/MACD lisses)
-            final_indicators = calculated_indicators.copy()
-            final_indicators.update(incremental_indicators)  # Override EMA/MACD with smooth versions
+            try:
+                # RSI avec cache
+                rsi_14 = cached_indicators.rsi(prices, period=14)
+                if rsi_14 is not None:
+                    calculated_indicators['rsi_14'] = rsi_14
+                
+                # EMAs avec cache 
+                ema_7 = cached_indicators.ema(prices, period=7)
+                if ema_7 is not None:
+                    calculated_indicators['ema_7'] = ema_7
+                
+                ema_26 = cached_indicators.ema(prices, period=26)
+                if ema_26 is not None:
+                    calculated_indicators['ema_26'] = ema_26
+                
+                ema_99 = cached_indicators.ema(prices, period=99)
+                if ema_99 is not None:
+                    calculated_indicators['ema_99'] = ema_99
+                
+                # MACD avec cache
+                macd_data = cached_indicators.macd(prices)
+                if macd_data:
+                    if macd_data['macd_line'] and len(macd_data['macd_line']) > 0:
+                        calculated_indicators['macd_line'] = macd_data['macd_line'][-1]
+                    if macd_data['macd_signal'] and len(macd_data['macd_signal']) > 0:
+                        calculated_indicators['macd_signal'] = macd_data['macd_signal'][-1]
+                    if macd_data['macd_histogram'] and len(macd_data['macd_histogram']) > 0:
+                        calculated_indicators['macd_histogram'] = macd_data['macd_histogram'][-1]
+                
+                # Bollinger Bands
+                bb_data = cached_indicators.bollinger_bands(prices)
+                if bb_data:
+                    if bb_data['upper'] and len(bb_data['upper']) > 0:
+                        calculated_indicators['bb_upper'] = bb_data['upper'][-1]
+                    if bb_data['middle'] and len(bb_data['middle']) > 0:
+                        calculated_indicators['bb_middle'] = bb_data['middle'][-1]
+                    if bb_data['lower'] and len(bb_data['lower']) > 0:
+                        calculated_indicators['bb_lower'] = bb_data['lower'][-1]
+                
+                # ATR
+                atr_14 = cached_indicators.atr(highs, lows, prices)
+                if atr_14 is not None:
+                    calculated_indicators['atr_14'] = atr_14
+                
+                # Volume indicators
+                obv_series = cached_indicators.obv(prices, volumes)
+                if obv_series and len(obv_series) > 0:
+                    calculated_indicators['obv'] = obv_series[-1]
+                
+                vwap_series = cached_indicators.vwap(highs, lows, prices, volumes)
+                if vwap_series and len(vwap_series) > 0:
+                    calculated_indicators['vwap'] = vwap_series[-1]
+                
+                logger.debug(f"✅ {len(calculated_indicators)} indicateurs calculés avec cache")
+                
+            except Exception as e:
+                logger.error(f"Erreur calculs indicateurs avec cache: {e}")
+                calculated_indicators = {}
             
             # Ajouter tous les indicateurs calculés
-            enriched_data.update(final_indicators)
+            enriched_data.update(calculated_indicators)
             
-            # **CRITIQUE**: Sauvegarder les indicateurs dans le cache persistant IMMÉDIATEMENT
-            from market_analyzer.technical_indicators import indicator_cache
-            saved_indicators = 0
-            for indicator_name, indicator_value in final_indicators.items():
-                # Sauvegarder seulement les indicateurs numériques valides
-                if isinstance(indicator_value, (int, float)) and not (isinstance(indicator_value, float) and indicator_value != indicator_value):
-                    indicator_cache.set(symbol, timeframe, indicator_name, indicator_value)
-                    saved_indicators += 1
-            
-            if saved_indicators > 0:
-                logger.debug(f"💾 {saved_indicators} indicateurs sauvegardés dans cache persistant {symbol} {timeframe}")
-            
-            if incremental_indicators:
-                logger.debug(f"✅ {len(final_indicators)} indicateurs calculés et sauvegardés pour {symbol} (🚀 EMA/MACD incrémentaux)")
-            
-            # Indicateurs additionnels non couverts par le module partagé
+            # Indicateurs additionnels avec les nouveaux modules
             additional_indicators = {}
             if len(prices) >= 20:
-                # Stochastic RSI (pas dans le module partagé)
-                additional_indicators['stoch_rsi'] = self._calculate_stoch_rsi(prices, 14)
-                
-                # ADX déjà calculé par calculate_all_indicators avec plus_di/minus_di
-                # Pas besoin de recalculer individuellement
-                
-                # Williams %R
-                additional_indicators['williams_r'] = self._calculate_williams_r(highs, lows, prices, 14)
-                
-                # CCI
-                additional_indicators['cci_20'] = self._calculate_cci(highs, lows, prices, 20)
+                try:
+                    # Stochastic RSI 
+                    stoch_rsi = self._calculate_stoch_rsi(prices, 14)
+                    if stoch_rsi is not None:
+                        additional_indicators['stoch_rsi'] = stoch_rsi
+                    
+                    # ADX avec les nouveaux modules
+                    adx_value = calculate_adx(highs, lows, prices, 14, symbol, enable_cache=True)
+                    if adx_value is not None:
+                        additional_indicators['adx_14'] = adx_value
+                    
+                    # Williams %R avec le nouveau module
+                    williams_r = calculate_williams_r(highs, lows, prices, 14, symbol, enable_cache=True)
+                    if williams_r is not None:
+                        additional_indicators['williams_r'] = williams_r
+                    
+                    # CCI avec le nouveau module
+                    cci_20 = calculate_cci(highs, lows, prices, 20, symbol, enable_cache=True)
+                    if cci_20 is not None:
+                        additional_indicators['cci_20'] = cci_20
+                        
+                except Exception as e:
+                    logger.warning(f"Erreur calcul indicateurs additionnels: {e}")
             
-            # VWAP
+            # VWAP court terme 
             if len(prices) >= 10:
-                additional_indicators['vwap_10'] = self._calculate_vwap(prices[-10:], volumes[-10:])
+                try:
+                    vwap_short = calculate_vwap_series(highs[-10:], lows[-10:], prices[-10:], volumes[-10:])
+                    if vwap_short and len(vwap_short) > 0:
+                        additional_indicators['vwap_10'] = vwap_short[-1]
+                except Exception as e:
+                    logger.warning(f"Erreur calcul VWAP court: {e}")
             
-            # Ajouter et sauvegarder les indicateurs additionnels
+            # Ajouter les indicateurs additionnels 
             enriched_data.update(additional_indicators)
-            for indicator_name, indicator_value in additional_indicators.items():
-                if isinstance(indicator_value, (int, float)) and not (isinstance(indicator_value, float) and indicator_value != indicator_value):
-                    indicator_cache.set(symbol, timeframe, indicator_name, indicator_value)
             
-            logger.debug(f"✅ {symbol} {timeframe}: {len(enriched_data)} indicateurs calculés et sauvegardés (module partagé + additionnels)")
+            total_indicators = len(calculated_indicators) + len(additional_indicators)
+            logger.debug(f"✅ {symbol} {timeframe}: {total_indicators} indicateurs calculés avec cache Redis")
             return enriched_data
             
         except Exception as e:
@@ -375,147 +441,172 @@ class UltraDataFetcher:
     # =================== MÉTHODES DE CALCUL D'INDICATEURS ===================
     # (Copies des méthodes de binance_ws.py pour cohérence)
     
-    def _calculate_rsi(self, prices: List[float], period: int = 14) -> Optional[float]:
-        """Calcule le RSI via le module centralisé"""
-        from market_analyzer.technical_indicators import calculate_rsi
-        return calculate_rsi(prices, period)
+    def _calculate_rsi(self, prices: List[float], period: int = 14, symbol: str = None) -> Optional[float]:
+        """Calcule le RSI via le module centralisé avec cache"""
+        return calculate_rsi(prices, period, symbol, enable_cache=True)
     
-    def _calculate_stoch_rsi(self, prices: List[float], period: int = 14) -> Optional[float]:
-        """Calcule le Stochastic RSI"""
-        if len(prices) < period * 2:
-            return None
-        
-        # Calculer RSI pour chaque point
-        rsi_values = []
-        for i in range(period, len(prices)):
-            subset = prices[i-period:i+1]
-            rsi = self._calculate_rsi(subset, period)
-            if rsi is not None:
-                rsi_values.append(rsi)
-        
-        if len(rsi_values) < period:
-            return None
-        
-        # Calculer Stochastic RSI
-        recent_rsi = rsi_values[-period:]
-        min_rsi = min(recent_rsi)
-        max_rsi = max(recent_rsi)
-        
-        if max_rsi == min_rsi:
-            return 50
-        
-        stoch_rsi = ((rsi_values[-1] - min_rsi) / (max_rsi - min_rsi)) * 100
-        return round(stoch_rsi, 2)
+    def _calculate_stoch_rsi(self, prices: List[float], period: int = 14, symbol: str = None) -> Optional[float]:
+        """Calcule le Stochastic RSI avec les nouveaux modules"""
+        try:
+            from market_analyzer.indicators.momentum.rsi import calculate_stochastic_rsi
+            return calculate_stochastic_rsi(prices, period, period)
+        except ImportError:
+            # Fallback vers l'ancienne méthode
+            if len(prices) < period * 2:
+                return None
+            
+            # Calculer RSI pour chaque point
+            rsi_values = []
+            for i in range(period, len(prices)):
+                subset = prices[i-period:i+1]
+                rsi = self._calculate_rsi(subset, period, symbol)
+                if rsi is not None:
+                    rsi_values.append(rsi)
+            
+            if len(rsi_values) < period:
+                return None
+            
+            # Calculer Stochastic RSI
+            recent_rsi = rsi_values[-period:]
+            min_rsi = min(recent_rsi)
+            max_rsi = max(recent_rsi)
+            
+            if max_rsi == min_rsi:
+                return 50
+            
+            stoch_rsi = ((rsi_values[-1] - min_rsi) / (max_rsi - min_rsi)) * 100
+            return round(stoch_rsi, 2)
     
-    def _calculate_ema(self, prices: List[float], period: int) -> float:
-        """Calcule EMA via le module centralisé"""
-        from market_analyzer.technical_indicators import calculate_ema
-        result = calculate_ema(prices, period)
+    def _calculate_ema(self, prices: List[float], period: int, symbol: str = None) -> float:
+        """Calcule EMA via le module centralisé avec cache"""
+        result = calculate_ema(prices, period, symbol, enable_cache=True)
         return result if result is not None else (prices[-1] if prices else 0)
     
-    def _calculate_macd(self, prices: List[float]) -> Dict:
-        """Calcule MACD complet via le module centralisé"""
-        from market_analyzer.technical_indicators import calculate_macd
-        
-        result = calculate_macd(prices)
-        if result is None or any(v is None for v in result.values()):
+    def _calculate_macd(self, prices: List[float], symbol: str = None) -> Dict:
+        """Calcule MACD complet via le module centralisé avec cache"""
+        result = calculate_macd_series(prices)
+        if result is None or not result:
             return {}
-            
-        return {
-            'macd_line': round(result['macd_line'] or 0.0, 6),
-            'macd_signal': round(result['macd_signal'] or 0.0, 6),
-            'macd_histogram': round(result['macd_histogram'] or 0.0, 6)
-        }
-    
-    def _calculate_bollinger_bands(self, prices: List[float], period: int, std_dev: float) -> Dict:
-        """Calcule les Bollinger Bands via le module centralisé"""
-        from market_analyzer.technical_indicators import calculate_bollinger_bands
         
-        result = calculate_bollinger_bands(prices, period, std_dev)
-        if result is None or any(v is None for v in result.values()):
+        macd_data = {}
+        if result.get('macd_line') and len(result['macd_line']) > 0:
+            macd_data['macd_line'] = round(result['macd_line'][-1] or 0.0, 6)
+        if result.get('macd_signal') and len(result['macd_signal']) > 0:
+            macd_data['macd_signal'] = round(result['macd_signal'][-1] or 0.0, 6)
+        if result.get('macd_histogram') and len(result['macd_histogram']) > 0:
+            macd_data['macd_histogram'] = round(result['macd_histogram'][-1] or 0.0, 6)
+            
+        return macd_data
+    
+    def _calculate_bollinger_bands(self, prices: List[float], period: int = 20, std_dev: float = 2.0, symbol: str = None) -> Dict:
+        """Calcule les Bollinger Bands via le module centralisé avec cache"""
+        result = calculate_bollinger_bands_series(prices, period, std_dev)
+        if result is None or not result:
             return {}
-            
-        return {
-            'bb_upper': round(result['bb_upper'] or 0.0, 6),
-            'bb_middle': round(result['bb_middle'] or 0.0, 6),
-            'bb_lower': round(result['bb_lower'] or 0.0, 6),
-            'bb_position': round(result['bb_position'] or 0.0, 3),
-            'bb_width': round(result['bb_width'] or 0.0, 2)
-        }
-    
-    def _calculate_adx(self, highs: List[float], lows: List[float], closes: List[float], period: int = 14) -> Optional[float]:
-        """Calcule ADX en utilisant le module partagé"""
-        from market_analyzer.technical_indicators import calculate_adx
         
+        bb_data = {}
+        if result.get('upper') and len(result['upper']) > 0:
+            bb_data['bb_upper'] = round(result['upper'][-1] or 0.0, 6)
+        if result.get('middle') and len(result['middle']) > 0:
+            bb_data['bb_middle'] = round(result['middle'][-1] or 0.0, 6)
+        if result.get('lower') and len(result['lower']) > 0:
+            bb_data['bb_lower'] = round(result['lower'][-1] or 0.0, 6)
+        
+        # Calculer position et largeur si possible
+        if all(key in bb_data for key in ['bb_upper', 'bb_middle', 'bb_lower']):
+            current_price = prices[-1]
+            bb_position = (current_price - bb_data['bb_lower']) / (bb_data['bb_upper'] - bb_data['bb_lower'])
+            bb_width = (bb_data['bb_upper'] - bb_data['bb_lower']) / bb_data['bb_middle'] * 100
+            
+            bb_data['bb_position'] = round(bb_position, 3)
+            bb_data['bb_width'] = round(bb_width, 2)
+            
+        return bb_data
+    
+    def _calculate_adx(self, highs: List[float], lows: List[float], closes: List[float], period: int = 14, symbol: str = None) -> Optional[float]:
+        """Calcule ADX avec le nouveau module et cache"""
         try:
-            adx_result = calculate_adx(highs, lows, closes, period)
-            # calculate_adx retourne (ADX, DI+, DI-)
-            adx_value = adx_result[0] if adx_result[0] is not None else None
+            adx_value = calculate_adx(highs, lows, closes, period, symbol, enable_cache=True)
             return round(adx_value, 2) if adx_value is not None else None
         except Exception as e:
             logger.warning(f"Erreur calcul ADX: {e}")
             return None
     
-    def _calculate_atr(self, highs: List[float], lows: List[float], closes: List[float], period: int = 14) -> Optional[float]:
-        """Calcule ATR via le module centralisé"""
-        from market_analyzer.technical_indicators import calculate_atr
-        result = calculate_atr(highs, lows, closes, period)
+    def _calculate_atr(self, highs: List[float], lows: List[float], closes: List[float], period: int = 14, symbol: str = None) -> Optional[float]:
+        """Calcule ATR via le module centralisé avec cache"""
+        result = calculate_atr(highs, lows, closes, period, symbol, enable_cache=True)
         return round(result, 6) if result is not None else None
     
-    def _calculate_williams_r(self, highs: List[float], lows: List[float], closes: List[float], period: int = 14) -> Optional[float]:
-        """Calcule Williams %R"""
-        if len(closes) < period:
-            return None
-        
-        highest_high = max(highs[-period:])
-        lowest_low = min(lows[-period:])
-        current_close = closes[-1]
-        
-        if highest_high == lowest_low:
-            return -50
-        
-        williams_r = ((highest_high - current_close) / (highest_high - lowest_low)) * -100
-        return round(williams_r, 2)
+    def _calculate_williams_r(self, highs: List[float], lows: List[float], closes: List[float], period: int = 14, symbol: str = None) -> Optional[float]:
+        """Calcule Williams %R avec le nouveau module et cache"""
+        try:
+            result = calculate_williams_r(highs, lows, closes, period, symbol, enable_cache=True)
+            return round(result, 2) if result is not None else None
+        except Exception as e:
+            # Fallback vers l'ancienne méthode
+            if len(closes) < period:
+                return None
+            
+            highest_high = max(highs[-period:])
+            lowest_low = min(lows[-period:])
+            current_close = closes[-1]
+            
+            if highest_high == lowest_low:
+                return -50
+            
+            williams_r = ((highest_high - current_close) / (highest_high - lowest_low)) * -100
+            return round(williams_r, 2)
     
-    def _calculate_cci(self, highs: List[float], lows: List[float], closes: List[float], period: int = 20) -> Optional[float]:
-        """Calcule CCI"""
-        if len(closes) < period:
-            return None
-        
-        # Typical Price
-        typical_prices = []
-        for i in range(len(closes)):
-            tp = (highs[i] + lows[i] + closes[i]) / 3
-            typical_prices.append(tp)
-        
-        if len(typical_prices) < period:
-            return None
-        
-        # SMA des typical prices
-        sma_tp = sum(typical_prices[-period:]) / period
-        
-        # Déviation moyenne
-        mean_deviation = sum(abs(tp - sma_tp) for tp in typical_prices[-period:]) / period
-        
-        if mean_deviation == 0:
-            return 0
-        
-        current_tp = typical_prices[-1]
-        cci = (current_tp - sma_tp) / (0.015 * mean_deviation)
-        
-        return round(cci, 2)
+    def _calculate_cci(self, highs: List[float], lows: List[float], closes: List[float], period: int = 20, symbol: str = None) -> Optional[float]:
+        """Calcule CCI avec le nouveau module et cache"""
+        try:
+            result = calculate_cci(highs, lows, closes, period, symbol, enable_cache=True)
+            return round(result, 2) if result is not None else None
+        except Exception as e:
+            # Fallback vers l'ancienne méthode
+            if len(closes) < period:
+                return None
+            
+            # Typical Price
+            typical_prices = []
+            for i in range(len(closes)):
+                tp = (highs[i] + lows[i] + closes[i]) / 3
+                typical_prices.append(tp)
+            
+            if len(typical_prices) < period:
+                return None
+            
+            # SMA des typical prices
+            sma_tp = sum(typical_prices[-period:]) / period
+            
+            # Déviation moyenne
+            mean_deviation = sum(abs(tp - sma_tp) for tp in typical_prices[-period:]) / period
+            
+            if mean_deviation == 0:
+                return 0
+            
+            current_tp = typical_prices[-1]
+            cci = (current_tp - sma_tp) / (0.015 * mean_deviation)
+            
+            return round(cci, 2)
     
-    def _calculate_vwap(self, prices: List[float], volumes: List[float]) -> Optional[float]:
-        """Calcule VWAP"""
-        if not prices or not volumes or len(prices) != len(volumes):
-            return None
-        
-        total_volume = sum(volumes)
-        if total_volume == 0:
-            return None
-        
-        vwap = sum(p * v for p, v in zip(prices, volumes)) / total_volume
-        return round(vwap, 6)
+    def _calculate_vwap(self, prices: List[float], volumes: List[float], symbol: str = None) -> Optional[float]:
+        """Calcule VWAP avec le nouveau module"""
+        try:
+            # Pour VWAP, on a besoin des highs, lows, mais on peut approximer avec les closes
+            result = calculate_vwap_series(prices, prices, prices, volumes)
+            return round(result[-1], 6) if result and len(result) > 0 else None
+        except Exception as e:
+            # Fallback vers l'ancienne méthode
+            if not prices or not volumes or len(prices) != len(volumes):
+                return None
+            
+            total_volume = sum(volumes)
+            if total_volume == 0:
+                return None
+            
+            vwap = sum(p * v for p, v in zip(prices, volumes)) / total_volume
+            return round(vwap, 6)
     
     def _calculate_momentum(self, prices: List[float], period: int) -> Optional[float]:
         """Calcule le momentum"""
@@ -671,8 +762,9 @@ class UltraDataFetcher:
         timeframe_limits = {
             '1m': 2000,   # 33.3 heures → Intraday ultra-précis
             '5m': 1500,   # 5.2 jours → Pattern detection parfait
-            '15m': 1000,  # 10.4 jours → Swing trading optimal  
-            '3m': 600     # 30 heures → Tendance court terme
+            '15m': 1000,  # 10.4 jours → Swing trading optimal
+            '3m': 600,    # 30 heures → Tendance court terme
+            '1d': 50      # 50 jours → Tendances très long terme
         }
         
         total_expected = 0
@@ -801,7 +893,7 @@ class UltraDataFetcher:
             
             # Calculer combien de klines maximum pour cette période
             interval_seconds = {
-                '1m': 60, '3m': 180, '5m': 300, '15m': 900
+                '1m': 60, '3m': 180, '5m': 300, '15m': 900, '1d': 86400
             }.get(timeframe, 60)
             
             duration_seconds = (end_time - start_time).total_seconds()
@@ -927,7 +1019,6 @@ class UltraDataFetcher:
         Returns:
             Liste des points enrichis avec indicateurs calculés correctement
         """
-        from market_analyzer.technical_indicators import indicator_cache, TechnicalIndicators
         import numpy as np
         
         enriched_points = []
@@ -949,13 +1040,28 @@ class UltraDataFetcher:
                 volumes.append(float(kline[5]))   # volume
                 timestamps.append(kline[0])       # timestamp
             
-            logger.info(f"📊 Calcul arrays d'indicateurs sur {len(prices)} points pour {symbol} {timeframe}")
+            logger.info(f"📊 Calcul indicateurs avec nouveaux modules sur {len(prices)} points pour {symbol} {timeframe}")
             
-            # Calculer TOUS les indicateurs en une fois avec les arrays complets
-            tech_indicators = TechnicalIndicators()
-            indicators_arrays = tech_indicators.calculate_all_indicators_array(highs, lows, prices, volumes)
+            # Calculer TOUS les indicateurs avec les nouveaux modules et cache
+            cached_indicators = get_cached_indicators(symbol, enable_cache=True)
             
-            logger.info(f"✅ {len(indicators_arrays)} indicateurs calculés en arrays")
+            # Calculer les indicateurs principaux (cela mettra à jour le cache automatiquement)
+            rsi_series = cached_indicators.rsi_series(prices, period=14)
+            ema7_series = cached_indicators.ema_series(prices, period=7)
+            ema26_series = cached_indicators.ema_series(prices, period=26) 
+            ema99_series = cached_indicators.ema_series(prices, period=99)
+            macd_data = cached_indicators.macd(prices)
+            bb_data = cached_indicators.bollinger_bands(prices)
+            atr_14 = cached_indicators.atr(highs, lows, prices, period=14)
+            obv_series = cached_indicators.obv(prices, volumes)
+            vwap_series = cached_indicators.vwap(highs, lows, prices, volumes)
+            
+            # Indicateurs additionnels
+            adx_series = [calculate_adx(highs[:i+1], lows[:i+1], prices[:i+1], 14, symbol, enable_cache=True) for i in range(len(prices))]
+            williams_r_series = [calculate_williams_r(highs[:i+1], lows[:i+1], prices[:i+1], 14, symbol, enable_cache=True) for i in range(len(prices))]
+            cci_series = [calculate_cci(highs[:i+1], lows[:i+1], prices[:i+1], 20, symbol, enable_cache=True) for i in range(len(prices))]
+            
+            logger.info(f"✅ Indicateurs calculés avec nouveaux modules")
             
             # Traiter chaque kline avec les indicateurs correspondants
             for i, kline in enumerate(klines):
@@ -989,17 +1095,70 @@ class UltraDataFetcher:
                     
                     # Ajouter les indicateurs correspondant à l'index i
                     indicators_count = 0
-                    if indicators_arrays:
-                        for indicator_name, indicator_array in indicators_arrays.items():
-                            if i < len(indicator_array):
-                                value = indicator_array[i]
-                                # Vérifier que la valeur est valide (pas NaN ou inf)
-                                if not (np.isnan(value) or np.isinf(value)):
-                                    enriched_point[indicator_name] = float(value)
-                                    indicators_count += 1
-                                    # Sauvegarder le dernier indicateur dans le cache pour continuité
-                                    if i == len(klines) - 1:  # Dernière kline
-                                        indicator_cache.set(symbol, timeframe, indicator_name, float(value))
+                    
+                    # RSI
+                    if i < len(rsi_series) and rsi_series[i] is not None:
+                        enriched_point['rsi_14'] = float(rsi_series[i])
+                        indicators_count += 1
+                    
+                    # EMAs
+                    if i < len(ema7_series) and ema7_series[i] is not None:
+                        enriched_point['ema_7'] = float(ema7_series[i])
+                        indicators_count += 1
+                    if i < len(ema26_series) and ema26_series[i] is not None:
+                        enriched_point['ema_26'] = float(ema26_series[i])
+                        indicators_count += 1
+                    if i < len(ema99_series) and ema99_series[i] is not None:
+                        enriched_point['ema_99'] = float(ema99_series[i])
+                        indicators_count += 1
+                    
+                    # MACD 
+                    if macd_data:
+                        if macd_data.get('macd_line') and i < len(macd_data['macd_line']) and macd_data['macd_line'][i] is not None:
+                            enriched_point['macd_line'] = float(macd_data['macd_line'][i])
+                            indicators_count += 1
+                        if macd_data.get('macd_signal') and i < len(macd_data['macd_signal']) and macd_data['macd_signal'][i] is not None:
+                            enriched_point['macd_signal'] = float(macd_data['macd_signal'][i])
+                            indicators_count += 1
+                        if macd_data.get('macd_histogram') and i < len(macd_data['macd_histogram']) and macd_data['macd_histogram'][i] is not None:
+                            enriched_point['macd_histogram'] = float(macd_data['macd_histogram'][i])
+                            indicators_count += 1
+                    
+                    # Bollinger Bands
+                    if bb_data:
+                        if bb_data.get('upper') and i < len(bb_data['upper']) and bb_data['upper'][i] is not None:
+                            enriched_point['bb_upper'] = float(bb_data['upper'][i])
+                            indicators_count += 1
+                        if bb_data.get('middle') and i < len(bb_data['middle']) and bb_data['middle'][i] is not None:
+                            enriched_point['bb_middle'] = float(bb_data['middle'][i])
+                            indicators_count += 1
+                        if bb_data.get('lower') and i < len(bb_data['lower']) and bb_data['lower'][i] is not None:
+                            enriched_point['bb_lower'] = float(bb_data['lower'][i])
+                            indicators_count += 1
+                    
+                    # Volume indicators
+                    if i < len(obv_series) and obv_series[i] is not None:
+                        enriched_point['obv'] = float(obv_series[i])
+                        indicators_count += 1
+                    if i < len(vwap_series) and vwap_series[i] is not None:
+                        enriched_point['vwap'] = float(vwap_series[i])
+                        indicators_count += 1
+                    
+                    # ATR (valeur unique)
+                    if atr_14 is not None:
+                        enriched_point['atr_14'] = float(atr_14)
+                        indicators_count += 1
+                    
+                    # Indicateurs additionnels 
+                    if i < len(adx_series) and adx_series[i] is not None:
+                        enriched_point['adx_14'] = float(adx_series[i])
+                        indicators_count += 1
+                    if i < len(williams_r_series) and williams_r_series[i] is not None:
+                        enriched_point['williams_r'] = float(williams_r_series[i])
+                        indicators_count += 1
+                    if i < len(cci_series) and cci_series[i] is not None:
+                        enriched_point['cci_20'] = float(cci_series[i])
+                        indicators_count += 1
                     
                     enriched_points.append(enriched_point)
                     
@@ -1096,26 +1255,41 @@ class UltraDataFetcher:
                 'last_update': time.time()
             }
             
-            # **CRITIQUE**: Calcul incrémental pour EMA/MACD (maintient la continuité)
-            incremental_indicators = self._calculate_smooth_indicators_ultra(symbol, timeframe, prices, highs, lows, volumes)
-            
-            # Calcul des autres indicateurs avec les données actuelles
-            # Note: Pour un seul point, certains indicateurs ne peuvent pas être calculés
-            # mais les incrémentaux (EMA/MACD) peuvent l'être grâce au cache
-            if incremental_indicators:
-                point_indicators.update(incremental_indicators)
+            # **CRITIQUE**: Calcul avec nouveaux modules et cache automatique
+            try:
+                cached_indicators = get_cached_indicators(symbol, enable_cache=True)
                 
-                # Calculs simples possibles avec un point
-                point_indicators['rsi_14'] = incremental_indicators.get('rsi_14', 50.0)  # Valeur par défaut neutre
+                # Calculs principaux avec cache automatique
+                rsi_value = cached_indicators.rsi(prices, period=14)
+                if rsi_value is not None:
+                    point_indicators['rsi_14'] = rsi_value
                 
-                # **NOUVEAU**: Sauvegarder explicitement les indicateurs dans le cache persistant
-                from market_analyzer.technical_indicators import indicator_cache
-                for indicator_name, indicator_value in incremental_indicators.items():
-                    # Sauvegarder seulement les indicateurs numériques valides
-                    if isinstance(indicator_value, (int, float)) and not (isinstance(indicator_value, float) and indicator_value != indicator_value):
-                        indicator_cache.set(symbol, timeframe, indicator_name, indicator_value)
+                ema_7 = cached_indicators.ema(prices, period=7)  
+                if ema_7 is not None:
+                    point_indicators['ema_7'] = ema_7
                 
-                logger.debug(f"Point {symbol} {timeframe}: {len(point_indicators)} indicateurs calculés et sauvegardés")
+                ema_26 = cached_indicators.ema(prices, period=26)
+                if ema_26 is not None:
+                    point_indicators['ema_26'] = ema_26
+                
+                ema_99 = cached_indicators.ema(prices, period=99)
+                if ema_99 is not None:
+                    point_indicators['ema_99'] = ema_99
+                
+                # MACD
+                macd_data = cached_indicators.macd(prices)
+                if macd_data:
+                    if macd_data.get('macd_line') and len(macd_data['macd_line']) > 0:
+                        point_indicators['macd_line'] = macd_data['macd_line'][-1]
+                    if macd_data.get('macd_signal') and len(macd_data['macd_signal']) > 0:
+                        point_indicators['macd_signal'] = macd_data['macd_signal'][-1]
+                    if macd_data.get('macd_histogram') and len(macd_data['macd_histogram']) > 0:
+                        point_indicators['macd_histogram'] = macd_data['macd_histogram'][-1]
+                
+                logger.debug(f"Point {symbol} {timeframe}: {len(point_indicators)} indicateurs calculés avec cache")
+                
+            except Exception as e:
+                logger.warning(f"Erreur calcul indicateurs point avec cache: {e}")
             
             return point_indicators
             
@@ -1157,8 +1331,8 @@ class UltraDataFetcher:
     def _calculate_smooth_indicators_ultra(self, symbol: str, timeframe: str, prices: List[float], highs: List[float], lows: List[float], volumes: List[float]) -> Dict:
         """
         🚀 NOUVEAU : Calcule EMA/MACD avec séries optimisées pour éviter les dents de scie.
-        Utilise le module technical_indicators pour un calcul lisse.
-        
+        Utilise le module partagé pour un calcul lisse.
+
         Args:
             symbol: Symbole tradé
             timeframe: Intervalle de temps  
@@ -1176,21 +1350,21 @@ class UltraDataFetcher:
             if len(prices) < 7:  # Pas assez de données
                 return {}
             
-            # 📈 EMA 7, 26, 99 avec séries optimisées (évite dents de scie)
+            # 📈 EMA 7, 26, 99 avec les nouveaux modules et cache
             for period in [7, 26, 99]:
                 if len(prices) >= period:
                     ema_key = f'ema_{period}'
                     
-                    # Utiliser la méthode série du module indicators
-                    ema_series = indicators.calculate_ema_series(prices, period)
+                    # Utiliser le nouveau module avec cache
+                    ema_value = calculate_ema(prices, period, symbol, enable_cache=True)
                     
-                    # Prendre la dernière valeur calculée (la plus récente)
-                    if ema_series and len(ema_series) > 0 and ema_series[-1] is not None:
-                        result[ema_key] = float(ema_series[-1])
+                    # Ajouter la valeur si elle est valide
+                    if ema_value is not None:
+                        result[ema_key] = float(ema_value)
             
-            # 📊 MACD avec séries optimisées  
+            # 📊 MACD avec les nouveaux modules  
             if len(prices) >= 26:  # Assez de données pour MACD
-                macd_data = indicators.calculate_macd_series(prices)
+                macd_data = calculate_macd_series(prices)
                 
                 if macd_data and isinstance(macd_data, dict):
                     # Prendre les dernières valeurs calculées

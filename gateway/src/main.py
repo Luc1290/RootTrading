@@ -155,7 +155,8 @@ async def sync_historical_to_realtime_cache(ws_client):
     Synchronise TOUS les indicateurs calculés historiquement avec le cache temps réel du WebSocket.
     CRITIQUE pour maintenir la continuité de TOUS les indicateurs (extensible pour futurs ajouts).
     """
-    from market_analyzer.technical_indicators import indicator_cache
+    from shared.src.indicator_cache import get_indicator_cache
+    indicator_cache = get_indicator_cache()
     
     try:
         timeframes = ['1m', '3m', '5m', '15m']
@@ -201,7 +202,8 @@ async def restore_indicators_from_db():
     Returns:
         int: Nombre d'indicateurs restaurés
     """
-    from market_analyzer.technical_indicators import indicator_cache
+    from shared.src.indicator_cache import get_indicator_cache
+    indicator_cache = get_indicator_cache()
     from shared.src.config import get_db_config
     import asyncpg
     
@@ -323,7 +325,8 @@ async def main():
         ws_client = BinanceWebSocket(symbols=SYMBOLS, interval=INTERVAL)
         
         # **NOUVELLE LOGIQUE**: Restoration automatique du cache d'indicateurs depuis la DB
-        from market_analyzer.technical_indicators import indicator_cache
+        from shared.src.indicator_cache import get_indicator_cache
+    indicator_cache = get_indicator_cache()
         
         logger.info("🔄 Restoration automatique du cache d'indicateurs depuis la DB...")
         restored_indicators = await restore_indicators_from_db()

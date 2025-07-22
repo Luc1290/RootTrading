@@ -1,7 +1,7 @@
 # Requirements pour le service Analyzer Enhanced
 -r ../requirements-shared.txt
 # pandas, numpy, ta-lib maintenant dans requirements-shared.txt
-# pandas-ta==0.3.14b0  # Remplacé par shared.technical_indicators
+# pandas-ta==0.3.14b0  
 scikit-learn==1.3.0  # Pour des fonctionnalités avancées d'analyse
 flask==2.3.3
 psutil==5.9.5

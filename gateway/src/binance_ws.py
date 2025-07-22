@@ -36,7 +36,7 @@ class BinanceWebSocket:
         
         Args:
             symbols: Liste des symboles à surveiller (ex: ['BTCUSDC', 'ETHUSDC'])
-            interval: Intervalle des chandeliers (ex: '1m', '5m', '1h')
+            interval: Intervalle des chandeliers (ex: '1m', '3m', '5m', '15m', 1d)
             kafka_client: Client Kafka pour la publication des données
         """
         self.symbols = symbols or SYMBOLS
@@ -52,7 +52,7 @@ class BinanceWebSocket:
         self.base_url = "wss://stream.binance.com:9443/ws"
         
         # Multi-timeframes et données enrichies pour trading précis
-        self.timeframes = ['1m', '3m', '5m', '15m']  # Timeframes optimisés pour scalping
+        self.timeframes = ['1m', '3m', '5m', '15m', '1d']  # Timeframes optimisés pour scalping
         self.stream_paths = []
         
         for symbol in self.symbols:
@@ -392,26 +392,28 @@ class BinanceWebSocket:
                 symbol, timeframe, prices, highs, lows, volumes, min_required=200
             )
             
-            from market_analyzer.technical_indicators import indicators, indicator_cache
+            # Import new centralized modules with cache
+            from market_analyzer.indicators import (
+                calculate_rsi, calculate_ema, calculate_macd,
+                calculate_bollinger_bands, calculate_atr, calculate_adx,
+                calculate_stochastic, calculate_williams_r, calculate_cci,
+                calculate_vwap, calculate_obv,
+                get_cached_indicators
+            )
             
-            # **CRITIQUE**: Commencer par récupérer TOUS les indicateurs historiques
-            historical_indicators = indicator_cache.get_all_indicators(symbol, timeframe)
-            all_indicators = historical_indicators.copy() if historical_indicators else {}
+            # **CRITIQUE**: Récupérer TOUS les indicateurs calculés avec cache unifié
+            all_indicators = get_cached_indicators(
+                highs=extended_highs,
+                lows=extended_lows, 
+                closes=extended_prices,
+                volumes=extended_volumes,
+                symbol=symbol,
+                enable_cache=True
+            )
             
-            # 📊 Recalculer seulement si on a assez de données étendues
-            if len(extended_prices) >= 20:
-                new_indicators = indicators.calculate_all_indicators(extended_highs, extended_lows, extended_prices, extended_volumes)
-                # Fusionner avec priorité aux nouveaux calculs
-                all_indicators.update(new_indicators)
-                
-                logger.debug(f"🔄 {len(new_indicators)} nouveaux indicateurs calculés, {len(historical_indicators or {})} historiques récupérés")
-            else:
-                logger.info(f"🔄 Utilisation des indicateurs historiques purs pour {symbol} {timeframe} ({len(historical_indicators or {})} indicateurs)")
+            logger.debug(f"🔄 {len(all_indicators)} indicateurs calculés avec cache unifié pour {symbol} {timeframe}")
             
-            # **CRITIQUE**: Sauvegarder IMMÉDIATEMENT les indicateurs dans le cache persistant
-            for indicator_name, indicator_value in all_indicators.items():
-                if isinstance(indicator_value, (int, float)) and not (isinstance(indicator_value, float) and indicator_value != indicator_value):
-                    indicator_cache.set(symbol, timeframe, indicator_name, indicator_value)
+            # Cache is already handled by get_cached_indicators - no manual saving needed
             
             # Debug: vérifier si ADX est calculé
             if 'adx_14' in all_indicators and all_indicators['adx_14'] is not None:
@@ -422,14 +424,13 @@ class BinanceWebSocket:
             # 🚀 NOUVEAU : Calcul incrémental pour EMA/MACD (évite dents de scie)
             incremental_indicators = self._calculate_smooth_indicators(symbol, timeframe, candle_data, all_indicators)
             
-            # FUSION INTELLIGENTE : Garder tous les historiques/nouveaux + override seulement EMA/MACD avec versions lisses
+            # FUSION INTELLIGENTE : Garder tous les indicateurs + override EMA/MACD avec versions lisses
             final_indicators = all_indicators.copy()
             # Override seulement les indicateurs EMA/MACD avec les versions incrémentales lisses
             for indicator_name, value in incremental_indicators.items():
                 if value is not None and indicator_name in ['ema_7', 'ema_26', 'ema_99', 'macd_line', 'macd_signal', 'macd_histogram']:
                     final_indicators[indicator_name] = value
-                    # **NOUVEAU**: Sauvegarder les indicateurs lisses dans le cache persistant
-                    indicator_cache.set(symbol, timeframe, indicator_name, value)
+                    # Cache is already handled by the individual indicator functions
             
             # Ajouter tous les indicateurs calculés
             for indicator_name, value in final_indicators.items():
@@ -444,7 +445,7 @@ class BinanceWebSocket:
                 
     def _calculate_rsi(self, prices: List[float], period: int = 14) -> Optional[float]:
         """Calcule le RSI via le module centralisé"""
-        from market_analyzer.technical_indicators import calculate_rsi
+        from market_analyzer.indicators.momentum.rsi import calculate_rsi
         return calculate_rsi(prices, period)
         
     def _calculate_stoch_rsi(self, prices: List[float], period: int = 14) -> Optional[float]:
@@ -474,38 +475,72 @@ class BinanceWebSocket:
         
     def _calculate_ema(self, prices: List[float], period: int) -> float:
         """Calcule l'EMA via le module centralisé"""
-        from market_analyzer.technical_indicators import calculate_ema
+        from market_analyzer.indicators.trend.moving_averages import calculate_ema
         result = calculate_ema(prices, period)
         return result if result is not None else (prices[-1] if prices else 0)
         
     def _calculate_macd(self, prices: List[float]) -> Optional[Dict]:
         """Calcule MACD complet via le module centralisé"""
-        from market_analyzer.technical_indicators import calculate_macd
+        from market_analyzer.indicators.trend.macd import calculate_macd_series
         
-        result = calculate_macd(prices)
-        if result is None or any(v is None for v in result.values()):
+        result = calculate_macd_series(prices)
+        if result is None:
+            return None
+        
+        # Find last valid values
+        macd_line = None
+        macd_signal = None
+        macd_histogram = None
+        
+        for i in range(len(result) - 1, -1, -1):
+            if result[i] is not None:
+                macd_line = result[i]['macd_line']
+                macd_signal = result[i]['macd_signal']
+                macd_histogram = result[i]['macd_histogram']
+                break
+        
+        if macd_line is None:
             return None
             
         return {
-            'macd_line': result['macd_line'],
-            'macd_signal': result['macd_signal'],
-            'macd_histogram': result['macd_histogram']
+            'macd_line': macd_line,
+            'macd_signal': macd_signal,
+            'macd_histogram': macd_histogram
         }
         
     def _calculate_bollinger_bands(self, prices: List[float], period: int, std_dev: float) -> Optional[Dict]:
         """Calcule les Bollinger Bands via le module centralisé"""
-        from market_analyzer.technical_indicators import calculate_bollinger_bands
+        from market_analyzer.indicators.volatility.bollinger import calculate_bollinger_bands_series
         
-        result = calculate_bollinger_bands(prices, period, std_dev)
-        if result is None or any(v is None for v in result.values()):
+        result = calculate_bollinger_bands_series(prices, period, std_dev)
+        if result is None:
+            return None
+        
+        # Find last valid values
+        bb_upper = None
+        bb_middle = None
+        bb_lower = None
+        
+        for i in range(len(result) - 1, -1, -1):
+            if result[i] is not None:
+                bb_upper = result[i]['upper']
+                bb_middle = result[i]['middle']
+                bb_lower = result[i]['lower']
+                break
+        
+        if bb_upper is None:
             return None
             
+        current_price = prices[-1]
+        bb_position = ((current_price - bb_lower) / (bb_upper - bb_lower)) * 100 if bb_upper != bb_lower else 50
+        bb_width = ((bb_upper - bb_lower) / bb_middle) * 100 if bb_middle != 0 else 0
+            
         return {
-            'bb_upper': result['bb_upper'],
-            'bb_middle': result['bb_middle'], 
-            'bb_lower': result['bb_lower'],
-            'bb_position': result['bb_position'],
-            'bb_width': result['bb_width']
+            'bb_upper': bb_upper,
+            'bb_middle': bb_middle, 
+            'bb_lower': bb_lower,
+            'bb_position': bb_position,
+            'bb_width': bb_width
         }
         
     def _calculate_vwap(self, prices: List[float], volumes: List[float]) -> Optional[float]:
@@ -581,12 +616,10 @@ class BinanceWebSocket:
             return None
         
         try:
-            # Utiliser le module partagé pour le calcul ADX
-            from market_analyzer.technical_indicators import TechnicalIndicators
-            indicators = TechnicalIndicators()
+            # Utiliser le module centralisé pour le calcul ADX
+            from market_analyzer.indicators.trend.adx import calculate_adx
             
-            adx, plus_di, minus_di = indicators.calculate_adx(highs, lows, closes, period)
-            return adx  # Retourner seulement la valeur ADX
+            return calculate_adx(highs, lows, closes, period)
             
         except Exception as e:
             logger.debug(f"Erreur calcul ADX pour {symbol}: {e}")
@@ -1039,7 +1072,7 @@ class BinanceWebSocket:
             cache = self.incremental_cache[symbol][timeframe]
             
             # 📈 EMA 7, 26, 99 (incrémentaux avec initialisation intelligente)
-            from market_analyzer.technical_indicators import calculate_ema_incremental
+            # Using incremental calculation directly
             
             for period in [7, 26, 99]:
                 cache_ema_key = f'ema_{period}'
@@ -1055,8 +1088,9 @@ class BinanceWebSocket:
                         continue
                     else:
                         # **NOUVEAU**: Fallback vers le cache persistant si all_indicators manque
-                        from market_analyzer.technical_indicators import indicator_cache
-                        cached_ema = indicator_cache.get(symbol, timeframe, cache_ema_key)
+                        from shared.src.indicator_cache import get_indicator_cache
+                        cache_client = get_indicator_cache()
+                        cached_ema = cache_client.get(symbol, timeframe, cache_ema_key)
                         if cached_ema is not None:
                             cache[cache_ema_key] = cached_ema
                             prev_ema = cached_ema
@@ -1066,14 +1100,15 @@ class BinanceWebSocket:
                             continue
                 
                 # Calcul incrémental : EMA_new = α × price + (1-α) × EMA_prev
-                new_ema = calculate_ema_incremental(current_price, prev_ema, period)
+                alpha = 2 / (period + 1)
+                new_ema = alpha * current_price + (1 - alpha) * prev_ema
                 result[cache_ema_key] = new_ema
                 
                 # Mettre à jour le cache
                 cache[cache_ema_key] = new_ema
             
             # 📊 MACD incrémental (basé sur EMA 7/26 du cache)
-            from market_analyzer.technical_indicators import calculate_macd_incremental
+            # MACD incremental calculation using EMA values from cache
             
             prev_ema_fast = cache.get('macd_ema_fast')  # EMA 7 pour MACD
             prev_ema_slow = cache.get('macd_ema_slow')  # EMA 26 pour MACD  
@@ -1090,38 +1125,75 @@ class BinanceWebSocket:
                     prev_ema_slow = cache['ema_26']
             else:
                 # **NOUVEAU**: Fallback vers le cache persistant pour les EMA MACD
-                from market_analyzer.technical_indicators import indicator_cache
+                from shared.src.indicator_cache import get_indicator_cache
+                cache_client = get_indicator_cache()
                 if prev_ema_fast is None:
                     # MIGRATION BINANCE: Utiliser directement ema_7
-                    cached_fast = indicator_cache.get(symbol, timeframe, 'ema_7')
+                    cached_fast = cache_client.get(symbol, timeframe, 'ema_7')
                     if cached_fast is not None:
                         cache['macd_ema_fast'] = cached_fast
                         prev_ema_fast = cached_fast
                 if prev_ema_slow is None:
-                    cached_slow = indicator_cache.get(symbol, timeframe, 'ema_26')
+                    cached_slow = cache_client.get(symbol, timeframe, 'ema_26')
                     if cached_slow is not None:
                         cache['macd_ema_slow'] = cached_slow
                         prev_ema_slow = cached_slow
                 if prev_macd_signal is None:
-                    cached_signal = indicator_cache.get(symbol, timeframe, 'macd_signal')
+                    cached_signal = cache_client.get(symbol, timeframe, 'macd_signal')
                     if cached_signal is not None:
                         cache['macd_signal'] = cached_signal
                         prev_macd_signal = cached_signal
             
-            macd_result = calculate_macd_incremental(
-                current_price, prev_ema_fast, prev_ema_slow, prev_macd_signal
-            )
+            # Calculate MACD components incrementally
+            if prev_ema_fast is not None and prev_ema_slow is not None:
+                # Update EMAs incrementally
+                alpha_fast = 2 / (7 + 1)  # For EMA 7
+                alpha_slow = 2 / (26 + 1)  # For EMA 26
+                
+                new_ema_fast = alpha_fast * current_price + (1 - alpha_fast) * prev_ema_fast
+                new_ema_slow = alpha_slow * current_price + (1 - alpha_slow) * prev_ema_slow
+                
+                # MACD line
+                new_macd_line = new_ema_fast - new_ema_slow
+                
+                # MACD signal (EMA 9 of MACD line)
+                if prev_macd_signal is not None:
+                    alpha_signal = 2 / (9 + 1)
+                    new_macd_signal = alpha_signal * new_macd_line + (1 - alpha_signal) * prev_macd_signal
+                else:
+                    new_macd_signal = new_macd_line  # First value
+                
+                # MACD histogram
+                new_macd_histogram = new_macd_line - new_macd_signal
+                
+                macd_result = {
+                    'ema_fast': new_ema_fast,
+                    'ema_slow': new_ema_slow,
+                    'macd_line': new_macd_line,
+                    'macd_signal': new_macd_signal,
+                    'macd_histogram': new_macd_histogram
+                }
+            else:
+                # Skip if no previous values
+                macd_result = {
+                    'ema_fast': None,
+                    'ema_slow': None,
+                    'macd_line': None,
+                    'macd_signal': None,
+                    'macd_histogram': None
+                }
             
-            result.update({
-                'macd_line': macd_result['macd_line'],
-                'macd_signal': macd_result['macd_signal'],
-                'macd_histogram': macd_result['macd_histogram']
-            })
-            
-            # Mettre à jour le cache MACD
-            cache['macd_ema_fast'] = macd_result['ema_fast']
-            cache['macd_ema_slow'] = macd_result['ema_slow'] 
-            cache['macd_signal'] = macd_result['macd_signal']
+            if macd_result['macd_line'] is not None:
+                result.update({
+                    'macd_line': macd_result['macd_line'],
+                    'macd_signal': macd_result['macd_signal'],
+                    'macd_histogram': macd_result['macd_histogram']
+                })
+                
+                # Mettre à jour le cache MACD
+                cache['macd_ema_fast'] = macd_result['ema_fast']
+                cache['macd_ema_slow'] = macd_result['ema_slow'] 
+                cache['macd_signal'] = macd_result['macd_signal']
             
             if result:
                 logger.debug(f"🚀 Indicateurs lisses calculés pour {symbol} {timeframe}: "
@@ -1144,14 +1216,15 @@ class BinanceWebSocket:
             cache = self.incremental_cache[symbol][timeframe]
             
             # **NOUVEAU**: Restaurer depuis le cache persistant d'abord
-            from market_analyzer.technical_indicators import indicator_cache
+            from shared.src.indicator_cache import get_indicator_cache
+            cache_client = get_indicator_cache()
             
             restored_count = 0
             indicator_keys = ['ema_7', 'ema_26', 'ema_99', 'macd_line', 'macd_signal', 'macd_histogram']
             
             for indicator_key in indicator_keys:
                 # Restaurer depuis Redis si disponible
-                cached_value = indicator_cache.get(symbol, timeframe, indicator_key)
+                cached_value = cache_client.get(symbol, timeframe, indicator_key)
                 if cached_value is not None:
                     # Mapper les indicateurs vers les clés du cache incrémental
                     if indicator_key == 'macd_line':
@@ -1174,8 +1247,8 @@ class BinanceWebSocket:
             if cache.get('ema_26') is not None:
                 cache['macd_ema_slow'] = cache['ema_26']
                 restored_count += 1
-            if indicator_cache.get(symbol, timeframe, 'macd_signal') is not None:
-                cache['macd_signal'] = indicator_cache.get(symbol, timeframe, 'macd_signal')
+            if cache_client.get(symbol, timeframe, 'macd_signal') is not None:
+                cache['macd_signal'] = cache_client.get(symbol, timeframe, 'macd_signal')
                 restored_count += 1
             
             # Initialiser à None seulement si pas restauré
@@ -1429,7 +1502,7 @@ class BinanceWebSocket:
     async def _ensure_sufficient_buffer_data(self):
         """
         S'assure que les buffers WebSocket ont suffisamment de données (≥20 points)
-        pour calculer immédiatement tous les 33 indicateurs techniques.
+        pour calculer immédiatement tous les indicateurs techniques.
         """
         try:
             import aiohttp
@@ -1483,7 +1556,7 @@ class BinanceWebSocket:
                             logger.warning(f"Erreur pré-remplissage {symbol} {timeframe}: {e}")
             
             if total_fetched > 0:
-                logger.info(f"🚀 Buffers WebSocket pré-remplis: {total_fetched} points ajoutés pour calcul immédiat des 33 indicateurs")
+                logger.info(f"🚀 Buffers WebSocket pré-remplis: {total_fetched} points ajoutés pour calcul immédiat des indicateurs")
             else:
                 logger.info("💾 Buffers WebSocket déjà suffisamment remplis")
                 

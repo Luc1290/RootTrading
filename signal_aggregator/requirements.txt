@@ -1,7 +1,7 @@
 # Requirements pour le service Signal Aggregator
 -r ../requirements-shared.txt
 # confluent-kafka, asyncpg, redis, pandas, numpy, ta-lib, pydantic, PyYAML, python-dotenv maintenant dans requirements-shared.txt
-# ta>=0.10.2  # Remplacé par shared.technical_indicators
+
 # pandas-ta>=0.3.14b0  # Non nécessaire si on utilise talib
 prometheus-client>=0.19.0
 lz4>=4.0.0
