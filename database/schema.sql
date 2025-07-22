@@ -1,6 +1,10 @@
--- Schéma de base de données complet pour RootTrading
--- Version 1.0.9.0.3 - Inclut support renforcement DCA et prévention hedging
--- Date: 27 Juin 2025
+-- Schéma de base de données COMPLET et PROPRE pour RootTrading
+-- Version 2.0 - Architecture Nettoyée : Gateway OHLCV bruts + Market Analyzer calculs séparés
+-- Date: 22 Juillet 2025
+
+-- =====================================================
+-- CONFIGURATION ET EXTENSIONS
+-- =====================================================
 
 -- Activer les extensions nécessaires
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -9,6 +13,235 @@ CREATE EXTENSION IF NOT EXISTS "timescaledb" CASCADE;  -- Pour les données temp
 -- Configuration PostgreSQL optimisée pour trading
 SET timezone = 'UTC';
 SET default_text_search_config = 'pg_catalog.english';
+
+-- =====================================================
+-- TABLE MARKET_DATA - DONNÉES OHLCV BRUTES
+-- =====================================================
+
+-- Table des données de marché OHLCV brutes (Gateway uniquement)
+CREATE TABLE IF NOT EXISTS market_data (
+    -- Identifiants temporels
+    time TIMESTAMPTZ NOT NULL,
+    symbol VARCHAR(20) NOT NULL,
+    timeframe VARCHAR(5) NOT NULL,
+    
+    -- Données OHLCV de base (Gateway)
+    open DECIMAL(20,8) NOT NULL,
+    high DECIMAL(20,8) NOT NULL,
+    low DECIMAL(20,8) NOT NULL,
+    close DECIMAL(20,8) NOT NULL,
+    volume DECIMAL(20,8) NOT NULL,
+    
+    -- Métadonnées Binance additionnelles
+    quote_asset_volume DECIMAL(20,8),
+    number_of_trades INTEGER,
+    taker_buy_base_asset_volume DECIMAL(20,8),
+    taker_buy_quote_asset_volume DECIMAL(20,8),
+    
+    -- Métadonnées système
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Contraintes
+    PRIMARY KEY (time, symbol, timeframe),
+    CONSTRAINT market_data_symbol_check CHECK (symbol ~ '^[A-Z0-9]+$'),
+    CONSTRAINT market_data_timeframe_check CHECK (timeframe IN ('1m', '3m', '5m', '15m', '1h', '4h', '1d')),
+    CONSTRAINT market_data_prices_check CHECK (high >= low AND high >= open AND high >= close AND low <= open AND low <= close)
+);
+
+-- Convertir en hypertable pour TimescaleDB
+SELECT create_hypertable('market_data', 'time', if_not_exists => TRUE);
+
+-- Index optimisés pour les données de marché
+CREATE INDEX IF NOT EXISTS market_data_symbol_time_idx ON market_data (symbol, time DESC);
+CREATE INDEX IF NOT EXISTS market_data_timeframe_idx ON market_data (timeframe, time DESC);
+CREATE INDEX IF NOT EXISTS market_data_symbol_timeframe_idx ON market_data (symbol, timeframe, time DESC);
+
+-- Politique de rétention (garder 2 ans de données OHLCV)
+SELECT add_retention_policy('market_data', INTERVAL '2 years', if_not_exists => TRUE);
+
+-- =====================================================
+-- TABLE ANALYZER_DATA - ANALYSES AVANCÉES
+-- =====================================================
+
+-- Table des analyses avancées calculées par le Market Analyzer
+CREATE TABLE IF NOT EXISTS analyzer_data (
+    -- Identifiants
+    time TIMESTAMPTZ NOT NULL,
+    symbol VARCHAR(20) NOT NULL,
+    timeframe VARCHAR(5) NOT NULL,
+    
+    -- Métadonnées
+    analysis_timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    analyzer_version VARCHAR(10) DEFAULT '1.0',
+    
+    -- === MOYENNES MOBILES AVANCÉES ===
+    wma_20 DECIMAL(20,8),          -- Weighted Moving Average
+    dema_12 DECIMAL(20,8),         -- Double Exponential MA
+    tema_12 DECIMAL(20,8),         -- Triple Exponential MA
+    hull_20 DECIMAL(20,8),         -- Hull Moving Average
+    kama_14 DECIMAL(20,8),         -- Kaufman Adaptive MA
+    
+    -- === INDICATEURS DE BASE (pour compatibilité) ===
+    rsi_14 DECIMAL(20,8),          -- RSI standard
+    ema_7 DECIMAL(20,8),           -- EMA rapide
+    ema_12 DECIMAL(20,8),          -- EMA standard
+    ema_26 DECIMAL(20,8),          -- EMA lente
+    ema_50 DECIMAL(20,8),          -- EMA moyen terme
+    ema_99 DECIMAL(20,8),          -- EMA long terme
+    sma_20 DECIMAL(20,8),          -- SMA standard
+    sma_50 DECIMAL(20,8),          -- SMA moyen terme
+    
+    -- === MACD COMPLET ===
+    macd_line DECIMAL(20,8),       -- MACD Line
+    macd_signal DECIMAL(20,8),     -- Signal Line
+    macd_histogram DECIMAL(20,8),  -- Histogram
+    ppo DECIMAL(20,8),             -- Percentage Price Oscillator
+    macd_zero_cross BOOLEAN,       -- Crossover de la ligne zéro
+    macd_signal_cross BOOLEAN,     -- Crossover signal
+    macd_trend VARCHAR(10),        -- BULLISH/BEARISH/NEUTRAL
+    
+    -- === BOLLINGER BANDS COMPLET ===
+    bb_upper DECIMAL(20,8),        -- Bande supérieure
+    bb_middle DECIMAL(20,8),       -- Bande médiane (SMA)
+    bb_lower DECIMAL(20,8),        -- Bande inférieure
+    bb_position DECIMAL(20,8),     -- Position dans les bandes (0-1)
+    bb_width DECIMAL(20,8),        -- Largeur des bandes
+    bb_squeeze BOOLEAN,            -- Squeeze détecté
+    bb_expansion BOOLEAN,          -- Expansion détectée
+    bb_breakout_direction VARCHAR(10), -- UP/DOWN/NONE
+    keltner_upper DECIMAL(20,8),   -- Keltner Channel Upper
+    keltner_lower DECIMAL(20,8),   -- Keltner Channel Lower
+    
+    -- === STOCHASTIC COMPLET ===
+    stoch_k DECIMAL(20,8),         -- %K standard
+    stoch_d DECIMAL(20,8),         -- %D standard
+    stoch_rsi DECIMAL(20,8),       -- Stochastic RSI
+    stoch_fast_k DECIMAL(20,8),    -- Fast %K
+    stoch_fast_d DECIMAL(20,8),    -- Fast %D
+    stoch_divergence BOOLEAN,      -- Divergence détectée
+    stoch_signal VARCHAR(10),      -- OVERBOUGHT/OVERSOLD/NEUTRAL
+    
+    -- === ATR & VOLATILITÉ ===
+    atr_14 DECIMAL(20,8),          -- ATR standard
+    atr_percentile DECIMAL(5,2),   -- ATR percentile (0-100)
+    natr DECIMAL(20,8),            -- Normalized ATR
+    volatility_regime VARCHAR(15), -- LOW/NORMAL/HIGH/EXTREME
+    atr_stop_long DECIMAL(20,8),   -- ATR-based stop loss (long)
+    atr_stop_short DECIMAL(20,8),  -- ATR-based stop loss (short)
+    
+    -- === ADX & DIRECTIONAL MOVEMENT ===
+    adx_14 DECIMAL(20,8),          -- ADX standard
+    plus_di DECIMAL(20,8),         -- +DI
+    minus_di DECIMAL(20,8),        -- -DI
+    dx DECIMAL(20,8),              -- Directional Movement Index
+    adxr DECIMAL(20,8),            -- ADX Rating
+    trend_strength VARCHAR(15),    -- WEAK/MODERATE/STRONG/VERY_STRONG
+    directional_bias VARCHAR(10),  -- BULLISH/BEARISH/NEUTRAL
+    trend_angle DECIMAL(20,8),     -- Angle de tendance
+    
+    -- === OSCILLATEURS ===
+    williams_r DECIMAL(20,8),      -- Williams %R
+    mfi_14 DECIMAL(20,8),          -- Money Flow Index
+    cci_20 DECIMAL(20,8),          -- Commodity Channel Index
+    momentum_10 DECIMAL(20,8),     -- Momentum
+    roc_10 DECIMAL(20,8),          -- Rate of Change 10
+    roc_20 DECIMAL(20,8),          -- Rate of Change 20
+    
+    -- === VOLUME AVANCÉ ===
+    vwap_10 DECIMAL(20,8),         -- VWAP court terme
+    anchored_vwap DECIMAL(20,8),   -- VWAP ancré
+    vwap_upper_band DECIMAL(20,8), -- VWAP + 1 std
+    vwap_lower_band DECIMAL(20,8), -- VWAP - 1 std
+    volume_ratio DECIMAL(10,4),    -- Ratio volume vs moyenne
+    avg_volume_20 DECIMAL(20,8),   -- Volume moyen 20 périodes
+    obv DECIMAL(20,8),             -- On Balance Volume
+    obv_ma_10 DECIMAL(20,8),       -- OBV Moving Average 10
+    obv_oscillator DECIMAL(20,8),  -- OBV Oscillator
+    ad_line DECIMAL(20,8),         -- Accumulation/Distribution Line
+    
+    -- === VOLUME PROFILE ===
+    volume_profile_poc DECIMAL(20,8), -- Point of Control
+    volume_profile_vah DECIMAL(20,8), -- Value Area High
+    volume_profile_val DECIMAL(20,8), -- Value Area Low
+    
+    -- === DÉTECTION DE RÉGIME ===
+    market_regime VARCHAR(20),     -- TRENDING_BULL/BEAR, RANGING, VOLATILE, BREAKOUT_BULL/BEAR, TRANSITION
+    regime_strength VARCHAR(15),   -- WEAK/MODERATE/STRONG/EXTREME
+    regime_confidence DECIMAL(5,2), -- Confiance (0-100%)
+    regime_duration INTEGER,       -- Durée du régime en périodes
+    trend_alignment DECIMAL(5,2),  -- Alignement des EMA (0-100%)
+    momentum_score DECIMAL(5,2),   -- Score momentum (0-100%)
+    
+    -- === SUPPORT & RÉSISTANCE ===
+    support_levels JSONB,          -- Array des niveaux support [{price, strength, touches}]
+    resistance_levels JSONB,       -- Array des niveaux résistance
+    nearest_support DECIMAL(20,8), -- Support le plus proche
+    nearest_resistance DECIMAL(20,8), -- Résistance la plus proche
+    support_strength VARCHAR(15),  -- WEAK/MODERATE/STRONG/MAJOR
+    resistance_strength VARCHAR(15),
+    break_probability DECIMAL(5,2), -- Probabilité de cassure (0-100%)
+    pivot_count INTEGER,           -- Nombre de pivots détectés
+    
+    -- === CONTEXTE VOLUME ===
+    volume_context VARCHAR(20),    -- DEEP_OVERSOLD, BREAKOUT, PUMP_START, etc.
+    volume_pattern VARCHAR(15),    -- BUILDUP/SPIKE/SUSTAINED_HIGH/DECLINING
+    volume_quality_score DECIMAL(5,2), -- Qualité du volume (0-100%)
+    relative_volume DECIMAL(10,4), -- Volume relatif vs moyenne
+    volume_buildup_periods INTEGER, -- Nombre de périodes d'accumulation
+    volume_spike_multiplier DECIMAL(10,4), -- Multiplicateur du spike
+    
+    -- === PATTERNS & SIGNAUX ===
+    pattern_detected VARCHAR(30),  -- Pattern détecté (HAMMER, DOJI, etc.)
+    pattern_confidence DECIMAL(5,2), -- Confiance dans le pattern
+    signal_strength VARCHAR(15),   -- WEAK/MODERATE/STRONG/VERY_STRONG
+    confluence_score DECIMAL(5,2), -- Score de confluence (0-100%)
+    
+    -- === MÉTADONNÉES PERFORMANCE ===
+    calculation_time_ms INTEGER,   -- Temps de calcul en ms
+    cache_hit_ratio DECIMAL(5,2),  -- Ratio de cache hit (0-100%)
+    data_quality VARCHAR(15),      -- EXCELLENT/GOOD/FAIR/POOR
+    anomaly_detected BOOLEAN,      -- Anomalie dans les données
+    
+    -- Contraintes
+    PRIMARY KEY (time, symbol, timeframe),
+    CONSTRAINT analyzer_data_symbol_check CHECK (symbol ~ '^[A-Z0-9]+$'),
+    CONSTRAINT analyzer_data_timeframe_check CHECK (timeframe IN ('1m', '3m', '5m', '15m', '1h', '4h', '1d')),
+    CONSTRAINT analyzer_data_regime_check CHECK (market_regime IN (
+        'TRENDING_BULL', 'TRENDING_BEAR', 'RANGING', 'VOLATILE', 
+        'BREAKOUT_BULL', 'BREAKOUT_BEAR', 'TRANSITION', 'UNKNOWN'
+    )),
+    CONSTRAINT analyzer_data_strength_check CHECK (regime_strength IN ('WEAK', 'MODERATE', 'STRONG', 'EXTREME')),
+    CONSTRAINT analyzer_data_confidence_check CHECK (regime_confidence >= 0 AND regime_confidence <= 100),
+    CONSTRAINT analyzer_data_quality_check CHECK (data_quality IN ('EXCELLENT', 'GOOD', 'FAIR', 'POOR'))
+);
+
+-- Convertir en hypertable pour TimescaleDB
+SELECT create_hypertable('analyzer_data', 'time', if_not_exists => TRUE);
+
+-- Index optimisés pour les requêtes fréquentes
+CREATE INDEX IF NOT EXISTS analyzer_data_symbol_time_idx ON analyzer_data (symbol, time DESC);
+CREATE INDEX IF NOT EXISTS analyzer_data_regime_idx ON analyzer_data (market_regime, regime_strength);
+CREATE INDEX IF NOT EXISTS analyzer_data_timeframe_idx ON analyzer_data (timeframe, time DESC);
+CREATE INDEX IF NOT EXISTS analyzer_data_pattern_idx ON analyzer_data (pattern_detected, pattern_confidence);
+CREATE INDEX IF NOT EXISTS analyzer_data_signal_idx ON analyzer_data (signal_strength, confluence_score);
+CREATE INDEX IF NOT EXISTS analyzer_data_volume_context_idx ON analyzer_data (volume_context, volume_quality_score);
+
+-- Index pour support/résistance (JSONB)
+CREATE INDEX IF NOT EXISTS analyzer_data_support_gin_idx ON analyzer_data USING GIN (support_levels);
+CREATE INDEX IF NOT EXISTS analyzer_data_resistance_gin_idx ON analyzer_data USING GIN (resistance_levels);
+
+-- Index composite pour performance
+CREATE INDEX IF NOT EXISTS analyzer_data_performance_idx ON analyzer_data (
+    symbol, timeframe, market_regime, time DESC
+) WHERE regime_confidence > 70;
+
+-- Politique de rétention (garder 1 an de données d'analyse)
+SELECT add_retention_policy('analyzer_data', INTERVAL '1 year', if_not_exists => TRUE);
+
+-- =====================================================
+-- TABLES DE TRADING
+-- =====================================================
 
 -- Table des exécutions d'ordres
 CREATE TABLE IF NOT EXISTS trade_executions (
@@ -25,30 +258,18 @@ CREATE TABLE IF NOT EXISTS trade_executions (
     timestamp TIMESTAMP NOT NULL,
     cycle_id VARCHAR(50),
     demo BOOLEAN NOT NULL DEFAULT FALSE,
-    id VARCHAR(50),  -- Colonne id optionnelle pour compatibilité
-    metadata JSONB,  -- Métadonnées pour traçabilité (renforcements, etc.)
+    id VARCHAR(50),
+    metadata JSONB,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- Index pour les exécutions
-CREATE INDEX IF NOT EXISTS trade_executions_cycle_id_idx ON trade_executions(cycle_id);
-CREATE INDEX IF NOT EXISTS trade_executions_timestamp_idx ON trade_executions(timestamp);
-CREATE INDEX IF NOT EXISTS trade_executions_symbol_idx ON trade_executions(symbol);
-CREATE INDEX IF NOT EXISTS trade_executions_status_idx ON trade_executions(status);
--- Index GIN pour les recherches dans les métadonnées JSON des exécutions
-CREATE INDEX IF NOT EXISTS trade_executions_metadata_idx ON trade_executions USING GIN (metadata);
--- Index optionnel pour la colonne id si utilisée
-CREATE INDEX IF NOT EXISTS trade_executions_id_idx ON trade_executions(id) WHERE id IS NOT NULL;
-
--- Table des cycles de trading (avec tous les champs requis)
+-- Table des cycles de trading
 CREATE TABLE IF NOT EXISTS trade_cycles (
     id VARCHAR(50) PRIMARY KEY,
     symbol VARCHAR(20) NOT NULL,
     strategy VARCHAR(50) NOT NULL,
-    -- Statuts en minuscules pour cohérence avec les énumérations Python
     status VARCHAR(20) NOT NULL CHECK (status IN ('initiating', 'waiting_buy', 'active_buy', 'waiting_sell', 'active_sell', 'completed', 'canceled', 'failed')),
-    -- Direction du cycle: BUY (position longue) ou SELL (position courte)
     side VARCHAR(4) NOT NULL CHECK (side IN ('BUY', 'SELL')),
     entry_order_id VARCHAR(50),
     exit_order_id VARCHAR(50),
@@ -65,31 +286,9 @@ CREATE TABLE IF NOT EXISTS trade_cycles (
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     completed_at TIMESTAMP,
     confirmed BOOLEAN NOT NULL DEFAULT FALSE,
-    -- Champ metadata pour stocker informations supplémentaires (réconciliation, raisons d'annulation, etc.)
     metadata JSONB,
     demo BOOLEAN NOT NULL DEFAULT FALSE    
 );
-
--- Index optimisés pour les cycles
-CREATE INDEX IF NOT EXISTS trade_cycles_symbol_idx ON trade_cycles(symbol);
-CREATE INDEX IF NOT EXISTS trade_cycles_strategy_idx ON trade_cycles(strategy);
-CREATE INDEX IF NOT EXISTS trade_cycles_side_idx ON trade_cycles(side);
-CREATE INDEX IF NOT EXISTS trade_cycles_symbol_side_status_idx ON trade_cycles(symbol, side, status);
-CREATE INDEX IF NOT EXISTS trade_cycles_status_idx ON trade_cycles(status);
-CREATE INDEX IF NOT EXISTS trade_cycles_created_at_idx ON trade_cycles(created_at);
-CREATE INDEX IF NOT EXISTS trade_cycles_completed_at_idx ON trade_cycles(completed_at);
--- Index composés pour requêtes fréquentes
-CREATE INDEX IF NOT EXISTS trade_cycles_symbol_created_idx ON trade_cycles(symbol, created_at DESC);
-CREATE INDEX IF NOT EXISTS trade_cycles_strategy_created_idx ON trade_cycles(strategy, created_at DESC);
-CREATE INDEX IF NOT EXISTS trade_cycles_status_updated_idx ON trade_cycles(status, updated_at DESC);
--- Index GIN pour les recherches dans les métadonnées JSON
-CREATE INDEX IF NOT EXISTS trade_cycles_metadata_idx ON trade_cycles USING GIN (metadata);
--- Index pour les calculs de performance
-CREATE INDEX IF NOT EXISTS trade_cycles_profit_status_idx ON trade_cycles(profit_loss_percent, status) 
-WHERE status = 'completed';
--- Index pour les cycles actifs (très fréquent)
-CREATE INDEX IF NOT EXISTS trade_cycles_active_idx ON trade_cycles(status, symbol, updated_at) 
-WHERE status NOT IN ('completed', 'canceled', 'failed');
 
 -- Table des signaux de trading
 CREATE TABLE IF NOT EXISTS trading_signals (
@@ -98,745 +297,131 @@ CREATE TABLE IF NOT EXISTS trading_signals (
     symbol VARCHAR(20) NOT NULL,
     side VARCHAR(10) NOT NULL CHECK (side IN ('BUY', 'SELL')),
     timestamp TIMESTAMP NOT NULL,
-    price NUMERIC(16, 8) NOT NULL,
-    confidence NUMERIC(5, 4),
-    strength VARCHAR(20) CHECK (strength IN ('weak', 'moderate', 'strong', 'very_strong')),
+    confidence DECIMAL(5,2) NOT NULL,
+    price DECIMAL(20,8) NOT NULL,
     metadata JSONB,
-    cycle_id VARCHAR(50),
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    processed BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Index pour les signaux
-CREATE INDEX IF NOT EXISTS trading_signals_symbol_idx ON trading_signals(symbol);
-CREATE INDEX IF NOT EXISTS trading_signals_strategy_idx ON trading_signals(strategy);
-CREATE INDEX IF NOT EXISTS trading_signals_timestamp_idx ON trading_signals(timestamp);
-CREATE INDEX IF NOT EXISTS trading_signals_strength_idx ON trading_signals(strength);
--- Index GIN pour les recherches dans les métadonnées JSON
-CREATE INDEX IF NOT EXISTS trading_signals_metadata_idx ON trading_signals USING GIN (metadata);
-
--- Table des données de marché (séries temporelles optimisées)
-CREATE TABLE IF NOT EXISTS market_data (
-    time TIMESTAMP NOT NULL,
-    symbol VARCHAR(20) NOT NULL,
-    timeframe VARCHAR(10) NOT NULL DEFAULT '1m',
-    open NUMERIC(16, 8) NOT NULL,
-    high NUMERIC(16, 8) NOT NULL,
-    low NUMERIC(16, 8) NOT NULL,
-    close NUMERIC(16, 8) NOT NULL,
-    volume NUMERIC(20, 8) NOT NULL,
-    PRIMARY KEY (time, symbol, timeframe),
-    CONSTRAINT valid_timeframe_check CHECK (timeframe IN ('1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M'))
-);
-
--- Convertir market_data en table hypertable (TimescaleDB)
-SELECT create_hypertable('market_data', 'time', if_not_exists => TRUE);
-
--- Optimisation de TimescaleDB pour market_data
-SELECT set_chunk_time_interval('market_data', INTERVAL '1 day');
-ALTER TABLE market_data SET (
-    timescaledb.compress = true,
-    timescaledb.compress_segmentby = 'symbol'
-);
-SELECT add_compression_policy('market_data', INTERVAL '7 days');
-
--- Index pour les données de marché (optimisés pour timeframe)
-CREATE INDEX IF NOT EXISTS market_data_symbol_timeframe_idx ON market_data(symbol, timeframe, time DESC);
-CREATE INDEX IF NOT EXISTS market_data_timeframe_symbol_time_idx ON market_data(timeframe, symbol, time DESC);
--- Index BRIN plus efficace pour les grandes tables temporelles
-CREATE INDEX IF NOT EXISTS market_data_time_brin_idx ON market_data USING BRIN (time) WITH (pages_per_range = 128);
-
--- Table des soldes de portefeuille
-CREATE TABLE IF NOT EXISTS portfolio_balances (
-    id SERIAL PRIMARY KEY,
-    asset VARCHAR(10) NOT NULL,
-    free NUMERIC(24, 8) NOT NULL,
-    locked NUMERIC(24, 8) NOT NULL,
-    total NUMERIC(24, 8) NOT NULL,
-    value_usdc NUMERIC(24, 8),
-    timestamp TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
--- Index pour les soldes
-CREATE INDEX IF NOT EXISTS portfolio_balances_asset_idx ON portfolio_balances(asset);
-CREATE INDEX IF NOT EXISTS portfolio_balances_timestamp_idx ON portfolio_balances(timestamp);
-CREATE INDEX IF NOT EXISTS portfolio_balances_asset_timestamp_idx ON portfolio_balances(asset, timestamp DESC);
-
--- Table des paramètres des stratégies
+-- Table de configuration des stratégies
 CREATE TABLE IF NOT EXISTS strategy_configs (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(50) NOT NULL UNIQUE,
-    mode VARCHAR(20) NOT NULL CHECK (mode IN ('active', 'monitoring', 'paused', 'disabled')),
-    symbols JSONB NOT NULL,  -- Array de symboles
-    params JSONB NOT NULL,   -- Paramètres de la stratégie
-    max_simultaneous_trades INTEGER NOT NULL DEFAULT 3,
-    enabled BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    strategy_name VARCHAR(50) NOT NULL UNIQUE,
+    symbol VARCHAR(20) NOT NULL,
+    config JSONB NOT NULL,
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Index pour les stratégies
-CREATE INDEX IF NOT EXISTS strategy_configs_name_idx ON strategy_configs(name);
-CREATE INDEX IF NOT EXISTS strategy_configs_mode_idx ON strategy_configs(mode);
-CREATE INDEX IF NOT EXISTS strategy_configs_enabled_idx ON strategy_configs(enabled);
--- Index GIN pour les recherches dans les tableaux de symboles
-CREATE INDEX IF NOT EXISTS strategy_configs_symbols_idx ON strategy_configs USING GIN (symbols);
-CREATE INDEX IF NOT EXISTS strategy_configs_params_idx ON strategy_configs USING GIN (params);
-
--- Table des journaux d'événements (optimisée)
-CREATE TABLE IF NOT EXISTS event_logs (
-    id SERIAL PRIMARY KEY,
-    service VARCHAR(50) NOT NULL,
-    level VARCHAR(20) NOT NULL CHECK (level IN ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')),
-    message TEXT NOT NULL,
-    data JSONB,
-    timestamp TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
--- Index pour les journaux (optimisés pour les requêtes fréquentes)
-CREATE INDEX IF NOT EXISTS event_logs_service_level_idx ON event_logs(service, level);
-CREATE INDEX IF NOT EXISTS event_logs_timestamp_idx ON event_logs(timestamp);
-CREATE INDEX IF NOT EXISTS event_logs_level_timestamp_idx ON event_logs(level, timestamp DESC);
--- Index partiel pour les erreurs critiques
-CREATE INDEX IF NOT EXISTS event_logs_critical_idx ON event_logs(timestamp DESC, service) 
-WHERE level IN ('ERROR', 'CRITICAL');
-
--- Table des statistiques de performance (améliorée)
-CREATE TABLE IF NOT EXISTS performance_stats (
+-- Table des positions (pour tracking)
+CREATE TABLE IF NOT EXISTS positions (
     id SERIAL PRIMARY KEY,
     symbol VARCHAR(20) NOT NULL,
-    strategy VARCHAR(50) NOT NULL,
-    period VARCHAR(20) NOT NULL CHECK (period IN ('daily', 'weekly', 'monthly', 'yearly')),
-    start_date DATE NOT NULL,
-    end_date DATE NOT NULL,
-    total_trades INTEGER NOT NULL DEFAULT 0,
-    winning_trades INTEGER NOT NULL DEFAULT 0,
-    losing_trades INTEGER NOT NULL DEFAULT 0,
-    break_even_trades INTEGER NOT NULL DEFAULT 0,
-    profit_loss NUMERIC(24, 8) NOT NULL DEFAULT 0,
-    profit_loss_percent NUMERIC(8, 4) NOT NULL DEFAULT 0,
-    max_drawdown NUMERIC(8, 4),
-    average_holding_time INTERVAL,
-    sharpe_ratio NUMERIC(8, 4),
-    win_rate NUMERIC(5, 2),
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    side VARCHAR(10) NOT NULL CHECK (side IN ('LONG', 'SHORT')),
+    size NUMERIC(20, 8) NOT NULL,
+    entry_price NUMERIC(20, 12) NOT NULL,
+    current_price NUMERIC(20, 12),
+    unrealized_pnl NUMERIC(16, 8),
+    realized_pnl NUMERIC(16, 8) DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    closed_at TIMESTAMP,
+    status VARCHAR(20) DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLOSED'))
 );
 
--- Index pour les stats
-CREATE UNIQUE INDEX IF NOT EXISTS performance_stats_unique_idx ON performance_stats(symbol, strategy, period, start_date);
-CREATE INDEX IF NOT EXISTS performance_stats_period_date_idx ON performance_stats(period, start_date DESC);
-CREATE INDEX IF NOT EXISTS performance_stats_strategy_period_idx ON performance_stats(strategy, period);
+-- =====================================================
+-- INDEX POUR LES TABLES DE TRADING
+-- =====================================================
 
--- Table des règles de gestion des risques
-CREATE TABLE IF NOT EXISTS risk_rules (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(50) NOT NULL UNIQUE,
-    rule_type VARCHAR(20) NOT NULL CHECK (rule_type IN ('exposure', 'volatility', 'drawdown', 'position_size', 'daily_loss')),
-    symbol VARCHAR(20),  -- NULL pour règle globale
-    strategy VARCHAR(50),  -- NULL pour règle globale
-    threshold NUMERIC(10, 4) NOT NULL,
-    action VARCHAR(20) NOT NULL CHECK (action IN ('warn', 'pause', 'disable', 'force_close')),
-    enabled BOOLEAN NOT NULL DEFAULT TRUE,
-    triggered_count INTEGER NOT NULL DEFAULT 0,
-    last_triggered TIMESTAMP,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
+-- Index pour trade_executions
+CREATE INDEX IF NOT EXISTS trade_executions_cycle_id_idx ON trade_executions(cycle_id);
+CREATE INDEX IF NOT EXISTS trade_executions_timestamp_idx ON trade_executions(timestamp);
+CREATE INDEX IF NOT EXISTS trade_executions_symbol_idx ON trade_executions(symbol);
+CREATE INDEX IF NOT EXISTS trade_executions_status_idx ON trade_executions(status);
+CREATE INDEX IF NOT EXISTS trade_executions_metadata_idx ON trade_executions USING GIN (metadata);
+CREATE INDEX IF NOT EXISTS trade_executions_id_idx ON trade_executions(id) WHERE id IS NOT NULL;
 
--- Index pour les règles
-CREATE INDEX IF NOT EXISTS risk_rules_type_enabled_idx ON risk_rules(rule_type, enabled);
-CREATE INDEX IF NOT EXISTS risk_rules_symbol_strategy_idx ON risk_rules(symbol, strategy);
-CREATE INDEX IF NOT EXISTS risk_rules_enabled_idx ON risk_rules(enabled);
+-- Index pour trade_cycles
+CREATE INDEX IF NOT EXISTS trade_cycles_symbol_idx ON trade_cycles(symbol);
+CREATE INDEX IF NOT EXISTS trade_cycles_strategy_idx ON trade_cycles(strategy);
+CREATE INDEX IF NOT EXISTS trade_cycles_side_idx ON trade_cycles(side);
+CREATE INDEX IF NOT EXISTS trade_cycles_symbol_side_status_idx ON trade_cycles(symbol, side, status);
+CREATE INDEX IF NOT EXISTS trade_cycles_status_idx ON trade_cycles(status);
+CREATE INDEX IF NOT EXISTS trade_cycles_created_at_idx ON trade_cycles(created_at);
+CREATE INDEX IF NOT EXISTS trade_cycles_completed_at_idx ON trade_cycles(completed_at);
+CREATE INDEX IF NOT EXISTS trade_cycles_symbol_created_idx ON trade_cycles(symbol, created_at DESC);
+CREATE INDEX IF NOT EXISTS trade_cycles_strategy_created_idx ON trade_cycles(strategy, created_at DESC);
+CREATE INDEX IF NOT EXISTS trade_cycles_status_updated_idx ON trade_cycles(status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS trade_cycles_metadata_idx ON trade_cycles USING GIN (metadata);
+CREATE INDEX IF NOT EXISTS trade_cycles_profit_status_idx ON trade_cycles(profit_loss_percent, status) WHERE status = 'completed';
+CREATE INDEX IF NOT EXISTS trade_cycles_active_idx ON trade_cycles(status, symbol, updated_at) WHERE status NOT IN ('completed', 'canceled', 'failed');
 
--- Table des alertes (améliorée)
-CREATE TABLE IF NOT EXISTS alerts (
-    id SERIAL PRIMARY KEY,
-    alert_type VARCHAR(20) NOT NULL,
-    level VARCHAR(20) NOT NULL CHECK (level IN ('info', 'warning', 'critical')),
-    title VARCHAR(200) NOT NULL,
-    message TEXT NOT NULL,
-    symbol VARCHAR(20),
-    strategy VARCHAR(50),
-    cycle_id VARCHAR(50),
-    data JSONB,
-    is_read BOOLEAN NOT NULL DEFAULT FALSE,
-    is_acknowledged BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    acknowledged_at TIMESTAMP
-);
+-- Index pour trading_signals
+CREATE INDEX IF NOT EXISTS trading_signals_strategy_idx ON trading_signals(strategy);
+CREATE INDEX IF NOT EXISTS trading_signals_symbol_idx ON trading_signals(symbol);
+CREATE INDEX IF NOT EXISTS trading_signals_timestamp_idx ON trading_signals(timestamp);
+CREATE INDEX IF NOT EXISTS trading_signals_processed_idx ON trading_signals(processed);
+CREATE INDEX IF NOT EXISTS trading_signals_metadata_idx ON trading_signals USING GIN (metadata);
 
--- Index pour les alertes
-CREATE INDEX IF NOT EXISTS alerts_type_level_idx ON alerts(alert_type, level);
-CREATE INDEX IF NOT EXISTS alerts_created_at_idx ON alerts(created_at DESC);
-CREATE INDEX IF NOT EXISTS alerts_is_read_idx ON alerts(is_read, created_at DESC);
-CREATE INDEX IF NOT EXISTS alerts_level_read_idx ON alerts(level, is_read, created_at DESC);
--- Index partiel pour les alertes non lues
-CREATE INDEX IF NOT EXISTS alerts_unread_idx ON alerts(created_at DESC) WHERE is_read = FALSE;
+-- Index pour strategy_configs
+CREATE INDEX IF NOT EXISTS strategy_configs_symbol_idx ON strategy_configs(symbol);
+CREATE INDEX IF NOT EXISTS strategy_configs_active_idx ON strategy_configs(active);
 
--- Table des contraintes de trading Binance (cache pour éviter les appels API répétés)
-CREATE TABLE IF NOT EXISTS binance_constraints (
-    symbol VARCHAR(20) PRIMARY KEY,
-    min_qty NUMERIC(16, 8) NOT NULL,
-    max_qty NUMERIC(16, 8) NOT NULL,
-    step_size NUMERIC(16, 8) NOT NULL,
-    min_notional NUMERIC(16, 8) NOT NULL,
-    price_precision INTEGER NOT NULL,
-    qty_precision INTEGER NOT NULL,
-    last_updated TIMESTAMP NOT NULL DEFAULT NOW()
-);
+-- Index pour positions
+CREATE INDEX IF NOT EXISTS positions_symbol_idx ON positions(symbol);
+CREATE INDEX IF NOT EXISTS positions_status_idx ON positions(status);
+CREATE INDEX IF NOT EXISTS positions_symbol_status_idx ON positions(symbol, status);
 
--- Index pour les contraintes
-CREATE INDEX IF NOT EXISTS binance_constraints_updated_idx ON binance_constraints(last_updated);
+-- =====================================================
+-- COMMENTAIRES POUR DOCUMENTATION
+-- =====================================================
 
--- Vues pour faciliter les requêtes communes
+COMMENT ON TABLE market_data IS 'Données OHLCV brutes reçues du Gateway - aucun indicateur calculé';
+COMMENT ON TABLE analyzer_data IS 'Données d''analyse avancée calculées par le Market Analyzer avec tous les indicateurs et détections';
+COMMENT ON COLUMN analyzer_data.market_regime IS 'Régime de marché détecté par l''analyzer';
+COMMENT ON COLUMN analyzer_data.support_levels IS 'Niveaux de support sous format JSON: [{"price": 50000, "strength": "STRONG", "touches": 3}]';
+COMMENT ON COLUMN analyzer_data.resistance_levels IS 'Niveaux de résistance sous format JSON';
+COMMENT ON COLUMN analyzer_data.confluence_score IS 'Score de confluence entre différents indicateurs (0-100%)';
 
--- Vue des performances par stratégie (optimisée)
-CREATE OR REPLACE VIEW strategy_performance AS
-SELECT 
-    strategy,
-    COUNT(*) as total_cycles,
-    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_cycles,
-    SUM(CASE WHEN profit_loss > 0 AND status = 'completed' THEN 1 ELSE 0 END) as winning_trades,
-    SUM(CASE WHEN profit_loss < 0 AND status = 'completed' THEN 1 ELSE 0 END) as losing_trades,
-    SUM(CASE WHEN profit_loss = 0 AND status = 'completed' THEN 1 ELSE 0 END) as break_even_trades,
-    SUM(profit_loss) as total_profit_loss,
-    AVG(CASE WHEN status = 'completed' THEN profit_loss_percent ELSE NULL END) as avg_profit_loss_percent,
-    CASE 
-        WHEN SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) > 0 THEN
-            SUM(CASE WHEN profit_loss > 0 AND status = 'completed' THEN 1 ELSE 0 END)::NUMERIC / 
-            SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) * 100
-        ELSE 0
-    END as win_rate,
-    COUNT(DISTINCT symbol) as symbol_count,
-    COUNT(CASE WHEN status NOT IN ('completed', 'canceled', 'failed') THEN 1 END) as active_cycles
-FROM 
-    trade_cycles
-GROUP BY 
-    strategy
-ORDER BY 
-    total_profit_loss DESC;
+COMMENT ON TABLE trade_executions IS 'Exécutions d''ordres avec métadonnées complètes';
+COMMENT ON TABLE trade_cycles IS 'Cycles de trading complets avec gestion des statuts';
+COMMENT ON TABLE trading_signals IS 'Signaux générés par les stratégies d''analyse';
+COMMENT ON TABLE strategy_configs IS 'Configuration des stratégies de trading';
+COMMENT ON TABLE positions IS 'Suivi des positions ouvertes et fermées';
 
--- Vue des performances par symbole (optimisée)
-CREATE OR REPLACE VIEW symbol_performance AS
-SELECT 
-    symbol,
-    COUNT(*) as total_cycles,
-    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_cycles,
-    SUM(CASE WHEN profit_loss > 0 AND status = 'completed' THEN 1 ELSE 0 END) as winning_trades,
-    SUM(CASE WHEN profit_loss < 0 AND status = 'completed' THEN 1 ELSE 0 END) as losing_trades,
-    SUM(CASE WHEN profit_loss = 0 AND status = 'completed' THEN 1 ELSE 0 END) as break_even_trades,
-    SUM(profit_loss) as total_profit_loss,
-    AVG(CASE WHEN status = 'completed' THEN profit_loss_percent ELSE NULL END) as avg_profit_loss_percent,
-    CASE 
-        WHEN SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) > 0 THEN
-            SUM(CASE WHEN profit_loss > 0 AND status = 'completed' THEN 1 ELSE 0 END)::NUMERIC / 
-            SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) * 100
-        ELSE 0
-    END as win_rate,
-    COUNT(DISTINCT strategy) as strategy_count,
-    COUNT(CASE WHEN status NOT IN ('completed', 'canceled', 'failed') THEN 1 END) as active_cycles
-FROM 
-    trade_cycles
-GROUP BY 
-    symbol
-ORDER BY 
-    total_profit_loss DESC;
+-- =====================================================
+-- TRIGGERS POUR UPDATED_AT
+-- =====================================================
 
--- Vue des cycles actifs optimisée avec prix actuels
-CREATE OR REPLACE VIEW active_cycles AS
-WITH latest_prices AS (
-    SELECT DISTINCT ON (symbol)
-        symbol, 
-        close as price,
-        time
-    FROM 
-        market_data
-    ORDER BY 
-        symbol, time DESC
-)
-SELECT 
-    tc.id, 
-    tc.symbol, 
-    tc.strategy, 
-    tc.status, 
-    tc.entry_price, 
-    tc.quantity, 
-    tc.stop_price,
-    lp.price as current_price,
-    lp.time as price_timestamp,
-    CASE 
-        WHEN tc.entry_price IS NOT NULL AND lp.price IS NOT NULL THEN
-            CASE 
-                WHEN tc.status LIKE '%BUY%' THEN 
-                    (lp.price - tc.entry_price) / tc.entry_price * 100
-                WHEN tc.status LIKE '%SELL%' THEN 
-                    (tc.entry_price - lp.price) / tc.entry_price * 100
-                ELSE NULL
-            END
-        ELSE NULL
-    END as unrealized_pl_percent,
-    tc.created_at,
-    tc.updated_at,
-    EXTRACT(EPOCH FROM (NOW() - tc.created_at))/3600 as hours_active,
-    tc.metadata
-FROM 
-    trade_cycles tc
-LEFT JOIN 
-    latest_prices lp ON tc.symbol = lp.symbol
-WHERE 
-    tc.status NOT IN ('completed', 'canceled', 'failed')
-ORDER BY 
-    tc.created_at DESC;
-
--- Vue des performances quotidiennes
-CREATE OR REPLACE VIEW daily_performance AS
-SELECT 
-    DATE(completed_at) as trade_date,
-    COUNT(*) as total_trades,
-    SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as winning_trades,
-    SUM(CASE WHEN profit_loss < 0 THEN 1 ELSE 0 END) as losing_trades,
-    SUM(profit_loss) as daily_profit_loss,
-    AVG(profit_loss_percent) as avg_profit_loss_percent,
-    CASE 
-        WHEN COUNT(*) > 0 THEN
-            SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END)::NUMERIC / COUNT(*) * 100
-        ELSE 0
-    END as daily_win_rate
-FROM 
-    trade_cycles
-WHERE 
-    status = 'completed'
-    AND completed_at IS NOT NULL
-GROUP BY 
-    DATE(completed_at)
-ORDER BY 
-    trade_date DESC;
-
--- Vue des alertes actives
-CREATE OR REPLACE VIEW active_alerts AS
-SELECT 
-    id,
-    alert_type,
-    level,
-    title,
-    message,
-    symbol,
-    strategy,
-    cycle_id,
-    created_at,
-    EXTRACT(EPOCH FROM (NOW() - created_at))/3600 as hours_old
-FROM 
-    alerts
-WHERE 
-    is_read = FALSE
-ORDER BY 
-    CASE level 
-        WHEN 'critical' THEN 1 
-        WHEN 'warning' THEN 2 
-        WHEN 'info' THEN 3 
-    END,
-    created_at DESC;
-
--- Fonctions utiles
-
--- Fonction pour calculer la performance sur une période
-CREATE OR REPLACE FUNCTION calculate_performance(
-    p_start_date TIMESTAMP,
-    p_end_date TIMESTAMP,
-    p_symbol VARCHAR DEFAULT NULL,
-    p_strategy VARCHAR DEFAULT NULL
-)
-RETURNS TABLE (
-    total_trades BIGINT,
-    winning_trades BIGINT,
-    losing_trades BIGINT,
-    win_rate NUMERIC,
-    total_profit_loss NUMERIC,
-    avg_profit_loss_percent NUMERIC,
-    max_profit_percent NUMERIC,
-    max_loss_percent NUMERIC,
-    avg_holding_hours NUMERIC
-) AS $$
-BEGIN
-    RETURN QUERY
-    SELECT 
-        COUNT(*) as total_trades,
-        SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as winning_trades,
-        SUM(CASE WHEN profit_loss < 0 THEN 1 ELSE 0 END) as losing_trades,
-        CASE 
-            WHEN COUNT(*) > 0 THEN 
-                SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END)::NUMERIC / COUNT(*) * 100
-            ELSE 0
-        END as win_rate,
-        SUM(profit_loss) as total_profit_loss,
-        AVG(profit_loss_percent) as avg_profit_loss_percent,
-        MAX(profit_loss_percent) as max_profit_percent,
-        MIN(profit_loss_percent) as max_loss_percent,
-        AVG(EXTRACT(EPOCH FROM (completed_at - created_at))/3600) as avg_holding_hours
-    FROM 
-        trade_cycles
-    WHERE 
-        status = 'completed'
-        AND completed_at BETWEEN p_start_date AND p_end_date
-        AND (p_symbol IS NULL OR symbol = p_symbol)
-        AND (p_strategy IS NULL OR strategy = p_strategy);
-END;
-$$ LANGUAGE plpgsql;
-
--- Fonction pour nettoyer les cycles fantômes (utilisée par la réconciliation)
-CREATE OR REPLACE FUNCTION cleanup_phantom_cycles()
-RETURNS TABLE (
-    cleaned_count INTEGER,
-    details JSONB
-) AS $$
-DECLARE
-    phantom_count INTEGER := 0;
-    details_json JSONB := '{}';
-BEGIN
-    -- Marquer les cycles active_sell sans exit_order_id comme canceled
-    UPDATE trade_cycles 
-    SET 
-        status = 'canceled', 
-        updated_at = NOW(),
-        metadata = COALESCE(metadata, '{}') || '{"cancel_reason": "phantom_cycle_cleanup", "cleanup_timestamp": "' || NOW()::text || '"}'
-    WHERE 
-        status = 'active_sell' 
-        AND exit_order_id IS NULL;
-    
-    GET DIAGNOSTICS phantom_count = ROW_COUNT;
-    
-    details_json := jsonb_build_object(
-        'phantom_cycles_cleaned', phantom_count,
-        'cleanup_timestamp', NOW()
-    );
-    
-    RETURN QUERY SELECT phantom_count, details_json;
-END;
-$$ LANGUAGE plpgsql;
-
--- Procédure optimisée pour calculer et stocker les statistiques quotidiennes
-CREATE OR REPLACE PROCEDURE update_daily_stats(p_date DATE DEFAULT CURRENT_DATE)
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    v_start_timestamp TIMESTAMP;
-    v_end_timestamp TIMESTAMP;
-BEGIN
-    v_start_timestamp := p_date::TIMESTAMP;
-    v_end_timestamp := (p_date + INTERVAL '1 day')::TIMESTAMP;
-    
-    -- Supprimer les anciennes stats pour cette date
-    DELETE FROM performance_stats 
-    WHERE period = 'daily' AND start_date = p_date;
-    
-    -- Calculer et insérer les nouvelles statistiques
-    WITH completed_cycles AS (
-        SELECT 
-            symbol,
-            strategy,
-            profit_loss,
-            profit_loss_percent,
-            completed_at,
-            created_at
-        FROM 
-            trade_cycles
-        WHERE 
-            status = 'completed'
-            AND completed_at >= v_start_timestamp
-            AND completed_at < v_end_timestamp
-    ),
-    daily_stats AS (
-        SELECT 
-            symbol,
-            strategy,
-            COUNT(*) as total_trades,
-            SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as winning_trades,
-            SUM(CASE WHEN profit_loss < 0 THEN 1 ELSE 0 END) as losing_trades,
-            SUM(CASE WHEN profit_loss = 0 THEN 1 ELSE 0 END) as break_even_trades,
-            SUM(profit_loss) as profit_loss,
-            AVG(profit_loss_percent) as profit_loss_percent,
-            AVG(completed_at - created_at) as average_holding_time,
-            CASE 
-                WHEN COUNT(*) > 0 THEN
-                    SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END)::NUMERIC / COUNT(*) * 100
-                ELSE 0
-            END as win_rate
-        FROM 
-            completed_cycles
-        GROUP BY 
-            symbol, strategy
-    )
-    INSERT INTO performance_stats (
-        symbol, strategy, period, start_date, end_date,
-        total_trades, winning_trades, losing_trades, break_even_trades,
-        profit_loss, profit_loss_percent, average_holding_time, win_rate
-    )
-    SELECT 
-        symbol,
-        strategy,
-        'daily',
-        p_date,
-        p_date,
-        total_trades,
-        winning_trades,
-        losing_trades,
-        break_even_trades,
-        profit_loss,
-        profit_loss_percent,
-        average_holding_time,
-        win_rate
-    FROM 
-        daily_stats;
-        
-    RAISE NOTICE 'Statistiques quotidiennes calculées pour %', p_date;
-END;
-$$;
-
--- Trigger pour mettre à jour les timestamps automatiquement
-CREATE OR REPLACE FUNCTION update_timestamp()
+-- Fonction pour mettre à jour updated_at
+CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = NOW();
+    NEW.updated_at = CURRENT_TIMESTAMP;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ language 'plpgsql';
 
--- Créer les triggers pour les tables principales
-DROP TRIGGER IF EXISTS update_trade_executions_timestamp ON trade_executions;
-CREATE TRIGGER update_trade_executions_timestamp
-BEFORE UPDATE ON trade_executions
-FOR EACH ROW
-EXECUTE FUNCTION update_timestamp();
+-- Triggers pour les tables avec updated_at
+CREATE TRIGGER update_market_data_updated_at BEFORE UPDATE ON market_data FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_trade_executions_updated_at BEFORE UPDATE ON trade_executions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_trade_cycles_updated_at BEFORE UPDATE ON trade_cycles FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_strategy_configs_updated_at BEFORE UPDATE ON strategy_configs FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_positions_updated_at BEFORE UPDATE ON positions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-DROP TRIGGER IF EXISTS update_trade_cycles_timestamp ON trade_cycles;
-CREATE TRIGGER update_trade_cycles_timestamp
-BEFORE UPDATE ON trade_cycles
-FOR EACH ROW
-EXECUTE FUNCTION update_timestamp();
-
-DROP TRIGGER IF EXISTS update_strategy_configs_timestamp ON strategy_configs;
-CREATE TRIGGER update_strategy_configs_timestamp
-BEFORE UPDATE ON strategy_configs
-FOR EACH ROW
-EXECUTE FUNCTION update_timestamp();
-
-DROP TRIGGER IF EXISTS update_risk_rules_timestamp ON risk_rules;
-CREATE TRIGGER update_risk_rules_timestamp
-BEFORE UPDATE ON risk_rules
-FOR EACH ROW
-EXECUTE FUNCTION update_timestamp();
-
--- Fonction de nettoyage périodique (améliorée)
-CREATE OR REPLACE PROCEDURE maintenance_cleanup(older_than_days INT DEFAULT 90)
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    signals_deleted INT;
-    logs_deleted INT;
-    alerts_deleted INT;
-BEGIN
-    -- Nettoyer les anciennes données de trading_signals
-    DELETE FROM trading_signals
-    WHERE created_at < NOW() - (older_than_days || ' days')::INTERVAL;
-    GET DIAGNOSTICS signals_deleted = ROW_COUNT;
-    
-    -- Nettoyer les vieux logs d'événements (garder uniquement les erreurs pour les périodes plus anciennes)
-    DELETE FROM event_logs
-    WHERE timestamp < NOW() - (older_than_days || ' days')::INTERVAL
-    AND level NOT IN ('ERROR', 'CRITICAL');
-    GET DIAGNOSTICS logs_deleted = ROW_COUNT;
-    
-    -- Nettoyer les alertes lues anciennes
-    DELETE FROM alerts
-    WHERE is_read = TRUE 
-    AND created_at < NOW() - (older_than_days || ' days')::INTERVAL;
-    GET DIAGNOSTICS alerts_deleted = ROW_COUNT;
-    
-    -- VACUUM ANALYZE pour optimiser les performances après suppression
-    ANALYZE trading_signals;
-    ANALYZE event_logs;
-    ANALYZE alerts;
-    
-    RAISE NOTICE 'Maintenance terminée. Supprimé: % signaux, % logs, % alertes', 
-                 signals_deleted, logs_deleted, alerts_deleted;
-END;
-$$;
-
--- Fonction pour analyser la santé de la base de données
-CREATE OR REPLACE FUNCTION db_health_check() 
-RETURNS TABLE (
-    table_name TEXT,
-    row_count BIGINT,
-    table_size TEXT,
-    index_size TEXT,
-    bloat_pct NUMERIC,
-    last_vacuum TIMESTAMP,
-    last_analyze TIMESTAMP
-)
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    RETURN QUERY
-    WITH table_stats AS (
-        SELECT
-            schemaname || '.' || relname AS full_table_name,
-            n_live_tup AS row_estimate,
-            pg_size_pretty(pg_total_relation_size('"' || schemaname || '"."' || relname || '"')) AS total_size,
-            pg_size_pretty(pg_indexes_size('"' || schemaname || '"."' || relname || '"')) AS index_size,
-            CASE WHEN n_dead_tup > 0 THEN
-                round(n_dead_tup * 100.0 / (n_live_tup + n_dead_tup), 1)
-            ELSE 0 END AS bloat_pct,
-            last_vacuum,
-            last_autovacuum,
-            last_analyze,
-            last_autoanalyze
-        FROM
-            pg_stat_user_tables
-        WHERE
-            schemaname = 'public'
-    )
-    SELECT
-        split_part(ts.full_table_name, '.', 2) AS table_name,
-        ts.row_estimate,
-        ts.total_size,
-        ts.index_size,
-        ts.bloat_pct,
-        COALESCE(ts.last_vacuum, ts.last_autovacuum) AS last_vacuum,
-        COALESCE(ts.last_analyze, ts.last_autoanalyze) AS last_analyze
-    FROM
-        table_stats ts
-    ORDER BY
-        row_estimate DESC;
-END;
-$$;
-
--- Insérer les contraintes Binance par défaut (basées sur les vraies valeurs de l'API)
-INSERT INTO binance_constraints (symbol, min_qty, max_qty, step_size, min_notional, price_precision, qty_precision) VALUES
-('BTCUSDC', 0.00001, 9000.0, 0.00001, 5.0, 2, 5),
-('ETHUSDC', 0.0001, 90000.0, 0.0001, 5.0, 2, 4),
-('ETHBTC', 0.001, 100000.0, 0.001, 0.0001, 6, 3)
-ON CONFLICT (symbol) DO UPDATE SET
-    min_qty = EXCLUDED.min_qty,
-    max_qty = EXCLUDED.max_qty,
-    step_size = EXCLUDED.step_size,
-    min_notional = EXCLUDED.min_notional,
-    price_precision = EXCLUDED.price_precision,
-    qty_precision = EXCLUDED.qty_precision,
-    last_updated = NOW();
-
--- Insérer les configurations de stratégies par défaut (stratégies Ultra avec paramètres optimisés XRP/SOL)
-INSERT INTO strategy_configs (name, mode, symbols, params, max_simultaneous_trades, enabled) VALUES
-('Reversal_Divergence_Ultra_Strategy', 'active', '["BTCUSDC", "ETHUSDC", "SOLUSDC", "XRPUSDC"]', '{"XRPUSDC": {"div_strength_min": 0.12, "volume_ratio_min": 1.4}, "SOLUSDC": {"div_strength_min": 0.15, "volume_ratio_min": 1.6}}', 2, true),
-('Breakout_Ultra_Strategy', 'active', '["BTCUSDC", "ETHUSDC", "SOLUSDC", "XRPUSDC"]', '{"XRPUSDC": {"breakout_min": 0.048, "volume_ratio_min": 1.4, "consolidation_noise_max": 0.038}, "SOLUSDC": {"breakout_min": 0.09, "volume_ratio_min": 1.6, "consolidation_noise_max": 0.072}}', 2, true),
-('MACD_Ultra_Strategy', 'active', '["BTCUSDC", "ETHUSDC", "SOLUSDC", "XRPUSDC"]', '{"XRPUSDC": {"cross_force": 0.00016, "volume_ratio_min": 1.4}, "SOLUSDC": {"cross_force": 0.0003, "volume_ratio_min": 1.6}}', 2, true),
-('Bollinger_Ultra_Strategy', 'active', '["BTCUSDC", "ETHUSDC", "SOLUSDC", "XRPUSDC"]', '{"XRPUSDC": {"squeeze_max": 0.016, "breakout_min": 0.08, "volume_ratio_min": 1.4}, "SOLUSDC": {"squeeze_max": 0.03, "breakout_min": 0.15, "volume_ratio_min": 1.6}}', 2, true),
-('RSI_Ultra_Strategy', 'active', '["BTCUSDC", "ETHUSDC", "SOLUSDC", "XRPUSDC"]', '{"XRPUSDC": {"rsi_oversold": 22, "rsi_overbought": 78, "volume_ratio_min": 1.4}, "SOLUSDC": {"rsi_oversold": 23, "rsi_overbought": 77, "volume_ratio_min": 1.6}}', 3, true),
-('EMA_Cross_Ultra_Strategy', 'active', '["BTCUSDC", "ETHUSDC", "SOLUSDC", "XRPUSDC"]', '{"XRPUSDC": {"ema_gap_min": 0.0032, "volume_ratio_min": 1.4}, "SOLUSDC": {"ema_gap_min": 0.006, "volume_ratio_min": 1.6}}', 2, true)
-ON CONFLICT (name) DO UPDATE SET
-    mode = EXCLUDED.mode,
-    symbols = EXCLUDED.symbols,
-    params = EXCLUDED.params,
-    max_simultaneous_trades = EXCLUDED.max_simultaneous_trades,
-    enabled = EXCLUDED.enabled,
-    updated_at = NOW();
-
--- Insérer les règles de risque par défaut
-INSERT INTO risk_rules (name, rule_type, threshold, action, enabled) VALUES
-('Max Daily Loss', 'daily_loss', 5.0, 'pause', true),
-('Max Drawdown', 'drawdown', 10.0, 'warn', true),
-('Max Position Size', 'position_size', 20.0, 'warn', true),
-('High Volatility Warning', 'volatility', 15.0, 'warn', true)
-ON CONFLICT (name) DO UPDATE SET
-    rule_type = EXCLUDED.rule_type,
-    threshold = EXCLUDED.threshold,
-    action = EXCLUDED.action,
-    enabled = EXCLUDED.enabled,
-    updated_at = NOW();
-
--- Ajouter les colonnes si elles n'existent pas
-ALTER TABLE trade_cycles 
-ADD COLUMN IF NOT EXISTS min_price NUMERIC(16, 8), 
-ADD COLUMN IF NOT EXISTS max_price NUMERIC(16, 8);
-
--- Initialiser les valeurs NULL avec entry_price pour les cycles actifs
-UPDATE trade_cycles 
-SET min_price = entry_price, 
-    max_price = entry_price 
-WHERE (min_price IS NULL OR max_price IS NULL) 
-  AND status NOT IN ('completed', 'canceled', 'failed');
-
--- Créer des index pour améliorer les performances des requêtes sur ces colonnes
-CREATE INDEX IF NOT EXISTS trade_cycles_min_price_idx ON trade_cycles(min_price) 
-WHERE status NOT IN ('completed', 'canceled', 'failed');
-
-CREATE INDEX IF NOT EXISTS trade_cycles_max_price_idx ON trade_cycles(max_price) 
-WHERE status NOT IN ('completed', 'canceled', 'failed');
-
--- Insérer des commentaires sur les tables pour la documentation
-COMMENT ON TABLE trade_cycles IS 'Cycles de trading complets avec métadonnées pour la réconciliation';
-COMMENT ON COLUMN trade_cycles.metadata IS 'Métadonnées JSON pour stocker des infos supplémentaires (réconciliation, raisons d''annulation, etc.)';
-COMMENT ON COLUMN trade_cycles.status IS 'Statut du cycle en minuscules pour cohérence avec les énumérations Python';
-
-COMMENT ON TABLE binance_constraints IS 'Cache des contraintes de trading Binance pour éviter les appels API répétés';
-
--- Politique de rétention pour TimescaleDB (données de marché)
-SELECT add_retention_policy('market_data', INTERVAL '1 year');
-
--- ==========================================
--- MIGRATIONS INTÉGRÉES AU SCHÉMA
--- ==========================================
-
--- Migration 004: Indicateurs techniques
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS rsi_14 NUMERIC(8,4);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS ema_12 NUMERIC(16,8);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS ema_26 NUMERIC(16,8);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS ema_50 NUMERIC(16,8);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS sma_20 NUMERIC(16,8);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS sma_50 NUMERIC(16,8);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS macd_line NUMERIC(16,8);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS macd_signal NUMERIC(16,8);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS macd_histogram NUMERIC(16,8);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS bb_upper NUMERIC(16,8);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS bb_middle NUMERIC(16,8);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS bb_lower NUMERIC(16,8);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS bb_position NUMERIC(8,4);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS bb_width NUMERIC(8,4);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS atr_14 NUMERIC(16,8);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS momentum_10 NUMERIC(8,4);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS volume_ratio NUMERIC(8,4);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS avg_volume_20 NUMERIC(20,8);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS stoch_rsi NUMERIC(8,4);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS adx_14 NUMERIC(8,4);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS williams_r NUMERIC(8,4);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS cci_20 NUMERIC(8,4);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS vwap_10 NUMERIC(16,8);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS enhanced BOOLEAN DEFAULT FALSE;
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS ultra_enriched BOOLEAN DEFAULT FALSE;
-
--- Migration 005: Indicateurs supplémentaires
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS plus_di NUMERIC(8,4);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS minus_di NUMERIC(8,4);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS stoch_k NUMERIC(8,4);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS stoch_d NUMERIC(8,4);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS roc_10 NUMERIC(8,4);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS roc_20 NUMERIC(8,4);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS obv NUMERIC(24,8);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS mfi_14 NUMERIC(8,4);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS trend_angle NUMERIC(8,4);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS pivot_count INTEGER;
-
--- Migration 007: EMA Binance
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS ema_7 NUMERIC(16,8);
-ALTER TABLE market_data ADD COLUMN IF NOT EXISTS ema_99 NUMERIC(16,8);
-
--- Migration 002: Side pour trade_cycles
-ALTER TABLE trade_cycles ADD COLUMN IF NOT EXISTS side VARCHAR(4) CHECK (side IN ('BUY', 'SELL'));
-
--- Migration 003: Colonnes trade_executions
-ALTER TABLE trade_executions ADD COLUMN IF NOT EXISTS id VARCHAR(50);
-ALTER TABLE trade_executions ADD COLUMN IF NOT EXISTS metadata JSONB;
-
--- Index pour les données enrichies
-CREATE INDEX IF NOT EXISTS market_data_enhanced_idx ON market_data (enhanced, ultra_enriched, symbol, time DESC);
+-- =====================================================
+-- ANALYSE ET OPTIMISATION
+-- =====================================================
 
 -- Exécuter ANALYZE pour mettre à jour les statistiques
 ANALYZE;
+
+-- Message de confirmation
+DO $$
+BEGIN
+    RAISE NOTICE 'Schéma RootTrading v2.0 créé avec succès !';
+    RAISE NOTICE 'Architecture propre : Gateway (OHLCV bruts) + Market Analyzer (calculs séparés)';
+    RAISE NOTICE 'Tables principales : market_data, analyzer_data, trade_cycles, trade_executions';
+END $$;

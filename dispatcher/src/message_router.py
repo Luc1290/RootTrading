@@ -6,6 +6,7 @@ import logging
 import time
 import threading
 from collections import deque
+from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 
 from shared.src.config import SYMBOLS
@@ -40,14 +41,10 @@ class MessageRouter:
         # Préfixe pour les canaux Redis
         self.redis_prefix = "roottrading"
         
-        # Mappings des topics vers les canaux (ULTRA-ENRICHI)
+        # Mappings des topics vers les canaux
         self.topic_to_channel = {
             "market.data": "market:data",  # Multi-timeframes enrichies
-            "analyzer.signals": "analyze:signal",  # Signaux bruts de l'analyzer
-            "analyzer.signals.enhanced": "analyze:signal:enhanced",  # Signaux ultra-confluents
-            "analyzer.signals.scored": "analyze:signal:scored",  # Signaux avec scoring ultra-avancé
             "signals.filtered": "signals:filtered",  # Signaux filtrés du signal_aggregator
-            "signals.scored": "signals:scored",  # Signaux avec scoring
             "executions": "trade:execution",
             "orders": "trade:order"
         }
@@ -258,6 +255,65 @@ class MessageRouter:
         Returns:
             Message transformé et enrichi
         """
+        transformed = message.copy()
+        
+        # Ajouter les métadonnées de routage
+        transformed["_routing"] = {
+            "source_topic": topic,
+            "received_at": datetime.now().isoformat(),
+            "priority": self._determine_priority(topic)
+        }
+        
+        # Traitement spécifique selon le type de topic
+        if any(topic.startswith(f"market.data.") and topic.endswith(f".{tf}") for tf in ["1m", "3m", "5m", "15m", "1d"]):
+            # Extraction du symbole et timeframe depuis le topic
+            parts = topic.split(".")
+            if len(parts) >= 4:
+                symbol = parts[2]
+                timeframe = parts[3]
+                
+                # S'assurer que le symbole et timeframe sont dans le message
+                if "symbol" not in transformed:
+                    transformed["symbol"] = symbol
+                if "timeframe" not in transformed:
+                    transformed["timeframe"] = timeframe
+                    
+                # Validation des champs essentiels pour les données de marché
+                required_fields = ["time", "open", "high", "low", "close", "volume"]
+                for field in required_fields:
+                    if field not in transformed:
+                        logger.warning(f"Champ requis manquant dans les données de marché: {field}")
+                        
+                # Architecture PROPRE: Le Gateway n'envoie que des données OHLCV brutes
+                # Pas d'indicateurs techniques dans les messages du Gateway
+                transformed["_routing"]["data_type"] = "raw_market_data"
+                
+                # Vérifier que c'est bien des données brutes (pas d'indicateurs)
+                indicator_fields = ["rsi_14", "ema_12", "macd_line", "bb_upper"]
+                has_indicators = any(ind in transformed for ind in indicator_fields)
+                if has_indicators:
+                    logger.warning(f"ATTENTION: Données avec indicateurs reçues du Gateway - architecture corrompue!")
+                    transformed["_routing"]["data_type"] = "corrupted_enriched_data"
+                        
+        elif topic == "market.data" or topic.startswith("market.data.") and not any(topic.endswith(f".{tf}") for tf in ["1m", "3m", "5m", "15m", "1d"]):
+            # Format legacy ou données brutes génériques
+            transformed["_routing"]["data_type"] = "raw_market_data_legacy"
+            
+        elif topic == "analyzer.signals" or topic == "signals":
+            transformed["_routing"]["data_type"] = "signal"
+            # Validation des champs de signal
+            signal_fields = ["symbol", "side", "strategy", "timestamp"]
+            for field in signal_fields:
+                if field not in transformed:
+                    logger.warning(f"Champ signal manquant: {field}")
+                    
+        elif topic == "executions":
+            transformed["_routing"]["data_type"] = "execution"
+            
+        elif topic == "orders":
+            transformed["_routing"]["data_type"] = "order"
+            
+        return transformed
 
     
     def route_message(self, topic: str, message: Dict[str, Any], priority: Optional[str] = None) -> bool:

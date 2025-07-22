@@ -65,17 +65,17 @@ class KafkaProducer:
             
             # Log pour le débogage (uniquement pour les chandeliers fermés)
             if data.get('is_closed', False):
-                logger.info(f"📊 Publié sur Kafka+Redis {symbol.upper()}: {data['close']} [O:{data['open']} H:{data['high']} L:{data['low']}]")
+                logger.info(f"📊 OHLCV brutes publiées {symbol.upper()}: {data['close']} [O:{data['open']} H:{data['high']} L:{data['low']} V:{data.get('volume', 'N/A')}]")
             else:
                 # Log plus discret pour les mises à jour en cours
-                logger.debug(f"🔄 Mis à jour sur Redis {symbol.upper()}: prix actuel {data['close']}")
+                logger.debug(f"🔄 Données en cours {symbol.upper()}: prix actuel {data['close']}")
         except Exception as e:
             error_msg = str(e).replace('{', '{{').replace('}', '}}')
             logger.error(f"❌ Erreur lors de la publication sur Kafka: {error_msg}")
     
     def publish_to_topic(self, topic: str, data: Dict[str, Any], key: Optional[str] = None) -> None:
         """
-        Publie des données sur un topic Kafka spécifique (pour le gateway enrichi).
+        Publie des données sur un topic Kafka spécifique.
         
         Args:
             topic: Nom du topic Kafka
@@ -85,16 +85,12 @@ class KafkaProducer:
         try:
             self.client.produce(topic=topic, message=data, key=key)
             
-            if data.get('enhanced') and data.get('is_closed', False):
+            # Log simple pour les données publiées
+            if data.get('is_closed', False):
                 symbol = data.get('symbol', 'N/A')
                 timeframe = data.get('timeframe', 'N/A')
                 price = data.get('close', 'N/A')
-                rsi = data.get('rsi_14', 'N/A')
-                spread = data.get('spread_pct', 'N/A')
-                
-                rsi_str = f"{rsi:.1f}" if isinstance(rsi, (int, float)) else str(rsi)
-                spread_str = f"{spread:.3f}" if isinstance(spread, (int, float)) else str(spread)
-                logger.info(f"📊 Enhanced {symbol} {timeframe}: {price} [RSI:{rsi_str} Spread:{spread_str}%]")
+                logger.info(f"📊 Données publiées {symbol} {timeframe}: {price}")
                           
         except Exception as e:
             logger.error(f"❌ Erreur publication topic {topic}: {e}")

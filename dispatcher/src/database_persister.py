@@ -68,34 +68,117 @@ class DatabasePersister:
         if not self.running or not self.db_pool:
             return
             
-        # Extraire symbole et timeframe du topic
-  
+        # Extraire symbole et timeframe du topic ou du message
+        symbol = None
+        timeframe = None
+        
+        # D'abord essayer d'extraire du topic (format: market.data.{symbol}.{timeframe})
+        parts = topic.split(".")
+        if len(parts) >= 4:
+            symbol = parts[2].upper()
+            timeframe = parts[3]
+        
+        # Sinon, utiliser les valeurs du message
+        if not symbol:
+            symbol = message.get("symbol", "").upper()
+        if not timeframe:
+            timeframe = message.get("timeframe", "1m")
             
-        # Extraire les données OHLCV + indicateurs techniques
-     
-
-            # Log pour déboguer
-            indicators_count = len(db_indicators)
-            if indicators_count > 2:  # Plus que enhanced/ultra_enriched
-                logger.debug(f"💾 Sauvegarde {symbol} avec {indicators_count} indicateurs")
+        if not symbol:
+            logger.error(f"Impossible d'extraire le symbole du topic {topic} ou du message")
+            return
             
-            # Sauvegarder de manière asynchrone
-            if self.loop:
-                asyncio.run_coroutine_threadsafe(
-                    self._insert_market_data(market_data),
-                    self.loop
-                )
-                
+        # Préparer les données OHLCV brutes pour l'insertion
+        # Le Gateway n'envoie plus d'indicateurs - seulement les données brutes
+        data = {
+            "time": message.get("time"),
+            "symbol": symbol,
+            "timeframe": timeframe,
+            # OHLCV de base uniquement
+            "open": message.get("open"),
+            "high": message.get("high"),
+            "low": message.get("low"),
+            "close": message.get("close"),
+            "volume": message.get("volume"),
+            # Métadonnées sources
+            "quote_asset_volume": message.get("quote_asset_volume"),
+            "number_of_trades": message.get("number_of_trades"),
+            "taker_buy_base_asset_volume": message.get("taker_buy_base_asset_volume"),
+            "taker_buy_quote_asset_volume": message.get("taker_buy_quote_asset_volume"),
+            "is_closed": message.get("is_closed", True),
+            "source": message.get("source", "gateway")
+        }
+        
+        # Vérifier les données essentielles OHLCV
+        if not data["time"] or data["close"] is None:
+            logger.error(f"Données OHLCV essentielles manquantes pour {symbol}")
+            return
+            
+        # Traiter le timestamp si nécessaire
+        if isinstance(data["time"], int):
+            # Convertir timestamp milliseconds en datetime ISO
+            from datetime import datetime
+            data["time"] = datetime.fromtimestamp(data["time"] / 1000).isoformat()
+            
+        # Exécuter l'insertion en async
+        future = asyncio.run_coroutine_threadsafe(
+            self._insert_market_data(data),
+            self.loop
+        )
+        
+        # Attendre le résultat avec timeout
+        try:
+            future.result(timeout=5.0)
         except Exception as e:
-            logger.error(f"❌ Erreur extraction données marché: {e}")
+            logger.error(f"Erreur lors de l'insertion des données de marché: {e}")
+
     
     async def _insert_market_data(self, data: Dict[str, Any]):
         """
-        Insert les données de marché enrichies en base (méthode async).
+        Insert les données de marché BRUTES en base (méthode async).
+        ARCHITECTURE PROPRE: Seulement OHLCV + métadonnées Binance.
         
         Args:
-            data: Dictionnaire avec les données OHLCV + indicateurs techniques
+            data: Dictionnaire avec les données OHLCV brutes uniquement
         """
+        query = """
+            INSERT INTO market_data (
+                time, symbol, timeframe, open, high, low, close, volume,
+                quote_asset_volume, number_of_trades, 
+                taker_buy_base_asset_volume, taker_buy_quote_asset_volume
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+            )
+            ON CONFLICT (time, symbol, timeframe) DO UPDATE SET
+                open = EXCLUDED.open,
+                high = EXCLUDED.high,
+                low = EXCLUDED.low,
+                close = EXCLUDED.close,
+                volume = EXCLUDED.volume,
+                quote_asset_volume = EXCLUDED.quote_asset_volume,
+                number_of_trades = EXCLUDED.number_of_trades,
+                taker_buy_base_asset_volume = EXCLUDED.taker_buy_base_asset_volume,
+                taker_buy_quote_asset_volume = EXCLUDED.taker_buy_quote_asset_volume,
+                updated_at = CURRENT_TIMESTAMP
+        """
+        
+        try:
+            async with self.db_pool.acquire() as conn:
+                await conn.execute(
+                    query,
+                    data["time"], data["symbol"], data["timeframe"],
+                    data["open"], data["high"], data["low"], data["close"], data["volume"],
+                    data.get("quote_asset_volume"), data.get("number_of_trades"),
+                    data.get("taker_buy_base_asset_volume"), data.get("taker_buy_quote_asset_volume")
+                )
+                
+                # Log pour les données OHLCV brutes sauvegardées
+                logger.debug(f"✓ Données OHLCV brutes sauvegardées: {data['symbol']} {data['timeframe']} @ {data['close']}")
+                    
+        except Exception as e:
+            logger.error(f"Erreur lors de l'insertion OHLCV en base: {e}")
+            logger.error(f"Données OHLCV: {data}")
+            raise
 
     async def close(self):
         """Ferme les connexions."""
