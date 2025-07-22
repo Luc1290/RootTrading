@@ -15,7 +15,7 @@ import time
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Tuple, Union, Any
-from .config import STRATEGY_PARAMS
+from ..shared.src.config import STRATEGY_PARAMS
 
 logger = logging.getLogger(__name__)
 

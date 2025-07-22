@@ -7,7 +7,7 @@ le contexte approprié et ajuster automatiquement les seuils de validation volum
 
 from typing import List, Optional, Tuple
 from dataclasses import dataclass
-from .config import VOLUME_CONTEXTS, VOLUME_BUILDUP_CONFIG, ADX_WEAK_TREND_THRESHOLD
+from ..shared.src.config import VOLUME_CONTEXTS, VOLUME_BUILDUP_CONFIG, ADX_WEAK_TREND_THRESHOLD
 
 
 @dataclass

@@ -19,7 +19,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 
 from shared.src.config import SYMBOLS
 from shared.src.redis_client import RedisClient
-from shared.src.technical_indicators import indicators
+from market_analyzer.technical_indicators import indicators
 
 logger = logging.getLogger(__name__)
 
@@ -246,7 +246,7 @@ class UltraDataFetcher:
             enriched_data.update(final_indicators)
             
             # **CRITIQUE**: Sauvegarder les indicateurs dans le cache persistant IMMÉDIATEMENT
-            from shared.src.technical_indicators import indicator_cache
+            from market_analyzer.technical_indicators import indicator_cache
             saved_indicators = 0
             for indicator_name, indicator_value in final_indicators.items():
                 # Sauvegarder seulement les indicateurs numériques valides
@@ -377,7 +377,7 @@ class UltraDataFetcher:
     
     def _calculate_rsi(self, prices: List[float], period: int = 14) -> Optional[float]:
         """Calcule le RSI via le module centralisé"""
-        from shared.src.technical_indicators import calculate_rsi
+        from market_analyzer.technical_indicators import calculate_rsi
         return calculate_rsi(prices, period)
     
     def _calculate_stoch_rsi(self, prices: List[float], period: int = 14) -> Optional[float]:
@@ -409,13 +409,13 @@ class UltraDataFetcher:
     
     def _calculate_ema(self, prices: List[float], period: int) -> float:
         """Calcule EMA via le module centralisé"""
-        from shared.src.technical_indicators import calculate_ema
+        from market_analyzer.technical_indicators import calculate_ema
         result = calculate_ema(prices, period)
         return result if result is not None else (prices[-1] if prices else 0)
     
     def _calculate_macd(self, prices: List[float]) -> Dict:
         """Calcule MACD complet via le module centralisé"""
-        from shared.src.technical_indicators import calculate_macd
+        from market_analyzer.technical_indicators import calculate_macd
         
         result = calculate_macd(prices)
         if result is None or any(v is None for v in result.values()):
@@ -429,7 +429,7 @@ class UltraDataFetcher:
     
     def _calculate_bollinger_bands(self, prices: List[float], period: int, std_dev: float) -> Dict:
         """Calcule les Bollinger Bands via le module centralisé"""
-        from shared.src.technical_indicators import calculate_bollinger_bands
+        from market_analyzer.technical_indicators import calculate_bollinger_bands
         
         result = calculate_bollinger_bands(prices, period, std_dev)
         if result is None or any(v is None for v in result.values()):
@@ -445,7 +445,7 @@ class UltraDataFetcher:
     
     def _calculate_adx(self, highs: List[float], lows: List[float], closes: List[float], period: int = 14) -> Optional[float]:
         """Calcule ADX en utilisant le module partagé"""
-        from shared.src.technical_indicators import calculate_adx
+        from market_analyzer.technical_indicators import calculate_adx
         
         try:
             adx_result = calculate_adx(highs, lows, closes, period)
@@ -458,7 +458,7 @@ class UltraDataFetcher:
     
     def _calculate_atr(self, highs: List[float], lows: List[float], closes: List[float], period: int = 14) -> Optional[float]:
         """Calcule ATR via le module centralisé"""
-        from shared.src.technical_indicators import calculate_atr
+        from market_analyzer.technical_indicators import calculate_atr
         result = calculate_atr(highs, lows, closes, period)
         return round(result, 6) if result is not None else None
     
@@ -927,7 +927,7 @@ class UltraDataFetcher:
         Returns:
             Liste des points enrichis avec indicateurs calculés correctement
         """
-        from shared.src.technical_indicators import indicator_cache, TechnicalIndicators
+        from market_analyzer.technical_indicators import indicator_cache, TechnicalIndicators
         import numpy as np
         
         enriched_points = []
@@ -1109,7 +1109,7 @@ class UltraDataFetcher:
                 point_indicators['rsi_14'] = incremental_indicators.get('rsi_14', 50.0)  # Valeur par défaut neutre
                 
                 # **NOUVEAU**: Sauvegarder explicitement les indicateurs dans le cache persistant
-                from shared.src.technical_indicators import indicator_cache
+                from market_analyzer.technical_indicators import indicator_cache
                 for indicator_name, indicator_value in incremental_indicators.items():
                     # Sauvegarder seulement les indicateurs numériques valides
                     if isinstance(indicator_value, (int, float)) and not (isinstance(indicator_value, float) and indicator_value != indicator_value):

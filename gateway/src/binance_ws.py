@@ -392,7 +392,7 @@ class BinanceWebSocket:
                 symbol, timeframe, prices, highs, lows, volumes, min_required=200
             )
             
-            from shared.src.technical_indicators import indicators, indicator_cache
+            from market_analyzer.technical_indicators import indicators, indicator_cache
             
             # **CRITIQUE**: Commencer par récupérer TOUS les indicateurs historiques
             historical_indicators = indicator_cache.get_all_indicators(symbol, timeframe)
@@ -444,7 +444,7 @@ class BinanceWebSocket:
                 
     def _calculate_rsi(self, prices: List[float], period: int = 14) -> Optional[float]:
         """Calcule le RSI via le module centralisé"""
-        from shared.src.technical_indicators import calculate_rsi
+        from market_analyzer.technical_indicators import calculate_rsi
         return calculate_rsi(prices, period)
         
     def _calculate_stoch_rsi(self, prices: List[float], period: int = 14) -> Optional[float]:
@@ -474,13 +474,13 @@ class BinanceWebSocket:
         
     def _calculate_ema(self, prices: List[float], period: int) -> float:
         """Calcule l'EMA via le module centralisé"""
-        from shared.src.technical_indicators import calculate_ema
+        from market_analyzer.technical_indicators import calculate_ema
         result = calculate_ema(prices, period)
         return result if result is not None else (prices[-1] if prices else 0)
         
     def _calculate_macd(self, prices: List[float]) -> Optional[Dict]:
         """Calcule MACD complet via le module centralisé"""
-        from shared.src.technical_indicators import calculate_macd
+        from market_analyzer.technical_indicators import calculate_macd
         
         result = calculate_macd(prices)
         if result is None or any(v is None for v in result.values()):
@@ -494,7 +494,7 @@ class BinanceWebSocket:
         
     def _calculate_bollinger_bands(self, prices: List[float], period: int, std_dev: float) -> Optional[Dict]:
         """Calcule les Bollinger Bands via le module centralisé"""
-        from shared.src.technical_indicators import calculate_bollinger_bands
+        from market_analyzer.technical_indicators import calculate_bollinger_bands
         
         result = calculate_bollinger_bands(prices, period, std_dev)
         if result is None or any(v is None for v in result.values()):
@@ -582,7 +582,7 @@ class BinanceWebSocket:
         
         try:
             # Utiliser le module partagé pour le calcul ADX
-            from shared.src.technical_indicators import TechnicalIndicators
+            from market_analyzer.technical_indicators import TechnicalIndicators
             indicators = TechnicalIndicators()
             
             adx, plus_di, minus_di = indicators.calculate_adx(highs, lows, closes, period)
@@ -1039,7 +1039,7 @@ class BinanceWebSocket:
             cache = self.incremental_cache[symbol][timeframe]
             
             # 📈 EMA 7, 26, 99 (incrémentaux avec initialisation intelligente)
-            from shared.src.technical_indicators import calculate_ema_incremental
+            from market_analyzer.technical_indicators import calculate_ema_incremental
             
             for period in [7, 26, 99]:
                 cache_ema_key = f'ema_{period}'
@@ -1055,7 +1055,7 @@ class BinanceWebSocket:
                         continue
                     else:
                         # **NOUVEAU**: Fallback vers le cache persistant si all_indicators manque
-                        from shared.src.technical_indicators import indicator_cache
+                        from market_analyzer.technical_indicators import indicator_cache
                         cached_ema = indicator_cache.get(symbol, timeframe, cache_ema_key)
                         if cached_ema is not None:
                             cache[cache_ema_key] = cached_ema
@@ -1073,7 +1073,7 @@ class BinanceWebSocket:
                 cache[cache_ema_key] = new_ema
             
             # 📊 MACD incrémental (basé sur EMA 7/26 du cache)
-            from shared.src.technical_indicators import calculate_macd_incremental
+            from market_analyzer.technical_indicators import calculate_macd_incremental
             
             prev_ema_fast = cache.get('macd_ema_fast')  # EMA 7 pour MACD
             prev_ema_slow = cache.get('macd_ema_slow')  # EMA 26 pour MACD  
@@ -1090,7 +1090,7 @@ class BinanceWebSocket:
                     prev_ema_slow = cache['ema_26']
             else:
                 # **NOUVEAU**: Fallback vers le cache persistant pour les EMA MACD
-                from shared.src.technical_indicators import indicator_cache
+                from market_analyzer.technical_indicators import indicator_cache
                 if prev_ema_fast is None:
                     # MIGRATION BINANCE: Utiliser directement ema_7
                     cached_fast = indicator_cache.get(symbol, timeframe, 'ema_7')
@@ -1144,7 +1144,7 @@ class BinanceWebSocket:
             cache = self.incremental_cache[symbol][timeframe]
             
             # **NOUVEAU**: Restaurer depuis le cache persistant d'abord
-            from shared.src.technical_indicators import indicator_cache
+            from market_analyzer.technical_indicators import indicator_cache
             
             restored_count = 0
             indicator_keys = ['ema_7', 'ema_26', 'ema_99', 'macd_line', 'macd_signal', 'macd_histogram']
