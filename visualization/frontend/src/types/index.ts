@@ -16,13 +16,57 @@ export interface TradingSignal {
 }
 
 export interface Indicators {
-  rsi?: number[];
-  macd?: number[];
+  // RSI et momentum
+  rsi_14?: number[];
+  rsi_21?: number[];
+  // EMAs
+  ema_7?: number[];
+  ema_12?: number[];
+  ema_26?: number[];
+  ema_50?: number[];
+  ema_99?: number[];
+  // SMAs
+  sma_20?: number[];
+  sma_50?: number[];
+  // MACD
+  macd_line?: number[];
   macd_signal?: number[];
   macd_histogram?: number[];
-  ema_7?: number[];
-  ema_26?: number[];
-  ema_99?: number[];
+  // Bollinger Bands
+  bb_upper?: number[];
+  bb_middle?: number[];
+  bb_lower?: number[];
+  bb_position?: number[];
+  bb_width?: number[];
+  // Oscillateurs
+  stoch_k?: number[];
+  stoch_d?: number[];
+  williams_r?: number[];
+  cci_20?: number[];
+  // Volatilité et tendance
+  atr_14?: number[];
+  adx_14?: number[];
+  // Momentum
+  momentum_10?: number[];
+  roc_10?: number[];
+  roc_20?: number[];
+  // Volume
+  obv?: number[];
+  vwap_10?: number[];
+  vwap_quote_10?: number[];
+  volume_ratio?: number[];
+  avg_volume_20?: number[];
+  quote_volume_ratio?: number[];
+  avg_trade_size?: number[];
+  trade_intensity?: number[];
+  // Régime et contexte
+  market_regime?: string[];
+  regime_strength?: string[];
+  regime_confidence?: number[];
+  volume_context?: string[];
+  volume_pattern?: string[];
+  pattern_detected?: string[];
+  data_quality?: string[];
 }
 
 export interface ChartData {
@@ -49,8 +93,23 @@ export interface ChartConfig {
   period: string;
   emaToggles: {
     ema7: boolean;
+    ema12: boolean;
     ema26: boolean;
+    ema50: boolean;
     ema99: boolean;
+  };
+  smaToggles: {
+    sma20: boolean;
+    sma50: boolean;
+  };
+  indicatorToggles: {
+    rsi: boolean;
+    macd: boolean;
+    bollinger: boolean;
+    stochastic: boolean;
+    adx: boolean;
+    volume_advanced: boolean;
+    regime_info: boolean;
   };
 }
 

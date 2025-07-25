@@ -43,7 +43,10 @@ from market_analyzer.indicators.volatility.bollinger import calculate_keltner_ch
 
 # Import des indicateurs de volume
 from market_analyzer.indicators.volume.obv import calculate_obv_ma, calculate_obv_oscillator
-from market_analyzer.indicators.volume.vwap import calculate_vwap_bands
+from market_analyzer.indicators.volume.vwap import calculate_vwap_bands, calculate_vwap_quote_series
+from market_analyzer.indicators.volume.advanced_metrics import (
+    calculate_quote_volume_ratio, calculate_avg_trade_size, calculate_trade_intensity
+)
 
 # Import des détecteurs
 from market_analyzer.detectors.regime_detector import RegimeDetector
@@ -314,12 +317,26 @@ class IndicatorProcessor:
                 if vwap_series and len(vwap_series) > 0:
                     indicators['vwap_10'] = vwap_series[-1]
                 
-                # Volume context
+                # VWAP Quote (plus précis avec quote_asset_volume)
+                quote_volumes = [d.get('quote_asset_volume', 0) for d in ohlcv_data]
+                vwap_quote_series = self._safe_call(lambda: calculate_vwap_quote_series(highs, lows, closes, quote_volumes))
+                if vwap_quote_series and len(vwap_quote_series) > 0:
+                    indicators['vwap_quote_10'] = vwap_quote_series[-1]
+                
+                # Volume context avec métriques avancées
                 if len(volumes) >= 20:
                     avg_volume = sum(volumes[-20:]) / 20
+                    
+                    # Extraire les données pour les métriques avancées
+                    quote_volumes = [d.get('quote_asset_volume', 0) for d in ohlcv_data]
+                    trades_counts = [d.get('number_of_trades', 0) for d in ohlcv_data]
+                    
                     indicators.update({
                         'avg_volume_20': avg_volume,
-                        'volume_ratio': volumes[-1] / avg_volume if avg_volume > 0 else 1
+                        'volume_ratio': volumes[-1] / avg_volume if avg_volume > 0 else 1,
+                        'quote_volume_ratio': self._safe_call(lambda: calculate_quote_volume_ratio(quote_volumes, 20)),
+                        'avg_trade_size': self._safe_call(lambda: calculate_avg_trade_size(volumes[-1], trades_counts[-1])),
+                        'trade_intensity': self._safe_call(lambda: calculate_trade_intensity(trades_counts, 20))
                     })
             
             # === APPEL DIRECT DE VOS MODULES DETECTORS ===
@@ -366,21 +383,22 @@ class IndicatorProcessor:
                 
                 # VolumeContextAnalyzer
                 try:
-                    volume_result = self.volume_analyzer.analyze_context({
-                        'volumes': volumes,
-                        'prices': closes,
-                        'highs': highs,
-                        'lows': lows
-                    })
+                    volume_result = self.volume_analyzer.analyze_volume_context(
+                        volumes=volumes,
+                        closes=closes,
+                        highs=highs,
+                        lows=lows,
+                        symbol=symbol
+                    )
                     
                     if volume_result:
                         indicators.update({
-                            'volume_context': str(volume_result.get('context', 'NORMAL')),
-                            'volume_pattern': str(volume_result.get('pattern', 'STEADY')),
-                            'volume_quality_score': float(volume_result.get('quality_score', 50.0)),
-                            'relative_volume': float(volume_result.get('relative_volume', 1.0)),
-                            'volume_buildup_periods': int(volume_result.get('buildup_periods', 0)),
-                            'volume_spike_multiplier': float(volume_result.get('spike_multiplier', 1.0))
+                            'volume_context': str(volume_result.context.context_type.value),
+                            'volume_pattern': str(volume_result.context.pattern_detected.value),
+                            'volume_quality_score': float(volume_result.quality_score),
+                            'relative_volume': float(volume_result.current_volume_ratio),
+                            'volume_buildup_periods': int(len(volumes) if volume_result.buildup_detected else 0),
+                            'volume_spike_multiplier': float(volume_result.current_volume_ratio if volume_result.spike_detected else 1.0)
                         })
                 except Exception as e:
                     logger.debug(f"VolumeContextAnalyzer error: {e}")
@@ -446,7 +464,8 @@ class IndicatorProcessor:
                 -- Oscillateurs
                 williams_r, cci_20, momentum_10, roc_10, roc_20,
                 -- Volume
-                obv, obv_ma_10, obv_oscillator, vwap_10, avg_volume_20, volume_ratio,
+                obv, obv_ma_10, obv_oscillator, vwap_10, vwap_quote_10, avg_volume_20, volume_ratio,
+                quote_volume_ratio, avg_trade_size, trade_intensity,
                 -- Régime
                 market_regime, regime_strength, regime_confidence, regime_duration, trend_alignment, momentum_score,
                 -- Support/Résistance
@@ -469,12 +488,12 @@ class IndicatorProcessor:
                 $26, $27, $28, $29, $30, $31, $32,
                 $33, $34, $35, $36,
                 $37, $38, $39, $40, $41,
-                $42, $43, $44, $45, $46, $47, $48,
-                $49, $50, $51, $52, $53, $54, $55,
-                $56, $57, $58, $59, $60, $61, $62, $63,
-                $64, $65, $66, $67, $68, $69,
-                $70, $71,
-                $72, $73, $74
+                $42, $43, $44, $45, $46, $47, $48, $49, $50, $51,
+                $52, $53, $54, $55, $56, $57, $58,
+                $59, $60, $61, $62, $63, $64, $65, $66,
+                $67, $68, $69, $70, $71, $72, $73,
+                $74, $75,
+                $76, $77, $78
             )
             ON CONFLICT (time, symbol, timeframe) DO UPDATE SET
                 analysis_timestamp = EXCLUDED.analysis_timestamp,
@@ -518,7 +537,8 @@ class IndicatorProcessor:
                     indicators.get('roc_10'), indicators.get('roc_20'),
                     # Volume
                     indicators.get('obv'), indicators.get('obv_ma_10'), indicators.get('obv_oscillator'),
-                    indicators.get('vwap_10'), indicators.get('avg_volume_20'), indicators.get('volume_ratio'),
+                    indicators.get('vwap_10'), indicators.get('vwap_quote_10'), indicators.get('avg_volume_20'), indicators.get('volume_ratio'),
+                    indicators.get('quote_volume_ratio'), indicators.get('avg_trade_size'), indicators.get('trade_intensity'),
                     # Régime
                     indicators.get('market_regime'), indicators.get('regime_strength'), indicators.get('regime_confidence'),
                     indicators.get('regime_duration'), indicators.get('trend_alignment'), indicators.get('momentum_score'),

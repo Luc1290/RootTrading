@@ -49,6 +49,8 @@ export function useChart(options: UseChartOptions = {}) {
     updateSignalFilter,
     updatePeriod,
     toggleEMA,
+    toggleSMA,
+    toggleIndicator,
   } = useChartStore();
   
   const { refetch } = useAllChartData(
@@ -197,6 +199,16 @@ export function useChart(options: UseChartOptions = {}) {
     debouncedUpdate();
   }, [toggleEMA, debouncedUpdate]);
   
+  const handleSMAToggle = useCallback((type: 'sma20' | 'sma50') => {
+    toggleSMA(type);
+    debouncedUpdate();
+  }, [toggleSMA, debouncedUpdate]);
+  
+  const handleIndicatorToggle = useCallback((type: 'rsi' | 'macd' | 'bollinger' | 'stochastic' | 'adx' | 'volume_advanced' | 'regime_info') => {
+    toggleIndicator(type);
+    debouncedUpdate();
+  }, [toggleIndicator, debouncedUpdate]);
+  
   const handleZoomChange = useCallback((xRange: [number, number] | null, yRange: [number, number] | null) => {
     setZoomState({ xRange, yRange });
   }, [setZoomState]);
@@ -223,6 +235,8 @@ export function useChart(options: UseChartOptions = {}) {
     handleSignalFilterChange,
     handlePeriodChange,
     handleEMAToggle,
+    handleSMAToggle,
+    handleIndicatorToggle,
     handleZoomChange,
     handleUserInteraction,
     forceUpdate,

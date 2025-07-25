@@ -12,6 +12,71 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def calculate_vwap_quote(highs: Union[List[float], np.ndarray, pd.Series],
+                        lows: Union[List[float], np.ndarray, pd.Series],
+                        closes: Union[List[float], np.ndarray, pd.Series],
+                        quote_volumes: Union[List[float], np.ndarray, pd.Series],
+                        period: Optional[int] = None) -> Optional[float]:
+    """
+    Calculate Volume Weighted Average Price using quote asset volume (USDC).
+    
+    More accurate than regular VWAP as it uses real monetary value exchanged
+    rather than base asset quantity.
+    
+    Args:
+        highs: High prices
+        lows: Low prices  
+        closes: Close prices
+        quote_volumes: Quote asset volume (USDC volume)
+        period: Period for rolling VWAP (None for session VWAP)
+        
+    Returns:
+        Quote VWAP value or None if insufficient data
+        
+    Notes:
+        - Uses quote asset volume (USDC) for more accurate weighting
+        - Better reflects actual monetary flow
+        - More suitable for cross-asset comparisons
+    """
+    highs_array = _to_numpy_array(highs)
+    lows_array = _to_numpy_array(lows)
+    closes_array = _to_numpy_array(closes)
+    quote_volumes_array = _to_numpy_array(quote_volumes)
+    
+    # Ensure all arrays have same length
+    min_len = min(len(highs_array), len(lows_array), len(closes_array), len(quote_volumes_array))
+    if min_len == 0:
+        return None
+    
+    highs_array = highs_array[-min_len:]
+    lows_array = lows_array[-min_len:]
+    closes_array = closes_array[-min_len:]
+    quote_volumes_array = quote_volumes_array[-min_len:]
+    
+    # Calculate typical price
+    typical_prices = (highs_array + lows_array + closes_array) / 3
+    
+    if period is None:
+        # Session VWAP (all data)
+        total_pv = np.sum(typical_prices * quote_volumes_array)
+        total_volume = np.sum(quote_volumes_array)
+    else:
+        # Rolling VWAP
+        if len(typical_prices) < period:
+            return None
+        
+        recent_typical = typical_prices[-period:]
+        recent_quote_volumes = quote_volumes_array[-period:]
+        total_pv = np.sum(recent_typical * recent_quote_volumes)
+        total_volume = np.sum(recent_quote_volumes)
+    
+    if total_volume == 0:
+        return None
+    
+    vwap = total_pv / total_volume
+    return float(vwap)
+
+
 def calculate_vwap(highs: Union[List[float], np.ndarray, pd.Series],
                    lows: Union[List[float], np.ndarray, pd.Series],
                    closes: Union[List[float], np.ndarray, pd.Series],
@@ -140,6 +205,81 @@ def calculate_vwap_series(highs: Union[List[float], np.ndarray, pd.Series],
                 
                 window_pv = np.sum(window_typical * window_volumes)
                 window_volume = np.sum(window_volumes)
+                
+                if window_volume == 0:
+                    vwap_series.append(None)
+                else:
+                    vwap = window_pv / window_volume
+                    vwap_series.append(float(vwap))
+    
+    return vwap_series
+
+
+def calculate_vwap_quote_series(highs: Union[List[float], np.ndarray, pd.Series],
+                               lows: Union[List[float], np.ndarray, pd.Series],
+                               closes: Union[List[float], np.ndarray, pd.Series],
+                               quote_volumes: Union[List[float], np.ndarray, pd.Series],
+                               period: Optional[int] = None) -> List[Optional[float]]:
+    """
+    Calculate Quote VWAP series using quote asset volume.
+    
+    Args:
+        highs: High prices
+        lows: Low prices
+        closes: Close prices
+        quote_volumes: Quote asset volume (USDC)
+        period: Period for rolling VWAP
+        
+    Returns:
+        List of Quote VWAP values
+    """
+    highs_array = _to_numpy_array(highs)
+    lows_array = _to_numpy_array(lows)
+    closes_array = _to_numpy_array(closes)
+    quote_volumes_array = _to_numpy_array(quote_volumes)
+    
+    # Ensure all arrays have same length
+    min_len = min(len(highs_array), len(lows_array), len(closes_array), len(quote_volumes_array))
+    if min_len == 0:
+        return []
+    
+    highs_array = highs_array[-min_len:]
+    lows_array = lows_array[-min_len:]
+    closes_array = closes_array[-min_len:]
+    quote_volumes_array = quote_volumes_array[-min_len:]
+    
+    # Calculate typical price
+    typical_prices = (highs_array + lows_array + closes_array) / 3
+    
+    vwap_series = []
+    
+    for i in range(len(typical_prices)):
+        if period is None:
+            # Cumulative VWAP from start
+            if i == 0:
+                if quote_volumes_array[i] == 0:
+                    vwap_series.append(None)
+                else:
+                    vwap_series.append(float(typical_prices[i]))
+            else:
+                cumulative_pv = np.sum(typical_prices[:i+1] * quote_volumes_array[:i+1])
+                cumulative_volume = np.sum(quote_volumes_array[:i+1])
+                
+                if cumulative_volume == 0:
+                    vwap_series.append(None)
+                else:
+                    vwap = cumulative_pv / cumulative_volume
+                    vwap_series.append(float(vwap))
+        else:
+            # Rolling VWAP
+            if i < period - 1:
+                vwap_series.append(None)
+            else:
+                window_typical = typical_prices[i-period+1:i+1]
+                window_quote_volumes = quote_volumes_array[i-period+1:i+1]
+                
+                window_pv = np.sum(window_typical * window_quote_volumes)
+                window_volume = np.sum(window_quote_volumes)
                 
                 if window_volume == 0:
                     vwap_series.append(None)

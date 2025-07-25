@@ -98,84 +98,131 @@ class DataManager:
         }.get(interval, 1)
         
         if interval_minutes == 1:
-            # Requête directe pour 1m (pas d'agrégation nécessaire)
+            # Requête directe pour 1m - JOIN entre market_data et analyzer_data
             query = """
                 SELECT 
-                    time as timestamp,
-                    open,
-                    high,
-                    low,
-                    close,
-                    volume,
-                    -- Indicateurs techniques enrichis
-                    rsi_14,
-                    ema_7,
-                    ema_26,
-                    ema_99,
-                    sma_20,
-                    sma_50,
-                    macd_line,
-                    macd_signal,
-                    macd_histogram,
-                    bb_upper,
-                    bb_middle,
-                    bb_lower,
-                    bb_position,
-                    bb_width,
-                    atr_14,
-                    momentum_10,
-                    volume_ratio,
-                    avg_volume_20,
-                    enhanced,
-                    ultra_enriched
-                FROM market_data
-                WHERE symbol = $1 AND timeframe = $2
+                    md.time as timestamp,
+                    md.open,
+                    md.high,
+                    md.low,
+                    md.close,
+                    md.volume,
+                    -- Indicateurs techniques depuis analyzer_data
+                    ad.rsi_14,
+                    ad.rsi_21,
+                    ad.ema_7,
+                    ad.ema_12,
+                    ad.ema_26,
+                    ad.ema_50,
+                    ad.ema_99,
+                    ad.sma_20,
+                    ad.sma_50,
+                    ad.macd_line,
+                    ad.macd_signal,
+                    ad.macd_histogram,
+                    ad.bb_upper,
+                    ad.bb_middle,
+                    ad.bb_lower,
+                    ad.bb_position,
+                    ad.bb_width,
+                    ad.atr_14,
+                    ad.adx_14,
+                    ad.stoch_k,
+                    ad.stoch_d,
+                    ad.williams_r,
+                    ad.cci_20,
+                    ad.momentum_10,
+                    ad.roc_10,
+                    ad.roc_20,
+                    ad.obv,
+                    ad.vwap_10,
+                    ad.vwap_quote_10,
+                    ad.volume_ratio,
+                    ad.avg_volume_20,
+                    ad.quote_volume_ratio,
+                    ad.avg_trade_size,
+                    ad.trade_intensity,
+                    ad.market_regime,
+                    ad.regime_strength,
+                    ad.regime_confidence,
+                    ad.volume_context,
+                    ad.volume_pattern,
+                    ad.pattern_detected,
+                    ad.data_quality
+                FROM market_data md
+                LEFT JOIN analyzer_data ad ON (md.time = ad.time AND md.symbol = ad.symbol AND md.timeframe = ad.timeframe)
+                WHERE md.symbol = $1 AND md.timeframe = $2
             """
         else:
-            # Requête avec agrégation simple pour les autres intervalles
+            # Requête avec agrégation pour les autres intervalles - JOIN avec analyzer_data
             query = f"""
                 WITH aggregated AS (
                     SELECT 
-                        date_trunc('hour', time) + 
+                        date_trunc('hour', md.time) + 
                         INTERVAL '{interval_minutes} minutes' * 
-                        FLOOR(EXTRACT(MINUTE FROM time) / {interval_minutes}) as period,
-                        (array_agg(open ORDER BY time))[1] as open,
-                        MAX(high) as high,
-                        MIN(low) as low,
-                        (array_agg(close ORDER BY time DESC))[1] as close,
-                        SUM(volume) as volume,
-                        (array_agg(rsi_14 ORDER BY time DESC NULLS LAST))[1] as rsi_14,
-                        (array_agg(ema_7 ORDER BY time DESC NULLS LAST))[1] as ema_7,
-                        (array_agg(ema_26 ORDER BY time DESC NULLS LAST))[1] as ema_26,
-                        (array_agg(ema_99 ORDER BY time DESC NULLS LAST))[1] as ema_99,
-                        (array_agg(sma_20 ORDER BY time DESC NULLS LAST))[1] as sma_20,
-                        (array_agg(sma_50 ORDER BY time DESC NULLS LAST))[1] as sma_50,
-                        (array_agg(macd_line ORDER BY time DESC NULLS LAST))[1] as macd_line,
-                        (array_agg(macd_signal ORDER BY time DESC NULLS LAST))[1] as macd_signal,
-                        (array_agg(macd_histogram ORDER BY time DESC NULLS LAST))[1] as macd_histogram,
-                        (array_agg(bb_upper ORDER BY time DESC NULLS LAST))[1] as bb_upper,
-                        (array_agg(bb_middle ORDER BY time DESC NULLS LAST))[1] as bb_middle,
-                        (array_agg(bb_lower ORDER BY time DESC NULLS LAST))[1] as bb_lower,
-                        (array_agg(bb_position ORDER BY time DESC NULLS LAST))[1] as bb_position,
-                        (array_agg(bb_width ORDER BY time DESC NULLS LAST))[1] as bb_width,
-                        (array_agg(atr_14 ORDER BY time DESC NULLS LAST))[1] as atr_14,
-                        (array_agg(momentum_10 ORDER BY time DESC NULLS LAST))[1] as momentum_10,
-                        (array_agg(volume_ratio ORDER BY time DESC NULLS LAST))[1] as volume_ratio,
-                        (array_agg(avg_volume_20 ORDER BY time DESC NULLS LAST))[1] as avg_volume_20,
-                        (array_agg(enhanced ORDER BY time DESC NULLS LAST))[1] as enhanced,
-                        (array_agg(ultra_enriched ORDER BY time DESC NULLS LAST))[1] as ultra_enriched
-                    FROM market_data
-                    WHERE symbol = $1 AND timeframe = $2
+                        FLOOR(EXTRACT(MINUTE FROM md.time) / {interval_minutes}) as period,
+                        (array_agg(md.open ORDER BY md.time))[1] as open,
+                        MAX(md.high) as high,
+                        MIN(md.low) as low,
+                        (array_agg(md.close ORDER BY md.time DESC))[1] as close,
+                        SUM(md.volume) as volume,
+                        (array_agg(ad.rsi_14 ORDER BY md.time DESC NULLS LAST))[1] as rsi_14,
+                        (array_agg(ad.rsi_21 ORDER BY md.time DESC NULLS LAST))[1] as rsi_21,
+                        (array_agg(ad.ema_7 ORDER BY md.time DESC NULLS LAST))[1] as ema_7,
+                        (array_agg(ad.ema_12 ORDER BY md.time DESC NULLS LAST))[1] as ema_12,
+                        (array_agg(ad.ema_26 ORDER BY md.time DESC NULLS LAST))[1] as ema_26,
+                        (array_agg(ad.ema_50 ORDER BY md.time DESC NULLS LAST))[1] as ema_50,
+                        (array_agg(ad.ema_99 ORDER BY md.time DESC NULLS LAST))[1] as ema_99,
+                        (array_agg(ad.sma_20 ORDER BY md.time DESC NULLS LAST))[1] as sma_20,
+                        (array_agg(ad.sma_50 ORDER BY md.time DESC NULLS LAST))[1] as sma_50,
+                        (array_agg(ad.macd_line ORDER BY md.time DESC NULLS LAST))[1] as macd_line,
+                        (array_agg(ad.macd_signal ORDER BY md.time DESC NULLS LAST))[1] as macd_signal,
+                        (array_agg(ad.macd_histogram ORDER BY md.time DESC NULLS LAST))[1] as macd_histogram,
+                        (array_agg(ad.bb_upper ORDER BY md.time DESC NULLS LAST))[1] as bb_upper,
+                        (array_agg(ad.bb_middle ORDER BY md.time DESC NULLS LAST))[1] as bb_middle,
+                        (array_agg(ad.bb_lower ORDER BY md.time DESC NULLS LAST))[1] as bb_lower,
+                        (array_agg(ad.bb_position ORDER BY md.time DESC NULLS LAST))[1] as bb_position,
+                        (array_agg(ad.bb_width ORDER BY md.time DESC NULLS LAST))[1] as bb_width,
+                        (array_agg(ad.atr_14 ORDER BY md.time DESC NULLS LAST))[1] as atr_14,
+                        (array_agg(ad.adx_14 ORDER BY md.time DESC NULLS LAST))[1] as adx_14,
+                        (array_agg(ad.stoch_k ORDER BY md.time DESC NULLS LAST))[1] as stoch_k,
+                        (array_agg(ad.stoch_d ORDER BY md.time DESC NULLS LAST))[1] as stoch_d,
+                        (array_agg(ad.williams_r ORDER BY md.time DESC NULLS LAST))[1] as williams_r,
+                        (array_agg(ad.cci_20 ORDER BY md.time DESC NULLS LAST))[1] as cci_20,
+                        (array_agg(ad.momentum_10 ORDER BY md.time DESC NULLS LAST))[1] as momentum_10,
+                        (array_agg(ad.roc_10 ORDER BY md.time DESC NULLS LAST))[1] as roc_10,
+                        (array_agg(ad.roc_20 ORDER BY md.time DESC NULLS LAST))[1] as roc_20,
+                        (array_agg(ad.obv ORDER BY md.time DESC NULLS LAST))[1] as obv,
+                        (array_agg(ad.vwap_10 ORDER BY md.time DESC NULLS LAST))[1] as vwap_10,
+                        (array_agg(ad.vwap_quote_10 ORDER BY md.time DESC NULLS LAST))[1] as vwap_quote_10,
+                        (array_agg(ad.volume_ratio ORDER BY md.time DESC NULLS LAST))[1] as volume_ratio,
+                        (array_agg(ad.avg_volume_20 ORDER BY md.time DESC NULLS LAST))[1] as avg_volume_20,
+                        (array_agg(ad.quote_volume_ratio ORDER BY md.time DESC NULLS LAST))[1] as quote_volume_ratio,
+                        (array_agg(ad.avg_trade_size ORDER BY md.time DESC NULLS LAST))[1] as avg_trade_size,
+                        (array_agg(ad.trade_intensity ORDER BY md.time DESC NULLS LAST))[1] as trade_intensity,
+                        (array_agg(ad.market_regime ORDER BY md.time DESC NULLS LAST))[1] as market_regime,
+                        (array_agg(ad.regime_strength ORDER BY md.time DESC NULLS LAST))[1] as regime_strength,
+                        (array_agg(ad.regime_confidence ORDER BY md.time DESC NULLS LAST))[1] as regime_confidence,
+                        (array_agg(ad.volume_context ORDER BY md.time DESC NULLS LAST))[1] as volume_context,
+                        (array_agg(ad.volume_pattern ORDER BY md.time DESC NULLS LAST))[1] as volume_pattern,
+                        (array_agg(ad.pattern_detected ORDER BY md.time DESC NULLS LAST))[1] as pattern_detected,
+                        (array_agg(ad.data_quality ORDER BY md.time DESC NULLS LAST))[1] as data_quality
+                    FROM market_data md
+                    LEFT JOIN analyzer_data ad ON (md.time = ad.time AND md.symbol = ad.symbol AND md.timeframe = ad.timeframe)
+                    WHERE md.symbol = $1 AND md.timeframe = $2
                     GROUP BY period
                 )
                 SELECT 
                     period as timestamp,
                     open, high, low, close, volume,
-                    rsi_14, ema_7, ema_26, ema_99, sma_20, sma_50,
+                    rsi_14, rsi_21, ema_7, ema_12, ema_26, ema_50, ema_99, sma_20, sma_50,
                     macd_line, macd_signal, macd_histogram,
                     bb_upper, bb_middle, bb_lower, bb_position, bb_width,
-                    atr_14, momentum_10, volume_ratio, avg_volume_20,
-                    enhanced, ultra_enriched
+                    atr_14, adx_14, stoch_k, stoch_d, williams_r, cci_20,
+                    momentum_10, roc_10, roc_20, obv, vwap_10, vwap_quote_10,
+                    volume_ratio, avg_volume_20, quote_volume_ratio, avg_trade_size, trade_intensity,
+                    market_regime, regime_strength, regime_confidence,
+                    volume_context, volume_pattern, pattern_detected, data_quality
                 FROM aggregated
             """
         
@@ -225,27 +272,55 @@ class DataManager:
                             "low": float(row["low"]),
                             "close": float(row["close"]),
                             "volume": float(row["volume"]),
-                            # Indicateurs techniques (peuvent être NULL)
+                            # Indicateurs RSI et EMAs
                             "rsi_14": float(row["rsi_14"]) if row["rsi_14"] is not None else None,
+                            "rsi_21": float(row["rsi_21"]) if row["rsi_21"] is not None else None,
                             "ema_7": float(row["ema_7"]) if row["ema_7"] is not None else None,
+                            "ema_12": float(row["ema_12"]) if row["ema_12"] is not None else None,
                             "ema_26": float(row["ema_26"]) if row["ema_26"] is not None else None,
+                            "ema_50": float(row["ema_50"]) if row["ema_50"] is not None else None,
                             "ema_99": float(row["ema_99"]) if row["ema_99"] is not None else None,
                             "sma_20": float(row["sma_20"]) if row["sma_20"] is not None else None,
                             "sma_50": float(row["sma_50"]) if row["sma_50"] is not None else None,
+                            # MACD
                             "macd_line": float(row["macd_line"]) if row["macd_line"] is not None else None,
                             "macd_signal": float(row["macd_signal"]) if row["macd_signal"] is not None else None,
                             "macd_histogram": float(row["macd_histogram"]) if row["macd_histogram"] is not None else None,
+                            # Bollinger Bands
                             "bb_upper": float(row["bb_upper"]) if row["bb_upper"] is not None else None,
                             "bb_middle": float(row["bb_middle"]) if row["bb_middle"] is not None else None,
                             "bb_lower": float(row["bb_lower"]) if row["bb_lower"] is not None else None,
                             "bb_position": float(row["bb_position"]) if row["bb_position"] is not None else None,
                             "bb_width": float(row["bb_width"]) if row["bb_width"] is not None else None,
+                            # Volatilité et tendance
                             "atr_14": float(row["atr_14"]) if row["atr_14"] is not None else None,
+                            "adx_14": float(row["adx_14"]) if row["adx_14"] is not None else None,
+                            # Oscillateurs
+                            "stoch_k": float(row["stoch_k"]) if row["stoch_k"] is not None else None,
+                            "stoch_d": float(row["stoch_d"]) if row["stoch_d"] is not None else None,
+                            "williams_r": float(row["williams_r"]) if row["williams_r"] is not None else None,
+                            "cci_20": float(row["cci_20"]) if row["cci_20"] is not None else None,
+                            # Momentum
                             "momentum_10": float(row["momentum_10"]) if row["momentum_10"] is not None else None,
+                            "roc_10": float(row["roc_10"]) if row["roc_10"] is not None else None,
+                            "roc_20": float(row["roc_20"]) if row["roc_20"] is not None else None,
+                            # Volume
+                            "obv": float(row["obv"]) if row["obv"] is not None else None,
+                            "vwap_10": float(row["vwap_10"]) if row["vwap_10"] is not None else None,
+                            "vwap_quote_10": float(row["vwap_quote_10"]) if row["vwap_quote_10"] is not None else None,
                             "volume_ratio": float(row["volume_ratio"]) if row["volume_ratio"] is not None else None,
                             "avg_volume_20": float(row["avg_volume_20"]) if row["avg_volume_20"] is not None else None,
-                            "enhanced": row["enhanced"] if row["enhanced"] is not None else False,
-                            "ultra_enriched": row["ultra_enriched"] if row["ultra_enriched"] is not None else False
+                            "quote_volume_ratio": float(row["quote_volume_ratio"]) if row["quote_volume_ratio"] is not None else None,
+                            "avg_trade_size": float(row["avg_trade_size"]) if row["avg_trade_size"] is not None else None,
+                            "trade_intensity": float(row["trade_intensity"]) if row["trade_intensity"] is not None else None,
+                            # Régime et contexte
+                            "market_regime": row["market_regime"] if row["market_regime"] is not None else None,
+                            "regime_strength": row["regime_strength"] if row["regime_strength"] is not None else None,
+                            "regime_confidence": float(row["regime_confidence"]) if row["regime_confidence"] is not None else None,
+                            "volume_context": row["volume_context"] if row["volume_context"] is not None else None,
+                            "volume_pattern": row["volume_pattern"] if row["volume_pattern"] is not None else None,
+                            "pattern_detected": row["pattern_detected"] if row["pattern_detected"] is not None else None,
+                            "data_quality": row["data_quality"] if row["data_quality"] is not None else None
                         }
                     
                     result_data.append(data_point)
@@ -350,17 +425,21 @@ class DataManager:
             # Convertir en timezone-naive pour PostgreSQL
             period_start_naive = period_start.replace(tzinfo=None)
             
-            # Récupérer toutes les données 1m depuis le début de la période
+            # Récupérer toutes les données 1m depuis le début de la période avec JOIN
             query = """
-                SELECT time, open, high, low, close, volume,
-                       rsi_14, ema_7, ema_26, ema_99, sma_20, sma_50,
-                       macd_line, macd_signal, macd_histogram,
-                       bb_upper, bb_middle, bb_lower, bb_position, bb_width,
-                       atr_14, momentum_10, volume_ratio, avg_volume_20,
-                       enhanced, ultra_enriched
-                FROM market_data 
-                WHERE symbol = $1 AND time >= $2 
-                ORDER BY time ASC
+                SELECT md.time, md.open, md.high, md.low, md.close, md.volume,
+                       ad.rsi_14, ad.rsi_21, ad.ema_7, ad.ema_12, ad.ema_26, ad.ema_50, ad.ema_99, 
+                       ad.sma_20, ad.sma_50, ad.macd_line, ad.macd_signal, ad.macd_histogram,
+                       ad.bb_upper, ad.bb_middle, ad.bb_lower, ad.bb_position, ad.bb_width,
+                       ad.atr_14, ad.adx_14, ad.stoch_k, ad.stoch_d, ad.williams_r, ad.cci_20,
+                       ad.momentum_10, ad.roc_10, ad.roc_20, ad.obv, ad.vwap_10, ad.vwap_quote_10,
+                       ad.volume_ratio, ad.avg_volume_20, ad.quote_volume_ratio, ad.avg_trade_size, ad.trade_intensity,
+                       ad.market_regime, ad.regime_strength, ad.regime_confidence,
+                       ad.volume_context, ad.volume_pattern, ad.pattern_detected, ad.data_quality
+                FROM market_data md
+                LEFT JOIN analyzer_data ad ON (md.time = ad.time AND md.symbol = ad.symbol AND md.timeframe = ad.timeframe)
+                WHERE md.symbol = $1 AND md.time >= $2 
+                ORDER BY md.time ASC
             """
             
             rows = await conn.fetch(query, symbol, period_start_naive)
@@ -381,8 +460,11 @@ class DataManager:
                 "volume": sum(float(row["volume"]) for row in rows),
                 # Indicateurs: prendre les dernières valeurs
                 "rsi_14": float(last_row["rsi_14"]) if last_row["rsi_14"] is not None else None,
+                "rsi_21": float(last_row["rsi_21"]) if last_row["rsi_21"] is not None else None,
                 "ema_7": float(last_row["ema_7"]) if last_row["ema_7"] is not None else None,
+                "ema_12": float(last_row["ema_12"]) if last_row["ema_12"] is not None else None,
                 "ema_26": float(last_row["ema_26"]) if last_row["ema_26"] is not None else None,
+                "ema_50": float(last_row["ema_50"]) if last_row["ema_50"] is not None else None,
                 "ema_99": float(last_row["ema_99"]) if last_row["ema_99"] is not None else None,
                 "sma_20": float(last_row["sma_20"]) if last_row["sma_20"] is not None else None,
                 "sma_50": float(last_row["sma_50"]) if last_row["sma_50"] is not None else None,
@@ -395,11 +477,29 @@ class DataManager:
                 "bb_position": float(last_row["bb_position"]) if last_row["bb_position"] is not None else None,
                 "bb_width": float(last_row["bb_width"]) if last_row["bb_width"] is not None else None,
                 "atr_14": float(last_row["atr_14"]) if last_row["atr_14"] is not None else None,
+                "adx_14": float(last_row["adx_14"]) if last_row["adx_14"] is not None else None,
+                "stoch_k": float(last_row["stoch_k"]) if last_row["stoch_k"] is not None else None,
+                "stoch_d": float(last_row["stoch_d"]) if last_row["stoch_d"] is not None else None,
+                "williams_r": float(last_row["williams_r"]) if last_row["williams_r"] is not None else None,
+                "cci_20": float(last_row["cci_20"]) if last_row["cci_20"] is not None else None,
                 "momentum_10": float(last_row["momentum_10"]) if last_row["momentum_10"] is not None else None,
+                "roc_10": float(last_row["roc_10"]) if last_row["roc_10"] is not None else None,
+                "roc_20": float(last_row["roc_20"]) if last_row["roc_20"] is not None else None,
+                "obv": float(last_row["obv"]) if last_row["obv"] is not None else None,
+                "vwap_10": float(last_row["vwap_10"]) if last_row["vwap_10"] is not None else None,
+                "vwap_quote_10": float(last_row["vwap_quote_10"]) if last_row["vwap_quote_10"] is not None else None,
                 "volume_ratio": float(last_row["volume_ratio"]) if last_row["volume_ratio"] is not None else None,
                 "avg_volume_20": float(last_row["avg_volume_20"]) if last_row["avg_volume_20"] is not None else None,
-                "enhanced": bool(last_row["enhanced"]) if last_row["enhanced"] is not None else False,
-                "ultra_enriched": bool(last_row["ultra_enriched"]) if last_row["ultra_enriched"] is not None else False
+                "quote_volume_ratio": float(last_row["quote_volume_ratio"]) if last_row["quote_volume_ratio"] is not None else None,
+                "avg_trade_size": float(last_row["avg_trade_size"]) if last_row["avg_trade_size"] is not None else None,
+                "trade_intensity": float(last_row["trade_intensity"]) if last_row["trade_intensity"] is not None else None,
+                "market_regime": last_row["market_regime"] if last_row["market_regime"] is not None else None,
+                "regime_strength": last_row["regime_strength"] if last_row["regime_strength"] is not None else None,
+                "regime_confidence": float(last_row["regime_confidence"]) if last_row["regime_confidence"] is not None else None,
+                "volume_context": last_row["volume_context"] if last_row["volume_context"] is not None else None,
+                "volume_pattern": last_row["volume_pattern"] if last_row["volume_pattern"] is not None else None,
+                "pattern_detected": last_row["pattern_detected"] if last_row["pattern_detected"] is not None else None,
+                "data_quality": last_row["data_quality"] if last_row["data_quality"] is not None else None
             }
             
             logger.info(f"🕯️ Bougie courante {interval_minutes}m construite pour {symbol}: {period_start_naive} -> close={current_candle['close']}")

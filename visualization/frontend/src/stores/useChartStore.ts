@@ -56,7 +56,9 @@ interface ChartStore {
   updateInterval: (interval: TimeInterval) => void;
   updateSignalFilter: (filter: SignalFilter) => void;
   updatePeriod: (period: PerformancePeriod) => void;
-  toggleEMA: (type: 'ema7' | 'ema26' | 'ema99') => void;
+  toggleEMA: (type: 'ema7' | 'ema12' | 'ema26' | 'ema50' | 'ema99') => void;
+  toggleSMA: (type: 'sma20' | 'sma50') => void;
+  toggleIndicator: (type: 'rsi' | 'macd' | 'bollinger' | 'stochastic' | 'adx' | 'volume_advanced' | 'regime_info') => void;
 }
 
 export const useChartStore = create<ChartStore>()(
@@ -72,6 +74,19 @@ export const useChartStore = create<ChartStore>()(
         ema7: true,
         ema26: true,
         ema99: true,
+      },
+      smaToggles: {
+        sma20: false,
+        sma50: false,
+      },
+      indicatorToggles: {
+        rsi: false,
+        macd: false,
+        bollinger: false,
+        stochastic: false,
+        adx: false,
+        volume_advanced: false,
+        regime_info: false,
       },
     },
     
@@ -152,6 +167,26 @@ export const useChartStore = create<ChartStore>()(
         emaToggles: {
           ...state.config.emaToggles,
           [type]: !state.config.emaToggles[type],
+        },
+      },
+    })),
+    
+    toggleSMA: (type) => set((state) => ({
+      config: {
+        ...state.config,
+        smaToggles: {
+          ...state.config.smaToggles,
+          [type]: !state.config.smaToggles[type],
+        },
+      },
+    })),
+    
+    toggleIndicator: (type) => set((state) => ({
+      config: {
+        ...state.config,
+        indicatorToggles: {
+          ...state.config.indicatorToggles,
+          [type]: !state.config.indicatorToggles[type],
         },
       },
     })),

@@ -4,6 +4,8 @@ import MarketChart from '@/components/Charts/MarketChart';
 import VolumeChart from '@/components/Charts/VolumeChart';
 import RSIChart from '@/components/Charts/RSIChart';
 import MACDChart from '@/components/Charts/MACDChart';
+import VWAPChart from '@/components/Charts/VWAPChart';
+import RegimeInfo from '@/components/Charts/RegimeInfo';
 import PerformanceChart from '@/components/Charts/PerformanceChart';
 import { GlobalStatusMessage } from '@/components/Common/StatusMessage';
 import PortfolioPanel from '@/components/Trading/PortfolioPanel';
@@ -64,6 +66,14 @@ function Dashboard() {
               <MACDChart />
             </div>
           </div>
+          
+          {/* VWAP Analysis */}
+          <div className="chart-container">
+            <div className="chart-title">
+              📈 VWAP Analysis
+            </div>
+            <VWAPChart />
+          </div>
 
           {/* Timeframes multiples */}
           <div className="chart-container">
@@ -84,6 +94,14 @@ function Dashboard() {
         
         {/* Colonne droite - Métriques et informations */}
         <div className="col-span-12 lg:col-span-4 xl:col-span-3 2xl:col-span-4 3xl:col-span-3 space-y-6">
+          {/* Panel Regime Analysis */}
+          <div className="chart-container">
+            <div className="chart-title">
+              🎯 Market Regime
+            </div>
+            <RegimeInfo />
+          </div>
+          
           {/* Panel Trading & Portfolio */}
           <div className="chart-container">
             <div className="chart-title">

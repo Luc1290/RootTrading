@@ -149,12 +149,16 @@ CREATE TABLE IF NOT EXISTS analyzer_data (
     roc_20 DECIMAL(20,8),          -- Rate of Change 20
     
     -- === VOLUME AVANCÉ ===
-    vwap_10 DECIMAL(20,8),         -- VWAP court terme
+    vwap_10 DECIMAL(20,8),         -- VWAP court terme (volume de base)
+    vwap_quote_10 DECIMAL(20,8),   -- VWAP court terme (quote asset - plus précis)
     anchored_vwap DECIMAL(20,8),   -- VWAP ancré
     vwap_upper_band DECIMAL(20,8), -- VWAP + 1 std
     vwap_lower_band DECIMAL(20,8), -- VWAP - 1 std
     volume_ratio DECIMAL(10,4),    -- Ratio volume vs moyenne
     avg_volume_20 DECIMAL(20,8),   -- Volume moyen 20 périodes
+    quote_volume_ratio DECIMAL(10,4), -- Ratio du volume en quote asset (USDC)
+    avg_trade_size DECIMAL(20,8),  -- Taille moyenne des trades (volume/nb trades)
+    trade_intensity DECIMAL(10,4), -- Intensité du trading (nb trades vs moyenne)
     obv DECIMAL(20,8),             -- On Balance Volume
     obv_ma_10 DECIMAL(20,8),       -- OBV Moving Average 10
     obv_oscillator DECIMAL(20,8),  -- OBV Oscillator
