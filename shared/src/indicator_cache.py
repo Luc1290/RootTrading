@@ -55,8 +55,8 @@ class IndicatorCache:
     """
     
     def __init__(self,
-                 redis_host: str = 'localhost',
-                 redis_port: int = 6379,
+                 redis_host: str = None,
+                 redis_port: int = None,
                  redis_db: int = 2,  # DB séparée pour les indicateurs
                  redis_password: Optional[str] = None,
                  ttl_hours: int = 48,
@@ -70,10 +70,13 @@ class IndicatorCache:
             ttl_hours: TTL en heures (48h par défaut)
             auto_save_interval: Intervalle auto-save en secondes
         """
-        self.redis_host = redis_host
-        self.redis_port = redis_port
+        # Importer la configuration par défaut si non fournie
+        from .config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD
+        
+        self.redis_host = redis_host or REDIS_HOST
+        self.redis_port = redis_port or REDIS_PORT
         self.redis_db = redis_db
-        self.redis_password = redis_password
+        self.redis_password = redis_password or REDIS_PASSWORD
         self.ttl_seconds = ttl_hours * 3600
         self.auto_save_interval = auto_save_interval
         

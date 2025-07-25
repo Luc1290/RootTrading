@@ -28,14 +28,14 @@ from market_analyzer.indicators import (
 
 # Import des moyennes avancées
 from market_analyzer.indicators.trend.moving_averages import (
-    calculate_wma, calculate_dema, calculate_tema, calculate_hull_ma, calculate_kama
+    calculate_wma, calculate_dema, calculate_tema, calculate_hull_ma, calculate_adaptive_ma
 )
 
 # Import des indicateurs de momentum
 from market_analyzer.indicators.momentum.momentum import (
     calculate_momentum, calculate_roc, calculate_price_oscillator
 )
-from market_analyzer.indicators.momentum.rsi import calculate_stochastic_rsi
+from market_analyzer.indicators.momentum.rsi import calculate_stoch_rsi
 
 # Import des indicateurs de volatilité
 from market_analyzer.indicators.volatility.atr import calculate_natr, calculate_atr_stop_loss
@@ -185,7 +185,7 @@ class IndicatorProcessor:
             
             # Stochastic RSI
             if len(closes) >= 14:
-                indicators['stoch_rsi'] = self._safe_call(lambda: calculate_stochastic_rsi(closes, 14, 14))
+                indicators['stoch_rsi'] = self._safe_call(lambda: calculate_stoch_rsi(closes, 14, 14))
             
             # EMAs
             if len(closes) >= 7:
@@ -213,7 +213,7 @@ class IndicatorProcessor:
                 indicators['dema_12'] = self._safe_call(lambda: calculate_dema(closes, 12))
                 indicators['tema_12'] = self._safe_call(lambda: calculate_tema(closes, 12))
             if len(closes) >= 14:
-                indicators['kama_14'] = self._safe_call(lambda: calculate_kama(closes, 14))
+                indicators['kama_14'] = self._safe_call(lambda: calculate_adaptive_ma(closes, 14))
             
             # MACD
             if len(closes) >= 26:

@@ -10,7 +10,7 @@ ATR is commonly used for:
 
 import numpy as np
 import pandas as pd
-from typing import List, Optional, Union, Tuple
+from typing import List, Optional, Union, Tuple, Dict
 import logging
 
 logger = logging.getLogger(__name__)

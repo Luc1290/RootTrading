@@ -14,11 +14,9 @@ statsmodels==0.13.5
 # HTTP client for health checks  
 aiohttp==3.8.6
 
-# Time series analysis
-pandas==1.5.3
+# Time series analysis (already in requirements-shared.txt)
+# pandas==2.0.3
 
 # Performance optimization
 numba==0.57.1
 
-# Financial indicators
-tulip==0.4.0
