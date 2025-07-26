@@ -44,6 +44,7 @@
         "docker-compose down *",
         "docker-compose build *",
         "docker-compose rebuild *",
+        "docker-compose start *",
         "docker restart *",
         "docker stop *",
         "docker kill *"
