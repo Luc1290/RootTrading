@@ -136,7 +136,11 @@ class DatabasePersister:
         try:
             future.result(timeout=5.0)
         except Exception as e:
+            import traceback
             logger.error(f"Erreur lors de l'insertion des données de marché: {e}")
+            logger.error(f"Type d'erreur: {type(e).__name__}")
+            logger.error(f"Traceback complet: {traceback.format_exc()}")
+            logger.error(f"Données problématiques: {data}")
 
     
     async def _insert_market_data(self, data: Dict[str, Any]):
@@ -182,7 +186,10 @@ class DatabasePersister:
                 logger.debug(f"✓ Données OHLCV brutes sauvegardées: {data['symbol']} {data['timeframe']} @ {data['close']}")
                     
         except Exception as e:
+            import traceback
             logger.error(f"Erreur lors de l'insertion OHLCV en base: {e}")
+            logger.error(f"Type d'erreur: {type(e).__name__}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             logger.error(f"Données OHLCV: {data}")
             raise
 

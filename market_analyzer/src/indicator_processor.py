@@ -8,6 +8,7 @@ import logging
 import asyncio
 import time
 import json
+import numpy as np
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 import asyncpg
@@ -453,13 +454,13 @@ class IndicatorProcessor:
                             'volume_pattern': str(volume_result.context.pattern_detected.value).upper(),
                             'volume_quality_score': float(volume_result.quality_score),
                             'relative_volume': float(volume_result.current_volume_ratio),
-                            'volume_buildup_periods': int(len(volumes) if volume_result.buildup_detected else 0),
+                            'volume_buildup_periods': int(self.volume_analyzer.buildup_lookback if volume_result.buildup_detected else 0),
                             'volume_spike_multiplier': float(volume_result.current_volume_ratio if volume_result.spike_detected else 1.0)
                         })
                 except Exception as e:
                     logger.debug(f"VolumeContextAnalyzer error: {e}")
                 
-                # SpikeDetector
+                # SpikeDetector avec vérification de fraîcheur
                 try:
                     spike_events = self.spike_detector.detect_spikes(
                         highs=highs,
@@ -473,13 +474,29 @@ class IndicatorProcessor:
                         # Prendre le spike le plus récent
                         latest_spike = spike_events[0] if spike_events else None
                         
-                        if latest_spike:
+                        # Vérifier la fraîcheur du pattern pour éviter la persistance
+                        if latest_spike and self._is_pattern_fresh(latest_spike, closes, volumes):
                             indicators.update({
                                 'pattern_detected': str(latest_spike.spike_type.value).upper(),
                                 'pattern_confidence': float(latest_spike.confidence)
                             })
+                        else:
+                            # Pattern trop ancien ou non significatif
+                            indicators.update({
+                                'pattern_detected': 'NORMAL',
+                                'pattern_confidence': 0.0
+                            })
+                    else:
+                        indicators.update({
+                            'pattern_detected': 'NORMAL',
+                            'pattern_confidence': 0.0
+                        })
                 except Exception as e:
                     logger.warning(f"SpikeDetector error: {e}")
+                    indicators.update({
+                        'pattern_detected': 'NORMAL',
+                        'pattern_confidence': 0.0
+                    })
             
             # Métadonnées
             calculation_time = int((time.time() - start_time) * 1000)
@@ -726,6 +743,53 @@ class IndicatorProcessor:
         except Exception as e:
             logger.error(f"❌ Erreur sauvegarde analyzer_data: {e}")
             raise
+
+    def _is_pattern_fresh(self, latest_spike, closes, volumes):
+        """Vérifie si le pattern détecté est récent et significatif."""
+        if not latest_spike:
+            return False
+            
+        try:
+            # Vérifier la fraîcheur temporelle (pattern ne doit pas être trop ancien)
+            # En l'absence de timestamps réels, on utilise la position dans la série
+            max_age_periods = 3  # Maximum 3 périodes d'âge
+            
+            # Vérifier si les conditions de marché ont significativement changé
+            # depuis la détection du pattern
+            if len(closes) >= 5:
+                recent_closes = closes[-5:]
+                volatility_current = self._safe_call(lambda: float(np.std(recent_closes[-3:]))) if len(recent_closes) >= 3 else 0
+                volatility_previous = self._safe_call(lambda: float(np.std(recent_closes[:3]))) if len(recent_closes) >= 3 else 0
+                
+                # Si la volatilité a significativement changé, le pattern n'est plus frais
+                if volatility_previous and volatility_previous > 0 and abs(volatility_current - volatility_previous) / volatility_previous > 0.5:
+                    return False
+            
+            # Vérifier la cohérence du volume avec le pattern détecté
+            if len(volumes) >= 3:
+                recent_volume_avg = self._safe_call(lambda: float(np.mean(volumes[-3:])))
+                older_volume_avg = self._safe_call(lambda: float(np.mean(volumes[-6:-3]))) if len(volumes) >= 6 else recent_volume_avg
+                
+                # Si le volume a drastiquement diminué, le pattern perd sa validité
+                if older_volume_avg and older_volume_avg > 0 and recent_volume_avg and recent_volume_avg / older_volume_avg < 0.5:
+                    return False
+            
+            # Vérifier la cohérence du prix avec le type de pattern
+            if len(closes) >= 2:
+                price_change = (closes[-1] - closes[-2]) / closes[-2]
+                
+                # Pour un PRICE_SPIKE_UP, le prix ne devrait pas chuter drastiquement
+                if (hasattr(latest_spike.spike_type, 'value') and latest_spike.spike_type.value == 'price_spike_up' and price_change < -0.02):
+                    return False
+                # Pour un PRICE_SPIKE_DOWN, le prix ne devrait pas monter drastiquement  
+                elif (hasattr(latest_spike.spike_type, 'value') and latest_spike.spike_type.value == 'price_spike_down' and price_change > 0.02):
+                    return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Erreur vérification fraîcheur pattern: {e}")
+            return False
 
     async def close(self):
         """Ferme les connexions."""

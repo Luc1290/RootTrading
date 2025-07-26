@@ -144,7 +144,7 @@ class CoordinatorService:
         """
         try:
             health_url = urljoin(service_url, "/health")
-            response = requests.get(health_url, timeout=2.0)
+            response = requests.get(health_url, timeout=10.0)
             
             if response.status_code == 200:
                 return {
@@ -173,7 +173,7 @@ class CoordinatorService:
         """
         try:
             health_url = urljoin(self.portfolio_api_url, "/health")
-            response = requests.get(health_url, timeout=2.0)
+            response = requests.get(health_url, timeout=10.0)
             
             if response.status_code == 200:
                 # Log de santé réussi supprimé pour réduire la verbosité
