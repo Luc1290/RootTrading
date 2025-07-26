@@ -137,7 +137,7 @@ function RSIChart({ height = 200 }: RSIChartProps) {
   
   // Mise à jour des données RSI
   useEffect(() => {
-    if (!indicators?.rsi || !marketData || !rsiSeriesRef.current) return;
+    if (!indicators?.rsi || !marketData?.timestamps || !rsiSeriesRef.current) return;
     
     const rsiData = marketData.timestamps.map((timestamp: string, index: number) => ({
       time: Math.floor(new Date(timestamp).getTime() / 1000) as Time,
@@ -147,7 +147,7 @@ function RSIChart({ height = 200 }: RSIChartProps) {
     rsiSeriesRef.current.setData(rsiData);
     
     // Mise à jour des lignes de référence
-    if (overboughtLineRef.current && oversoldLineRef.current && neutralLineRef.current) {
+    if (overboughtLineRef.current && oversoldLineRef.current && neutralLineRef.current && marketData.timestamps) {
       const referenceData = marketData.timestamps.map((timestamp: string) => ({
         time: Math.floor(new Date(timestamp).getTime() / 1000) as Time,
       }));
@@ -160,7 +160,7 @@ function RSIChart({ height = 200 }: RSIChartProps) {
   
   // Synchronisation du zoom avec le graphique principal
   useEffect(() => {
-    if (!chartRef.current || !marketData || marketData.timestamps.length === 0) return;
+    if (!chartRef.current || !marketData?.timestamps || marketData.timestamps.length === 0) return;
     
     // Si xRange est null, c'est un reset intentionnel - on utilise fitContent
     if (!zoomState.xRange) {

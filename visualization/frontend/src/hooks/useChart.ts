@@ -122,13 +122,12 @@ export function useChart(options: UseChartOptions = {}) {
     const dataIntervalMs = getIntervalMs(config.interval);
     const actualUpdateInterval = Math.max(updateInterval, dataIntervalMs);
     
-    console.log(`Setting update interval to ${actualUpdateInterval}ms for ${config.interval} data`);
-    
-    const interval = setInterval(() => {
+    // Log seulement si l'intervalle change réellement
+    const intervalId = setInterval(() => {
       debouncedUpdate();
     }, actualUpdateInterval);
     
-    return () => clearInterval(interval);
+    return () => clearInterval(intervalId);
   }, [autoUpdate, updateInterval, debouncedUpdate, config.interval]);
   
   // Abonnement WebSocket

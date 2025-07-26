@@ -121,7 +121,6 @@ export const useWebSocketStore = create<WebSocketStore>()((set, get) => {
       
       // Eviter les multiples connexions
       if ((ws && status === 'connected') || status === 'connecting') {
-        console.log('WebSocket already connected or connecting');
         return;
       }
       

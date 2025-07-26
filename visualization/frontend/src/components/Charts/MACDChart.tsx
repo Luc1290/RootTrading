@@ -142,7 +142,7 @@ function MACDChart({ height = 200 }: MACDChartProps) {
   
   // Mise à jour des données MACD
   useEffect(() => {
-    if (!indicators || !marketData) return;
+    if (!indicators || !marketData?.timestamps) return;
     
     const timeData = marketData.timestamps.map((timestamp: string) => ({
       time: Math.floor(new Date(timestamp).getTime() / 1000) as Time,
@@ -191,7 +191,7 @@ function MACDChart({ height = 200 }: MACDChartProps) {
   
   // Synchronisation du zoom avec le graphique principal
   useEffect(() => {
-    if (!chartRef.current || !marketData || marketData.timestamps.length === 0) return;
+    if (!chartRef.current || !marketData?.timestamps || marketData.timestamps.length === 0) return;
     
     // Si xRange est null, c'est un reset intentionnel - on utilise fitContent
     if (!zoomState.xRange) {

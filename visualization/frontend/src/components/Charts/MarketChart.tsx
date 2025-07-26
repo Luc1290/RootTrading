@@ -223,7 +223,7 @@ function MarketChart({ height = 750 }: MarketChartProps) {
   
   // Mise à jour des données candlestick
   useEffect(() => {
-    if (!marketData || !candlestickSeriesRef.current) return;
+    if (!marketData?.timestamps || !candlestickSeriesRef.current) return;
     
     const candlestickData: CandlestickData[] = marketData.timestamps.map((timestamp: string, index: number) => ({
       time: Math.floor(new Date(timestamp).getTime() / 1000) as Time,
@@ -258,7 +258,7 @@ function MarketChart({ height = 750 }: MarketChartProps) {
     emaSeriesRef.current = {};
     
     // EMA 7
-    if (config.emaToggles.ema7 && indicators.ema_7 && marketData) {
+    if (config.emaToggles.ema7 && indicators.ema_7 && marketData?.timestamps) {
       const ema7Series = chartRef.current.addLineSeries({
         color: '#ff6b35',
         lineWidth: 2,
@@ -278,7 +278,7 @@ function MarketChart({ height = 750 }: MarketChartProps) {
     }
     
     // EMA 26
-    if (config.emaToggles.ema26 && indicators.ema_26 && marketData) {
+    if (config.emaToggles.ema26 && indicators.ema_26 && marketData?.timestamps) {
       const ema26Series = chartRef.current.addLineSeries({
         color: '#f7931e',
         lineWidth: 2,
@@ -298,7 +298,7 @@ function MarketChart({ height = 750 }: MarketChartProps) {
     }
     
     // EMA 99
-    if (config.emaToggles.ema99 && indicators.ema_99 && marketData) {
+    if (config.emaToggles.ema99 && indicators.ema_99 && marketData?.timestamps) {
       const ema99Series = chartRef.current.addLineSeries({
         color: '#ffd700',
         lineWidth: 2,
@@ -397,7 +397,7 @@ function MarketChart({ height = 750 }: MarketChartProps) {
   
   // Afficher les cycles de trading sur le graphique
   useEffect(() => {
-    if (!chartRef.current || !marketData || tradeCycles.length === 0) return;
+    if (!chartRef.current || !marketData || !marketData.timestamps || tradeCycles.length === 0) return;
     
     // Nettoyer les anciennes séries de cycles
     cycleSeriesRef.current.forEach(series => {
@@ -530,7 +530,7 @@ function MarketChart({ height = 750 }: MarketChartProps) {
   
   // Application du zoom
   useEffect(() => {
-    if (!chartRef.current || !marketData || marketData.timestamps.length === 0) return;
+    if (!chartRef.current || !marketData || !marketData.timestamps || marketData.timestamps.length === 0) return;
     
     // Si xRange est null, c'est un reset intentionnel - on utilise fitContent
     if (!zoomState.xRange) {
@@ -563,7 +563,7 @@ function MarketChart({ height = 750 }: MarketChartProps) {
     }
   }, [zoomState.xRange, marketData]);
   
-  const currentPrice = marketData?.close[marketData.close.length - 1];
+  const currentPrice = marketData?.close?.[marketData.close.length - 1];
   
   return (
     <div className="relative market-chart-container">

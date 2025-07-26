@@ -8,7 +8,7 @@ interface RegimeInfoProps {
 function RegimeInfo({ className = '' }: RegimeInfoProps) {
   const { indicators, marketData } = useChartStore();
   
-  if (!indicators || !marketData) return null;
+  if (!indicators || !marketData?.timestamps) return null;
   
   // Prendre les dernières valeurs
   const latestIndex = marketData.timestamps.length - 1;

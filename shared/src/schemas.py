@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Any
 
 from pydantic import BaseModel, Field, validator
 
-from .enums import OrderSide, OrderStatus, TradeRole, CycleStatus, SignalStrength, StrategyMode
+from .enums import OrderSide, OrderStatus, TradeRole, CycleStatus, SignalStrength
 
 class MarketData(BaseModel):
     """Données de marché provenant de Binance."""
@@ -132,14 +132,11 @@ class ErrorMessage(BaseModel):
 class StrategyConfig(BaseModel):
     """Configuration d'une stratégie de trading."""
     name: str
-    mode: StrategyMode
+    mode: str
     params: Dict[str, Any]
     symbols: List[str]
     max_simultaneous_trades: int = 3
     enabled: bool = True
-    
-    class Config:
-        use_enum_values = True
 
 class LogMessage(BaseModel):
     """Message de log standardisé."""

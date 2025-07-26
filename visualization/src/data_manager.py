@@ -9,6 +9,17 @@ import os
 
 logger = logging.getLogger(__name__)
 
+def format_timestamp(dt):
+    """Format timestamp correctly for JSON, avoiding double timezone indicators"""
+    if dt is None:
+        return None
+    iso_str = dt.isoformat()
+    # Si le timestamp a déjà un timezone, ne pas ajouter Z
+    if '+' in iso_str or 'Z' in iso_str:
+        return iso_str
+    else:
+        return iso_str + 'Z'
+
 class DataManager:
     def __init__(self):
         self.redis_client = None
@@ -229,15 +240,15 @@ class DataManager:
         params = [symbol, "1m"]  # Toujours utiliser "1m" comme timeframe dans la DB
         
         if start_time:
-            query += f" AND time >= ${len(params) + 1}"
+            query += f" AND md.time >= ${len(params) + 1}"
             params.append(start_time.isoformat() if isinstance(start_time, datetime) else start_time)
             
         if end_time:
-            query += f" AND time <= ${len(params) + 1}"
+            query += f" AND md.time <= ${len(params) + 1}"
             params.append(end_time.isoformat() if isinstance(end_time, datetime) else end_time)
             
         if interval_minutes == 1:
-            query += " ORDER BY time DESC"
+            query += " ORDER BY md.time DESC"
         else:
             query += " ORDER BY period DESC"
         
@@ -262,11 +273,23 @@ class DataManager:
                     if isinstance(row, dict):
                         data_point = row.copy()
                         if not isinstance(data_point["timestamp"], str):
-                            data_point["timestamp"] = data_point["timestamp"].isoformat() + 'Z'
+                            iso_str = data_point["timestamp"].isoformat()
+                            # Si le timestamp a déjà un timezone, ne pas ajouter Z
+                            if '+' in iso_str or 'Z' in iso_str:
+                                data_point["timestamp"] = iso_str
+                            else:
+                                data_point["timestamp"] = iso_str + 'Z'
                     else:
                         # Pour les données de la DB, row est un Record
+                        iso_str = row["timestamp"].isoformat()
+                        # Si le timestamp a déjà un timezone, ne pas ajouter Z
+                        if '+' in iso_str or 'Z' in iso_str:
+                            timestamp_str = iso_str
+                        else:
+                            timestamp_str = iso_str + 'Z'
+                            
                         data_point = {
-                            "timestamp": row["timestamp"].isoformat() + 'Z',
+                            "timestamp": timestamp_str,
                             "open": float(row["open"]),
                             "high": float(row["high"]),
                             "low": float(row["low"]),
@@ -379,7 +402,7 @@ class DataManager:
                 
                 return [
                     {
-                        "timestamp": row["timestamp"].isoformat() + 'Z',
+                        "timestamp": format_timestamp(row["timestamp"]),
                         "strategy": row["strategy"],
                         "signal_type": row["signal_type"],
                         "strength": row["strength"],
@@ -553,7 +576,7 @@ class DataManager:
                     pnl_percentages.append(float(row["pnl_percentage"]) if row["pnl_percentage"] else 0)
                 
                 return {
-                    "timestamps": [row["timestamp"].isoformat() + 'Z' for row in rows],
+                    "timestamps": [format_timestamp(row["timestamp"]) for row in rows],
                     "balances": balances,
                     "pnl": pnl_values,
                     "pnl_percentage": pnl_percentages,
@@ -717,9 +740,9 @@ class DataManager:
                         "quantity": float(row["quantity"]) if row["quantity"] else None,
                         "profit_loss": float(row["profit_loss"]) if row["profit_loss"] else None,
                         "profit_loss_percent": float(row["profit_loss_percent"]) if row["profit_loss_percent"] else None,
-                        "created_at": row["created_at"].isoformat() + 'Z',
-                        "updated_at": row["updated_at"].isoformat() + 'Z',
-                        "completed_at": row["completed_at"].isoformat() + 'Z' if row["completed_at"] else None
+                        "created_at": format_timestamp(row["created_at"]),
+                        "updated_at": format_timestamp(row["updated_at"]),
+                        "completed_at": format_timestamp(row["completed_at"]) if row["completed_at"] else None
                     }
                     for row in rows
                 ]

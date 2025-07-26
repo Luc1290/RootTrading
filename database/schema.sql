@@ -336,6 +336,17 @@ CREATE TABLE IF NOT EXISTS positions (
     status VARCHAR(20) DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLOSED'))
 );
 
+-- Table des balances du portefeuille
+CREATE TABLE IF NOT EXISTS portfolio_balances (
+    id SERIAL PRIMARY KEY,
+    asset VARCHAR(20) NOT NULL,
+    free DECIMAL(20,8) NOT NULL DEFAULT 0,
+    locked DECIMAL(20,8) NOT NULL DEFAULT 0,
+    total DECIMAL(20,8) NOT NULL DEFAULT 0,
+    value_usdc DECIMAL(20,8),
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- =====================================================
 -- INDEX POUR LES TABLES DE TRADING
 -- =====================================================
@@ -379,6 +390,12 @@ CREATE INDEX IF NOT EXISTS positions_symbol_idx ON positions(symbol);
 CREATE INDEX IF NOT EXISTS positions_status_idx ON positions(status);
 CREATE INDEX IF NOT EXISTS positions_symbol_status_idx ON positions(symbol, status);
 
+-- Index pour portfolio_balances
+CREATE INDEX IF NOT EXISTS portfolio_balances_asset_idx ON portfolio_balances(asset);
+CREATE INDEX IF NOT EXISTS portfolio_balances_timestamp_idx ON portfolio_balances(timestamp DESC);
+CREATE INDEX IF NOT EXISTS portfolio_balances_asset_timestamp_idx ON portfolio_balances(asset, timestamp DESC);
+CREATE INDEX IF NOT EXISTS portfolio_balances_total_idx ON portfolio_balances(total) WHERE total > 0;
+
 -- =====================================================
 -- COMMENTAIRES POUR DOCUMENTATION
 -- =====================================================
@@ -395,6 +412,7 @@ COMMENT ON TABLE trade_cycles IS 'Cycles de trading complets avec gestion des st
 COMMENT ON TABLE trading_signals IS 'Signaux générés par les stratégies d''analyse';
 COMMENT ON TABLE strategy_configs IS 'Configuration des stratégies de trading';
 COMMENT ON TABLE positions IS 'Suivi des positions ouvertes et fermées';
+COMMENT ON TABLE portfolio_balances IS 'Historique des balances du portefeuille par asset';
 
 -- =====================================================
 -- TRIGGERS POUR UPDATED_AT

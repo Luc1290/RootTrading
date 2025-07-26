@@ -95,7 +95,7 @@ function VolumeChart({ height = 150 }: VolumeChartProps) {
   
   // Mise à jour des données de volume
   useEffect(() => {
-    if (!marketData || !volumeSeriesRef.current) return;
+    if (!marketData?.timestamps || !marketData?.volume || !marketData?.close || !marketData?.open || !volumeSeriesRef.current) return;
     
     const volumeData: HistogramData[] = marketData.timestamps.map((timestamp: string, index: number) => {
       const isUp = marketData.close[index] >= marketData.open[index];
@@ -115,7 +115,7 @@ function VolumeChart({ height = 150 }: VolumeChartProps) {
   
   // Synchronisation du zoom avec le graphique principal
   useEffect(() => {
-    if (!chartRef.current || !marketData || marketData.timestamps.length === 0) return;
+    if (!chartRef.current || !marketData?.timestamps || marketData.timestamps.length === 0) return;
     
     // Si xRange est null, c'est un reset intentionnel - on utilise fitContent
     if (!zoomState.xRange) {
@@ -148,7 +148,7 @@ function VolumeChart({ height = 150 }: VolumeChartProps) {
     }
   }, [zoomState.xRange, marketData]);
   
-  const currentVolume = marketData?.volume[marketData.volume.length - 1];
+  const currentVolume = marketData?.volume && marketData.volume.length > 0 ? marketData.volume[marketData.volume.length - 1] : null;
   
   return (
     <div className="relative">

@@ -71,8 +71,8 @@ function MultiTimeframeChart() {
     }
 
     // Calculer les données pour le mini chart
-    const prices = tf.data.close || [];
-    if (prices.length === 0) {
+    const prices = tf.data?.close || [];
+    if (!prices || prices.length === 0) {
       return (
         <div className="h-24 bg-dark-200 rounded flex items-center justify-center">
           <span className="text-gray-400 text-xs">Pas de données</span>
