@@ -110,6 +110,26 @@ class MessageRouter:
         
         logger.info("✅ MessageRouter initialisé avec support priorité")
 
+    def _determine_priority(self, topic: str) -> str:
+        """
+        Détermine la priorité d'un message basé sur son topic.
+        
+        Args:
+            topic: Topic Kafka
+            
+        Returns:
+            Priorité du message ('high' ou 'normal')
+        """
+        # Données de marché en temps réel = haute priorité
+        if topic.startswith("market.data"):
+            return 'high'
+        # Signaux de trading = haute priorité
+        elif topic.startswith("signals") or topic.startswith("analyzer.signals"):
+            return 'high'
+        # Par défaut = priorité normale
+        else:
+            return 'normal'
+
     def _publish_high_priority(self, channel: str, message: Dict[str, Any]) -> None:
         """
         Publie un message haute priorité sur Redis.

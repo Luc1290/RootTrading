@@ -19,6 +19,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 
 from shared.src.config import SYMBOLS
 from shared.src.redis_client import RedisClient
+from gateway.src.kafka_producer import get_producer
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class SimpleDataFetcher:
         self.symbols = SYMBOLS
         self.timeframes = ['1m', '3m', '5m', '15m', '1d']
         self.redis_client = RedisClient()
+        self.kafka_producer = get_producer()
         self.running = False
         
         # URLs Binance API
@@ -41,13 +43,13 @@ class SimpleDataFetcher:
         # Configuration des timeouts
         self.timeout = ClientTimeout(total=30)
         
-        # Limits de récupération par timeframe (optimisées)
+        # Limits de récupération par timeframe (augmentées pour plus de données)
         self.limits = {
-            '1m': 100,   # 100 minutes = 1h40 (buffer technique)
-            '3m': 100,   # 300 minutes = 5h (session trading)
-            '5m': 100,   # 500 minutes = 8h20 (journée complète)
-            '15m': 200,  # 3000 minutes = 50h (quelques jours)
-            '1d': 365    # 365 jours = 1 an (analyse long terme)
+            '1m': 1000,  # 1000 minutes = 16h40 (journée trading complète)
+            '3m': 1000,  # 3000 minutes = 50h (plusieurs jours)
+            '5m': 1000,  # 5000 minutes = 83h (semaine complète)
+            '15m': 1000, # 15000 minutes = 250h (10+ jours d'historique)
+            '1d': 500    # 500 jours = 1.4 ans (analyse long terme étendue)
         }
         
         logger.info("📡 SimpleDataFetcher initialisé - données brutes uniquement")
@@ -153,20 +155,13 @@ class SimpleDataFetcher:
         return processed_candles
 
     async def _publish_to_kafka(self, candles: List[Dict], symbol: str, timeframe: str):
-        """Publie les données brutes sur Kafka via Redis."""
+        """Publie les données brutes sur Kafka via KafkaProducer."""
         try:
-            topic = f"market.data.{symbol.lower()}.{timeframe}"
-            
             for candle in candles:
-                # Publier chaque bougie individuellement
-                message = json.dumps(candle)
+                # Utiliser le KafkaProducer pour publier
+                self.kafka_producer.publish_market_data(candle, key=symbol)
                 
-                # Utiliser Redis pour transmettre au dispatcher/Kafka
-                redis_channel = f"roottrading:raw_market_data:{symbol.lower()}:{timeframe}"
-                
-                self.redis_client.publish(redis_channel, candle)
-                
-                logger.debug(f"📤 Données publiées: {topic}")
+                logger.debug(f"📤 Données historiques publiées: {symbol} {timeframe}")
                 
         except Exception as e:
             logger.error(f"❌ Erreur publication Kafka: {e}")
@@ -177,13 +172,15 @@ class SimpleDataFetcher:
         
         while self.running:
             try:
-                # Attendre 30 secondes entre les vérifications
-                await asyncio.sleep(30)
+                # Attendre 60 secondes entre les vérifications (moins de pression sur l'API)
+                await asyncio.sleep(60)
                 
-                # Récupérer les dernières données pour tous les symboles
+                # Récupérer les dernières données pour tous les symboles avec un petit délai
                 for symbol in self.symbols:
                     for timeframe in self.timeframes:
                         await self._fetch_latest_data(symbol, timeframe)
+                        # Petit délai entre chaque requête pour éviter les rate limits
+                        await asyncio.sleep(0.1)
                         
             except Exception as e:
                 logger.error(f"❌ Erreur surveillance continue: {e}")
@@ -192,12 +189,12 @@ class SimpleDataFetcher:
     async def _fetch_latest_data(self, symbol: str, timeframe: str):
         """Récupère uniquement les dernières données pour un symbole/timeframe."""
         try:
-            # Récupérer seulement les 2 dernières bougies (dont celle en cours)
+            # Récupérer les 5 dernières bougies pour éviter les gaps
             url = f"{self.base_url}{self.klines_endpoint}"
             params = {
                 'symbol': symbol,
                 'interval': timeframe,
-                'limit': 2
+                'limit': 5
             }
             
             async with aiohttp.ClientSession(timeout=self.timeout) as session:
@@ -205,11 +202,11 @@ class SimpleDataFetcher:
                     if response.status == 200:
                         klines = await response.json()
                         
-                        # Ne traiter que la bougie fermée (pas celle en cours)
+                        # Traiter toutes les bougies fermées (pas celle en cours)
                         if len(klines) >= 2:
-                            closed_kline = [klines[-2]]  # Avant-dernière = fermée
+                            closed_klines = klines[:-1]  # Toutes sauf la dernière (en cours)
                             
-                            processed_data = self._process_raw_klines(closed_kline, symbol, timeframe)
+                            processed_data = self._process_raw_klines(closed_klines, symbol, timeframe)
                             await self._publish_to_kafka(processed_data, symbol, timeframe)
                             
         except Exception as e:

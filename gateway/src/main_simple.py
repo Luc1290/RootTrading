@@ -48,8 +48,8 @@ async def health_check(request):
         "uptime": uptime,
         "mode": "active" if running else "stopping",
         "symbols": SYMBOLS,
-        "interval": INTERVAL,
-        "architecture": "clean_data_only"
+        "intervals": ['1m', '3m', '5m', '15m', '1d'],
+        "architecture": "multi_timeframe_clean_data"
     })
 
 @routes.get('/diagnostic')
@@ -71,8 +71,8 @@ async def diagnostic(request):
         "uptime": time.time() - start_time,
         "data_fetcher": fetcher_status,
         "symbols": SYMBOLS,
-        "interval": INTERVAL,
-        "architecture": "simple_clean_gateway"
+        "intervals": ['1m', '3m', '5m', '15m', '1d'],
+        "architecture": "multi_timeframe_clean_gateway"
     }
     
     return web.json_response(diagnostic_info)
@@ -119,7 +119,7 @@ async def main():
     global data_fetcher, ws_client
     
     logger.info("🚀 Démarrage du service Gateway SIMPLE (données brutes uniquement)...")
-    logger.info(f"Configuration: {', '.join(SYMBOLS)} @ {INTERVAL}")
+    logger.info(f"Configuration: {', '.join(SYMBOLS)} @ ['1m', '3m', '5m', '15m', '1d']")
     logger.info("🎯 Architecture: AUCUN calcul d'indicateur - transmission pure")
     
     # Démarrer le serveur HTTP
@@ -128,7 +128,7 @@ async def main():
     try:
         # Créer les services simples (pas d'indicateurs)
         data_fetcher = SimpleDataFetcher()
-        ws_client = SimpleBinanceWebSocket(symbols=SYMBOLS, interval=INTERVAL)
+        ws_client = SimpleBinanceWebSocket(symbols=SYMBOLS, intervals=['1m', '3m', '5m', '15m', '1d'])
         
         logger.info("📡 Initialisation des services de données brutes...")
         logger.info("🔄 Mode: WebSocket temps réel + récupération historique")

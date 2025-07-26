@@ -114,11 +114,17 @@ class DatabasePersister:
             logger.error(f"Données OHLCV essentielles manquantes pour {symbol}")
             return
             
-        # Traiter le timestamp si nécessaire
+        # Traiter le timestamp pour PostgreSQL
         if isinstance(data["time"], int):
-            # Convertir timestamp milliseconds en datetime ISO
-            from datetime import datetime
-            data["time"] = datetime.fromtimestamp(data["time"] / 1000).isoformat()
+            # Convertir timestamp milliseconds en objet datetime
+            data["time"] = datetime.fromtimestamp(data["time"] / 1000)
+        elif isinstance(data["time"], str):
+            # Convertir string ISO en objet datetime
+            try:
+                data["time"] = datetime.fromisoformat(data["time"].replace('Z', '+00:00'))
+            except ValueError:
+                # Fallback pour format sans timezone
+                data["time"] = datetime.fromisoformat(data["time"])
             
         # Exécuter l'insertion en async
         future = asyncio.run_coroutine_threadsafe(

@@ -31,17 +31,17 @@ class SimpleBinanceWebSocket:
     AUCUN calcul d'indicateur technique.
     """
     
-    def __init__(self, symbols: Optional[List[str]] = None, interval: str = INTERVAL, kafka_client: Optional[KafkaClient] = None):
+    def __init__(self, symbols: Optional[List[str]] = None, intervals: Optional[List[str]] = None, kafka_client: Optional[KafkaClient] = None):
         """
         Initialise la connexion WebSocket Binance.
         
         Args:
             symbols: Liste des symboles à surveiller (ex: ['BTCUSDC', 'ETHUSDC'])
-            interval: Intervalle des chandeliers (ex: '1m', '3m', '5m', '15m', 1d)
+            intervals: Liste des intervalles à surveiller (ex: ['1m', '3m', '5m', '15m', '1d'])
             kafka_client: Client Kafka pour la publication des données
         """
         self.symbols = symbols or SYMBOLS
-        self.interval = interval
+        self.intervals = intervals or ['1m', '3m', '5m', '15m', '1d']
         self.kafka_client = kafka_client or get_producer()
         self.ws: Optional[websockets.WebSocketClientProtocol] = None
         self.running = False
@@ -54,19 +54,20 @@ class SimpleBinanceWebSocket:
         
         logger.info(f"📡 SimpleBinanceWebSocket initialisé - OHLCV brutes uniquement")
         logger.info(f"🎯 Symboles: {', '.join(self.symbols)}")
-        logger.info(f"⏱️ Intervalle: {self.interval}")
+        logger.info(f"⏱️ Intervalles: {', '.join(self.intervals)}")
 
     def _generate_stream_paths(self) -> List[str]:
         """
-        Génère les chemins de streams WebSocket pour les klines uniquement.
+        Génère les chemins de streams WebSocket pour tous les symboles/intervalles.
         """
         streams = []
         for symbol in self.symbols:
-            # Stream kline pour chaque symbole
-            stream_name = f"{symbol.lower()}@kline_{self.interval}"
-            streams.append(stream_name)
+            for interval in self.intervals:
+                # Stream kline pour chaque symbole/intervalle
+                stream_name = f"{symbol.lower()}@kline_{interval}"
+                streams.append(stream_name)
         
-        logger.debug(f"🔗 Streams générés: {streams}")
+        logger.info(f"🔗 {len(streams)} streams générés: {len(self.symbols)} symboles × {len(self.intervals)} intervalles")
         return streams
 
     async def start(self):
@@ -181,17 +182,30 @@ class SimpleBinanceWebSocket:
             candle_data: Données OHLCV brutes de la bougie
         """
         try:
-            symbol = candle_data['symbol']
-            timeframe = candle_data['interval']
+            # Adapter les données pour le KafkaProducer
+            market_data = {
+                'symbol': candle_data['symbol'],
+                'timeframe': candle_data['interval'],
+                'time': candle_data['time'],
+                'close_time': candle_data['close_time'],
+                'open': candle_data['open'],
+                'high': candle_data['high'],
+                'low': candle_data['low'],
+                'close': candle_data['close'],
+                'volume': candle_data['volume'],
+                'is_closed': candle_data['is_closed'],
+                'quote_asset_volume': candle_data['quote_asset_volume'],
+                'number_of_trades': candle_data['number_of_trades'],
+                'taker_buy_base_asset_volume': candle_data['taker_buy_base_asset_volume'],
+                'taker_buy_quote_asset_volume': candle_data['taker_buy_quote_asset_volume'],
+                'source': candle_data['source'],
+                'timestamp': candle_data['timestamp']
+            }
             
-            # Topic Kafka
-            topic = f"market.data.{symbol.lower()}.{timeframe}"
+            # Utiliser la méthode correcte du KafkaProducer
+            self.kafka_client.publish_market_data(market_data, key=candle_data['symbol'])
             
-            # Sérialiser et publier
-            message = json.dumps(candle_data)
-            self.kafka_client.send(topic, message)
-            
-            logger.debug(f"📡 Données brutes publiées: {topic}")
+            logger.debug(f"📡 Données brutes publiées: {candle_data['symbol']} @ {candle_data['interval']}")
             
         except Exception as e:
             logger.error(f"❌ Erreur publication Kafka: {e}")
@@ -221,7 +235,7 @@ class SimpleBinanceWebSocket:
             'running': self.running,
             'last_message_time': self.last_message_time,
             'symbols': self.symbols,
-            'interval': self.interval,
+            'intervals': self.intervals,
             'stream_count': len(self.stream_paths),
-            'architecture': 'simple_raw_data_only'
+            'architecture': 'multi_timeframe_raw_data'
         }

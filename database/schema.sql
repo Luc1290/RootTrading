@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS analyzer_data (
     
     -- === INDICATEURS DE BASE (pour compatibilité) ===
     rsi_14 DECIMAL(20,8),          -- RSI standard
+    rsi_21 DECIMAL(20,8),          -- RSI 21 périodes
     ema_7 DECIMAL(20,8),           -- EMA rapide
     ema_12 DECIMAL(20,8),          -- EMA standard
     ema_26 DECIMAL(20,8),          -- EMA lente
