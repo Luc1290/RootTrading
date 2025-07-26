@@ -231,26 +231,32 @@ class RegimeDetector:
         """Analyse la tendance."""
         from ..indicators.trend.moving_averages import calculate_ema_series
         from ..indicators.trend.adx import calculate_adx_full
-        from ..config_market import EMA_PERIODS
+        
+        # Définir les périodes EMA localement
+        ema_periods = {
+            'fast': 7,
+            'medium': 26,
+            'slow': 99
+        }
         
         # EMAs pour direction de tendance (with caching if symbol provided)
         from ..indicators.trend.moving_averages import calculate_ema
         
         if symbol and enable_cache:
             # Use cached individual EMA calculations
-            ema_fast_current = calculate_ema(closes, EMA_PERIODS['fast'], symbol, enable_cache)
-            ema_medium_current = calculate_ema(closes, EMA_PERIODS['medium'], symbol, enable_cache)  
-            ema_slow_current = calculate_ema(closes, EMA_PERIODS['slow'], symbol, enable_cache)
+            ema_fast_current = calculate_ema(closes, ema_periods['fast'], symbol, enable_cache)
+            ema_medium_current = calculate_ema(closes, ema_periods['medium'], symbol, enable_cache)  
+            ema_slow_current = calculate_ema(closes, ema_periods['slow'], symbol, enable_cache)
             
             # For trend analysis, we need recent values - use series
-            ema_fast = calculate_ema_series(closes, EMA_PERIODS['fast'])
-            ema_medium = calculate_ema_series(closes, EMA_PERIODS['medium'])
-            ema_slow = calculate_ema_series(closes, EMA_PERIODS['slow'])
+            ema_fast = calculate_ema_series(closes, ema_periods['fast'])
+            ema_medium = calculate_ema_series(closes, ema_periods['medium'])
+            ema_slow = calculate_ema_series(closes, ema_periods['slow'])
         else:
             # Use non-cached series
-            ema_fast = calculate_ema_series(closes, EMA_PERIODS['fast'])
-            ema_medium = calculate_ema_series(closes, EMA_PERIODS['medium'])
-            ema_slow = calculate_ema_series(closes, EMA_PERIODS['slow'])
+            ema_fast = calculate_ema_series(closes, ema_periods['fast'])
+            ema_medium = calculate_ema_series(closes, ema_periods['medium'])
+            ema_slow = calculate_ema_series(closes, ema_periods['slow'])
         
         # Enlever les None
         valid_emas = []

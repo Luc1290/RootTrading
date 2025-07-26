@@ -110,7 +110,8 @@ class IndicatorProcessor:
             logger.debug(f"🔄 Traitement {symbol} {timeframe} @ {timestamp}")
             
             # Récupérer les données historiques nécessaires
-            ohlcv_data = await self._get_historical_data(symbol, timeframe, limit=500)
+            # Plus de données pour les indicateurs long terme (EMA 99 a besoin d'au moins 200-300 points pour être stable)
+            ohlcv_data = await self._get_historical_data(symbol, timeframe, limit=1000)
             
             if len(ohlcv_data) < 20:
                 logger.warning(f"⚠️ Pas assez de données pour {symbol} {timeframe}: {len(ohlcv_data)} < 20")
@@ -127,7 +128,7 @@ class IndicatorProcessor:
         except Exception as e:
             logger.error(f"❌ Erreur traitement {symbol} {timeframe}: {e}")
 
-    async def _get_historical_data(self, symbol: str, timeframe: str, limit: int = 500) -> List[Dict]:
+    async def _get_historical_data(self, symbol: str, timeframe: str, limit: int = 1000) -> List[Dict]:
         """Récupère les données OHLCV historiques depuis market_data."""
         query = """
             SELECT time, open, high, low, close, volume,
@@ -393,13 +394,19 @@ class IndicatorProcessor:
                     )
                     
                     if regime_result:
+                        # Calculer trend_alignment à partir du trend_slope (normaliser entre -100 et 100)
+                        trend_alignment = max(-100, min(100, regime_result.trend_slope * 10))
+                        
+                        # Utiliser la confidence comme momentum_score (déjà entre 0-100)
+                        momentum_score = regime_result.confidence
+                        
                         indicators.update({
                             'market_regime': str(regime_result.regime_type.value if hasattr(regime_result.regime_type, 'value') else regime_result.regime_type).upper(),
                             'regime_strength': str(regime_result.strength.value if hasattr(regime_result.strength, 'value') else regime_result.strength).upper(),
                             'regime_confidence': float(regime_result.confidence),
                             'regime_duration': int(regime_result.duration),
-                            'trend_alignment': float(regime_result.trend_slope),  # Déjà en pourcentage
-                            'momentum_score': float(regime_result.support_resistance_strength * 100)
+                            'trend_alignment': float(trend_alignment),
+                            'momentum_score': float(momentum_score)
                         })
                 except Exception as e:
                     logger.warning(f"RegimeDetector error: {e}")
@@ -421,9 +428,13 @@ class IndicatorProcessor:
                         supports = [level for level in sr_levels if level.price < current_price]
                         resistances = [level for level in sr_levels if level.price > current_price]
                         
-                        # Extraire les prix pour JSONB
-                        support_prices = [level.price for level in supports[:5]]  # Top 5
-                        resistance_prices = [level.price for level in resistances[:5]]  # Top 5
+                        # Trier par proximité pour trouver les plus proches
+                        supports.sort(key=lambda x: current_price - x.price)  # Plus proche en premier
+                        resistances.sort(key=lambda x: x.price - current_price)  # Plus proche en premier
+                        
+                        # Extraire les prix pour JSONB (garder l'ordre par force pour la liste)
+                        support_prices = [level.price for level in sorted(supports, key=lambda x: -self._strength_to_number(x.strength))[:5]]
+                        resistance_prices = [level.price for level in sorted(resistances, key=lambda x: -self._strength_to_number(x.strength))[:5]]
                         
                         indicators.update({
                             'support_levels': support_prices,
@@ -530,6 +541,18 @@ class IndicatorProcessor:
             logger.debug(f"Type d'erreur: {type(e).__name__}")
             logger.debug(f"Traceback: {traceback.format_exc()}")
             return None
+    
+    def _strength_to_number(self, strength):
+        """Convertit la force en nombre pour le tri."""
+        strength_map = {
+            'WEAK': 1,
+            'MODERATE': 2,
+            'STRONG': 3,
+            'MAJOR': 4
+        }
+        if hasattr(strength, 'value'):
+            return strength_map.get(strength.value.upper(), 0)
+        return strength_map.get(str(strength).upper(), 0)
     
     def _sanitize_numeric_value(self, value, max_abs_value=1e11):
         """Sanitise une valeur numérique pour éviter les débordements DB (precision 20, scale 8)."""

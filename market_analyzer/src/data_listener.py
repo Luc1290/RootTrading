@@ -268,23 +268,32 @@ class DataListener:
             logger.info(f"📊 {len(rows)} données non analysées détectées - Démarrage du traitement...")
             
             processed = 0
-            for row in rows:
-                try:
-                    await self.indicator_processor.process_new_data(
-                        row['symbol'], 
-                        row['timeframe'], 
-                        row['time']
-                    )
-                    processed += 1
-                    
-                    # Log de progression plus détaillé
-                    if processed % 50 == 0:
-                        percent = (processed / len(rows)) * 100
-                        logger.info(f"📈 Progression: {processed}/{len(rows)} ({percent:.1f}%) traités")
+            batch_size = 5  # Traiter par petits lots pour permettre l'interleaving
+            
+            for i in range(0, len(rows), batch_size):
+                batch = rows[i:i + batch_size]
+                
+                # Traiter le batch
+                for row in batch:
+                    try:
+                        await self.indicator_processor.process_new_data(
+                            row['symbol'], 
+                            row['timeframe'], 
+                            row['time']
+                        )
+                        processed += 1
                         
-                except Exception as e:
-                    logger.error(f"❌ Erreur traitement gap {row['symbol']} {row['timeframe']}: {e}")
-                    continue
+                    except Exception as e:
+                        logger.error(f"❌ Erreur traitement gap {row['symbol']} {row['timeframe']}: {e}")
+                        continue
+                
+                # Yield control pour permettre aux notifications temps réel de passer
+                await asyncio.sleep(0.01)  # 10ms pause entre les batches
+                
+                # Log de progression plus détaillé
+                if processed % 50 == 0:
+                    percent = (processed / len(rows)) * 100
+                    logger.info(f"📈 Progression: {processed}/{len(rows)} ({percent:.1f}%) traités")
             
             logger.info(f"✅ Traitement terminé: {processed}/{len(rows)} données analysées avec succès")
             
