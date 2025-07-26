@@ -372,7 +372,7 @@ class DataManager:
                 timestamp,
                 strategy,
                 side as signal_type,
-                strength,
+                confidence,
                 price,
                 metadata
             FROM trading_signals
@@ -405,7 +405,7 @@ class DataManager:
                         "timestamp": format_timestamp(row["timestamp"]),
                         "strategy": row["strategy"],
                         "signal_type": row["signal_type"],
-                        "strength": row["strength"],
+                        "strength": row["confidence"],  # Utiliser confidence comme strength
                         "price": float(row["price"]),
                         "metadata": json.loads(row["metadata"]) if isinstance(row["metadata"], str) else row["metadata"] if row["metadata"] else {}
                     }

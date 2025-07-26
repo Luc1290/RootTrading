@@ -7,7 +7,9 @@ import time
 import json
 import asyncio
 import threading
+import os
 from typing import Dict, Any, Optional
+import psycopg2
 
 from shared.src.redis_client import RedisClient
 from shared.src.enums import OrderSide
@@ -34,6 +36,16 @@ class Coordinator:
         self.service_client = ServiceClient(trader_api_url, portfolio_api_url)
         self.redis_client = RedisClient()
         
+        # Configuration base de données
+        self.db_config = {
+            'host': os.getenv('DB_HOST', 'db'),
+            'port': os.getenv('DB_PORT', 5432),
+            'database': os.getenv('DB_NAME', 'trading'),
+            'user': os.getenv('DB_USER', 'postgres'),
+            'password': os.getenv('DB_PASSWORD', 'postgres')
+        }
+        self.db_connection = None
+        
         # Thread de monitoring stop-loss
         self.stop_loss_active = True
         self.stop_loss_thread = None
@@ -49,6 +61,9 @@ class Coordinator:
         # Configuration trailing sell
         self.sell_margin = 0.004  # 0.4% de marge pour laisser plus de marge aux pumps
         
+        # Initialiser la connexion DB
+        self._init_db_connection()
+        
         # Configuration stop-loss automatique adaptatif
         self.stop_loss_percent_base = 0.015  # 1.5% de base
         self.stop_loss_percent_bullish = 0.025  # 2.5% en tendance haussière (plus souple)
@@ -63,6 +78,53 @@ class Coordinator:
             "orders_sent": 0,
             "errors": 0
         }
+        
+    def _init_db_connection(self):
+        """Initialise la connexion à la base de données."""
+        try:
+            self.db_connection = psycopg2.connect(**self.db_config)
+            logger.info("Connexion à la base de données établie")
+        except Exception as e:
+            logger.error(f"Erreur connexion DB: {e}")
+            self.db_connection = None
+            
+    def _mark_signal_as_processed(self, signal_id: int) -> bool:
+        """
+        Marque un signal comme traité en base de données.
+        
+        Args:
+            signal_id: ID du signal à marquer
+            
+        Returns:
+            True si le marquage a réussi, False sinon
+        """
+        if not self.db_connection:
+            logger.warning("Pas de connexion DB pour marquer le signal")
+            return False
+            
+        try:
+            with self.db_connection.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE trading_signals SET processed = true WHERE id = %s",
+                    (signal_id,)
+                )
+                
+                self.db_connection.commit()
+                
+                if cursor.rowcount > 0:
+                    logger.debug(f"Signal {signal_id} marqué comme traité")
+                    return True
+                else:
+                    logger.warning(f"Signal {signal_id} non trouvé pour marquage")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"Erreur marquage signal {signal_id}: {e}")
+            try:
+                self.db_connection.rollback()
+            except Exception as rollback_error:
+                logger.error(f"Erreur rollback: {rollback_error}")
+            return False
         
         # Démarrer le monitoring stop-loss
         self.start_stop_loss_monitoring()
@@ -95,6 +157,11 @@ class Coordinator:
                 self.stats["signals_rejected"] += 1
                 return
             logger.info(f"📨 Signal reçu: {signal.strategy} {signal.side} {signal.symbol} @ {signal.price}")
+            logger.debug(f"Signal metadata: {signal.metadata}")
+            if signal.metadata and 'db_id' in signal.metadata:
+                logger.info(f"DB ID trouvé dans signal: {signal.metadata['db_id']}")
+            else:
+                logger.warning("Pas de db_id trouvé dans les métadonnées du signal")
             
             # Vérifier la faisabilité
             is_feasible, reason = self._check_feasibility(signal)
@@ -102,6 +169,12 @@ class Coordinator:
             if not is_feasible:
                 logger.warning(f"❌ Signal rejeté: {reason}")
                 self.stats["signals_rejected"] += 1
+                
+                # Marquer le signal comme traité même s'il est rejeté
+                if signal.metadata and 'db_id' in signal.metadata:
+                    db_id = signal.metadata['db_id']
+                    self._mark_signal_as_processed(db_id)
+                
                 return
             
             # Vérifier l'efficacité du trade (logique simplifiée)
@@ -110,6 +183,12 @@ class Coordinator:
             if not is_efficient:
                 logger.warning(f"❌ Signal rejeté: {efficiency_reason}")
                 self.stats["signals_rejected"] += 1
+                
+                # Marquer le signal comme traité même s'il est rejeté
+                if signal.metadata and 'db_id' in signal.metadata:
+                    db_id = signal.metadata['db_id']
+                    self._mark_signal_as_processed(db_id)
+                
                 return
             
             # Calculer la quantité à trader
@@ -117,6 +196,12 @@ class Coordinator:
             if not quantity or quantity <= 0:
                 logger.error("Impossible de calculer la quantité")
                 self.stats["signals_rejected"] += 1
+                
+                # Marquer le signal comme traité même en cas d'erreur
+                if signal.metadata and 'db_id' in signal.metadata:
+                    db_id = signal.metadata['db_id']
+                    self._mark_signal_as_processed(db_id)
+                
                 return
             
             # Préparer l'ordre pour le trader (MARKET pour exécution immédiate)
@@ -146,9 +231,24 @@ class Coordinator:
                 logger.info(f"✅ Ordre créé: {order_id}")
                 self.stats["orders_sent"] += 1
                 self.stats["signals_processed"] += 1
+                
+                # Marquer le signal comme traité en DB si on a le db_id
+                if signal.metadata and 'db_id' in signal.metadata:
+                    db_id = signal.metadata['db_id']
+                    if self._mark_signal_as_processed(db_id):
+                        logger.debug(f"Signal {db_id} marqué comme traité en DB")
+                    else:
+                        logger.warning(f"Impossible de marquer le signal {db_id} comme traité")
+                else:
+                    logger.warning("Pas de db_id dans les métadonnées du signal")
             else:
                 logger.error("❌ Échec création ordre")
                 self.stats["errors"] += 1
+                
+                # Marquer le signal comme traité même en cas d'échec
+                if signal.metadata and 'db_id' in signal.metadata:
+                    db_id = signal.metadata['db_id']
+                    self._mark_signal_as_processed(db_id)
                 
         except Exception as e:
             logger.error(f"❌ Erreur traitement signal: {str(e)}")
