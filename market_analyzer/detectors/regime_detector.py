@@ -278,9 +278,12 @@ class RegimeDetector:
         else:
             direction = 'mixed'
         
-        # Pente de tendance (EMA rapide)
+        # Pente de tendance (EMA rapide) normalisée par le prix moyen
         recent_ema = [x['fast'] for x in valid_emas[-10:]]
-        slope = self._calculate_slope(recent_ema)
+        raw_slope = self._calculate_slope(recent_ema)
+        avg_price = np.mean(recent_ema)
+        # Normaliser la pente : (pente / prix_moyen) * 100 pour obtenir un pourcentage
+        slope = (raw_slope / avg_price) * 100 if avg_price > 0 else 0.0
         
         # Force de tendance (distance entre EMAs)
         ema_spread = abs(current['fast'] - current['slow']) / current['medium']

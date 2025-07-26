@@ -72,7 +72,9 @@ export const useChartStore = create<ChartStore>()(
       period: '24h',
       emaToggles: {
         ema7: true,
+        ema12: false,
         ema26: true,
+        ema50: false,
         ema99: true,
       },
       smaToggles: {

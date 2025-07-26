@@ -37,6 +37,16 @@
       "Bash(mypy:*)",
       "Bash(ruff check:*)"
     ],
-    "deny": []
+    "deny": [
+        "docker-compose restart",
+        "docker-compose stop",
+        "docker-compose up",
+        "docker-compose down",
+        "docker-compose build",
+        "docker-compose rebuild",
+        "docker restart",
+        "docker stop",
+        "docker kill"
+    ]
   }
 }

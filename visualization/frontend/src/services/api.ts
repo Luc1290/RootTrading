@@ -47,9 +47,24 @@ class ApiService {
     interval: TimeInterval,
     limit: number = 2880
   ): Promise<ChartData> {
-    return this.request(
+    const response: ChartData = await this.request(
       `/api/charts/indicators/${symbol}?indicators=${indicators}&interval=${interval}&limit=${limit}`
     );
+    
+    // Ajouter des alias pour compatibilité frontend
+    if (response.indicators) {
+      // Alias RSI
+      if (response.indicators.rsi_14 && !response.indicators.rsi) {
+        response.indicators.rsi = response.indicators.rsi_14;
+      }
+      
+      // Alias MACD
+      if (response.indicators.macd_line && !response.indicators.macd) {
+        response.indicators.macd = response.indicators.macd_line;
+      }
+    }
+    
+    return response;
   }
   
   // Signaux de trading

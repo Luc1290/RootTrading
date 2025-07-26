@@ -125,34 +125,37 @@ class GapDetector:
                 logger.debug(f"PostgreSQL returned gap_start: {type(gap_start)} = {gap_start}")
                 logger.debug(f"PostgreSQL returned gap_end: {type(gap_end)} = {gap_end}")
                 
-                # Assurer que nous avons des objets datetime propres
+                # Assurer que nous avons des objets datetime propres SANS TIMEZONE
                 try:
-                    # Convertir en datetime si pas déjà le cas
+                    # Convertir gap_start en datetime sans timezone
                     if not isinstance(gap_start, datetime):
                         if hasattr(gap_start, 'replace'):  # datetime.date ou time
                             if hasattr(gap_start, 'hour') and hasattr(gap_start, 'year'):  # datetime complet
                                 gap_start = gap_start.replace(tzinfo=None)
                             elif hasattr(gap_start, 'hour'):  # time only (pas de date)
-                                # C'est un datetime.time, on doit le combiner avec la date actuelle
                                 gap_start = datetime.combine(now.date(), gap_start)
-                                logger.debug(f"Converted time {gap_start} to datetime")
                             else:  # date only
                                 gap_start = datetime.combine(gap_start, datetime.min.time())
                         elif isinstance(gap_start, str):
                             gap_start = datetime.fromisoformat(gap_start.replace('Z', ''))
+                    else:
+                        # Forcer le retrait de timezone si présente
+                        gap_start = gap_start.replace(tzinfo=None)
                     
+                    # Convertir gap_end en datetime sans timezone
                     if not isinstance(gap_end, datetime):
                         if hasattr(gap_end, 'replace'):  # datetime.date ou time
                             if hasattr(gap_end, 'hour') and hasattr(gap_end, 'year'):  # datetime complet
                                 gap_end = gap_end.replace(tzinfo=None)
                             elif hasattr(gap_end, 'hour'):  # time only (pas de date)
-                                # C'est un datetime.time, on doit le combiner avec la date actuelle
                                 gap_end = datetime.combine(now.date(), gap_end)
-                                logger.debug(f"Converted time {gap_end} to datetime")
                             else:  # date only
                                 gap_end = datetime.combine(gap_end, datetime.min.time())
                         elif isinstance(gap_end, str):
                             gap_end = datetime.fromisoformat(gap_end.replace('Z', ''))
+                    else:
+                        # Forcer le retrait de timezone si présente
+                        gap_end = gap_end.replace(tzinfo=None)
                     
                     gaps.append((gap_start, gap_end))
                     
@@ -247,7 +250,7 @@ class GapDetector:
         clean_gaps = []
         for gap_start, gap_end in gaps:
             try:
-                # Convertir gap_start en datetime si nécessaire
+                # Convertir gap_start en datetime SANS TIMEZONE
                 if not isinstance(gap_start, datetime):
                     if hasattr(gap_start, 'hour'):  # datetime complet avec timezone
                         gap_start = gap_start.replace(tzinfo=None) if hasattr(gap_start, 'replace') else gap_start
@@ -258,8 +261,11 @@ class GapDetector:
                     else:
                         logger.warning(f"Impossible de convertir gap_start {type(gap_start)}: {gap_start}")
                         continue
+                else:
+                    # S'assurer qu'il n'y a pas de timezone
+                    gap_start = gap_start.replace(tzinfo=None)
                 
-                # Convertir gap_end en datetime si nécessaire
+                # Convertir gap_end en datetime SANS TIMEZONE
                 if not isinstance(gap_end, datetime):
                     if hasattr(gap_end, 'hour'):  # datetime complet avec timezone
                         gap_end = gap_end.replace(tzinfo=None) if hasattr(gap_end, 'replace') else gap_end
@@ -270,6 +276,9 @@ class GapDetector:
                     else:
                         logger.warning(f"Impossible de convertir gap_end {type(gap_end)}: {gap_end}")
                         continue
+                else:
+                    # S'assurer qu'il n'y a pas de timezone
+                    gap_end = gap_end.replace(tzinfo=None)
                 
                 clean_gaps.append((gap_start, gap_end))
                 

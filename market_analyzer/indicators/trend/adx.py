@@ -91,6 +91,7 @@ def calculate_adx_full(highs: Union[List[float], np.ndarray, pd.Series],
         - plus_di: Positive Directional Indicator
         - minus_di: Negative Directional Indicator
         - dx: Directional Movement Index
+        - adxr: Average Directional Movement Index Rating
     """
     highs_array = _to_numpy_array(highs)
     lows_array = _to_numpy_array(lows)
@@ -101,7 +102,8 @@ def calculate_adx_full(highs: Union[List[float], np.ndarray, pd.Series],
             'adx': None,
             'plus_di': None,
             'minus_di': None,
-            'dx': None
+            'dx': None,
+            'adxr': None
         }
     
     # Ensure all arrays have same length
@@ -116,12 +118,14 @@ def calculate_adx_full(highs: Union[List[float], np.ndarray, pd.Series],
             plus_di = talib.PLUS_DI(highs_array, lows_array, closes_array, timeperiod=period)
             minus_di = talib.MINUS_DI(highs_array, lows_array, closes_array, timeperiod=period)
             dx = talib.DX(highs_array, lows_array, closes_array, timeperiod=period)
+            adxr = talib.ADXR(highs_array, lows_array, closes_array, timeperiod=period)
             
             return {
                 'adx': float(adx[-1]) if not np.isnan(adx[-1]) else None,
                 'plus_di': float(plus_di[-1]) if not np.isnan(plus_di[-1]) else None,
                 'minus_di': float(minus_di[-1]) if not np.isnan(minus_di[-1]) else None,
-                'dx': float(dx[-1]) if not np.isnan(dx[-1]) else None
+                'dx': float(dx[-1]) if not np.isnan(dx[-1]) else None,
+                'adxr': float(adxr[-1]) if not np.isnan(adxr[-1]) else None
             }
         except Exception as e:
             logger.warning(f"TA-Lib ADX full error: {e}, using fallback")
@@ -389,7 +393,8 @@ def _calculate_adx_full_manual(highs: np.ndarray,
             'adx': None,
             'plus_di': None,
             'minus_di': None,
-            'dx': None
+            'dx': None,
+            'adxr': None
         }
     
     # Calculate directional movements
@@ -411,7 +416,8 @@ def _calculate_adx_full_manual(highs: np.ndarray,
             'adx': None,
             'plus_di': None,
             'minus_di': None,
-            'dx': None
+            'dx': None,
+            'adxr': None
         }
     
     # Initialize with first period values
@@ -439,11 +445,15 @@ def _calculate_adx_full_manual(highs: np.ndarray,
     # Calculate ADX (would need more history for accurate ADX)
     adx = _calculate_adx_manual(highs, lows, closes, period)
     
+    # Calculate ADXR manually
+    adxr = calculate_adxr(highs, lows, closes, period)
+    
     return {
         'adx': adx,
         'plus_di': float(plus_di),
         'minus_di': float(minus_di),
-        'dx': float(dx)
+        'dx': float(dx),
+        'adxr': adxr
     }
 
 

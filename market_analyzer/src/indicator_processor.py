@@ -7,6 +7,7 @@ Architecture simple : récupère données → appelle modules → sauvegarde ré
 import logging
 import asyncio
 import time
+import json
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 import asyncpg
@@ -21,10 +22,13 @@ from shared.src.config import get_db_config
 # Import DIRECT de tous vos modules existants
 from market_analyzer.indicators import (
     calculate_rsi, calculate_ema, calculate_sma, calculate_macd_series,
-    calculate_bollinger_bands_series, calculate_atr, calculate_adx,
+    calculate_bollinger_bands_series, calculate_atr, 
     calculate_stochastic_series, calculate_williams_r, calculate_cci,
     calculate_obv_series, calculate_vwap_series
 )
+
+# Import ADX complet
+from market_analyzer.indicators.trend.adx import calculate_adx_full
 
 # Import des moyennes avancées
 from market_analyzer.indicators.trend.moving_averages import (
@@ -37,9 +41,9 @@ from market_analyzer.indicators.momentum.momentum import (
 )
 from market_analyzer.indicators.momentum.rsi import calculate_stoch_rsi
 
-# Import des indicateurs de volatilité
-from market_analyzer.indicators.volatility.atr import calculate_natr, calculate_atr_stop_loss
-from market_analyzer.indicators.volatility.bollinger import calculate_keltner_channels
+# Import des indicateurs de volatilité  
+from market_analyzer.indicators.volatility.atr import calculate_natr, volatility_regime
+from market_analyzer.indicators.volatility.bollinger import calculate_bollinger_squeeze
 
 # Import des indicateurs de volume
 from market_analyzer.indicators.volume.obv import calculate_obv_ma, calculate_obv_oscillator
@@ -177,27 +181,27 @@ class IndicatorProcessor:
         try:
             # === APPEL DIRECT DE VOS MODULES INDICATORS ===
             
-            # RSI (plusieurs périodes)
+            # RSI (plusieurs périodes, sans cache pour corriger le problème)
             if len(closes) >= 14:
-                indicators['rsi_14'] = self._safe_call(lambda: calculate_rsi(closes, 14, symbol))
+                indicators['rsi_14'] = self._safe_call(lambda: calculate_rsi(closes, 14))
             if len(closes) >= 21:
-                indicators['rsi_21'] = self._safe_call(lambda: calculate_rsi(closes, 21, symbol))
+                indicators['rsi_21'] = self._safe_call(lambda: calculate_rsi(closes, 21))
             
             # Stochastic RSI
             if len(closes) >= 14:
                 indicators['stoch_rsi'] = self._safe_call(lambda: calculate_stoch_rsi(closes, 14, 14))
             
-            # EMAs
+            # EMAs (sans cache pour corriger le problème)
             if len(closes) >= 7:
-                indicators['ema_7'] = self._safe_call(lambda: calculate_ema(closes, 7, symbol))
+                indicators['ema_7'] = self._safe_call(lambda: calculate_ema(closes, 7))
             if len(closes) >= 12:
-                indicators['ema_12'] = self._safe_call(lambda: calculate_ema(closes, 12, symbol))
+                indicators['ema_12'] = self._safe_call(lambda: calculate_ema(closes, 12))
             if len(closes) >= 26:
-                indicators['ema_26'] = self._safe_call(lambda: calculate_ema(closes, 26, symbol))
+                indicators['ema_26'] = self._safe_call(lambda: calculate_ema(closes, 26))
             if len(closes) >= 50:
-                indicators['ema_50'] = self._safe_call(lambda: calculate_ema(closes, 50, symbol))
+                indicators['ema_50'] = self._safe_call(lambda: calculate_ema(closes, 50))
             if len(closes) >= 99:
-                indicators['ema_99'] = self._safe_call(lambda: calculate_ema(closes, 99, symbol))
+                indicators['ema_99'] = self._safe_call(lambda: calculate_ema(closes, 99))
             
             # SMAs
             if len(closes) >= 20:
@@ -236,8 +240,36 @@ class IndicatorProcessor:
             
             # ADX
             if len(closes) >= 14:
-                indicators['adx_14'] = self._safe_call(lambda: calculate_adx(highs, lows, closes, 14, symbol))
+                adx_full = self._safe_call(lambda: calculate_adx_full(highs, lows, closes, 14))
+                if adx_full and isinstance(adx_full, dict):
+                    indicators.update({
+                        'adx_14': adx_full.get('adx'),
+                        'plus_di': adx_full.get('plus_di'),
+                        'minus_di': adx_full.get('minus_di'),
+                        'dx': adx_full.get('dx'),
+                        'adxr': adx_full.get('adxr')
+                    })
             
+            # ATR et volatilité (calculer d'abord car utilisé par Keltner)
+            atr = None
+            if len(closes) >= 14:
+                atr = self._safe_call(lambda: calculate_atr(highs, lows, closes, 14))
+                indicators['atr_14'] = atr
+                
+                if atr and closes[-1] > 0:
+                    indicators['natr'] = self._safe_call(lambda: calculate_natr(highs, lows, closes, 14))
+                    
+                    # Régime de volatilité
+                    volatility_reg = self._safe_call(lambda: volatility_regime(highs, lows, closes, 14, 20))  # Réduire lookback de 50 à 20
+                    indicators['volatility_regime'] = volatility_reg
+                    
+                    # ATR stop loss calculé manuellement
+                    atr_multiplier = 2.0
+                    indicators.update({
+                        'atr_stop_long': closes[-1] - (atr * atr_multiplier),
+                        'atr_stop_short': closes[-1] + (atr * atr_multiplier)
+                    })
+
             # Bollinger Bands
             if len(closes) >= 20:
                 bb_series = self._safe_call(lambda: calculate_bollinger_bands_series(closes, 20, 2.0))
@@ -246,38 +278,26 @@ class IndicatorProcessor:
                     bb_upper_series = bb_series.get('upper', [])
                     bb_middle_series = bb_series.get('middle', [])
                     bb_lower_series = bb_series.get('lower', [])
-                    bb_position_series = bb_series.get('position', [])
-                    bb_width_series = bb_series.get('width', [])
+                    bb_percent_b_series = bb_series.get('percent_b', [])
+                    bb_bandwidth_series = bb_series.get('bandwidth', [])
                     
                     indicators.update({
                         'bb_upper': bb_upper_series[-1] if bb_upper_series else None,
                         'bb_middle': bb_middle_series[-1] if bb_middle_series else None,
                         'bb_lower': bb_lower_series[-1] if bb_lower_series else None,
-                        'bb_position': bb_position_series[-1] if bb_position_series else None,
-                        'bb_width': bb_width_series[-1] if bb_width_series else None
+                        'bb_position': bb_percent_b_series[-1] if bb_percent_b_series else None,
+                        'bb_width': bb_bandwidth_series[-1] if bb_bandwidth_series else None
                     })
                 
-                # Keltner Channels
-                keltner = self._safe_call(lambda: calculate_keltner_channels(closes, 20))
-                if keltner:
-                    indicators.update({
-                        'keltner_upper': keltner.get('upper'),
-                        'keltner_lower': keltner.get('lower')
-                    })
-            
-            # ATR et volatilité
-            if len(closes) >= 14:
-                atr = self._safe_call(lambda: calculate_atr(highs, lows, closes, 14, symbol))
-                indicators['atr_14'] = atr
-                
-                if atr and closes[-1] > 0:
-                    indicators['natr'] = self._safe_call(lambda: calculate_natr(highs, lows, closes, 14))
-                    
-                    # ATR stop loss avec votre fonction
-                    indicators.update({
-                        'atr_stop_long': self._safe_call(lambda: calculate_atr_stop_loss(closes[-1], atr, 2.0, is_long=True)),
-                        'atr_stop_short': self._safe_call(lambda: calculate_atr_stop_loss(closes[-1], atr, 2.0, is_long=False))
-                    })
+                # Keltner Channels (calculé manuellement avec ATR)
+                if atr:
+                    ema_20 = self._safe_call(lambda: calculate_ema(closes, 20))
+                    if ema_20:
+                        keltner_multiplier = 2.0
+                        indicators.update({
+                            'keltner_upper': ema_20 + (atr * keltner_multiplier),
+                            'keltner_lower': ema_20 - (atr * keltner_multiplier)
+                        })
             
             # Stochastic
             if len(closes) >= 14:
@@ -306,7 +326,7 @@ class IndicatorProcessor:
             
             # Williams %R
             if len(closes) >= 14:
-                indicators['williams_r'] = self._safe_call(lambda: calculate_williams_r(highs, lows, closes, 14, symbol))
+                indicators['williams_r'] = self._safe_call(lambda: calculate_williams_r(highs, lows, closes, 14))
             
             # CCI
             if len(closes) >= 20:
@@ -361,42 +381,61 @@ class IndicatorProcessor:
                 
                 # RegimeDetector
                 try:
-                    regime_result = self.regime_detector.analyze_regime({
-                        'prices': closes,
-                        'volumes': volumes,
-                        'highs': highs,
-                        'lows': lows
-                    })
+                    regime_result = self.regime_detector.detect_regime(
+                        highs=highs,
+                        lows=lows,
+                        closes=closes,
+                        volumes=volumes,
+                        symbol=symbol,
+                        include_analysis=True,
+                        enable_cache=True
+                    )
                     
                     if regime_result:
                         indicators.update({
-                            'market_regime': str(regime_result.get('regime', 'UNKNOWN')),
-                            'regime_strength': str(regime_result.get('strength', 'MODERATE')),
-                            'regime_confidence': float(regime_result.get('confidence', 50.0)),
-                            'regime_duration': int(regime_result.get('duration', 1)),
-                            'trend_alignment': float(regime_result.get('trend_alignment', 50.0)),
-                            'momentum_score': float(regime_result.get('momentum_score', 50.0))
+                            'market_regime': str(regime_result.regime_type.value if hasattr(regime_result.regime_type, 'value') else regime_result.regime_type).upper(),
+                            'regime_strength': str(regime_result.strength.value if hasattr(regime_result.strength, 'value') else regime_result.strength).upper(),
+                            'regime_confidence': float(regime_result.confidence),
+                            'regime_duration': int(regime_result.duration),
+                            'trend_alignment': float(regime_result.trend_slope),  # Déjà en pourcentage
+                            'momentum_score': float(regime_result.support_resistance_strength * 100)
                         })
                 except Exception as e:
-                    logger.debug(f"RegimeDetector error: {e}")
+                    logger.warning(f"RegimeDetector error: {e}")
                 
                 # SupportResistanceDetector
                 try:
-                    sr_result = self.sr_detector.find_levels(highs, lows, closes)
+                    sr_levels = self.sr_detector.detect_levels(
+                        highs=highs,
+                        lows=lows,
+                        closes=closes,
+                        volumes=volumes,
+                        current_price=closes[-1],
+                        timeframe=timeframe
+                    )
                     
-                    if sr_result:
+                    if sr_levels:
+                        # Séparer supports et résistances
+                        current_price = closes[-1]
+                        supports = [level for level in sr_levels if level.price < current_price]
+                        resistances = [level for level in sr_levels if level.price > current_price]
+                        
+                        # Extraire les prix pour JSONB
+                        support_prices = [level.price for level in supports[:5]]  # Top 5
+                        resistance_prices = [level.price for level in resistances[:5]]  # Top 5
+                        
                         indicators.update({
-                            'support_levels': sr_result.get('support_levels', []),
-                            'resistance_levels': sr_result.get('resistance_levels', []),
-                            'nearest_support': sr_result.get('nearest_support'),
-                            'nearest_resistance': sr_result.get('nearest_resistance'),
-                            'support_strength': str(sr_result.get('support_strength', 'MODERATE')),
-                            'resistance_strength': str(sr_result.get('resistance_strength', 'MODERATE')),
-                            'break_probability': float(sr_result.get('break_probability', 50.0)),
-                            'pivot_count': int(sr_result.get('pivot_count', 0))
+                            'support_levels': support_prices,
+                            'resistance_levels': resistance_prices,
+                            'nearest_support': supports[0].price if supports else None,
+                            'nearest_resistance': resistances[0].price if resistances else None,
+                            'support_strength': str(supports[0].strength.value).upper() if supports else 'MODERATE',
+                            'resistance_strength': str(resistances[0].strength.value).upper() if resistances else 'MODERATE',
+                            'break_probability': float(supports[0].break_probability if supports else 50.0),
+                            'pivot_count': len(sr_levels)
                         })
                 except Exception as e:
-                    logger.debug(f"SupportResistanceDetector error: {e}")
+                    logger.warning(f"SupportResistanceDetector error: {e}")
                 
                 # VolumeContextAnalyzer
                 try:
@@ -410,8 +449,8 @@ class IndicatorProcessor:
                     
                     if volume_result:
                         indicators.update({
-                            'volume_context': str(volume_result.context.context_type.value),
-                            'volume_pattern': str(volume_result.context.pattern_detected.value),
+                            'volume_context': str(volume_result.context.context_type.value).upper(),
+                            'volume_pattern': str(volume_result.context.pattern_detected.value).upper(),
                             'volume_quality_score': float(volume_result.quality_score),
                             'relative_volume': float(volume_result.current_volume_ratio),
                             'volume_buildup_periods': int(len(volumes) if volume_result.buildup_detected else 0),
@@ -422,14 +461,25 @@ class IndicatorProcessor:
                 
                 # SpikeDetector
                 try:
-                    spike_result = self.spike_detector.detect_spikes(volumes, closes)
-                    if spike_result:
-                        indicators.update({
-                            'pattern_detected': spike_result.get('pattern'),
-                            'pattern_confidence': float(spike_result.get('confidence', 0.0))
-                        })
+                    spike_events = self.spike_detector.detect_spikes(
+                        highs=highs,
+                        lows=lows,
+                        closes=closes,
+                        volumes=volumes,
+                        timestamps=None  # Will be auto-generated
+                    )
+                    
+                    if spike_events:
+                        # Prendre le spike le plus récent
+                        latest_spike = spike_events[0] if spike_events else None
+                        
+                        if latest_spike:
+                            indicators.update({
+                                'pattern_detected': str(latest_spike.spike_type.value).upper(),
+                                'pattern_confidence': float(latest_spike.confidence)
+                            })
                 except Exception as e:
-                    logger.debug(f"SpikeDetector error: {e}")
+                    logger.warning(f"SpikeDetector error: {e}")
             
             # Métadonnées
             calculation_time = int((time.time() - start_time) * 1000)
@@ -453,7 +503,10 @@ class IndicatorProcessor:
         """Exécute un appel de fonction de manière sécurisée."""
         try:
             result = func()
-            return float(result) if result is not None and not isinstance(result, (list, dict)) else result
+            # Ne convertir en float que les types numériques, pas les strings
+            if result is not None and not isinstance(result, (list, dict, str)):
+                return float(result)
+            return result
         except Exception as e:
             import traceback
             logger.debug(f"Appel échoué: {e}")
@@ -483,6 +536,28 @@ class IndicatorProcessor:
         except (ValueError, TypeError, OverflowError):
             return None
 
+    def _sanitize_percentage_value(self, value):
+        """Sanitise une valeur pourcentage pour les colonnes precision(5,2) - max 999.99."""
+        if value is None:
+            return None
+        
+        try:
+            value = float(value)
+            
+            # Vérifier si la valeur est finie
+            if not (isinstance(value, (int, float)) and abs(value) < float('inf')):
+                return None
+            
+            # Limiter à la précision (5,2) : max 999.99
+            if abs(value) > 999.99:
+                logger.warning(f"Valeur pourcentage trop grande pour la DB: {value}, limitée à 999.99")
+                return 999.99 if value > 0 else -999.99
+            
+            return value
+            
+        except (ValueError, TypeError, OverflowError):
+            return None
+
     async def _save_indicators_to_db(self, indicators: Dict):
         """Sauvegarde tous les indicateurs dans analyzer_data."""
         
@@ -501,9 +576,9 @@ class IndicatorProcessor:
                 -- Stochastic
                 stoch_k, stoch_d, stoch_rsi, stoch_fast_k, stoch_fast_d,
                 -- ATR & Volatilité
-                atr_14, natr, atr_stop_long, atr_stop_short,
+                atr_14, natr, atr_stop_long, atr_stop_short, volatility_regime,
                 -- ADX
-                adx_14,
+                adx_14, plus_di, minus_di, dx, adxr,
                 -- Oscillateurs
                 williams_r, cci_20, momentum_10, roc_10, roc_20,
                 -- Volume avancé
@@ -528,16 +603,16 @@ class IndicatorProcessor:
                 $20, $21, $22, $23,
                 $24, $25, $26, $27, $28, $29, $30,
                 $31, $32, $33, $34, $35,
-                $36, $37, $38, $39,
-                $40,
+                $36, $37, $38, $39, $40,
                 $41, $42, $43, $44, $45,
-                $46, $47, $48, $49, $50, $51, $52,
-                $53, $54, $55,
-                $56, $57, $58, $59, $60, $61,
-                $62, $63, $64, $65, $66, $67, $68, $69,
-                $70, $71, $72, $73, $74, $75,
-                $76, $77,
-                $78, $79, $80
+                $46, $47, $48, $49, $50,
+                $51, $52, $53, $54, $55, $56, $57,
+                $58, $59, $60,
+                $61, $62, $63, $64, $65, $66,
+                $67, $68, $69, $70, $71, $72, $73, $74,
+                $75, $76, $77, $78, $79, $80,
+                $81, $82,
+                $83, $84, $85
             )
             ON CONFLICT (time, symbol, timeframe) DO UPDATE SET
                 analysis_timestamp = EXCLUDED.analysis_timestamp,
@@ -594,8 +669,13 @@ class IndicatorProcessor:
                 self._sanitize_numeric_value(indicators.get('natr')), 
                 self._sanitize_numeric_value(indicators.get('atr_stop_long')), 
                 self._sanitize_numeric_value(indicators.get('atr_stop_short')),
+                indicators.get('volatility_regime'),
                 # ADX
                 self._sanitize_numeric_value(indicators.get('adx_14')),
+                self._sanitize_numeric_value(indicators.get('plus_di')),
+                self._sanitize_numeric_value(indicators.get('minus_di')),
+                self._sanitize_numeric_value(indicators.get('dx')),
+                self._sanitize_numeric_value(indicators.get('adxr')),
                 # Oscillateurs
                 self._sanitize_numeric_value(indicators.get('williams_r')), 
                 self._sanitize_numeric_value(indicators.get('cci_20')), 
@@ -620,7 +700,8 @@ class IndicatorProcessor:
                 self._sanitize_numeric_value(indicators.get('trend_alignment')), 
                 self._sanitize_numeric_value(indicators.get('momentum_score')),
                 # Support/Résistance (JSONB)
-                indicators.get('support_levels'), indicators.get('resistance_levels'),
+                json.dumps(indicators.get('support_levels', [])) if indicators.get('support_levels') else None, 
+                json.dumps(indicators.get('resistance_levels', [])) if indicators.get('resistance_levels') else None,
                 self._sanitize_numeric_value(indicators.get('nearest_support')), 
                 self._sanitize_numeric_value(indicators.get('nearest_resistance')),
                 indicators.get('support_strength'), indicators.get('resistance_strength'),

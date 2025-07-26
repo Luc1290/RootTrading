@@ -16,6 +16,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 
 from simple_data_fetcher import SimpleDataFetcher
 from simple_binance_ws import SimpleBinanceWebSocket
+from gap_detector import GapDetector
 from shared.src.config import SYMBOLS, INTERVAL
 
 # Configuration du logging
@@ -29,9 +30,95 @@ logging.basicConfig(
 )
 logger = logging.getLogger("gateway")
 
+class SmartDataFetcher:
+    """
+    Fetcher intelligent qui utilise GapDetector pour ne charger que les données manquantes.
+    """
+    
+    def __init__(self):
+        self.gap_detector = GapDetector()
+        self.simple_fetcher = SimpleDataFetcher()
+        self.running = False
+        
+    async def start(self):
+        """Démarre le fetcher intelligent avec détection de gaps."""
+        self.running = True
+        logger.info("🧠 Démarrage du SmartDataFetcher...")
+        
+        try:
+            # 1. Initialiser le gap detector
+            await self.gap_detector.initialize()
+            
+            # 2. Détecter les gaps pour tous les symboles (24h lookback)
+            logger.info("🔍 Détection des gaps en cours...")
+            all_gaps = await self.gap_detector.detect_all_gaps(symbols=SYMBOLS, lookback_hours=24)
+            
+            # 3. Analyser les résultats
+            total_gaps = sum(len(timeframe_gaps) for symbol_gaps in all_gaps.values() for timeframe_gaps in symbol_gaps.values())
+            
+            if total_gaps == 0:
+                logger.info("✅ Aucun gap détecté - Base de données synchronisée")
+                logger.info("🎯 Mode: WebSocket temps réel uniquement")
+                return  # Pas besoin de fetch, on est sync
+            
+            logger.warning(f"📊 {total_gaps} gaps détectés - Remplissage nécessaire")
+            
+            # 4. Générer un plan de remplissage optimisé
+            filling_plan = self.gap_detector.generate_gap_filling_plan(all_gaps)
+            estimated_time = self.gap_detector.estimate_fill_time(filling_plan)
+            
+            logger.info(f"⏱️ Temps estimé pour synchronisation: {estimated_time:.1f}s")
+            
+            # 5. Exécuter le remplissage intelligent
+            await self._execute_smart_fill(filling_plan)
+            
+            logger.info("✅ Synchronisation terminée - Passage en mode live")
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur SmartDataFetcher: {e}")
+            # Fallback: utiliser le fetcher classique
+            logger.info("🔄 Fallback vers fetcher classique")
+            await self.simple_fetcher.start()
+            
+    async def _execute_smart_fill(self, filling_plan):
+        """Exécute le plan de remplissage de façon optimisée."""
+        total_requests = sum(len(periods) for symbol_plan in filling_plan.values() for periods in symbol_plan.values())
+        completed = 0
+        
+        logger.info(f"🚀 Début du remplissage intelligent ({total_requests} requêtes)")
+        
+        for symbol, timeframe_plan in filling_plan.items():
+            for timeframe, periods in timeframe_plan.items():
+                for start_time, end_time in periods:
+                    try:
+                        # Récupérer les données pour cette période spécifique
+                        await self.simple_fetcher._fetch_period_data(symbol, timeframe, start_time, end_time)
+                        completed += 1
+                        
+                        if completed % 10 == 0:
+                            progress = (completed / total_requests) * 100
+                            logger.info(f"📈 Progression: {completed}/{total_requests} ({progress:.1f}%)")
+                            
+                        # Respecter les rate limits
+                        await asyncio.sleep(0.1)
+                        
+                    except Exception as e:
+                        logger.error(f"❌ Erreur remplissage {symbol} {timeframe}: {e}")
+                        
+        logger.info(f"✅ Remplissage terminé: {completed}/{total_requests} requêtes réussies")
+        
+    async def stop(self):
+        """Arrête le fetcher intelligent."""
+        self.running = False
+        if self.gap_detector:
+            await self.gap_detector.close()
+        await self.simple_fetcher.stop()
+        logger.info("🛑 SmartDataFetcher arrêté")
+
 # Variables globales
 data_fetcher = None
 ws_client = None
+gap_detector = None
 running = True
 start_time = time.time()
 
@@ -110,7 +197,7 @@ async def shutdown(signal_type, loop):
     # Arrêter la boucle asyncio
     loop.stop()
     
-    logger.info("Service Gateway (simple) arrêté proprement")
+    logger.info("Service Gateway intelligent arrêté proprement")
 
 async def main():
     """
@@ -126,19 +213,21 @@ async def main():
     http_runner = await start_http_server()
     
     try:
-        # Créer les services simples (pas d'indicateurs)
-        data_fetcher = SimpleDataFetcher()
+        # Créer les services intelligents
+        data_fetcher = SmartDataFetcher()
         ws_client = SimpleBinanceWebSocket(symbols=SYMBOLS, intervals=['1m', '3m', '5m', '15m', '1d'])
         
-        logger.info("📡 Initialisation des services de données brutes...")
-        logger.info("🔄 Mode: WebSocket temps réel + récupération historique")
+        logger.info("📡 Initialisation des services intelligents...")
+        logger.info("🧠 Mode: Détection de gaps + WebSocket temps réel")
         
-        # Démarrer les services en parallèle
-        logger.info("🚀 Démarrage WebSocket + DataFetcher...")
-        await asyncio.gather(
-            ws_client.start(),
-            data_fetcher.start()
-        )
+        # 1. D'abord synchroniser les données manquantes
+        logger.info("🔍 Phase 1: Synchronisation intelligente...")
+        await data_fetcher.start()
+        
+        # 2. Ensuite démarrer le WebSocket temps réel en mode continu
+        logger.info("🚀 Phase 2: Démarrage WebSocket temps réel...")
+        # Note: WebSocket fonctionne en continu, pas de synchronisation nécessaire
+        await ws_client.start()
         
     except Exception as e:
         logger.error(f"❌ Erreur critique dans le Gateway: {str(e)}")

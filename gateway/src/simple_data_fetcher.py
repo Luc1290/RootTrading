@@ -212,6 +212,41 @@ class SimpleDataFetcher:
         except Exception as e:
             logger.error(f"❌ Erreur récupération latest {symbol} {timeframe}: {e}")
 
+    async def _fetch_period_data(self, symbol: str, timeframe: str, start_time, end_time):
+        """Récupère les données pour une période spécifique (utilisé par SmartDataFetcher)."""
+        try:
+            # Convertir les timestamps en millisecondes pour Binance API
+            start_ts = int(start_time.timestamp() * 1000)
+            end_ts = int(end_time.timestamp() * 1000)
+            
+            url = f"{self.base_url}{self.klines_endpoint}"
+            params = {
+                'symbol': symbol,
+                'interval': timeframe,
+                'startTime': start_ts,
+                'endTime': end_ts,
+                'limit': 1000
+            }
+            
+            async with aiohttp.ClientSession(timeout=self.timeout) as session:
+                async with session.get(url, params=params) as response:
+                    if response.status == 200:
+                        klines = await response.json()
+                        
+                        if klines:
+                            processed_data = self._process_raw_klines(klines, symbol, timeframe)
+                            await self._publish_to_kafka(processed_data, symbol, timeframe)
+                            
+                            logger.debug(f"✅ Période remplie: {symbol} {timeframe} ({len(klines)} bougies)")
+                            return True
+                    else:
+                        logger.error(f"❌ Erreur API Binance {response.status} pour {symbol} {timeframe}")
+                        return False
+                        
+        except Exception as e:
+            logger.error(f"❌ Erreur fetch période {symbol} {timeframe}: {e}")
+            return False
+
     async def stop(self):
         """Arrête le service."""
         self.running = False

@@ -226,9 +226,9 @@ class DataListener:
             timeframe: Timeframe spécifique (optionnel)  
             limit: Nombre maximum de données à traiter
         """
-        logger.info(f"🔄 Démarrage traitement historique (limit: {limit})")
+        logger.info(f"🧠 Démarrage traitement intelligent des gaps récents (24h)...")
         
-        # Requête pour trouver les données non analysées
+        # Requête intelligente: seulement les gaps des dernières 24h
         base_query = """
             SELECT md.symbol, md.timeframe, md.time
             FROM market_data md
@@ -238,6 +238,7 @@ class DataListener:
                 md.time = ad.time
             )
             WHERE ad.time IS NULL
+            AND md.time >= NOW() - INTERVAL '24 hours'
         """
         
         conditions = []
@@ -261,7 +262,11 @@ class DataListener:
             async with self.db_pool.acquire() as conn:
                 rows = await conn.fetch(query, *params)
                 
-            logger.info(f"📊 {len(rows)} données historiques à traiter")
+            if not rows:
+                logger.info("✅ Aucun gap récent détecté - Base synchronisée")
+                return
+                
+            logger.info(f"📊 {len(rows)} gaps récents détectés (24h) - Traitement intelligent")
             
             processed = 0
             for row in rows:
@@ -274,13 +279,13 @@ class DataListener:
                     processed += 1
                     
                     if processed % 50 == 0:
-                        logger.info(f"📈 Historique traité: {processed}/{len(rows)}")
+                        logger.info(f"📈 Gaps traités: {processed}/{len(rows)}")
                         
                 except Exception as e:
-                    logger.error(f"❌ Erreur traitement historique {row['symbol']} {row['timeframe']}: {e}")
+                    logger.error(f"❌ Erreur traitement gap {row['symbol']} {row['timeframe']}: {e}")
                     continue
             
-            logger.info(f"✅ Traitement historique terminé: {processed}/{len(rows)} succès")
+            logger.info(f"✅ Traitement intelligent terminé: {processed}/{len(rows)} gaps comblés")
             
         except Exception as e:
             logger.error(f"❌ Erreur traitement historique: {e}")
@@ -288,13 +293,22 @@ class DataListener:
     async def get_stats(self) -> Dict[str, Any]:
         """Retourne les statistiques du listener."""
         
-        # Compter les données market_data vs analyzer_data
+        # Compter les données avec focus sur les gaps récents (24h)
         stats_query = """
             SELECT 
                 (SELECT COUNT(*) FROM market_data) as total_market_data,
                 (SELECT COUNT(*) FROM analyzer_data) as total_analyzer_data,
                 (SELECT COUNT(DISTINCT symbol) FROM market_data) as symbols_count,
-                (SELECT COUNT(DISTINCT timeframe) FROM market_data) as timeframes_count
+                (SELECT COUNT(DISTINCT timeframe) FROM market_data) as timeframes_count,
+                (SELECT COUNT(*) FROM market_data md 
+                 LEFT JOIN analyzer_data ad ON (
+                     md.symbol = ad.symbol AND 
+                     md.timeframe = ad.timeframe AND 
+                     md.time = ad.time
+                 )
+                 WHERE ad.time IS NULL 
+                 AND md.time >= NOW() - INTERVAL '24 hours'
+                ) as recent_gaps_24h
         """
         
         try:
@@ -313,7 +327,8 @@ class DataListener:
                     'coverage_percent': round(coverage_percent, 2),
                     'symbols_count': row['symbols_count'],
                     'timeframes_count': row['timeframes_count'],
-                    'missing_analyses': row['total_market_data'] - row['total_analyzer_data']
+                    'missing_analyses': row['recent_gaps_24h'],  # Maintenant seulement les gaps récents
+                    'total_historical_gaps': row['total_market_data'] - row['total_analyzer_data']
                 }
                 
         except Exception as e:

@@ -19,6 +19,7 @@ export interface Indicators {
   // RSI et momentum
   rsi_14?: number[];
   rsi_21?: number[];
+  rsi?: number[]; // Alias pour rsi_14 pour compatibilité frontend
   // EMAs
   ema_7?: number[];
   ema_12?: number[];
@@ -32,6 +33,7 @@ export interface Indicators {
   macd_line?: number[];
   macd_signal?: number[];
   macd_histogram?: number[];
+  macd?: number[]; // Alias pour macd_line pour compatibilité frontend
   // Bollinger Bands
   bb_upper?: number[];
   bb_middle?: number[];
