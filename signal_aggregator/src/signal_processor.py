@@ -587,6 +587,10 @@ class SignalProcessor:
             symbol = signal.get('symbol')
             timeframe = signal.get('timeframe')
             
+            # Si timeframe n'est pas direct, chercher dans les métadonnées
+            if not timeframe:
+                timeframe = metadata.get('timeframe')
+            
             if symbol and timeframe and self.context_manager:
                 context = self.context_manager.get_market_context(symbol, timeframe)
                 
@@ -601,20 +605,37 @@ class SignalProcessor:
                 if indicators and 'close' in indicators:
                     return float(indicators['close'])
                     
-            # Valeur par défaut - récupérer depuis la DB
-            if symbol and self.context_manager:
+            # Valeur par défaut - récupérer depuis la DB directement
+            if symbol:
                 try:
-                    with self.context_manager.db_connection.cursor() as cursor:
-                        cursor.execute("""
-                            SELECT close FROM market_data 
-                            WHERE symbol = %s 
-                            ORDER BY time DESC 
-                            LIMIT 1
-                        """, (symbol,))
-                        
-                        result = cursor.fetchone()
-                        if result:
-                            return float(result[0])
+                    # Essayer analyzer_data d'abord (plus récent)
+                    if self.context_manager:
+                        with self.context_manager.db_connection.cursor() as cursor:
+                            cursor.execute("""
+                                SELECT close FROM analyzer_data 
+                                WHERE symbol = %s 
+                                ORDER BY time DESC 
+                                LIMIT 1
+                            """, (symbol,))
+                            
+                            result = cursor.fetchone()
+                            if result and result[0] is not None:
+                                return float(result[0])
+                    
+                    # Fallback sur market_data
+                    if self.context_manager:
+                        with self.context_manager.db_connection.cursor() as cursor:
+                            cursor.execute("""
+                                SELECT close FROM market_data 
+                                WHERE symbol = %s 
+                                ORDER BY time DESC 
+                                LIMIT 1
+                            """, (symbol,))
+                            
+                            result = cursor.fetchone()
+                            if result and result[0] is not None:
+                                return float(result[0])
+                                
                 except Exception as e:
                     logger.warning(f"Erreur récupération prix DB pour {symbol}: {e}")
                     

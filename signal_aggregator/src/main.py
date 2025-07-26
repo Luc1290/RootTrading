@@ -133,16 +133,20 @@ class SignalAggregatorService:
                         
                         # Log détaillé de chaque signal
                         for validated_signal in result:
+                            timeframe = validated_signal.get('metadata', {}).get('timeframe', 'N/A')
+                            final_score = validated_signal.get('metadata', {}).get('final_score', 0.0)
                             logger.debug(f"Signal publié: {validated_signal['strategy']} "
-                                       f"{validated_signal['symbol']} {validated_signal['timeframe']} "
-                                       f"{validated_signal['side']} (final_score={validated_signal['final_score']:.2f})")
+                                       f"{validated_signal['symbol']} {timeframe} "
+                                       f"{validated_signal['side']} (final_score={final_score:.2f})")
                 else:
                     # Signal individuel validé
                     await self.redis_handler.publish_validated_signal(result)
                     
+                    timeframe = result.get('metadata', {}).get('timeframe', 'N/A')
+                    final_score = result.get('metadata', {}).get('final_score', 0.0)
                     logger.info(f"Signal publié vers coordinator: {result['strategy']} "
-                              f"{result['symbol']} {result['timeframe']} "
-                              f"{result['side']} (final_score={result['final_score']:.2f})")
+                              f"{result['symbol']} {timeframe} "
+                              f"{result['side']} (final_score={final_score:.2f})")
             
         except Exception as e:
             logger.error(f"Erreur traitement callback signal: {e}")

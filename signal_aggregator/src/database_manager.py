@@ -146,6 +146,15 @@ class DatabaseManager:
             Prix du signal ou 0.0 si non trouvé
         """
         try:
+            # D'abord vérifier si le prix est déjà dans le signal
+            if 'price' in validated_signal and validated_signal['price'] is not None:
+                try:
+                    price = float(validated_signal['price'])
+                    if price > 0:  # Prix valide
+                        return price
+                except (ValueError, TypeError):
+                    pass
+            
             # Essayer de récupérer le prix depuis différentes sources
             metadata = validated_signal.get('metadata', {})
             
