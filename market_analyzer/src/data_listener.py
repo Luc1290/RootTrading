@@ -226,9 +226,9 @@ class DataListener:
             timeframe: Timeframe spécifique (optionnel)  
             limit: Nombre maximum de données à traiter
         """
-        logger.info(f"🧠 Démarrage traitement intelligent des gaps récents (24h)...")
+        logger.info(f"🧠 Démarrage traitement de toutes les données non analysées (limite: {limit})...")
         
-        # Requête intelligente: seulement les gaps des dernières 24h
+        # Requête pour récupérer TOUTES les données non analysées
         base_query = """
             SELECT md.symbol, md.timeframe, md.time
             FROM market_data md
@@ -238,7 +238,6 @@ class DataListener:
                 md.time = ad.time
             )
             WHERE ad.time IS NULL
-            AND md.time >= NOW() - INTERVAL '24 hours'
         """
         
         conditions = []
@@ -263,10 +262,10 @@ class DataListener:
                 rows = await conn.fetch(query, *params)
                 
             if not rows:
-                logger.info("✅ Aucun gap récent détecté - Base synchronisée")
+                logger.info("✅ Aucune donnée non analysée - Base entièrement synchronisée")
                 return
                 
-            logger.info(f"📊 {len(rows)} gaps récents détectés (24h) - Traitement intelligent")
+            logger.info(f"📊 {len(rows)} données non analysées détectées - Démarrage du traitement...")
             
             processed = 0
             for row in rows:
@@ -278,14 +277,16 @@ class DataListener:
                     )
                     processed += 1
                     
+                    # Log de progression plus détaillé
                     if processed % 50 == 0:
-                        logger.info(f"📈 Gaps traités: {processed}/{len(rows)}")
+                        percent = (processed / len(rows)) * 100
+                        logger.info(f"📈 Progression: {processed}/{len(rows)} ({percent:.1f}%) traités")
                         
                 except Exception as e:
                     logger.error(f"❌ Erreur traitement gap {row['symbol']} {row['timeframe']}: {e}")
                     continue
             
-            logger.info(f"✅ Traitement intelligent terminé: {processed}/{len(rows)} gaps comblés")
+            logger.info(f"✅ Traitement terminé: {processed}/{len(rows)} données analysées avec succès")
             
         except Exception as e:
             logger.error(f"❌ Erreur traitement historique: {e}")

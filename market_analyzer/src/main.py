@@ -211,7 +211,8 @@ async def main():
             logger.info("💡 Démarrage du traitement historique automatique...")
             
             # Traiter l'historique pour tous les symboles/timeframes
-            await data_listener.process_historical_batch(limit=5000)
+            # Utiliser une grande limite pour traiter toutes les données
+            await data_listener.process_historical_batch(limit=1000000)
         else:
             logger.info("✅ Toutes les données sont analysées")
         
