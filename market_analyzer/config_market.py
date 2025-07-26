@@ -176,6 +176,7 @@ BOLLINGER_STRATEGY = {
 # ==================== TIMEFRAMES ====================
 TIMEFRAMES = {
     "1m": "1m",
+    "3m": "3m",
     "5m": "5m", 
     "15m": "15m",
     "1h": "1h",
@@ -184,7 +185,7 @@ TIMEFRAMES = {
 }
 
 # Timeframes principaux pour les calculs
-PRIMARY_TIMEFRAMES = ["1m", "5m", "15m"]
+PRIMARY_TIMEFRAMES = ["1m", "3m", "5m", "15m"]
 
 # ==================== SEUILS DE SIGNAL ====================
 SIGNAL_THRESHOLDS = {
@@ -230,9 +231,9 @@ DIVERGENCE_CONFIG = {
 
 # Configuration multi-timeframe
 MULTI_TIMEFRAME_CONFIG = {
-    "primary": "5m",         # Timeframe principal
-    "confirmation": "15m",   # Timeframe de confirmation
-    "trend": "1h",          # Timeframe de tendance
+    "primary": "3m",         # Timeframe principal
+    "confirmation": "5m",   # Timeframe de confirmation
+    "trend": "15m",           # Timeframe de tendance
     "weight_ratios": {
         "primary": 1.0,
         "confirmation": 0.8,
