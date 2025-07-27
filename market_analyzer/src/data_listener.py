@@ -216,21 +216,39 @@ class DataListener:
             logger.error(f"❌ Erreur vérification analyse: {e}")
             return False
 
-    async def process_historical_batch(self, symbol: str = None, timeframe: str = None, limit: int = 1000):
+
+    async def process_historical_optimized(self, symbol: Optional[str] = None, 
+                                          timeframe: Optional[str] = None,
+                                          limit: int = 1000000):
         """
-        Traite un lot de données historiques non analysées.
-        Utile pour rattraper les données manquantes.
-        
-        Args:
-            symbol: Symbole spécifique (optionnel)
-            timeframe: Timeframe spécifique (optionnel)  
-            limit: Nombre maximum de données à traiter
+        Traite les données historiques de manière OPTIMISÉE.
+        - Traite par symbole
+        - Dans l'ordre chronologique
+        - Réutilise les calculs précédents
         """
-        logger.info(f"🧠 Démarrage traitement de toutes les données non analysées (limite: {limit})...")
+        logger.info(f"🚀 Démarrage traitement optimisé des données non analysées...")
         
-        # Requête pour récupérer TOUTES les données non analysées
-        base_query = """
-            SELECT md.symbol, md.timeframe, md.time
+        # Si pas de symbole spécifique, traiter chaque symbole séparément
+        if symbol is None:
+            symbols_to_process = await self._get_symbols_with_gaps()
+            logger.info(f"📊 Symboles à traiter: {symbols_to_process}")
+            
+            total_processed = 0
+            for sym in symbols_to_process:
+                processed = await self._process_symbol_historical(sym, timeframe, limit)
+                total_processed += processed
+                # Petite pause entre chaque symbole
+                await asyncio.sleep(1)
+            
+            logger.info(f"✅ Traitement optimisé terminé: {total_processed} données analysées")
+        else:
+            processed = await self._process_symbol_historical(symbol, timeframe, limit)
+            logger.info(f"✅ Traitement optimisé terminé pour {symbol}: {processed} données analysées")
+    
+    async def _get_symbols_with_gaps(self) -> list:
+        """Récupère la liste des symboles ayant des données non analysées."""
+        query = """
+            SELECT DISTINCT md.symbol
             FROM market_data md
             LEFT JOIN analyzer_data ad ON (
                 md.symbol = ad.symbol AND 
@@ -238,67 +256,100 @@ class DataListener:
                 md.time = ad.time
             )
             WHERE ad.time IS NULL
+            ORDER BY md.symbol
         """
         
-        conditions = []
-        params = []
+        async with self.db_pool.acquire() as conn:
+            rows = await conn.fetch(query)
+            return [row['symbol'] for row in rows]
+    
+    async def _process_symbol_historical(self, symbol: str, timeframe: Optional[str] = None, limit: int = 1000000) -> int:
+        """Traite l'historique d'un symbole spécifique dans l'ordre chronologique."""
+        logger.info(f"🔄 Traitement historique optimisé pour {symbol}...")
         
-        if symbol:
-            conditions.append(f"AND md.symbol = ${len(params) + 1}")
-            params.append(symbol)
-            
+        # Requête optimisée : ORDER BY time ASC pour traiter dans l'ordre chronologique
+        query = """
+            SELECT DISTINCT md.timeframe, md.time
+            FROM market_data md
+            LEFT JOIN analyzer_data ad ON (
+                md.symbol = ad.symbol AND 
+                md.timeframe = ad.timeframe AND 
+                md.time = ad.time
+            )
+            WHERE ad.time IS NULL
+            AND md.symbol = $1
+        """
+        
+        params = [symbol]
+        
         if timeframe:
-            conditions.append(f"AND md.timeframe = ${len(params) + 1}")
+            query += " AND md.timeframe = $2"
             params.append(timeframe)
         
-        query = base_query + " ".join(conditions) + f"""
-            ORDER BY md.time DESC
-            LIMIT ${len(params) + 1}
-        """
+        query += " ORDER BY md.timeframe, md.time ASC LIMIT $" + str(len(params) + 1)
         params.append(limit)
+        
+        total_processed = 0
         
         try:
             async with self.db_pool.acquire() as conn:
                 rows = await conn.fetch(query, *params)
                 
             if not rows:
-                logger.info("✅ Aucune donnée non analysée - Base entièrement synchronisée")
-                return
+                logger.info(f"✅ {symbol}: Aucune donnée non analysée")
+                return 0
                 
-            logger.info(f"📊 {len(rows)} données non analysées détectées - Démarrage du traitement...")
+            logger.info(f"📊 {symbol}: {len(rows)} données à analyser")
             
-            processed = 0
-            batch_size = 5  # Traiter par petits lots pour permettre l'interleaving
+            # Grouper par timeframe pour optimiser
+            timeframes = {}
+            for row in rows:
+                tf = row['timeframe']
+                if tf not in timeframes:
+                    timeframes[tf] = []
+                timeframes[tf].append(row['time'])
             
-            for i in range(0, len(rows), batch_size):
-                batch = rows[i:i + batch_size]
+            # Traiter chaque timeframe séparément dans l'ordre chronologique
+            for tf, timestamps in timeframes.items():
+                logger.info(f"⏱️ {symbol} {tf}: {len(timestamps)} données à traiter")
                 
-                # Traiter le batch
-                for row in batch:
+                processed = 0
+                errors = 0
+                
+                # Traiter dans l'ordre chronologique
+                for timestamp in timestamps:
                     try:
                         await self.indicator_processor.process_new_data(
-                            row['symbol'], 
-                            row['timeframe'], 
-                            row['time']
+                            symbol, 
+                            tf, 
+                            timestamp
                         )
                         processed += 1
                         
+                        # Log de progression
+                        if processed % 100 == 0:
+                            percent = (processed / len(timestamps)) * 100
+                            logger.info(f"📈 {symbol} {tf}: {processed}/{len(timestamps)} ({percent:.1f}%)")
+                        
+                        # Micro pause tous les 10 éléments pour ne pas bloquer
+                        if processed % 10 == 0:
+                            await asyncio.sleep(0.001)
+                            
                     except Exception as e:
-                        logger.error(f"❌ Erreur traitement gap {row['symbol']} {row['timeframe']}: {e}")
+                        errors += 1
+                        if errors <= 5:  # Limiter les logs d'erreur
+                            logger.error(f"❌ Erreur {symbol} {tf} @ {timestamp}: {e}")
                         continue
                 
-                # Yield control pour permettre aux notifications temps réel de passer
-                await asyncio.sleep(0.01)  # 10ms pause entre les batches
-                
-                # Log de progression plus détaillé
-                if processed % 50 == 0:
-                    percent = (processed / len(rows)) * 100
-                    logger.info(f"📈 Progression: {processed}/{len(rows)} ({percent:.1f}%) traités")
+                logger.info(f"✅ {symbol} {tf}: {processed} données traitées ({errors} erreurs)")
+                total_processed += processed
             
-            logger.info(f"✅ Traitement terminé: {processed}/{len(rows)} données analysées avec succès")
+            logger.info(f"✅ {symbol}: Traitement terminé - {total_processed} données analysées")
             
         except Exception as e:
-            logger.error(f"❌ Erreur traitement historique: {e}")
+            logger.error(f"❌ Erreur traitement {symbol}: {e}")
+        
+        return total_processed
 
     async def get_stats(self) -> Dict[str, Any]:
         """Retourne les statistiques du listener."""

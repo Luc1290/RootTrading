@@ -43,13 +43,13 @@ class SimpleDataFetcher:
         # Configuration des timeouts
         self.timeout = ClientTimeout(total=30)
         
-        # Limits de récupération par timeframe (augmentées pour plus de données)
+        # Limits de récupération par timeframe (optimisées pour EMA 99 stable)
         self.limits = {
-            '1m': 1000,  # 1000 minutes = 16h40 (journée trading complète)
-            '3m': 1000,  # 3000 minutes = 50h (plusieurs jours)
-            '5m': 1000,  # 5000 minutes = 83h (semaine complète)
-            '15m': 1000, # 15000 minutes = 250h (10+ jours d'historique)
-            '1d': 500    # 500 jours = 1.4 ans (analyse long terme étendue)
+            '1m': 300,   # 300 minutes = 5h (suffisant pour EMA 99)
+            '3m': 300,   # 900 minutes = 15h (bon équilibre)
+            '5m': 300,   # 1500 minutes = 25h (journée + 1h)
+            '15m': 300,  # 4500 minutes = 75h (3+ jours)
+            '1d': 300    # 300 jours = 10 mois (EMA 99 très stable)
         }
         
         logger.info("📡 SimpleDataFetcher initialisé - données brutes uniquement")

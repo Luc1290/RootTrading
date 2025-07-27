@@ -22,7 +22,7 @@ from shared.src.config import get_db_config
 
 # Import DIRECT de tous vos modules existants
 from market_analyzer.indicators import (
-    calculate_rsi, calculate_ema, calculate_sma, calculate_macd_series,
+    calculate_rsi, calculate_rsi_series, calculate_ema, calculate_ema_series, calculate_sma, calculate_macd_series,
     calculate_bollinger_bands_series, calculate_atr, 
     calculate_stochastic_series, calculate_williams_r, calculate_cci,
     calculate_obv_series, calculate_vwap_series
@@ -183,27 +183,46 @@ class IndicatorProcessor:
         try:
             # === APPEL DIRECT DE VOS MODULES INDICATORS ===
             
-            # RSI (plusieurs périodes, sans cache pour corriger le problème)
+            # RSI - Forcer le calcul des séries complètes pour l'historique
             if len(closes) >= 14:
-                indicators['rsi_14'] = self._safe_call(lambda: calculate_rsi(closes, 14))
+                # Forcer la désactivation de TA-Lib temporairement pour RSI
+                import market_analyzer.indicators.momentum.rsi as rsi_module
+                original_talib = rsi_module.TALIB_AVAILABLE
+                rsi_module.TALIB_AVAILABLE = False
+                try:
+                    rsi_14_series = self._safe_call(lambda: calculate_rsi_series(closes, 14))
+                    indicators['rsi_14'] = rsi_14_series[-1] if rsi_14_series and len(rsi_14_series) > 0 else None
+                finally:
+                    rsi_module.TALIB_AVAILABLE = original_talib
+                    
             if len(closes) >= 21:
-                indicators['rsi_21'] = self._safe_call(lambda: calculate_rsi(closes, 21))
+                rsi_module.TALIB_AVAILABLE = False
+                try:
+                    rsi_21_series = self._safe_call(lambda: calculate_rsi_series(closes, 21))
+                    indicators['rsi_21'] = rsi_21_series[-1] if rsi_21_series and len(rsi_21_series) > 0 else None
+                finally:
+                    rsi_module.TALIB_AVAILABLE = original_talib
             
             # Stochastic RSI
             if len(closes) >= 14:
                 indicators['stoch_rsi'] = self._safe_call(lambda: calculate_stoch_rsi(closes, 14, 14))
             
-            # EMAs (sans cache pour corriger le problème)
+            # EMAs - Utiliser les séries pour s'assurer que l'historique est pris en compte
             if len(closes) >= 7:
-                indicators['ema_7'] = self._safe_call(lambda: calculate_ema(closes, 7))
+                ema_7_series = self._safe_call(lambda: calculate_ema_series(closes, 7))
+                indicators['ema_7'] = ema_7_series[-1] if ema_7_series and len(ema_7_series) > 0 else None
             if len(closes) >= 12:
-                indicators['ema_12'] = self._safe_call(lambda: calculate_ema(closes, 12))
+                ema_12_series = self._safe_call(lambda: calculate_ema_series(closes, 12))
+                indicators['ema_12'] = ema_12_series[-1] if ema_12_series and len(ema_12_series) > 0 else None
             if len(closes) >= 26:
-                indicators['ema_26'] = self._safe_call(lambda: calculate_ema(closes, 26))
+                ema_26_series = self._safe_call(lambda: calculate_ema_series(closes, 26))
+                indicators['ema_26'] = ema_26_series[-1] if ema_26_series and len(ema_26_series) > 0 else None
             if len(closes) >= 50:
-                indicators['ema_50'] = self._safe_call(lambda: calculate_ema(closes, 50))
+                ema_50_series = self._safe_call(lambda: calculate_ema_series(closes, 50))
+                indicators['ema_50'] = ema_50_series[-1] if ema_50_series and len(ema_50_series) > 0 else None
             if len(closes) >= 99:
-                indicators['ema_99'] = self._safe_call(lambda: calculate_ema(closes, 99))
+                ema_99_series = self._safe_call(lambda: calculate_ema_series(closes, 99))
+                indicators['ema_99'] = ema_99_series[-1] if ema_99_series and len(ema_99_series) > 0 else None
             
             # SMAs
             if len(closes) >= 20:
@@ -221,9 +240,12 @@ class IndicatorProcessor:
             if len(closes) >= 14:
                 indicators['kama_14'] = self._safe_call(lambda: calculate_adaptive_ma(closes, 14))
             
-            # MACD
+            # MACD - Forcer le calcul manuel pour éviter les problèmes TA-Lib sur les données historiques
             if len(closes) >= 26:
-                macd_series = self._safe_call(lambda: calculate_macd_series(closes))
+                # Import temporaire pour forcer le calcul manuel
+                from market_analyzer.indicators.trend.macd import _calculate_macd_series_manual, _to_numpy_array
+                closes_array = _to_numpy_array(closes)
+                macd_series = self._safe_call(lambda: _calculate_macd_series_manual(closes_array, 12, 26, 9))
                 if macd_series and isinstance(macd_series, dict):
                     # macd_series is a dict with 'macd_line', 'macd_signal', 'macd_histogram' keys
                     # Each key contains a list, so we get the last value
@@ -293,7 +315,8 @@ class IndicatorProcessor:
                 
                 # Keltner Channels (calculé manuellement avec ATR)
                 if atr:
-                    ema_20 = self._safe_call(lambda: calculate_ema(closes, 20))
+                    ema_20_series = self._safe_call(lambda: calculate_ema_series(closes, 20))
+                    ema_20 = ema_20_series[-1] if ema_20_series and len(ema_20_series) > 0 else None
                     if ema_20:
                         keltner_multiplier = 2.0
                         indicators.update({
@@ -576,27 +599,6 @@ class IndicatorProcessor:
         except (ValueError, TypeError, OverflowError):
             return None
 
-    def _sanitize_percentage_value(self, value):
-        """Sanitise une valeur pourcentage pour les colonnes precision(5,2) - max 999.99."""
-        if value is None:
-            return None
-        
-        try:
-            value = float(value)
-            
-            # Vérifier si la valeur est finie
-            if not (isinstance(value, (int, float)) and abs(value) < float('inf')):
-                return None
-            
-            # Limiter à la précision (5,2) : max 999.99
-            if abs(value) > 999.99:
-                logger.warning(f"Valeur pourcentage trop grande pour la DB: {value}, limitée à 999.99")
-                return 999.99 if value > 0 else -999.99
-            
-            return value
-            
-        except (ValueError, TypeError, OverflowError):
-            return None
 
     async def _save_indicators_to_db(self, indicators: Dict):
         """Sauvegarde tous les indicateurs dans analyzer_data."""

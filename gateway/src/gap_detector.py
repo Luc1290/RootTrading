@@ -180,9 +180,54 @@ class GapDetector:
                 
             return gaps
             
+    async def detect_smart_gaps(self, symbol: str, timeframe: str, min_candles: int = 300) -> List[Tuple[datetime, datetime]]:
+        """
+        Détection intelligente des gaps:
+        1. Si DB vide ou < min_candles: charge min_candles pour démarrer
+        2. Si assez de données: détecte seulement les vrais gaps récents
+        
+        Returns:
+            Liste de tuples (gap_start, gap_end) si des bougies manquent
+        """
+        # Compter les bougies existantes et récupérer la dernière
+        query = """
+        SELECT COUNT(*) as count, MAX(time) as last_time
+        FROM market_data
+        WHERE symbol = $1 AND timeframe = $2
+        """
+        
+        async with self.db_pool.acquire() as conn:
+            row = await conn.fetchrow(query, symbol, timeframe)
+            current_count = row['count'] if row else 0
+            last_time = row['last_time'] if row else None
+            
+            # Cas 1: DB vide ou pas assez de données - charger min_candles
+            if current_count < min_candles:
+                interval_seconds = {
+                    '1m': 60, '3m': 180, '5m': 300, '15m': 900, '1d': 86400
+                }.get(timeframe, 60)
+                
+                # Calculer la durée pour min_candles
+                total_duration_seconds = min_candles * interval_seconds
+                now = datetime.utcnow().replace(tzinfo=None, microsecond=0)
+                start_time = now - timedelta(seconds=total_duration_seconds)
+                
+                missing_count = min_candles - current_count
+                logger.warning(f"📊 {symbol} {timeframe}: {current_count}/{min_candles} bougies - "
+                             f"chargement initial de {missing_count} bougies")
+                
+                return [(start_time, now)]
+            
+            # Cas 2: Assez de données - détection de gaps récents
+            else:
+                # Utiliser la logique existante pour détecter les vrais gaps
+                return await self.detect_gaps_for_symbol(symbol, timeframe, lookback_hours=24)
+            
     async def detect_all_gaps(self, symbols: Optional[List[str]] = None, lookback_hours: int = 24) -> Dict:
         """
-        Détecte tous les gaps pour tous les symboles et timeframes
+        Détection intelligente des gaps pour tous les symboles et timeframes:
+        - DB vide/insuffisante: charge 300 bougies minimum
+        - DB suffisante: détecte seulement les vrais gaps récents
         
         Returns:
             Dict avec structure: {symbol: {timeframe: [(gap_start, gap_end), ...]}}
@@ -190,18 +235,18 @@ class GapDetector:
         if symbols is None:
             symbols = SYMBOLS
             
-        timeframes = ['1m', '3m', '5m', '15m']
+        timeframes = ['1m', '3m', '5m', '15m', '1d']
         all_gaps: Dict[str, Dict[str, List[Tuple[datetime, datetime]]]] = {}
         total_gaps = 0
         
-        logger.info(f"🔍 Détection des gaps sur {lookback_hours}h pour {len(symbols)} symboles...")
+        logger.info(f"🔍 Détection intelligente des gaps pour {len(symbols)} symboles × {len(timeframes)} timeframes...")
         
         for symbol in symbols:
             all_gaps[symbol] = {}
             
             for timeframe in timeframes:
                 try:
-                    gaps = await self.detect_gaps_for_symbol(symbol, timeframe, lookback_hours)
+                    gaps = await self.detect_smart_gaps(symbol, timeframe, min_candles=300)
                     if gaps:
                         all_gaps[symbol][timeframe] = gaps
                         total_gaps += len(gaps)

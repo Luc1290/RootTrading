@@ -82,9 +82,9 @@ async def process_historical(request):
         timeframe = data.get('timeframe')
         limit = data.get('limit', 1000)
         
-        # Lancer le traitement en arrière-plan
+        # Lancer le traitement optimisé en arrière-plan
         asyncio.create_task(
-            data_listener.process_historical_batch(symbol, timeframe, limit)
+            data_listener.process_historical_optimized(symbol, timeframe, limit)
         )
         
         return web.json_response({
@@ -202,7 +202,11 @@ async def main():
         
         logger.info("✅ Market Analyzer initialisé")
         
-        # Proposer de traiter l'historique au démarrage
+        # Démarrer l'écoute temps réel IMMÉDIATEMENT (non-bloquant)
+        logger.info("🎧 Démarrage de l'écoute temps réel...")
+        listening_task = asyncio.create_task(data_listener.start_listening())
+        
+        # Proposer de traiter l'historique en parallèle
         logger.info("🔍 Vérification de la couverture des données...")
         stats = await data_listener.get_stats()
         
@@ -210,9 +214,8 @@ async def main():
             logger.info(f"⚠️ {stats['missing_analyses']} données non analysées détectées")
             logger.info("💡 Démarrage du traitement historique automatique...")
             
-            # Traiter l'historique pour tous les symboles/timeframes
-            # Utiliser une grande limite pour traiter toutes les données
-            await data_listener.process_historical_batch(limit=1000000)
+            # Utiliser la méthode optimisée qui traite par symbole et dans l'ordre
+            await data_listener.process_historical_optimized(limit=1000000)
         else:
             logger.info("✅ Toutes les données sont analysées")
         
@@ -220,9 +223,9 @@ async def main():
         final_stats = await data_listener.get_stats()
         logger.info(f"📊 Couverture: {final_stats['coverage_percent']}% ({final_stats['total_analyzer_data']}/{final_stats['total_market_data']})")
         
-        # Démarrer l'écoute temps réel
-        logger.info("🎧 Démarrage de l'écoute temps réel...")
-        await data_listener.start_listening()
+        # Attendre que l'écoute temps réel continue
+        logger.info("✅ Traitement historique terminé - écoute temps réel active")
+        await listening_task
         
     except Exception as e:
         logger.error(f"❌ Erreur critique: {e}")
