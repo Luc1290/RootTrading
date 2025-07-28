@@ -9,7 +9,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Any
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -120,6 +120,9 @@ class AnalyzerService:
             self.timeframes = ['1m', '3m', '5m', '15m']
             self.valid_combinations = [(s, t) for s in self.symbols for t in self.timeframes]
             logger.warning(f"Utilisation des valeurs par défaut: {self.symbols} / {self.timeframes}")
+    
+    
+    
             
     def fetch_latest_data(self, symbol: str, timeframe: str) -> Dict[str, Any]:
         """
@@ -146,6 +149,7 @@ class AnalyzerService:
                 if not row:
                     logger.warning(f"Aucune donnée trouvée pour {symbol} {timeframe}")
                     return None
+                
                     
                 # Récupération des données OHLCV pour le contexte
                 cursor.execute("""
@@ -367,14 +371,14 @@ class AnalyzerService:
         cycle_signals_before = self.cycle_stats['total_signals']
         cycle_analyses_before = self.cycle_stats['total_analyses']
         
-        # Utiliser les combinaisons valides au lieu du produit cartésien
+        # Utiliser les combinaisons valides (market_analyzer ne trigger que pour données fraîches)
         combinations_to_analyze = getattr(self, 'valid_combinations', [])
         if not combinations_to_analyze:
             # Fallback si pas initialisé
             combinations_to_analyze = [(s, t) for s in self.symbols for t in self.timeframes]
             
         logger.info(f"Début du cycle d'analyse #{self.cycle_stats['cycle_count']} "
-                   f"({len(combinations_to_analyze)} combinaisons valides)")
+                   f"({len(combinations_to_analyze)} combinaisons)")
         
         tasks = []
         for symbol, timeframe in combinations_to_analyze:
@@ -439,8 +443,11 @@ class AnalyzerService:
                             
                             logger.debug(f"📬 Trigger reçu: {symbol} {timeframe}")
                             
-                            # Lancer cycle d'analyse (toujours complet pour simplicité)
-                            await self.run_analysis_cycle()
+                            # Analyser uniquement le symbol/timeframe spécifique
+                            if symbol and timeframe:
+                                await self.analyze_symbol_timeframe(symbol, timeframe)
+                            else:
+                                logger.warning("Trigger sans symbol/timeframe - ignoré")
                             
                     except Exception as e:
                         logger.error(f"❌ Erreur traitement trigger: {e}")

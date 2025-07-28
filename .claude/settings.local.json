@@ -38,16 +38,16 @@
       "Bash(ruff check:*)"
     ],
     "deny": [
-        "docker-compose restart *",
-        "docker-compose stop *",
-        "docker-compose up *",
-        "docker-compose down *",
-        "docker-compose build *",
-        "docker-compose rebuild *",
-        "docker-compose start *",
-        "docker restart *",
-        "docker stop *",
-        "docker kill *"
+      "Bash(docker-compose restart *)",
+      "Bash(docker-compose stop *)",
+      "Bash(docker-compose up *)",
+      "Bash(docker-compose down *)",
+      "Bash(docker-compose build *)",
+      "Bash(docker-compose rebuild *)",
+      "Bash(docker-compose start *)",
+      "Bash(docker restart *)",
+      "Bash(docker stop *)",
+      "Bash(docker kill *)"
     ]
   }
 }
