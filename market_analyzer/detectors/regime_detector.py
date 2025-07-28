@@ -272,7 +272,12 @@ class RegimeDetector:
                 })
         
         if len(valid_emas) < 10:
-            return {'direction': 'unknown', 'slope': 0.0, 'strength': 0}
+            return {
+                'direction': 'unknown', 
+                'slope': 0.0, 
+                'strength': 0,
+                'ema_alignment': False
+            }
         
         current = valid_emas[-1]
         

@@ -109,12 +109,12 @@ class IndicatorProcessor:
         try:
             logger.debug(f"🔄 Traitement {symbol} {timeframe} @ {timestamp}")
             
-            # Récupérer les données historiques nécessaires
+            # Récupérer les données historiques nécessaires JUSQU'AU timestamp en cours
             # Plus de données pour les indicateurs long terme (EMA 99 a besoin d'au moins 200-300 points pour être stable)
-            ohlcv_data = await self._get_historical_data(symbol, timeframe, limit=1000)
+            ohlcv_data = await self._get_historical_data(symbol, timeframe, limit=1000000, up_to_timestamp=timestamp)
             
             if len(ohlcv_data) < 20:
-                logger.warning(f"⚠️ Pas assez de données pour {symbol} {timeframe}: {len(ohlcv_data)} < 20")
+                logger.debug(f"⏭️ Pas assez de données pour {symbol} {timeframe}: {len(ohlcv_data)} < 20")
                 return
             
             # Appeler TOUS vos modules et collecter les résultats
@@ -128,19 +128,31 @@ class IndicatorProcessor:
         except Exception as e:
             logger.error(f"❌ Erreur traitement {symbol} {timeframe}: {e}")
 
-    async def _get_historical_data(self, symbol: str, timeframe: str, limit: int = 1000000) -> List[Dict]:
-        """Récupère TOUTES les données OHLCV historiques depuis market_data."""
-        query = """
-            SELECT time, open, high, low, close, volume,
-                   quote_asset_volume, number_of_trades
-            FROM market_data 
-            WHERE symbol = $1 AND timeframe = $2
-            ORDER BY time ASC
-            LIMIT $3
-        """
+    async def _get_historical_data(self, symbol: str, timeframe: str, limit: int = 1000000, up_to_timestamp: datetime = None) -> List[Dict]:
+        """Récupère les données OHLCV historiques depuis market_data jusqu'à un timestamp donné."""
+        if up_to_timestamp:
+            query = """
+                SELECT time, open, high, low, close, volume,
+                       quote_asset_volume, number_of_trades
+                FROM market_data 
+                WHERE symbol = $1 AND timeframe = $2 AND time <= $3
+                ORDER BY time ASC
+                LIMIT $4
+            """
+            params = [symbol, timeframe, up_to_timestamp, limit]
+        else:
+            query = """
+                SELECT time, open, high, low, close, volume,
+                       quote_asset_volume, number_of_trades
+                FROM market_data 
+                WHERE symbol = $1 AND timeframe = $2
+                ORDER BY time ASC
+                LIMIT $3
+            """
+            params = [symbol, timeframe, limit]
         
         async with self.db_pool.acquire() as conn:
-            rows = await conn.fetch(query, symbol, timeframe, limit)
+            rows = await conn.fetch(query, *params)
             
             # Ordre chronologique direct (pas d'inversion)
             data = []
@@ -196,17 +208,22 @@ class IndicatorProcessor:
             if len(closes) >= 14:
                 indicators['stoch_rsi'] = self._safe_call(lambda: calculate_stoch_rsi(closes, 14, 14))
             
-            # EMAs - Utiliser directement le calcul manuel pour éviter cache/problèmes
+            # EMAs - Utiliser les modules existants avec series pour obtenir la dernière valeur
             if len(closes) >= 7:
-                indicators['ema_7'] = self._safe_call(lambda: self._calculate_ema_direct(closes, 7))
+                ema_7_series = self._safe_call(lambda: calculate_ema_series(closes, 7))
+                indicators['ema_7'] = ema_7_series[-1] if ema_7_series and len(ema_7_series) > 0 else None
             if len(closes) >= 12:
-                indicators['ema_12'] = self._safe_call(lambda: self._calculate_ema_direct(closes, 12))
+                ema_12_series = self._safe_call(lambda: calculate_ema_series(closes, 12))
+                indicators['ema_12'] = ema_12_series[-1] if ema_12_series and len(ema_12_series) > 0 else None
             if len(closes) >= 26:
-                indicators['ema_26'] = self._safe_call(lambda: self._calculate_ema_direct(closes, 26))
+                ema_26_series = self._safe_call(lambda: calculate_ema_series(closes, 26))
+                indicators['ema_26'] = ema_26_series[-1] if ema_26_series and len(ema_26_series) > 0 else None
             if len(closes) >= 50:
-                indicators['ema_50'] = self._safe_call(lambda: self._calculate_ema_direct(closes, 50))
+                ema_50_series = self._safe_call(lambda: calculate_ema_series(closes, 50))
+                indicators['ema_50'] = ema_50_series[-1] if ema_50_series and len(ema_50_series) > 0 else None
             if len(closes) >= 99:
-                indicators['ema_99'] = self._safe_call(lambda: self._calculate_ema_direct(closes, 99))
+                ema_99_series = self._safe_call(lambda: calculate_ema_series(closes, 99))
+                indicators['ema_99'] = ema_99_series[-1] if ema_99_series and len(ema_99_series) > 0 else None
             
             # SMAs
             if len(closes) >= 20:
@@ -226,7 +243,7 @@ class IndicatorProcessor:
             
             # MACD - Utiliser VOS modules directement
             if len(closes) >= 26:
-                macd_series = self._safe_call(lambda: calculate_macd_series(closes, fast=12, slow=26, signal=9))
+                macd_series = self._safe_call(lambda: calculate_macd_series(closes, fast_period=12, slow_period=26, signal_period=9))
                 if macd_series and isinstance(macd_series, dict):
                     # Vos modules retournent déjà le bon format
                     macd_line_series = macd_series.get('macd_line', [])
