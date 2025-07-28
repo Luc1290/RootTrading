@@ -24,7 +24,7 @@ from shared.src.config import get_db_config
 # Import DIRECT de tous vos modules existants
 from market_analyzer.indicators import (
     calculate_rsi, calculate_rsi_series, calculate_ema, calculate_ema_series, calculate_sma, calculate_macd_series,
-    calculate_bollinger_bands_series, calculate_atr, 
+    calculate_bollinger_bands_series, 
     calculate_stochastic_series, calculate_williams_r, calculate_cci,
     calculate_obv_series, calculate_vwap_series
 )
@@ -44,7 +44,7 @@ from market_analyzer.indicators.momentum.momentum import (
 from market_analyzer.indicators.momentum.rsi import calculate_stoch_rsi
 
 # Import des indicateurs de volatilité  
-from market_analyzer.indicators.volatility.atr import calculate_natr, volatility_regime
+from market_analyzer.indicators.volatility.atr import calculate_atr, calculate_natr, volatility_regime
 from market_analyzer.indicators.volatility.bollinger import calculate_bollinger_squeeze, calculate_keltner_channels
 
 # Import des indicateurs de volume
@@ -446,7 +446,6 @@ class IndicatorProcessor:
                         if len(closes) >= 20:
                             try:
                                 # Réutiliser la logique du RegimeDetector
-                                from ..indicators.volatility.atr import calculate_atr
                                 
                                 # Calculer ATRs pour les 20 dernières périodes
                                 atr_values = []
@@ -677,7 +676,7 @@ class IndicatorProcessor:
                 -- Patterns
                 pattern_detected, pattern_confidence,
                 -- Indicateurs composites
-                signal_strength, confluence_score, trend_strength, atr_percentile,
+                signal_strength, confluence_score,
                 -- Métadonnées
                 calculation_time_ms, data_quality, anomaly_detected
             ) VALUES (
@@ -696,8 +695,8 @@ class IndicatorProcessor:
                 $84, $85, $86, $87, $88, $89, $90, $91,
                 $92, $93, $94, $95, $96, $97,
                 $98, $99,
-                $100, $101, $102, $103,
-                $104, $105, $106
+                $100, $101,
+                $102, $103, $104
             )
             ON CONFLICT (time, symbol, timeframe) DO UPDATE SET
                 analysis_timestamp = EXCLUDED.analysis_timestamp,
@@ -821,8 +820,6 @@ class IndicatorProcessor:
                 # Indicateurs composites
                 indicators.get('signal_strength'),
                 self._sanitize_numeric_value(indicators.get('confluence_score')),
-                indicators.get('trend_strength'),
-                self._sanitize_numeric_value(indicators.get('atr_percentile')),
                 # Métadonnées
                 indicators.get('calculation_time_ms'), indicators.get('data_quality'), indicators.get('anomaly_detected')
             ]
