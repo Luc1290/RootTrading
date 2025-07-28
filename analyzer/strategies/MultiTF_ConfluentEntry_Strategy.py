@@ -258,7 +258,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         # Vérification des scores de confluence principaux
         try:
             confluence_score = float(values['confluence_score']) if values['confluence_score'] is not None else None
-            signal_strength = float(values['signal_strength']) if values['signal_strength'] is not None else None
+            signal_strength = values['signal_strength']  # STRING: WEAK/MODERATE/STRONG/VERY_STRONG
             trend_alignment = float(values['trend_alignment']) if values['trend_alignment'] is not None else None
         except (ValueError, TypeError) as e:
             return {
@@ -283,12 +283,12 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                 }
             }
             
-        if signal_strength is None or signal_strength < self.min_signal_strength:
+        if signal_strength is None or signal_strength not in ['STRONG', 'VERY_STRONG']:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Signal trop faible ({signal_strength:.2f} < {self.min_signal_strength})",
+                "reason": f"Signal trop faible ({signal_strength})",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
@@ -368,12 +368,12 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
             confidence_boost += 0.10
             reason += " - confluence très forte"
             
-        if signal_strength >= 0.8:
+        if signal_strength == 'VERY_STRONG':
             confidence_boost += 0.10
-            reason += f" + signal très fort ({signal_strength:.2f})"
-        elif signal_strength >= 0.7:
+            reason += f" + signal très fort ({signal_strength})"
+        elif signal_strength == 'STRONG':
             confidence_boost += 0.05
-            reason += f" + signal fort ({signal_strength:.2f})"
+            reason += f" + signal fort ({signal_strength})"
             
         # Bonus alignement MA
         if ma_analysis['alignment_score'] >= 0.9:
@@ -399,14 +399,9 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
             confidence_boost += 0.10
             reason += " (marché trending)"
             
-            if regime_strength is not None:
-                try:
-                    regime_str = float(regime_strength)
-                    if regime_str > 0.7:
-                        confidence_boost += 0.08
-                        reason += " avec régime fort"
-                except (ValueError, TypeError):
-                    pass
+            if regime_strength in ['STRONG', 'EXTREME']:
+                confidence_boost += 0.08
+                reason += f" avec régime {regime_strength.lower()}"
                     
         # Volume pour confirmation
         volume_ratio = values.get('volume_ratio')

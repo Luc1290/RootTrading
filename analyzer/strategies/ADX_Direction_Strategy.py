@@ -155,14 +155,9 @@ class ADX_Direction_Strategy(BaseStrategy):
         
         # Trend strength pré-calculé
         trend_strength = values.get('trend_strength')
-        if trend_strength:
-            try:
-                trend_strength_val = float(trend_strength)
-                if trend_strength_val > 0.7:
-                    confidence_boost += 0.10
-                    reason += " avec trend_strength élevé"
-            except (ValueError, TypeError):
-                pass
+        if trend_strength and trend_strength in ['STRONG', 'VERY_STRONG']:
+            confidence_boost += 0.10
+            reason += f" avec trend_strength {trend_strength.lower()}"
                 
         # Directional bias confirmation
         directional_bias = values.get('directional_bias')

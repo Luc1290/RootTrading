@@ -110,10 +110,10 @@ class RSI_Cross_Strategy(BaseStrategy):
                     confidence_boost -= 0.1
                     
             # Ajustement avec trend_strength
-            trend_strength = values.get('trend_strength', 0)
-            if trend_strength and trend_strength > 0.5:
+            trend_strength = values.get('trend_strength')
+            if trend_strength and trend_strength in ['STRONG', 'VERY_STRONG']:
                 confidence_boost += 0.1
-                reason += " et tendance forte"
+                reason += f" et tendance {trend_strength.lower()}"
                 
             # Ajustement avec directional_bias
             directional_bias = values.get('directional_bias')
@@ -130,8 +130,8 @@ class RSI_Cross_Strategy(BaseStrategy):
                 reason += " avec haute confluence"
                 
             # Ajustement avec signal_strength pré-calculé
-            signal_strength_calc = values.get('signal_strength', 0)
-            if signal_strength_calc and signal_strength_calc > 0.7:
+            signal_strength_calc = values.get('signal_strength')
+            if signal_strength_calc and signal_strength_calc in ['STRONG', 'VERY_STRONG']:
                 confidence_boost += 0.1
                 
             # Confirmation avec RSI 21 pour multi-timeframe

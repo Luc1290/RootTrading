@@ -26,19 +26,28 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
         self.extreme_oversold = 10
         self.extreme_overbought = 90
         
-    def _get_current_values(self) -> Dict[str, Optional[float]]:
+    def _safe_float(self, value) -> Optional[float]:
+        """Convertit en float de manière sécurisée."""
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return None
+    
+    def _get_current_values(self) -> Dict[str, Any]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
         return {
-            'stoch_rsi': self.indicators.get('stoch_rsi'),
-            'stoch_k': self.indicators.get('stoch_k'),
-            'stoch_d': self.indicators.get('stoch_d'),
+            'stoch_rsi': self._safe_float(self.indicators.get('stoch_rsi')),
+            'stoch_k': self._safe_float(self.indicators.get('stoch_k')),
+            'stoch_d': self._safe_float(self.indicators.get('stoch_d')),
             'stoch_signal': self.indicators.get('stoch_signal'),
             'stoch_divergence': self.indicators.get('stoch_divergence'),
-            'rsi_14': self.indicators.get('rsi_14'),
-            'momentum_score': self.indicators.get('momentum_score'),
+            'rsi_14': self._safe_float(self.indicators.get('rsi_14')),
+            'momentum_score': self._safe_float(self.indicators.get('momentum_score')),
             'trend_strength': self.indicators.get('trend_strength'),
             'directional_bias': self.indicators.get('directional_bias'),
-            'confluence_score': self.indicators.get('confluence_score'),
+            'confluence_score': self._safe_float(self.indicators.get('confluence_score')),
             'signal_strength': self.indicators.get('signal_strength')
         }
         
@@ -75,9 +84,14 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
         # Utilisation du signal StochRSI pré-calculé si disponible
         stoch_signal = values.get('stoch_signal')
         if stoch_signal:
-            if stoch_signal in ['BUY', 'SELL']:
-                signal_side = stoch_signal
-                reason = f"Signal StochRSI pré-calculé: {stoch_signal}"
+            # Conversion des signaux DB vers signaux stratégie
+            if stoch_signal == 'OVERSOLD':
+                signal_side = "BUY"
+                reason = f"Signal StochRSI pré-calculé: {stoch_signal} -> BUY"
+                confidence_boost += 0.2
+            elif stoch_signal == 'OVERBOUGHT':
+                signal_side = "SELL"
+                reason = f"Signal StochRSI pré-calculé: {stoch_signal} -> SELL"
                 confidence_boost += 0.2
         
         # Si pas de signal pré-calculé, analyse manuelle des zones
@@ -129,8 +143,8 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                     reason += " avec momentum favorable"
                     
             # Utilisation du trend_strength
-            trend_strength = values.get('trend_strength', 0)
-            if trend_strength and trend_strength > 0.5:
+            trend_strength = values.get('trend_strength')
+            if trend_strength and trend_strength in ['STRONG', 'VERY_STRONG']:
                 confidence_boost += 0.1
                 reason += " et tendance forte"
                 
@@ -149,8 +163,8 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                 reason += " avec haute confluence"
                 
             # Utilisation du signal_strength pré-calculé
-            signal_strength_calc = values.get('signal_strength', 0)
-            if signal_strength_calc and signal_strength_calc > 0.6:
+            signal_strength_calc = values.get('signal_strength')
+            if signal_strength_calc and signal_strength_calc in ['STRONG', 'VERY_STRONG']:
                 confidence_boost += 0.1
                 
             confidence = self.calculate_confidence(base_confidence, confidence_boost)

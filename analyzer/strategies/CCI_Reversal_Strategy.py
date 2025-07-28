@@ -127,18 +127,11 @@ class CCI_Reversal_Strategy(BaseStrategy):
                 elif abs(momentum_score) < 0.1:
                     confidence_boost -= 0.05  # Momentum faible
                     
-            # Utilisation du trend_strength avec conversion sécurisée
+            # Utilisation du trend_strength
             trend_strength_raw = values.get('trend_strength')
-            trend_strength = 0
-            if trend_strength_raw is not None:
-                try:
-                    trend_strength = float(trend_strength_raw)
-                except (ValueError, TypeError):
-                    trend_strength = 0
-                    
-            if trend_strength > 0.6:
+            if trend_strength_raw and trend_strength_raw in ['STRONG', 'VERY_STRONG']:
                 confidence_boost += 0.1
-                reason += " et tendance forte"
+                reason += f" et tendance {trend_strength_raw.lower()}"
                 
             # Utilisation du directional_bias
             directional_bias = values.get('directional_bias')
@@ -178,19 +171,13 @@ class CCI_Reversal_Strategy(BaseStrategy):
                 confidence_boost += 0.1
                 reason += f" avec pattern {pattern_detected}"
                 
-            # Utilisation du market_regime avec conversion sécurisée
+            # Utilisation du market_regime
             market_regime = values.get('market_regime')
             regime_strength_raw = values.get('regime_strength')
-            regime_strength = 0
-            if regime_strength_raw is not None:
-                try:
-                    regime_strength = float(regime_strength_raw)
-                except (ValueError, TypeError):
-                    regime_strength = 0
-                    
-            if market_regime and regime_strength > 0.5:
-                if (signal_side == "BUY" and market_regime in ["bullish", "accumulation"]) or \
-                   (signal_side == "SELL" and market_regime in ["bearish", "distribution"]):
+            
+            if market_regime and regime_strength_raw and regime_strength_raw in ['MODERATE', 'STRONG', 'EXTREME']:
+                if (signal_side == "BUY" and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]) or \
+                   (signal_side == "SELL" and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]):
                     confidence_boost += 0.1
                     reason += f" en régime {market_regime}"
                     
@@ -202,16 +189,9 @@ class CCI_Reversal_Strategy(BaseStrategy):
                 elif volatility_regime == "high":
                     confidence_boost -= 0.05  # Plus risqué
                     
-            # Utilisation du signal_strength pré-calculé avec conversion sécurisée
+            # Utilisation du signal_strength pré-calculé
             signal_strength_calc_raw = values.get('signal_strength')
-            signal_strength_calc = 0
-            if signal_strength_calc_raw is not None:
-                try:
-                    signal_strength_calc = float(signal_strength_calc_raw)
-                except (ValueError, TypeError):
-                    signal_strength_calc = 0
-                    
-            if signal_strength_calc > 0.7:
+            if signal_strength_calc_raw and signal_strength_calc_raw in ['STRONG', 'VERY_STRONG']:
                 confidence_boost += 0.1
                 
             confidence = self.calculate_confidence(base_confidence, confidence_boost)
@@ -228,7 +208,7 @@ class CCI_Reversal_Strategy(BaseStrategy):
                     "cci_20": cci_20,
                     "zone": zone,
                     "momentum_score": momentum_score,
-                    "trend_strength": trend_strength,
+                    "trend_strength": trend_strength_raw,
                     "directional_bias": directional_bias,
                     "confluence_score": confluence_score,
                     "pattern_detected": pattern_detected,
