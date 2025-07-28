@@ -271,6 +271,12 @@ class IndicatorProcessor:
                         'dx': adx_full.get('dx'),
                         'adxr': adx_full.get('adxr')
                     })
+                    
+                    # Calculer trend_strength depuis ADX (string: "weak", "strong", etc.)
+                    from ..indicators.trend.adx import adx_trend_strength
+                    adx_value = adx_full.get('adx')
+                    if adx_value is not None:
+                        indicators['trend_strength'] = adx_trend_strength(adx_value)
             
             # ATR et volatilité (calculer d'abord car utilisé par Keltner)
             atr = None
@@ -428,6 +434,27 @@ class IndicatorProcessor:
                             'trend_alignment': float(trend_alignment),
                             'momentum_score': float(momentum_score)
                         })
+                        
+                        # Calculer atr_percentile directement depuis les données disponibles
+                        if len(closes) >= 20:
+                            try:
+                                # Réutiliser la logique du RegimeDetector
+                                from ..indicators.volatility.atr import calculate_atr
+                                
+                                # Calculer ATRs pour les 20 dernières périodes
+                                atr_values = []
+                                for i in range(20, len(closes)):
+                                    atr_val = calculate_atr(highs[i-14:i+1], lows[i-14:i+1], closes[i-14:i+1], 14)
+                                    if atr_val:
+                                        atr_values.append(atr_val)
+                                
+                                if atr_values and len(atr_values) >= 20:
+                                    current_atr = atr_values[-1]
+                                    # Calculer percentile (position dans les 20 derniers)
+                                    atr_percentile = sum(1 for x in atr_values[-20:] if x <= current_atr) / 20 * 100
+                                    indicators['atr_percentile'] = float(atr_percentile)
+                            except Exception as e:
+                                logger.debug(f"Erreur calcul atr_percentile: {e}")
                 except Exception as e:
                     logger.warning(f"RegimeDetector error: {e}")
                 
@@ -529,6 +556,10 @@ class IndicatorProcessor:
                         'pattern_confidence': 0.0
                     })
             
+            # === CALCUL CONFLUENCE SCORE ===
+            confluence_score = self._calculate_confluence_score(indicators, closes[-1] if closes else None)
+            indicators['confluence_score'] = confluence_score
+            
             # Métadonnées
             calculation_time = int((time.time() - start_time) * 1000)
             indicators['calculation_time_ms'] = calculation_time
@@ -546,6 +577,170 @@ class IndicatorProcessor:
             indicators['anomaly_detected'] = True
         
         return indicators
+
+    def _calculate_confluence_score(self, indicators: Dict, current_price: float = None) -> float:
+        """
+        Calcule un score de confluence entre les différents indicateurs techniques.
+        Mesure la cohérence des signaux haussiers/baissiers entre indicateurs.
+        
+        Returns:
+            Score entre 0.0 et 1.0 (0.5 = neutre, >0.5 = haussier, <0.5 = baissier)
+        """
+        try:
+            signals = []
+            weights = []
+            
+            # === MOYENNES MOBILES ===
+            # EMA crossover signals
+            ema_12 = indicators.get('ema_12')
+            ema_26 = indicators.get('ema_26')
+            ema_50 = indicators.get('ema_50')
+            # current_price passé en paramètre
+            
+            if ema_12 and ema_26 and current_price:
+                if ema_12 > ema_26:
+                    signals.append(0.65)  # Signal haussier modéré
+                    weights.append(2.0)   # Poids important
+                else:
+                    signals.append(0.35)  # Signal baissier modéré
+                    weights.append(2.0)
+                    
+            # Prix vs EMA50
+            if ema_50 and current_price:
+                if current_price > ema_50:
+                    signals.append(0.6)
+                    weights.append(1.5)
+                else:
+                    signals.append(0.4)
+                    weights.append(1.5)
+            
+            # === OSCILLATEURS ===
+            # RSI
+            rsi_14 = indicators.get('rsi_14')
+            if rsi_14:
+                if rsi_14 > 70:
+                    signals.append(0.2)   # Survente = baissier
+                    weights.append(1.5)
+                elif rsi_14 < 30:
+                    signals.append(0.8)   # Survente = haussier
+                    weights.append(1.5)
+                elif rsi_14 > 50:
+                    signals.append(0.6)   # Au-dessus médiane
+                    weights.append(1.0)
+                else:
+                    signals.append(0.4)   # En-dessous médiane
+                    weights.append(1.0)
+            
+            # MACD
+            macd_line = indicators.get('macd_line')
+            macd_signal = indicators.get('macd_signal')
+            if macd_line and macd_signal:
+                if macd_line > macd_signal:
+                    signals.append(0.65)  # MACD au-dessus signal = haussier
+                    weights.append(2.0)
+                else:
+                    signals.append(0.35)  # MACD en-dessous = baissier
+                    weights.append(2.0)
+                    
+                # MACD vs zéro
+                if macd_line > 0:
+                    signals.append(0.6)
+                    weights.append(1.0)
+                else:
+                    signals.append(0.4)
+                    weights.append(1.0)
+            
+            # Stochastic
+            stoch_k = indicators.get('stoch_k')
+            stoch_d = indicators.get('stoch_d')
+            if stoch_k and stoch_d:
+                if stoch_k > 80:
+                    signals.append(0.2)   # Surachat = baissier
+                    weights.append(1.0)
+                elif stoch_k < 20:
+                    signals.append(0.8)   # Survente = haussier
+                    weights.append(1.0)
+                elif stoch_k > stoch_d:
+                    signals.append(0.6)   # K au-dessus D = haussier
+                    weights.append(1.2)
+                else:
+                    signals.append(0.4)   # K en-dessous D = baissier
+                    weights.append(1.2)
+            
+            # === TENDANCE ===
+            # ADX et directional indicators
+            adx_14 = indicators.get('adx_14')
+            plus_di = indicators.get('plus_di')
+            minus_di = indicators.get('minus_di')
+            
+            if adx_14 and plus_di and minus_di:
+                if adx_14 > 25:  # Tendance forte
+                    if plus_di > minus_di:
+                        signals.append(0.7)  # Tendance haussière forte
+                        weights.append(2.5)
+                    else:
+                        signals.append(0.3)  # Tendance baissière forte
+                        weights.append(2.5)
+                else:  # Tendance faible/range
+                    signals.append(0.5)  # Neutre
+                    weights.append(0.5)
+            
+            # === VOLUME ===
+            volume_ratio = indicators.get('volume_ratio')
+            if volume_ratio:
+                if volume_ratio > 1.5:
+                    # Volume élevé renforce le signal dominant
+                    if len(signals) > 0:
+                        avg_signal = sum(s * w for s, w in zip(signals[-3:], weights[-3:])) / sum(weights[-3:])
+                        if avg_signal > 0.5:
+                            signals.append(0.65)  # Renforce haussier
+                        else:
+                            signals.append(0.35)  # Renforce baissier
+                        weights.append(1.5)
+                    else:
+                        signals.append(0.5)  # Neutre si pas d'autres signaux
+                        weights.append(0.5)
+            
+            # === BOLLINGER BANDS ===
+            bb_position = indicators.get('bb_position')
+            if bb_position is not None:
+                if bb_position > 0.8:
+                    signals.append(0.25)  # Proche bande haute = baissier
+                    weights.append(1.2)
+                elif bb_position < 0.2:
+                    signals.append(0.75)  # Proche bande basse = haussier
+                    weights.append(1.2)
+                else:
+                    # Position normale dans les bandes
+                    signals.append(0.5)
+                    weights.append(0.5)
+            
+            # === MOMENTUM ===
+            momentum_score = indicators.get('momentum_score')
+            if momentum_score is not None:
+                # Normaliser momentum_score vers 0-1
+                normalized_momentum = max(0, min(1, (momentum_score + 100) / 200))
+                signals.append(normalized_momentum)
+                weights.append(1.8)
+            
+            # === CALCUL CONFLUENCE FINALE ===
+            if not signals:
+                return 0.5  # Neutre si aucun signal
+                
+            # Moyenne pondérée
+            weighted_sum = sum(signal * weight for signal, weight in zip(signals, weights))
+            total_weight = sum(weights)
+            confluence_score = weighted_sum / total_weight
+            
+            # Normaliser entre 0 et 1
+            confluence_score = max(0.0, min(1.0, confluence_score))
+            
+            logger.debug(f"📊 Confluence calculée: {confluence_score:.3f} ({len(signals)} signaux)")
+            return round(confluence_score, 3)
+            
+        except Exception as e:
+            logger.warning(f"❌ Erreur calcul confluence: {e}")
+            return 0.5  # Valeur neutre en cas d'erreur
 
     def _safe_call(self, func):
         """Exécute un appel de fonction de manière sécurisée."""
@@ -633,6 +828,8 @@ class IndicatorProcessor:
                 volume_buildup_periods, volume_spike_multiplier,
                 -- Patterns
                 pattern_detected, pattern_confidence,
+                -- Indicateurs composites
+                signal_strength, confluence_score, trend_strength, atr_percentile,
                 -- Métadonnées
                 calculation_time_ms, data_quality, anomaly_detected
             ) VALUES (
@@ -651,7 +848,8 @@ class IndicatorProcessor:
                 $67, $68, $69, $70, $71, $72, $73, $74,
                 $75, $76, $77, $78, $79, $80,
                 $81, $82,
-                $83, $84, $85
+                $83, $84, $85, $86,
+                $87, $88, $89
             )
             ON CONFLICT (time, symbol, timeframe) DO UPDATE SET
                 analysis_timestamp = EXCLUDED.analysis_timestamp,
@@ -755,6 +953,11 @@ class IndicatorProcessor:
                 # Patterns
                 indicators.get('pattern_detected'), 
                 self._sanitize_numeric_value(indicators.get('pattern_confidence')),
+                # Indicateurs composites
+                indicators.get('signal_strength'),
+                self._sanitize_numeric_value(indicators.get('confluence_score')),
+                indicators.get('trend_strength'),
+                self._sanitize_numeric_value(indicators.get('atr_percentile')),
                 # Métadonnées
                 indicators.get('calculation_time_ms'), indicators.get('data_quality'), indicators.get('anomaly_detected')
             ]

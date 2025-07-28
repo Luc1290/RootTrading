@@ -93,24 +93,32 @@ class AnalyzerService:
         """Récupère tous les symboles et timeframes disponibles depuis la DB."""
         try:
             with self.db_connection.cursor(cursor_factory=RealDictCursor) as cursor:
-                # Récupérer tous les symboles disponibles
-                cursor.execute("SELECT DISTINCT symbol FROM market_data ORDER BY symbol")
-                symbols_result = cursor.fetchall()
-                self.symbols = [row['symbol'] for row in symbols_result]
+                # Récupérer toutes les combinaisons symbol/timeframe qui ont des données récentes
+                cursor.execute("""
+                    SELECT DISTINCT symbol, timeframe 
+                    FROM market_data 
+                    WHERE time >= NOW() - INTERVAL '24 hours'
+                    ORDER BY symbol, timeframe
+                """)
+                combinations = cursor.fetchall()
                 
-                # Récupérer tous les timeframes disponibles
-                cursor.execute("SELECT DISTINCT timeframe FROM market_data ORDER BY timeframe")
-                timeframes_result = cursor.fetchall()
-                self.timeframes = [row['timeframe'] for row in timeframes_result]
+                # Extraire symboles et timeframes uniques
+                self.symbols = sorted(list(set(row['symbol'] for row in combinations)))
+                self.timeframes = sorted(list(set(row['timeframe'] for row in combinations)))
+                
+                # Stocker les combinaisons valides pour éviter les requêtes vides
+                self.valid_combinations = [(row['symbol'], row['timeframe']) for row in combinations]
                 
                 logger.info(f"Symboles chargés ({len(self.symbols)}): {', '.join(self.symbols)}")
                 logger.info(f"Timeframes chargés ({len(self.timeframes)}): {', '.join(self.timeframes)}")
+                logger.info(f"Combinaisons valides: {len(self.valid_combinations)}")
                 
         except Exception as e:
             logger.error(f"Erreur chargement symboles/timeframes: {e}")
             # Fallback vers valeurs par défaut
             self.symbols = ['BTCUSDC', 'ETHUSDC', 'SOLUSDC']
             self.timeframes = ['1m', '3m', '5m', '15m']
+            self.valid_combinations = [(s, t) for s in self.symbols for t in self.timeframes]
             logger.warning(f"Utilisation des valeurs par défaut: {self.symbols} / {self.timeframes}")
             
     def fetch_latest_data(self, symbol: str, timeframe: str) -> Dict[str, Any]:
@@ -157,7 +165,9 @@ class AnalyzerService:
                     'low': [float(r['low']) for r in reversed(ohlcv_rows)],
                     'close': [float(r['close']) for r in reversed(ohlcv_rows)],
                     'volume': [float(r['volume']) for r in reversed(ohlcv_rows)],
-                    'quote_volume': [float(r['quote_asset_volume']) for r in reversed(ohlcv_rows)]
+                    'quote_volume': [float(r['quote_asset_volume']) for r in reversed(ohlcv_rows)],
+                    # Compatibilité avec les stratégies qui cherchent 'ohlcv'
+                    'ohlcv': ohlcv_rows  # Liste des rows complètes pour compatibilité
                 }
                 
                 # Conversion des indicateurs en dictionnaire avec conversion robuste
@@ -357,14 +367,19 @@ class AnalyzerService:
         cycle_signals_before = self.cycle_stats['total_signals']
         cycle_analyses_before = self.cycle_stats['total_analyses']
         
+        # Utiliser les combinaisons valides au lieu du produit cartésien
+        combinations_to_analyze = getattr(self, 'valid_combinations', [])
+        if not combinations_to_analyze:
+            # Fallback si pas initialisé
+            combinations_to_analyze = [(s, t) for s in self.symbols for t in self.timeframes]
+            
         logger.info(f"Début du cycle d'analyse #{self.cycle_stats['cycle_count']} "
-                   f"({len(self.symbols)} symboles × {len(self.timeframes)} timeframes = {len(self.symbols) * len(self.timeframes)} analyses)")
+                   f"({len(combinations_to_analyze)} combinaisons valides)")
         
         tasks = []
-        for symbol in self.symbols:
-            for timeframe in self.timeframes:
-                task = self.analyze_symbol_timeframe(symbol, timeframe)
-                tasks.append(task)
+        for symbol, timeframe in combinations_to_analyze:
+            task = self.analyze_symbol_timeframe(symbol, timeframe)
+            tasks.append(task)
                 
         # Exécution en parallèle
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -412,11 +427,7 @@ class AnalyzerService:
             pubsub = redis_client.pubsub()
             await pubsub.subscribe('analyzer_trigger')
             
-            logger.info("🎧 Écoute des triggers d'analyse activée")
-            
-            # Analyse initiale complète au démarrage
-            logger.info("🚀 Analyse initiale au démarrage...")
-            await self.run_analysis_cycle()
+            logger.info("🎧 Écoute des triggers d'analyse activée - Attente des nouvelles données...")
             
             async for message in pubsub.listen():
                 if message['type'] == 'message':
