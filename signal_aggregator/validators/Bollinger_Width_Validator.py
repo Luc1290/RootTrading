@@ -1,0 +1,340 @@
+"""
+Bollinger_Width_Validator - Validator basé sur la largeur des Bollinger Bands.
+"""
+
+from typing import Dict, Any
+from .base_validator import BaseValidator
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class Bollinger_Width_Validator(BaseValidator):
+    """
+    Validator pour la largeur des Bollinger Bands - filtre selon l'état de volatilité et expansion.
+    
+    Vérifie: Largeur BB, squeeze/expansion, breakout potentiel
+    Catégorie: volatility
+    
+    Rejette les signaux en:
+    - Squeeze trop serré (pas de mouvement attendu)
+    - Expansion excessive (volatilité dangereuse)
+    - Position prix inappropriée dans les bandes
+    """
+    
+    def __init__(self, symbol: str, data: Dict[str, Any], context: Dict[str, Any]):
+        super().__init__(symbol, data, context)
+        self.name = "Bollinger_Width_Validator"
+        self.category = "volatility"
+        
+        # Paramètres Bollinger Bands
+        self.min_bb_width = 0.01        # 1% largeur minimum
+        self.max_bb_width = 0.15        # 15% largeur maximum
+        self.squeeze_threshold = 0.02   # 2% seuil squeeze
+        self.expansion_threshold = 0.08 # 8% seuil expansion
+        
+        # Paramètres position prix
+        self.extreme_position_threshold = 0.95  # Position extrême dans BB
+        self.safe_position_min = 0.2           # Zone sûre minimum
+        self.safe_position_max = 0.8           # Zone sûre maximum
+        
+        # Bonus/malus
+        self.expansion_bonus = 0.2      # Bonus expansion favorable
+        self.squeeze_penalty = -0.2     # Pénalité squeeze
+        self.breakout_bonus = 0.25      # Bonus breakout confirmé
+        
+    def validate_signal(self, signal: Dict[str, Any]) -> bool:
+        """
+        Valide le signal basé sur la largeur et état des Bollinger Bands.
+        
+        Args:
+            signal: Signal à valider contenant strategy, symbol, side, etc.
+            
+        Returns:
+            True si le signal est valide selon Bollinger Bands, False sinon
+        """
+        try:
+            if not self.validate_data():
+                logger.warning(f"{self.name}: Données insuffisantes pour {self.symbol}")
+                return False
+                
+            # Extraction des indicateurs Bollinger depuis le contexte
+            try:
+                bb_upper = float(self.context.get('bb_upper', 0)) if self.context.get('bb_upper') is not None else None
+                bb_middle = float(self.context.get('bb_middle', 0)) if self.context.get('bb_middle') is not None else None
+                bb_lower = float(self.context.get('bb_lower', 0)) if self.context.get('bb_lower') is not None else None
+                bb_width = float(self.context.get('bb_width', 0)) if self.context.get('bb_width') is not None else None
+                bb_position = float(self.context.get('bb_position', 0.5)) if self.context.get('bb_position') is not None else None
+                bb_squeeze = self.context.get('bb_squeeze', False)
+                bb_expansion = self.context.get('bb_expansion', False)
+                bb_breakout_direction = self.context.get('bb_breakout_direction')
+            except (ValueError, TypeError) as e:
+                logger.warning(f"{self.name}: Erreur conversion Bollinger pour {self.symbol}: {e}")
+                return False
+                
+            # Récupération prix actuel depuis data
+            current_price = None
+            if self.data and 'close' in self.data and self.data['close']:
+                try:
+                    current_price = float(self.data['close'][-1])
+                except (IndexError, ValueError, TypeError):
+                    pass
+                    
+            signal_side = signal.get('side')
+            signal_strategy = signal.get('strategy', 'Unknown')
+            signal_confidence = signal.get('confidence', 0.0)
+            
+            if not signal_side or bb_width is None:
+                logger.warning(f"{self.name}: Signal side ou BB width manquant pour {self.symbol}")
+                return False
+                
+            # 1. Vérification largeur BB minimum
+            if bb_width < self.min_bb_width:
+                logger.debug(f"{self.name}: BB width trop faible ({bb_width:.3f}) pour {self.symbol} - marché compressé")
+                # En squeeze sévère, accepter seulement signaux très confiants
+                if signal_confidence < 0.8:
+                    return False
+                    
+            # 2. Vérification largeur BB maximum
+            if bb_width > self.max_bb_width:
+                logger.debug(f"{self.name}: BB width excessive ({bb_width:.3f}) pour {self.symbol} - volatilité dangereuse")
+                # Volatilité extrême, signaux très sélectifs
+                if signal_confidence < 0.9:
+                    return False
+                    
+            # 3. Gestion état squeeze
+            if bb_squeeze or bb_width < self.squeeze_threshold:
+                logger.debug(f"{self.name}: BB en squeeze pour {self.symbol}")
+                # En squeeze, priorité aux signaux de breakout anticipé
+                if not self._is_breakout_strategy(signal_strategy):
+                    if signal_confidence < 0.7:
+                        logger.debug(f"{self.name}: Squeeze mais stratégie non-breakout avec confidence faible pour {self.symbol}")
+                        return False
+                        
+            # 4. Gestion état expansion
+            if bb_expansion or bb_width > self.expansion_threshold:
+                logger.debug(f"{self.name}: BB en expansion pour {self.symbol}")
+                # En expansion, favoriser trend following et momentum
+                if self._is_meanreversion_strategy(signal_strategy):
+                    logger.debug(f"{self.name}: Expansion mais stratégie mean reversion pour {self.symbol}")
+                    if signal_confidence < 0.6:
+                        return False
+                        
+            # 5. Validation position prix dans les bandes
+            if bb_position is not None:
+                if bb_position > self.extreme_position_threshold:
+                    # Prix très proche BB supérieure
+                    if signal_side == "BUY":
+                        logger.debug(f"{self.name}: BUY signal mais prix près BB supérieure ({bb_position:.2f}) pour {self.symbol}")
+                        if signal_confidence < 0.8:
+                            return False
+                elif bb_position < (1 - self.extreme_position_threshold):
+                    # Prix très proche BB inférieure
+                    if signal_side == "SELL":
+                        logger.debug(f"{self.name}: SELL signal mais prix près BB inférieure ({bb_position:.2f}) pour {self.symbol}")
+                        if signal_confidence < 0.8:
+                            return False
+                            
+            # 6. Validation breakout direction
+            if bb_breakout_direction:
+                if signal_side == "BUY" and bb_breakout_direction == "down":
+                    logger.debug(f"{self.name}: BUY signal mais breakout direction DOWN pour {self.symbol}")
+                    return False
+                elif signal_side == "SELL" and bb_breakout_direction == "up":
+                    logger.debug(f"{self.name}: SELL signal mais breakout direction UP pour {self.symbol}")
+                    return False
+                    
+            # 7. Validation cohérence prix/bandes si disponible
+            if current_price and bb_upper and bb_lower and bb_middle:
+                if signal_side == "BUY":
+                    # Pour BUY, prix ne doit pas être trop près de BB supérieure
+                    distance_to_upper = (bb_upper - current_price) / (bb_upper - bb_middle)
+                    if distance_to_upper < 0.1:  # Très proche BB supérieure
+                        if not self._is_breakout_strategy(signal_strategy):
+                            logger.debug(f"{self.name}: BUY très proche BB supérieure sans stratégie breakout pour {self.symbol}")
+                            return False
+                            
+                elif signal_side == "SELL":
+                    # Pour SELL, prix ne doit pas être trop près de BB inférieure
+                    distance_to_lower = (current_price - bb_lower) / (bb_middle - bb_lower)
+                    if distance_to_lower < 0.1:  # Très proche BB inférieure
+                        if not self._is_breakout_strategy(signal_strategy):
+                            logger.debug(f"{self.name}: SELL très proche BB inférieure sans stratégie breakout pour {self.symbol}")
+                            return False
+                            
+            # 8. Validation spécifique selon stratégie
+            if self._is_bollinger_strategy(signal_strategy):
+                # Stratégies spécifiquement basées sur Bollinger
+                if bb_width < self.min_bb_width * 2:  # Critères plus stricts
+                    logger.debug(f"{self.name}: Stratégie Bollinger mais width insuffisante pour {self.symbol}")
+                    return False
+                    
+            logger.debug(f"{self.name}: Signal validé pour {self.symbol} - BB Width: {bb_width:.3f}, "
+                        f"Position: {bb_position:.2f if bb_position else 'N/A'}, "
+                        f"Squeeze: {bb_squeeze}, Expansion: {bb_expansion}, "
+                        f"Breakout: {bb_breakout_direction or 'N/A'}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"{self.name}: Erreur validation signal pour {self.symbol}: {e}")
+            return False
+            
+    def _is_breakout_strategy(self, strategy_name: str) -> bool:
+        """Détermine si la stratégie est de type breakout."""
+        breakout_keywords = ['breakout', 'break', 'donchian', 'channel', 'resistance', 'support', 'sweep']
+        strategy_lower = strategy_name.lower()
+        return any(keyword in strategy_lower for keyword in breakout_keywords)
+        
+    def _is_meanreversion_strategy(self, strategy_name: str) -> bool:
+        """Détermine si la stratégie est de type mean reversion."""
+        meanrev_keywords = ['touch', 'reversal', 'rsi', 'oversold', 'overbought', 'rebound']
+        strategy_lower = strategy_name.lower()
+        return any(keyword in strategy_lower for keyword in meanrev_keywords)
+        
+    def _is_bollinger_strategy(self, strategy_name: str) -> bool:
+        """Détermine si la stratégie est spécifiquement basée sur Bollinger."""
+        bollinger_keywords = ['bollinger', 'bb_', 'band']
+        strategy_lower = strategy_name.lower()
+        return any(keyword in strategy_lower for keyword in bollinger_keywords)
+        
+    def get_validation_score(self, signal: Dict[str, Any]) -> float:
+        """
+        Calcule un score de validation basé sur l'état des Bollinger Bands.
+        
+        Args:
+            signal: Signal à scorer
+            
+        Returns:
+            Score entre 0 et 1
+        """
+        try:
+            if not self.validate_signal(signal):
+                return 0.0
+                
+            # Calcul du score basé sur Bollinger Bands
+            bb_width = float(self.context.get('bb_width', 0)) if self.context.get('bb_width') is not None else 0
+            bb_position = float(self.context.get('bb_position', 0.5)) if self.context.get('bb_position') is not None else 0.5
+            bb_squeeze = self.context.get('bb_squeeze', False)
+            bb_expansion = self.context.get('bb_expansion', False)
+            bb_breakout_direction = self.context.get('bb_breakout_direction')
+            
+            base_score = 0.5  # Score de base si validé
+            
+            # Ajustement selon largeur BB
+            if self.squeeze_threshold <= bb_width <= self.expansion_threshold:
+                # Zone optimale de largeur
+                optimal_center = (self.squeeze_threshold + self.expansion_threshold) / 2
+                distance_from_optimal = abs(bb_width - optimal_center)
+                max_distance = (self.expansion_threshold - self.squeeze_threshold) / 2
+                
+                # Score plus élevé proche du centre optimal
+                width_bonus = 0.15 * (1 - distance_from_optimal / max_distance)
+                base_score += width_bonus
+                
+            # Bonus/malus selon état BB
+            if bb_expansion and not bb_squeeze:
+                base_score += self.expansion_bonus  # Expansion favorable
+            elif bb_squeeze and not bb_expansion:
+                # Squeeze peut être préparation breakout
+                signal_strategy = signal.get('strategy', '')
+                if self._is_breakout_strategy(signal_strategy):
+                    base_score += 0.1  # Bonus squeeze pour breakout
+                else:
+                    base_score += self.squeeze_penalty  # Pénalité squeeze pour autres
+                    
+            # Bonus breakout direction cohérente
+            if bb_breakout_direction:
+                signal_side = signal.get('side')
+                if (signal_side == "BUY" and bb_breakout_direction == "up") or \
+                   (signal_side == "SELL" and bb_breakout_direction == "down"):
+                    base_score += self.breakout_bonus
+                    
+            # Ajustement selon position prix dans BB
+            if bb_position is not None:
+                if self.safe_position_min <= bb_position <= self.safe_position_max:
+                    base_score += 0.1  # Position sûre dans les bandes
+                elif bb_position > self.extreme_position_threshold or bb_position < (1 - self.extreme_position_threshold):
+                    # Position extrême - peut être opportunité breakout
+                    signal_strategy = signal.get('strategy', '')
+                    if self._is_breakout_strategy(signal_strategy):
+                        base_score += 0.15  # Bonus position extrême pour breakout
+                    else:
+                        base_score -= 0.1  # Pénalité position extrême pour autres
+                        
+            # Bonus stratégie spécialisée Bollinger
+            signal_strategy = signal.get('strategy', '')
+            if self._is_bollinger_strategy(signal_strategy):
+                base_score += 0.1  # Bonus spécialisation
+                
+            return max(0.0, min(1.0, base_score))
+            
+        except Exception as e:
+            logger.error(f"{self.name}: Erreur calcul score pour {self.symbol}: {e}")
+            return 0.0
+            
+    def get_validation_reason(self, signal: Dict[str, Any], is_valid: bool) -> str:
+        """
+        Retourne une raison détaillée pour la validation/invalidation.
+        
+        Args:
+            signal: Le signal évalué
+            is_valid: Résultat de la validation
+            
+        Returns:
+            Raison de la décision
+        """
+        try:
+            bb_width = float(self.context.get('bb_width', 0)) if self.context.get('bb_width') is not None else 0
+            bb_position = float(self.context.get('bb_position', 0.5)) if self.context.get('bb_position') is not None else None
+            bb_squeeze = self.context.get('bb_squeeze', False)
+            bb_expansion = self.context.get('bb_expansion', False)
+            bb_breakout_direction = self.context.get('bb_breakout_direction')
+            signal_strategy = signal.get('strategy', 'N/A')
+            signal_side = signal.get('side', 'N/A')
+            
+            if is_valid:
+                width_desc = "squeeze" if bb_squeeze else "expansion" if bb_expansion else "normale"
+                position_desc = f"position {bb_position:.2f}" if bb_position else "N/A"
+                breakout_desc = f"breakout {bb_breakout_direction}" if bb_breakout_direction else "pas de breakout"
+                
+                reason = f"BB {width_desc} (width: {bb_width:.3f}, {position_desc}, {breakout_desc})"
+                
+                return f"{self.name}: Validé - {reason} pour {signal_strategy} {signal_side}"
+            else:
+                if bb_width < self.min_bb_width:
+                    return f"{self.name}: Rejeté - BB width trop faible ({bb_width:.3f}) - marché compressé"
+                elif bb_width > self.max_bb_width:
+                    return f"{self.name}: Rejeté - BB width excessive ({bb_width:.3f}) - volatilité dangereuse"
+                elif bb_squeeze and signal.get('confidence', 0) < 0.7:
+                    return f"{self.name}: Rejeté - Squeeze BB + confidence insuffisante"
+                elif bb_breakout_direction:
+                    if (signal_side == "BUY" and bb_breakout_direction == "down") or \
+                       (signal_side == "SELL" and bb_breakout_direction == "up"):
+                        return f"{self.name}: Rejeté - Signal {signal_side} contradictoire avec breakout {bb_breakout_direction}"
+                elif bb_position and bb_position > self.extreme_position_threshold:
+                    return f"{self.name}: Rejeté - Position extrême BB supérieure ({bb_position:.2f})"
+                elif bb_position and bb_position < (1 - self.extreme_position_threshold):
+                    return f"{self.name}: Rejeté - Position extrême BB inférieure ({bb_position:.2f})"
+                    
+                return f"{self.name}: Rejeté - Critères Bollinger Bands non respectés"
+                
+        except Exception as e:
+            return f"{self.name}: Erreur évaluation - {e}"
+            
+    def validate_data(self) -> bool:
+        """
+        Valide que les données Bollinger Bands requises sont présentes.
+        
+        Returns:
+            True si les données sont valides, False sinon
+        """
+        if not super().validate_data():
+            return False
+            
+        # Vérification présence BB width (indicateur principal)
+        if 'bb_width' not in self.context or self.context['bb_width'] is None:
+            logger.warning(f"{self.name}: BB_width manquant pour {self.symbol}")
+            return False
+            
+        return True

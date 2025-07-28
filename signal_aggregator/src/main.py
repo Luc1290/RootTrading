@@ -23,11 +23,16 @@ from signal_processor import SignalProcessor
 from database_manager import DatabaseManager
 
 # Configuration du logging
+log_level = logging.DEBUG if os.getenv('DEBUG_LOGS', 'false').lower() == 'true' else logging.INFO
 logging.basicConfig(
-    level=logging.INFO,
+    level=log_level,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Logger spécialisé pour les statistiques
+stats_logger = logging.getLogger('signal_aggregator.stats')
+validation_logger = logging.getLogger('signal_aggregator.validation')
 
 
 class SignalAggregatorService:
@@ -59,6 +64,18 @@ class SignalAggregatorService:
         # Statistiques globales
         self.start_time = datetime.utcnow()
         self.last_health_check = None
+        
+        # Statistiques détaillées
+        self.cycle_stats = {
+            'total_signals_received': 0,
+            'total_signals_processed': 0,
+            'total_signals_validated': 0,
+            'total_signals_rejected': 0,
+            'total_validation_errors': 0,
+            'processing_times': [],
+            'last_cycle_time': 0.0,
+            'avg_processing_time': 0.0
+        }
         
     async def connect_db(self):
         """�tablit la connexion � la base de donn�es."""
@@ -108,47 +125,98 @@ class SignalAggregatorService:
             
     async def process_signal_callback(self, signal_data: str):
         """
-        Callback pour traiter les signaux re�us depuis Redis.
+        Callback pour traiter les signaux reçus depuis Redis.
         
         Args:
-            signal_data: Donn�es du signal au format JSON
+            signal_data: Données du signal au format JSON
         """
+        import time
+        start_time = time.time()
+        
         try:
+            self.cycle_stats['total_signals_received'] += 1
+            
             if not self.signal_processor:
-                logger.error("Signal processor non initialis�")
+                logger.error("Signal processor non initialisé")
                 return
+            
+            # Log de réception du signal (DEBUG uniquement)
+            if logger.isEnabledFor(logging.DEBUG):
+                try:
+                    import json
+                    message = json.loads(signal_data)
+                    if isinstance(message, dict):
+                        if message.get('type') == 'signal_batch':
+                            signals = message.get('signals', [])
+                            logger.debug(f"Batch reçu: {len(signals)} signaux")
+                        else:
+                            strategy = message.get('strategy', 'N/A')
+                            symbol = message.get('symbol', 'N/A')
+                            side = message.get('side', 'N/A')
+                            confidence = message.get('confidence', 0)
+                            logger.debug(f"Signal reçu: {strategy} {symbol} {side} (conf={confidence:.2f})")
+                except:
+                    logger.debug("Signal reçu (format non parsable)")
                 
             # Traitement du signal (peut être individuel ou batch)
             result = await self.signal_processor.process_signal(signal_data)
+            
+            # Timing du traitement
+            processing_time = time.time() - start_time
+            self.cycle_stats['processing_times'].append(processing_time)
+            self.cycle_stats['last_cycle_time'] = processing_time
+            
+            # Limiter l'historique des temps de traitement
+            if len(self.cycle_stats['processing_times']) > 100:
+                self.cycle_stats['processing_times'] = self.cycle_stats['processing_times'][-100:]
+                
+            self.cycle_stats['avg_processing_time'] = sum(self.cycle_stats['processing_times']) / len(self.cycle_stats['processing_times'])
             
             if result:
                 # Vérifier si c'est un signal individuel ou une liste (batch)
                 if isinstance(result, list):
                     # Batch de signaux validés
                     if result:  # Si la liste n'est pas vide
+                        self.cycle_stats['total_signals_validated'] += len(result)
+                        
                         # Publication des signaux validés vers le coordinator
                         await self.redis_handler.publish_multiple_signals(result)
                         
-                        logger.info(f"Batch de {len(result)} signaux publié vers coordinator")
+                        validation_logger.info(f"Batch validé: {len(result)} signaux publiés vers coordinator ({processing_time*1000:.1f}ms)")
                         
-                        # Log détaillé de chaque signal
-                        for validated_signal in result:
-                            timeframe = validated_signal.get('metadata', {}).get('timeframe', 'N/A')
-                            final_score = validated_signal.get('metadata', {}).get('final_score', 0.0)
-                            logger.debug(f"Signal publié: {validated_signal['strategy']} "
-                                       f"{validated_signal['symbol']} {timeframe} "
-                                       f"{validated_signal['side']} (final_score={final_score:.2f})")
+                        # Log détaillé de chaque signal (DEBUG uniquement)
+                        if logger.isEnabledFor(logging.DEBUG):
+                            for validated_signal in result:
+                                timeframe = validated_signal.get('metadata', {}).get('timeframe', 'N/A')
+                                final_score = validated_signal.get('metadata', {}).get('final_score', 0.0)
+                                validation_score = validated_signal.get('metadata', {}).get('validation_score', 0.0)
+                                validators_passed = validated_signal.get('metadata', {}).get('validators_passed', 0)
+                                logger.debug(f"Signal validé: {validated_signal['strategy']} "
+                                           f"{validated_signal['symbol']} {timeframe} "
+                                           f"{validated_signal['side']} (final={final_score:.2f}, "
+                                           f"validation={validation_score:.2f}, validators={validators_passed})")
                 else:
                     # Signal individuel validé
+                    self.cycle_stats['total_signals_validated'] += 1
+                    
                     await self.redis_handler.publish_validated_signal(result)
                     
                     timeframe = result.get('metadata', {}).get('timeframe', 'N/A')
                     final_score = result.get('metadata', {}).get('final_score', 0.0)
-                    logger.info(f"Signal publié vers coordinator: {result['strategy']} "
-                              f"{result['symbol']} {timeframe} "
-                              f"{result['side']} (final_score={final_score:.2f})")
+                    validation_score = result.get('metadata', {}).get('validation_score', 0.0)
+                    validators_passed = result.get('metadata', {}).get('validators_passed', 0)
+                    validation_strength = result.get('metadata', {}).get('validation_strength', 'N/A')
+                    
+                    validation_logger.info(f"Signal VALIDÉ: {result['strategy']} {result['symbol']} {timeframe} "
+                                         f"{result['side']} (final={final_score:.2f}, validation={validation_score:.2f}, "
+                                         f"strength={validation_strength}, validators={validators_passed}) - {processing_time*1000:.1f}ms")
+            else:
+                self.cycle_stats['total_signals_rejected'] += 1
+                
+            self.cycle_stats['total_signals_processed'] += 1
             
         except Exception as e:
+            self.cycle_stats['total_validation_errors'] += 1
             logger.error(f"Erreur traitement callback signal: {e}")
             
     async def health_check(self):
@@ -171,13 +239,37 @@ class SignalAggregatorService:
                 logger.error(f"Health check DB �chou�: {e}")
                 db_health = False
                 
-            # Log des statistiques
+            # Log des statistiques détaillées
             if self.signal_processor:
-                stats = self.signal_processor.get_stats()
-                logger.info(f"Stats - Trait�s: {stats['signals_processed']}, "
-                          f"Valid�s: {stats['signals_validated']}, "
-                          f"Rejet�s: {stats['signals_rejected']}, "
-                          f"Erreurs: {stats['validation_errors']}")
+                processor_stats = self.signal_processor.get_stats()
+                
+                # Calculer le taux de validation
+                validation_rate = (processor_stats['signals_validated'] / processor_stats['signals_processed'] * 100) if processor_stats['signals_processed'] > 0 else 0
+                
+                stats_logger.info(f"Stats Processeur: {processor_stats['signals_validated']}/{processor_stats['signals_processed']} validés "
+                                 f"({validation_rate:.1f}%) - Rejetés: {processor_stats['signals_rejected']}, "
+                                 f"Erreurs: {processor_stats['validation_errors']}, "
+                                 f"Score moyen: {processor_stats['avg_validation_score']:.3f}")
+                
+                # Stats globales du service
+                global_validation_rate = (self.cycle_stats['total_signals_validated'] / self.cycle_stats['total_signals_received'] * 100) if self.cycle_stats['total_signals_received'] > 0 else 0
+                
+                stats_logger.info(f"Stats Service: {self.cycle_stats['total_signals_received']} reçus, "
+                                 f"{self.cycle_stats['total_signals_validated']} validés ({global_validation_rate:.1f}%), "
+                                 f"Temps moy: {self.cycle_stats['avg_processing_time']*1000:.1f}ms")
+                
+                # Log des performances par validator (DEBUG uniquement)
+                if logger.isEnabledFor(logging.DEBUG) and processor_stats.get('validator_performance'):
+                    validator_perf = processor_stats['validator_performance']
+                    top_validators = sorted(validator_perf.items(), key=lambda x: x[1]['avg_score'], reverse=True)[:3]
+                    
+                    if top_validators:
+                        perf_info = []
+                        for validator_name, perf in top_validators:
+                            success_rate = (perf['successful_validations'] / perf['total_runs'] * 100) if perf['total_runs'] > 0 else 0
+                            perf_info.append(f"{validator_name}: {success_rate:.0f}% ({perf['avg_score']:.2f})")
+                        
+                        logger.debug(f"Top validators: {'; '.join(perf_info)}")
                           
             self.last_health_check = datetime.utcnow()
             
@@ -200,7 +292,13 @@ class SignalAggregatorService:
                 'last_health_check': self.last_health_check.isoformat() if self.last_health_check else None,
                 'validators_loaded': len(self.validator_loader.get_all_validators()),
                 'redis_connected': self.redis_handler.is_connected if self.redis_handler else False,
-                'db_connected': hasattr(self, 'db_connection') and self.db_connection is not None
+                'db_connected': hasattr(self, 'db_connection') and self.db_connection is not None,
+                
+                # Statistiques détaillées du service
+                'cycle_stats': self.cycle_stats.copy(),
+                'validation_rate': (self.cycle_stats['total_signals_validated'] / self.cycle_stats['total_signals_received'] * 100) if self.cycle_stats['total_signals_received'] > 0 else 0,
+                'rejection_rate': (self.cycle_stats['total_signals_rejected'] / self.cycle_stats['total_signals_received'] * 100) if self.cycle_stats['total_signals_received'] > 0 else 0,
+                'error_rate': (self.cycle_stats['total_validation_errors'] / self.cycle_stats['total_signals_received'] * 100) if self.cycle_stats['total_signals_received'] > 0 else 0
             }
             
             # Ajout des stats Redis
@@ -328,10 +426,15 @@ async def main():
 
 
 if __name__ == "__main__":
-    # Configuration des logs pour le debug si n�cessaire
-    if os.getenv('DEBUG', '').lower() in ['true', '1', 'yes']:
+    # Configuration des logs pour le debug si nécessaire  
+    if os.getenv('DEBUG', '').lower() in ['true', '1', 'yes'] or os.getenv('DEBUG_LOGS', 'false').lower() == 'true':
         logging.getLogger().setLevel(logging.DEBUG)
-        logger.info("Mode DEBUG activ�")
+        logger.info("Mode DEBUG activé")
+        
+    # Log de la configuration
+    logger.info(f"Signal Aggregator démarrage - Log level: {logging.getLevelName(log_level)}")
+    if os.getenv('DEBUG_LOGS', 'false').lower() == 'true':
+        logger.info("Logs détaillés activés (DEBUG_LOGS=true)")
         
     try:
         asyncio.run(main())

@@ -12,6 +12,7 @@ import numpy as np
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 import asyncpg
+import redis.asyncio as redis
 import sys
 import os
 
@@ -761,9 +762,33 @@ class IndicatorProcessor:
             async with self.db_pool.acquire() as conn:
                 await conn.execute(query, *sanitized_params)
                 
+                # Notification Redis simple : nouvelles données analysées disponibles
+                await self._notify_analyzer_ready(indicators)
+                
         except Exception as e:
             logger.error(f"❌ Erreur sauvegarde analyzer_data: {e}")
             raise
+
+    async def _notify_analyzer_ready(self, indicators: Dict):
+        """Notifie l'Analyzer que de nouvelles données sont prêtes."""
+        try:
+            if not hasattr(self, 'redis_client') or not self.redis_client:
+                # Connexion Redis paresseuse
+                self.redis_client = redis.from_url('redis://redis:6379')
+            
+            notification = {
+                'event': 'analyzer_data_ready',
+                'symbol': indicators.get('symbol'),
+                'timeframe': indicators.get('timeframe'),
+                'timestamp': indicators.get('time').isoformat() if indicators.get('time') else None
+            }
+            
+            await self.redis_client.publish('analyzer_trigger', json.dumps(notification))
+            logger.debug(f"📢 Notification envoyée: {indicators.get('symbol')} {indicators.get('timeframe')}")
+            
+        except Exception as e:
+            # Ne pas faire échouer la sauvegarde si Redis fail
+            logger.warning(f"⚠️ Erreur notification Redis: {e}")
 
     def _is_pattern_fresh(self, latest_spike, closes, volumes):
         """Vérifie si le pattern détecté est récent et significatif."""

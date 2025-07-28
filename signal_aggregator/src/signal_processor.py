@@ -10,6 +10,9 @@ import json
 
 logger = logging.getLogger(__name__)
 
+# Logger spécialisé pour la validation
+validation_logger = logging.getLogger('signal_aggregator.validation')
+
 
 class SignalProcessor:
     """Processeur principal pour la validation et le scoring des signaux."""
@@ -106,6 +109,19 @@ class SignalProcessor:
                 
             # Validation complète avec contexte
             validated_signal = await self._validate_with_context(signal)
+            
+            # Log du résultat de validation (DEBUG)
+            if logger.isEnabledFor(logging.DEBUG):
+                strategy = signal.get('strategy', 'N/A')
+                symbol = signal.get('symbol', 'N/A')
+                side = signal.get('side', 'N/A')
+                if validated_signal:
+                    final_score = validated_signal.get('metadata', {}).get('final_score', 0.0)
+                    validators_passed = validated_signal.get('metadata', {}).get('validators_passed', 0)
+                    logger.debug(f"Signal individuel VALIDÉ: {strategy} {symbol} {side} "
+                               f"(final={final_score:.2f}, validators={validators_passed})")
+                else:
+                    logger.debug(f"Signal individuel REJETÉ: {strategy} {symbol} {side}")
             
             return validated_signal
             
@@ -303,8 +319,11 @@ class SignalProcessor:
                 
                 validation_results.append(result)
                 
-                logger.debug(f"Validator {validator_name}: {'PASS' if is_valid else 'FAIL'} "
-                           f"(score={score:.2f}, weighted={result['weighted_score']:.2f})")
+                # Log détaillé par validator (DEBUG uniquement)
+                if logger.isEnabledFor(logging.DEBUG):
+                    validation_logger.debug(f"{signal['symbol']} {signal.get('timeframe', 'N/A')} - "
+                                          f"Validator {validator_name}: {'PASS' if is_valid else 'FAIL'} "
+                                          f"(score={score:.2f}, weighted={result['weighted_score']:.2f}) - {reason[:50]}")
                 
             except Exception as e:
                 logger.error(f"Erreur validator {validator_name}: {e}")
