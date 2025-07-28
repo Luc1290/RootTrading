@@ -108,8 +108,12 @@ class DataManager:
             "1d": 1440
         }.get(interval, 1)
         
-        if interval_minutes == 1:
-            # Requête directe pour 1m - JOIN entre market_data et analyzer_data
+        # Vérifier si des données natives existent pour ce timeframe
+        native_timeframes = ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d']
+        use_native = interval in native_timeframes
+        
+        if use_native:
+            # Requête directe pour timeframes natifs - JOIN entre market_data et analyzer_data
             query = """
                 SELECT 
                     md.time as timestamp,
@@ -237,7 +241,7 @@ class DataManager:
                 FROM aggregated
             """
         
-        params = [symbol, "1m"]  # Toujours utiliser "1m" comme timeframe dans la DB
+        params = [symbol, interval]  # Utiliser le timeframe demandé
         
         if start_time:
             query += f" AND md.time >= ${len(params) + 1}"
@@ -247,7 +251,7 @@ class DataManager:
             query += f" AND md.time <= ${len(params) + 1}"
             params.append(end_time.isoformat() if isinstance(end_time, datetime) else end_time)
             
-        if interval_minutes == 1:
+        if use_native:
             query += " ORDER BY md.time DESC"
         else:
             query += " ORDER BY period DESC"
@@ -260,8 +264,8 @@ class DataManager:
             async with self.postgres_pool.acquire() as conn:
                 rows = await conn.fetch(query, *params)
                 
-                # Pour les intervalles > 1m SEULEMENT, ajouter la bougie courante
-                if interval_minutes > 1 and rows:
+                # Pour les intervalles agrégés SEULEMENT, ajouter la bougie courante
+                if not use_native and rows:
                     current_candle = await self._build_current_candle(conn, symbol, interval_minutes)
                     if current_candle:
                         # Insérer la bougie courante au début (plus récente)

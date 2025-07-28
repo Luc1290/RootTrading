@@ -279,6 +279,32 @@ async def get_available_symbols():
         logger.error(f"Error getting available symbols: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/configured-symbols")
+async def get_configured_symbols():
+    """Get list of configured trading symbols from shared config"""
+    try:
+        # Import avec chemin absolu vers shared/config
+        import sys
+        import os
+        
+        # Ajouter le chemin vers shared/src au PYTHONPATH
+        shared_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'shared', 'src'))
+        if shared_path not in sys.path:
+            sys.path.insert(0, shared_path)
+        
+        # Import du module config
+        import config
+        
+        return {"symbols": config.SYMBOLS}
+    except Exception as e:
+        logger.error(f"Error getting configured symbols: {e}")
+        # Fallback avec symboles par défaut en cas d'erreur
+        default_symbols = [
+            "BTCUSDC", "ETHUSDC", "SOLUSDC", "XRPUSDC", "ADAUSDC", 
+            "AVAXUSDC", "LINKUSDC", "AAVEUSDC", "SUIUSDC", "LDOUSDC"
+        ]
+        return {"symbols": default_symbols}
+
 @app.get("/api/available-indicators")
 async def get_available_indicators():
     """Get list of available technical indicators"""

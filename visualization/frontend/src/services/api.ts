@@ -133,6 +133,11 @@ class ApiService {
   async getAvailableSymbols(): Promise<{ symbols: TradingSymbol[] }> {
     return this.request('/api/available-symbols');
   }
+
+  // Symboles configurés depuis shared/config
+  async getConfiguredSymbols(): Promise<{ symbols: string[] }> {
+    return this.request('/api/configured-symbols');
+  }
   
   // Cycles de trading
   async getTradeCycles(

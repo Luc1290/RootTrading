@@ -23,14 +23,13 @@ function SymbolSelector() {
 
   const fetchOwnedSymbols = async () => {
     try {
-      const symbols = await apiService.getOwnedSymbolsWithVariations();
+      const [symbols, configuredResponse] = await Promise.all([
+        apiService.getOwnedSymbolsWithVariations(),
+        apiService.getConfiguredSymbols()
+      ]);
       
-      // Liste des symboles autorisés (correspond à la config Python)
-      const allowedSymbols = [
-        'BTCUSDC', 'ETHUSDC', 'SOLUSDC', 'XRPUSDC', 'ADAUSDC', 
-        'AVAXUSDC', 'DOGEUSDC', 'LINKUSDC', 'AAVEUSDC', 'SUIUSDC', 
-        'PEPEUSDC', 'BONKUSDC', 'LDOUSDC'
-      ];
+      // Récupérer les symboles configurés depuis shared/config
+      const allowedSymbols = configuredResponse.symbols;
       
       // Créer un Map pour accès rapide aux données du portfolio
       const portfolioData = new Map();
@@ -56,12 +55,25 @@ function SymbolSelector() {
       setOwnedSymbols(validSymbols);
     } catch (error) {
       console.error('Error fetching owned symbols:', error);
-      // Fallback aux symboles par défaut
-      setOwnedSymbols([
-        { symbol: 'BTCUSDC', asset: 'BTC', price: 119000, price_change_24h: -0.6 },
-        { symbol: 'ETHUSDC', asset: 'ETH', price: 3400, price_change_24h: -0.9 },
-        { symbol: 'SOLUSDC', asset: 'SOL', price: 173, price_change_24h: 2.1 }
-      ]);
+      // Fallback : récupérer au moins les symboles configurés
+      try {
+        const configuredResponse = await apiService.getConfiguredSymbols();
+        const fallbackSymbols = configuredResponse.symbols.map(symbol => ({
+          symbol: symbol,
+          asset: symbol.replace('USDC', ''),
+          price: 0,
+          price_change_24h: 0
+        }));
+        setOwnedSymbols(fallbackSymbols);
+      } catch (configError) {
+        console.error('Error fetching configured symbols:', configError);
+        // Dernier fallback avec quelques symboles statiques
+        setOwnedSymbols([
+          { symbol: 'BTCUSDC', asset: 'BTC', price: 0, price_change_24h: 0 },
+          { symbol: 'ETHUSDC', asset: 'ETH', price: 0, price_change_24h: 0 },
+          { symbol: 'SOLUSDC', asset: 'SOL', price: 0, price_change_24h: 0 }
+        ]);
+      }
     } finally {
       setLoading(false);
     }
