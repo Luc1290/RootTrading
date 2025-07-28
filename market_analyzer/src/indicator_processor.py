@@ -45,7 +45,7 @@ from market_analyzer.indicators.momentum.rsi import calculate_stoch_rsi
 
 # Import des indicateurs de volatilité  
 from market_analyzer.indicators.volatility.atr import calculate_natr, volatility_regime
-from market_analyzer.indicators.volatility.bollinger import calculate_bollinger_squeeze
+from market_analyzer.indicators.volatility.bollinger import calculate_bollinger_squeeze, calculate_keltner_channels
 
 # Import des indicateurs de volume
 from market_analyzer.indicators.volume.obv import calculate_obv_ma, calculate_obv_oscillator
@@ -59,6 +59,9 @@ from market_analyzer.detectors.regime_detector import RegimeDetector
 from market_analyzer.detectors.support_resistance_detector import SupportResistanceDetector
 from market_analyzer.detectors.volume_context_analyzer import VolumeContextAnalyzer
 from market_analyzer.detectors.spike_detector import SpikeDetector
+
+# Import du module de confluence
+from market_analyzer.indicators.composite.confluence import calculate_confluence_score, ConfluenceType
 
 logger = logging.getLogger(__name__)
 
@@ -317,14 +320,18 @@ class IndicatorProcessor:
                         'bb_width': bb_bandwidth_series[-1] if bb_bandwidth_series else None
                     })
                 
-                # Keltner Channels (utilise VOS modules avec cache)
-                if atr:
-                    ema_20 = self._safe_call(lambda: calculate_ema(closes, 20, symbol=symbol, enable_cache=True))
-                    if ema_20:
-                        keltner_multiplier = 2.0
+                # Keltner Channels (utilise la fonction dédiée)
+                if len(highs) >= 20 and len(lows) >= 20:
+                    keltner = self._safe_call(lambda: calculate_keltner_channels(
+                        closes, highs, lows,
+                        period=20,
+                        atr_period=10,
+                        multiplier=2.0
+                    ))
+                    if keltner and isinstance(keltner, dict):
                         indicators.update({
-                            'keltner_upper': ema_20 + (atr * keltner_multiplier),
-                            'keltner_lower': ema_20 - (atr * keltner_multiplier)
+                            'keltner_upper': keltner.get('upper'),
+                            'keltner_lower': keltner.get('lower')
                         })
             
             # Stochastic
@@ -557,7 +564,11 @@ class IndicatorProcessor:
                     })
             
             # === CALCUL CONFLUENCE SCORE ===
-            confluence_score = self._calculate_confluence_score(indicators, closes[-1] if closes else None)
+            confluence_score = self._safe_call(lambda: calculate_confluence_score(
+                indicators, 
+                closes[-1] if closes else None,
+                ConfluenceType.MONO_TIMEFRAME
+            ))
             indicators['confluence_score'] = confluence_score
             
             # Métadonnées
@@ -578,169 +589,6 @@ class IndicatorProcessor:
         
         return indicators
 
-    def _calculate_confluence_score(self, indicators: Dict, current_price: float = None) -> float:
-        """
-        Calcule un score de confluence entre les différents indicateurs techniques.
-        Mesure la cohérence des signaux haussiers/baissiers entre indicateurs.
-        
-        Returns:
-            Score entre 0.0 et 1.0 (0.5 = neutre, >0.5 = haussier, <0.5 = baissier)
-        """
-        try:
-            signals = []
-            weights = []
-            
-            # === MOYENNES MOBILES ===
-            # EMA crossover signals
-            ema_12 = indicators.get('ema_12')
-            ema_26 = indicators.get('ema_26')
-            ema_50 = indicators.get('ema_50')
-            # current_price passé en paramètre
-            
-            if ema_12 and ema_26 and current_price:
-                if ema_12 > ema_26:
-                    signals.append(0.65)  # Signal haussier modéré
-                    weights.append(2.0)   # Poids important
-                else:
-                    signals.append(0.35)  # Signal baissier modéré
-                    weights.append(2.0)
-                    
-            # Prix vs EMA50
-            if ema_50 and current_price:
-                if current_price > ema_50:
-                    signals.append(0.6)
-                    weights.append(1.5)
-                else:
-                    signals.append(0.4)
-                    weights.append(1.5)
-            
-            # === OSCILLATEURS ===
-            # RSI
-            rsi_14 = indicators.get('rsi_14')
-            if rsi_14:
-                if rsi_14 > 70:
-                    signals.append(0.2)   # Survente = baissier
-                    weights.append(1.5)
-                elif rsi_14 < 30:
-                    signals.append(0.8)   # Survente = haussier
-                    weights.append(1.5)
-                elif rsi_14 > 50:
-                    signals.append(0.6)   # Au-dessus médiane
-                    weights.append(1.0)
-                else:
-                    signals.append(0.4)   # En-dessous médiane
-                    weights.append(1.0)
-            
-            # MACD
-            macd_line = indicators.get('macd_line')
-            macd_signal = indicators.get('macd_signal')
-            if macd_line and macd_signal:
-                if macd_line > macd_signal:
-                    signals.append(0.65)  # MACD au-dessus signal = haussier
-                    weights.append(2.0)
-                else:
-                    signals.append(0.35)  # MACD en-dessous = baissier
-                    weights.append(2.0)
-                    
-                # MACD vs zéro
-                if macd_line > 0:
-                    signals.append(0.6)
-                    weights.append(1.0)
-                else:
-                    signals.append(0.4)
-                    weights.append(1.0)
-            
-            # Stochastic
-            stoch_k = indicators.get('stoch_k')
-            stoch_d = indicators.get('stoch_d')
-            if stoch_k and stoch_d:
-                if stoch_k > 80:
-                    signals.append(0.2)   # Surachat = baissier
-                    weights.append(1.0)
-                elif stoch_k < 20:
-                    signals.append(0.8)   # Survente = haussier
-                    weights.append(1.0)
-                elif stoch_k > stoch_d:
-                    signals.append(0.6)   # K au-dessus D = haussier
-                    weights.append(1.2)
-                else:
-                    signals.append(0.4)   # K en-dessous D = baissier
-                    weights.append(1.2)
-            
-            # === TENDANCE ===
-            # ADX et directional indicators
-            adx_14 = indicators.get('adx_14')
-            plus_di = indicators.get('plus_di')
-            minus_di = indicators.get('minus_di')
-            
-            if adx_14 and plus_di and minus_di:
-                if adx_14 > 25:  # Tendance forte
-                    if plus_di > minus_di:
-                        signals.append(0.7)  # Tendance haussière forte
-                        weights.append(2.5)
-                    else:
-                        signals.append(0.3)  # Tendance baissière forte
-                        weights.append(2.5)
-                else:  # Tendance faible/range
-                    signals.append(0.5)  # Neutre
-                    weights.append(0.5)
-            
-            # === VOLUME ===
-            volume_ratio = indicators.get('volume_ratio')
-            if volume_ratio:
-                if volume_ratio > 1.5:
-                    # Volume élevé renforce le signal dominant
-                    if len(signals) > 0:
-                        avg_signal = sum(s * w for s, w in zip(signals[-3:], weights[-3:])) / sum(weights[-3:])
-                        if avg_signal > 0.5:
-                            signals.append(0.65)  # Renforce haussier
-                        else:
-                            signals.append(0.35)  # Renforce baissier
-                        weights.append(1.5)
-                    else:
-                        signals.append(0.5)  # Neutre si pas d'autres signaux
-                        weights.append(0.5)
-            
-            # === BOLLINGER BANDS ===
-            bb_position = indicators.get('bb_position')
-            if bb_position is not None:
-                if bb_position > 0.8:
-                    signals.append(0.25)  # Proche bande haute = baissier
-                    weights.append(1.2)
-                elif bb_position < 0.2:
-                    signals.append(0.75)  # Proche bande basse = haussier
-                    weights.append(1.2)
-                else:
-                    # Position normale dans les bandes
-                    signals.append(0.5)
-                    weights.append(0.5)
-            
-            # === MOMENTUM ===
-            momentum_score = indicators.get('momentum_score')
-            if momentum_score is not None:
-                # Normaliser momentum_score vers 0-1
-                normalized_momentum = max(0, min(1, (momentum_score + 100) / 200))
-                signals.append(normalized_momentum)
-                weights.append(1.8)
-            
-            # === CALCUL CONFLUENCE FINALE ===
-            if not signals:
-                return 0.5  # Neutre si aucun signal
-                
-            # Moyenne pondérée
-            weighted_sum = sum(signal * weight for signal, weight in zip(signals, weights))
-            total_weight = sum(weights)
-            confluence_score = weighted_sum / total_weight
-            
-            # Normaliser entre 0 et 1
-            confluence_score = max(0.0, min(1.0, confluence_score))
-            
-            logger.debug(f"📊 Confluence calculée: {confluence_score:.3f} ({len(signals)} signaux)")
-            return round(confluence_score, 3)
-            
-        except Exception as e:
-            logger.warning(f"❌ Erreur calcul confluence: {e}")
-            return 0.5  # Valeur neutre en cas d'erreur
 
     def _safe_call(self, func):
         """Exécute un appel de fonction de manière sécurisée."""
@@ -804,20 +652,20 @@ class IndicatorProcessor:
                 -- Indicateurs de base
                 rsi_14, rsi_21, ema_7, ema_12, ema_26, ema_50, ema_99, sma_20, sma_50,
                 -- MACD
-                macd_line, macd_signal, macd_histogram, ppo,
+                macd_line, macd_signal, macd_histogram, ppo, macd_zero_cross, macd_signal_cross, macd_trend,
                 -- Bollinger Bands
-                bb_upper, bb_middle, bb_lower, bb_position, bb_width, keltner_upper, keltner_lower,
+                bb_upper, bb_middle, bb_lower, bb_position, bb_width, bb_squeeze, bb_expansion, bb_breakout_direction, keltner_upper, keltner_lower,
                 -- Stochastic
-                stoch_k, stoch_d, stoch_rsi, stoch_fast_k, stoch_fast_d,
+                stoch_k, stoch_d, stoch_rsi, stoch_fast_k, stoch_fast_d, stoch_divergence, stoch_signal,
                 -- ATR & Volatilité
-                atr_14, natr, atr_stop_long, atr_stop_short, volatility_regime,
+                atr_14, atr_percentile, natr, volatility_regime, atr_stop_long, atr_stop_short,
                 -- ADX
-                adx_14, plus_di, minus_di, dx, adxr,
+                adx_14, plus_di, minus_di, dx, adxr, trend_strength, directional_bias, trend_angle,
                 -- Oscillateurs
-                williams_r, cci_20, momentum_10, roc_10, roc_20,
+                williams_r, mfi_14, cci_20, momentum_10, roc_10, roc_20,
                 -- Volume avancé
-                vwap_10, vwap_quote_10, volume_ratio, avg_volume_20, quote_volume_ratio, avg_trade_size, trade_intensity,
-                obv, obv_ma_10, obv_oscillator,
+                vwap_10, vwap_quote_10, anchored_vwap, vwap_upper_band, vwap_lower_band, volume_ratio, avg_volume_20, quote_volume_ratio, avg_trade_size, trade_intensity,
+                obv, obv_ma_10, obv_oscillator, ad_line,
                 -- Régime de marché
                 market_regime, regime_strength, regime_confidence, regime_duration, trend_alignment, momentum_score,
                 -- Support/Résistance
@@ -836,20 +684,20 @@ class IndicatorProcessor:
                 $1, $2, $3, $4, $5,
                 $6, $7, $8, $9, $10,
                 $11, $12, $13, $14, $15, $16, $17, $18, $19,
-                $20, $21, $22, $23,
-                $24, $25, $26, $27, $28, $29, $30,
-                $31, $32, $33, $34, $35,
-                $36, $37, $38, $39, $40,
-                $41, $42, $43, $44, $45,
-                $46, $47, $48, $49, $50,
-                $51, $52, $53, $54, $55, $56, $57,
-                $58, $59, $60,
-                $61, $62, $63, $64, $65, $66,
-                $67, $68, $69, $70, $71, $72, $73, $74,
-                $75, $76, $77, $78, $79, $80,
-                $81, $82,
-                $83, $84, $85, $86,
-                $87, $88, $89
+                $20, $21, $22, $23, $24, $25, $26,
+                $27, $28, $29, $30, $31, $32, $33, $34, $35, $36,
+                $37, $38, $39, $40, $41, $42, $43,
+                $44, $45, $46, $47, $48, $49,
+                $50, $51, $52, $53, $54, $55, $56, $57,
+                $58, $59, $60, $61, $62, $63,
+                $64, $65, $66, $67, $68, $69, $70, $71, $72, $73,
+                $74, $75, $76, $77,
+                $78, $79, $80, $81, $82, $83,
+                $84, $85, $86, $87, $88, $89, $90, $91,
+                $92, $93, $94, $95, $96, $97,
+                $98, $99,
+                $100, $101, $102, $103,
+                $104, $105, $106
             )
             ON CONFLICT (time, symbol, timeframe) DO UPDATE SET
                 analysis_timestamp = EXCLUDED.analysis_timestamp,
@@ -887,12 +735,18 @@ class IndicatorProcessor:
                 self._sanitize_numeric_value(indicators.get('macd_signal')), 
                 self._sanitize_numeric_value(indicators.get('macd_histogram')), 
                 self._sanitize_numeric_value(indicators.get('ppo')),
+                indicators.get('macd_zero_cross', False),
+                indicators.get('macd_signal_cross', False),
+                indicators.get('macd_trend', 'NEUTRAL'),
                 # Bollinger Bands
                 self._sanitize_numeric_value(indicators.get('bb_upper')), 
                 self._sanitize_numeric_value(indicators.get('bb_middle')), 
                 self._sanitize_numeric_value(indicators.get('bb_lower')),
                 self._sanitize_numeric_value(indicators.get('bb_position')), 
                 self._sanitize_numeric_value(indicators.get('bb_width')),
+                indicators.get('bb_squeeze', False),
+                indicators.get('bb_expansion', False),
+                indicators.get('bb_breakout_direction', 'NONE'),
                 self._sanitize_numeric_value(indicators.get('keltner_upper')), 
                 self._sanitize_numeric_value(indicators.get('keltner_lower')),
                 # Stochastic
@@ -901,20 +755,27 @@ class IndicatorProcessor:
                 self._sanitize_numeric_value(indicators.get('stoch_rsi')),
                 self._sanitize_numeric_value(indicators.get('stoch_fast_k')), 
                 self._sanitize_numeric_value(indicators.get('stoch_fast_d')),
+                indicators.get('stoch_divergence', False),
+                indicators.get('stoch_signal', 'NEUTRAL'),
                 # ATR & Volatilité
-                self._sanitize_numeric_value(indicators.get('atr_14')), 
-                self._sanitize_numeric_value(indicators.get('natr')), 
+                self._sanitize_numeric_value(indicators.get('atr_14')),
+                self._sanitize_numeric_value(indicators.get('atr_percentile')),
+                self._sanitize_numeric_value(indicators.get('natr')),
+                indicators.get('volatility_regime'),
                 self._sanitize_numeric_value(indicators.get('atr_stop_long')), 
                 self._sanitize_numeric_value(indicators.get('atr_stop_short')),
-                indicators.get('volatility_regime'),
                 # ADX
                 self._sanitize_numeric_value(indicators.get('adx_14')),
                 self._sanitize_numeric_value(indicators.get('plus_di')),
                 self._sanitize_numeric_value(indicators.get('minus_di')),
                 self._sanitize_numeric_value(indicators.get('dx')),
                 self._sanitize_numeric_value(indicators.get('adxr')),
+                indicators.get('trend_strength'),
+                indicators.get('directional_bias', 'NEUTRAL'),
+                self._sanitize_numeric_value(indicators.get('trend_angle')),
                 # Oscillateurs
-                self._sanitize_numeric_value(indicators.get('williams_r')), 
+                self._sanitize_numeric_value(indicators.get('williams_r')),
+                self._sanitize_numeric_value(indicators.get('mfi_14')),
                 self._sanitize_numeric_value(indicators.get('cci_20')), 
                 self._sanitize_numeric_value(indicators.get('momentum_10')),
                 self._sanitize_numeric_value(indicators.get('roc_10')), 
@@ -922,6 +783,9 @@ class IndicatorProcessor:
                 # Volume avancé
                 self._sanitize_numeric_value(indicators.get('vwap_10')), 
                 self._sanitize_numeric_value(indicators.get('vwap_quote_10')),
+                self._sanitize_numeric_value(indicators.get('anchored_vwap')),
+                self._sanitize_numeric_value(indicators.get('vwap_upper_band')),
+                self._sanitize_numeric_value(indicators.get('vwap_lower_band')),
                 self._sanitize_numeric_value(indicators.get('volume_ratio')),
                 self._sanitize_numeric_value(indicators.get('avg_volume_20')), 
                 self._sanitize_numeric_value(indicators.get('quote_volume_ratio')), 
@@ -930,6 +794,7 @@ class IndicatorProcessor:
                 self._sanitize_numeric_value(indicators.get('obv')), 
                 self._sanitize_numeric_value(indicators.get('obv_ma_10')), 
                 self._sanitize_numeric_value(indicators.get('obv_oscillator')),
+                self._sanitize_numeric_value(indicators.get('ad_line')),
                 # Régime de marché
                 indicators.get('market_regime'), indicators.get('regime_strength'), 
                 self._sanitize_numeric_value(indicators.get('regime_confidence')),

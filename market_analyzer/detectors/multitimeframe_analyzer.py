@@ -65,7 +65,7 @@ class TimeframeSignal:
     volume_profile: str
     confidence: float
     timestamp: Optional[str] = None
-    
+
     def to_dict(self) -> Dict:
         """Convertit en dictionnaire pour export."""
         return {
@@ -101,8 +101,9 @@ class MultiTimeframeAnalysis:
     momentum_consensus: str  # Momentum dominant
     next_key_levels: List[float]  # Prochains niveaux importants
     divergence_alerts: List[str]  # Alertes de divergence
+    confluence_score: float
     timestamp: Optional[str] = None
-    
+
     def to_dict(self) -> Dict:
         """Convertit en dictionnaire pour export."""
         return {
@@ -120,8 +121,10 @@ class MultiTimeframeAnalysis:
             'momentum_consensus': self.momentum_consensus,
             'next_key_levels': self.next_key_levels,
             'divergence_alerts': self.divergence_alerts,
+            'confluence_score': self.confluence_score,
             'timestamp': self.timestamp
         }
+        
 
 
 class MultiTimeframeAnalyzer:
@@ -156,6 +159,7 @@ class MultiTimeframeAnalyzer:
         # Importation des détecteurs
         from .regime_detector import RegimeDetector
         from .support_resistance_detector import SupportResistanceDetector
+        from ..indicators.composite.confluence import calculate_multi_timeframe_confluence
         
         self.regime_detector = RegimeDetector()
         self.sr_detector = SupportResistanceDetector()
@@ -232,6 +236,11 @@ class MultiTimeframeAnalyzer:
                 key_support_levels + key_resistance_levels, current_price
             )
             
+            # 12. Calculer le score de confluence
+            confluence_score = self._calculate_confluence_score(
+                signal_strength, trend_alignment, confidence, risk_level
+            )
+            
             return MultiTimeframeAnalysis(
                 primary_trend=primary_trend,
                 trend_alignment=trend_alignment,
@@ -246,7 +255,8 @@ class MultiTimeframeAnalyzer:
                 regime_consensus=regime_consensus,
                 momentum_consensus=momentum_consensus,
                 next_key_levels=next_key_levels,
-                divergence_alerts=divergence_alerts
+                divergence_alerts=divergence_alerts,
+                confluence_score=confluence_score
             )
             
         except Exception as e:
@@ -773,6 +783,22 @@ class MultiTimeframeAnalyzer:
         
         return sorted(next_levels)
     
+    def _calculate_confluence_score(self,
+                                 signal_strength: SignalStrength,
+                                 trend_alignment: TrendAlignment,
+                                 confidence: float,
+                                 risk_level: str = "medium") -> float:
+        """
+        Calcule un score de confluence entre 0 et 100 basé sur l'analyse multi-timeframe.
+        """
+        return calculate_multi_timeframe_confluence(
+            signal_strength.value,
+            trend_alignment.value,
+            confidence,
+            risk_level
+        )
+
+    
     def _empty_timeframe_signal(self, timeframe: TimeframeType) -> TimeframeSignal:
         """Signal vide pour un timeframe."""
         return TimeframeSignal(
@@ -805,7 +831,8 @@ class MultiTimeframeAnalyzer:
             regime_consensus="unknown",
             momentum_consensus="neutral",
             next_key_levels=[],
-            divergence_alerts=[]
+            divergence_alerts=[],
+            confluence_score=0.0
         )
     
     def get_trading_recommendation(self, analysis: MultiTimeframeAnalysis, 
