@@ -60,8 +60,9 @@ from market_analyzer.detectors.support_resistance_detector import SupportResista
 from market_analyzer.detectors.volume_context_analyzer import VolumeContextAnalyzer
 from market_analyzer.detectors.spike_detector import SpikeDetector
 
-# Import du module de confluence
+# Import des modules composites
 from market_analyzer.indicators.composite.confluence import calculate_confluence_score, ConfluenceType
+from market_analyzer.indicators.composite.signal_strength import calculate_signal_strength
 
 logger = logging.getLogger(__name__)
 
@@ -570,6 +571,10 @@ class IndicatorProcessor:
             ))
             indicators['confluence_score'] = confluence_score
             
+            # === CALCUL SIGNAL STRENGTH ===
+            signal_strength = self._safe_call(lambda: calculate_signal_strength(indicators))
+            indicators['signal_strength'] = signal_strength
+            
             # Métadonnées
             calculation_time = int((time.time() - start_time) * 1000)
             indicators['calculation_time_ms'] = calculation_time
@@ -587,7 +592,6 @@ class IndicatorProcessor:
             indicators['anomaly_detected'] = True
         
         return indicators
-
 
     def _safe_call(self, func):
         """Exécute un appel de fonction de manière sécurisée."""
