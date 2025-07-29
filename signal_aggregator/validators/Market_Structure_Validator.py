@@ -70,18 +70,18 @@ class Market_Structure_Validator(BaseValidator):
             try:
                 # Régimes principaux
                 market_regime = self.context.get('market_regime')
-                regime_strength = float(self.context.get('regime_strength', 0)) if self.context.get('regime_strength') is not None else None
+                regime_strength = self._convert_regime_strength_to_score(self.context.get('regime_strength')) if self.context.get('regime_strength') is not None else None
                 regime_confidence = float(self.context.get('regime_confidence', 0)) if self.context.get('regime_confidence') is not None else None
                 volatility_regime = self.context.get('volatility_regime')
                 
                 # Alignement et confluence
                 trend_alignment = float(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None
-                signal_strength = float(self.context.get('signal_strength', 0)) if self.context.get('signal_strength') is not None else None
+                signal_strength = self._convert_signal_strength_to_score(self.context.get('signal_strength')) if self.context.get('signal_strength') is not None else None
                 confluence_score = float(self.context.get('confluence_score', 0)) if self.context.get('confluence_score') is not None else None
                 
                 # Direction et tendance
                 directional_bias = self.context.get('directional_bias')
-                trend_strength = float(self.context.get('trend_strength', 0)) if self.context.get('trend_strength') is not None else None
+                trend_strength = self._convert_trend_strength_to_score(self.context.get('trend_strength')) if self.context.get('trend_strength') is not None else None
                 trend_angle = float(self.context.get('trend_angle', 0)) if self.context.get('trend_angle') is not None else None
                 
                 # Pattern recognition
@@ -274,11 +274,11 @@ class Market_Structure_Validator(BaseValidator):
                 
             # Calcul du score basé sur structure marché
             market_regime = self.context.get('market_regime')
-            regime_strength = float(self.context.get('regime_strength', 0.5)) if self.context.get('regime_strength') is not None else 0.5
+            regime_strength = self._convert_regime_strength_to_score(self.context.get('regime_strength')) if self.context.get('regime_strength') is not None else 0.5
             regime_confidence = float(self.context.get('regime_confidence', 0.5)) if self.context.get('regime_confidence') is not None else 0.5
             volatility_regime = self.context.get('volatility_regime')
             trend_alignment = float(self.context.get('trend_alignment', 0.5)) if self.context.get('trend_alignment') is not None else 0.5
-            signal_strength = float(self.context.get('signal_strength', 0.5)) if self.context.get('signal_strength') is not None else 0.5
+            signal_strength = self._convert_signal_strength_to_score(self.context.get('signal_strength')) if self.context.get('signal_strength') is not None else 0.5
             confluence_score = float(self.context.get('confluence_score', 0.5)) if self.context.get('confluence_score') is not None else 0.5
             directional_bias = self.context.get('directional_bias')
             

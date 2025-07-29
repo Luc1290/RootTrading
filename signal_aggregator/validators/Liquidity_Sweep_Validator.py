@@ -70,8 +70,8 @@ class Liquidity_Sweep_Validator(BaseValidator):
             try:
                 nearest_support = float(self.context.get('nearest_support', 0)) if self.context.get('nearest_support') is not None else None
                 nearest_resistance = float(self.context.get('nearest_resistance', 0)) if self.context.get('nearest_resistance') is not None else None
-                support_strength = float(self.context.get('support_strength', 0)) if self.context.get('support_strength') is not None else None
-                resistance_strength = float(self.context.get('resistance_strength', 0)) if self.context.get('resistance_strength') is not None else None
+                support_strength = self._convert_strength_to_score(self.context.get('support_strength')) if self.context.get('support_strength') is not None else None
+                resistance_strength = self._convert_strength_to_score(self.context.get('resistance_strength')) if self.context.get('resistance_strength') is not None else None
                 break_probability = float(self.context.get('break_probability', 0.5)) if self.context.get('break_probability') is not None else None
                 
                 # Volume indicators
@@ -293,8 +293,8 @@ class Liquidity_Sweep_Validator(BaseValidator):
                 return 0.0
                 
             # Calcul du score basé sur liquidity sweep
-            support_strength = float(self.context.get('support_strength', 0.5)) if self.context.get('support_strength') is not None else 0.5
-            resistance_strength = float(self.context.get('resistance_strength', 0.5)) if self.context.get('resistance_strength') is not None else 0.5
+            support_strength = self._convert_strength_to_score(self.context.get('support_strength')) if self.context.get('support_strength') is not None else 0.5
+            resistance_strength = self._convert_strength_to_score(self.context.get('resistance_strength')) if self.context.get('resistance_strength') is not None else 0.5
             break_probability = float(self.context.get('break_probability', 0.5)) if self.context.get('break_probability') is not None else 0.5
             volume_ratio = float(self.context.get('volume_ratio', 1.0)) if self.context.get('volume_ratio') is not None else 1.0
             volume_spike_multiplier = float(self.context.get('volume_spike_multiplier', 1.0)) if self.context.get('volume_spike_multiplier') is not None else 1.0

@@ -63,7 +63,7 @@ class Trend_Smoothness_Validator(BaseValidator):
                 
             # Extraction des indicateurs de tendance depuis le contexte
             try:
-                trend_strength = float(self.context.get('trend_strength', 0)) if self.context.get('trend_strength') is not None else None
+                trend_strength = self._convert_trend_strength_to_score(self.context.get('trend_strength')) if self.context.get('trend_strength') is not None else None
                 trend_angle = float(self.context.get('trend_angle', 0)) if self.context.get('trend_angle') is not None else None
                 trend_alignment = float(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None
                 directional_bias = self.context.get('directional_bias')
@@ -192,7 +192,7 @@ class Trend_Smoothness_Validator(BaseValidator):
                 return 0.0
                 
             # Calcul du score basé sur la fluidité
-            trend_strength = float(self.context.get('trend_strength', 0)) if self.context.get('trend_strength') is not None else 0.5
+            trend_strength = self._convert_trend_strength_to_score(self.context.get('trend_strength')) if self.context.get('trend_strength') is not None else 0.5
             trend_angle = float(self.context.get('trend_angle', 0)) if self.context.get('trend_angle') is not None else None
             trend_alignment = float(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else 0.5
             atr_percentile = float(self.context.get('atr_percentile', 0)) if self.context.get('atr_percentile') is not None else 50
@@ -261,7 +261,7 @@ class Trend_Smoothness_Validator(BaseValidator):
         """
         try:
             signal_side = signal.get('side', 'N/A')
-            trend_strength = float(self.context.get('trend_strength', 0)) if self.context.get('trend_strength') is not None else None
+            trend_strength = self._convert_trend_strength_to_score(self.context.get('trend_strength')) if self.context.get('trend_strength') is not None else None
             trend_angle = float(self.context.get('trend_angle', 0)) if self.context.get('trend_angle') is not None else None
             trend_alignment = float(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None
             

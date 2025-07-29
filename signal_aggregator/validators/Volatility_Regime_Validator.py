@@ -76,7 +76,7 @@ class Volatility_Regime_Validator(BaseValidator):
                 
                 # Contexte additionnel
                 market_regime = self.context.get('market_regime')
-                regime_strength = float(self.context.get('regime_strength', 0)) if self.context.get('regime_strength') is not None else None
+                regime_strength = self._convert_regime_strength_to_score(self.context.get('regime_strength')) if self.context.get('regime_strength') is not None else None
                 
             except (ValueError, TypeError) as e:
                 logger.warning(f"{self.name}: Erreur conversion volatilité pour {self.symbol}: {e}")
@@ -218,7 +218,7 @@ class Volatility_Regime_Validator(BaseValidator):
             bb_width = float(self.context.get('bb_width', 0)) if self.context.get('bb_width') is not None else None
             bb_squeeze = self.context.get('bb_squeeze', False)
             bb_expansion = self.context.get('bb_expansion', False)
-            regime_strength = float(self.context.get('regime_strength', 0)) if self.context.get('regime_strength') is not None else 0.5
+            regime_strength = self._convert_regime_strength_to_score(self.context.get('regime_strength')) if self.context.get('regime_strength') is not None else 0.5
             
             signal_confidence = signal.get('confidence', 0.0)
             signal_strength = signal.get('strength', 'moderate')

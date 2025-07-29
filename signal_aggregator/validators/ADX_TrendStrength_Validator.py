@@ -54,7 +54,7 @@ class ADX_TrendStrength_Validator(BaseValidator):
                 adx_14 = float(self.context.get('adx_14', 0)) if self.context.get('adx_14') is not None else None
                 plus_di = float(self.context.get('plus_di', 0)) if self.context.get('plus_di') is not None else None
                 minus_di = float(self.context.get('minus_di', 0)) if self.context.get('minus_di') is not None else None
-                trend_strength = float(self.context.get('trend_strength', 0)) if self.context.get('trend_strength') is not None else None
+                trend_strength = self._convert_trend_strength_to_score(self.context.get('trend_strength')) if self.context.get('trend_strength') is not None else None
                 directional_bias = self.context.get('directional_bias')
             except (ValueError, TypeError) as e:
                 logger.warning(f"{self.name}: Erreur conversion ADX pour {self.symbol}: {e}")

@@ -79,7 +79,7 @@ class Trend_Alignment_Validator(BaseValidator):
             try:
                 # Tendance principale
                 primary_trend_direction = self.context.get('primary_trend_direction')  # 'bullish', 'bearish', 'neutral'
-                primary_trend_strength = float(self.context.get('primary_trend_strength', 0)) if self.context.get('primary_trend_strength') is not None else None
+                primary_trend_strength = self._convert_trend_strength_to_score(self.context.get('primary_trend_strength')) if self.context.get('primary_trend_strength') is not None else None
                 primary_trend_age = int(self.context.get('primary_trend_age', 0)) if self.context.get('primary_trend_age') is not None else None
                 
                 # EMA alignment
@@ -320,7 +320,7 @@ class Trend_Alignment_Validator(BaseValidator):
                 return 0.0
                 
             # Calcul du score basé sur alignement tendances
-            primary_trend_strength = float(self.context.get('primary_trend_strength', 0.5)) if self.context.get('primary_trend_strength') is not None else 0.5
+            primary_trend_strength = self._convert_trend_strength_to_score(self.context.get('primary_trend_strength')) if self.context.get('primary_trend_strength') is not None else 0.5
             ema_alignment_score = float(self.context.get('ema_alignment_score', 0.5)) if self.context.get('ema_alignment_score') is not None else 0.5
             ema_separation_ratio = float(self.context.get('ema_separation_ratio', 0.01)) if self.context.get('ema_separation_ratio') is not None else 0.01
             macd_trend_coherence = float(self.context.get('macd_trend_coherence', 0.5)) if self.context.get('macd_trend_coherence') is not None else 0.5

@@ -77,3 +77,47 @@ class BaseValidator(ABC):
             Raison de la décision
         """
         return f"{self.name}: {'Validé' if is_valid else 'Rejeté'}"
+    
+    def _convert_strength_to_score(self, strength_str: str) -> float:
+        """Convertit une valeur string de strength en score numérique."""
+        if not strength_str:
+            return 0.5
+        
+        strength_map = {
+            'WEAK': 0.2,
+            'MODERATE': 0.5, 
+            'STRONG': 0.8,
+            'VERY_STRONG': 0.9,
+            'EXTREME': 1.0
+        }
+        return strength_map.get(strength_str.upper(), 0.5)
+    
+    def _convert_regime_strength_to_score(self, regime_strength_str: str) -> float:
+        """Convertit regime_strength (WEAK/MODERATE/STRONG/EXTREME) en score."""
+        return self._convert_strength_to_score(regime_strength_str)
+    
+    def _convert_trend_strength_to_score(self, trend_strength_str: str) -> float:
+        """Convertit trend_strength (WEAK/MODERATE/STRONG/VERY_STRONG) en score."""
+        return self._convert_strength_to_score(trend_strength_str)
+    
+    def _convert_signal_strength_to_score(self, signal_strength_str: str) -> float:
+        """Convertit signal_strength (WEAK/MODERATE/STRONG/VERY_STRONG) en score."""
+        return self._convert_strength_to_score(signal_strength_str)
+    
+    def _safe_float(self, value, default: float = 0.0) -> float:
+        """Convertit en float de manière sécurisée."""
+        if value is None:
+            return default
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return default
+    
+    def _safe_format(self, value, format_spec: str = ".2f", default: str = "N/A") -> str:
+        """Formate une valeur de manière sécurisée pour éviter les erreurs None.__format__."""
+        if value is None:
+            return default
+        try:
+            return f"{value:{format_spec}}"
+        except (ValueError, TypeError):
+            return str(value) if value is not None else default

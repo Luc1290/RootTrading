@@ -290,11 +290,22 @@ class SignalProcessor:
         
         for validator_name, validator_class in validators.items():
             try:
+                # Préparation du contexte aplati pour le validator
+                flat_context = {}
+                # Ajouter les indicateurs directement
+                if 'indicators' in context:
+                    flat_context.update(context['indicators'])
+                # Ajouter d'autres données importantes
+                if 'market_structure' in context:
+                    flat_context.update(context['market_structure'])
+                if 'volume_profile' in context:
+                    flat_context.update(context['volume_profile'])
+                    
                 # Instanciation du validator
                 validator = validator_class(
                     symbol=signal['symbol'],
-                    data=context,
-                    context=context.get('indicators', {})
+                    data=context.get('ohlcv_data', []),
+                    context=flat_context
                 )
                 
                 # Validation

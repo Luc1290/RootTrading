@@ -69,14 +69,14 @@ class MultiTF_Consensus_Validator(BaseValidator):
                 consensus_score = float(self.context.get('consensus_score', 0)) if self.context.get('consensus_score') is not None else None
                 tf_alignment = float(self.context.get('tf_alignment', 0)) if self.context.get('tf_alignment') is not None else None
                 trend_alignment = float(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None
-                signal_strength = float(self.context.get('signal_strength', 0)) if self.context.get('signal_strength') is not None else None
+                signal_strength = self._convert_signal_strength_to_score(self.context.get('signal_strength')) if self.context.get('signal_strength') is not None else None
                 
                 # Alignement moyennes mobiles (disponibles dans MultiTF_ConfluentEntry_Strategy)
                 ma_alignment_score = self._calculate_ma_alignment()
                 
                 # Direction et tendance
                 directional_bias = self.context.get('directional_bias')
-                trend_strength = float(self.context.get('trend_strength', 0)) if self.context.get('trend_strength') is not None else None
+                trend_strength = self._convert_trend_strength_to_score(self.context.get('trend_strength')) if self.context.get('trend_strength') is not None else None
                 
                 # Confluence générale
                 confluence_score = float(self.context.get('confluence_score', 0)) if self.context.get('confluence_score') is not None else None
@@ -298,13 +298,13 @@ class MultiTF_Consensus_Validator(BaseValidator):
             consensus_score = float(self.context.get('consensus_score', 0.5)) if self.context.get('consensus_score') is not None else 0.5
             tf_alignment = float(self.context.get('tf_alignment', 0.5)) if self.context.get('tf_alignment') is not None else 0.5
             trend_alignment = float(self.context.get('trend_alignment', 0.5)) if self.context.get('trend_alignment') is not None else 0.5
-            signal_strength = float(self.context.get('signal_strength', 0.5)) if self.context.get('signal_strength') is not None else 0.5
+            signal_strength = self._convert_signal_strength_to_score(self.context.get('signal_strength')) if self.context.get('signal_strength') is not None else 0.5
             confluence_score = float(self.context.get('confluence_score', 0.5)) if self.context.get('confluence_score') is not None else 0.5
             
             signal_side = signal.get('side')
             signal_strategy = signal.get('strategy', '')
             directional_bias = self.context.get('directional_bias')
-            trend_strength = float(self.context.get('trend_strength', 0.5)) if self.context.get('trend_strength') is not None else 0.5
+            trend_strength = self._convert_trend_strength_to_score(self.context.get('trend_strength')) if self.context.get('trend_strength') is not None else 0.5
             
             base_score = 0.5  # Score de base si validé
             
@@ -392,7 +392,7 @@ class MultiTF_Consensus_Validator(BaseValidator):
             consensus_score = float(self.context.get('consensus_score', 0)) if self.context.get('consensus_score') is not None else None
             tf_alignment = float(self.context.get('tf_alignment', 0)) if self.context.get('tf_alignment') is not None else None
             trend_alignment = float(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None
-            signal_strength = float(self.context.get('signal_strength', 0)) if self.context.get('signal_strength') is not None else None
+            signal_strength = self._convert_signal_strength_to_score(self.context.get('signal_strength')) if self.context.get('signal_strength') is not None else None
             signal_side = signal.get('side', 'N/A')
             signal_strategy = signal.get('strategy', 'N/A')
             

@@ -61,6 +61,7 @@ class Regime_Strength_Validator(BaseValidator):
         self.transition_penalty = -0.30          # Pénalité transition
         self.weak_regime_penalty = -0.25         # Pénalité régime faible
         self.unfavorable_regime_penalty = -0.20  # Pénalité régime défavorable
+    
         
     def validate_signal(self, signal: Dict[str, Any]) -> bool:
         """
@@ -81,7 +82,8 @@ class Regime_Strength_Validator(BaseValidator):
             try:
                 # Régime principal et force
                 current_regime = self.context.get('current_regime')
-                regime_strength = float(self.context.get('regime_strength', 0)) if self.context.get('regime_strength') is not None else None
+                regime_strength_raw = self.context.get('regime_strength')
+                regime_strength = self._convert_regime_strength_to_score(regime_strength_raw) if regime_strength_raw else None
                 regime_confidence = float(self.context.get('regime_confidence', 0)) if self.context.get('regime_confidence') is not None else None
                 regime_persistence = float(self.context.get('regime_persistence', 0)) if self.context.get('regime_persistence') is not None else None
                 
@@ -365,7 +367,8 @@ class Regime_Strength_Validator(BaseValidator):
                 return 0.0
                 
             # Calcul du score basé sur régimes
-            regime_strength = float(self.context.get('regime_strength', 0.5)) if self.context.get('regime_strength') is not None else 0.5
+            regime_strength_raw = self.context.get('regime_strength')
+            regime_strength = self._convert_regime_strength_to_score(regime_strength_raw) if regime_strength_raw else 0.5
             regime_confidence = float(self.context.get('regime_confidence', 0.5)) if self.context.get('regime_confidence') is not None else 0.5
             regime_persistence = float(self.context.get('regime_persistence', 0.5)) if self.context.get('regime_persistence') is not None else 0.5
             regime_stability = float(self.context.get('regime_stability', 0.5)) if self.context.get('regime_stability') is not None else 0.5
@@ -468,7 +471,8 @@ class Regime_Strength_Validator(BaseValidator):
             signal_strategy = signal.get('strategy', 'N/A')
             
             current_regime = self.context.get('current_regime', 'N/A')
-            regime_strength = float(self.context.get('regime_strength', 0)) if self.context.get('regime_strength') is not None else None
+            regime_strength_raw = self.context.get('regime_strength')
+            regime_strength = self._convert_regime_strength_to_score(regime_strength_raw) if regime_strength_raw else None
             regime_confidence = float(self.context.get('regime_confidence', 0)) if self.context.get('regime_confidence') is not None else None
             regime_duration_bars = int(self.context.get('regime_duration_bars', 0)) if self.context.get('regime_duration_bars') is not None else None
             regime_transition_probability = float(self.context.get('regime_transition_probability', 0)) if self.context.get('regime_transition_probability') is not None else None

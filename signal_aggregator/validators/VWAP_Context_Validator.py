@@ -76,7 +76,7 @@ class VWAP_Context_Validator(BaseValidator):
                     
                 # Indicateurs complémentaires
                 momentum_score = float(self.context.get('momentum_score', 0)) if self.context.get('momentum_score') is not None else None
-                trend_strength = float(self.context.get('trend_strength', 0)) if self.context.get('trend_strength') is not None else None
+                trend_strength = self._convert_trend_strength_to_score(self.context.get('trend_strength')) if self.context.get('trend_strength') is not None else None
                 volume_quality_score = float(self.context.get('volume_quality_score', 0)) if self.context.get('volume_quality_score') is not None else None
                 
             except (ValueError, TypeError) as e:
