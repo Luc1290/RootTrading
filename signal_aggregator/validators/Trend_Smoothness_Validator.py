@@ -166,9 +166,9 @@ class Trend_Smoothness_Validator(BaseValidator):
                 smooth_bonus = True
                 
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
-                        f"Trend strength: {trend_strength:.2f if trend_strength else 'N/A'}, "
-                        f"Angle: {trend_angle:.1f if trend_angle else 'N/A'}°, "
-                        f"Alignment: {trend_alignment:.2f if trend_alignment else 'N/A'}, "
+                        f"Trend strength: {trend_strength:.2f if trend_strength is not None else 'N/A'}, "
+                        f"Angle: {trend_angle:.1f if trend_angle is not None else 'N/A'}°, "
+                        f"Alignment: {trend_alignment:.2f if trend_alignment is not None else 'N/A'}, "
                         f"Side: {signal_side}")
             
             return True

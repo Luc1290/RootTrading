@@ -170,7 +170,7 @@ class Bollinger_Width_Validator(BaseValidator):
                     return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - BB Width: {bb_width:.3f}, "
-                        f"Position: {bb_position:.2f if bb_position else 'N/A'}, "
+                        f"Position: {bb_position:.2f if bb_position is not None else 'N/A'}, "
                         f"Squeeze: {bb_squeeze}, Expansion: {bb_expansion}, "
                         f"Breakout: {bb_breakout_direction or 'N/A'}")
             
@@ -294,9 +294,9 @@ class Bollinger_Width_Validator(BaseValidator):
             signal_side = signal.get('side', 'N/A')
             
             if is_valid:
-                width_desc = "squeeze" if bb_squeeze else "expansion" if bb_expansion else "normale"
-                position_desc = f"position {bb_position:.2f}" if bb_position else "N/A"
-                breakout_desc = f"breakout {bb_breakout_direction}" if bb_breakout_direction else "pas de breakout"
+                width_desc = "squeeze" if bb_squeeze is not None else "expansion" if bb_expansion is not None else "normale"
+                position_desc = f"position {bb_position:.2f}" if bb_position is not None else "N/A"
+                breakout_desc = f"breakout {bb_breakout_direction}" if bb_breakout_direction is not None else "pas de breakout"
                 
                 reason = f"BB {width_desc} (width: {bb_width:.3f}, {position_desc}, {breakout_desc})"
                 

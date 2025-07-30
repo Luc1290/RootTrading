@@ -80,17 +80,25 @@ class BaseValidator(ABC):
     
     def _convert_strength_to_score(self, strength_str: str) -> float:
         """Convertit une valeur string de strength en score numérique."""
-        if not strength_str:
+        if strength_str is None:
             return 0.5
         
-        strength_map = {
-            'WEAK': 0.2,
-            'MODERATE': 0.5, 
-            'STRONG': 0.8,
-            'VERY_STRONG': 0.9,
-            'EXTREME': 1.0
-        }
-        return strength_map.get(strength_str.upper(), 0.5)
+        # Si c'est déjà un float (déjà converti par FieldConverter)
+        if isinstance(strength_str, (int, float)):
+            return float(strength_str)
+        
+        # Si c'est une string, faire la conversion
+        if isinstance(strength_str, str):
+            strength_map = {
+                'WEAK': 0.2,
+                'MODERATE': 0.5, 
+                'STRONG': 0.8,
+                'VERY_STRONG': 0.9,
+                'EXTREME': 1.0
+            }
+            return strength_map.get(strength_str.upper(), 0.5)
+        
+        return 0.5
     
     def _convert_regime_strength_to_score(self, regime_strength_str: str) -> float:
         """Convertit regime_strength (WEAK/MODERATE/STRONG/EXTREME) en score."""

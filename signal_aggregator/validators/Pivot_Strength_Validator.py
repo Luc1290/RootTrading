@@ -211,9 +211,9 @@ class Pivot_Strength_Validator(BaseValidator):
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
                         f"Pivot {'Support' if signal_side == 'BUY' else 'Résistance'}: "
-                        f"{relevant_pivot:.4f if relevant_pivot else 'N/A'}, "
+                        f"{relevant_pivot:.4f if relevant_pivot is not None else 'N/A'}, "
                         f"Force: {(pivot_support_strength if signal_side == 'BUY' else pivot_resistance_strength):.2f if (pivot_support_strength if signal_side == 'BUY' else pivot_resistance_strength) else 'N/A'}, "
-                        f"Confluence: {confluence_score:.2f if confluence_score else 'N/A'}")
+                        f"Confluence: {confluence_score:.2f if confluence_score is not None else 'N/A'}")
             
             return True
             

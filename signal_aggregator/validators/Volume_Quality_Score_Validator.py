@@ -196,11 +196,7 @@ class Volume_Quality_Score_Validator(BaseValidator):
                         logger.debug(f"{self.name}: Ratio quote/base volume anormal ({quote_volume_ratio:.2f}) pour {self.symbol}")
                         return False
                         
-            logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
-                        f"Quality score: {volume_quality_score:.2f if volume_quality_score else 'N/A'}, "
-                        f"Relative vol: {relative_volume:.2f}, "
-                        f"Pattern: {volume_pattern or 'N/A'}, "
-                        f"Side: {signal_side}")
+            logger.debug(f"{self.name}: Signal validé pour {self.symbol}")
             
             return True
             

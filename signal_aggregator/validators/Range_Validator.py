@@ -256,9 +256,9 @@ class Range_Validator(BaseValidator):
                     return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
-                        f"Range: {range_low:.4f if range_low else 'N/A'}-{range_high:.4f if range_high else 'N/A'}, "
-                        f"Position: {range_position:.2f if range_position else 'N/A'}, "
-                        f"Largeur: {range_width_ratio*100:.2f if range_width else 'N/A'}%, "
+                        f"Range: {range_low:.4f if range_low is not None else 'N/A'}-{range_high:.4f if range_high is not None else 'N/A'}, "
+                        f"Position: {range_position:.2f if range_position is not None else 'N/A'}, "
+                        f"Largeur: {range_width_ratio*100:.2f if range_width_ratio is not None else 'N/A'}%, "
                         f"Age: {range_age_bars or 'N/A'} barres")
             
             return True

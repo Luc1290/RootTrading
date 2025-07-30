@@ -203,11 +203,7 @@ class Trend_Alignment_Validator(BaseValidator):
                 if signal_confidence < 0.5:
                     return False
                     
-            logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
-                        f"Tendance: {primary_trend_direction or 'N/A'}, "
-                        f"Force: {primary_trend_strength:.2f if primary_trend_strength else 'N/A'}, "
-                        f"Consensus TF: {timeframe_consensus_score:.2f if timeframe_consensus_score else 'N/A'}, "
-                        f"EMA align: {ema_alignment_score:.2f if ema_alignment_score else 'N/A'}")
+            logger.debug(f"{self.name}: Signal validé pour {self.symbol}")
             
             return True
             

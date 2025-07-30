@@ -35,7 +35,8 @@
       "Bash(npm install:*)",
       "Bash(docker ps:*)",
       "Bash(mypy:*)",
-      "Bash(ruff check:*)"
+      "Bash(ruff check:*)",
+      "Bash(sed:*)"
     ],
     "deny": [
       "Bash(docker-compose restart *)",

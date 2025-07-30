@@ -183,7 +183,7 @@ class MACD_Regime_Validator(BaseValidator):
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
                         f"MACD: {macd_line:.5f}, Signal: {macd_signal:.5f}, "
-                        f"Histogram: {macd_histogram:.5f if macd_histogram else 'N/A'}, "
+                        f"Histogram: {macd_histogram:.5f if macd_histogram is not None else 'N/A'}, "
                         f"Trend: {macd_trend or 'N/A'}")
             
             return True

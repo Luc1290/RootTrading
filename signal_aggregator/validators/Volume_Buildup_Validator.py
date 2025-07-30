@@ -89,7 +89,13 @@ class Volume_Buildup_Validator(BaseValidator):
             try:
                 # Volume de base
                 volume_ratio = float(self.context.get('volume_ratio', 1.0)) if self.context.get('volume_ratio') is not None else None
-                volume_trend = float(self.context.get('volume_trend', 0)) if self.context.get('volume_trend') is not None else None
+                # volume_trend peut être string ('increasing', 'decreasing', 'stable') ou numérique
+                volume_trend_raw = self.context.get('volume_trend')
+                if isinstance(volume_trend_raw, str):
+                    # Utiliser volume_trend_numeric si disponible
+                    volume_trend = self.context.get('volume_trend_numeric', 0.0)
+                else:
+                    volume_trend = float(volume_trend_raw) if volume_trend_raw is not None else None
                 volume_sma_20 = float(self.context.get('volume_sma_20', 0)) if self.context.get('volume_sma_20') is not None else None
                 
                 # Accumulation/Distribution
@@ -254,8 +260,8 @@ class Volume_Buildup_Validator(BaseValidator):
                         
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
                         f"Volume: {volume_ratio:.2f}x, "
-                        f"Accumulation: {accumulation_distribution_score:.2f if accumulation_distribution_score else 'N/A'}, "
-                        f"Buy pressure: {buy_sell_pressure:.2f if buy_sell_pressure else 'N/A'}, "
+                        f"Accumulation: {accumulation_distribution_score:.2f if accumulation_distribution_score is not None else 'N/A'}, "
+                        f"Buy pressure: {buy_sell_pressure:.2f if buy_sell_pressure is not None else 'N/A'}, "
                         f"Buildup: {volume_buildup_bars or 'N/A'} barres")
             
             return True

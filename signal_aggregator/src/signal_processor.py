@@ -301,10 +301,26 @@ class SignalProcessor:
                 if 'volume_profile' in context:
                     flat_context.update(context['volume_profile'])
                     
+                # Préparer les données OHLCV pour les validators
+                ohlcv_data = context.get('ohlcv_data', [])
+                data_dict = {}
+                if ohlcv_data:
+                    # Prendre la dernière bougie pour les données courantes
+                    latest_candle = ohlcv_data[-1]
+                    data_dict = {
+                        'open': latest_candle.get('open'),
+                        'high': latest_candle.get('high'),
+                        'low': latest_candle.get('low'),
+                        'close': latest_candle.get('close'),
+                        'volume': latest_candle.get('volume'),
+                        'quote_volume': latest_candle.get('quote_volume'),
+                        'ohlcv_list': ohlcv_data  # Garder la liste complète aussi
+                    }
+                    
                 # Instanciation du validator
                 validator = validator_class(
                     symbol=signal['symbol'],
-                    data=context.get('ohlcv_data', []),
+                    data=data_dict,
                     context=flat_context
                 )
                 

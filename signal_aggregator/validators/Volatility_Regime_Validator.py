@@ -186,11 +186,19 @@ class Volatility_Regime_Validator(BaseValidator):
                         logger.debug(f"{self.name}: NATR élevé ({natr:.2f}%) nécessite forte confidence pour {self.symbol}")
                         return False
                         
-            logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
-                        f"Régime: {volatility_regime or 'N/A'}, "
-                        f"ATR percentile: {atr_percentile:.1f}%, "
-                        f"BB width: {bb_width:.3f if bb_width else 'N/A'}, "
-                        f"Side: {signal_side}")
+            # Debug pour identifier la variable problématique
+            try:
+                logger.debug(f"{self.name}: DEBUG - atr_percentile type: {type(atr_percentile)}, value: {atr_percentile}")
+                logger.debug(f"{self.name}: DEBUG - bb_width type: {type(bb_width)}, value: {bb_width}")
+                
+                logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
+                            f"Régime: {volatility_regime or 'N/A'}, "
+                            f"ATR percentile: {atr_percentile:.1f if atr_percentile is not None else 'N/A'}%, "
+                            f"BB width: {bb_width:.3f if bb_width is not None else 'N/A'}, "
+                            f"Side: {signal_side}")
+            except Exception as e:
+                logger.error(f"{self.name}: Erreur debug log: {e}")
+                logger.debug(f"{self.name}: Signal validé pour {self.symbol} (log simplifié)")
             
             return True
             

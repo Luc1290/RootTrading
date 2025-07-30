@@ -174,8 +174,8 @@ class S_R_Level_Proximity_Validator(BaseValidator):
                     return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
-                        f"Support: {nearest_support:.2f if nearest_support else 'N/A'} ({support_strength:.2f if support_strength else 'N/A'}), "
-                        f"Résistance: {nearest_resistance:.2f if nearest_resistance else 'N/A'} ({resistance_strength:.2f if resistance_strength else 'N/A'}), "
+                        f"Support: {nearest_support:.2f if nearest_support is not None else 'N/A'} ({support_strength:.2f if support_strength is not None else 'N/A'}), "
+                        f"Résistance: {nearest_resistance:.2f if nearest_resistance is not None else 'N/A'} ({resistance_strength:.2f if resistance_strength is not None else 'N/A'}), "
                         f"Prix: {current_price:.2f}, Side: {signal_side}")
             
             return True

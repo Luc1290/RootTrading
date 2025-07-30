@@ -148,11 +148,11 @@ class Regime_Strength_Validator(BaseValidator):
             # 4. Validation durée du régime
             if regime_duration_bars is not None:
                 if regime_duration_bars < self.min_regime_duration:
-                    logger.debug(f"{self.name}: Régime trop récent ({regime_duration_bars} barres) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Régime trop récent ({regime_duration_bars or 'N/A'} barres) pour {self.symbol}")
                     if signal_confidence < 0.7:
                         return False
                 elif regime_duration_bars > self.max_regime_duration:
-                    logger.debug(f"{self.name}: Régime trop ancien ({regime_duration_bars} barres) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Régime trop ancien ({regime_duration_bars or 'N/A'} barres) pour {self.symbol}")
                     if signal_confidence < 0.5:
                         return False
                         
@@ -231,9 +231,9 @@ class Regime_Strength_Validator(BaseValidator):
                         
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
                         f"Régime: {current_regime or 'N/A'}, "
-                        f"Force: {regime_strength:.2f if regime_strength else 'N/A'}, "
-                        f"Durée: {regime_duration_bars or 'N/A'}b, "
-                        f"Stabilité: {regime_stability:.2f if regime_stability else 'N/A'}")
+                        f"Force: {regime_strength:.2f if regime_strength is not None else 'N/A'}, "
+                        f"Durée: {regime_duration_bars if regime_duration_bars is not None else 'N/A'}b, "
+                        f"Stabilité: {regime_stability:.2f if regime_stability is not None else 'N/A'}")
             
             return True
             
@@ -506,7 +506,7 @@ class Regime_Strength_Validator(BaseValidator):
                 elif regime_transition_probability is not None and regime_transition_probability > self.transition_detection_threshold:
                     return f"{self.name}: Rejeté - Probabilité transition élevée ({regime_transition_probability:.2f})"
                 elif regime_duration_bars is not None and regime_duration_bars < self.min_regime_duration:
-                    return f"{self.name}: Rejeté - Régime trop récent ({regime_duration_bars} barres)"
+                    return f"{self.name}: Rejeté - Régime trop récent ({regime_duration_bars or 'N/A'} barres)"
                     
                 return f"{self.name}: Rejeté - Critères force régime non respectés"
                 

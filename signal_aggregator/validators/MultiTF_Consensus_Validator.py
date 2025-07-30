@@ -169,9 +169,9 @@ class MultiTF_Consensus_Validator(BaseValidator):
                     return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
-                        f"Consensus: {consensus_score:.2f if consensus_score else 'N/A'}, "
-                        f"TF Alignment: {tf_alignment:.2f if tf_alignment else 'N/A'}, "
-                        f"Trend Alignment: {trend_alignment:.2f if trend_alignment else 'N/A'}, "
+                        f"Consensus: {consensus_score:.2f if consensus_score is not None else 'N/A'}, "
+                        f"TF Alignment: {tf_alignment:.2f if tf_alignment is not None else 'N/A'}, "
+                        f"Trend Alignment: {trend_alignment:.2f if trend_alignment is not None else 'N/A'}, "
                         f"MA Alignment: {ma_alignment_score:.2f}")
             
             return True

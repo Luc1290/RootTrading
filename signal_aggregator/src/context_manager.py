@@ -7,6 +7,7 @@ import logging
 from typing import Dict, Any, Optional, List
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from field_converters import FieldConverter
 
 logger = logging.getLogger(__name__)
 
@@ -131,33 +132,15 @@ class ContextManager:
                 if not row:
                     return {}
                     
-                # Conversion des indicateurs avec type conversion ultra-robuste
-                indicators = {}
+                # Conversion des indicateurs via FieldConverter
+                raw_indicators = {}
                 for key, value in row.items():
                     if key not in ['time', 'symbol', 'timeframe', 'analysis_timestamp', 'analyzer_version']:
-                        # Conversion ultra-robuste des valeurs
-                        try:
-                            if value is None or value == '':
-                                indicators[key] = None
-                            elif isinstance(value, (int, float)):
-                                indicators[key] = float(value)
-                            elif isinstance(value, str):
-                                value_stripped = value.strip()
-                                if value_stripped == '' or value_stripped.lower() in ['null', 'none', 'nan']:
-                                    indicators[key] = None
-                                elif value_stripped.lower() in ['true', 'false']:
-                                    indicators[key] = value_stripped.lower() == 'true'
-                                else:
-                                    try:
-                                        indicators[key] = float(value_stripped)
-                                    except ValueError:
-                                        indicators[key] = value_stripped
-                            else:
-                                indicators[key] = value
-                        except Exception as e:
-                            logger.warning(f"Erreur conversion indicateur {key}={value}: {e}")
-                            indicators[key] = value
-                            
+                        raw_indicators[key] = value
+                
+                # Utiliser le convertisseur pour harmoniser les types
+                indicators = FieldConverter.convert_indicators(raw_indicators)
+                
                 return indicators
                 
         except Exception as e:

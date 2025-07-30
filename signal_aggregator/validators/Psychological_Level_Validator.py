@@ -190,10 +190,10 @@ class Psychological_Level_Validator(BaseValidator):
                     return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
-                        f"Niveau: {nearest_psychological_level:.4f if nearest_psychological_level else 'N/A'}, "
+                        f"Niveau: {nearest_psychological_level:.4f if nearest_psychological_level is not None else 'N/A'}, "
                         f"Type: {psychological_level_type or 'N/A'}, "
-                        f"Distance: {distance_to_level*100:.2f if distance_to_level else 'N/A'}%, "
-                        f"Force: {psychological_level_strength:.2f if psychological_level_strength else 'N/A'}")
+                        f"Distance: {distance_to_level*100:.2f if distance_to_level is not None else 'N/A'}%, "
+                        f"Force: {psychological_level_strength:.2f if psychological_level_strength is not None else 'N/A'}")
             
             return True
             

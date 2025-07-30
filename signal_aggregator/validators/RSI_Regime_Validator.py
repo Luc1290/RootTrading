@@ -135,7 +135,7 @@ class RSI_Regime_Validator(BaseValidator):
                     # Ne pas rejeter mais noter l'incohérence
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - RSI14: {rsi_14:.1f}, "
-                        f"RSI21: {rsi_21:.1f if rsi_21 else 'N/A'}, "
+                        f"RSI21: {rsi_21:.1f if rsi_21 is not None else 'N/A'}, "
                         f"Side: {signal_side}")
             
             return True

@@ -144,7 +144,7 @@ class ATR_Volatility_Validator(BaseValidator):
                         return False
                         
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - ATR: {atr_14:.4f}, "
-                        f"Percentile: {atr_percentile:.1f if atr_percentile else 'N/A'}, "
+                        f"Percentile: {atr_percentile:.1f if atr_percentile is not None else 'N/A'}, "
                         f"Régime: {volatility_regime or 'N/A'}, "
                         f"Strategy: {signal_strategy}")
             
@@ -247,7 +247,7 @@ class ATR_Volatility_Validator(BaseValidator):
             
             if is_valid:
                 regime_desc = f"régime {volatility_regime}" if volatility_regime != 'N/A' else "régime normal"
-                percentile_desc = f"percentile {atr_percentile:.1f}" if atr_percentile else "N/A"
+                percentile_desc = f"percentile {atr_percentile:.1f}" if atr_percentile is not None else "N/A"
                 
                 reason = f"Volatilité acceptable (ATR: {atr_14:.4f}, {percentile_desc}, {regime_desc})"
                 

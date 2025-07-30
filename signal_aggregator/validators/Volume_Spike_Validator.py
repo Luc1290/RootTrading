@@ -229,7 +229,7 @@ class Volume_Spike_Validator(BaseValidator):
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
                         f"Spike: {volume_spike_multiplier:.2f}x, "
-                        f"Qualité: {spike_quality_score:.2f if spike_quality_score else 'N/A'}, "
+                        f"Qualité: {spike_quality_score:.2f if spike_quality_score is not None else 'N/A'}, "
                         f"Durée: {spike_duration_bars or 'N/A'} barres, "
                         f"Timing: {time_since_spike or 'N/A'} barres ago")
             

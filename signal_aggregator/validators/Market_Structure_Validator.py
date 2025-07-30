@@ -103,14 +103,14 @@ class Market_Structure_Validator(BaseValidator):
             # 1. Validation régime de marché principal
             if market_regime:
                 if market_regime in self.unfavorable_regimes:
-                    logger.debug(f"{self.name}: Régime défavorable ({market_regime}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Régime défavorable ({market_regime or 'N/A'}) pour {self.symbol}")
                     # Accepter seulement avec confidence très élevée
                     if signal_confidence < 0.8:
                         return False
                 elif market_regime not in self.favorable_regimes:
                     # Régime neutre/inconnu
                     if signal_confidence < 0.6:
-                        logger.debug(f"{self.name}: Régime neutre ({market_regime}) + confidence faible pour {self.symbol}")
+                        logger.debug(f"{self.name}: Régime neutre ({market_regime or 'N/A'}) + confidence faible pour {self.symbol}")
                         return False
                         
             # 2. Validation force et confidence du régime
@@ -126,7 +126,7 @@ class Market_Structure_Validator(BaseValidator):
                     
             # 3. Validation régime de volatilité
             if volatility_regime in self.max_volatility_regime_risk:
-                logger.debug(f"{self.name}: Régime volatilité risqué ({volatility_regime}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Régime volatilité risqué ({volatility_regime or 'N/A'}) pour {self.symbol}")
                 if signal_confidence < 0.9:  # Très strict pour volatilité extrême
                     return False
                     
@@ -200,7 +200,7 @@ class Market_Structure_Validator(BaseValidator):
                         f"Régime: {market_regime or 'N/A'}, "
                         f"Volatilité: {volatility_regime or 'N/A'}, "
                         f"Bias: {directional_bias or 'N/A'}, "
-                        f"Alignment: {trend_alignment:.2f if trend_alignment else 'N/A'}")
+                        f"Alignment: {trend_alignment:.2f if trend_alignment is not None else 'N/A'}")
             
             return True
             
@@ -397,13 +397,13 @@ class Market_Structure_Validator(BaseValidator):
                 return f"{self.name}: Validé - {reason} pour {signal_strategy} {signal_side}"
             else:
                 if market_regime in self.unfavorable_regimes:
-                    return f"{self.name}: Rejeté - Régime défavorable ({market_regime})"
+                    return f"{self.name}: Rejeté - Régime défavorable ({market_regime or 'N/A'})"
                 elif volatility_regime in self.max_volatility_regime_risk:
-                    return f"{self.name}: Rejeté - Volatilité risquée ({volatility_regime})"
+                    return f"{self.name}: Rejeté - Volatilité risquée ({volatility_regime or 'N/A'})"
                 elif directional_bias and signal_side:
                     if (signal_side == "BUY" and directional_bias == "bearish") or \
                        (signal_side == "SELL" and directional_bias == "bullish"):
-                        return f"{self.name}: Rejeté - Signal {signal_side} contradictoire avec bias {directional_bias}"
+                        return f"{self.name}: Rejeté - Signal {signal_side} contradictoire avec bias {directional_bias or 'N/A'}"
                 elif trend_alignment and trend_alignment < self.min_trend_alignment:
                     return f"{self.name}: Rejeté - Alignement tendance insuffisant ({trend_alignment:.2f})"
                 elif confluence_score and confluence_score < self.min_confluence_score:
@@ -413,7 +413,7 @@ class Market_Structure_Validator(BaseValidator):
                     signal_strategy, market_regime, volatility_regime
                 )
                 if not strategy_match:
-                    return f"{self.name}: Rejeté - Stratégie {signal_strategy} inadaptée au régime {market_regime}"
+                    return f"{self.name}: Rejeté - Stratégie {signal_strategy} inadaptée au régime {market_regime or 'N/A'}"
                     
                 return f"{self.name}: Rejeté - Structure de marché défavorable"
                 

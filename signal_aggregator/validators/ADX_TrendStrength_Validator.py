@@ -123,8 +123,8 @@ class ADX_TrendStrength_Validator(BaseValidator):
                 return False
                 
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - ADX: {adx_14:.1f}, "
-                        f"+DI: {plus_di:.1f if plus_di else 'N/A'}, "
-                        f"-DI: {minus_di:.1f if minus_di else 'N/A'}, "
+                        f"+DI: {plus_di:.1f if plus_di is not None else 'N/A'}, "
+                        f"-DI: {minus_di:.1f if minus_di is not None else 'N/A'}, "
                         f"Side: {signal_side}")
             
             return True

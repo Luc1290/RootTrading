@@ -202,7 +202,7 @@ class Volume_Ratio_Validator(BaseValidator):
                 
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
                         f"Volume ratio: {volume_ratio:.2f}, "
-                        f"Quote ratio: {quote_volume_ratio:.2f if quote_volume_ratio else 'N/A'}, "
+                        f"Quote ratio: {quote_volume_ratio:.2f if quote_volume_ratio is not None else 'N/A'}, "
                         f"Relative: {relative_volume:.2f}, "
                         f"Side: {signal_side}")
             

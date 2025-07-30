@@ -237,10 +237,10 @@ class ZScore_Context_Validator(BaseValidator):
                     return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
-                        f"Z-Score prix: {price_zscore:.2f if price_zscore else 'N/A'}, "
-                        f"Z-Score volume: {volume_zscore:.2f if volume_zscore else 'N/A'}, "
-                        f"Normalité: {distribution_normality:.2f if distribution_normality else 'N/A'}, "
-                        f"Confluence: {statistical_confluence:.2f if statistical_confluence else 'N/A'}")
+                        f"Z-Score prix: {price_zscore:.2f if price_zscore is not None else 'N/A'}, "
+                        f"Z-Score volume: {volume_zscore:.2f if volume_zscore is not None else 'N/A'}, "
+                        f"Normalité: {distribution_normality:.2f if distribution_normality is not None else 'N/A'}, "
+                        f"Confluence: {statistical_confluence:.2f if statistical_confluence is not None else 'N/A'}")
             
             return True
             
