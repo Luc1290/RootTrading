@@ -36,7 +36,7 @@ class Market_Structure_Validator(BaseValidator):
         # Paramètres alignement
         self.min_trend_alignment = 0.6      # Alignement minimum tendance
         self.min_signal_strength = 0.5      # Force signal minimum
-        self.min_confluence_score = 0.4     # Score confluence minimum
+        self.min_confluence_score = 40.0    # Score confluence minimum (format 0-100)
         
         # Paramètres volatilité
         self.max_volatility_regime_risk = ["extreme", "chaotic"]
@@ -323,9 +323,9 @@ class Market_Structure_Validator(BaseValidator):
                 base_score += 0.08
                 
             # Bonus confluence
-            if confluence_score >= 0.8:
+            if confluence_score >= 80.0:
                 base_score += self.confluence_bonus
-            elif confluence_score >= 0.6:
+            elif confluence_score >= 60.0:
                 base_score += 0.10
                 
             # Bonus bias directionnel cohérent

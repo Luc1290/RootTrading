@@ -40,10 +40,10 @@ class Volume_Spike_Validator(BaseValidator):
         self.spike_decay_threshold = 0.7     # Seuil décroissance spike
         
         # Paramètres qualité spike
-        self.min_spike_quality = 0.4         # Qualité minimum spike
+        self.min_spike_quality = 40.0        # Qualité minimum spike (format 0-100)
         self.spike_consistency_threshold = 0.6  # Consistance spike minimum
         self.max_spike_volatility = 3.0      # Volatilité spike maximum
-        self.min_spike_legitimacy = 0.5      # Légitimité spike minimum
+        self.min_spike_legitimacy = 50.0     # Légitimité spike minimum (format 0-100)
         
         # Paramètres timing
         self.recent_spike_window = 5         # Fenêtre spike récent (barres)
@@ -316,9 +316,9 @@ class Volume_Spike_Validator(BaseValidator):
                 base_score += 0.08  # Durée acceptable
                 
             # Bonus qualité spike
-            if spike_quality_score >= 0.8:
+            if spike_quality_score >= 80.0:
                 base_score += self.quality_spike_bonus
-            elif spike_quality_score >= 0.6:
+            elif spike_quality_score >= 60.0:
                 base_score += 0.15
                 
             # Bonus consistance spike
@@ -328,7 +328,7 @@ class Volume_Spike_Validator(BaseValidator):
                 base_score += 0.08
                 
             # Bonus légitimité spike
-            if spike_legitimacy_score >= 0.8:
+            if spike_legitimacy_score >= 80.0:
                 base_score += 0.15  # Spike très légitime
             elif spike_legitimacy_score >= self.min_spike_legitimacy:
                 base_score += 0.08

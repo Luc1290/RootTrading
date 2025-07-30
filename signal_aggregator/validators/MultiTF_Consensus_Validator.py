@@ -157,7 +157,7 @@ class MultiTF_Consensus_Validator(BaseValidator):
                         return False
                         
             # 9. Validation confluence si disponible
-            if confluence_score is not None and confluence_score < 0.5:
+            if confluence_score is not None and confluence_score < 50.0:
                 logger.debug(f"{self.name}: Confluence générale faible ({self._safe_format(confluence_score, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
@@ -355,9 +355,9 @@ class MultiTF_Consensus_Validator(BaseValidator):
                 base_score += 0.10
                 
             # Bonus confluence générale
-            if confluence_score >= 0.8:
+            if confluence_score >= 80.0:
                 base_score += 0.10
-            elif confluence_score >= 0.6:
+            elif confluence_score >= 60.0:
                 base_score += 0.05
                 
             # Bonus stratégie spécialisée multi-TF

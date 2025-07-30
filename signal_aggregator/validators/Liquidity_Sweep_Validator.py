@@ -35,7 +35,7 @@ class Liquidity_Sweep_Validator(BaseValidator):
         # Paramètres volume
         self.min_volume_spike = 1.5         # Volume 50% au-dessus normale
         self.optimal_volume_spike = 2.5     # Volume optimal pour sweep
-        self.min_volume_quality = 0.4       # Qualité volume minimum
+        self.min_volume_quality = 40.0      # Qualité volume minimum (format 0-100)
         
         # Paramètres timing
         self.max_time_since_sweep = 5       # Max barres depuis sweep
@@ -356,7 +356,7 @@ class Liquidity_Sweep_Validator(BaseValidator):
                 base_score += 0.10  # Spike très marqué
                 
             # Bonus qualité volume
-            if volume_quality_score >= 0.8:
+            if volume_quality_score >= 80.0:
                 base_score += 0.08  # Volume de très bonne qualité
                 
             # Bonus stratégie spécialisée

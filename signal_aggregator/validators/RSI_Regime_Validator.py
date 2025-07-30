@@ -83,7 +83,7 @@ class RSI_Regime_Validator(BaseValidator):
                     
                 # BUY acceptable si RSI < 70 avec momentum positif
                 if rsi_14 < self.overbought_threshold:
-                    if momentum_score is not None and momentum_score > 0.3:
+                    if momentum_score is not None and momentum_score > 30.0:  # Format 0-100
                         logger.debug(f"{self.name}: BUY accepté - RSI modéré ({self._safe_format(rsi_14, '.1f')}) + momentum positif pour {self.symbol}")
                         return True
                     elif rsi_14 < 65.0:  # Zone acceptable même sans momentum fort
@@ -112,7 +112,7 @@ class RSI_Regime_Validator(BaseValidator):
                     
                 # SELL acceptable si RSI > 30 avec momentum négatif
                 if rsi_14 > self.oversold_threshold:
-                    if momentum_score is not None and momentum_score < -0.3:
+                    if momentum_score is not None and momentum_score < -30.0:  # Format 0-100
                         logger.debug(f"{self.name}: SELL accepté - RSI modéré ({self._safe_format(rsi_14, '.1f')}) + momentum négatif pour {self.symbol}")
                         return True
                     elif rsi_14 > 35.0:  # Zone acceptable même sans momentum fort
@@ -193,9 +193,9 @@ class RSI_Regime_Validator(BaseValidator):
                     
             # Bonus momentum cohérent
             if momentum_score is not None:
-                if signal_side == "BUY" and momentum_score > 0.5:
+                if signal_side == "BUY" and momentum_score > 50.0:  # Format 0-100
                     base_score += 0.1  # Momentum bullish pour BUY
-                elif signal_side == "SELL" and momentum_score < -0.5:
+                elif signal_side == "SELL" and momentum_score < -50.0:  # Format 0-100
                     base_score += 0.1  # Momentum bearish pour SELL
                     
             # Bonus confidence élevée

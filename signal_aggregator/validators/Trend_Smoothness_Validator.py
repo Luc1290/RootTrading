@@ -63,7 +63,14 @@ class Trend_Smoothness_Validator(BaseValidator):
                 
             # Extraction des indicateurs de tendance depuis le contexte
             try:
-                trend_strength = self._convert_trend_strength_to_score(self.context.get('trend_strength')) if self.context.get('trend_strength') is not None else None
+                # Gestion robuste de trend_strength (peut être "absent", None, ou numérique)
+                raw_trend_strength = self.context.get('trend_strength')
+                if raw_trend_strength in [None, 'absent', 'unknown', '']:
+                    trend_strength = None
+                else:
+                    trend_strength = self._convert_trend_strength_to_score(raw_trend_strength)
+                
+                # Gestion des valeurs NULL dans trend_angle
                 trend_angle = float(self.context.get('trend_angle', 0)) if self.context.get('trend_angle') is not None else None
                 trend_alignment = float(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None
                 directional_bias = self.context.get('directional_bias')
@@ -89,13 +96,16 @@ class Trend_Smoothness_Validator(BaseValidator):
                 logger.warning(f"{self.name}: Signal side manquant pour {self.symbol}")
                 return False
                 
-            # 1. Vérification force de tendance
+            # 1. Vérification force de tendance (seulement si disponible)
             if trend_strength is not None:
                 if trend_strength < self.min_trend_strength:
                     logger.debug(f"{self.name}: Tendance trop faible ({self._safe_format(trend_strength, '.2f')}) pour {self.symbol}")
                     return False
+            else:
+                # Si trend_strength non disponible, utiliser d'autres indicateurs
+                logger.debug(f"{self.name}: trend_strength non disponible, vérification avec autres indicateurs pour {self.symbol}")
                     
-            # 2. Vérification angle de tendance
+            # 2. Vérification angle de tendance (seulement si disponible)
             if trend_angle is not None:
                 abs_angle = abs(trend_angle)
                 if abs_angle < self.min_trend_angle:
@@ -130,8 +140,14 @@ class Trend_Smoothness_Validator(BaseValidator):
                             
             # 4. Vérification alignement général des tendances
             if trend_alignment is not None:
-                if trend_alignment < self.min_trend_alignment:
-                    logger.debug(f"{self.name}: Alignement des tendances insuffisant ({self._safe_format(trend_alignment, '.2f')}) pour {self.symbol}")
+                # Si les données principales manquent, être plus permissif sur l'alignement
+                alignment_threshold = self.min_trend_alignment
+                if trend_strength is None and trend_angle is None:
+                    alignment_threshold = 0.3  # Seuil réduit si données principales manquantes
+                    logger.debug(f"{self.name}: Seuil alignement réduit (données principales manquantes) pour {self.symbol}")
+                
+                if trend_alignment < alignment_threshold:
+                    logger.debug(f"{self.name}: Alignement des tendances insuffisant ({self._safe_format(trend_alignment, '.2f')} < {alignment_threshold}) pour {self.symbol}")
                     return False
                     
             # 5. Vérification cohérence directional_bias

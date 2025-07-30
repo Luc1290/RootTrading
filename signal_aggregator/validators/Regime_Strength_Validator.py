@@ -31,8 +31,8 @@ class Regime_Strength_Validator(BaseValidator):
         self.min_regime_strength = 0.4           # Force minimum régime
         self.strong_regime_threshold = 0.7       # Régime considéré fort
         self.very_strong_regime_threshold = 0.85 # Régime très fort
-        self.min_regime_confidence = 0.5         # Confidence minimum régime
-        self.high_regime_confidence = 0.8        # Confidence élevée régime
+        self.min_regime_confidence = 50.0        # Confidence minimum régime (format 0-100)
+        self.high_regime_confidence = 80.0       # Confidence élevée régime (format 0-100)
         
         # Paramètres persistance et durée
         self.min_regime_duration = 5             # Durée minimum régime (barres)
@@ -51,7 +51,7 @@ class Regime_Strength_Validator(BaseValidator):
         self.neutral_regimes = ["ranging", "consolidation", "sideways", "neutral"]
         
         # Paramètres cohérence multi-indicateurs
-        self.min_regime_consensus = 0.6          # Consensus minimum entre indicateurs
+        self.min_regime_consensus = 60.0         # Consensus minimum entre indicateurs (format 0-100)
         self.regime_divergence_threshold = 0.4   # Seuil divergence régimes
         
         # Bonus/malus
@@ -157,7 +157,7 @@ class Regime_Strength_Validator(BaseValidator):
                         return False
                         
             # 5. Validation stabilité du régime
-            if regime_stability is not None and regime_stability < 0.4:
+            if regime_stability is not None and regime_stability < 40.0:
                 logger.debug(f"{self.name}: Régime instable ({self._safe_format(regime_stability, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
@@ -209,7 +209,7 @@ class Regime_Strength_Validator(BaseValidator):
                         return False
                         
             # 12. Validation persistance du régime
-            if regime_persistence is not None and regime_persistence < 0.3:
+            if regime_persistence is not None and regime_persistence < 30.0:
                 logger.debug(f"{self.name}: Persistance régime faible ({self._safe_format(regime_persistence, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
@@ -369,7 +369,7 @@ class Regime_Strength_Validator(BaseValidator):
             # Calcul du score basé sur régimes
             regime_strength_raw = self.context.get('regime_strength')
             regime_strength = self._convert_regime_strength_to_score(regime_strength_raw) if regime_strength_raw else 0.5
-            regime_confidence = float(self.context.get('regime_confidence', 0.5)) if self.context.get('regime_confidence') is not None else 0.5
+            regime_confidence = float(self.context.get('regime_confidence', 50.0)) if self.context.get('regime_confidence') is not None else 50.0
             regime_persistence = float(self.context.get('regime_persistence', 0.5)) if self.context.get('regime_persistence') is not None else 0.5
             regime_stability = float(self.context.get('regime_stability', 0.5)) if self.context.get('regime_stability') is not None else 0.5
             regime_duration_bars = int(self.context.get('regime_duration_bars', 10)) if self.context.get('regime_duration_bars') is not None else 10
@@ -397,15 +397,15 @@ class Regime_Strength_Validator(BaseValidator):
                 base_score += 0.10
                 
             # Bonus persistance
-            if regime_persistence >= 0.8:
+            if regime_persistence >= 80.0:
                 base_score += self.persistence_bonus
-            elif regime_persistence >= 0.6:
+            elif regime_persistence >= 60.0:
                 base_score += 0.12
                 
             # Bonus stabilité
-            if regime_stability >= 0.8:
+            if regime_stability >= 80.0:
                 base_score += 0.15  # Régime très stable
-            elif regime_stability >= 0.6:
+            elif regime_stability >= 60.0:
                 base_score += 0.10  # Régime stable
                 
             # Bonus durée optimale
@@ -424,9 +424,9 @@ class Regime_Strength_Validator(BaseValidator):
                 pass
                 
             # Bonus consensus élevé
-            if regime_consensus_score >= 0.8:
+            if regime_consensus_score >= 80.0:
                 base_score += self.consensus_bonus
-            elif regime_consensus_score >= 0.7:
+            elif regime_consensus_score >= 70.0:
                 base_score += 0.12
                 
             # Malus transition récente ou probable

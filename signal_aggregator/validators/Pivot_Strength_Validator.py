@@ -41,7 +41,7 @@ class Pivot_Strength_Validator(BaseValidator):
         # Paramètres confluence
         self.min_confluence_pivots = 2      # Minimum pivots en confluence
         self.confluence_proximity = 0.005   # 0.5% proximité pour confluence
-        self.min_confluence_score = 0.4     # Score confluence minimum
+        self.min_confluence_score = 40.0    # Score confluence minimum (format 0-100)
         
         # Paramètres temporels
         self.max_pivot_age_bars = 50        # Age maximum pivot (barres)
@@ -331,7 +331,7 @@ class Pivot_Strength_Validator(BaseValidator):
             pivot_resistance_strength = float(self.context.get('pivot_resistance_strength', 0.5)) if self.context.get('pivot_resistance_strength') is not None else 0.5
             support_touch_count = int(self.context.get('support_touch_count', 2)) if self.context.get('support_touch_count') is not None else 2
             resistance_touch_count = int(self.context.get('resistance_touch_count', 2)) if self.context.get('resistance_touch_count') is not None else 2
-            confluence_score = float(self.context.get('confluence_score', 0.5)) if self.context.get('confluence_score') is not None else 0.5
+            confluence_score = float(self.context.get('confluence_score', 50.0)) if self.context.get('confluence_score') is not None else 50.0
             pivot_confluence_count = int(self.context.get('pivot_confluence_count', 1)) if self.context.get('pivot_confluence_count') is not None else 1
             last_interaction_bars = int(self.context.get('last_interaction_bars', 20)) if self.context.get('last_interaction_bars') is not None else 20
             
@@ -355,9 +355,9 @@ class Pivot_Strength_Validator(BaseValidator):
                 base_score += 0.10  # Pivot bien testé
                 
             # Bonus confluence
-            if confluence_score >= 0.7:
+            if confluence_score >= 70.0:  # Format 0-100
                 base_score += self.confluence_bonus
-            elif confluence_score >= 0.5:
+            elif confluence_score >= 50.0:  # Format 0-100
                 base_score += 0.10
                 
             if pivot_confluence_count >= 3:

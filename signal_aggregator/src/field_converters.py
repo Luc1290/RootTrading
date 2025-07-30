@@ -151,8 +151,8 @@ class FieldConverter:
                     # Déjà entre 0 et 1
                     converted[key] = cls._ensure_float(value)
                 elif key in ['confluence', 'vol_quality', 'momentum_score', 'volume_quality_score']:
-                    # Score sur 100 à convertir en 0-1
-                    converted[key] = cls._ensure_float(value) / 100.0 if cls._ensure_float(value) > 1 else cls._ensure_float(value)
+                    # Score sur 100 - GARDER le format 0-100 pour les validators
+                    converted[key] = cls._ensure_float(value)
                 elif key == 'atr_percentile':
                     # Percentile ATR - garder tel quel
                     converted[key] = cls._ensure_float(value)
@@ -281,21 +281,21 @@ class FieldConverter:
         defaults = {
             'directional_bias': 'neutral',
             'tf_alignment': 0.5,
-            'consensus_score': 0.5,
-            'regime_confidence': 0.5,
-            'momentum_score': 0.5,
+            'consensus_score': 50.0,    # Format 0-100 pour validators
+            'regime_confidence': 50.0,  # Format 0-100 pour validators
+            'momentum_score': 50.0,     # Format 0-100 pour validators
             'pattern_confidence': 0.0,
-            'liquidity_score': 0.5,
-            'accumulation_distribution_score': 0.5,
+            'liquidity_score': 50.0,   # Format 0-100 pour validators
+            'accumulation_distribution_score': 50.0,  # Format 0-100 pour validators
             'buy_sell_pressure': 0.5,
             'money_flow_index': 0.5,
             'obv_trend': 0.0,
             'trend_angle': 0.0,
-            'ema_alignment_score': 0.5,
-            'timeframe_consensus_score': 0.5,
+            'ema_alignment_score': 50.0,  # Format 0-100 pour validators
+            'timeframe_consensus_score': 50.0,  # Format 0-100 pour validators
             'aligned_timeframes_count': 0,
-            'regime_stability': 0.5,
-            'regime_persistence': 0.5,
+            'regime_stability': 50.0,   # Format 0-100 pour validators
+            'regime_persistence': 50.0, # Format 0-100 pour validators
             'regime_momentum': 0.0,
             'volume_buildup_bars': 0,
             'volume_buildup_slope': 0.0,
@@ -536,11 +536,8 @@ class FieldConverter:
                 if 'volume_quality_score' in indicators and indicators['volume_quality_score'] is not None:
                     try:
                         vol_quality = float(indicators['volume_quality_score'])
-                        # Convertir vers 0-1 si nécessaire
-                        if vol_quality > 1:
-                            indicators['spike_quality_score'] = min(1.0, vol_quality / 100.0)
-                        else:
-                            indicators['spike_quality_score'] = vol_quality
+                        # GARDER le format 0-100 pour les validators
+                        indicators['spike_quality_score'] = vol_quality
                     except (ValueError, TypeError):
                         indicators['spike_quality_score'] = 0.5
                 elif 'relative_volume' in indicators and indicators['relative_volume'] is not None:
@@ -602,7 +599,7 @@ class FieldConverter:
             # Valeurs par défaut en cas d'erreur
             default_spike_fields = {
                 'current_volume_spike': 1.0,
-                'spike_quality_score': 0.5,
+                'spike_quality_score': 50.0,  # Format 0-100 pour validators
                 'spike_duration_bars': 1,
                 'time_since_spike': 0,
                 'relative_spike_strength': 0.0

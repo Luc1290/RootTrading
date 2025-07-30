@@ -170,7 +170,7 @@ class Psychological_Level_Validator(BaseValidator):
                     return False
                     
             # 9. Validation confluence psychologique
-            if psychological_confluence_score is not None and psychological_confluence_score < 0.4:
+            if psychological_confluence_score is not None and psychological_confluence_score < 40.0:
                 logger.debug(f"{self.name}: Confluence psychologique insuffisante ({self._safe_format(psychological_confluence_score, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
@@ -375,9 +375,9 @@ class Psychological_Level_Validator(BaseValidator):
                 base_score += 0.10
                 
             # Bonus confluence psychologique
-            if psychological_confluence_score >= 0.7:
+            if psychological_confluence_score >= 70.0:
                 base_score += 0.12  # Confluence forte
-            elif psychological_confluence_score >= 0.5:
+            elif psychological_confluence_score >= 50.0:
                 base_score += 0.08  # Confluence modérée
                 
             # Bonus réaction récente

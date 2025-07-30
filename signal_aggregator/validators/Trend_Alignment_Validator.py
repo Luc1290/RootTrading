@@ -132,7 +132,7 @@ class Trend_Alignment_Validator(BaseValidator):
                         return False
                         
             # 3. Validation alignement EMA
-            if ema_alignment_score is not None and ema_alignment_score < 0.4:
+            if ema_alignment_score is not None and ema_alignment_score < 40.0:
                 logger.debug(f"{self.name}: Alignement EMA insuffisant ({self._safe_format(ema_alignment_score, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
@@ -337,9 +337,9 @@ class Trend_Alignment_Validator(BaseValidator):
                 base_score += 0.15
                 
             # Bonus alignement EMA parfait
-            if ema_alignment_score >= 0.9:
+            if ema_alignment_score >= 90.0:
                 base_score += 0.20  # Alignement parfait
-            elif ema_alignment_score >= 0.7:
+            elif ema_alignment_score >= 70.0:
                 base_score += 0.12  # Bon alignement
                 
             # Bonus séparation EMA optimale
@@ -435,7 +435,7 @@ class Trend_Alignment_Validator(BaseValidator):
                     return f"{self.name}: Rejeté - Tendance trop faible ({self._safe_format(primary_trend_strength, '.2f')})"
                 elif primary_trend_direction != 'N/A' and not self._validate_trend_signal_coherence(signal_side, primary_trend_direction):
                     return f"{self.name}: Rejeté - Incohérence tendance {primary_trend_direction} / signal {signal_side}"
-                elif ema_alignment_score is not None and ema_alignment_score < 0.4:
+                elif ema_alignment_score is not None and ema_alignment_score < 40.0:
                     return f"{self.name}: Rejeté - Alignement EMA insuffisant ({self._safe_format(ema_alignment_score, '.2f')})"
                 elif timeframe_consensus_score is not None and timeframe_consensus_score < self.min_trend_consensus:
                     return f"{self.name}: Rejeté - Consensus timeframes insuffisant ({self._safe_format(timeframe_consensus_score, '.2f')})"

@@ -34,7 +34,7 @@ class Volume_Buildup_Validator(BaseValidator):
         self.min_volume_trend = 0.1          # Trend volume croissant minimum
         
         # Paramètres accumulation/distribution
-        self.min_accumulation_score = 0.4    # Score accumulation minimum
+        self.min_accumulation_score = 40.0   # Score accumulation minimum (format 0-100)
         self.strong_accumulation_threshold = 0.7  # Accumulation forte
         self.min_buy_pressure = 0.45         # Pression acheteuse minimum
         self.optimal_buy_pressure = 0.65     # Pression acheteuse optimale
@@ -46,7 +46,7 @@ class Volume_Buildup_Validator(BaseValidator):
         self.buildup_consistency = 0.6       # Consistance buildup minimum
         
         # Paramètres liquidité et profondeur
-        self.min_liquidity_score = 0.3       # Score liquidité minimum
+        self.min_liquidity_score = 30.0      # Score liquidité minimum (format 0-100)
         self.min_bid_ask_ratio = 0.8         # Ratio bid/ask minimum
         self.max_spread_ratio = 0.002        # 0.2% spread maximum
         self.min_market_depth = 0.5          # Profondeur marché minimum
@@ -371,9 +371,9 @@ class Volume_Buildup_Validator(BaseValidator):
                 base_score += 0.08
                 
             # Bonus liquidité
-            if liquidity_score >= 0.7:
+            if liquidity_score >= 70.0:
                 base_score += self.liquidity_bonus
-            elif liquidity_score >= 0.5:
+            elif liquidity_score >= 50.0:
                 base_score += 0.08
                 
             # Bonus money flow

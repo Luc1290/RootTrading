@@ -28,10 +28,10 @@ class Volume_Quality_Score_Validator(BaseValidator):
         self.name = "Volume_Quality_Score_Validator"
         self.category = "volume"
         
-        # Paramètres de qualité volume
-        self.min_quality_score = 0.4          # Score qualité minimum
-        self.good_quality_score = 0.6         # Score bonne qualité
-        self.excellent_quality_score = 0.8    # Score excellente qualité
+        # Paramètres de qualité volume (format 0-100 depuis DB)
+        self.min_quality_score = 40.0         # Score qualité minimum
+        self.good_quality_score = 60.0        # Score bonne qualité
+        self.excellent_quality_score = 80.0   # Score excellente qualité
         
         # Paramètres de volume relatif
         self.min_relative_volume = 0.5        # Volume min vs moyenne
@@ -63,6 +63,7 @@ class Volume_Quality_Score_Validator(BaseValidator):
                 
             # Extraction des indicateurs de volume depuis le contexte
             try:
+                # Garder le format 0-100 depuis la DB
                 volume_quality_score = float(self.context.get('volume_quality_score', 0)) if self.context.get('volume_quality_score') is not None else None
                 relative_volume = float(self.context.get('relative_volume', 1.0)) if self.context.get('relative_volume') is not None else 1.0
                 volume_pattern = self.context.get('volume_pattern')
@@ -218,8 +219,8 @@ class Volume_Quality_Score_Validator(BaseValidator):
             if not self.validate_signal(signal):
                 return 0.0
                 
-            # Calcul du score basé sur le volume
-            volume_quality_score = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else 0.5
+            # Calcul du score basé sur le volume (format 0-100)
+            volume_quality_score = float(self.context.get('volume_quality_score', 50.0)) if self.context.get('volume_quality_score') is not None else 50.0
             relative_volume = float(self.context.get('relative_volume', 1.0)) if self.context.get('relative_volume') is not None else 1.0
             volume_pattern = self.context.get('volume_pattern')
             volume_spike_multiplier = float(self.context.get('volume_spike_multiplier', 1.0)) if self.context.get('volume_spike_multiplier') is not None else 1.0
@@ -229,7 +230,8 @@ class Volume_Quality_Score_Validator(BaseValidator):
             signal_side = signal.get('side')
             base_score = 0.5  # Score de base si validé
             
-            # Bonus qualité volume
+            # Bonus qualité volume (ramener 0-100 vers 0-1 pour le scoring)
+            quality_normalized = volume_quality_score / 100.0
             if volume_quality_score >= self.excellent_quality_score:
                 base_score += 0.3  # Excellente qualité
             elif volume_quality_score >= self.good_quality_score:
@@ -288,6 +290,7 @@ class Volume_Quality_Score_Validator(BaseValidator):
         """
         try:
             signal_side = signal.get('side', 'N/A')
+            # Format 0-100 depuis la DB
             volume_quality_score = float(self.context.get('volume_quality_score', 0)) if self.context.get('volume_quality_score') is not None else 0
             relative_volume = float(self.context.get('relative_volume', 1.0)) if self.context.get('relative_volume') is not None else 1.0
             volume_pattern = self.context.get('volume_pattern', 'N/A')

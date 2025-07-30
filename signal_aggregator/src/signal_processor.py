@@ -30,19 +30,19 @@ class SignalProcessor:
         self.context_manager = context_manager
         self.database_manager = database_manager
         
-        # Configuration des seuils de validation
-        self.min_validation_score = 0.6
-        self.min_validators_passed = 3
-        self.max_validators_failed = 10
+        # Configuration des seuils de validation (plus restrictive après analyse)
+        self.min_validation_score = 0.72    # Ajusté à 0.72 (72%)
+        self.min_validators_passed = 5       # Augmenté de 3 à 5 validators minimum
+        self.max_validators_failed = 6       # Réduit de 10 à 6 failures maximum
         
-        # Pondération des validators par catégorie
+        # Pondération des validators par catégorie (renforcée)
         self.validator_weights = {
-            'trend': 1.5,      # Validators de tendance sont plus importants
-            'volume': 1.3,     # Volume critique pour confirmation
-            'structure': 1.2,   # Structure de marché importante
-            'regime': 1.4,     # Régime de marché très important
-            'volatility': 1.0,  # Volatilité standard
-            'technical': 1.1    # Indicateurs techniques standard
+            'trend': 1.8,      # Validators de tendance encore plus importants
+            'volume': 1.5,     # Volume critique pour confirmation
+            'structure': 1.6,   # Structure de marché très importante
+            'regime': 1.7,     # Régime de marché critique
+            'volatility': 1.2,  # Volatilité plus importante
+            'technical': 1.3    # Indicateurs techniques renforcés
         }
         
         # Statistiques de validation
@@ -422,13 +422,23 @@ class SignalProcessor:
         validators_passed = sum(1 for result in validation_results if result['is_valid'])
         validators_failed = total_validators - validators_passed
         
-        # Calcul des scores
+        # Calcul des scores avec détails pour logs
         raw_scores = [result['score'] for result in validation_results]
         weighted_scores = [result['weighted_score'] for result in validation_results]
         total_weights = sum(result['weight'] for result in validation_results)
         
         avg_raw_score = sum(raw_scores) / len(raw_scores) if raw_scores else 0.0
         avg_weighted_score = sum(weighted_scores) / total_weights if total_weights > 0 else 0.0
+        
+        # Log détaillé des scores par validator (INFO level)
+        if validation_results:
+            symbol = validation_results[0].get('symbol', 'N/A') if hasattr(validation_results[0], 'get') else 'N/A'
+            validator_scores = []
+            for result in validation_results:
+                validator_scores.append(f"{result['validator_name']}={result['score']:.2f}*{result['weight']:.1f}={result['weighted_score']:.2f}")
+            
+            scores_detail = ", ".join(validator_scores)
+            logger.info(f"Validator scores: {scores_detail} → avg_weighted={avg_weighted_score:.3f}")
         
         # Analyse par catégorie
         category_results = {}
@@ -476,20 +486,20 @@ class SignalProcessor:
             Force de validation ('strong', 'moderate', 'weak')
         """
         try:
-            # Critères pour une validation forte
-            critical_categories = ['trend', 'regime', 'volume']
+            # Critères pour une validation forte (plus restrictifs)
+            critical_categories = ['trend', 'regime', 'volume', 'structure']
             strong_validation = True
             
             for category in critical_categories:
                 if category in category_results:
                     pass_rate = category_results[category]['pass_rate']
-                    if pass_rate < 0.6:  # Moins de 60% de réussite dans cette catégorie
+                    if pass_rate < 0.72:  # Ajusté à 72% de réussite minimum
                         strong_validation = False
                         break
                         
-            if strong_validation and len(category_results) >= 4:
+            if strong_validation and len(category_results) >= 5:  # Augmenté de 4 à 5 catégories
                 return 'strong'
-            elif len([cat for cat, data in category_results.items() if data['pass_rate'] > 0.5]) >= 3:
+            elif len([cat for cat, data in category_results.items() if data['pass_rate'] > 0.65]) >= 4:  # Plus restrictif
                 return 'moderate'
             else:
                 return 'weak'
@@ -520,21 +530,40 @@ class SignalProcessor:
             strong_validation = summary['validation_strength'] == 'strong'
             high_confidence_signal = signal['confidence'] > 0.7
             
-            # Bonus pour signaux haute qualité
-            final_score = summary['avg_weighted_score']
+            # Calcul détaillé du score final avec logs
+            base_score = summary['avg_weighted_score']
+            final_score = base_score
+            
+            # Collecte des détails pour les logs
+            score_details = []
+            score_details.append(f"base_weighted={base_score:.3f}")
             
             if strong_validation:
+                bonus_strong = final_score * 0.1
                 final_score *= 1.1  # Bonus 10% pour validation forte
+                score_details.append(f"bonus_strong=+{bonus_strong:.3f}")
                 
             if high_confidence_signal:
+                bonus_confidence = final_score * 0.05
                 final_score *= 1.05  # Bonus 5% pour signal haute confiance
+                score_details.append(f"bonus_confidence=+{bonus_confidence:.3f}")
                 
             # Pénalité pour trop d'échecs
             if summary['validators_failed'] > self.max_validators_failed:
+                penalty = final_score * 0.1
                 final_score *= 0.9  # Pénalité 10%
+                score_details.append(f"penalty_failures=-{penalty:.3f}")
                 
             # Limiter le score à 1.0
+            capped_score = final_score
             final_score = min(1.0, final_score)
+            if capped_score > 1.0:
+                score_details.append(f"capped_at_1.0")
+            
+            # Log du détail du calcul du score
+            score_calculation = " | ".join(score_details)
+            logger.info(f"Score calculation for {signal['symbol']} {signal.get('timeframe', 'N/A')}: "
+                       f"{score_calculation} → final={final_score:.3f}")
             
             # Décision finale
             is_valid = meets_min_validators and meets_min_score
