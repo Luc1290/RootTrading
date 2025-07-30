@@ -31,7 +31,7 @@ class SignalProcessor:
         self.database_manager = database_manager
         
         # Configuration des seuils de validation (plus restrictive après analyse)
-        self.min_validation_score = 0.90    # Ajusté à 0.90 (90%) pour éviter la saturation
+        self.min_validation_score = 0.86    # Ajusté à 0.86 (86%) pour éviter la saturation
         self.min_validators_passed = 5       # Augmenté de 3 à 5 validators minimum
         self.max_validators_failed = 6       # Réduit de 10 à 6 failures maximum
         
