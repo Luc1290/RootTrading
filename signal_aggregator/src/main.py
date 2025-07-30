@@ -10,6 +10,7 @@ import sys
 from datetime import datetime
 from typing import Dict, Any
 import psycopg2
+from aiohttp import web
 
 # Ajouter les r�pertoires n�cessaires au path pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))  # Pour shared
@@ -278,6 +279,33 @@ class SignalAggregatorService:
         except Exception as e:
             logger.error(f"Erreur health check: {e}")
             return False
+    
+    async def start_health_server(self):
+        """Démarre le serveur HTTP pour les endpoints de santé."""
+        app = web.Application()
+        
+        async def health_endpoint(request):
+            """Endpoint de health check."""
+            uptime = (datetime.utcnow() - self.start_time).total_seconds()
+            return web.json_response({
+                "status": "healthy",
+                "service": "signal_aggregator",
+                "timestamp": datetime.utcnow().isoformat(),
+                "uptime_seconds": uptime,
+                "cycle_stats": self.cycle_stats,
+                "validators_loaded": len(self.validator_loader.get_all_validators()) if hasattr(self, 'validator_loader') else 0,
+                "redis_connected": self.redis_handler.is_connected if self.redis_handler else False,
+                "db_connected": hasattr(self, 'db_connection') and self.db_connection is not None
+            })
+        
+        app.router.add_route('GET', '/health', health_endpoint)
+        
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', 5013)
+        await site.start()
+        logger.info("✅ Serveur health check démarré sur le port 5013")
+        return runner
             
     def get_service_stats(self) -> Dict[str, Any]:
         """R�cup�re les statistiques compl�tes du service."""
@@ -335,6 +363,9 @@ class SignalAggregatorService:
             # Initialisation des composants
             self.initialize_components()
             
+            # Démarrer le serveur health check
+            health_runner = await self.start_health_server()
+            
             # Configuration du callback Redis
             await self.redis_handler.set_callback(self.process_signal_callback)
             
@@ -374,6 +405,8 @@ class SignalAggregatorService:
             logger.error(f"Erreur dans le service principal: {e}")
             raise
         finally:
+            if 'health_runner' in locals():
+                await health_runner.cleanup()
             await self.cleanup()
             
     async def _run_health_checks(self):

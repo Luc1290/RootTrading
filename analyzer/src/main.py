@@ -14,6 +14,7 @@ from typing import Dict, List, Any
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import redis.asyncio as redis
+from aiohttp import web
 
 # Ajouter les répertoires nécessaires au path pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))  # Pour shared
@@ -70,6 +71,10 @@ class AnalyzerService:
             'strategies_executed': 0,
             'cycle_count': 0
         }
+        
+        # Health check
+        self.start_time = datetime.utcnow()
+        self.last_health_check = None
         
     async def connect_db(self):
         """Établit la connexion à la base de données."""
@@ -423,6 +428,33 @@ class AnalyzerService:
             
         logger.info("Cycle d'analyse terminé")
         
+    async def start_health_server(self):
+        """Démarre le serveur HTTP pour les endpoints de santé."""
+        app = web.Application()
+        
+        async def health_endpoint(request):
+            """Endpoint de health check."""
+            uptime = (datetime.utcnow() - self.start_time).total_seconds()
+            return web.json_response({
+                "status": "healthy",
+                "service": "analyzer",
+                "timestamp": datetime.utcnow().isoformat(),
+                "uptime_seconds": uptime,
+                "cycle_stats": self.cycle_stats,
+                "strategies_loaded": len(self.strategy_loader.get_all_strategies()) if hasattr(self, 'strategy_loader') else 0,
+                "symbols_count": len(self.symbols),
+                "timeframes_count": len(self.timeframes)
+            })
+        
+        app.router.add_route('GET', '/health', health_endpoint)
+        
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', 5012)
+        await site.start()
+        logger.info("✅ Serveur health check démarré sur le port 5012")
+        return runner
+        
     async def listen_for_analysis_triggers(self):
         """Écoute les notifications Redis pour déclencher les analyses."""
         redis_client = None
@@ -473,6 +505,9 @@ class AnalyzerService:
         self.strategy_loader.load_strategies()
         logger.info(f"Stratégies chargées: {list(self.strategy_loader.get_all_strategies().keys())}")
         
+        # Démarrer le serveur health check
+        health_runner = await self.start_health_server()
+        
         # Boucle principale : écoute événements Redis
         try:
             await self.listen_for_analysis_triggers()
@@ -483,6 +518,8 @@ class AnalyzerService:
             logger.error(f"Erreur dans la boucle principale: {e}")
             raise
         finally:
+            if 'health_runner' in locals():
+                await health_runner.cleanup()
             await self.cleanup()
             
     async def cleanup(self):
