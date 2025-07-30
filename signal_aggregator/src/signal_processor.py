@@ -30,10 +30,10 @@ class SignalProcessor:
         self.context_manager = context_manager
         self.database_manager = database_manager
         
-        # Configuration des seuils de validation (plus restrictive après analyse)
-        self.min_validation_score = 0.86    # Ajusté à 0.86 (86%) pour éviter la saturation
-        self.min_validators_passed = 5       # Augmenté de 3 à 5 validators minimum
-        self.max_validators_failed = 6       # Réduit de 10 à 6 failures maximum
+        # Configuration des seuils de validation (assouplis pour capturer plus de signaux SELL)
+        self.min_validation_score = 0.75    # Réduit de 0.86 à 0.75 (75%) 
+        self.min_validators_passed = 3       # Réduit de 5 à 3 validators minimum
+        self.max_validators_failed = 8       # Augmenté de 6 à 8 failures maximum
         
         # Pondération des validators par catégorie (renforcée)
         self.validator_weights = {
@@ -486,20 +486,20 @@ class SignalProcessor:
             Force de validation ('strong', 'moderate', 'weak')
         """
         try:
-            # Critères pour une validation forte (plus restrictifs)
+            # Critères pour une validation forte (assouplis pour capturer signaux SELL)
             critical_categories = ['trend', 'regime', 'volume', 'structure']
             strong_validation = True
             
             for category in critical_categories:
                 if category in category_results:
                     pass_rate = category_results[category]['pass_rate']
-                    if pass_rate < 0.72:  # Ajusté à 72% de réussite minimum
+                    if pass_rate < 0.60:  # Réduit de 72% à 60% de réussite minimum
                         strong_validation = False
                         break
                         
-            if strong_validation and len(category_results) >= 5:  # Augmenté de 4 à 5 catégories
+            if strong_validation and len(category_results) >= 3:  # Réduit de 5 à 3 catégories
                 return 'strong'
-            elif len([cat for cat, data in category_results.items() if data['pass_rate'] > 0.65]) >= 4:  # Plus restrictif
+            elif len([cat for cat, data in category_results.items() if data['pass_rate'] > 0.50]) >= 3:  # Plus permissif
                 return 'moderate'
             else:
                 return 'weak'

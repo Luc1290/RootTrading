@@ -26,7 +26,8 @@ except ImportError:
 def calculate_macd(prices: Union[List[float], np.ndarray, pd.Series],
                    fast_period: int = 12,
                    slow_period: int = 26,
-                   signal_period: int = 9) -> Dict[str, Optional[float]]:
+                   signal_period: int = 9,
+                   normalize_high_price: bool = True) -> Dict[str, Optional[float]]:
     """
     Calculate MACD indicator values.
     
@@ -77,7 +78,7 @@ def calculate_macd(prices: Union[List[float], np.ndarray, pd.Series],
         except Exception as e:
             logger.warning(f"TA-Lib MACD error: {e}, using fallback")
     
-    return _calculate_macd_manual(prices_array, fast_period, slow_period, signal_period)
+    return _calculate_macd_manual(prices_array, fast_period, slow_period, signal_period, normalize_high_price)
 
 
 def calculate_macd_series(prices: Union[List[float], np.ndarray, pd.Series],
@@ -342,7 +343,8 @@ def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarr
 def _calculate_macd_manual(prices: np.ndarray,
                           fast_period: int,
                           slow_period: int,
-                          signal_period: int) -> Dict[str, Optional[float]]:
+                          signal_period: int,
+                          normalize_high_price: bool = True) -> Dict[str, Optional[float]]:
     """Manual MACD calculation."""
     # Calculate EMAs
     ema_fast = calculate_ema(prices, fast_period)
@@ -358,6 +360,18 @@ def _calculate_macd_manual(prices: np.ndarray,
     # MACD line
     macd_line = ema_fast - ema_slow
     
+    # Normalisation pour les actifs à prix élevé
+    normalization_factor = 1.0
+    if normalize_high_price and len(prices) > 0:
+        avg_price = np.mean(prices[-min(50, len(prices)):])  # Moyenne des 50 derniers prix
+        if avg_price > 10000:  # Pour BTC et autres cryptos à prix élevé
+            normalization_factor = avg_price / 1000  # Ramener à une échelle raisonnable
+        elif avg_price > 1000:
+            normalization_factor = avg_price / 100
+    
+    # Appliquer la normalisation
+    macd_line = macd_line / normalization_factor
+    
     # For signal line, need MACD series
     macd_series = []
     ema_fast_series = calculate_ema_series(prices, fast_period)
@@ -365,7 +379,8 @@ def _calculate_macd_manual(prices: np.ndarray,
     
     for i in range(len(ema_fast_series)):
         if ema_fast_series[i] is not None and ema_slow_series[i] is not None:
-            macd_series.append(ema_fast_series[i] - ema_slow_series[i])
+            macd_val = (ema_fast_series[i] - ema_slow_series[i]) / normalization_factor
+            macd_series.append(macd_val)
         else:
             macd_series.append(None)
     

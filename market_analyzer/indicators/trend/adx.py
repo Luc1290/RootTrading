@@ -256,6 +256,26 @@ def dmi_signal(plus_di: Optional[float],
     return 'neutral'
 
 
+def calculate_directional_bias(plus_di: Optional[float], 
+                              minus_di: Optional[float],
+                              adx: Optional[float] = None) -> str:
+    """
+    Calculate directional bias for market analysis.
+    
+    Returns uppercase values for consistency with market analyzer.
+    
+    Args:
+        plus_di: Positive Directional Indicator value
+        minus_di: Negative Directional Indicator value
+        adx: ADX value (optional, for filtering weak trends)
+        
+    Returns:
+        'BULLISH', 'BEARISH', or 'NEUTRAL'
+    """
+    signal = dmi_signal(plus_di, minus_di, adx)
+    return signal.upper()
+
+
 def calculate_adxr(highs: Union[List[float], np.ndarray, pd.Series],
                    lows: Union[List[float], np.ndarray, pd.Series],
                    closes: Union[List[float], np.ndarray, pd.Series],

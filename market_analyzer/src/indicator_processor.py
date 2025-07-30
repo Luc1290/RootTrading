@@ -277,10 +277,16 @@ class IndicatorProcessor:
                     })
                     
                     # Calculer trend_strength depuis ADX (string: "weak", "strong", etc.)
-                    from ..indicators.trend.adx import adx_trend_strength
+                    from ..indicators.trend.adx import adx_trend_strength, calculate_directional_bias
                     adx_value = adx_full.get('adx')
                     if adx_value is not None:
                         indicators['trend_strength'] = adx_trend_strength(adx_value)
+                    
+                    # Calculer directional_bias depuis +DI et -DI
+                    plus_di = adx_full.get('plus_di')
+                    minus_di = adx_full.get('minus_di')
+                    if plus_di is not None and minus_di is not None:
+                        indicators['directional_bias'] = calculate_directional_bias(plus_di, minus_di, adx_value)
             
             # ATR et volatilité (calculer d'abord car utilisé par Keltner)
             atr = None
@@ -431,8 +437,13 @@ class IndicatorProcessor:
                         # Calculer trend_alignment à partir du trend_slope (normaliser entre -100 et 100)
                         trend_alignment = max(-100, min(100, regime_result.trend_slope * 10))
                         
-                        # Utiliser la confidence comme momentum_score (déjà entre 0-100)
-                        momentum_score = regime_result.confidence
+                        # Calculer momentum_score avec direction (-100 à +100)
+                        # Confidence donne la force (0-100), trend_slope donne la direction
+                        base_momentum = regime_result.confidence  # 0-100
+                        if regime_result.trend_slope < 0:
+                            momentum_score = -base_momentum  # -100 à 0 en tendance baissière
+                        else:
+                            momentum_score = base_momentum   # 0 à +100 en tendance haussière
                         
                         indicators.update({
                             'market_regime': str(regime_result.regime_type.value if hasattr(regime_result.regime_type, 'value') else regime_result.regime_type).upper(),
