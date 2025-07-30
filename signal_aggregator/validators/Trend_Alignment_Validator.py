@@ -119,7 +119,7 @@ class Trend_Alignment_Validator(BaseValidator):
                 
             # 1. Validation force de la tendance principale
             if primary_trend_strength is not None and primary_trend_strength < self.min_trend_strength:
-                logger.debug(f"{self.name}: Tendance principale faible ({primary_trend_strength:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Tendance principale faible ({self._safe_format(primary_trend_strength, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.8:
                     return False
                     
@@ -133,30 +133,30 @@ class Trend_Alignment_Validator(BaseValidator):
                         
             # 3. Validation alignement EMA
             if ema_alignment_score is not None and ema_alignment_score < 0.4:
-                logger.debug(f"{self.name}: Alignement EMA insuffisant ({ema_alignment_score:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Alignement EMA insuffisant ({self._safe_format(ema_alignment_score, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
             # Validation séparation EMA
             if ema_separation_ratio is not None and ema_separation_ratio < self.min_ema_separation:
-                logger.debug(f"{self.name}: Séparation EMA insuffisante ({ema_separation_ratio*100:.2f}%) pour {self.symbol}")
+                logger.debug(f"{self.name}: Séparation EMA insuffisante ({self._safe_format(ema_separation_ratio*100, '.2f')}%) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
             # 4. Validation cohérence MACD
             if macd_trend_coherence is not None and macd_trend_coherence < self.macd_signal_coherence_threshold:
-                logger.debug(f"{self.name}: Cohérence MACD/tendance insuffisante ({macd_trend_coherence:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Cohérence MACD/tendance insuffisante ({self._safe_format(macd_trend_coherence, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
             if macd_histogram_strength is not None and macd_histogram_strength < self.min_macd_histogram_strength:
-                logger.debug(f"{self.name}: Force histogramme MACD insuffisante ({macd_histogram_strength:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Force histogramme MACD insuffisante ({self._safe_format(macd_histogram_strength, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
             # 5. Validation consensus multi-timeframe
             if timeframe_consensus_score is not None and timeframe_consensus_score < self.min_trend_consensus:
-                logger.debug(f"{self.name}: Consensus timeframes insuffisant ({timeframe_consensus_score:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Consensus timeframes insuffisant ({self._safe_format(timeframe_consensus_score, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
@@ -167,13 +167,13 @@ class Trend_Alignment_Validator(BaseValidator):
                     
             # 6. Validation probabilité transition
             if trend_transition_probability is not None and trend_transition_probability > self.max_trend_transition_probability:
-                logger.debug(f"{self.name}: Probabilité transition élevée ({trend_transition_probability:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Probabilité transition élevée ({self._safe_format(trend_transition_probability, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.8:
                     return False
                     
             # 7. Validation alignement momentum
             if momentum_trend_alignment is not None and momentum_trend_alignment < self.min_momentum_alignment:
-                logger.debug(f"{self.name}: Alignement momentum insuffisant ({momentum_trend_alignment:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Alignement momentum insuffisant ({self._safe_format(momentum_trend_alignment, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
@@ -199,7 +199,7 @@ class Trend_Alignment_Validator(BaseValidator):
                     
             # 11. Validation pente EMA significative
             if ema_slope_strength is not None and ema_slope_strength < self.ema_slope_threshold:
-                logger.debug(f"{self.name}: Pente EMA insignifiante ({ema_slope_strength:.4f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Pente EMA insignifiante ({self._safe_format(ema_slope_strength, '.4f')}) pour {self.symbol}")
                 if signal_confidence < 0.5:
                     return False
                     
@@ -421,24 +421,24 @@ class Trend_Alignment_Validator(BaseValidator):
                 if primary_trend_direction != 'N/A':
                     reason += f" (direction: {primary_trend_direction})"
                 if primary_trend_strength is not None:
-                    reason += f", force: {primary_trend_strength:.2f}"
+                    reason += f", force: {self._safe_format(primary_trend_strength, '.2f')}"
                 if ema_alignment_score is not None:
-                    reason += f", EMA align: {ema_alignment_score:.2f}"
+                    reason += f", EMA align: {self._safe_format(ema_alignment_score, '.2f')}"
                 if timeframe_consensus_score is not None:
-                    reason += f", consensus TF: {timeframe_consensus_score:.2f}"
+                    reason += f", consensus TF: {self._safe_format(timeframe_consensus_score, '.2f')}"
                 if aligned_timeframes_count is not None:
                     reason += f", TF alignés: {aligned_timeframes_count}"
                     
                 return f"{self.name}: Validé - {reason} pour {signal_strategy} {signal_side}"
             else:
                 if primary_trend_strength is not None and primary_trend_strength < self.min_trend_strength:
-                    return f"{self.name}: Rejeté - Tendance trop faible ({primary_trend_strength:.2f})"
+                    return f"{self.name}: Rejeté - Tendance trop faible ({self._safe_format(primary_trend_strength, '.2f')})"
                 elif primary_trend_direction != 'N/A' and not self._validate_trend_signal_coherence(signal_side, primary_trend_direction):
                     return f"{self.name}: Rejeté - Incohérence tendance {primary_trend_direction} / signal {signal_side}"
                 elif ema_alignment_score is not None and ema_alignment_score < 0.4:
-                    return f"{self.name}: Rejeté - Alignement EMA insuffisant ({ema_alignment_score:.2f})"
+                    return f"{self.name}: Rejeté - Alignement EMA insuffisant ({self._safe_format(ema_alignment_score, '.2f')})"
                 elif timeframe_consensus_score is not None and timeframe_consensus_score < self.min_trend_consensus:
-                    return f"{self.name}: Rejeté - Consensus timeframes insuffisant ({timeframe_consensus_score:.2f})"
+                    return f"{self.name}: Rejeté - Consensus timeframes insuffisant ({self._safe_format(timeframe_consensus_score, '.2f')})"
                 elif aligned_timeframes_count is not None and aligned_timeframes_count < self.min_aligned_timeframes:
                     return f"{self.name}: Rejeté - Pas assez de timeframes alignés ({aligned_timeframes_count})"
                     

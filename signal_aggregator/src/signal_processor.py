@@ -300,21 +300,35 @@ class SignalProcessor:
                     flat_context.update(context['market_structure'])
                 if 'volume_profile' in context:
                     flat_context.update(context['volume_profile'])
+                
+                # Récupérer les données OHLCV
+                ohlcv_data = context.get('ohlcv_data', [])
+                
+                # Ajouter le prix actuel dans le contexte aplati
+                if ohlcv_data and len(ohlcv_data) > 0:
+                    flat_context['current_price'] = ohlcv_data[-1].get('close', 0)
                     
                 # Préparer les données OHLCV pour les validators
-                ohlcv_data = context.get('ohlcv_data', [])
                 data_dict = {}
                 if ohlcv_data:
-                    # Prendre la dernière bougie pour les données courantes
                     latest_candle = ohlcv_data[-1]
+                    # Format mixte pour compatibilité avec tous les validators
                     data_dict = {
+                        # Valeurs scalaires (dernière bougie) - pour la majorité des validators
                         'open': latest_candle.get('open'),
                         'high': latest_candle.get('high'),
                         'low': latest_candle.get('low'),
                         'close': latest_candle.get('close'),
                         'volume': latest_candle.get('volume'),
                         'quote_volume': latest_candle.get('quote_volume'),
-                        'ohlcv_list': ohlcv_data  # Garder la liste complète aussi
+                        # Listes complètes pour les validators qui en ont besoin
+                        'open_list': [candle.get('open') for candle in ohlcv_data],
+                        'high_list': [candle.get('high') for candle in ohlcv_data],
+                        'low_list': [candle.get('low') for candle in ohlcv_data],
+                        'close_list': [candle.get('close') for candle in ohlcv_data],
+                        'volume_list': [candle.get('volume') for candle in ohlcv_data],
+                        'quote_volume_list': [candle.get('quote_volume') for candle in ohlcv_data],
+                        'ohlcv_list': ohlcv_data  # Liste complète des bougies
                     }
                     
                 # Instanciation du validator

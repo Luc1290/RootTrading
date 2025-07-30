@@ -95,7 +95,7 @@ class Volatility_Regime_Validator(BaseValidator):
                 if volatility_regime == "high":
                     # Haute volatilité - exigences strictes
                     if signal_confidence < self.high_vol_min_confidence:
-                        logger.debug(f"{self.name}: Haute volatilité nécessite confidence ≥ {self.high_vol_min_confidence} (actuel: {signal_confidence:.2f}) pour {self.symbol}")
+                        logger.debug(f"{self.name}: Haute volatilité nécessite confidence ≥ {self.high_vol_min_confidence} (actuel: {self._safe_format(signal_confidence, '.2f')}) pour {self.symbol}")
                         return False
                         
                     # Signaux faibles rejetés en haute volatilité
@@ -113,13 +113,13 @@ class Volatility_Regime_Validator(BaseValidator):
             if atr_percentile >= self.extreme_atr_percentile:
                 # Volatilité extrême
                 if signal_confidence < self.extreme_vol_min_confidence:
-                    logger.debug(f"{self.name}: ATR extrême ({atr_percentile:.1f}%) nécessite confidence ≥ {self.extreme_vol_min_confidence} pour {self.symbol}")
+                    logger.debug(f"{self.name}: ATR extrême ({self._safe_format(atr_percentile, '.1f')}%) nécessite confidence ≥ {self.extreme_vol_min_confidence} pour {self.symbol}")
                     return False
                     
             elif atr_percentile >= self.high_atr_percentile:
                 # Volatilité élevée
                 if signal_confidence < self.high_vol_min_confidence:
-                    logger.debug(f"{self.name}: ATR élevé ({atr_percentile:.1f}%) nécessite confidence ≥ {self.high_vol_min_confidence} pour {self.symbol}")
+                    logger.debug(f"{self.name}: ATR élevé ({self._safe_format(atr_percentile, '.1f')}%) nécessite confidence ≥ {self.high_vol_min_confidence} pour {self.symbol}")
                     return False
                     
             elif atr_percentile <= self.low_atr_percentile:
@@ -183,7 +183,7 @@ class Volatility_Regime_Validator(BaseValidator):
                 # NATR très élevé - prudence
                 if natr > 5.0:  # 5% de NATR = très volatil
                     if signal_confidence < 0.8:
-                        logger.debug(f"{self.name}: NATR élevé ({natr:.2f}%) nécessite forte confidence pour {self.symbol}")
+                        logger.debug(f"{self.name}: NATR élevé ({self._safe_format(natr, '.2f')}%) nécessite forte confidence pour {self.symbol}")
                         return False
                         
             # Debug pour identifier la variable problématique
@@ -193,8 +193,8 @@ class Volatility_Regime_Validator(BaseValidator):
                 
                 logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
                             f"Régime: {volatility_regime or 'N/A'}, "
-                            f"ATR percentile: {atr_percentile:.1f if atr_percentile is not None else 'N/A'}%, "
-                            f"BB width: {bb_width:.3f if bb_width is not None else 'N/A'}, "
+                            f"ATR percentile: {self._safe_format(atr_percentile, '.1f') if atr_percentile is not None else 'N/A'}%, "
+                            f"BB width: {self._safe_format(bb_width, '.3f') if bb_width is not None else 'N/A'}, "
                             f"Side: {signal_side}")
             except Exception as e:
                 logger.error(f"{self.name}: Erreur debug log: {e}")
@@ -305,7 +305,7 @@ class Volatility_Regime_Validator(BaseValidator):
             bb_expansion = self.context.get('bb_expansion', False)
             
             if is_valid:
-                regime_desc = f"régime {volatility_regime}" if volatility_regime != 'unknown' else f"ATR {atr_percentile:.0f}e percentile"
+                regime_desc = f"régime {volatility_regime}" if volatility_regime != 'unknown' else f"ATR {self._safe_format(atr_percentile, '.0f')}e percentile"
                 
                 if bb_squeeze and bb_expansion:
                     condition = "breakout de compression"
@@ -316,10 +316,10 @@ class Volatility_Regime_Validator(BaseValidator):
                 else:
                     condition = "conditions acceptables"
                     
-                return f"{self.name}: Validé - {condition} ({regime_desc}, confidence: {signal_confidence:.2f}) pour signal {signal_side}"
+                return f"{self.name}: Validé - {condition} ({regime_desc}, confidence: {self._safe_format(signal_confidence, '.2f')}) pour signal {signal_side}"
             else:
                 if atr_percentile >= self.extreme_atr_percentile and signal_confidence < self.extreme_vol_min_confidence:
-                    return f"{self.name}: Rejeté - Volatilité extrême ({atr_percentile:.0f}%) nécessite confidence ≥ {self.extreme_vol_min_confidence}"
+                    return f"{self.name}: Rejeté - Volatilité extrême ({self._safe_format(atr_percentile, '.0f')}%) nécessite confidence ≥ {self.extreme_vol_min_confidence}"
                 elif volatility_regime == "high" and signal_confidence < self.high_vol_min_confidence:
                     return f"{self.name}: Rejeté - Haute volatilité nécessite confidence ≥ {self.high_vol_min_confidence}"
                 elif bb_squeeze and signal_confidence < 0.7:

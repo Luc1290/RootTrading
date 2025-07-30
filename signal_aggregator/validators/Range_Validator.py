@@ -109,13 +109,36 @@ class Range_Validator(BaseValidator):
                 logger.warning(f"{self.name}: Erreur conversion indicateurs pour {self.symbol}: {e}")
                 return False
                 
-            # Récupération prix actuel depuis data
+                        # Récupération prix actuel depuis data
             current_price = None
-            if self.data and 'close' in self.data and self.data['close']:
-                try:
-                    current_price = float(self.data['close'][-1])
-                except (IndexError, ValueError, TypeError):
-                    pass
+            if self.data:
+                # Essayer d'abord la valeur scalaire (format préféré)
+                if 'close' in self.data and self.data['close'] is not None:
+                    try:
+                        if isinstance(self.data['close'], (int, float)):
+                            current_price = float(self.data['close'])
+                        elif isinstance(self.data['close'], list) and len(self.data['close']) > 0:
+                            current_price = self._get_current_price()
+                    except (IndexError, ValueError, TypeError):
+                        pass
+                
+                # Fallback: essayer current_price dans le contexte
+                if current_price is None:
+                    current_price = self.context.get('current_price')
+                    if current_price is not None:
+                        try:
+                            current_price = float(current_price)
+                        except (ValueError, TypeError):
+                            current_price = None
+                
+                # Fallback: essayer current_price dans le contexte
+                if current_price is None:
+                    current_price = self.context.get('current_price')
+                    if current_price is not None:
+                        try:
+                            current_price = float(current_price)
+                        except (ValueError, TypeError):
+                            current_price = None
                     
             signal_side = signal.get('side')
             signal_strategy = signal.get('strategy', 'Unknown')
@@ -146,11 +169,11 @@ class Range_Validator(BaseValidator):
                 range_width_ratio = range_width / current_price if current_price > 0 else 0
                 
                 if range_width_ratio < self.min_range_width:
-                    logger.debug(f"{self.name}: Range trop étroit ({range_width_ratio*100:.2f}%) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Range trop étroit ({self._safe_format(range_width_ratio*100, '.2f')}%) pour {self.symbol}")
                     if signal_confidence < 0.8:
                         return False
                 elif range_width_ratio > self.max_range_width:
-                    logger.debug(f"{self.name}: Range trop large ({range_width_ratio*100:.2f}%) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Range trop large ({self._safe_format(range_width_ratio*100, '.2f')}%) pour {self.symbol}")
                     if signal_confidence < 0.6:
                         return False
                         
@@ -169,24 +192,24 @@ class Range_Validator(BaseValidator):
             if range_position is not None:
                 # Position trop près des bords
                 if range_position < self.range_edge_zone or range_position > (1 - self.range_edge_zone):
-                    logger.debug(f"{self.name}: Position près du bord du range ({range_position:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Position près du bord du range ({self._safe_format(range_position, '.2f')}) pour {self.symbol}")
                     if not self._is_breakout_strategy(signal_strategy):
                         if signal_confidence < 0.7:
                             return False
                             
                 # Position dans zone dangereuse selon direction signal
                 if signal_side == "BUY" and range_position > 0.8:
-                    logger.debug(f"{self.name}: BUY signal près du haut du range ({range_position:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: BUY signal près du haut du range ({self._safe_format(range_position, '.2f')}) pour {self.symbol}")
                     if signal_confidence < 0.6:
                         return False
                 elif signal_side == "SELL" and range_position < 0.2:
-                    logger.debug(f"{self.name}: SELL signal près du bas du range ({range_position:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: SELL signal près du bas du range ({self._safe_format(range_position, '.2f')}) pour {self.symbol}")
                     if signal_confidence < 0.6:
                         return False
                         
             # 5. Validation probabilité de breakout
             if breakout_probability is not None and breakout_probability > self.breakout_probability_max:
-                logger.debug(f"{self.name}: Probabilité breakout élevée ({breakout_probability:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Probabilité breakout élevée ({self._safe_format(breakout_probability, '.2f')}) pour {self.symbol}")
                 if not self._is_breakout_strategy(signal_strategy):
                     if signal_confidence < 0.8:
                         return False
@@ -194,17 +217,17 @@ class Range_Validator(BaseValidator):
             # 6. Validation volatilité dans range
             if range_volatility is not None:
                 if range_volatility < self.min_range_volatility:
-                    logger.debug(f"{self.name}: Volatilité range trop faible ({range_volatility*100:.2f}%) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Volatilité range trop faible ({self._safe_format(range_volatility*100, '.2f')}%) pour {self.symbol}")
                     if signal_confidence < 0.7:
                         return False
                 elif range_volatility > self.max_range_volatility:
-                    logger.debug(f"{self.name}: Volatilité range excessive ({range_volatility*100:.2f}%) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Volatilité range excessive ({self._safe_format(range_volatility*100, '.2f')}%) pour {self.symbol}")
                     if signal_confidence < 0.6:
                         return False
                         
             # 7. Validation compression du range
             if range_compression is not None and range_compression > self.range_compression_threshold:
-                logger.debug(f"{self.name}: Range en compression ({range_compression:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Range en compression ({self._safe_format(range_compression, '.2f')}) pour {self.symbol}")
                 # Range compressé peut indiquer un breakout imminent
                 if not self._is_breakout_strategy(signal_strategy):
                     if signal_confidence < 0.8:
@@ -226,7 +249,7 @@ class Range_Validator(BaseValidator):
                     
             # 9. Validation respect des bornes
             if boundary_respect_rate is not None and boundary_respect_rate < self.boundary_respect_ratio:
-                logger.debug(f"{self.name}: Faible respect des bornes ({boundary_respect_rate:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Faible respect des bornes ({self._safe_format(boundary_respect_rate, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
@@ -256,9 +279,9 @@ class Range_Validator(BaseValidator):
                     return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
-                        f"Range: {range_low:.4f if range_low is not None else 'N/A'}-{range_high:.4f if range_high is not None else 'N/A'}, "
-                        f"Position: {range_position:.2f if range_position is not None else 'N/A'}, "
-                        f"Largeur: {range_width_ratio*100:.2f if range_width_ratio is not None else 'N/A'}%, "
+                        f"Range: {self._safe_format(range_low, '.4f') if range_low is not None else 'N/A'}-{self._safe_format(range_high, '.4f') if range_high is not None else 'N/A'}, "
+                        f"Position: {self._safe_format(range_position, '.2f') if range_position is not None else 'N/A'}, "
+                        f"Largeur: {self._safe_format(range_width_ratio*100, '.2f') if range_width_ratio is not None else 'N/A'}%, "
                         f"Age: {range_age_bars or 'N/A'} barres")
             
             return True
@@ -357,6 +380,28 @@ class Range_Validator(BaseValidator):
         except Exception:
             return True
             
+    def _get_current_price(self) -> float:
+        """Helper method to get current price from data or context."""
+        if self.data:
+            # Essayer d'abord la valeur scalaire (format préféré)
+            if 'close' in self.data and self.data['close'] is not None:
+                try:
+                    if isinstance(self.data['close'], (int, float)):
+                        return float(self.data['close'])
+                    elif isinstance(self.data['close'], list) and len(self.data['close']) > 0:
+                        return float(self.data['close'][-1])
+                except (IndexError, ValueError, TypeError):
+                    pass
+            
+            # Fallback: essayer current_price dans le contexte
+            current_price = self.context.get('current_price')
+            if current_price is not None:
+                try:
+                    return float(current_price)
+                except (ValueError, TypeError):
+                    pass
+        return None
+            
     def get_validation_score(self, signal: Dict[str, Any]) -> float:
         """
         Calcule un score de validation basé sur les conditions de range.
@@ -386,7 +431,7 @@ class Range_Validator(BaseValidator):
             base_score = 0.5  # Score de base si validé
             
             # Bonus largeur range optimale
-            current_price = float(self.data['close'][-1]) if self.data and 'close' in self.data and self.data['close'] else 1
+            current_price = self._get_current_price() or 1
             range_width_ratio = range_width / current_price if current_price > 0 else 0.02
             
             if abs(range_width_ratio - self.optimal_range_width) <= 0.005:
@@ -472,35 +517,35 @@ class Range_Validator(BaseValidator):
                 reason = f"Conditions range favorables"
                 if range_position is not None:
                     position_desc = "centrale" if 0.4 <= range_position <= 0.6 else "bord" if range_position < 0.2 or range_position > 0.8 else "normale"
-                    reason += f" (position {position_desc}: {range_position:.2f})"
+                    reason += f" (position {position_desc}: {self._safe_format(range_position, '.2f')})"
                 if range_width is not None:
-                    current_price = float(self.data['close'][-1]) if self.data and 'close' in self.data and self.data['close'] else 1
+                    current_price = self._get_current_price() or 1
                     width_pct = (range_width / current_price * 100) if current_price > 0 else 0
-                    reason += f", largeur: {width_pct:.1f}%"
+                    reason += f", largeur: {self._safe_format(width_pct, '.1f')}%"
                 if range_age_bars is not None:
                     reason += f", âge: {range_age_bars}b"
                 if boundary_respect_rate is not None:
-                    reason += f", respect bornes: {boundary_respect_rate:.2f}"
+                    reason += f", respect bornes: {self._safe_format(boundary_respect_rate, '.2f')}"
                     
                 return f"{self.name}: Validé - {reason} pour {signal_strategy} {signal_side}"
             else:
-                current_price = float(self.data['close'][-1]) if self.data and 'close' in self.data and self.data['close'] else 1
+                current_price = self._get_current_price() or 1
                 
                 if range_width is not None:
                     width_ratio = range_width / current_price if current_price > 0 else 0
                     if width_ratio < self.min_range_width:
-                        return f"{self.name}: Rejeté - Range trop étroit ({width_ratio*100:.2f}%)"
+                        return f"{self.name}: Rejeté - Range trop étroit ({self._safe_format(width_ratio*100, '.2f')}%)"
                     elif width_ratio > self.max_range_width:
-                        return f"{self.name}: Rejeté - Range trop large ({width_ratio*100:.2f}%)"
+                        return f"{self.name}: Rejeté - Range trop large ({self._safe_format(width_ratio*100, '.2f')}%)"
                         
                 if range_position is not None:
                     if signal_side == "BUY" and range_position > 0.8:
-                        return f"{self.name}: Rejeté - BUY près du haut du range ({range_position:.2f})"
+                        return f"{self.name}: Rejeté - BUY près du haut du range ({self._safe_format(range_position, '.2f')})"
                     elif signal_side == "SELL" and range_position < 0.2:
-                        return f"{self.name}: Rejeté - SELL près du bas du range ({range_position:.2f})"
+                        return f"{self.name}: Rejeté - SELL près du bas du range ({self._safe_format(range_position, '.2f')})"
                         
                 if breakout_probability and breakout_probability > self.breakout_probability_max:
-                    return f"{self.name}: Rejeté - Probabilité breakout élevée ({breakout_probability:.2f})"
+                    return f"{self.name}: Rejeté - Probabilité breakout élevée ({self._safe_format(breakout_probability, '.2f')})"
                     
                 if range_age_bars is not None:
                     if range_age_bars < self.range_age_min:

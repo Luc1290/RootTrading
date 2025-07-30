@@ -287,15 +287,35 @@ async def get_configured_symbols():
         import sys
         import os
         
-        # Ajouter le chemin vers shared/src au PYTHONPATH
-        shared_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'shared', 'src'))
-        if shared_path not in sys.path:
-            sys.path.insert(0, shared_path)
+        # Essayer plusieurs chemins possibles pour shared/src
+        possible_paths = [
+            os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'shared', 'src')),  # Path relatif normal
+            os.path.abspath(os.path.join('/app', 'shared', 'src')),  # Path Docker
+            os.path.abspath(os.path.join('/app', '..', 'shared', 'src')),  # Path Docker alternatif
+            '/app/shared/src'  # Path absolu Docker
+        ]
         
-        # Import du module config
-        import config
+        config_imported = False
+        for shared_path in possible_paths:
+            if os.path.exists(shared_path) and shared_path not in sys.path:
+                sys.path.insert(0, shared_path)
+                logger.debug(f"Added path to sys.path: {shared_path}")
+                
+                try:
+                    # Import du module config
+                    import config
+                    config_imported = True
+                    logger.info(f"Successfully imported config from: {shared_path}")
+                    break
+                except ImportError as ie:
+                    logger.debug(f"Failed to import config from {shared_path}: {ie}")
+                    continue
         
+        if not config_imported:
+            raise ImportError("Could not import config from any path")
+            
         return {"symbols": config.SYMBOLS}
+        
     except Exception as e:
         logger.error(f"Error getting configured symbols: {e}")
         # Fallback avec symboles par défaut en cas d'erreur
@@ -303,6 +323,7 @@ async def get_configured_symbols():
             "BTCUSDC", "ETHUSDC", "SOLUSDC", "XRPUSDC", "ADAUSDC", 
             "AVAXUSDC", "LINKUSDC", "AAVEUSDC", "SUIUSDC", "LDOUSDC"
         ]
+        logger.info(f"Using fallback symbols: {default_symbols}")
         return {"symbols": default_symbols}
 
 @app.get("/api/available-indicators")

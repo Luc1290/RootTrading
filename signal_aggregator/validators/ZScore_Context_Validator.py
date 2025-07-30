@@ -130,26 +130,26 @@ class ZScore_Context_Validator(BaseValidator):
             # 1. Validation Z-Score prix dans limites acceptables
             if price_zscore is not None:
                 if price_zscore < self.min_zscore_threshold or price_zscore > self.max_zscore_threshold:
-                    logger.debug(f"{self.name}: Z-Score prix hors limites ({price_zscore:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Z-Score prix hors limites ({self._safe_format(price_zscore, '.2f')}) pour {self.symbol}")
                     if signal_confidence < 0.9:
                         return False
                         
                 # Validation Z-Score extrême
                 if abs(price_zscore) > self.extreme_zscore_threshold:
-                    logger.debug(f"{self.name}: Z-Score prix extrême ({price_zscore:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Z-Score prix extrême ({self._safe_format(price_zscore, '.2f')}) pour {self.symbol}")
                     if signal_confidence < 0.8:
                         return False
                         
             # 2. Validation Z-Score volume
             if volume_zscore is not None:
                 if abs(volume_zscore) > self.volume_zscore_extreme:
-                    logger.debug(f"{self.name}: Z-Score volume extrême ({volume_zscore:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Z-Score volume extrême ({self._safe_format(volume_zscore, '.2f')}) pour {self.symbol}")
                     if signal_confidence < 0.7:
                         return False
                         
                 # Validation anomalie volume
                 if abs(volume_zscore) > self.volume_anomaly_threshold:
-                    logger.debug(f"{self.name}: Anomalie volume détectée ({volume_zscore:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Anomalie volume détectée ({self._safe_format(volume_zscore, '.2f')}) pour {self.symbol}")
                     if signal_confidence < 0.6:
                         return False
                         
@@ -164,36 +164,36 @@ class ZScore_Context_Validator(BaseValidator):
                         
             # 4. Validation significativité statistique
             if statistical_significance is not None and statistical_significance < 0.05:
-                logger.debug(f"{self.name}: Significativité statistique insuffisante ({statistical_significance:.3f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Significativité statistique insuffisante ({self._safe_format(statistical_significance, '.3f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
             # 5. Validation normalité distribution
             if distribution_normality is not None and distribution_normality < self.min_normality_score:
-                logger.debug(f"{self.name}: Normalité distribution insuffisante ({distribution_normality:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Normalité distribution insuffisante ({self._safe_format(distribution_normality, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
             # 6. Validation asymétrie et aplatissement
             if distribution_skewness is not None and abs(distribution_skewness) > self.skewness_threshold:
-                logger.debug(f"{self.name}: Asymétrie distribution excessive ({distribution_skewness:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Asymétrie distribution excessive ({self._safe_format(distribution_skewness, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
             if distribution_kurtosis is not None and distribution_kurtosis > self.kurtosis_threshold * 2:
-                logger.debug(f"{self.name}: Aplatissement distribution excessif ({distribution_kurtosis:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Aplatissement distribution excessif ({self._safe_format(distribution_kurtosis, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
             # 7. Validation ratio outliers
             if outlier_ratio is not None and outlier_ratio > self.outlier_ratio_max:
-                logger.debug(f"{self.name}: Ratio outliers excessif ({outlier_ratio*100:.1f}%) pour {self.symbol}")
+                logger.debug(f"{self.name}: Ratio outliers excessif ({self._safe_format(outlier_ratio*100, '.1f')}%) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
             # 8. Validation stabilité Z-Score
             if zscore_stability is not None and zscore_stability < self.zscore_stability_threshold:
-                logger.debug(f"{self.name}: Stabilité Z-Score insuffisante ({zscore_stability:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Stabilité Z-Score insuffisante ({self._safe_format(zscore_stability, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
@@ -205,19 +205,19 @@ class ZScore_Context_Validator(BaseValidator):
                     
             # 10. Validation confluence statistique
             if statistical_confluence is not None and statistical_confluence < self.min_statistical_confluence:
-                logger.debug(f"{self.name}: Confluence statistique insuffisante ({statistical_confluence:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Confluence statistique insuffisante ({self._safe_format(statistical_confluence, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
             # 11. Validation cohérence trend/Z-Score
             if trend_zscore_coherence is not None and trend_zscore_coherence < self.zscore_coherence_threshold:
-                logger.debug(f"{self.name}: Cohérence trend/Z-Score insuffisante ({trend_zscore_coherence:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Cohérence trend/Z-Score insuffisante ({self._safe_format(trend_zscore_coherence, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
             # 12. Validation fiabilité données
             if data_reliability_score is not None and data_reliability_score < self.context_reliability_min:
-                logger.debug(f"{self.name}: Fiabilité données insuffisante ({data_reliability_score:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Fiabilité données insuffisante ({self._safe_format(data_reliability_score, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
@@ -237,10 +237,10 @@ class ZScore_Context_Validator(BaseValidator):
                     return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
-                        f"Z-Score prix: {price_zscore:.2f if price_zscore is not None else 'N/A'}, "
-                        f"Z-Score volume: {volume_zscore:.2f if volume_zscore is not None else 'N/A'}, "
-                        f"Normalité: {distribution_normality:.2f if distribution_normality is not None else 'N/A'}, "
-                        f"Confluence: {statistical_confluence:.2f if statistical_confluence is not None else 'N/A'}")
+                        f"Z-Score prix: {self._safe_format(price_zscore, '.2f') if price_zscore is not None else 'N/A'}, "
+                        f"Z-Score volume: {self._safe_format(volume_zscore, '.2f') if volume_zscore is not None else 'N/A'}, "
+                        f"Normalité: {self._safe_format(distribution_normality, '.2f') if distribution_normality is not None else 'N/A'}, "
+                        f"Confluence: {self._safe_format(statistical_confluence, '.2f') if statistical_confluence is not None else 'N/A'}")
             
             return True
             
@@ -429,13 +429,13 @@ class ZScore_Context_Validator(BaseValidator):
                 reason = f"Contexte Z-Score favorable"
                 if price_zscore is not None:
                     zscore_desc = "extrême" if abs(price_zscore) > 2.5 else "fort" if abs(price_zscore) > 1.5 else "modéré"
-                    reason += f" (prix {zscore_desc}: {price_zscore:.2f})"
+                    reason += f" (prix {zscore_desc}: {self._safe_format(price_zscore, '.2f')})"
                 if volume_zscore is not None:
-                    reason += f", volume: {volume_zscore:.2f}"
+                    reason += f", volume: {self._safe_format(volume_zscore, '.2f')}"
                 if distribution_normality is not None:
-                    reason += f", normalité: {distribution_normality:.2f}"
+                    reason += f", normalité: {self._safe_format(distribution_normality, '.2f')}"
                 if statistical_confluence is not None:
-                    reason += f", confluence: {statistical_confluence:.2f}"
+                    reason += f", confluence: {self._safe_format(statistical_confluence, '.2f')}"
                 if context_persistence is not None:
                     reason += f", persistance: {context_persistence}p"
                     
@@ -443,18 +443,18 @@ class ZScore_Context_Validator(BaseValidator):
             else:
                 if price_zscore is not None:
                     if price_zscore < self.min_zscore_threshold or price_zscore > self.max_zscore_threshold:
-                        return f"{self.name}: Rejeté - Z-Score prix hors limites ({price_zscore:.2f})"
+                        return f"{self.name}: Rejeté - Z-Score prix hors limites ({self._safe_format(price_zscore, '.2f')})"
                     elif abs(price_zscore) > self.extreme_zscore_threshold:
-                        return f"{self.name}: Rejeté - Z-Score prix extrême ({price_zscore:.2f})"
+                        return f"{self.name}: Rejeté - Z-Score prix extrême ({self._safe_format(price_zscore, '.2f')})"
                         
                 if volume_zscore is not None and abs(volume_zscore) > self.volume_zscore_extreme:
-                    return f"{self.name}: Rejeté - Z-Score volume extrême ({volume_zscore:.2f})"
+                    return f"{self.name}: Rejeté - Z-Score volume extrême ({self._safe_format(volume_zscore, '.2f')})"
                     
                 if distribution_normality is not None and distribution_normality < self.min_normality_score:
-                    return f"{self.name}: Rejeté - Normalité distribution insuffisante ({distribution_normality:.2f})"
+                    return f"{self.name}: Rejeté - Normalité distribution insuffisante ({self._safe_format(distribution_normality, '.2f')})"
                     
                 if statistical_confluence is not None and statistical_confluence < self.min_statistical_confluence:
-                    return f"{self.name}: Rejeté - Confluence statistique insuffisante ({statistical_confluence:.2f})"
+                    return f"{self.name}: Rejeté - Confluence statistique insuffisante ({self._safe_format(statistical_confluence, '.2f')})"
                     
                 if context_persistence is not None and context_persistence < self.context_persistence_min:
                     return f"{self.name}: Rejeté - Persistance contexte insuffisante ({context_persistence} périodes)"

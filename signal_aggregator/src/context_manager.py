@@ -141,6 +141,13 @@ class ContextManager:
                 # Utiliser le convertisseur pour harmoniser les types
                 indicators = FieldConverter.convert_indicators(raw_indicators)
                 
+                # Log temporaire pour debug
+                logger.debug(f"Indicateurs récupérés pour {symbol} {timeframe}: {len(indicators)} champs")
+                if 'atr_14' in indicators:
+                    logger.debug(f"ATR_14 trouvé: {indicators['atr_14']}")
+                if 'atr_percentile' in indicators:
+                    logger.debug(f"ATR_percentile trouvé: {indicators['atr_percentile']}")
+                
                 return indicators
                 
         except Exception as e:

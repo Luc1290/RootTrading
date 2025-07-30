@@ -115,12 +115,12 @@ class Market_Structure_Validator(BaseValidator):
                         
             # 2. Validation force et confidence du régime
             if regime_strength is not None and regime_strength < self.regime_strength_min:
-                logger.debug(f"{self.name}: Force régime insuffisante ({regime_strength:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Force régime insuffisante ({self._safe_format(regime_strength, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
             if regime_confidence is not None and regime_confidence < self.regime_confidence_min:
-                logger.debug(f"{self.name}: Confidence régime insuffisante ({regime_confidence:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Confidence régime insuffisante ({self._safe_format(regime_confidence, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
@@ -132,19 +132,19 @@ class Market_Structure_Validator(BaseValidator):
                     
             # 4. Validation alignement tendance
             if trend_alignment is not None and trend_alignment < self.min_trend_alignment:
-                logger.debug(f"{self.name}: Alignement tendance insuffisant ({trend_alignment:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Alignement tendance insuffisant ({self._safe_format(trend_alignment, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
             # 5. Validation force signal globale
             if signal_strength is not None and signal_strength < self.min_signal_strength:
-                logger.debug(f"{self.name}: Force signal insuffisante ({signal_strength:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Force signal insuffisante ({self._safe_format(signal_strength, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
             # 6. Validation score confluence
             if confluence_score is not None and confluence_score < self.min_confluence_score:
-                logger.debug(f"{self.name}: Score confluence insuffisant ({confluence_score:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Score confluence insuffisant ({self._safe_format(confluence_score, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
@@ -161,7 +161,7 @@ class Market_Structure_Validator(BaseValidator):
                         
             # 8. Validation force tendance générale
             if trend_strength is not None and trend_strength < 0.3:
-                logger.debug(f"{self.name}: Tendance générale faible ({trend_strength:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Tendance générale faible ({self._safe_format(trend_strength, '.2f')}) pour {self.symbol}")
                 # En tendance faible, favoriser stratégies de mean reversion
                 if not self._is_meanreversion_strategy(signal_strategy):
                     if signal_confidence < 0.6:
@@ -169,14 +169,14 @@ class Market_Structure_Validator(BaseValidator):
                         
             # 9. Validation angle tendance
             if trend_angle is not None and abs(trend_angle) < self.trend_angle_min:
-                logger.debug(f"{self.name}: Angle tendance faible ({trend_angle:.1f}°) pour {self.symbol}")
+                logger.debug(f"{self.name}: Angle tendance faible ({self._safe_format(trend_angle, '.1f')}°) pour {self.symbol}")
                 if signal_confidence < 0.5:
                     return False
                     
             # 10. Validation pattern si détecté
             if pattern_detected and pattern_confidence is not None:
                 if pattern_confidence < 0.5:
-                    logger.debug(f"{self.name}: Pattern {pattern_detected} confidence faible ({pattern_confidence:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Pattern {pattern_detected} confidence faible ({self._safe_format(pattern_confidence, '.2f')}) pour {self.symbol}")
                     if signal_confidence < 0.7:
                         return False
                         
@@ -200,7 +200,7 @@ class Market_Structure_Validator(BaseValidator):
                         f"Régime: {market_regime or 'N/A'}, "
                         f"Volatilité: {volatility_regime or 'N/A'}, "
                         f"Bias: {directional_bias or 'N/A'}, "
-                        f"Alignment: {trend_alignment:.2f if trend_alignment is not None else 'N/A'}")
+                        f"Alignment: {self._safe_format(trend_alignment, '.2f') if trend_alignment is not None else 'N/A'}")
             
             return True
             
@@ -384,9 +384,9 @@ class Market_Structure_Validator(BaseValidator):
                 if directional_bias != 'N/A':
                     reason += f", bias: {directional_bias}"
                 if trend_alignment:
-                    reason += f", alignment: {trend_alignment:.2f}"
+                    reason += f", alignment: {self._safe_format(trend_alignment, '.2f')}"
                 if confluence_score:
-                    reason += f", confluence: {confluence_score:.2f}"
+                    reason += f", confluence: {self._safe_format(confluence_score, '.2f')}"
                     
                 strategy_match = self._validate_strategy_regime_match(
                     signal_strategy, market_regime, volatility_regime
@@ -405,9 +405,9 @@ class Market_Structure_Validator(BaseValidator):
                        (signal_side == "SELL" and directional_bias == "bullish"):
                         return f"{self.name}: Rejeté - Signal {signal_side} contradictoire avec bias {directional_bias or 'N/A'}"
                 elif trend_alignment and trend_alignment < self.min_trend_alignment:
-                    return f"{self.name}: Rejeté - Alignement tendance insuffisant ({trend_alignment:.2f})"
+                    return f"{self.name}: Rejeté - Alignement tendance insuffisant ({self._safe_format(trend_alignment, '.2f')})"
                 elif confluence_score and confluence_score < self.min_confluence_score:
-                    return f"{self.name}: Rejeté - Confluence insuffisante ({confluence_score:.2f})"
+                    return f"{self.name}: Rejeté - Confluence insuffisante ({self._safe_format(confluence_score, '.2f')})"
                     
                 strategy_match = self._validate_strategy_regime_match(
                     signal_strategy, market_regime, volatility_regime

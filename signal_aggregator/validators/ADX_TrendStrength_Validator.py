@@ -69,7 +69,7 @@ class ADX_TrendStrength_Validator(BaseValidator):
                 
             # 1. Vérification force tendance ADX
             if adx_14 < self.min_adx_strength:
-                logger.debug(f"{self.name}: ADX trop faible ({adx_14:.1f}) pour {self.symbol} - tendance insuffisante")
+                logger.debug(f"{self.name}: ADX trop faible ({self._safe_format(adx_14, '.1f')}) pour {self.symbol} - tendance insuffisante")
                 return False
                 
             # 2. Vérification cohérence directionnelle avec DI
@@ -79,18 +79,18 @@ class ADX_TrendStrength_Validator(BaseValidator):
                 if signal_side == "BUY":
                     # Pour BUY: +DI doit être > -DI
                     if plus_di <= minus_di:
-                        logger.debug(f"{self.name}: BUY signal mais +DI ({plus_di:.1f}) <= -DI ({minus_di:.1f}) pour {self.symbol}")
+                        logger.debug(f"{self.name}: BUY signal mais +DI ({self._safe_format(plus_di, '.1f')}) <= -DI ({self._safe_format(minus_di, '.1f')}) pour {self.symbol}")
                         return False
                         
                 elif signal_side == "SELL":
                     # Pour SELL: -DI doit être > +DI
                     if minus_di <= plus_di:
-                        logger.debug(f"{self.name}: SELL signal mais -DI ({minus_di:.1f}) <= +DI ({plus_di:.1f}) pour {self.symbol}")
+                        logger.debug(f"{self.name}: SELL signal mais -DI ({self._safe_format(minus_di, '.1f')}) <= +DI ({self._safe_format(plus_di, '.1f')}) pour {self.symbol}")
                         return False
                         
                 # Vérification séparation suffisante des DI
                 if di_separation < self.di_separation_min:
-                    logger.debug(f"{self.name}: Séparation DI insuffisante ({di_separation:.1f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Séparation DI insuffisante ({self._safe_format(di_separation, '.1f')}) pour {self.symbol}")
                     return False
                     
             # 3. Vérification cohérence avec directional_bias
@@ -105,26 +105,26 @@ class ADX_TrendStrength_Validator(BaseValidator):
             # 4. Bonus pour tendance très forte
             if adx_14 >= self.strong_adx_threshold:
                 # Tendance forte - signal validé
-                logger.debug(f"{self.name}: Tendance forte ADX ({adx_14:.1f}) - signal validé pour {self.symbol}")
+                logger.debug(f"{self.name}: Tendance forte ADX ({self._safe_format(adx_14, '.1f')}) - signal validé pour {self.symbol}")
                 
                 if adx_14 >= self.extreme_adx_threshold:
-                    logger.debug(f"{self.name}: Tendance extrême ADX ({adx_14:.1f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Tendance extrême ADX ({self._safe_format(adx_14, '.1f')}) pour {self.symbol}")
                     
             # 5. Vérification trend_strength pour cohérence
             if trend_strength is not None:
                 if trend_strength < 0.3:  # Tendance très faible selon autre mesure
-                    logger.debug(f"{self.name}: Trend strength faible ({trend_strength:.2f}) malgré ADX pour {self.symbol}")
+                    logger.debug(f"{self.name}: Trend strength faible ({self._safe_format(trend_strength, '.2f')}) malgré ADX pour {self.symbol}")
                     # Ne pas rejeter mais noter l'incohérence
                     
             # 6. Validation finale selon confidence du signal
             if signal_confidence < 0.3 and adx_14 < self.strong_adx_threshold:
                 # Signal faible + tendance modérée = rejet
-                logger.debug(f"{self.name}: Signal confidence faible ({signal_confidence:.2f}) + ADX modéré ({adx_14:.1f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Signal confidence faible ({self._safe_format(signal_confidence, '.2f')}) + ADX modéré ({self._safe_format(adx_14, '.1f')}) pour {self.symbol}")
                 return False
                 
-            logger.debug(f"{self.name}: Signal validé pour {self.symbol} - ADX: {adx_14:.1f}, "
-                        f"+DI: {plus_di:.1f if plus_di is not None else 'N/A'}, "
-                        f"-DI: {minus_di:.1f if minus_di is not None else 'N/A'}, "
+            logger.debug(f"{self.name}: Signal validé pour {self.symbol} - ADX: {self._safe_format(adx_14, '.1f')}, "
+                        f"+DI: {self._safe_format(plus_di, '.1f') if plus_di is not None else 'N/A'}, "
+                        f"-DI: {self._safe_format(minus_di, '.1f') if minus_di is not None else 'N/A'}, "
                         f"Side: {signal_side}")
             
             return True
@@ -205,21 +205,21 @@ class ADX_TrendStrength_Validator(BaseValidator):
                 strength_desc = "extrême" if adx_14 >= self.extreme_adx_threshold else \
                                "forte" if adx_14 >= self.strong_adx_threshold else "modérée"
                                
-                reason = f"Tendance {strength_desc} (ADX: {adx_14:.1f})"
+                reason = f"Tendance {strength_desc} (ADX: {self._safe_format(adx_14, '.1f')})"
                 
                 if plus_di is not None and minus_di is not None:
                     di_sep = abs(plus_di - minus_di)
-                    reason += f", DI séparation: {di_sep:.1f}"
+                    reason += f", DI séparation: {self._safe_format(di_sep, '.1f')}"
                     
                 return f"{self.name}: Validé - {reason} pour signal {signal_side}"
             else:
                 if adx_14 < self.min_adx_strength:
-                    return f"{self.name}: Rejeté - Tendance trop faible (ADX: {adx_14:.1f})"
+                    return f"{self.name}: Rejeté - Tendance trop faible (ADX: {self._safe_format(adx_14, '.1f')})"
                 elif plus_di is not None and minus_di is not None:
                     if signal_side == "BUY" and plus_di <= minus_di:
-                        return f"{self.name}: Rejeté - BUY mais +DI ({plus_di:.1f}) <= -DI ({minus_di:.1f})"
+                        return f"{self.name}: Rejeté - BUY mais +DI ({self._safe_format(plus_di, '.1f')}) <= -DI ({self._safe_format(minus_di, '.1f')})"
                     elif signal_side == "SELL" and minus_di <= plus_di:
-                        return f"{self.name}: Rejeté - SELL mais -DI ({minus_di:.1f}) <= +DI ({plus_di:.1f})"
+                        return f"{self.name}: Rejeté - SELL mais -DI ({self._safe_format(minus_di, '.1f')}) <= +DI ({self._safe_format(plus_di, '.1f')})"
                         
                 return f"{self.name}: Rejeté - Critères ADX non respectés"
                 

@@ -96,22 +96,22 @@ class Volume_Quality_Score_Validator(BaseValidator):
             # 1. Vérification score qualité volume
             if volume_quality_score is not None:
                 if volume_quality_score < self.min_quality_score:
-                    logger.debug(f"{self.name}: Qualité volume insuffisante ({volume_quality_score:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Qualité volume insuffisante ({self._safe_format(volume_quality_score, '.2f')}) pour {self.symbol}")
                     return False
                     
                 # Volume excellent - signal favorisé
                 if volume_quality_score >= self.excellent_quality_score:
-                    logger.debug(f"{self.name}: Excellente qualité volume ({volume_quality_score:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Excellente qualité volume ({self._safe_format(volume_quality_score, '.2f')}) pour {self.symbol}")
                     
             # 2. Vérification volume relatif
             if relative_volume < self.min_relative_volume:
-                logger.debug(f"{self.name}: Volume relatif trop faible ({relative_volume:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Volume relatif trop faible ({self._safe_format(relative_volume, '.2f')}) pour {self.symbol}")
                 return False
                 
             # Volume extrême - vigilance manipulation
             if relative_volume >= self.extreme_relative_volume:
                 if signal_confidence < 0.8:
-                    logger.debug(f"{self.name}: Volume extrême ({relative_volume:.2f}x) nécessite confidence élevée pour {self.symbol}")
+                    logger.debug(f"{self.name}: Volume extrême ({self._safe_format(relative_volume, '.2f')}x) nécessite confidence élevée pour {self.symbol}")
                     return False
                     
             # 3. Vérification patterns volume
@@ -152,7 +152,7 @@ class Volume_Quality_Score_Validator(BaseValidator):
             if volume_spike_multiplier >= self.spike_threshold:
                 # Spike important - vérifier authenticité
                 if volume_quality_score is not None and volume_quality_score < self.good_quality_score:
-                    logger.debug(f"{self.name}: Spike volume ({volume_spike_multiplier:.1f}x) avec qualité faible pour {self.symbol}")
+                    logger.debug(f"{self.name}: Spike volume ({self._safe_format(volume_spike_multiplier, '.1f')}x) avec qualité faible pour {self.symbol}")
                     return False
                     
                 # Spike authentique mais besoin de confirmation
@@ -185,7 +185,7 @@ class Volume_Quality_Score_Validator(BaseValidator):
             if trade_intensity is not None:
                 # Intensité très faible = peu d'intérêt
                 if trade_intensity < 0.1:
-                    logger.debug(f"{self.name}: Intensité trading trop faible ({trade_intensity:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Intensité trading trop faible ({self._safe_format(trade_intensity, '.2f')}) pour {self.symbol}")
                     return False
                     
             # 9. Vérification cohérence quote/base volume
@@ -193,7 +193,7 @@ class Volume_Quality_Score_Validator(BaseValidator):
                 # Ratio anormal peut indiquer manipulation
                 if quote_volume_ratio < 0.5 or quote_volume_ratio > 2.0:
                     if signal_confidence < 0.7:
-                        logger.debug(f"{self.name}: Ratio quote/base volume anormal ({quote_volume_ratio:.2f}) pour {self.symbol}")
+                        logger.debug(f"{self.name}: Ratio quote/base volume anormal ({self._safe_format(quote_volume_ratio, '.2f')}) pour {self.symbol}")
                         return False
                         
             logger.debug(f"{self.name}: Signal validé pour {self.symbol}")
@@ -304,18 +304,18 @@ class Volume_Quality_Score_Validator(BaseValidator):
                     
                 # Déterminer conditions
                 if relative_volume >= self.high_relative_volume:
-                    condition = f"volume élevé ({relative_volume:.1f}x)"
+                    condition = f"volume élevé ({self._safe_format(relative_volume, '.1f')}x)"
                 elif volume_pattern and volume_pattern != 'N/A':
                     condition = f"pattern {volume_pattern}"
                 else:
                     condition = f"volume {quality}"
                     
-                return f"{self.name}: Validé - {condition} (score: {volume_quality_score:.2f}) pour signal {signal_side}"
+                return f"{self.name}: Validé - {condition} (score: {self._safe_format(volume_quality_score, '.2f')}) pour signal {signal_side}"
             else:
                 if volume_quality_score < self.min_quality_score:
-                    return f"{self.name}: Rejeté - Qualité volume insuffisante ({volume_quality_score:.2f})"
+                    return f"{self.name}: Rejeté - Qualité volume insuffisante ({self._safe_format(volume_quality_score, '.2f')})"
                 elif relative_volume < self.min_relative_volume:
-                    return f"{self.name}: Rejeté - Volume trop faible ({relative_volume:.2f}x moyenne)"
+                    return f"{self.name}: Rejeté - Volume trop faible ({self._safe_format(relative_volume, '.2f')}x moyenne)"
                 elif volume_pattern in ['wash_trading', 'bot_activity', 'fake_volume']:
                     return f"{self.name}: Rejeté - Pattern volume suspect ({volume_pattern})"
                 elif volume_context in ['no_interest', 'dead_market']:

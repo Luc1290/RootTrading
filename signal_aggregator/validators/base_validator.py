@@ -63,6 +63,12 @@ class BaseValidator(ABC):
         if not self.data or not self.context:
             logger.warning(f"{self.name}: Données ou contexte manquants")
             return False
+        
+        # Log temporaire pour debug
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"{self.name}: validate_data - data keys: {list(self.data.keys()) if self.data else 'None'}")
+            logger.debug(f"{self.name}: validate_data - context has {len(self.context)} keys")
+        
         return True
         
     def get_validation_reason(self, signal: Dict[str, Any], is_valid: bool) -> str:

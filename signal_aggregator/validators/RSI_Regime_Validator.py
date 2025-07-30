@@ -73,18 +73,18 @@ class RSI_Regime_Validator(BaseValidator):
             if signal_side == "BUY":
                 # Rejeter BUY en surachat extrême
                 if rsi_14 >= self.extreme_overbought:
-                    logger.debug(f"{self.name}: BUY rejeté - RSI surachat extrême ({rsi_14:.1f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: BUY rejeté - RSI surachat extrême ({self._safe_format(rsi_14, '.1f')}) pour {self.symbol}")
                     return False
                     
                 # Favoriser BUY en survente
                 if rsi_14 <= self.oversold_threshold:
-                    logger.debug(f"{self.name}: BUY favorisé - RSI survente ({rsi_14:.1f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: BUY favorisé - RSI survente ({self._safe_format(rsi_14, '.1f')}) pour {self.symbol}")
                     return True
                     
                 # BUY acceptable si RSI < 70 avec momentum positif
                 if rsi_14 < self.overbought_threshold:
                     if momentum_score is not None and momentum_score > 0.3:
-                        logger.debug(f"{self.name}: BUY accepté - RSI modéré ({rsi_14:.1f}) + momentum positif pour {self.symbol}")
+                        logger.debug(f"{self.name}: BUY accepté - RSI modéré ({self._safe_format(rsi_14, '.1f')}) + momentum positif pour {self.symbol}")
                         return True
                     elif rsi_14 < 65.0:  # Zone acceptable même sans momentum fort
                         return True
@@ -92,28 +92,28 @@ class RSI_Regime_Validator(BaseValidator):
                 # Zone neutre : besoin de momentum fort ou confidence élevée
                 if self.neutral_zone_min <= rsi_14 <= self.neutral_zone_max:
                     if signal_confidence >= 0.8:
-                        logger.debug(f"{self.name}: BUY accepté - Zone neutre mais confidence élevée ({signal_confidence:.2f}) pour {self.symbol}")
+                        logger.debug(f"{self.name}: BUY accepté - Zone neutre mais confidence élevée ({self._safe_format(signal_confidence, '.2f')}) pour {self.symbol}")
                         return True
                     else:
-                        logger.debug(f"{self.name}: BUY rejeté - Zone neutre RSI ({rsi_14:.1f}) + confidence faible pour {self.symbol}")
+                        logger.debug(f"{self.name}: BUY rejeté - Zone neutre RSI ({self._safe_format(rsi_14, '.1f')}) + confidence faible pour {self.symbol}")
                         return False
                         
             # 2. Validation des signaux SELL  
             elif signal_side == "SELL":
                 # Rejeter SELL en survente extrême
                 if rsi_14 <= self.extreme_oversold:
-                    logger.debug(f"{self.name}: SELL rejeté - RSI survente extrême ({rsi_14:.1f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: SELL rejeté - RSI survente extrême ({self._safe_format(rsi_14, '.1f')}) pour {self.symbol}")
                     return False
                     
                 # Favoriser SELL en surachat
                 if rsi_14 >= self.overbought_threshold:
-                    logger.debug(f"{self.name}: SELL favorisé - RSI surachat ({rsi_14:.1f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: SELL favorisé - RSI surachat ({self._safe_format(rsi_14, '.1f')}) pour {self.symbol}")
                     return True
                     
                 # SELL acceptable si RSI > 30 avec momentum négatif
                 if rsi_14 > self.oversold_threshold:
                     if momentum_score is not None and momentum_score < -0.3:
-                        logger.debug(f"{self.name}: SELL accepté - RSI modéré ({rsi_14:.1f}) + momentum négatif pour {self.symbol}")
+                        logger.debug(f"{self.name}: SELL accepté - RSI modéré ({self._safe_format(rsi_14, '.1f')}) + momentum négatif pour {self.symbol}")
                         return True
                     elif rsi_14 > 35.0:  # Zone acceptable même sans momentum fort
                         return True
@@ -121,21 +121,21 @@ class RSI_Regime_Validator(BaseValidator):
                 # Zone neutre : besoin de momentum fort ou confidence élevée
                 if self.neutral_zone_min <= rsi_14 <= self.neutral_zone_max:
                     if signal_confidence >= 0.8:
-                        logger.debug(f"{self.name}: SELL accepté - Zone neutre mais confidence élevée ({signal_confidence:.2f}) pour {self.symbol}")
+                        logger.debug(f"{self.name}: SELL accepté - Zone neutre mais confidence élevée ({self._safe_format(signal_confidence, '.2f')}) pour {self.symbol}")
                         return True
                     else:
-                        logger.debug(f"{self.name}: SELL rejeté - Zone neutre RSI ({rsi_14:.1f}) + confidence faible pour {self.symbol}")
+                        logger.debug(f"{self.name}: SELL rejeté - Zone neutre RSI ({self._safe_format(rsi_14, '.1f')}) + confidence faible pour {self.symbol}")
                         return False
                         
             # 3. Vérification cohérence RSI 14 vs RSI 21 si disponible
             if rsi_21 is not None:
                 rsi_divergence = abs(rsi_14 - rsi_21)
                 if rsi_divergence > 15.0:  # Divergence importante
-                    logger.debug(f"{self.name}: Divergence RSI14/RSI21 importante ({rsi_divergence:.1f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Divergence RSI14/RSI21 importante ({self._safe_format(rsi_divergence, '.1f')}) pour {self.symbol}")
                     # Ne pas rejeter mais noter l'incohérence
                     
-            logger.debug(f"{self.name}: Signal validé pour {self.symbol} - RSI14: {rsi_14:.1f}, "
-                        f"RSI21: {rsi_21:.1f if rsi_21 is not None else 'N/A'}, "
+            logger.debug(f"{self.name}: Signal validé pour {self.symbol} - RSI14: {self._safe_format(rsi_14, '.1f')}, "
+                        f"RSI21: {self._safe_format(rsi_21, '.1f') if rsi_21 is not None else 'N/A'}, "
                         f"Side: {signal_side}")
             
             return True
@@ -236,16 +236,16 @@ class RSI_Regime_Validator(BaseValidator):
                 else:
                     regime = "neutre"
                     
-                return f"{self.name}: Validé - RSI {regime} ({rsi_14:.1f}) favorable pour signal {signal_side}"
+                return f"{self.name}: Validé - RSI {regime} ({self._safe_format(rsi_14, '.1f')}) favorable pour signal {signal_side}"
             else:
                 if signal_side == "BUY" and rsi_14 >= self.extreme_overbought:
-                    return f"{self.name}: Rejeté - BUY en surachat extrême (RSI: {rsi_14:.1f})"
+                    return f"{self.name}: Rejeté - BUY en surachat extrême (RSI: {self._safe_format(rsi_14, '.1f')})"
                 elif signal_side == "SELL" and rsi_14 <= self.extreme_oversold:
-                    return f"{self.name}: Rejeté - SELL en survente extrême (RSI: {rsi_14:.1f})"
+                    return f"{self.name}: Rejeté - SELL en survente extrême (RSI: {self._safe_format(rsi_14, '.1f')})"
                 elif self.neutral_zone_min <= rsi_14 <= self.neutral_zone_max:
-                    return f"{self.name}: Rejeté - Zone neutre RSI ({rsi_14:.1f}) sans momentum suffisant"
+                    return f"{self.name}: Rejeté - Zone neutre RSI ({self._safe_format(rsi_14, '.1f')}) sans momentum suffisant"
                 else:
-                    return f"{self.name}: Rejeté - Régime RSI défavorable ({rsi_14:.1f})"
+                    return f"{self.name}: Rejeté - Régime RSI défavorable ({self._safe_format(rsi_14, '.1f')})"
                     
         except Exception as e:
             return f"{self.name}: Erreur évaluation - {e}"

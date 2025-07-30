@@ -124,13 +124,13 @@ class Regime_Strength_Validator(BaseValidator):
                 
             # 1. Validation force du régime principal
             if regime_strength is not None and regime_strength < self.min_regime_strength:
-                logger.debug(f"{self.name}: Force régime insuffisante ({regime_strength:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Force régime insuffisante ({self._safe_format(regime_strength, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.8:
                     return False
                     
             # 2. Validation confidence du régime
             if regime_confidence is not None and regime_confidence < self.min_regime_confidence:
-                logger.debug(f"{self.name}: Confidence régime insuffisante ({regime_confidence:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Confidence régime insuffisante ({self._safe_format(regime_confidence, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
@@ -158,7 +158,7 @@ class Regime_Strength_Validator(BaseValidator):
                         
             # 5. Validation stabilité du régime
             if regime_stability is not None and regime_stability < 0.4:
-                logger.debug(f"{self.name}: Régime instable ({regime_stability:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Régime instable ({self._safe_format(regime_stability, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
@@ -169,7 +169,7 @@ class Regime_Strength_Validator(BaseValidator):
                     return False
                     
             if regime_transition_probability is not None and regime_transition_probability > self.transition_detection_threshold:
-                logger.debug(f"{self.name}: Probabilité transition élevée ({regime_transition_probability:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Probabilité transition élevée ({self._safe_format(regime_transition_probability, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
@@ -190,13 +190,13 @@ class Regime_Strength_Validator(BaseValidator):
                     
             # 9. Validation consensus score
             if regime_consensus_score is not None and regime_consensus_score < self.min_regime_consensus:
-                logger.debug(f"{self.name}: Consensus régimes insuffisant ({regime_consensus_score:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Consensus régimes insuffisant ({self._safe_format(regime_consensus_score, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
             # 10. Validation divergence entre régimes
             if regime_divergence_score is not None and regime_divergence_score > self.regime_divergence_threshold:
-                logger.debug(f"{self.name}: Divergence régimes excessive ({regime_divergence_score:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Divergence régimes excessive ({self._safe_format(regime_divergence_score, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
@@ -210,7 +210,7 @@ class Regime_Strength_Validator(BaseValidator):
                         
             # 12. Validation persistance du régime
             if regime_persistence is not None and regime_persistence < 0.3:
-                logger.debug(f"{self.name}: Persistance régime faible ({regime_persistence:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Persistance régime faible ({self._safe_format(regime_persistence, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
@@ -231,9 +231,9 @@ class Regime_Strength_Validator(BaseValidator):
                         
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
                         f"Régime: {current_regime or 'N/A'}, "
-                        f"Force: {regime_strength:.2f if regime_strength is not None else 'N/A'}, "
+                        f"Force: {self._safe_format(regime_strength, '.2f') if regime_strength is not None else 'N/A'}, "
                         f"Durée: {regime_duration_bars if regime_duration_bars is not None else 'N/A'}b, "
-                        f"Stabilité: {regime_stability:.2f if regime_stability is not None else 'N/A'}")
+                        f"Stabilité: {self._safe_format(regime_stability, '.2f') if regime_stability is not None else 'N/A'}")
             
             return True
             
@@ -483,9 +483,9 @@ class Regime_Strength_Validator(BaseValidator):
                 if current_regime != 'N/A':
                     reason += f" (type: {current_regime})"
                 if regime_strength is not None:
-                    reason += f", force: {regime_strength:.2f}"
+                    reason += f", force: {self._safe_format(regime_strength, '.2f')}"
                 if regime_confidence is not None:
-                    reason += f", confidence: {regime_confidence:.2f}"
+                    reason += f", confidence: {self._safe_format(regime_confidence, '.2f')}"
                 if regime_duration_bars is not None:
                     reason += f", durée: {regime_duration_bars}b"
                     
@@ -498,13 +498,13 @@ class Regime_Strength_Validator(BaseValidator):
                 if current_regime in self.unfavorable_regimes:
                     return f"{self.name}: Rejeté - Régime défavorable ({current_regime})"
                 elif regime_strength is not None and regime_strength < self.min_regime_strength:
-                    return f"{self.name}: Rejeté - Force régime insuffisante ({regime_strength:.2f})"
+                    return f"{self.name}: Rejeté - Force régime insuffisante ({self._safe_format(regime_strength, '.2f')})"
                 elif regime_confidence is not None and regime_confidence < self.min_regime_confidence:
-                    return f"{self.name}: Rejeté - Confidence régime insuffisante ({regime_confidence:.2f})"
+                    return f"{self.name}: Rejeté - Confidence régime insuffisante ({self._safe_format(regime_confidence, '.2f')})"
                 elif regime_in_transition:
                     return f"{self.name}: Rejeté - Régime en transition"
                 elif regime_transition_probability is not None and regime_transition_probability > self.transition_detection_threshold:
-                    return f"{self.name}: Rejeté - Probabilité transition élevée ({regime_transition_probability:.2f})"
+                    return f"{self.name}: Rejeté - Probabilité transition élevée ({self._safe_format(regime_transition_probability, '.2f')})"
                 elif regime_duration_bars is not None and regime_duration_bars < self.min_regime_duration:
                     return f"{self.name}: Rejeté - Régime trop récent ({regime_duration_bars or 'N/A'} barres)"
                     

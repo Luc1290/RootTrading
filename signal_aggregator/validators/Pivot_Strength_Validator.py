@@ -97,13 +97,27 @@ class Pivot_Strength_Validator(BaseValidator):
                 logger.warning(f"{self.name}: Erreur conversion indicateurs pour {self.symbol}: {e}")
                 return False
                 
-            # Récupération prix actuel depuis data
+                        # Récupération prix actuel depuis data
             current_price = None
-            if self.data and 'close' in self.data and self.data['close']:
-                try:
-                    current_price = float(self.data['close'][-1])
-                except (IndexError, ValueError, TypeError):
-                    pass
+            if self.data:
+                # Essayer d'abord la valeur scalaire (format préféré)
+                if 'close' in self.data and self.data['close'] is not None:
+                    try:
+                        if isinstance(self.data['close'], (int, float)):
+                            current_price = float(self.data['close'])
+                        elif isinstance(self.data['close'], list) and len(self.data['close']) > 0:
+                            current_price = self._get_current_price()
+                    except (IndexError, ValueError, TypeError):
+                        pass
+                
+                # Fallback: essayer current_price dans le contexte
+                if current_price is None:
+                    current_price = self.context.get('current_price')
+                    if current_price is not None:
+                        try:
+                            current_price = float(current_price)
+                        except (ValueError, TypeError):
+                            current_price = None
                     
             signal_side = signal.get('side')
             signal_strategy = signal.get('strategy', 'Unknown')
@@ -117,7 +131,7 @@ class Pivot_Strength_Validator(BaseValidator):
             if signal_side == "BUY":
                 # Pour BUY, vérifier pivot support
                 if pivot_support_strength is not None and pivot_support_strength < self.min_pivot_strength:
-                    logger.debug(f"{self.name}: BUY signal mais pivot support faible ({pivot_support_strength:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: BUY signal mais pivot support faible ({self._safe_format(pivot_support_strength, '.2f')}) pour {self.symbol}")
                     if signal_confidence < 0.8:
                         return False
                         
@@ -130,7 +144,7 @@ class Pivot_Strength_Validator(BaseValidator):
             elif signal_side == "SELL":
                 # Pour SELL, vérifier pivot résistance
                 if pivot_resistance_strength is not None and pivot_resistance_strength < self.min_pivot_strength:
-                    logger.debug(f"{self.name}: SELL signal mais pivot résistance faible ({pivot_resistance_strength:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: SELL signal mais pivot résistance faible ({self._safe_format(pivot_resistance_strength, '.2f')}) pour {self.symbol}")
                     if signal_confidence < 0.8:
                         return False
                         
@@ -146,17 +160,17 @@ class Pivot_Strength_Validator(BaseValidator):
                 distance_ratio = abs(current_price - relevant_pivot) / current_price
                 
                 if distance_ratio < self.min_distance_ratio:
-                    logger.debug(f"{self.name}: Trop proche du pivot ({distance_ratio*100:.2f}%) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Trop proche du pivot ({self._safe_format(distance_ratio*100, '.2f')}%) pour {self.symbol}")
                     if signal_confidence < 0.6:
                         return False
                 elif distance_ratio > self.max_distance_ratio:
-                    logger.debug(f"{self.name}: Trop loin du pivot ({distance_ratio*100:.2f}%) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Trop loin du pivot ({self._safe_format(distance_ratio*100, '.2f')}%) pour {self.symbol}")
                     if signal_confidence < 0.5:
                         return False
                         
             # 3. Validation confluence pivots
             if confluence_score is not None and confluence_score < self.min_confluence_score:
-                logger.debug(f"{self.name}: Score confluence pivots insuffisant ({confluence_score:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Score confluence pivots insuffisant ({self._safe_format(confluence_score, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
@@ -205,15 +219,15 @@ class Pivot_Strength_Validator(BaseValidator):
                 support_touch_count, resistance_touch_count, confluence_score
             )
             if pivot_quality < 0.4:
-                logger.debug(f"{self.name}: Qualité globale pivots insuffisante ({pivot_quality:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Qualité globale pivots insuffisante ({self._safe_format(pivot_quality, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
                         f"Pivot {'Support' if signal_side == 'BUY' else 'Résistance'}: "
-                        f"{relevant_pivot:.4f if relevant_pivot is not None else 'N/A'}, "
-                        f"Force: {(pivot_support_strength if signal_side == 'BUY' else pivot_resistance_strength):.2f if (pivot_support_strength if signal_side == 'BUY' else pivot_resistance_strength) else 'N/A'}, "
-                        f"Confluence: {confluence_score:.2f if confluence_score is not None else 'N/A'}")
+                        f"{self._safe_format(relevant_pivot, '.4f') if relevant_pivot is not None else 'N/A'}, "
+                        f"Force: {self._safe_format((pivot_support_strength if signal_side == 'BUY' else pivot_resistance_strength), '.2f') if (pivot_support_strength if signal_side == 'BUY' else pivot_resistance_strength) else 'N/A'}, "
+                        f"Confluence: {self._safe_format(confluence_score, '.2f') if confluence_score is not None else 'N/A'}")
             
             return True
             
@@ -357,7 +371,7 @@ class Pivot_Strength_Validator(BaseValidator):
                 
             # Bonus distance optimale (calculée si pivot disponible)
             try:
-                current_price = float(self.data['close'][-1]) if self.data and 'close' in self.data and self.data['close'] else None
+                current_price = self._get_current_price() if self.data and 'close' in self.data and self.data['close'] else None
                 pivot_support = float(self.context.get('pivot_support', 0)) if self.context.get('pivot_support') is not None else None
                 pivot_resistance = float(self.context.get('pivot_resistance', 0)) if self.context.get('pivot_resistance') is not None else None
                 
@@ -411,24 +425,24 @@ class Pivot_Strength_Validator(BaseValidator):
                 
                 reason = f"Pivot {level_type} favorable"
                 if relevant_strength:
-                    reason += f" (force: {relevant_strength:.2f})"
+                    reason += f" (force: {self._safe_format(relevant_strength, '.2f')})"
                 if relevant_touches:
                     reason += f", touches: {relevant_touches}"
                 if confluence_score:
-                    reason += f", confluence: {confluence_score:.2f}"
+                    reason += f", confluence: {self._safe_format(confluence_score, '.2f')}"
                     
                 return f"{self.name}: Validé - {reason} pour {signal_strategy} {signal_side}"
             else:
                 if signal_side == "BUY" and pivot_support_strength and pivot_support_strength < self.min_pivot_strength:
-                    return f"{self.name}: Rejeté - Pivot support faible ({pivot_support_strength:.2f})"
+                    return f"{self.name}: Rejeté - Pivot support faible ({self._safe_format(pivot_support_strength, '.2f')})"
                 elif signal_side == "SELL" and pivot_resistance_strength and pivot_resistance_strength < self.min_pivot_strength:
-                    return f"{self.name}: Rejeté - Pivot résistance faible ({pivot_resistance_strength:.2f})"
+                    return f"{self.name}: Rejeté - Pivot résistance faible ({self._safe_format(pivot_resistance_strength, '.2f')})"
                 elif support_touch_count and signal_side == "BUY" and support_touch_count < self.min_touch_count:
                     return f"{self.name}: Rejeté - Support touches insuffisantes ({support_touch_count})"
                 elif resistance_touch_count and signal_side == "SELL" and resistance_touch_count < self.min_touch_count:
                     return f"{self.name}: Rejeté - Résistance touches insuffisantes ({resistance_touch_count})"
                 elif confluence_score and confluence_score < self.min_confluence_score:
-                    return f"{self.name}: Rejeté - Confluence pivots insuffisante ({confluence_score:.2f})"
+                    return f"{self.name}: Rejeté - Confluence pivots insuffisante ({self._safe_format(confluence_score, '.2f')})"
                     
                 return f"{self.name}: Rejeté - Critères pivot strength non respectés"
                 
@@ -459,3 +473,25 @@ class Pivot_Strength_Validator(BaseValidator):
             return False
             
         return True
+        
+    def _get_current_price(self) -> float:
+        """Helper method to get current price from data or context."""
+        if self.data:
+            # Essayer d'abord la valeur scalaire (format préféré)
+            if 'close' in self.data and self.data['close'] is not None:
+                try:
+                    if isinstance(self.data['close'], (int, float)):
+                        return float(self.data['close'])
+                    elif isinstance(self.data['close'], list) and len(self.data['close']) > 0:
+                        return float(self.data['close'][-1])
+                except (IndexError, ValueError, TypeError):
+                    pass
+            
+            # Fallback: essayer current_price dans le contexte
+            current_price = self.context.get('current_price')
+            if current_price is not None:
+                try:
+                    return float(current_price)
+                except (ValueError, TypeError):
+                    pass
+        return None

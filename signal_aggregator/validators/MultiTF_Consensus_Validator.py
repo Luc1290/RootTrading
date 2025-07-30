@@ -96,31 +96,31 @@ class MultiTF_Consensus_Validator(BaseValidator):
                 
             # 1. Validation score consensus principal
             if consensus_score is not None and consensus_score < self.min_consensus_score:
-                logger.debug(f"{self.name}: Consensus score insuffisant ({consensus_score:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Consensus score insuffisant ({self._safe_format(consensus_score, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.8:  # Accepter seulement si très confiant
                     return False
                     
             # 2. Validation alignement timeframes
             if tf_alignment is not None and tf_alignment < self.min_tf_alignment:
-                logger.debug(f"{self.name}: Alignement TF insuffisant ({tf_alignment:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Alignement TF insuffisant ({self._safe_format(tf_alignment, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
             # 3. Validation alignement tendance
             if trend_alignment is not None and trend_alignment < self.min_ma_alignment:
-                logger.debug(f"{self.name}: Alignement tendance insuffisant ({trend_alignment:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Alignement tendance insuffisant ({self._safe_format(trend_alignment, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
             # 4. Validation force signal multi-TF
             if signal_strength is not None and signal_strength < self.min_signal_strength:
-                logger.debug(f"{self.name}: Force signal insuffisante ({signal_strength:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Force signal insuffisante ({self._safe_format(signal_strength, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
             # 5. Validation alignement moyennes mobiles calculé
             if ma_alignment_score < self.min_ma_alignment:
-                logger.debug(f"{self.name}: Alignement MA calculé insuffisant ({ma_alignment_score:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Alignement MA calculé insuffisant ({self._safe_format(ma_alignment_score, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
@@ -153,26 +153,26 @@ class MultiTF_Consensus_Validator(BaseValidator):
                 
                 for score, min_val, name in min_scores:
                     if score is not None and score < min_val:
-                        logger.debug(f"{self.name}: Stratégie MultiTF mais {name} insuffisant ({score:.2f}) pour {self.symbol}")
+                        logger.debug(f"{self.name}: Stratégie MultiTF mais {name} insuffisant ({self._safe_format(score, '.2f')}) pour {self.symbol}")
                         return False
                         
             # 9. Validation confluence si disponible
             if confluence_score is not None and confluence_score < 0.5:
-                logger.debug(f"{self.name}: Confluence générale faible ({confluence_score:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Confluence générale faible ({self._safe_format(confluence_score, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
             # 10. Validation pattern confidence
             if pattern_confidence is not None and pattern_confidence < 0.4:
-                logger.debug(f"{self.name}: Pattern confidence faible ({pattern_confidence:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Pattern confidence faible ({self._safe_format(pattern_confidence, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
-                        f"Consensus: {consensus_score:.2f if consensus_score is not None else 'N/A'}, "
-                        f"TF Alignment: {tf_alignment:.2f if tf_alignment is not None else 'N/A'}, "
-                        f"Trend Alignment: {trend_alignment:.2f if trend_alignment is not None else 'N/A'}, "
-                        f"MA Alignment: {ma_alignment_score:.2f}")
+                        f"Consensus: {self._safe_format(consensus_score, '.2f') if consensus_score is not None else 'N/A'}, "
+                        f"TF Alignment: {self._safe_format(tf_alignment, '.2f') if tf_alignment is not None else 'N/A'}, "
+                        f"Trend Alignment: {self._safe_format(trend_alignment, '.2f') if trend_alignment is not None else 'N/A'}, "
+                        f"MA Alignment: {self._safe_format(ma_alignment_score, '.2f')}")
             
             return True
             
@@ -401,19 +401,19 @@ class MultiTF_Consensus_Validator(BaseValidator):
                 
                 scores = []
                 if consensus_score is not None:
-                    scores.append(f"consensus: {consensus_score:.2f}")
+                    scores.append(f"consensus: {self._safe_format(consensus_score, '.2f')}")
                 if tf_alignment is not None:
-                    scores.append(f"TF alignment: {tf_alignment:.2f}")
+                    scores.append(f"TF alignment: {self._safe_format(tf_alignment, '.2f')}")
                 if trend_alignment is not None:
-                    scores.append(f"trend: {trend_alignment:.2f}")
+                    scores.append(f"trend: {self._safe_format(trend_alignment, '.2f')}")
                 if signal_strength is not None:
-                    scores.append(f"force: {signal_strength:.2f}")
+                    scores.append(f"force: {self._safe_format(signal_strength, '.2f')}")
                     
                 if scores:
                     reason += f" ({', '.join(scores)})"
                     
                 ma_alignment = self._calculate_ma_alignment()
-                reason += f", MA alignment: {ma_alignment:.2f}"
+                reason += f", MA alignment: {self._safe_format(ma_alignment, '.2f')}"
                 
                 if self._is_multitf_strategy(signal_strategy):
                     reason += " - stratégie spécialisée"
@@ -421,17 +421,17 @@ class MultiTF_Consensus_Validator(BaseValidator):
                 return f"{self.name}: Validé - {reason} pour {signal_strategy} {signal_side}"
             else:
                 if consensus_score is not None and consensus_score < self.min_consensus_score:
-                    return f"{self.name}: Rejeté - Consensus insuffisant ({consensus_score:.2f})"
+                    return f"{self.name}: Rejeté - Consensus insuffisant ({self._safe_format(consensus_score, '.2f')})"
                 elif tf_alignment is not None and tf_alignment < self.min_tf_alignment:
-                    return f"{self.name}: Rejeté - Alignement TF insuffisant ({tf_alignment:.2f})"
+                    return f"{self.name}: Rejeté - Alignement TF insuffisant ({self._safe_format(tf_alignment, '.2f')})"
                 elif trend_alignment is not None and trend_alignment < self.min_ma_alignment:
-                    return f"{self.name}: Rejeté - Alignement tendance insuffisant ({trend_alignment:.2f})"
+                    return f"{self.name}: Rejeté - Alignement tendance insuffisant ({self._safe_format(trend_alignment, '.2f')})"
                 elif signal_strength is not None and signal_strength < self.min_signal_strength:
-                    return f"{self.name}: Rejeté - Force signal insuffisante ({signal_strength:.2f})"
+                    return f"{self.name}: Rejeté - Force signal insuffisante ({self._safe_format(signal_strength, '.2f')})"
                     
                 ma_alignment = self._calculate_ma_alignment()
                 if ma_alignment < self.min_ma_alignment:
-                    return f"{self.name}: Rejeté - Alignement MA insuffisant ({ma_alignment:.2f})"
+                    return f"{self.name}: Rejeté - Alignement MA insuffisant ({self._safe_format(ma_alignment, '.2f')})"
                     
                 critical_divergence = self._detect_critical_divergences(
                     consensus_score, tf_alignment, trend_alignment, signal_strength

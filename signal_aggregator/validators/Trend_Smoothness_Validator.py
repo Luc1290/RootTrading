@@ -92,22 +92,22 @@ class Trend_Smoothness_Validator(BaseValidator):
             # 1. Vérification force de tendance
             if trend_strength is not None:
                 if trend_strength < self.min_trend_strength:
-                    logger.debug(f"{self.name}: Tendance trop faible ({trend_strength:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Tendance trop faible ({self._safe_format(trend_strength, '.2f')}) pour {self.symbol}")
                     return False
                     
             # 2. Vérification angle de tendance
             if trend_angle is not None:
                 abs_angle = abs(trend_angle)
                 if abs_angle < self.min_trend_angle:
-                    logger.debug(f"{self.name}: Angle de tendance trop faible ({abs_angle:.1f}°) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Angle de tendance trop faible ({self._safe_format(abs_angle, '.1f')}°) pour {self.symbol}")
                     return False
                     
                 # Vérification cohérence angle/signal
                 if signal_side == "BUY" and trend_angle < -self.min_trend_angle:
-                    logger.debug(f"{self.name}: BUY signal mais angle bearish ({trend_angle:.1f}°) pour {self.symbol}")
+                    logger.debug(f"{self.name}: BUY signal mais angle bearish ({self._safe_format(trend_angle, '.1f')}°) pour {self.symbol}")
                     return False
                 elif signal_side == "SELL" and trend_angle > self.min_trend_angle:
-                    logger.debug(f"{self.name}: SELL signal mais angle bullish ({trend_angle:.1f}°) pour {self.symbol}")
+                    logger.debug(f"{self.name}: SELL signal mais angle bullish ({self._safe_format(trend_angle, '.1f')}°) pour {self.symbol}")
                     return False
                     
             # 3. Vérification alignement des moyennes mobiles
@@ -131,7 +131,7 @@ class Trend_Smoothness_Validator(BaseValidator):
             # 4. Vérification alignement général des tendances
             if trend_alignment is not None:
                 if trend_alignment < self.min_trend_alignment:
-                    logger.debug(f"{self.name}: Alignement des tendances insuffisant ({trend_alignment:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Alignement des tendances insuffisant ({self._safe_format(trend_alignment, '.2f')}) pour {self.symbol}")
                     return False
                     
             # 5. Vérification cohérence directional_bias
@@ -152,23 +152,23 @@ class Trend_Smoothness_Validator(BaseValidator):
             if atr_percentile is not None:
                 if atr_percentile > 90.0:  # ATR dans les 10% les plus élevés
                     if signal_confidence < 0.75:
-                        logger.debug(f"{self.name}: ATR extrême ({atr_percentile:.1f}%) nécessite confidence élevée pour {self.symbol}")
+                        logger.debug(f"{self.name}: ATR extrême ({self._safe_format(atr_percentile, '.1f')}%) nécessite confidence élevée pour {self.symbol}")
                         return False
                         
             # 8. Bonus pour tendances très fluides
             smooth_bonus = False
             if trend_strength is not None and trend_strength >= self.very_smooth_threshold:
-                logger.debug(f"{self.name}: Tendance très fluide détectée ({trend_strength:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Tendance très fluide détectée ({self._safe_format(trend_strength, '.2f')}) pour {self.symbol}")
                 smooth_bonus = True
                 
             if trend_alignment is not None and trend_alignment >= self.strong_alignment_threshold:
-                logger.debug(f"{self.name}: Alignement fort détecté ({trend_alignment:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Alignement fort détecté ({self._safe_format(trend_alignment, '.2f')}) pour {self.symbol}")
                 smooth_bonus = True
                 
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
-                        f"Trend strength: {trend_strength:.2f if trend_strength is not None else 'N/A'}, "
-                        f"Angle: {trend_angle:.1f if trend_angle is not None else 'N/A'}°, "
-                        f"Alignment: {trend_alignment:.2f if trend_alignment is not None else 'N/A'}, "
+                        f"Trend strength: {self._safe_format(trend_strength, '.2f') if trend_strength is not None else 'N/A'}, "
+                        f"Angle: {self._safe_format(trend_angle, '.1f') if trend_angle is not None else 'N/A'}°, "
+                        f"Alignment: {self._safe_format(trend_alignment, '.2f') if trend_alignment is not None else 'N/A'}, "
                         f"Side: {signal_side}")
             
             return True
@@ -277,19 +277,19 @@ class Trend_Smoothness_Validator(BaseValidator):
                 reason = f"Tendance {quality}"
                 
                 if trend_angle is not None:
-                    reason += f" (angle: {trend_angle:.1f}°)"
+                    reason += f" (angle: {self._safe_format(trend_angle, '.1f')}°)"
                     
                 if trend_alignment is not None:
-                    reason += f" (alignement: {trend_alignment:.2f})"
+                    reason += f" (alignement: {self._safe_format(trend_alignment, '.2f')})"
                     
                 return f"{self.name}: Validé - {reason} pour signal {signal_side}"
             else:
                 if trend_strength is not None and trend_strength < self.min_trend_strength:
-                    return f"{self.name}: Rejeté - Tendance trop faible ({trend_strength:.2f})"
+                    return f"{self.name}: Rejeté - Tendance trop faible ({self._safe_format(trend_strength, '.2f')})"
                 elif trend_angle is not None and abs(trend_angle) < self.min_trend_angle:
-                    return f"{self.name}: Rejeté - Angle tendance insuffisant ({trend_angle:.1f}°)"
+                    return f"{self.name}: Rejeté - Angle tendance insuffisant ({self._safe_format(trend_angle, '.1f')}°)"
                 elif trend_alignment is not None and trend_alignment < self.min_trend_alignment:
-                    return f"{self.name}: Rejeté - Alignement insuffisant ({trend_alignment:.2f})"
+                    return f"{self.name}: Rejeté - Alignement insuffisant ({self._safe_format(trend_alignment, '.2f')})"
                 else:
                     return f"{self.name}: Rejeté - Tendance non fluide ou incohérente"
                     

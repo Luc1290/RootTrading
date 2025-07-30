@@ -94,12 +94,14 @@ class Psychological_Level_Validator(BaseValidator):
                 logger.warning(f"{self.name}: Erreur conversion indicateurs pour {self.symbol}: {e}")
                 return False
                 
-            # Récupération prix actuel depuis data
-            current_price = None
-            if self.data and 'close' in self.data and self.data['close']:
+            # Récupération prix actuel depuis contexte ou data
+            current_price = self.context.get('current_price')
+            if current_price is None and self.data:
                 try:
-                    current_price = float(self.data['close'][-1])
-                except (IndexError, ValueError, TypeError):
+                    # Utiliser la valeur scalaire directement
+                    if 'close' in self.data and self.data['close'] is not None:
+                        current_price = float(self.data['close'])
+                except (ValueError, TypeError):
                     pass
                     
             signal_side = signal.get('side')
@@ -124,13 +126,13 @@ class Psychological_Level_Validator(BaseValidator):
                 
             if distance_to_level is not None:
                 if distance_to_level > self.max_distance_ratio:
-                    logger.debug(f"{self.name}: Trop loin du niveau psychologique ({distance_to_level*100:.2f}%) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Trop loin du niveau psychologique ({self._safe_format(distance_to_level*100, '.2f')}%) pour {self.symbol}")
                     if signal_confidence < 0.5:
                         return False
                         
             # 3. Validation force du niveau psychologique
             if psychological_level_strength is not None and psychological_level_strength < self.min_psychological_strength:
-                logger.debug(f"{self.name}: Niveau psychologique faible ({psychological_level_strength:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Niveau psychologique faible ({self._safe_format(psychological_level_strength, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
@@ -142,7 +144,7 @@ class Psychological_Level_Validator(BaseValidator):
                     
             # 5. Validation force des rebonds
             if level_bounce_strength is not None and level_bounce_strength < 0.3:
-                logger.debug(f"{self.name}: Rebonds historiques faibles ({level_bounce_strength:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Rebonds historiques faibles ({self._safe_format(level_bounce_strength, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
@@ -156,20 +158,20 @@ class Psychological_Level_Validator(BaseValidator):
             if level_approach_angle is not None:
                 # Angle trop steep peut indiquer un dépassement probable
                 if abs(level_approach_angle) > 45:  # Plus de 45 degrés
-                    logger.debug(f"{self.name}: Angle d'approche trop steep ({level_approach_angle:.1f}°) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Angle d'approche trop steep ({self._safe_format(level_approach_angle, '.1f')}°) pour {self.symbol}")
                     if signal_confidence < 0.7:
                         return False
                         
             # 8. Validation type de niveau psychologique
             level_importance = self._assess_level_importance(psychological_level_type, nearest_psychological_level)
             if level_importance < 0.3:
-                logger.debug(f"{self.name}: Niveau psychologique peu important ({level_importance:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Niveau psychologique peu important ({self._safe_format(level_importance, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
             # 9. Validation confluence psychologique
             if psychological_confluence_score is not None and psychological_confluence_score < 0.4:
-                logger.debug(f"{self.name}: Confluence psychologique insuffisante ({psychological_confluence_score:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Confluence psychologique insuffisante ({self._safe_format(psychological_confluence_score, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
@@ -190,10 +192,10 @@ class Psychological_Level_Validator(BaseValidator):
                     return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
-                        f"Niveau: {nearest_psychological_level:.4f if nearest_psychological_level is not None else 'N/A'}, "
+                        f"Niveau: {self._safe_format(nearest_psychological_level, '.4f') if nearest_psychological_level is not None else 'N/A'}, "
                         f"Type: {psychological_level_type or 'N/A'}, "
-                        f"Distance: {distance_to_level*100:.2f if distance_to_level is not None else 'N/A'}%, "
-                        f"Force: {psychological_level_strength:.2f if psychological_level_strength is not None else 'N/A'}")
+                        f"Distance: {self._safe_format(distance_to_level*100, '.2f') if distance_to_level is not None else 'N/A'}%, "
+                        f"Force: {self._safe_format(psychological_level_strength, '.2f') if psychological_level_strength is not None else 'N/A'}")
             
             return True
             
@@ -391,7 +393,7 @@ class Psychological_Level_Validator(BaseValidator):
                 
             # Détection automatique si pas de données contextuelles
             try:
-                current_price = float(self.data['close'][-1]) if self.data and 'close' in self.data and self.data['close'] else None
+                current_price = self._get_current_price() if self.data and 'close' in self.data and self.data['close'] else None
                 if current_price:
                     auto_level, auto_type = self._find_nearest_psychological_level(current_price)
                     if auto_level and auto_type == "major":
@@ -429,22 +431,22 @@ class Psychological_Level_Validator(BaseValidator):
             if is_valid:
                 reason = f"Niveau psychologique favorable"
                 if nearest_psychological_level:
-                    reason += f" (niveau: {nearest_psychological_level:.4f})"
+                    reason += f" (niveau: {self._safe_format(nearest_psychological_level, '.4f')})"
                 if psychological_level_type != 'N/A':
                     reason += f", type: {psychological_level_type}"
                 if distance_to_level:
-                    reason += f", distance: {distance_to_level*100:.2f}%"
+                    reason += f", distance: {self._safe_format(distance_to_level*100, '.2f')}%"
                 if psychological_level_strength:
-                    reason += f", force: {psychological_level_strength:.2f}"
+                    reason += f", force: {self._safe_format(psychological_level_strength, '.2f')}"
                 if level_reaction_count:
                     reason += f", réactions: {level_reaction_count}"
                     
                 return f"{self.name}: Validé - {reason} pour {signal_strategy} {signal_side}"
             else:
                 if distance_to_level and distance_to_level > self.max_distance_ratio:
-                    return f"{self.name}: Rejeté - Trop loin du niveau psychologique ({distance_to_level*100:.2f}%)"
+                    return f"{self.name}: Rejeté - Trop loin du niveau psychologique ({self._safe_format(distance_to_level*100, '.2f')}%)"
                 elif psychological_level_strength and psychological_level_strength < self.min_psychological_strength:
-                    return f"{self.name}: Rejeté - Niveau psychologique faible ({psychological_level_strength:.2f})"
+                    return f"{self.name}: Rejeté - Niveau psychologique faible ({self._safe_format(psychological_level_strength, '.2f')})"
                 elif level_reaction_count and level_reaction_count < self.min_reaction_count:
                     return f"{self.name}: Rejeté - Pas assez de réactions historiques ({level_reaction_count})"
                 elif not nearest_psychological_level:
@@ -484,3 +486,25 @@ class Psychological_Level_Validator(BaseValidator):
         logger.debug(f"{self.name}: {available_indicators}/{len(optional_indicators)} indicateurs psychologiques disponibles pour {self.symbol}")
         
         return True
+        
+    def _get_current_price(self) -> float:
+        """Helper method to get current price from data or context."""
+        if self.data:
+            # Essayer d'abord la valeur scalaire (format préféré)
+            if 'close' in self.data and self.data['close'] is not None:
+                try:
+                    if isinstance(self.data['close'], (int, float)):
+                        return float(self.data['close'])
+                    elif isinstance(self.data['close'], list) and len(self.data['close']) > 0:
+                        return float(self.data['close'][-1])
+                except (IndexError, ValueError, TypeError):
+                    pass
+            
+            # Fallback: essayer current_price dans le contexte
+            current_price = self.context.get('current_price')
+            if current_price is not None:
+                try:
+                    return float(current_price)
+                except (ValueError, TypeError):
+                    pass
+        return None

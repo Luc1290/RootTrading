@@ -58,10 +58,15 @@ class ATR_Volatility_Validator(BaseValidator):
                 
             # Extraction des indicateurs ATR depuis le contexte
             try:
+                # Log temporaire pour debug
+                logger.debug(f"{self.name}: Contexte reçu pour {self.symbol}: {list(self.context.keys())[:10]}...")
+                
                 atr_14 = float(self.context.get('atr_14', 0)) if self.context.get('atr_14') is not None else None
                 atr_percentile = float(self.context.get('atr_percentile', 50)) if self.context.get('atr_percentile') is not None else None
                 volatility_regime = self.context.get('volatility_regime')
                 natr = float(self.context.get('natr', 0)) if self.context.get('natr') is not None else None
+                
+                logger.debug(f"{self.name}: ATR values - atr_14: {atr_14}, atr_percentile: {atr_percentile}, regime: {volatility_regime}")
             except (ValueError, TypeError) as e:
                 logger.warning(f"{self.name}: Erreur conversion ATR pour {self.symbol}: {e}")
                 return False
@@ -76,25 +81,25 @@ class ATR_Volatility_Validator(BaseValidator):
                 
             # 1. Vérification ATR minimum absolu
             if atr_14 < self.min_atr_absolute:
-                logger.debug(f"{self.name}: ATR trop faible ({atr_14:.4f}) pour {self.symbol} - marché dormant")
+                logger.debug(f"{self.name}: ATR trop faible ({self._safe_format(atr_14, '.4f')}) pour {self.symbol} - marché dormant")
                 return False
                 
             # 2. Vérification volatilité extrême
             if atr_14 > self.extreme_atr_threshold:
-                logger.debug(f"{self.name}: ATR extrême ({atr_14:.4f}) pour {self.symbol} - risque trop élevé")
+                logger.debug(f"{self.name}: ATR extrême ({self._safe_format(atr_14, '.4f')}) pour {self.symbol} - risque trop élevé")
                 # Ne pas rejeter automatiquement, mais appliquer des critères plus stricts
                 if signal_confidence < 0.7:
-                    logger.debug(f"{self.name}: Signal confidence insuffisante ({signal_confidence:.2f}) pour volatilité extrême")
+                    logger.debug(f"{self.name}: Signal confidence insuffisante ({self._safe_format(signal_confidence, '.2f')}) pour volatilité extrême")
                     return False
                     
             # 3. Vérification percentile ATR
             if atr_percentile is not None:
                 if atr_percentile < self.min_atr_percentile:
-                    logger.debug(f"{self.name}: ATR percentile trop bas ({atr_percentile:.1f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: ATR percentile trop bas ({self._safe_format(atr_percentile, '.1f')}) pour {self.symbol}")
                     return False
                     
                 if atr_percentile > self.max_atr_percentile:
-                    logger.debug(f"{self.name}: ATR percentile trop élevé ({atr_percentile:.1f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: ATR percentile trop élevé ({self._safe_format(atr_percentile, '.1f')}) pour {self.symbol}")
                     # Critères plus stricts pour volatilité très élevée
                     if signal_confidence < 0.8:
                         return False
@@ -104,47 +109,47 @@ class ATR_Volatility_Validator(BaseValidator):
                 if volatility_regime == "low":
                     # Volatilité faible - accepter seulement signaux très confiants
                     if signal_confidence < 0.6:
-                        logger.debug(f"{self.name}: Régime volatilité faible mais confidence insuffisante ({signal_confidence:.2f}) pour {self.symbol}")
+                        logger.debug(f"{self.name}: Régime volatilité faible mais confidence insuffisante ({self._safe_format(signal_confidence, '.2f')}) pour {self.symbol}")
                         return False
                         
                 elif volatility_regime == "extreme":
                     # Volatilité extrême - très sélectif
                     if signal_confidence < 0.8:
-                        logger.debug(f"{self.name}: Régime volatilité extrême mais confidence insuffisante ({signal_confidence:.2f}) pour {self.symbol}")
+                        logger.debug(f"{self.name}: Régime volatilité extrême mais confidence insuffisante ({self._safe_format(signal_confidence, '.2f')}) pour {self.symbol}")
                         return False
                         
                 elif volatility_regime == "high":
                     # Volatilité élevée - moyennement sélectif
                     if signal_confidence < 0.5:
-                        logger.debug(f"{self.name}: Régime volatilité élevée mais confidence très faible ({signal_confidence:.2f}) pour {self.symbol}")
+                        logger.debug(f"{self.name}: Régime volatilité élevée mais confidence très faible ({self._safe_format(signal_confidence, '.2f')}) pour {self.symbol}")
                         return False
                         
             # 5. Validation spécifique selon la stratégie
             if self._is_breakout_strategy(signal_strategy):
                 # Stratégies de breakout nécessitent de la volatilité
                 if atr_percentile is not None and atr_percentile < 40.0:
-                    logger.debug(f"{self.name}: Stratégie breakout mais ATR percentile faible ({atr_percentile:.1f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Stratégie breakout mais ATR percentile faible ({self._safe_format(atr_percentile, '.1f')}) pour {self.symbol}")
                     return False
                     
             elif self._is_meanreversion_strategy(signal_strategy):
                 # Stratégies de mean reversion préfèrent volatilité modérée
                 if atr_percentile is not None and atr_percentile > 85.0:
-                    logger.debug(f"{self.name}: Stratégie mean reversion mais ATR percentile très élevé ({atr_percentile:.1f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Stratégie mean reversion mais ATR percentile très élevé ({self._safe_format(atr_percentile, '.1f')}) pour {self.symbol}")
                     return False
                     
             # 6. Vérification NATR (Normalized ATR) si disponible
             if natr is not None:
                 if natr < 0.5:  # NATR très faible
-                    logger.debug(f"{self.name}: NATR très faible ({natr:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: NATR très faible ({self._safe_format(natr, '.2f')}) pour {self.symbol}")
                     if signal_confidence < 0.7:
                         return False
                 elif natr > 8.0:  # NATR très élevé
-                    logger.debug(f"{self.name}: NATR très élevé ({natr:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: NATR très élevé ({self._safe_format(natr, '.2f')}) pour {self.symbol}")
                     if signal_confidence < 0.8:
                         return False
                         
-            logger.debug(f"{self.name}: Signal validé pour {self.symbol} - ATR: {atr_14:.4f}, "
-                        f"Percentile: {atr_percentile:.1f if atr_percentile is not None else 'N/A'}, "
+            logger.debug(f"{self.name}: Signal validé pour {self.symbol} - ATR: {self._safe_format(atr_14, '.4f')}, "
+                        f"Percentile: {self._safe_format(atr_percentile, '.1f') if atr_percentile is not None else 'N/A'}, "
                         f"Régime: {volatility_regime or 'N/A'}, "
                         f"Strategy: {signal_strategy}")
             
@@ -247,9 +252,9 @@ class ATR_Volatility_Validator(BaseValidator):
             
             if is_valid:
                 regime_desc = f"régime {volatility_regime}" if volatility_regime != 'N/A' else "régime normal"
-                percentile_desc = f"percentile {atr_percentile:.1f}" if atr_percentile is not None else "N/A"
+                percentile_desc = f"percentile {self._safe_format(atr_percentile, '.1f')}" if atr_percentile is not None else "N/A"
                 
-                reason = f"Volatilité acceptable (ATR: {atr_14:.4f}, {percentile_desc}, {regime_desc})"
+                reason = f"Volatilité acceptable (ATR: {self._safe_format(atr_14, '.4f')}, {percentile_desc}, {regime_desc})"
                 
                 if self.optimal_atr_min <= (atr_percentile or 50) <= self.optimal_atr_max:
                     reason += " - zone optimale"
@@ -257,13 +262,13 @@ class ATR_Volatility_Validator(BaseValidator):
                 return f"{self.name}: Validé - {reason} pour {signal_strategy}"
             else:
                 if atr_14 < self.min_atr_absolute:
-                    return f"{self.name}: Rejeté - ATR trop faible ({atr_14:.4f}) - marché dormant"
+                    return f"{self.name}: Rejeté - ATR trop faible ({self._safe_format(atr_14, '.4f')}) - marché dormant"
                 elif atr_14 > self.extreme_atr_threshold:
-                    return f"{self.name}: Rejeté - ATR extrême ({atr_14:.4f}) - risque élevé"
+                    return f"{self.name}: Rejeté - ATR extrême ({self._safe_format(atr_14, '.4f')}) - risque élevé"
                 elif atr_percentile and atr_percentile < self.min_atr_percentile:
-                    return f"{self.name}: Rejeté - ATR percentile trop bas ({atr_percentile:.1f})"
+                    return f"{self.name}: Rejeté - ATR percentile trop bas ({self._safe_format(atr_percentile, '.1f')})"
                 elif atr_percentile and atr_percentile > self.max_atr_percentile:
-                    return f"{self.name}: Rejeté - ATR percentile trop élevé ({atr_percentile:.1f})"
+                    return f"{self.name}: Rejeté - ATR percentile trop élevé ({self._safe_format(atr_percentile, '.1f')})"
                 elif volatility_regime == "extreme":
                     return f"{self.name}: Rejeté - Volatilité extrême + confidence insuffisante"
                     

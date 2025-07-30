@@ -144,12 +144,12 @@ class VWAP_Context_Validator(BaseValidator):
                 # Position extrême dans les bandes
                 if signal_side == "BUY" and band_position >= self.extreme_upper_threshold:
                     if signal_confidence < 0.8:
-                        logger.debug(f"{self.name}: BUY en position extrême haute bandes VWAP ({band_position:.2f}) pour {self.symbol}")
+                        logger.debug(f"{self.name}: BUY en position extrême haute bandes VWAP ({self._safe_format(band_position, '.2f')}) pour {self.symbol}")
                         return False
                         
                 elif signal_side == "SELL" and band_position <= self.extreme_lower_threshold:
                     if signal_confidence < 0.8:
-                        logger.debug(f"{self.name}: SELL en position extrême basse bandes VWAP ({band_position:.2f}) pour {self.symbol}")
+                        logger.debug(f"{self.name}: SELL en position extrême basse bandes VWAP ({self._safe_format(band_position, '.2f')}) pour {self.symbol}")
                         return False
                         
                 # Position haute/basse modérée
@@ -191,7 +191,7 @@ class VWAP_Context_Validator(BaseValidator):
                 # Ratio anormal peut indiquer problème de liquidité
                 if quote_vwap_ratio < 0.8 or quote_vwap_ratio > 1.2:
                     if signal_confidence < 0.6:
-                        logger.debug(f"{self.name}: Ratio VWAP quote/base anormal ({quote_vwap_ratio:.2f}) pour {self.symbol}")
+                        logger.debug(f"{self.name}: Ratio VWAP quote/base anormal ({self._safe_format(quote_vwap_ratio, '.2f')}) pour {self.symbol}")
                         return False
                         
             # 5. Intégration qualité volume si disponible
@@ -212,8 +212,8 @@ class VWAP_Context_Validator(BaseValidator):
                         return False
                         
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
-                        f"Prix: {current_price:.2f}, "
-                        f"VWAP: {main_vwap:.2f}, "
+                        f"Prix: {self._safe_format(current_price, '.2f')}, "
+                        f"VWAP: {self._safe_format(main_vwap, '.2f')}, "
                         f"Distance: {vwap_distance_pct:.2%}, "
                         f"Side: {signal_side}")
             

@@ -95,10 +95,10 @@ class S_R_Level_Proximity_Validator(BaseValidator):
                         if resistance_strength is not None and resistance_strength >= self.strong_level_threshold:
                             # Sauf si forte probabilité de cassure
                             if break_probability is None or break_probability < self.min_break_probability:
-                                logger.debug(f"{self.name}: BUY rejeté - trop proche résistance forte ({resistance_distance_pct:.3f}%) pour {self.symbol}")
+                                logger.debug(f"{self.name}: BUY rejeté - trop proche résistance forte ({self._safe_format(resistance_distance_pct, '.3f')}%) pour {self.symbol}")
                                 return False
                             else:
-                                logger.debug(f"{self.name}: BUY accepté - proche résistance mais forte probabilité cassure ({break_probability:.2f}) pour {self.symbol}")
+                                logger.debug(f"{self.name}: BUY accepté - proche résistance mais forte probabilité cassure ({self._safe_format(break_probability, '.2f')}) pour {self.symbol}")
                                 
                     # Zone de proximité modérée - besoin de conditions favorables
                     elif resistance_distance_pct <= self.close_proximity_threshold:
@@ -115,7 +115,7 @@ class S_R_Level_Proximity_Validator(BaseValidator):
                     # BUY près d'un support fort = favorable
                     if support_distance_pct <= self.close_proximity_threshold:
                         if support_strength is not None and support_strength >= self.strong_level_threshold:
-                            logger.debug(f"{self.name}: BUY favorisé - proche support fort ({support_distance_pct:.3f}%) pour {self.symbol}")
+                            logger.debug(f"{self.name}: BUY favorisé - proche support fort ({self._safe_format(support_distance_pct, '.3f')}%) pour {self.symbol}")
                             return True
                             
             # 2. Validation des signaux SELL
@@ -129,10 +129,10 @@ class S_R_Level_Proximity_Validator(BaseValidator):
                         if support_strength is not None and support_strength >= self.strong_level_threshold:
                             # Sauf si forte probabilité de cassure
                             if break_probability is None or break_probability < self.min_break_probability:
-                                logger.debug(f"{self.name}: SELL rejeté - trop proche support fort ({support_distance_pct:.3f}%) pour {self.symbol}")
+                                logger.debug(f"{self.name}: SELL rejeté - trop proche support fort ({self._safe_format(support_distance_pct, '.3f')}%) pour {self.symbol}")
                                 return False
                             else:
-                                logger.debug(f"{self.name}: SELL accepté - proche support mais forte probabilité cassure ({break_probability:.2f}) pour {self.symbol}")
+                                logger.debug(f"{self.name}: SELL accepté - proche support mais forte probabilité cassure ({self._safe_format(break_probability, '.2f')}) pour {self.symbol}")
                                 
                     # Zone de proximité modérée - besoin de conditions favorables
                     elif support_distance_pct <= self.close_proximity_threshold:
@@ -149,7 +149,7 @@ class S_R_Level_Proximity_Validator(BaseValidator):
                     # SELL près d'une résistance forte = favorable
                     if resistance_distance_pct <= self.close_proximity_threshold:
                         if resistance_strength is not None and resistance_strength >= self.strong_level_threshold:
-                            logger.debug(f"{self.name}: SELL favorisé - proche résistance forte ({resistance_distance_pct:.3f}%) pour {self.symbol}")
+                            logger.debug(f"{self.name}: SELL favorisé - proche résistance forte ({self._safe_format(resistance_distance_pct, '.3f')}%) pour {self.symbol}")
                             return True
                             
             # 3. Vérification zone de consolidation étroite
@@ -159,24 +159,24 @@ class S_R_Level_Proximity_Validator(BaseValidator):
                 # Range très étroit - signaux moins fiables
                 if sr_range_pct <= 0.01:  # 1% de range
                     if signal_confidence < 0.7:
-                        logger.debug(f"{self.name}: Signal rejeté - range S/R trop étroit ({sr_range_pct:.3f}%) + confidence faible pour {self.symbol}")
+                        logger.debug(f"{self.name}: Signal rejeté - range S/R trop étroit ({self._safe_format(sr_range_pct, '.3f')}%) + confidence faible pour {self.symbol}")
                         return False
                         
             # 4. Vérification force des niveaux
             if signal_side == "BUY" and support_strength is not None:
                 if support_strength < self.min_level_strength:
-                    logger.debug(f"{self.name}: BUY rejeté - support trop faible ({support_strength:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: BUY rejeté - support trop faible ({self._safe_format(support_strength, '.2f')}) pour {self.symbol}")
                     return False
                     
             elif signal_side == "SELL" and resistance_strength is not None:
                 if resistance_strength < self.min_level_strength:
-                    logger.debug(f"{self.name}: SELL rejeté - résistance trop faible ({resistance_strength:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: SELL rejeté - résistance trop faible ({self._safe_format(resistance_strength, '.2f')}) pour {self.symbol}")
                     return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
-                        f"Support: {nearest_support:.2f if nearest_support is not None else 'N/A'} ({support_strength:.2f if support_strength is not None else 'N/A'}), "
-                        f"Résistance: {nearest_resistance:.2f if nearest_resistance is not None else 'N/A'} ({resistance_strength:.2f if resistance_strength is not None else 'N/A'}), "
-                        f"Prix: {current_price:.2f}, Side: {signal_side}")
+                        f"Support: {self._safe_format(nearest_support, '.2f') if nearest_support is not None else 'N/A'} ({self._safe_format(support_strength, '.2f') if support_strength is not None else 'N/A'}), "
+                        f"Résistance: {self._safe_format(nearest_resistance, '.2f') if nearest_resistance is not None else 'N/A'} ({self._safe_format(resistance_strength, '.2f') if resistance_strength is not None else 'N/A'}), "
+                        f"Prix: {self._safe_format(current_price, '.2f')}, Side: {signal_side}")
             
             return True
             
@@ -289,12 +289,12 @@ class S_R_Level_Proximity_Validator(BaseValidator):
                 if signal_side == "BUY" and nearest_support is not None:
                     support_distance_pct = abs(current_price - nearest_support) / current_price
                     if support_distance_pct <= self.close_proximity_threshold and support_strength and support_strength >= self.strong_level_threshold:
-                        return f"{self.name}: Validé - BUY proche support fort (distance: {support_distance_pct:.2%}, force: {support_strength:.2f})"
+                        return f"{self.name}: Validé - BUY proche support fort (distance: {support_distance_pct:.2%}, force: {self._safe_format(support_strength, '.2f')})"
                         
                 elif signal_side == "SELL" and nearest_resistance is not None:
                     resistance_distance_pct = abs(nearest_resistance - current_price) / current_price
                     if resistance_distance_pct <= self.close_proximity_threshold and resistance_strength and resistance_strength >= self.strong_level_threshold:
-                        return f"{self.name}: Validé - SELL proche résistance forte (distance: {resistance_distance_pct:.2%}, force: {resistance_strength:.2f})"
+                        return f"{self.name}: Validé - SELL proche résistance forte (distance: {resistance_distance_pct:.2%}, force: {self._safe_format(resistance_strength, '.2f')})"
                         
                 return f"{self.name}: Validé - Position S/R favorable pour signal {signal_side}"
             else:

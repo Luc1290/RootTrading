@@ -128,19 +128,19 @@ class Volume_Spike_Validator(BaseValidator):
                 
             # 1. Validation multiplier spike minimum
             if volume_spike_multiplier is not None and volume_spike_multiplier < self.min_spike_multiplier:
-                logger.debug(f"{self.name}: Spike volume insuffisant ({volume_spike_multiplier:.2f}x) pour {self.symbol}")
+                logger.debug(f"{self.name}: Spike volume insuffisant ({self._safe_format(volume_spike_multiplier, '.2f')}x) pour {self.symbol}")
                 if signal_confidence < 0.8:
                     return False
                     
             # Validation spike maximum (éviter manipulation)
             if volume_spike_multiplier is not None and volume_spike_multiplier > self.max_spike_multiplier:
-                logger.debug(f"{self.name}: Spike volume excessif ({volume_spike_multiplier:.2f}x) - possible manipulation pour {self.symbol}")
+                logger.debug(f"{self.name}: Spike volume excessif ({self._safe_format(volume_spike_multiplier, '.2f')}x) - possible manipulation pour {self.symbol}")
                 if signal_confidence < 0.9:
                     return False
                     
             # 2. Validation force spike actuel
             if current_volume_spike is not None and current_volume_spike < self.min_spike_multiplier:
-                logger.debug(f"{self.name}: Spike actuel insuffisant ({current_volume_spike:.2f}x) pour {self.symbol}")
+                logger.debug(f"{self.name}: Spike actuel insuffisant ({self._safe_format(current_volume_spike, '.2f')}x) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
@@ -157,24 +157,24 @@ class Volume_Spike_Validator(BaseValidator):
                         
             # 4. Validation décroissance spike
             if spike_decay_rate is not None and spike_decay_rate > (1 - self.spike_decay_threshold):
-                logger.debug(f"{self.name}: Décroissance spike trop rapide ({spike_decay_rate:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Décroissance spike trop rapide ({self._safe_format(spike_decay_rate, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
             # 5. Validation qualité spike
             if spike_quality_score is not None and spike_quality_score < self.min_spike_quality:
-                logger.debug(f"{self.name}: Qualité spike insuffisante ({spike_quality_score:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Qualité spike insuffisante ({self._safe_format(spike_quality_score, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
             if spike_consistency is not None and spike_consistency < self.spike_consistency_threshold:
-                logger.debug(f"{self.name}: Consistance spike insuffisante ({spike_consistency:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Consistance spike insuffisante ({self._safe_format(spike_consistency, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
             # 6. Validation légitimité spike
             if spike_legitimacy_score is not None and spike_legitimacy_score < self.min_spike_legitimacy:
-                logger.debug(f"{self.name}: Légitimité spike douteuse ({spike_legitimacy_score:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Légitimité spike douteuse ({self._safe_format(spike_legitimacy_score, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
@@ -192,31 +192,31 @@ class Volume_Spike_Validator(BaseValidator):
                     
             # 8. Validation spike relatif au contexte
             if relative_spike_strength is not None and relative_spike_strength < self.min_relative_spike:
-                logger.debug(f"{self.name}: Spike relatif insuffisant ({relative_spike_strength:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Spike relatif insuffisant ({self._safe_format(relative_spike_strength, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
             # 9. Validation activité inhabituelle
             if market_activity_level is not None and market_activity_level < 0.3:
-                logger.debug(f"{self.name}: Activité marché faible ({market_activity_level:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Activité marché faible ({self._safe_format(market_activity_level, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.5:
                     return False
                     
             # 10. Validation divergence prix/volume
             if price_volume_divergence is not None and abs(price_volume_divergence) > self.max_price_volume_divergence:
-                logger.debug(f"{self.name}: Divergence prix/volume excessive ({price_volume_divergence:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Divergence prix/volume excessive ({self._safe_format(price_volume_divergence, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
             # 11. Validation confirmation prix
             if spike_price_confirmation is not None and spike_price_confirmation < self.spike_confirmation_threshold:
-                logger.debug(f"{self.name}: Confirmation prix insuffisante ({spike_price_confirmation:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Confirmation prix insuffisante ({self._safe_format(spike_price_confirmation, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
             # 12. Validation cohérence spike/tendance
             if volume_trend_coherence is not None and volume_trend_coherence < self.spike_vs_trend_coherence:
-                logger.debug(f"{self.name}: Cohérence spike/tendance insuffisante ({volume_trend_coherence:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Cohérence spike/tendance insuffisante ({self._safe_format(volume_trend_coherence, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
@@ -228,8 +228,8 @@ class Volume_Spike_Validator(BaseValidator):
                     return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
-                        f"Spike: {volume_spike_multiplier:.2f}x, "
-                        f"Qualité: {spike_quality_score:.2f if spike_quality_score is not None else 'N/A'}, "
+                        f"Spike: {self._safe_format(volume_spike_multiplier, '.2f')}x, "
+                        f"Qualité: {self._safe_format(spike_quality_score, '.2f') if spike_quality_score is not None else 'N/A'}, "
                         f"Durée: {spike_duration_bars or 'N/A'} barres, "
                         f"Timing: {time_since_spike or 'N/A'} barres ago")
             
@@ -391,25 +391,25 @@ class Volume_Spike_Validator(BaseValidator):
                 reason = f"Spike volume favorable"
                 if volume_spike_multiplier:
                     spike_desc = "exceptionnel" if volume_spike_multiplier >= self.exceptional_spike_multiplier else "fort" if volume_spike_multiplier >= self.strong_spike_multiplier else "modéré"
-                    reason += f" ({spike_desc}: {volume_spike_multiplier:.2f}x)"
+                    reason += f" ({spike_desc}: {self._safe_format(volume_spike_multiplier, '.2f')}x)"
                 if spike_quality_score:
-                    reason += f", qualité: {spike_quality_score:.2f}"
+                    reason += f", qualité: {self._safe_format(spike_quality_score, '.2f')}"
                 if spike_duration_bars:
                     reason += f", durée: {spike_duration_bars} barres"
                 if time_since_spike is not None:
                     timing_desc = "immédiat" if time_since_spike <= 1 else "récent" if time_since_spike <= 3 else "proche"
                     reason += f", timing: {timing_desc}"
                 if spike_legitimacy_score:
-                    reason += f", légitimité: {spike_legitimacy_score:.2f}"
+                    reason += f", légitimité: {self._safe_format(spike_legitimacy_score, '.2f')}"
                     
                 return f"{self.name}: Validé - {reason} pour {signal_strategy} {signal_side}"
             else:
                 if volume_spike_multiplier and volume_spike_multiplier < self.min_spike_multiplier:
-                    return f"{self.name}: Rejeté - Spike volume insuffisant ({volume_spike_multiplier:.2f}x)"
+                    return f"{self.name}: Rejeté - Spike volume insuffisant ({self._safe_format(volume_spike_multiplier, '.2f')}x)"
                 elif volume_spike_multiplier and volume_spike_multiplier > self.max_spike_multiplier:
-                    return f"{self.name}: Rejeté - Spike volume excessif ({volume_spike_multiplier:.2f}x) - manipulation possible"
+                    return f"{self.name}: Rejeté - Spike volume excessif ({self._safe_format(volume_spike_multiplier, '.2f')}x) - manipulation possible"
                 elif spike_quality_score and spike_quality_score < self.min_spike_quality:
-                    return f"{self.name}: Rejeté - Qualité spike insuffisante ({spike_quality_score:.2f})"
+                    return f"{self.name}: Rejeté - Qualité spike insuffisante ({self._safe_format(spike_quality_score, '.2f')})"
                 elif spike_duration_bars and spike_duration_bars < self.min_spike_duration:
                     return f"{self.name}: Rejeté - Durée spike insuffisante ({spike_duration_bars} barres)"
                 elif spike_duration_bars and spike_duration_bars > self.max_spike_duration:
@@ -417,7 +417,7 @@ class Volume_Spike_Validator(BaseValidator):
                 elif time_since_spike and time_since_spike > self.max_time_since_spike:
                     return f"{self.name}: Rejeté - Spike trop ancien ({time_since_spike} barres)"
                 elif spike_legitimacy_score and spike_legitimacy_score < self.min_spike_legitimacy:
-                    return f"{self.name}: Rejeté - Légitimité spike douteuse ({spike_legitimacy_score:.2f})"
+                    return f"{self.name}: Rejeté - Légitimité spike douteuse ({self._safe_format(spike_legitimacy_score, '.2f')})"
                     
                 return f"{self.name}: Rejeté - Critères volume spike non respectés"
                 

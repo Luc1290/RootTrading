@@ -88,13 +88,36 @@ class Liquidity_Sweep_Validator(BaseValidator):
                 logger.warning(f"{self.name}: Erreur conversion indicateurs pour {self.symbol}: {e}")
                 return False
                 
-            # Récupération prix actuel depuis data
+                        # Récupération prix actuel depuis data
             current_price = None
-            if self.data and 'close' in self.data and self.data['close']:
-                try:
-                    current_price = float(self.data['close'][-1])
-                except (IndexError, ValueError, TypeError):
-                    pass
+            if self.data:
+                # Essayer d'abord la valeur scalaire (format préféré)
+                if 'close' in self.data and self.data['close'] is not None:
+                    try:
+                        if isinstance(self.data['close'], (int, float)):
+                            current_price = float(self.data['close'])
+                        elif isinstance(self.data['close'], list) and len(self.data['close']) > 0:
+                            current_price = self._get_current_price()
+                    except (IndexError, ValueError, TypeError):
+                        pass
+                
+                # Fallback: essayer current_price dans le contexte
+                if current_price is None:
+                    current_price = self.context.get('current_price')
+                    if current_price is not None:
+                        try:
+                            current_price = float(current_price)
+                        except (ValueError, TypeError):
+                            current_price = None
+                
+                # Fallback: essayer current_price dans le contexte
+                if current_price is None:
+                    current_price = self.context.get('current_price')
+                    if current_price is not None:
+                        try:
+                            current_price = float(current_price)
+                        except (ValueError, TypeError):
+                            current_price = None
                     
             signal_side = signal.get('side')
             signal_strategy = signal.get('strategy', 'Unknown')
@@ -162,16 +185,16 @@ class Liquidity_Sweep_Validator(BaseValidator):
             
         # 1. Vérification force du support
         if support_strength is not None and support_strength < self.min_support_strength:
-            logger.debug(f"{self.name}: Support trop faible ({support_strength:.2f}) pour sweep {self.symbol}")
+            logger.debug(f"{self.name}: Support trop faible ({self._safe_format(support_strength, '.2f')}) pour sweep {self.symbol}")
             return False
             
         # 2. Vérification probabilité de cassure (zone optimale pour sweep)
         if break_probability is not None:
             if break_probability < self.min_break_probability:
-                logger.debug(f"{self.name}: Probabilité cassure trop faible ({break_probability:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Probabilité cassure trop faible ({self._safe_format(break_probability, '.2f')}) pour {self.symbol}")
                 return False
             elif break_probability > self.max_break_probability:
-                logger.debug(f"{self.name}: Probabilité cassure trop élevée ({break_probability:.2f}) - vraie cassure probable {self.symbol}")
+                logger.debug(f"{self.name}: Probabilité cassure trop élevée ({self._safe_format(break_probability, '.2f')}) - vraie cassure probable {self.symbol}")
                 return False
                 
         # 3. Vérification position prix par rapport au support
@@ -180,10 +203,10 @@ class Liquidity_Sweep_Validator(BaseValidator):
             sweep_distance = (nearest_support - current_price) / nearest_support
             
             if sweep_distance < self.min_sweep_distance:
-                logger.debug(f"{self.name}: Sweep distance trop faible ({sweep_distance*100:.2f}%) pour {self.symbol}")
+                logger.debug(f"{self.name}: Sweep distance trop faible ({self._safe_format(sweep_distance*100, '.2f')}%) pour {self.symbol}")
                 return False
             elif sweep_distance > self.max_sweep_distance:
-                logger.debug(f"{self.name}: Sweep distance excessive ({sweep_distance*100:.2f}%) - vraie cassure {self.symbol}")
+                logger.debug(f"{self.name}: Sweep distance excessive ({self._safe_format(sweep_distance*100, '.2f')}%) - vraie cassure {self.symbol}")
                 return False
                 
         elif current_price > nearest_support:
@@ -191,27 +214,27 @@ class Liquidity_Sweep_Validator(BaseValidator):
             recovery_distance = (current_price - nearest_support) / nearest_support
             
             if recovery_distance < self.min_recovery_distance:
-                logger.debug(f"{self.name}: Recovery insuffisante ({recovery_distance*100:.2f}%) pour {self.symbol}")
+                logger.debug(f"{self.name}: Recovery insuffisante ({self._safe_format(recovery_distance*100, '.2f')}%) pour {self.symbol}")
                 return False
                 
         # 4. Vérification volume (crucial pour liquidity sweep)
         if volume_ratio is not None and volume_ratio < self.min_volume_spike:
-            logger.debug(f"{self.name}: Volume spike insuffisant ({volume_ratio:.1f}x) pour sweep {self.symbol}")
+            logger.debug(f"{self.name}: Volume spike insuffisant ({self._safe_format(volume_ratio, '.1f')}x) pour sweep {self.symbol}")
             return False
             
         if volume_quality_score is not None and volume_quality_score < self.min_volume_quality:
-            logger.debug(f"{self.name}: Qualité volume insuffisante ({volume_quality_score:.2f}) pour sweep {self.symbol}")
+            logger.debug(f"{self.name}: Qualité volume insuffisante ({self._safe_format(volume_quality_score, '.2f')}) pour sweep {self.symbol}")
             return False
             
         # 5. Confirmation signal confidence pour sweep
         signal_confidence = signal.get('confidence', 0.0)
         if signal_confidence < 0.6:  # Sweep nécessite confidence élevée
-            logger.debug(f"{self.name}: Confidence trop faible ({signal_confidence:.2f}) pour sweep {self.symbol}")
+            logger.debug(f"{self.name}: Confidence trop faible ({self._safe_format(signal_confidence, '.2f')}) pour sweep {self.symbol}")
             return False
             
         logger.debug(f"{self.name}: Sweep haussier validé pour {self.symbol} - "
-                    f"Support: {nearest_support:.4f}, Prix: {current_price:.4f}, "
-                    f"Volume: {volume_ratio:.1f}x, Confidence: {signal_confidence:.2f}")
+                    f"Support: {self._safe_format(nearest_support, '.4f')}, Prix: {self._safe_format(current_price, '.4f')}, "
+                    f"Volume: {self._safe_format(volume_ratio, '.1f')}x, Confidence: {self._safe_format(signal_confidence, '.2f')}")
         
         return True
         
@@ -226,16 +249,16 @@ class Liquidity_Sweep_Validator(BaseValidator):
             
         # 1. Vérification force de la résistance
         if resistance_strength is not None and resistance_strength < self.min_support_strength:
-            logger.debug(f"{self.name}: Résistance trop faible ({resistance_strength:.2f}) pour sweep {self.symbol}")
+            logger.debug(f"{self.name}: Résistance trop faible ({self._safe_format(resistance_strength, '.2f')}) pour sweep {self.symbol}")
             return False
             
         # 2. Vérification probabilité de cassure
         if break_probability is not None:
             if break_probability < self.min_break_probability:
-                logger.debug(f"{self.name}: Probabilité cassure trop faible ({break_probability:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Probabilité cassure trop faible ({self._safe_format(break_probability, '.2f')}) pour {self.symbol}")
                 return False
             elif break_probability > self.max_break_probability:
-                logger.debug(f"{self.name}: Probabilité cassure trop élevée ({break_probability:.2f}) - vraie cassure probable {self.symbol}")
+                logger.debug(f"{self.name}: Probabilité cassure trop élevée ({self._safe_format(break_probability, '.2f')}) - vraie cassure probable {self.symbol}")
                 return False
                 
         # 3. Vérification position prix par rapport à la résistance
@@ -244,10 +267,10 @@ class Liquidity_Sweep_Validator(BaseValidator):
             sweep_distance = (current_price - nearest_resistance) / nearest_resistance
             
             if sweep_distance < self.min_sweep_distance:
-                logger.debug(f"{self.name}: Sweep distance trop faible ({sweep_distance*100:.2f}%) pour {self.symbol}")
+                logger.debug(f"{self.name}: Sweep distance trop faible ({self._safe_format(sweep_distance*100, '.2f')}%) pour {self.symbol}")
                 return False
             elif sweep_distance > self.max_sweep_distance:
-                logger.debug(f"{self.name}: Sweep distance excessive ({sweep_distance*100:.2f}%) - vraie cassure {self.symbol}")
+                logger.debug(f"{self.name}: Sweep distance excessive ({self._safe_format(sweep_distance*100, '.2f')}%) - vraie cassure {self.symbol}")
                 return False
                 
         elif current_price < nearest_resistance:
@@ -255,26 +278,26 @@ class Liquidity_Sweep_Validator(BaseValidator):
             recovery_distance = (nearest_resistance - current_price) / nearest_resistance
             
             if recovery_distance < self.min_recovery_distance:
-                logger.debug(f"{self.name}: Recovery insuffisante ({recovery_distance*100:.2f}%) pour {self.symbol}")
+                logger.debug(f"{self.name}: Recovery insuffisante ({self._safe_format(recovery_distance*100, '.2f')}%) pour {self.symbol}")
                 return False
                 
         # 4. Volume et confidence similaires au sweep haussier
         if volume_ratio is not None and volume_ratio < self.min_volume_spike:
-            logger.debug(f"{self.name}: Volume spike insuffisant ({volume_ratio:.1f}x) pour sweep {self.symbol}")
+            logger.debug(f"{self.name}: Volume spike insuffisant ({self._safe_format(volume_ratio, '.1f')}x) pour sweep {self.symbol}")
             return False
             
         if volume_quality_score is not None and volume_quality_score < self.min_volume_quality:
-            logger.debug(f"{self.name}: Qualité volume insuffisante ({volume_quality_score:.2f}) pour sweep {self.symbol}")
+            logger.debug(f"{self.name}: Qualité volume insuffisante ({self._safe_format(volume_quality_score, '.2f')}) pour sweep {self.symbol}")
             return False
             
         signal_confidence = signal.get('confidence', 0.0)
         if signal_confidence < 0.6:
-            logger.debug(f"{self.name}: Confidence trop faible ({signal_confidence:.2f}) pour sweep {self.symbol}")
+            logger.debug(f"{self.name}: Confidence trop faible ({self._safe_format(signal_confidence, '.2f')}) pour sweep {self.symbol}")
             return False
             
         logger.debug(f"{self.name}: Sweep baissier validé pour {self.symbol} - "
-                    f"Résistance: {nearest_resistance:.4f}, Prix: {current_price:.4f}, "
-                    f"Volume: {volume_ratio:.1f}x, Confidence: {signal_confidence:.2f}")
+                    f"Résistance: {self._safe_format(nearest_resistance, '.4f')}, Prix: {self._safe_format(current_price, '.4f')}, "
+                    f"Volume: {self._safe_format(volume_ratio, '.1f')}x, Confidence: {self._safe_format(signal_confidence, '.2f')}")
         
         return True
         
@@ -377,11 +400,11 @@ class Liquidity_Sweep_Validator(BaseValidator):
                 
                 reason = f"Structure favorable pour sweep"
                 if relevant_strength:
-                    reason += f" ({level_type}: {relevant_strength:.2f})"
+                    reason += f" ({level_type}: {self._safe_format(relevant_strength, '.2f')})"
                 if break_probability:
-                    reason += f", probabilité cassure: {break_probability:.2f}"
+                    reason += f", probabilité cassure: {self._safe_format(break_probability, '.2f')}"
                 if volume_ratio:
-                    reason += f", volume: {volume_ratio:.1f}x"
+                    reason += f", volume: {self._safe_format(volume_ratio, '.1f')}x"
                     
                 if self._is_liquidity_sweep_strategy(signal_strategy):
                     reason += " - stratégie spécialisée"
@@ -389,13 +412,13 @@ class Liquidity_Sweep_Validator(BaseValidator):
                 return f"{self.name}: Validé - {reason} pour {signal_strategy} {signal_side}"
             else:
                 if signal_side == "BUY" and support_strength and support_strength < self.min_support_strength:
-                    return f"{self.name}: Rejeté - Support trop faible ({support_strength:.2f})"
+                    return f"{self.name}: Rejeté - Support trop faible ({self._safe_format(support_strength, '.2f')})"
                 elif signal_side == "SELL" and resistance_strength and resistance_strength < self.min_support_strength:
-                    return f"{self.name}: Rejeté - Résistance trop faible ({resistance_strength:.2f})"
+                    return f"{self.name}: Rejeté - Résistance trop faible ({self._safe_format(resistance_strength, '.2f')})"
                 elif break_probability and break_probability > self.max_break_probability:
-                    return f"{self.name}: Rejeté - Probabilité cassure trop élevée ({break_probability:.2f}) - vraie cassure"
+                    return f"{self.name}: Rejeté - Probabilité cassure trop élevée ({self._safe_format(break_probability, '.2f')}) - vraie cassure"
                 elif volume_ratio and volume_ratio < self.min_volume_spike:
-                    return f"{self.name}: Rejeté - Volume spike insuffisant ({volume_ratio:.1f}x)"
+                    return f"{self.name}: Rejeté - Volume spike insuffisant ({self._safe_format(volume_ratio, '.1f')}x)"
                 elif signal.get('confidence', 0) < 0.6:
                     return f"{self.name}: Rejeté - Confidence insuffisante pour sweep"
                     
@@ -423,3 +446,25 @@ class Liquidity_Sweep_Validator(BaseValidator):
             return False
             
         return True
+        
+    def _get_current_price(self) -> float:
+        """Helper method to get current price from data or context."""
+        if self.data:
+            # Essayer d'abord la valeur scalaire (format préféré)
+            if 'close' in self.data and self.data['close'] is not None:
+                try:
+                    if isinstance(self.data['close'], (int, float)):
+                        return float(self.data['close'])
+                    elif isinstance(self.data['close'], list) and len(self.data['close']) > 0:
+                        return float(self.data['close'][-1])
+                except (IndexError, ValueError, TypeError):
+                    pass
+            
+            # Fallback: essayer current_price dans le contexte
+            current_price = self.context.get('current_price')
+            if current_price is not None:
+                try:
+                    return float(current_price)
+                except (ValueError, TypeError):
+                    pass
+        return None

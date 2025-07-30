@@ -132,9 +132,13 @@ class RedisHandler:
             
             self.stats['signals_published'] += 1
             
-            logger.debug(f"Signal publié vers coordinator: {validated_signal['strategy']} "
-                        f"{validated_signal['symbol']} {validated_signal['timeframe']} "
-                        f"{validated_signal['side']}")
+            # Log sécurisé avec vérification des clés
+            strategy = validated_signal.get('strategy', 'N/A')
+            symbol = validated_signal.get('symbol', 'N/A')
+            timeframe = validated_signal.get('timeframe', 'N/A')
+            side = validated_signal.get('side', 'N/A')
+            
+            logger.debug(f"Signal publié vers coordinator: {strategy} {symbol} {timeframe} {side}")
             
         except Exception as e:
             logger.error(f"Erreur publication signal: {e}")

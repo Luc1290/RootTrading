@@ -91,7 +91,7 @@ class MACD_Regime_Validator(BaseValidator):
             # 1. Vérification séparation MACD/Signal suffisante
             macd_separation = abs(macd_line - macd_signal)
             if macd_separation < self.min_macd_separation:
-                logger.debug(f"{self.name}: MACD trop proche Signal ({macd_separation:.5f}) pour {self.symbol} - signal peu fiable")
+                logger.debug(f"{self.name}: MACD trop proche Signal ({self._safe_format(macd_separation, '.5f')}) pour {self.symbol} - signal peu fiable")
                 if signal_confidence < 0.8:  # Accepter seulement si très confiant
                     return False
                     
@@ -114,14 +114,14 @@ class MACD_Regime_Validator(BaseValidator):
                 if signal_side == "BUY":
                     # Pour BUY, histogram devrait être positif ou en amélioration
                     if macd_histogram < -self.histogram_threshold:
-                        logger.debug(f"{self.name}: BUY signal mais histogram négatif ({macd_histogram:.5f}) pour {self.symbol}")
+                        logger.debug(f"{self.name}: BUY signal mais histogram négatif ({self._safe_format(macd_histogram, '.5f')}) pour {self.symbol}")
                         if signal_confidence < 0.7:
                             return False
                             
                 elif signal_side == "SELL":
                     # Pour SELL, histogram devrait être négatif ou en détérioration
                     if macd_histogram > self.histogram_threshold:
-                        logger.debug(f"{self.name}: SELL signal mais histogram positif ({macd_histogram:.5f}) pour {self.symbol}")
+                        logger.debug(f"{self.name}: SELL signal mais histogram positif ({self._safe_format(macd_histogram, '.5f')}) pour {self.symbol}")
                         if signal_confidence < 0.7:
                             return False
                             
@@ -157,21 +157,21 @@ class MACD_Regime_Validator(BaseValidator):
             # 7. Validation avec PPO si disponible
             if ppo is not None:
                 if signal_side == "BUY" and ppo < -0.005:
-                    logger.debug(f"{self.name}: BUY signal mais PPO très négatif ({ppo:.4f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: BUY signal mais PPO très négatif ({self._safe_format(ppo, '.4f')}) pour {self.symbol}")
                     if signal_confidence < 0.7:
                         return False
                 elif signal_side == "SELL" and ppo > 0.005:
-                    logger.debug(f"{self.name}: SELL signal mais PPO très positif ({ppo:.4f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: SELL signal mais PPO très positif ({self._safe_format(ppo, '.4f')}) pour {self.symbol}")
                     if signal_confidence < 0.7:
                         return False
                         
             # 8. Validation momentum score coherence
             if momentum_score is not None:
                 if signal_side == "BUY" and momentum_score < -0.3:
-                    logger.debug(f"{self.name}: BUY signal mais momentum très négatif ({momentum_score:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: BUY signal mais momentum très négatif ({self._safe_format(momentum_score, '.2f')}) pour {self.symbol}")
                     return False
                 elif signal_side == "SELL" and momentum_score > 0.3:
-                    logger.debug(f"{self.name}: SELL signal mais momentum très positif ({momentum_score:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: SELL signal mais momentum très positif ({self._safe_format(momentum_score, '.2f')}) pour {self.symbol}")
                     return False
                     
             # 9. Validation spécifique pour stratégies MACD
@@ -182,8 +182,8 @@ class MACD_Regime_Validator(BaseValidator):
                     return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
-                        f"MACD: {macd_line:.5f}, Signal: {macd_signal:.5f}, "
-                        f"Histogram: {macd_histogram:.5f if macd_histogram is not None else 'N/A'}, "
+                        f"MACD: {self._safe_format(macd_line, '.5f')}, Signal: {self._safe_format(macd_signal, '.5f')}, "
+                        f"Histogram: {self._safe_format(macd_histogram, '.5f') if macd_histogram is not None else 'N/A'}, "
                         f"Trend: {macd_trend or 'N/A'}")
             
             return True
@@ -313,11 +313,11 @@ class MACD_Regime_Validator(BaseValidator):
                 macd_above = "au-dessus" if macd_line > macd_signal else "en-dessous"
                 separation = abs(macd_line - macd_signal)
                 
-                reason = f"MACD {macd_above} Signal (écart: {separation:.5f})"
+                reason = f"MACD {macd_above} Signal (écart: {self._safe_format(separation, '.5f')})"
                 
                 if macd_histogram is not None:
                     hist_desc = "positif" if macd_histogram > 0 else "négatif"
-                    reason += f", histogram {hist_desc} ({macd_histogram:.5f})"
+                    reason += f", histogram {hist_desc} ({self._safe_format(macd_histogram, '.5f')})"
                     
                 if macd_trend != 'N/A':
                     reason += f", trend {macd_trend}"
@@ -332,9 +332,9 @@ class MACD_Regime_Validator(BaseValidator):
             else:
                 if macd_line is not None and macd_signal is not None:
                     if signal_side == "BUY" and macd_line <= macd_signal:
-                        return f"{self.name}: Rejeté - BUY mais MACD ({macd_line:.5f}) <= Signal ({macd_signal:.5f})"
+                        return f"{self.name}: Rejeté - BUY mais MACD ({self._safe_format(macd_line, '.5f')}) <= Signal ({self._safe_format(macd_signal, '.5f')})"
                     elif signal_side == "SELL" and macd_line >= macd_signal:
-                        return f"{self.name}: Rejeté - SELL mais MACD ({macd_line:.5f}) >= Signal ({macd_signal:.5f})"
+                        return f"{self.name}: Rejeté - SELL mais MACD ({self._safe_format(macd_line, '.5f')}) >= Signal ({self._safe_format(macd_signal, '.5f')})"
                         
                 if macd_trend:
                     if (signal_side == "BUY" and macd_trend == "bearish") or \
@@ -344,11 +344,11 @@ class MACD_Regime_Validator(BaseValidator):
                 if macd_histogram is not None:
                     if (signal_side == "BUY" and macd_histogram < -self.histogram_threshold) or \
                        (signal_side == "SELL" and macd_histogram > self.histogram_threshold):
-                        return f"{self.name}: Rejeté - Histogram MACD défavorable ({macd_histogram:.5f})"
+                        return f"{self.name}: Rejeté - Histogram MACD défavorable ({self._safe_format(macd_histogram, '.5f')})"
                         
                 separation = abs(macd_line - macd_signal) if macd_line is not None and macd_signal is not None else 0
                 if separation < self.min_macd_separation:
-                    return f"{self.name}: Rejeté - MACD trop proche Signal ({separation:.5f}) - signal peu fiable"
+                    return f"{self.name}: Rejeté - MACD trop proche Signal ({self._safe_format(separation, '.5f')}) - signal peu fiable"
                     
                 return f"{self.name}: Rejeté - Conditions MACD non respectées"
                 

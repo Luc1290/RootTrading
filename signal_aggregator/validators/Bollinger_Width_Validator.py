@@ -72,13 +72,27 @@ class Bollinger_Width_Validator(BaseValidator):
                 logger.warning(f"{self.name}: Erreur conversion Bollinger pour {self.symbol}: {e}")
                 return False
                 
-            # Récupération prix actuel depuis data
+                        # Récupération prix actuel depuis data
             current_price = None
-            if self.data and 'close' in self.data and self.data['close']:
-                try:
-                    current_price = float(self.data['close'][-1])
-                except (IndexError, ValueError, TypeError):
-                    pass
+            if self.data:
+                # Essayer d'abord la valeur scalaire (format préféré)
+                if 'close' in self.data and self.data['close'] is not None:
+                    try:
+                        if isinstance(self.data['close'], (int, float)):
+                            current_price = float(self.data['close'])
+                        elif isinstance(self.data['close'], list) and len(self.data['close']) > 0:
+                            current_price = self._get_current_price()
+                    except (IndexError, ValueError, TypeError):
+                        pass
+                
+                # Fallback: essayer current_price dans le contexte
+                if current_price is None:
+                    current_price = self.context.get('current_price')
+                    if current_price is not None:
+                        try:
+                            current_price = float(current_price)
+                        except (ValueError, TypeError):
+                            current_price = None
                     
             signal_side = signal.get('side')
             signal_strategy = signal.get('strategy', 'Unknown')
@@ -90,14 +104,14 @@ class Bollinger_Width_Validator(BaseValidator):
                 
             # 1. Vérification largeur BB minimum
             if bb_width < self.min_bb_width:
-                logger.debug(f"{self.name}: BB width trop faible ({bb_width:.3f}) pour {self.symbol} - marché compressé")
+                logger.debug(f"{self.name}: BB width trop faible ({self._safe_format(bb_width, '.3f')}) pour {self.symbol} - marché compressé")
                 # En squeeze sévère, accepter seulement signaux très confiants
                 if signal_confidence < 0.8:
                     return False
                     
             # 2. Vérification largeur BB maximum
             if bb_width > self.max_bb_width:
-                logger.debug(f"{self.name}: BB width excessive ({bb_width:.3f}) pour {self.symbol} - volatilité dangereuse")
+                logger.debug(f"{self.name}: BB width excessive ({self._safe_format(bb_width, '.3f')}) pour {self.symbol} - volatilité dangereuse")
                 # Volatilité extrême, signaux très sélectifs
                 if signal_confidence < 0.9:
                     return False
@@ -125,13 +139,13 @@ class Bollinger_Width_Validator(BaseValidator):
                 if bb_position > self.extreme_position_threshold:
                     # Prix très proche BB supérieure
                     if signal_side == "BUY":
-                        logger.debug(f"{self.name}: BUY signal mais prix près BB supérieure ({bb_position:.2f}) pour {self.symbol}")
+                        logger.debug(f"{self.name}: BUY signal mais prix près BB supérieure ({self._safe_format(bb_position, '.2f')}) pour {self.symbol}")
                         if signal_confidence < 0.8:
                             return False
                 elif bb_position < (1 - self.extreme_position_threshold):
                     # Prix très proche BB inférieure
                     if signal_side == "SELL":
-                        logger.debug(f"{self.name}: SELL signal mais prix près BB inférieure ({bb_position:.2f}) pour {self.symbol}")
+                        logger.debug(f"{self.name}: SELL signal mais prix près BB inférieure ({self._safe_format(bb_position, '.2f')}) pour {self.symbol}")
                         if signal_confidence < 0.8:
                             return False
                             
@@ -169,8 +183,8 @@ class Bollinger_Width_Validator(BaseValidator):
                     logger.debug(f"{self.name}: Stratégie Bollinger mais width insuffisante pour {self.symbol}")
                     return False
                     
-            logger.debug(f"{self.name}: Signal validé pour {self.symbol} - BB Width: {bb_width:.3f}, "
-                        f"Position: {bb_position:.2f if bb_position is not None else 'N/A'}, "
+            logger.debug(f"{self.name}: Signal validé pour {self.symbol} - BB Width: {self._safe_format(bb_width, '.3f')}, "
+                        f"Position: {self._safe_format(bb_position, '.2f') if bb_position is not None else 'N/A'}, "
                         f"Squeeze: {bb_squeeze}, Expansion: {bb_expansion}, "
                         f"Breakout: {bb_breakout_direction or 'N/A'}")
             
@@ -295,17 +309,17 @@ class Bollinger_Width_Validator(BaseValidator):
             
             if is_valid:
                 width_desc = "squeeze" if bb_squeeze is not None else "expansion" if bb_expansion is not None else "normale"
-                position_desc = f"position {bb_position:.2f}" if bb_position is not None else "N/A"
+                position_desc = f"position {self._safe_format(bb_position, '.2f')}" if bb_position is not None else "N/A"
                 breakout_desc = f"breakout {bb_breakout_direction}" if bb_breakout_direction is not None else "pas de breakout"
                 
-                reason = f"BB {width_desc} (width: {bb_width:.3f}, {position_desc}, {breakout_desc})"
+                reason = f"BB {width_desc} (width: {self._safe_format(bb_width, '.3f')}, {position_desc}, {breakout_desc})"
                 
                 return f"{self.name}: Validé - {reason} pour {signal_strategy} {signal_side}"
             else:
                 if bb_width < self.min_bb_width:
-                    return f"{self.name}: Rejeté - BB width trop faible ({bb_width:.3f}) - marché compressé"
+                    return f"{self.name}: Rejeté - BB width trop faible ({self._safe_format(bb_width, '.3f')}) - marché compressé"
                 elif bb_width > self.max_bb_width:
-                    return f"{self.name}: Rejeté - BB width excessive ({bb_width:.3f}) - volatilité dangereuse"
+                    return f"{self.name}: Rejeté - BB width excessive ({self._safe_format(bb_width, '.3f')}) - volatilité dangereuse"
                 elif bb_squeeze and signal.get('confidence', 0) < 0.7:
                     return f"{self.name}: Rejeté - Squeeze BB + confidence insuffisante"
                 elif bb_breakout_direction:
@@ -313,9 +327,9 @@ class Bollinger_Width_Validator(BaseValidator):
                        (signal_side == "SELL" and bb_breakout_direction == "up"):
                         return f"{self.name}: Rejeté - Signal {signal_side} contradictoire avec breakout {bb_breakout_direction}"
                 elif bb_position and bb_position > self.extreme_position_threshold:
-                    return f"{self.name}: Rejeté - Position extrême BB supérieure ({bb_position:.2f})"
+                    return f"{self.name}: Rejeté - Position extrême BB supérieure ({self._safe_format(bb_position, '.2f')})"
                 elif bb_position and bb_position < (1 - self.extreme_position_threshold):
-                    return f"{self.name}: Rejeté - Position extrême BB inférieure ({bb_position:.2f})"
+                    return f"{self.name}: Rejeté - Position extrême BB inférieure ({self._safe_format(bb_position, '.2f')})"
                     
                 return f"{self.name}: Rejeté - Critères Bollinger Bands non respectés"
                 
@@ -338,3 +352,25 @@ class Bollinger_Width_Validator(BaseValidator):
             return False
             
         return True
+        
+    def _get_current_price(self) -> float:
+        """Helper method to get current price from data or context."""
+        if self.data:
+            # Essayer d'abord la valeur scalaire (format préféré)
+            if 'close' in self.data and self.data['close'] is not None:
+                try:
+                    if isinstance(self.data['close'], (int, float)):
+                        return float(self.data['close'])
+                    elif isinstance(self.data['close'], list) and len(self.data['close']) > 0:
+                        return float(self.data['close'][-1])
+                except (IndexError, ValueError, TypeError):
+                    pass
+            
+            # Fallback: essayer current_price dans le contexte
+            current_price = self.context.get('current_price')
+            if current_price is not None:
+                try:
+                    return float(current_price)
+                except (ValueError, TypeError):
+                    pass
+        return None

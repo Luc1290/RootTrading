@@ -102,42 +102,42 @@ class Volume_Ratio_Validator(BaseValidator):
                 
             # 1. Vérification ratio volume principal
             if volume_ratio < self.min_volume_ratio:
-                logger.debug(f"{self.name}: Volume ratio trop faible ({volume_ratio:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Volume ratio trop faible ({self._safe_format(volume_ratio, '.2f')}) pour {self.symbol}")
                 return False
                 
             # Volume extrêmement élevé - suspicion manipulation
             if volume_ratio >= self.extreme_volume_ratio:
                 if signal_confidence < 0.85:
-                    logger.debug(f"{self.name}: Volume ratio extrême ({volume_ratio:.2f}) nécessite confidence très élevée pour {self.symbol}")
+                    logger.debug(f"{self.name}: Volume ratio extrême ({self._safe_format(volume_ratio, '.2f')}) nécessite confidence très élevée pour {self.symbol}")
                     return False
                     
             # 2. Vérification volume relatif calculé
             if relative_volume < self.min_volume_ratio:
-                logger.debug(f"{self.name}: Volume relatif trop faible ({relative_volume:.2f}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Volume relatif trop faible ({self._safe_format(relative_volume, '.2f')}) pour {self.symbol}")
                 return False
                 
             # 3. Vérification volume vs moyenne historique si disponible
             if volume_vs_avg_ratio is not None:
                 if volume_vs_avg_ratio < self.min_volume_ratio:
-                    logger.debug(f"{self.name}: Volume vs moyenne historique trop faible ({volume_vs_avg_ratio:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Volume vs moyenne historique trop faible ({self._safe_format(volume_vs_avg_ratio, '.2f')}) pour {self.symbol}")
                     return False
                     
                 # Volume très élevé vs historique
                 if volume_vs_avg_ratio >= self.extreme_volume_ratio:
                     if signal_confidence < 0.8:
-                        logger.debug(f"{self.name}: Volume vs historique extrême ({volume_vs_avg_ratio:.2f}) pour {self.symbol}")
+                        logger.debug(f"{self.name}: Volume vs historique extrême ({self._safe_format(volume_vs_avg_ratio, '.2f')}) pour {self.symbol}")
                         return False
                         
             # 4. Vérification ratio quote/base volume
             if quote_volume_ratio is not None:
                 # Ratio anormal indique possibles manipulations
                 if quote_volume_ratio < self.min_quote_volume_ratio or quote_volume_ratio > self.max_quote_volume_ratio:
-                    logger.debug(f"{self.name}: Ratio quote/base anormal ({quote_volume_ratio:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Ratio quote/base anormal ({self._safe_format(quote_volume_ratio, '.2f')}) pour {self.symbol}")
                     return False
                     
                 # Ratio idéal - signal favorisé
                 if self.ideal_quote_ratio_min <= quote_volume_ratio <= self.ideal_quote_ratio_max:
-                    logger.debug(f"{self.name}: Ratio quote/base idéal ({quote_volume_ratio:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Ratio quote/base idéal ({self._safe_format(quote_volume_ratio, '.2f')}) pour {self.symbol}")
                     
             # 5. Vérification taille moyenne des trades
             if avg_trade_size is not None:
@@ -147,7 +147,7 @@ class Volume_Ratio_Validator(BaseValidator):
                 # Trades très petits peuvent indiquer du bot trading
                 if avg_trade_size < self.min_avg_trade_multiplier:
                     if signal_confidence < 0.7:
-                        logger.debug(f"{self.name}: Taille trades très petite ({avg_trade_size:.2f}) pour {self.symbol}")
+                        logger.debug(f"{self.name}: Taille trades très petite ({self._safe_format(avg_trade_size, '.2f')}) pour {self.symbol}")
                         return False
                         
                 # Trades très gros - vérifier si légitime
@@ -160,7 +160,7 @@ class Volume_Ratio_Validator(BaseValidator):
             # 6. Vérification intensité de trading
             if trade_intensity is not None:
                 if trade_intensity < self.min_trade_intensity:
-                    logger.debug(f"{self.name}: Intensité trading trop faible ({trade_intensity:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Intensité trading trop faible ({self._safe_format(trade_intensity, '.2f')}) pour {self.symbol}")
                     return False
                     
                 # Très haute intensité - vérifier authenticité
@@ -173,7 +173,7 @@ class Volume_Ratio_Validator(BaseValidator):
             if signal_side == "BUY":
                 # Pour BUY, volume élevé est généralement favorable
                 if volume_ratio >= self.high_volume_ratio and signal_confidence >= 0.6:
-                    logger.debug(f"{self.name}: Volume élevé favorable pour BUY ({volume_ratio:.2f}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Volume élevé favorable pour BUY ({self._safe_format(volume_ratio, '.2f')}) pour {self.symbol}")
                     return True
                     
             elif signal_side == "SELL":
@@ -194,16 +194,16 @@ class Volume_Ratio_Validator(BaseValidator):
                 ratio_difference = abs(quote_volume_ratio - volume_ratio) / volume_ratio
                 if ratio_difference > 0.5:  # 50% d'écart
                     if signal_confidence < 0.6:
-                        logger.debug(f"{self.name}: Incohérence ratios volume ({ratio_difference:.2f}) pour {self.symbol}")
+                        logger.debug(f"{self.name}: Incohérence ratios volume ({self._safe_format(ratio_difference, '.2f')}) pour {self.symbol}")
                         ratios_consistent = False
                         
             if not ratios_consistent and signal_strength in ['weak', 'very_weak']:
                 return False
                 
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
-                        f"Volume ratio: {volume_ratio:.2f}, "
-                        f"Quote ratio: {quote_volume_ratio:.2f if quote_volume_ratio is not None else 'N/A'}, "
-                        f"Relative: {relative_volume:.2f}, "
+                        f"Volume ratio: {self._safe_format(volume_ratio, '.2f')}, "
+                        f"Quote ratio: {self._safe_format(quote_volume_ratio, '.2f') if quote_volume_ratio is not None else 'N/A'}, "
+                        f"Relative: {self._safe_format(relative_volume, '.2f')}, "
                         f"Side: {signal_side}")
             
             return True
@@ -299,24 +299,24 @@ class Volume_Ratio_Validator(BaseValidator):
             if is_valid:
                 # Déterminer condition dominante
                 if volume_ratio >= self.high_volume_ratio:
-                    condition = f"volume élevé ({volume_ratio:.1f}x)"
+                    condition = f"volume élevé ({self._safe_format(volume_ratio, '.1f')}x)"
                 elif quote_volume_ratio and self.ideal_quote_ratio_min <= quote_volume_ratio <= self.ideal_quote_ratio_max:
-                    condition = f"ratio quote/base idéal ({quote_volume_ratio:.2f})"
+                    condition = f"ratio quote/base idéal ({self._safe_format(quote_volume_ratio, '.2f')})"
                 elif relative_volume >= 1.5:
-                    condition = f"volume relatif élevé ({relative_volume:.1f}x)"
+                    condition = f"volume relatif élevé ({self._safe_format(relative_volume, '.1f')}x)"
                 else:
-                    condition = f"ratios acceptables (vol: {volume_ratio:.1f}x)"
+                    condition = f"ratios acceptables (vol: {self._safe_format(volume_ratio, '.1f')}x)"
                     
                 return f"{self.name}: Validé - {condition} pour signal {signal_side}"
             else:
                 if volume_ratio < self.min_volume_ratio:
-                    return f"{self.name}: Rejeté - Volume ratio trop faible ({volume_ratio:.2f})"
+                    return f"{self.name}: Rejeté - Volume ratio trop faible ({self._safe_format(volume_ratio, '.2f')})"
                 elif quote_volume_ratio and (quote_volume_ratio < self.min_quote_volume_ratio or quote_volume_ratio > self.max_quote_volume_ratio):
-                    return f"{self.name}: Rejeté - Ratio quote/base anormal ({quote_volume_ratio:.2f})"
+                    return f"{self.name}: Rejeté - Ratio quote/base anormal ({self._safe_format(quote_volume_ratio, '.2f')})"
                 elif relative_volume < self.min_volume_ratio:
-                    return f"{self.name}: Rejeté - Volume relatif insuffisant ({relative_volume:.2f})"
+                    return f"{self.name}: Rejeté - Volume relatif insuffisant ({self._safe_format(relative_volume, '.2f')})"
                 elif volume_ratio >= self.extreme_volume_ratio:
-                    return f"{self.name}: Rejeté - Volume ratio extrême suspect ({volume_ratio:.2f})"
+                    return f"{self.name}: Rejeté - Volume ratio extrême suspect ({self._safe_format(volume_ratio, '.2f')})"
                 else:
                     return f"{self.name}: Rejeté - Ratios volume inadéquats"
                     
