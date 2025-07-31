@@ -254,19 +254,24 @@ class Range_Validator(BaseValidator):
                     return False
                     
             # 10. Validation cohérence stratégie/range selon position
-            strategy_range_match = self._validate_strategy_range_match(
-                signal_strategy, signal_side, range_position, breakout_probability
-            )
+            if range_position is not None and breakout_probability is not None:
+                strategy_range_match = self._validate_strategy_range_match(
+                    signal_strategy, signal_side, range_position, breakout_probability
+                )
+            else:
+                strategy_range_match = True
             if not strategy_range_match:
                 logger.debug(f"{self.name}: Stratégie {signal_strategy} inadaptée aux conditions range pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
             # 11. Validation mouvement dans range
-            if range_movement_direction:
+            if range_movement_direction and range_position is not None:
                 movement_coherence = self._validate_movement_coherence(
                     signal_side, range_movement_direction, range_position
                 )
+            else:
+                movement_coherence = True
                 if not movement_coherence:
                     logger.debug(f"{self.name}: Mouvement range incohérent avec signal pour {self.symbol}")
                     if signal_confidence < 0.6:
@@ -290,7 +295,7 @@ class Range_Validator(BaseValidator):
             logger.error(f"{self.name}: Erreur validation signal pour {self.symbol}: {e}")
             return False
             
-    def _detect_current_range(self, current_price: float) -> tuple:
+    def _detect_current_range(self, current_price: float) -> tuple | None:
         """Détecte automatiquement le range actuel basé sur les prix récents."""
         try:
             if not self.data or 'high' not in self.data or 'low' not in self.data:
@@ -380,7 +385,7 @@ class Range_Validator(BaseValidator):
         except Exception:
             return True
             
-    def _get_current_price(self) -> float:
+    def _get_current_price(self) -> float | None:
         """Helper method to get current price from data or context."""
         if self.data:
             # Essayer d'abord la valeur scalaire (format préféré)

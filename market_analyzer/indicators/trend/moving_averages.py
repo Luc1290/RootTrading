@@ -80,7 +80,7 @@ def calculate_sma_series(prices: Union[List[float], np.ndarray, pd.Series],
             logger.warning(f"TA-Lib SMA series error: {e}, using fallback")
     
     # Manual calculation with rolling window
-    sma_series = []
+    sma_series: List[Optional[float]] = []
     for i in range(len(prices_array)):
         if i < period - 1:
             sma_series.append(None)
@@ -93,7 +93,7 @@ def calculate_sma_series(prices: Union[List[float], np.ndarray, pd.Series],
 
 def calculate_ema(prices: Union[List[float], np.ndarray, pd.Series], 
                   period: int,
-                  symbol: str = None,
+                  symbol: Optional[str] = None,
                   enable_cache: bool = True) -> Optional[float]:
     """
     Calculate Exponential Moving Average (EMA).
@@ -158,7 +158,7 @@ def calculate_ema_series(prices: Union[List[float], np.ndarray, pd.Series],
     if len(prices_array) < period:
         return [None] * len(prices_array)
     
-    ema_series = [None] * (period - 1)
+    ema_series: List[Optional[float]] = [None] * (period - 1)
     alpha = 2.0 / (period + 1)
     
     # Initialize with SMA
@@ -430,7 +430,9 @@ def calculate_adaptive_ma(prices: Union[List[float], np.ndarray, pd.Series],
 def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
-        return data.values
+        if hasattr(data.values, 'values'):  # ExtensionArray
+            return np.asarray(data.values, dtype=float)
+        return np.asarray(data.values, dtype=float)
     elif isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)
@@ -525,7 +527,7 @@ def calculate_ema_cached(prices: Union[List[float], np.ndarray, pd.Series],
     try:
         # Validate parameters
         params = validate_indicator_params(period=period)
-        period = params['period']
+        period = int(params['period']) if isinstance(params['period'], (int, float)) else period
         
         # Validate and prepare data
         prices_array = validate_and_align_arrays(prices, min_length=period)[0]
@@ -638,7 +640,7 @@ def calculate_sma_cached(prices: Union[List[float], np.ndarray, pd.Series],
     try:
         # Validate parameters
         params = validate_indicator_params(period=period)
-        period = params['period']
+        period = int(params['period']) if isinstance(params['period'], (int, float)) else period
         
         # Validate data
         prices_array = validate_and_align_arrays(prices, min_length=period)[0]
@@ -715,8 +717,8 @@ def _calculate_ema_incremental(prices: np.ndarray, cached_state: Dict,
         
         # Update cached state
         updated_state = {
-            'last_ema': float(current_ema),
-            'last_price': float(prices[-1]),
+            'last_ema': float(current_ema) if current_ema is not None else 0.0,
+            'last_price': float(prices[-1]) if prices[-1] is not None else 0.0,
             'period': period,
             'alpha': alpha,
             'price_count': len(prices)
@@ -724,7 +726,7 @@ def _calculate_ema_incremental(prices: np.ndarray, cached_state: Dict,
         
         cache.set(cache_key, updated_state, symbol)
         
-        return float(current_ema)
+        return float(current_ema) if current_ema is not None else None
         
     except Exception as e:
         logger.warning(f"Erreur calcul EMA incrémental: {e}")
@@ -756,8 +758,10 @@ def _extend_ema_series(prices: np.ndarray, cached_series: List[Optional[float]],
         alpha = 2.0 / (period + 1)
         
         for i in range(cached_length, prices_length):
+            # last_ema est garanti non-None après la vérification ligne 753
+            assert last_ema is not None
             last_ema = alpha * prices[i] + (1 - alpha) * last_ema
-            new_series.append(float(last_ema))
+            new_series.append(last_ema)
         
         return new_series
         
@@ -796,9 +800,11 @@ def get_ma_cross_signal_cached(prices: Union[List[float], np.ndarray, pd.Series]
             fast_series = calculate_sma_series(prices, fast_period)  # No cache for SMA series (less benefit)
             slow_series = calculate_sma_series(prices, slow_period)
         
-        # Detect crossovers
-        bullish_cross = crossover(fast_series, slow_series) if fast_series and slow_series else False
-        bearish_cross = crossunder(fast_series, slow_series) if fast_series and slow_series else False
+        # Detect crossovers (filter None values)
+        fast_filtered = [x for x in fast_series if x is not None] if fast_series else []
+        slow_filtered = [x for x in slow_series if x is not None] if slow_series else []
+        bullish_cross = crossover(fast_filtered, slow_filtered) if fast_filtered and slow_filtered else False
+        bearish_cross = crossunder(fast_filtered, slow_filtered) if fast_filtered and slow_filtered else False
         
         return {
             'fast_ma': fast_ma,

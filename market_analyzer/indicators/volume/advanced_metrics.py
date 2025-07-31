@@ -83,7 +83,7 @@ def calculate_trade_intensity(trades_counts: List[int],
 def analyze_volume_quality(volumes: List[float],
                          quote_volumes: List[float],
                          trades_counts: List[int],
-                         lookback: int = 20) -> Dict[str, float]:
+                         lookback: int = 20) -> Dict[str, Optional[float]]:
     """
     Analyse complète de la qualité du volume.
     
@@ -96,7 +96,7 @@ def analyze_volume_quality(volumes: List[float],
     Returns:
         Dictionnaire avec toutes les métriques de qualité
     """
-    result = {
+    result: Dict[str, Optional[float]] = {
         'quote_volume_ratio': None,
         'avg_trade_size': None,
         'trade_intensity': None,
@@ -131,14 +131,14 @@ def analyze_volume_quality(volumes: List[float],
                 # Score baleine (gros trades)
                 if avg_trade_size_mean > 0:
                     whale_ratio = current_avg_trade_size / avg_trade_size_mean
-                    result['whale_activity_score'] = min(100, whale_ratio * 25)  # 4x = 100%
+                    result['whale_activity_score'] = min(100.0, float(whale_ratio * 25))  # 4x = 100%
                 
                 # Score retail (beaucoup de petits trades)
                 if result['trade_intensity']:
-                    result['retail_activity_score'] = min(100, result['trade_intensity'] * 33.33)  # 3x = 100%
+                    result['retail_activity_score'] = min(100.0, float(result['trade_intensity'] * 33.33))  # 3x = 100%
                 
                 # Score de qualité combiné
-                quality_factors = []
+                quality_factors: List[float] = []
                 
                 # Volume élevé + peu de trades = Baleines (haute qualité)
                 if result['quote_volume_ratio'] and result['quote_volume_ratio'] > 1.5:

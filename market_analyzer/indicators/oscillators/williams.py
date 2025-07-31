@@ -265,21 +265,31 @@ def calculate_williams_r_divergence(prices: Union[List[float], np.ndarray, pd.Se
         elif price < prev_price and price < next_price:
             price_lows.append((idx, price))
         
-        # Williams %R peaks and troughs
-        if williams > prev_williams and williams > next_williams:
+        # Williams %R peaks and troughs (with None checks)
+        if (williams is not None and prev_williams is not None and next_williams is not None and 
+            williams > prev_williams and williams > next_williams):
             williams_highs.append((idx, williams))
-        elif williams < prev_williams and williams < next_williams:
+        elif (williams is not None and prev_williams is not None and next_williams is not None and 
+              williams < prev_williams and williams < next_williams):
             williams_lows.append((idx, williams))
     
     # Check for divergence
     # Bullish divergence: Price makes lower lows, Williams %R makes higher lows
     if len(price_lows) >= 2 and len(williams_lows) >= 2:
-        if price_lows[-1][1] < price_lows[-2][1] and williams_lows[-1][1] > williams_lows[-2][1]:
+        price_val1, price_val2 = price_lows[-1][1], price_lows[-2][1]
+        williams_val1, williams_val2 = williams_lows[-1][1], williams_lows[-2][1]
+        if (price_val1 is not None and price_val2 is not None and 
+            williams_val1 is not None and williams_val2 is not None and 
+            price_val1 < price_val2 and williams_val1 > williams_val2):
             return 'bullish_divergence'
     
     # Bearish divergence: Price makes higher highs, Williams %R makes lower highs
     if len(price_highs) >= 2 and len(williams_highs) >= 2:
-        if price_highs[-1][1] > price_highs[-2][1] and williams_highs[-1][1] < williams_highs[-2][1]:
+        price_val1, price_val2 = price_highs[-1][1], price_highs[-2][1]
+        williams_val1, williams_val2 = williams_highs[-1][1], williams_highs[-2][1]
+        if (price_val1 is not None and price_val2 is not None and 
+            williams_val1 is not None and williams_val2 is not None and 
+            price_val1 > price_val2 and williams_val1 < williams_val2):
             return 'bearish_divergence'
     
     return 'none'
@@ -331,7 +341,7 @@ def williams_r_trend_strength(values: List[Optional[float]],
 def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
-        return data.values
+        return np.asarray(data.values, dtype=float)
     elif isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)
@@ -368,7 +378,7 @@ def _calculate_williams_r_series_manual(highs: np.ndarray,
                                        closes: np.ndarray,
                                        period: int) -> List[Optional[float]]:
     """Manual Williams %R series calculation."""
-    williams_series = []
+    williams_series: List[Optional[float]] = []
     
     for i in range(len(highs)):
         if i < period - 1:

@@ -236,21 +236,31 @@ def detect_obv_divergence(prices: Union[List[float], np.ndarray, pd.Series],
         elif price < prev_price and price < next_price:
             price_lows.append((idx, price))
         
-        # OBV peaks and troughs
-        if obv > prev_obv and obv > next_obv:
+        # OBV peaks and troughs (with None checks)
+        if (obv is not None and prev_obv is not None and next_obv is not None and 
+            obv > prev_obv and obv > next_obv):
             obv_highs.append((idx, obv))
-        elif obv < prev_obv and obv < next_obv:
+        elif (obv is not None and prev_obv is not None and next_obv is not None and 
+              obv < prev_obv and obv < next_obv):
             obv_lows.append((idx, obv))
     
     # Check for divergence
     # Bullish divergence: Price makes lower lows, OBV makes higher lows
     if len(price_lows) >= 2 and len(obv_lows) >= 2:
-        if price_lows[-1][1] < price_lows[-2][1] and obv_lows[-1][1] > obv_lows[-2][1]:
+        price_val1, price_val2 = price_lows[-1][1], price_lows[-2][1]
+        obv_val1, obv_val2 = obv_lows[-1][1], obv_lows[-2][1]
+        if (price_val1 is not None and price_val2 is not None and 
+            obv_val1 is not None and obv_val2 is not None and 
+            price_val1 < price_val2 and obv_val1 > obv_val2):
             return 'bullish_divergence'
     
     # Bearish divergence: Price makes higher highs, OBV makes lower highs
     if len(price_highs) >= 2 and len(obv_highs) >= 2:
-        if price_highs[-1][1] > price_highs[-2][1] and obv_highs[-1][1] < obv_highs[-2][1]:
+        price_val1, price_val2 = price_highs[-1][1], price_highs[-2][1]
+        obv_val1, obv_val2 = obv_highs[-1][1], obv_highs[-2][1]
+        if (price_val1 is not None and price_val2 is not None and 
+            obv_val1 is not None and obv_val2 is not None and 
+            price_val1 > price_val2 and obv_val1 < obv_val2):
             return 'bearish_divergence'
     
     return 'none'
@@ -368,7 +378,7 @@ def obv_trend_strength(obv_values: List[Optional[float]],
 def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
-        return data.values
+        return np.asarray(data.values, dtype=float)
     elif isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)
@@ -396,7 +406,7 @@ def _calculate_obv_series_manual(prices: np.ndarray, volumes: np.ndarray) -> Lis
     if len(prices) < 2:
         return [None] * len(prices)
     
-    obv_series = [None]  # First value is None (no previous price to compare)
+    obv_series: List[Optional[float]] = [None]  # First value is None (no previous price to compare)
     obv = 0.0
     
     for i in range(1, len(prices)):

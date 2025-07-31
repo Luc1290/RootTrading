@@ -122,7 +122,7 @@ class DatabaseManager:
                 'strategy': validated_signal['strategy'],
                 'symbol': validated_signal['symbol'],
                 'side': validated_signal['side'],
-                'timestamp': self._parse_timestamp(validated_signal.get('timestamp')),
+                'timestamp': self._parse_timestamp(validated_signal.get('timestamp') or ''),
                 'confidence': float(validated_signal.get('aggregator_confidence', validated_signal.get('confidence', 0))),
                 'price': price,
                 'metadata': json.dumps(metadata),
@@ -230,7 +230,7 @@ class DatabaseManager:
         Returns:
             Liste des IDs des signaux stockés
         """
-        signal_ids = []
+        signal_ids: List[Optional[int]] = []
         
         if not validated_signals:
             return signal_ids
@@ -282,8 +282,8 @@ class DatabaseManager:
             
         return signal_ids
         
-    def get_recent_signals(self, limit: int = 50, strategy: str = None, 
-                          symbol: str = None) -> List[Dict[str, Any]]:
+    def get_recent_signals(self, limit: int = 50, strategy: Optional[str] = None, 
+                          symbol: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Récupère les signaux récents depuis la base de données.
         
@@ -299,7 +299,7 @@ class DatabaseManager:
             with self.db_connection.cursor(cursor_factory=RealDictCursor) as cursor:
                 # Construction de la requête avec filtres optionnels
                 query = "SELECT * FROM trading_signals WHERE 1=1"
-                params = []
+                params: List[Any] = []
                 
                 if strategy:
                     query += " AND strategy = %s"

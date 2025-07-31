@@ -74,7 +74,7 @@ class MACD_Regime_Validator(BaseValidator):
                 ppo = float(self.context.get('ppo', 0)) if self.context.get('ppo') is not None else None
                 
                 # Context momentum
-                momentum_score = float(self.context.get('momentum_score', 0)) if self.context.get('momentum_score') is not None else None
+                momentum_score = float(self.context.get('momentum_score', 50.0)) if self.context.get('momentum_score') is not None else None
                 
             except (ValueError, TypeError) as e:
                 logger.warning(f"{self.name}: Erreur conversion MACD pour {self.symbol}: {e}")
@@ -165,13 +165,13 @@ class MACD_Regime_Validator(BaseValidator):
                     if signal_confidence < 0.7:
                         return False
                         
-            # 8. Validation momentum score coherence
+            # 8. Validation momentum score coherence (momentum_score est 0-100, 50 = neutre)
             if momentum_score is not None:
-                if signal_side == "BUY" and momentum_score < -0.3:
-                    logger.debug(f"{self.name}: BUY signal mais momentum très négatif ({self._safe_format(momentum_score, '.2f')}) pour {self.symbol}")
+                if signal_side == "BUY" and momentum_score < 20.0:  # Momentum très bearish
+                    logger.debug(f"{self.name}: BUY signal mais momentum très bearish ({self._safe_format(momentum_score, '.1f')}) pour {self.symbol}")
                     return False
-                elif signal_side == "SELL" and momentum_score > 0.3:
-                    logger.debug(f"{self.name}: SELL signal mais momentum très positif ({self._safe_format(momentum_score, '.2f')}) pour {self.symbol}")
+                elif signal_side == "SELL" and momentum_score > 80.0:  # Momentum très bullish
+                    logger.debug(f"{self.name}: SELL signal mais momentum très bullish ({self._safe_format(momentum_score, '.1f')}) pour {self.symbol}")
                     return False
                     
             # 9. Validation spécifique pour stratégies MACD
@@ -248,7 +248,7 @@ class MACD_Regime_Validator(BaseValidator):
                 base_score += self.histogram_bonus
                 
             # Bonus position zéro line favorable
-            zero_line_favorable = self._check_zero_line_position(signal_side, macd_line)
+            zero_line_favorable = self._check_zero_line_position(str(signal_side) if signal_side is not None else "", macd_line if macd_line is not None else 0.0)
             if zero_line_favorable:
                 if signal_side == "BUY" and macd_line > self.zero_line_bonus_threshold:
                     base_score += self.zero_line_bonus  # MACD bien au-dessus zéro

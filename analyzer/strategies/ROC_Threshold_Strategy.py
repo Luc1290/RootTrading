@@ -139,7 +139,7 @@ class ROC_Threshold_Strategy(BaseStrategy):
             }
             
         # Créer le signal avec confirmations
-        return self._create_roc_signal(values, current_price, roc_analysis, threshold_result)
+        return self._create_roc_signal(values, current_price or 0.0, roc_analysis, threshold_result)
         
     def _analyze_roc_values(self, values: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Analyse les valeurs ROC disponibles et choisit la principale."""

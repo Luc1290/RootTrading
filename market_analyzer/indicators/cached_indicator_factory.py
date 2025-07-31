@@ -36,7 +36,7 @@ class CachedIndicatorFactory:
     - Cache management and statistics
     """
     
-    def __init__(self, enable_cache: bool = True, default_symbol: str = None):
+    def __init__(self, enable_cache: bool = True, default_symbol: Optional[str] = None):
         """
         Initialize the cached indicator factory.
         
@@ -53,7 +53,7 @@ class CachedIndicatorFactory:
     # ============ MOMENTUM INDICATORS ============
     
     def rsi(self, prices: Union[List[float], Any], 
-            symbol: str = None, period: int = 14) -> Optional[float]:
+            symbol: Optional[str] = None, period: int = 14) -> Optional[float]:
         """Calculate RSI with caching."""
         symbol = symbol or self.default_symbol
         if not symbol:
@@ -62,7 +62,7 @@ class CachedIndicatorFactory:
         return calculate_rsi_cached(prices, symbol, period, self.enable_cache)
     
     def rsi_series(self, prices: Union[List[float], Any], 
-                   symbol: str = None, period: int = 14) -> List[Optional[float]]:
+                   symbol: Optional[str] = None, period: int = 14) -> List[Optional[float]]:
         """Calculate RSI series with caching."""
         symbol = symbol or self.default_symbol
         if not symbol:
@@ -71,16 +71,16 @@ class CachedIndicatorFactory:
         return calculate_rsi_series_cached(prices, symbol, period, self.enable_cache)
     
     def stochastic_rsi(self, prices: Union[List[float], Any], 
-                       symbol: str = None, rsi_period: int = 14, 
-                       stoch_period: int = 14) -> Dict[str, Optional[float]]:
+                       symbol: Optional[str] = None, rsi_period: int = 14, 
+                       stoch_period: int = 14) -> Optional[Dict[str, Optional[float]]]:
         """Calculate Stochastic RSI (basic implementation - can be enhanced with caching)."""
-        from .momentum.rsi import calculate_stochastic_rsi
-        return calculate_stochastic_rsi(prices, rsi_period, stoch_period)
+        from .momentum.rsi import calculate_stoch_rsi_full
+        return calculate_stoch_rsi_full(prices, rsi_period, stoch_period)
     
     # ============ TREND INDICATORS ============
     
     def ema(self, prices: Union[List[float], Any], 
-            symbol: str = None, period: int = 26) -> Optional[float]:
+            symbol: Optional[str] = None, period: int = 26) -> Optional[float]:
         """Calculate EMA with caching."""
         symbol = symbol or self.default_symbol
         if not symbol:
@@ -89,7 +89,7 @@ class CachedIndicatorFactory:
         return calculate_ema_cached(prices, symbol, period, self.enable_cache)
     
     def ema_series(self, prices: Union[List[float], Any], 
-                   symbol: str = None, period: int = 26) -> List[Optional[float]]:
+                   symbol: Optional[str] = None, period: int = 26) -> List[Optional[float]]:
         """Calculate EMA series with caching."""
         symbol = symbol or self.default_symbol
         if not symbol:
@@ -98,7 +98,7 @@ class CachedIndicatorFactory:
         return calculate_ema_series_cached(prices, symbol, period, self.enable_cache)
     
     def sma(self, prices: Union[List[float], Any], 
-            symbol: str = None, period: int = 20) -> Optional[float]:
+            symbol: Optional[str] = None, period: int = 20) -> Optional[float]:
         """Calculate SMA with caching."""
         symbol = symbol or self.default_symbol
         if not symbol:
@@ -107,7 +107,7 @@ class CachedIndicatorFactory:
         return calculate_sma_cached(prices, symbol, period, self.enable_cache)
     
     def ma_cross_signal(self, prices: Union[List[float], Any], 
-                        symbol: str = None, fast_period: int = 7, 
+                        symbol: Optional[str] = None, fast_period: int = 7, 
                         slow_period: int = 26, ma_type: str = 'ema') -> Dict:
         """Get MA crossover signals with caching."""
         symbol = symbol or self.default_symbol
@@ -155,7 +155,7 @@ class CachedIndicatorFactory:
     # ============ MULTI-INDICATOR ANALYSIS ============
     
     def get_trend_analysis(self, prices: Union[List[float], Any], 
-                          symbol: str = None) -> Dict[str, Any]:
+                          symbol: Optional[str] = None) -> Dict[str, Any]:
         """
         Get comprehensive trend analysis with cached indicators.
         
@@ -209,7 +209,7 @@ class CachedIndicatorFactory:
             return {'trend': 'unknown', 'error': str(e)}
     
     def get_momentum_analysis(self, prices: Union[List[float], Any], 
-                             symbol: str = None) -> Dict[str, Any]:
+                             symbol: Optional[str] = None) -> Dict[str, Any]:
         """
         Get comprehensive momentum analysis with cached indicators.
         
@@ -245,8 +245,8 @@ class CachedIndicatorFactory:
             return {
                 'momentum': momentum,
                 'rsi14': rsi14,
-                'stoch_rsi_k': stoch_rsi.get('k'),
-                'stoch_rsi_d': stoch_rsi.get('d'),
+                'stoch_rsi_k': stoch_rsi.get('k') if stoch_rsi else None,
+                'stoch_rsi_d': stoch_rsi.get('d') if stoch_rsi else None,
                 'macd_momentum': 'bullish' if (macd['macd_line'] and macd['macd_signal'] and 
                                              macd['macd_line'][-1] and macd['macd_signal'][-1] and
                                              macd['macd_line'][-1] > macd['macd_signal'][-1]) else 'bearish',
@@ -259,7 +259,7 @@ class CachedIndicatorFactory:
     
     # ============ CACHE MANAGEMENT ============
     
-    def clear_cache(self, symbol: str = None):
+    def clear_cache(self, symbol: Optional[str] = None):
         """Clear all cached indicators for a symbol."""
         symbol = symbol or self.default_symbol
         if not symbol:
@@ -270,7 +270,7 @@ class CachedIndicatorFactory:
             clear_ma_cache(symbol)
             logger.info(f"Cache effacé pour {symbol}")
     
-    def get_cache_stats(self, symbol: str = None) -> Dict[str, Any]:
+    def get_cache_stats(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         """Get cache statistics for a symbol."""
         symbol = symbol or self.default_symbol
         if not symbol:
@@ -300,7 +300,7 @@ class CachedIndicatorFactory:
             logger.error(f"Erreur stats cache pour {symbol}: {e}")
             return {'cache_enabled': True, 'error': str(e)}
     
-    def warm_cache(self, prices: Union[List[float], Any], symbol: str = None):
+    def warm_cache(self, prices: Union[List[float], Any], symbol: Optional[str] = None):
         """Warm up cache with common indicators."""
         symbol = symbol or self.default_symbol
         if not symbol:
@@ -344,7 +344,7 @@ class CachedIndicatorFactory:
 cached_indicators = CachedIndicatorFactory(enable_cache=True)
 
 
-def get_cached_indicators(symbol: str = None, enable_cache: bool = True) -> CachedIndicatorFactory:
+def get_cached_indicators(symbol: Optional[str] = None, enable_cache: bool = True) -> CachedIndicatorFactory:
     """
     Get a cached indicator factory instance.
     

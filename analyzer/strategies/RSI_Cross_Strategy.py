@@ -111,7 +111,7 @@ class RSI_Cross_Strategy(BaseStrategy):
                     
             # Ajustement avec trend_strength
             trend_strength = values.get('trend_strength')
-            if trend_strength and trend_strength in ['STRONG', 'VERY_STRONG']:
+            if trend_strength and isinstance(trend_strength, str) and trend_strength in ['STRONG', 'VERY_STRONG']:
                 confidence_boost += 0.1
                 reason += f" et tendance {trend_strength.lower()}"
                 

@@ -203,8 +203,7 @@ def calculate_ppo(prices: Union[List[float], np.ndarray, pd.Series],
             ppo_line, ppo_signal, ppo_hist = talib.PPO(
                 prices_array,
                 fastperiod=fast_period,
-                slowperiod=slow_period,
-                signalperiod=signal_period
+                slowperiod=slow_period
             )
             
             return {
@@ -235,11 +234,13 @@ def calculate_ppo(prices: Union[List[float], np.ndarray, pd.Series],
     ema_slow_series = calculate_ema_series(prices_array, slow_period)
     
     for i in range(len(ema_fast_series)):
-        if ema_fast_series[i] is not None and ema_slow_series[i] is not None and ema_slow_series[i] != 0:
-            ppo_val = ((ema_fast_series[i] - ema_slow_series[i]) / ema_slow_series[i]) * 100
+        fast_val = ema_fast_series[i]
+        slow_val = ema_slow_series[i]
+        if fast_val is not None and slow_val is not None and slow_val != 0:
+            ppo_val = ((fast_val - slow_val) / slow_val) * 100
             ppo_series.append(ppo_val)
         else:
-            ppo_series.append(None)
+            ppo_series.append(0.0)
     
     # Signal line (EMA of PPO)
     ppo_signal = calculate_ema([x for x in ppo_series if x is not None], signal_period)
@@ -287,13 +288,17 @@ def macd_signal_cross(macd_values: Dict[str, Optional[float]],
     prev_line = prev_macd_values['macd_line']
     prev_signal = prev_macd_values['macd_signal']
     
-    # Bullish crossover
-    if prev_line <= prev_signal and curr_line > curr_signal:
-        return 'bullish'
-    
-    # Bearish crossover
-    if prev_line >= prev_signal and curr_line < curr_signal:
-        return 'bearish'
+    # Vérifications None avant comparaisons
+    if (prev_line is not None and prev_signal is not None and
+        curr_line is not None and curr_signal is not None):
+        
+        # Bullish crossover
+        if prev_line <= prev_signal and curr_line > curr_signal:
+            return 'bullish'
+        
+        # Bearish crossover
+        if prev_line >= prev_signal and curr_line < curr_signal:
+            return 'bearish'
     
     return 'none'
 
@@ -318,13 +323,15 @@ def macd_zero_cross(macd_values: Dict[str, Optional[float]],
     curr_line = macd_values['macd_line']
     prev_line = prev_macd_values['macd_line']
     
-    # Bullish zero cross
-    if prev_line <= 0 and curr_line > 0:
-        return 'bullish'
-    
-    # Bearish zero cross
-    if prev_line >= 0 and curr_line < 0:
-        return 'bearish'
+    # Vérifications None pour zero cross
+    if prev_line is not None and curr_line is not None:
+        # Bullish zero cross
+        if prev_line <= 0 and curr_line > 0:
+            return 'bullish'
+        
+        # Bearish zero cross
+        if prev_line >= 0 and curr_line < 0:
+            return 'bearish'
     
     return 'none'
 
@@ -334,7 +341,7 @@ def macd_zero_cross(macd_values: Dict[str, Optional[float]],
 def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
-        return data.values
+        return np.asarray(data.values, dtype=float)
     elif isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)
@@ -378,11 +385,13 @@ def _calculate_macd_manual(prices: np.ndarray,
     ema_slow_series = calculate_ema_series(prices, slow_period)
     
     for i in range(len(ema_fast_series)):
-        if ema_fast_series[i] is not None and ema_slow_series[i] is not None:
-            macd_val = (ema_fast_series[i] - ema_slow_series[i]) / normalization_factor
+        fast_val = ema_fast_series[i]
+        slow_val = ema_slow_series[i]
+        if fast_val is not None and slow_val is not None:
+            macd_val = (fast_val - slow_val) / normalization_factor
             macd_series.append(macd_val)
         else:
-            macd_series.append(None)
+            macd_series.append(0.0)
     
     # Signal line (EMA of MACD)
     macd_signal = calculate_ema([x for x in macd_series if x is not None], signal_period)
@@ -414,15 +423,17 @@ def _calculate_macd_series_manual(prices: np.ndarray,
     ema_slow_series = calculate_ema_series(prices, slow_period)
     
     # Calculate MACD line series
-    macd_line_series = []
+    macd_line_series: List[Optional[float]] = []
     for i in range(len(prices)):
-        if ema_fast_series[i] is not None and ema_slow_series[i] is not None:
-            macd_line_series.append(ema_fast_series[i] - ema_slow_series[i])
+        fast_val = ema_fast_series[i]
+        slow_val = ema_slow_series[i]
+        if fast_val is not None and slow_val is not None:
+            macd_line_series.append(fast_val - slow_val)
         else:
-            macd_line_series.append(None)
+            macd_line_series.append(0.0)
     
     # Calculate signal line series
-    macd_signal_series = [None] * len(prices)
+    macd_signal_series: List[Optional[float]] = [0.0] * len(prices)
     valid_macd = [(i, x) for i, x in enumerate(macd_line_series) if x is not None]
     
     if len(valid_macd) >= signal_period:
@@ -433,18 +444,22 @@ def _calculate_macd_series_manual(prices: np.ndarray,
         # Calculate signal EMA on valid values
         signal_values = calculate_ema_series(valid_values, signal_period)
         
-        # Map back to original indices
+        # Map back to original indices  
         for i, idx in enumerate(valid_indices):
-            if signal_values[i] is not None:
+            if i < len(signal_values) and signal_values[i] is not None:
                 macd_signal_series[idx] = signal_values[i]
+            else:
+                macd_signal_series[idx] = 0.0
     
     # Calculate histogram series
-    macd_histogram_series = []
+    macd_histogram_series: List[Optional[float]] = []
     for i in range(len(prices)):
-        if macd_line_series[i] is not None and macd_signal_series[i] is not None:
-            macd_histogram_series.append(macd_line_series[i] - macd_signal_series[i])
+        line_val = macd_line_series[i]
+        signal_val = macd_signal_series[i]
+        if line_val is not None and signal_val is not None:
+            macd_histogram_series.append(line_val - signal_val)
         else:
-            macd_histogram_series.append(None)
+            macd_histogram_series.append(0.0)
     
     return {
         'macd_line': macd_line_series,

@@ -9,7 +9,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Type, List
+from typing import Dict, Type, List, Optional, Any
 
 # Ajouter le répertoire parent au path pour les imports
 aggregator_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class ValidatorLoader:
     """Gestionnaire de chargement dynamique des validators."""
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.validators: Dict[str, Type[BaseValidator]] = {}
         self.validators_path = Path(__file__).parent.parent / "validators"
         
@@ -34,7 +34,7 @@ class ValidatorLoader:
             '__pycache__'
         }
         
-    def load_validators(self):
+    def load_validators(self) -> None:
         """Charge tous les validators disponibles depuis le dossier validators."""
         logger.info("Chargement des validators...")
         
@@ -59,7 +59,7 @@ class ValidatorLoader:
         for name in self.validators.keys():
             logger.info(f"  - {name}")
             
-    def _load_validator_from_file(self, validator_name: str):
+    def _load_validator_from_file(self, validator_name: str) -> None:
         """
         Charge un validator depuis un fichier spécifique.
         
@@ -92,7 +92,7 @@ class ValidatorLoader:
         except Exception as e:
             logger.error(f"Erreur lors du chargement de {validator_name}: {e}")
             
-    def get_validator(self, validator_name: str) -> Type[BaseValidator]:
+    def get_validator(self, validator_name: str) -> Optional[Type[BaseValidator]]:
         """
         Récupère un validator par son nom.
         
@@ -122,7 +122,7 @@ class ValidatorLoader:
         """
         return list(self.validators.keys())
         
-    def reload_validators(self):
+    def reload_validators(self) -> None:
         """Recharge tous les validators (utile pour le développement)."""
         logger.info("Rechargement des validators...")
         
@@ -178,7 +178,7 @@ class ValidatorLoader:
             logger.error(f"Erreur lors de la validation de {validator_class.__name__}: {e}")
             return False
             
-    def get_validator_info(self, validator_name: str) -> Dict:
+    def get_validator_info(self, validator_name: str) -> Optional[Dict[str, Any]]:
         """
         Récupère les informations d'un validator.
         
@@ -202,7 +202,7 @@ class ValidatorLoader:
         
     def filter_validators(self, 
                          enabled_only: bool = True,
-                         categories: List[str] = None) -> Dict[str, Type[BaseValidator]]:
+                         categories: Optional[List[str]] = None) -> Dict[str, Type[BaseValidator]]:
         """
         Filtre les validators selon des critères.
         

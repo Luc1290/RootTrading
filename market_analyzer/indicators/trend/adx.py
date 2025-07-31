@@ -323,7 +323,9 @@ def calculate_adxr(highs: Union[List[float], np.ndarray, pd.Series],
 def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
-        return data.values
+        if hasattr(data.values, 'values'):  # ExtensionArray
+            return np.asarray(data.values, dtype=float)
+        return np.asarray(data.values, dtype=float)
     elif isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)
@@ -482,9 +484,9 @@ def _calculate_adx_series_manual(highs: np.ndarray,
                                 closes: np.ndarray,
                                 period: int) -> Dict[str, List[Optional[float]]]:
     """Manual ADX series calculation."""
-    adx_series = []
-    plus_di_series = []
-    minus_di_series = []
+    adx_series: List[Optional[float]] = []
+    plus_di_series: List[Optional[float]] = []
+    minus_di_series: List[Optional[float]] = []
     
     # Need minimum data
     min_required = period * 2

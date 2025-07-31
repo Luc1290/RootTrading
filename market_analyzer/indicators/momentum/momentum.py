@@ -124,7 +124,7 @@ def calculate_momentum_series(prices: Union[List[float], np.ndarray, pd.Series],
             logger.warning(f"TA-Lib Momentum series error: {e}, using fallback")
     
     # Manual calculation
-    momentum_series = []
+    momentum_series: List[Optional[float]] = []
     
     for i in range(len(prices_array)):
         if i < period:
@@ -160,7 +160,7 @@ def calculate_roc_series(prices: Union[List[float], np.ndarray, pd.Series],
             logger.warning(f"TA-Lib ROC series error: {e}, using fallback")
     
     # Manual calculation
-    roc_series = []
+    roc_series: List[Optional[float]] = []
     
     for i in range(len(prices_array)):
         if i < period:
@@ -319,21 +319,26 @@ def calculate_momentum_divergence(prices: Union[List[float], np.ndarray, pd.Seri
             price_lows.append((idx, price))
         
         # Momentum peaks and troughs
-        if momentum > prev_momentum and momentum > next_momentum:
-            momentum_highs.append((idx, momentum))
-        elif momentum < prev_momentum and momentum < next_momentum:
-            momentum_lows.append((idx, momentum))
+        if (momentum is not None and prev_momentum is not None and next_momentum is not None):
+            if momentum > prev_momentum and momentum > next_momentum:
+                momentum_highs.append((idx, momentum))
+            elif momentum < prev_momentum and momentum < next_momentum:
+                momentum_lows.append((idx, momentum))
     
     # Check for divergence
     # Bullish divergence: Price makes lower lows, momentum makes higher lows
     if len(price_lows) >= 2 and len(momentum_lows) >= 2:
-        if price_lows[-1][1] < price_lows[-2][1] and momentum_lows[-1][1] > momentum_lows[-2][1]:
-            return 'bullish_divergence'
+        if (price_lows[-1][1] is not None and price_lows[-2][1] is not None and 
+            momentum_lows[-1][1] is not None and momentum_lows[-2][1] is not None):
+            if price_lows[-1][1] < price_lows[-2][1] and momentum_lows[-1][1] > momentum_lows[-2][1]:
+                return 'bullish_divergence'
     
     # Bearish divergence: Price makes higher highs, momentum makes lower highs
     if len(price_highs) >= 2 and len(momentum_highs) >= 2:
-        if price_highs[-1][1] > price_highs[-2][1] and momentum_highs[-1][1] < momentum_highs[-2][1]:
-            return 'bearish_divergence'
+        if (price_highs[-1][1] is not None and price_highs[-2][1] is not None and 
+            momentum_highs[-1][1] is not None and momentum_highs[-2][1] is not None):
+            if price_highs[-1][1] > price_highs[-2][1] and momentum_highs[-1][1] < momentum_highs[-2][1]:
+                return 'bearish_divergence'
     
     return 'none'
 
@@ -409,7 +414,9 @@ def momentum_strength(values: List[Optional[float]],
 def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
-        return data.values
+        if hasattr(data.values, 'values'):  # ExtensionArray
+            return np.asarray(data.values, dtype=float)
+        return np.asarray(data.values, dtype=float)
     elif isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)

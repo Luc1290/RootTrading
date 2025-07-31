@@ -10,7 +10,7 @@ import os
 import sys
 import time
 from datetime import datetime, timedelta
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import redis.asyncio as redis
@@ -129,7 +129,7 @@ class AnalyzerService:
     
     
             
-    def fetch_latest_data(self, symbol: str, timeframe: str) -> Dict[str, Any]:
+    def fetch_latest_data(self, symbol: str, timeframe: str) -> Optional[Dict[str, Any]]:
         """
         Récupère les dernières données d'analyse pour un symbole et timeframe.
         
@@ -180,14 +180,14 @@ class AnalyzerService:
                 }
                 
                 # Conversion des indicateurs en dictionnaire avec conversion robuste
-                indicators = {}
+                indicators: Dict[str, Any] = {}
                 for key, value in row.items():
                     if key not in ['time', 'symbol', 'timeframe', 'analysis_timestamp', 'analyzer_version']:
                         # Conversion ultra-robuste des valeurs
                         try:
                             if value is None or value == '':
                                 # Valeur nulle ou vide
-                                indicators[key] = None
+                                indicators[key] = 0.0
                             elif isinstance(value, (int, float)):
                                 # Déjà numérique
                                 indicators[key] = float(value)
@@ -195,7 +195,7 @@ class AnalyzerService:
                                 # Chaîne de caractères
                                 value_stripped = value.strip()
                                 if value_stripped == '' or value_stripped.lower() in ['null', 'none', 'nan']:
-                                    indicators[key] = None
+                                    indicators[key] = 0.0
                                 elif value_stripped.lower() in ['true', 'false']:
                                     indicators[key] = value_stripped.lower() == 'true'
                                 else:
@@ -204,7 +204,7 @@ class AnalyzerService:
                                         indicators[key] = float(value_stripped)
                                     except ValueError:
                                         # Si ça échoue, garder comme string (pour les valeurs comme "bullish", "bearish", etc.)
-                                        indicators[key] = value_stripped
+                                        indicators[key] = 0.0
                             else:
                                 # Autres types (bool, etc.)
                                 indicators[key] = value

@@ -75,9 +75,10 @@ class VWAP_Context_Validator(BaseValidator):
                     current_price = float(signal['price'])
                     
                 # Indicateurs complémentaires
-                momentum_score = float(self.context.get('momentum_score', 0)) if self.context.get('momentum_score') is not None else None
-                trend_strength = self._convert_trend_strength_to_score(self.context.get('trend_strength')) if self.context.get('trend_strength') is not None else None
-                volume_quality_score = float(self.context.get('volume_quality_score', 0)) if self.context.get('volume_quality_score') is not None else None
+                momentum_score = float(self.context.get('momentum_score', 50.0)) if self.context.get('momentum_score') is not None else None
+                trend_strength_value = self.context.get('trend_strength')
+                trend_strength = self._convert_trend_strength_to_score(str(trend_strength_value)) if trend_strength_value is not None else None
+                volume_quality_score = float(self.context.get('volume_quality_score', 50.0)) if self.context.get('volume_quality_score') is not None else None
                 
             except (ValueError, TypeError) as e:
                 logger.warning(f"{self.name}: Erreur conversion VWAP pour {self.symbol}: {e}")
@@ -197,7 +198,7 @@ class VWAP_Context_Validator(BaseValidator):
             # 5. Intégration qualité volume si disponible
             if volume_quality_score is not None:
                 # Volume de mauvaise qualité + position défavorable VWAP = rejet
-                if volume_quality_score < 0.5:
+                if volume_quality_score < 50.0:
                     if ((signal_side == "BUY" and price_above_vwap and vwap_distance_pct > self.moderate_distance_threshold) or
                         (signal_side == "SELL" and not price_above_vwap and vwap_distance_pct > self.moderate_distance_threshold)):
                         logger.debug(f"{self.name}: Qualité volume faible + position VWAP défavorable pour {self.symbol}")
@@ -242,7 +243,7 @@ class VWAP_Context_Validator(BaseValidator):
             anchored_vwap = float(self.context.get('anchored_vwap', 0)) if self.context.get('anchored_vwap') is not None else None
             vwap_upper_band = float(self.context.get('vwap_upper_band', 0)) if self.context.get('vwap_upper_band') is not None else None
             vwap_lower_band = float(self.context.get('vwap_lower_band', 0)) if self.context.get('vwap_lower_band') is not None else None
-            momentum_score = float(self.context.get('momentum_score', 0)) if self.context.get('momentum_score') is not None else 0
+            momentum_score = float(self.context.get('momentum_score', 50.0)) if self.context.get('momentum_score') is not None else 50.0
             
             current_price = float(self.data.get('close', signal.get('price', 0)))
             signal_side = signal.get('side')
@@ -310,10 +311,10 @@ class VWAP_Context_Validator(BaseValidator):
                 if vwap_coherence > 0.98:  # VWAPs très cohérents
                     base_score += 0.05
                     
-            # Bonus momentum cohérent
-            if signal_side == "BUY" and momentum_score > 0.5:
+            # Bonus momentum cohérent (momentum_score est 0-100, 50 = neutre)
+            if signal_side == "BUY" and momentum_score > 50.0:
                 base_score += 0.05
-            elif signal_side == "SELL" and momentum_score < -0.5:
+            elif signal_side == "SELL" and momentum_score < 50.0:
                 base_score += 0.05
                 
             return min(1.0, max(0.0, base_score))

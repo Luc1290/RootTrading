@@ -111,7 +111,7 @@ class FieldConverter:
         Returns:
             Dict des indicateurs convertis
         """
-        converted = {}
+        converted: Dict[str, Any] = {}
         
         # Log pour debug
         logger.debug(f"FieldConverter: Conversion de {len(indicators)} indicateurs")
@@ -447,8 +447,9 @@ class FieldConverter:
                 if 'momentum_score' in indicators and indicators['momentum_score'] is not None:
                     try:
                         momentum = float(indicators['momentum_score'])
-                        # momentum_score est généralement entre -1 et 1, convertir vers Z-Score
-                        indicators['returns_zscore'] = momentum * 2.5  # Scaling vers -2.5/+2.5
+                        # momentum_score est entre 0-100 (50 = neutre), convertir vers Z-Score
+                        # Normaliser : (momentum - 50) / 50 * 3 pour obtenir Z-Score -3 à +3
+                        indicators['returns_zscore'] = (momentum - 50.0) / 50.0 * 3.0
                     except (ValueError, TypeError):
                         indicators['returns_zscore'] = 0.0
                 elif 'roc_10' in indicators and indicators['roc_10'] is not None:
@@ -489,9 +490,11 @@ class FieldConverter:
                     
             if 'zscore_stability' not in indicators:
                 # Approximer stabilité avec régime confidence
-                regime_conf = indicators.get('regime_confidence', 0.5)
+                regime_conf = indicators.get('regime_confidence', 50.0)  # Format 0-100
                 try:
-                    indicators['zscore_stability'] = float(regime_conf)
+                    regime_conf_val = float(regime_conf)
+                    # Convertir 0-100 vers 0-1 pour zscore_stability
+                    indicators['zscore_stability'] = regime_conf_val / 100.0
                 except (ValueError, TypeError):
                     indicators['zscore_stability'] = 0.5
                     

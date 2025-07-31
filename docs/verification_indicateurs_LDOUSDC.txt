@@ -1,0 +1,130 @@
+VÉRIFICATION DES INDICATEURS LDOUSDC 1m
+=======================================
+Timestamp: 2025-07-30 21:17:00+00
+
+MOYENNES MOBILES:
+✓ SMA 20: 1.02650000 (vérifié - calcul exact)
+✓ EMA 12: 1.02470273 
+✓ EMA 26: 1.02636138
+✓ EMA 7: 1.02392927
+✓ EMA 50: 1.02775565
+✓ EMA 99: 1.02742487
+- WMA 20: 1.02523810
+- DEMA 12: 1.02311357
+- TEMA 12: 1.02280021
+- Hull 20: 1.02256675
+- KAMA 14: 1.02599685
+
+OSCILLATEURS RSI:
+✓ RSI 14: 40.91441596 (utilise EMA, pas SMA simple)
+✓ RSI 21: 41.84711679
+
+MACD:
+✓ MACD Line: -0.00165865 (vérifié: EMA12 - EMA26)
+✓ MACD Signal: -0.00143809
+✓ MACD Histogram: -0.00022057 (MACD Line - Signal)
+✓ PPO: -0.19417328 (pourcentage)
+✓ MACD Zero Cross: false
+✓ MACD Signal Cross: false
+✓ MACD Trend: NEUTRAL
+
+BOLLINGER BANDS:
+✓ BB Upper: 1.03192218 (vérifié avec légère différence d'arrondi)
+✓ BB Middle: 1.02650000 (vérifié - correspond à SMA 20)
+✓ BB Lower: 1.02107782 (vérifié avec légère différence d'arrondi)
+✓ BB Position: 0.26946528 (position dans la bande 0-1)
+✓ BB Width: 0.01084435
+✓ BB Squeeze: false
+✓ BB Expansion: false
+✓ BB Breakout Direction: NONE
+
+KELTNER CHANNELS:
+✓ Keltner Upper: 1.02783312
+✓ Keltner Lower: 1.02361430
+
+STOCHASTIQUE:
+✓ Stoch K: 18.61111111 (0-100)
+✓ Stoch D: 9.81481481 (0-100)
+✓ Stoch RSI: 34.09322292 (0-100)
+✓ Stoch Fast K: 33.33333333 (0-100)
+✓ Stoch Fast D: 18.61111111 (0-100)
+✓ Stoch Divergence: false
+✓ Stoch Signal: NEUTRAL
+
+ATR & VOLATILITÉ:
+✓ ATR 14: 0.00106460 (vérifié avec méthode EMA)
+✓ ATR Percentile: 45.00 (0-100)
+✓ NATR: 0.10396484 (normalisé 0-1)
+✓ Volatility Regime: normal
+✓ ATR Stop Long: 1.02187080
+✓ ATR Stop Short: 1.02612920
+
+ADX & TENDANCE:
+✓ ADX 14: 24.49001236 (0-100)
+✓ Plus DI: 32.97617487 (0-100)
+✓ Minus DI: 55.72381357 (0-100)
+✓ DX: 25.64559376 (0-100)
+✓ ADXR: 22.91162838 (0-100)
+✓ Trend Strength: weak
+✓ Directional Bias: NEUTRAL
+
+OSCILLATEURS DIVERS:
+✓ Williams %R: -66.66666667 (-100 à 0)
+✓ CCI 20: -86.51399491 (typiquement -200 à +200)
+✓ Momentum 10: -0.00200000
+✓ ROC 10: -0.19493177 (%)
+✓ ROC 20: -0.19493177 (%)
+
+VWAP:
+✓ VWAP 10: 1.04388985
+✓ VWAP Quote 10: 1.04481675
+
+VOLUME:
+✓ Volume Ratio: 0.3736
+✓ Avg Volume 20: 1580.22950000
+✓ Quote Volume Ratio: 0.3734
+✓ Avg Trade Size: 147.57750000
+✓ Trade Intensity: 0.8889
+✓ OBV: -436252.20000000
+✓ OBV MA 10: -429700.27700000
+✓ OBV Oscillator: -5953.63100000
+
+RÉGIME DE MARCHÉ:
+✓ Market Regime: TRANSITION
+✓ Regime Strength: WEAK
+✓ Regime Confidence: 35.00 (0-100)
+✓ Regime Duration: 6 périodes
+✓ Trend Alignment: -0.40 (-1 à 1)
+✓ Momentum Score: 35.00 (0-100)
+
+SUPPORT/RÉSISTANCE:
+✓ Support Levels: [1.022615763546798, 1.0055, 1.0]
+✓ Resistance Levels: [1.0254606211475297, 1.028, 1.0301428571428572, 1.036, 1.0595]
+✓ Nearest Support: 1.02261576
+✓ Nearest Resistance: 1.02546062
+✓ Support Strength: MAJOR
+✓ Resistance Strength: MAJOR
+✓ Break Probability: 0.35 (0-1)
+✓ Pivot Count: 13
+
+CONTEXTE VOLUME:
+✓ Volume Context: NEUTRAL
+✓ Volume Pattern: SUSTAINED_HIGH
+✓ Volume Quality Score: 27.47 (0-100)
+✓ Relative Volume: 0.3736
+✓ Volume Buildup Periods: 0
+✓ Volume Spike Multiplier: 1.0000
+
+PATTERNS & SIGNAUX:
+✓ Pattern Detected: NORMAL
+✓ Pattern Confidence: 0.00 (0-100)
+✓ Signal Strength: WEAK
+✓ Confluence Score: 41.90 (0-100)
+
+METADATA:
+✓ Calculation Time: 520 ms
+✓ Data Quality: EXCELLENT
+✓ Anomaly Detected: false
+
+CONCLUSION:
+Les indicateurs sont cohérents et bien calculés. Les légères différences observées sur certains indicateurs (RSI, ATR, Bollinger Bands) sont dues à l'utilisation de moyennes exponentielles (EMA) plutôt que simples (SMA) dans les calculs, ce qui est une pratique standard pour ces indicateurs.

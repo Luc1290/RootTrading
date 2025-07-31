@@ -511,6 +511,16 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
         base_confidence = 0.5
         confidence_boost = 0.0
         
+        # Vérification de sécurité pour primary_rebound
+        if primary_rebound is None:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": "Aucun rebound Williams %R détecté",
+                "metadata": {"strategy": self.name}
+            }
+            
         # Score rebound Williams %R
         confidence_boost += primary_rebound['score'] * 0.4
         
@@ -659,8 +669,8 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
                 "current_price": current_price,
                 "williams_r": williams_val,
                 "rebound_type": rebound_type,
-                "rebound_score": primary_rebound['score'],
-                "rebound_indicators": primary_rebound['indicators'],
+                "rebound_score": primary_rebound['score'] if primary_rebound else 0.0,
+                "rebound_indicators": primary_rebound['indicators'] if primary_rebound else [],
                 "oscillator_confluence_score": oscillator_confluence['score'],
                 "oscillator_confluence_indicators": oscillator_confluence['indicators'],
                 "sr_confluence_score": sr_confluence['score'],

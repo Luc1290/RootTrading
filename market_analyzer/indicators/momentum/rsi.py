@@ -28,7 +28,7 @@ except ImportError:
 
 def calculate_rsi(prices: Union[List[float], np.ndarray, pd.Series], 
                   period: int = 14,
-                  symbol: str = None,
+                  symbol: Optional[str] = None,
                   enable_cache: bool = True) -> Optional[float]:
     """
     Calculate the Relative Strength Index (RSI).
@@ -91,7 +91,7 @@ def calculate_rsi_series(prices: Union[List[float], np.ndarray, pd.Series],
             logger.warning(f"TA-Lib RSI series error: {e}, using fallback")
     
     # Manual calculation for entire series
-    rsi_series = []
+    rsi_series: List[Optional[float]] = []
     for i in range(len(prices_array)):
         if i < period:
             rsi_series.append(None)
@@ -264,7 +264,7 @@ def calculate_stoch_rsi_full(prices: Union[List[float], np.ndarray, pd.Series],
 def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
-        return data.values
+        return np.asarray(data.values, dtype=float)
     elif isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)
@@ -338,7 +338,7 @@ def _calculate_stoch_rsi_manual(prices: np.ndarray,
                 stoch_values.append(val)
         
         if stoch_values:
-            stoch_rsi = np.mean(stoch_values)
+            stoch_rsi = float(np.mean(stoch_values))
     
     return round(float(stoch_rsi), 2)
 
@@ -383,7 +383,7 @@ def _calculate_stoch_rsi_kd_manual(prices: np.ndarray,
         smoothed_k.append(np.mean(k_values[i-smooth_k+1:i+1]))
     
     if len(smoothed_k) < smooth_d:
-        return {'k': smoothed_k[-1] if smoothed_k else None, 'd': None}
+        return {'k': float(smoothed_k[-1]) if smoothed_k else None, 'd': None}
     
     # Calculate %D (SMA of %K)
     d_values = []
@@ -420,7 +420,7 @@ def calculate_rsi_cached(prices: Union[List[float], np.ndarray, pd.Series],
     try:
         # Validate parameters
         params = validate_indicator_params(period=period)
-        period = params['period']
+        period = int(params['period'])
         
         # Validate and prepare data
         prices_array = validate_and_align_arrays(prices, min_length=period + 1)[0]
@@ -511,7 +511,7 @@ def calculate_rsi_series_cached(prices: Union[List[float], np.ndarray, pd.Series
         return calculate_rsi_series(prices, period)
 
 
-def _create_rsi_state(prices: np.ndarray, period: int) -> Dict:
+def _create_rsi_state(prices: np.ndarray, period: int) -> Optional[Dict]:
     """Create RSI state for caching."""
     if len(prices) < period + 1:
         return None

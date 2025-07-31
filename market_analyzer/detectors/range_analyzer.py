@@ -308,11 +308,11 @@ class RangeAnalyzer:
             # Analyser le breakout détecté
             if breakout_up:
                 return self._analyze_bullish_breakout(
-                    highs, lows, closes, volumes, range_info
+                    np.asarray(highs), np.asarray(lows), np.asarray(closes), np.asarray(volumes), range_info
                 )
             else:
                 return self._analyze_bearish_breakout(
-                    highs, lows, closes, volumes, range_info
+                    np.asarray(highs), np.asarray(lows), np.asarray(closes), np.asarray(volumes), range_info
                 )
                 
         except Exception as e:
@@ -422,7 +422,7 @@ class RangeAnalyzer:
             if range_high <= range_low:
                 return None, None
             
-            return range_high, range_low
+            return float(range_high), float(range_low)
             
         except Exception as e:
             logger.warning(f"Erreur identification limites range: {e}")

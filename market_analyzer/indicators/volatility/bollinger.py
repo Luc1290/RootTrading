@@ -70,7 +70,7 @@ def calculate_bollinger_bands(prices: Union[List[float], np.ndarray, pd.Series],
                 timeperiod=period,
                 nbdevup=std_dev,
                 nbdevdn=std_dev,
-                matype=0  # SMA
+                matype=0  # type: ignore  # SMA
             )
             
             # Calculate additional metrics
@@ -120,7 +120,7 @@ def calculate_bollinger_bands_series(prices: Union[List[float], np.ndarray, pd.S
                 timeperiod=period,
                 nbdevup=std_dev,
                 nbdevdn=std_dev,
-                matype=0
+                matype=0  # type: ignore
             )
             
             # Calculate additional metrics series
@@ -136,17 +136,17 @@ def calculate_bollinger_bands_series(prices: Union[List[float], np.ndarray, pd.S
                         pb = (prices_array[i] - lower[i]) / bw
                         percent_b_series.append(float(pb))
                     else:
-                        percent_b_series.append(None)
+                        percent_b_series.append(0.0)
                 else:
-                    bandwidth_series.append(None)
-                    percent_b_series.append(None)
+                    bandwidth_series.append(0.0)
+                    percent_b_series.append(0.0)
             
             return {
                 'upper': [float(val) if not np.isnan(val) else None for val in upper],
                 'middle': [float(val) if not np.isnan(val) else None for val in middle],
                 'lower': [float(val) if not np.isnan(val) else None for val in lower],
-                'bandwidth': bandwidth_series,
-                'percent_b': percent_b_series
+                'bandwidth': [x if x is not None else 0.0 for x in bandwidth_series],
+                'percent_b': [x if x is not None else 0.0 for x in percent_b_series]
             }
         except Exception as e:
             logger.warning(f"TA-Lib Bollinger Bands series error: {e}, using fallback")
@@ -234,7 +234,7 @@ def calculate_bollinger_squeeze(prices: Union[List[float], np.ndarray, pd.Series
     width_percentile = (np.sum(np.array(recent_widths) <= current_width) / len(recent_widths)) * 100
     
     return {
-        'in_squeeze': in_squeeze,
+        'in_squeeze': bool(in_squeeze),
         'squeeze_percentage': float(squeeze_percentage) if squeeze_percentage is not None else None,
         'width_percentile': float(width_percentile)
     }
@@ -339,7 +339,9 @@ def bollinger_band_signal(prices: Union[List[float], np.ndarray, pd.Series],
 def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
-        return data.values
+        if hasattr(data.values, 'values'):  # ExtensionArray
+            return np.asarray(data.values, dtype=float)
+        return np.asarray(data.values, dtype=float)
     elif isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)
@@ -393,11 +395,11 @@ def _calculate_bollinger_series_manual(prices: np.ndarray,
                                       std_dev: float,
                                       ma_type: str) -> Dict[str, List[Optional[float]]]:
     """Manual Bollinger Bands series calculation."""
-    upper_series = []
-    middle_series = []
-    lower_series = []
-    bandwidth_series = []
-    percent_b_series = []
+    upper_series: List[Optional[float]] = []
+    middle_series: List[Optional[float]] = []
+    lower_series: List[Optional[float]] = []
+    bandwidth_series: List[Optional[float]] = []
+    percent_b_series: List[Optional[float]] = []
     
     for i in range(len(prices)):
         if i < period - 1:
@@ -418,16 +420,21 @@ def _calculate_bollinger_series_manual(prices: np.ndarray,
             
             std = float(np.std(window, ddof=0))
             
-            upper = middle + (std_dev * std)
-            lower = middle - (std_dev * std)
-            bandwidth = upper - lower
+            if middle is not None:
+                upper = middle + (std_dev * std)
+                lower = middle - (std_dev * std)
+                bandwidth = upper - lower
+            else:
+                upper = None
+                lower = None
+                bandwidth = None
             
             upper_series.append(upper)
             middle_series.append(middle)
             lower_series.append(lower)
             bandwidth_series.append(bandwidth)
             
-            if bandwidth > 0:
+            if bandwidth is not None and bandwidth > 0 and lower is not None:
                 percent_b = (float(prices[i]) - lower) / bandwidth
                 percent_b_series.append(percent_b)
             else:

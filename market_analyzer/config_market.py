@@ -156,7 +156,8 @@ def get_indicator_config(indicator_name: str) -> Dict[str, Any]:
         "moving_averages": MOVING_AVERAGES_CONFIG
     }
     
-    return configs.get(indicator_name, {})
+    result = configs.get(indicator_name, {})
+    return result if isinstance(result, dict) else {}
 
 
 # Configuration complète pour export

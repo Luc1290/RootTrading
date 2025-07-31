@@ -207,6 +207,12 @@ def stochastic_signal(k_current: Optional[float],
     if any(x is None for x in [k_current, d_current, k_previous, d_previous]):
         return 'neutral'
     
+    # Assertions pour mypy - on sait que les valeurs ne sont pas None
+    assert k_current is not None
+    assert d_current is not None
+    assert k_previous is not None
+    assert d_previous is not None
+    
     # Check for overbought/oversold conditions
     if k_current >= 80 and d_current >= 80:
         return 'overbought'
@@ -279,20 +285,30 @@ def calculate_stochastic_divergence(prices: Union[List[float], np.ndarray, pd.Se
             price_lows.append((idx, price))
         
         # Stochastic peaks and troughs
-        if stoch > prev_stoch and stoch > next_stoch:
+        if (stoch is not None and prev_stoch is not None and next_stoch is not None and
+            stoch > prev_stoch and stoch > next_stoch):
             stoch_highs.append((idx, stoch))
-        elif stoch < prev_stoch and stoch < next_stoch:
+        elif (stoch is not None and prev_stoch is not None and next_stoch is not None and
+              stoch < prev_stoch and stoch < next_stoch):
             stoch_lows.append((idx, stoch))
     
     # Check for divergence
     # Bullish divergence: Price makes lower lows, Stochastic makes higher lows
     if len(price_lows) >= 2 and len(stoch_lows) >= 2:
-        if price_lows[-1][1] < price_lows[-2][1] and stoch_lows[-1][1] > stoch_lows[-2][1]:
+        price_val1, price_val2 = price_lows[-1][1], price_lows[-2][1]
+        stoch_val1, stoch_val2 = stoch_lows[-1][1], stoch_lows[-2][1]
+        if (price_val1 is not None and price_val2 is not None and
+            stoch_val1 is not None and stoch_val2 is not None and
+            price_val1 < price_val2 and stoch_val1 > stoch_val2):
             return 'bullish_divergence'
     
     # Bearish divergence: Price makes higher highs, Stochastic makes lower highs
     if len(price_highs) >= 2 and len(stoch_highs) >= 2:
-        if price_highs[-1][1] > price_highs[-2][1] and stoch_highs[-1][1] < stoch_highs[-2][1]:
+        price_val1, price_val2 = price_highs[-1][1], price_highs[-2][1]
+        stoch_val1, stoch_val2 = stoch_highs[-1][1], stoch_highs[-2][1]
+        if (price_val1 is not None and price_val2 is not None and
+            stoch_val1 is not None and stoch_val2 is not None and
+            price_val1 > price_val2 and stoch_val1 < stoch_val2):
             return 'bearish_divergence'
     
     return 'none'
@@ -303,7 +319,7 @@ def calculate_stochastic_divergence(prices: Union[List[float], np.ndarray, pd.Se
 def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
-        return data.values
+        return np.asarray(data.values, dtype=float)
     elif isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)
@@ -314,7 +330,7 @@ def _calculate_raw_k(highs: np.ndarray,
                     closes: np.ndarray,
                     period: int) -> List[Optional[float]]:
     """Calculate raw %K values."""
-    k_values = []
+    k_values: List[Optional[float]] = []
     
     for i in range(len(closes)):
         if i < period - 1:
@@ -341,7 +357,7 @@ def _calculate_raw_k(highs: np.ndarray,
 
 def _smooth_series(values: List[Optional[float]], period: int) -> List[Optional[float]]:
     """Apply SMA smoothing to a series."""
-    smoothed = []
+    smoothed: List[Optional[float]] = []
     
     for i in range(len(values)):
         if values[i] is None:

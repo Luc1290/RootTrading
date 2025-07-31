@@ -48,7 +48,7 @@ class Coordinator:
         
         # Thread de monitoring stop-loss
         self.stop_loss_active = True
-        self.stop_loss_thread = None
+        self.stop_loss_thread: Optional[threading.Thread] = None
         
         # Configuration dynamique basée sur le capital total
         self.fee_rate = 0.001  # 0.1% de frais estimés par trade
@@ -824,7 +824,7 @@ class Coordinator:
                 logger.warning(f"📉 Perte: {((current_price - entry_price) / entry_price * 100):.2f}%")
                 
                 # Déclencher vente d'urgence
-                self._execute_emergency_sell(symbol, current_price, cycle_id, "STOP_LOSS_AUTO")
+                self._execute_emergency_sell(symbol, current_price, str(cycle_id) if cycle_id else "unknown", "STOP_LOSS_AUTO")
                 return
             
             # 2. MISE À JOUR AUTOMATIQUE DU TRAILING SELL
@@ -849,7 +849,7 @@ class Coordinator:
                         logger.warning(f"📉 Seuil trailing: {sell_threshold:.{precision}f}")
                         
                         # Déclencher vente trailing
-                        self._execute_emergency_sell(symbol, current_price, cycle_id, "TRAILING_SELL_AUTO")
+                        self._execute_emergency_sell(symbol, current_price, str(cycle_id) if cycle_id else "unknown", "TRAILING_SELL_AUTO")
                         return
             
             # Log debug pour positions proches des seuils

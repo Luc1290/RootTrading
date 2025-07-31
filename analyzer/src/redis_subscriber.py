@@ -6,7 +6,7 @@ Publie les signaux générés par les stratégies.
 import asyncio
 import json
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import redis.asyncio as redis
 from datetime import datetime
 
@@ -157,7 +157,7 @@ class RedisPublisher:
         except Exception as e:
             logger.error(f"Erreur publication métriques: {e}")
             
-    async def publish_error(self, error_message: str, context: Dict = None):
+    async def publish_error(self, error_message: str, context: Optional[Dict[Any, Any]] = None):
         """
         Publie une erreur vers Redis.
         

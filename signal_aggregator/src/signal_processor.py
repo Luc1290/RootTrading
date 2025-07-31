@@ -5,7 +5,7 @@ Contient la logique principale de validation, scoring et filtrage des signaux.
 
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List, Tuple, Union
 import json
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ class SignalProcessor:
             'validator_performance': {}
         }
         
-    async def process_signal(self, signal_data: str) -> Optional[Dict[str, Any]]:
+    async def process_signal(self, signal_data: str) -> Optional[Union[Dict[str, Any], List[Dict[str, Any]]]]:
         """
         Traite un signal ou un batch de signaux reçu depuis Redis.
         

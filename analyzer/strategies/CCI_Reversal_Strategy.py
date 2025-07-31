@@ -112,7 +112,7 @@ class CCI_Reversal_Strategy(BaseStrategy):
             
             # Utilisation du momentum_score pré-calculé avec conversion sécurisée
             momentum_score_raw = values.get('momentum_score')
-            momentum_score = 0
+            momentum_score = 0.0
             if momentum_score_raw is not None:
                 try:
                     momentum_score = float(momentum_score_raw)
@@ -129,9 +129,9 @@ class CCI_Reversal_Strategy(BaseStrategy):
                     
             # Utilisation du trend_strength
             trend_strength_raw = values.get('trend_strength')
-            if trend_strength_raw and trend_strength_raw in ['STRONG', 'VERY_STRONG']:
+            if trend_strength_raw and str(trend_strength_raw) in ['STRONG', 'VERY_STRONG']:
                 confidence_boost += 0.1
-                reason += f" et tendance {trend_strength_raw.lower()}"
+                reason += f" et tendance {str(trend_strength_raw).lower()}"
                 
             # Utilisation du directional_bias
             directional_bias = values.get('directional_bias')
@@ -146,7 +146,7 @@ class CCI_Reversal_Strategy(BaseStrategy):
                     
             # Utilisation du confluence_score avec conversion sécurisée
             confluence_score_raw = values.get('confluence_score')
-            confluence_score = 0
+            confluence_score = 0.0
             if confluence_score_raw is not None:
                 try:
                     confluence_score = float(confluence_score_raw)
@@ -160,7 +160,7 @@ class CCI_Reversal_Strategy(BaseStrategy):
             # Utilisation du pattern_detected et pattern_confidence avec conversion sécurisée
             pattern_detected = values.get('pattern_detected')
             pattern_confidence_raw = values.get('pattern_confidence')
-            pattern_confidence = 0
+            pattern_confidence = 0.0
             if pattern_confidence_raw is not None:
                 try:
                     pattern_confidence = float(pattern_confidence_raw)

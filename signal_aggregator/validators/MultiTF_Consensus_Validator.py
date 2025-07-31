@@ -69,17 +69,21 @@ class MultiTF_Consensus_Validator(BaseValidator):
                 consensus_score = float(self.context.get('consensus_score', 0)) if self.context.get('consensus_score') is not None else None
                 tf_alignment = float(self.context.get('tf_alignment', 0)) if self.context.get('tf_alignment') is not None else None
                 trend_alignment = float(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None
-                signal_strength = self._convert_signal_strength_to_score(self.context.get('signal_strength')) if self.context.get('signal_strength') is not None else None
+                # Ligne 72: Vérification None et type avant conversion
+                signal_strength_raw = self.context.get('signal_strength')
+                signal_strength = self._convert_signal_strength_to_score(str(signal_strength_raw)) if signal_strength_raw is not None else None
                 
                 # Alignement moyennes mobiles (disponibles dans MultiTF_ConfluentEntry_Strategy)
                 ma_alignment_score = self._calculate_ma_alignment()
                 
                 # Direction et tendance
                 directional_bias = self.context.get('directional_bias')
-                trend_strength = self._convert_trend_strength_to_score(self.context.get('trend_strength')) if self.context.get('trend_strength') is not None else None
+                # Ligne 79: Vérification None et type avant conversion
+                trend_strength_raw = self.context.get('trend_strength')
+                trend_strength = self._convert_trend_strength_to_score(str(trend_strength_raw)) if trend_strength_raw is not None else None
                 
                 # Confluence générale
-                confluence_score = float(self.context.get('confluence_score', 0)) if self.context.get('confluence_score') is not None else None
+                confluence_score = float(self.context.get('confluence_score', 50.0)) if self.context.get('confluence_score') is not None else None
                 pattern_confidence = float(self.context.get('pattern_confidence', 0)) if self.context.get('pattern_confidence') is not None else None
                 
             except (ValueError, TypeError) as e:
@@ -125,8 +129,9 @@ class MultiTF_Consensus_Validator(BaseValidator):
                     return False
                     
             # 6. Validation consensus directionnel
+            # Lignes 129: Vérification None et type avant appel
             directional_consensus = self._validate_directional_consensus(
-                signal_side, directional_bias, trend_strength
+                signal_side, str(directional_bias) if directional_bias is not None else "neutral", trend_strength or 0.0
             )
             if not directional_consensus:
                 logger.debug(f"{self.name}: Consensus directionnel insuffisant pour {self.symbol}")
@@ -134,8 +139,9 @@ class MultiTF_Consensus_Validator(BaseValidator):
                     return False
                     
             # 7. Détection divergences critiques
+            # Ligne 138: Vérification None avant appel
             critical_divergence = self._detect_critical_divergences(
-                consensus_score, tf_alignment, trend_alignment, signal_strength
+                consensus_score or 0.0, tf_alignment or 0.0, trend_alignment or 0.0, signal_strength or 0.0
             )
             if critical_divergence:
                 logger.debug(f"{self.name}: Divergence critique détectée pour {self.symbol}")
@@ -298,13 +304,17 @@ class MultiTF_Consensus_Validator(BaseValidator):
             consensus_score = float(self.context.get('consensus_score', 0.5)) if self.context.get('consensus_score') is not None else 0.5
             tf_alignment = float(self.context.get('tf_alignment', 0.5)) if self.context.get('tf_alignment') is not None else 0.5
             trend_alignment = float(self.context.get('trend_alignment', 0.5)) if self.context.get('trend_alignment') is not None else 0.5
-            signal_strength = self._convert_signal_strength_to_score(self.context.get('signal_strength')) if self.context.get('signal_strength') is not None else 0.5
-            confluence_score = float(self.context.get('confluence_score', 0.5)) if self.context.get('confluence_score') is not None else 0.5
+            # Ligne 301: Vérification None et type avant conversion
+            signal_strength_raw = self.context.get('signal_strength')
+            signal_strength = self._convert_signal_strength_to_score(str(signal_strength_raw)) if signal_strength_raw is not None else 0.5
+            confluence_score = float(self.context.get('confluence_score', 50.0)) if self.context.get('confluence_score') is not None else 50.0
             
             signal_side = signal.get('side')
             signal_strategy = signal.get('strategy', '')
             directional_bias = self.context.get('directional_bias')
-            trend_strength = self._convert_trend_strength_to_score(self.context.get('trend_strength')) if self.context.get('trend_strength') is not None else 0.5
+            # Ligne 307: Vérification None avant conversion
+            trend_strength_raw = self.context.get('trend_strength')
+            trend_strength = self._convert_trend_strength_to_score(trend_strength_raw) if trend_strength_raw is not None else 0.5
             
             base_score = 0.5  # Score de base si validé
             
@@ -348,8 +358,9 @@ class MultiTF_Consensus_Validator(BaseValidator):
                 base_score += 0.08
                 
             # Bonus consensus directionnel
+            # Ligne 352: Vérification None et type avant appel
             directional_consensus = self._validate_directional_consensus(
-                signal_side, directional_bias, trend_strength
+                str(signal_side) if signal_side is not None else "UNKNOWN", str(directional_bias) if directional_bias is not None else "neutral", trend_strength
             )
             if directional_consensus:
                 base_score += 0.10
@@ -392,7 +403,9 @@ class MultiTF_Consensus_Validator(BaseValidator):
             consensus_score = float(self.context.get('consensus_score', 0)) if self.context.get('consensus_score') is not None else None
             tf_alignment = float(self.context.get('tf_alignment', 0)) if self.context.get('tf_alignment') is not None else None
             trend_alignment = float(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None
-            signal_strength = self._convert_signal_strength_to_score(self.context.get('signal_strength')) if self.context.get('signal_strength') is not None else None
+            # Ligne 395: Vérification None et type avant conversion
+            signal_strength_raw = self.context.get('signal_strength')
+            signal_strength = self._convert_signal_strength_to_score(str(signal_strength_raw)) if signal_strength_raw is not None else None
             signal_side = signal.get('side', 'N/A')
             signal_strategy = signal.get('strategy', 'N/A')
             
@@ -433,8 +446,9 @@ class MultiTF_Consensus_Validator(BaseValidator):
                 if ma_alignment < self.min_ma_alignment:
                     return f"{self.name}: Rejeté - Alignement MA insuffisant ({self._safe_format(ma_alignment, '.2f')})"
                     
+                # Ligne 437: Vérification None avant appel
                 critical_divergence = self._detect_critical_divergences(
-                    consensus_score, tf_alignment, trend_alignment, signal_strength
+                    consensus_score or 0.0, tf_alignment or 0.0, trend_alignment or 0.0, signal_strength or 0.0
                 )
                 if critical_divergence:
                     return f"{self.name}: Rejeté - Divergences critiques détectées"

@@ -68,7 +68,7 @@ class Trend_Smoothness_Validator(BaseValidator):
                 if raw_trend_strength in [None, 'absent', 'unknown', '']:
                     trend_strength = None
                 else:
-                    trend_strength = self._convert_trend_strength_to_score(raw_trend_strength)
+                    trend_strength = self._convert_trend_strength_to_score(str(raw_trend_strength))
                 
                 # Gestion des valeurs NULL dans trend_angle
                 trend_angle = float(self.context.get('trend_angle', 0)) if self.context.get('trend_angle') is not None else None
@@ -208,7 +208,8 @@ class Trend_Smoothness_Validator(BaseValidator):
                 return 0.0
                 
             # Calcul du score basé sur la fluidité
-            trend_strength = self._convert_trend_strength_to_score(self.context.get('trend_strength')) if self.context.get('trend_strength') is not None else 0.5
+            trend_strength_value = self.context.get('trend_strength')
+            trend_strength = self._convert_trend_strength_to_score(str(trend_strength_value)) if trend_strength_value is not None else 0.5
             trend_angle = float(self.context.get('trend_angle', 0)) if self.context.get('trend_angle') is not None else None
             trend_alignment = float(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else 0.5
             atr_percentile = float(self.context.get('atr_percentile', 0)) if self.context.get('atr_percentile') is not None else 50
@@ -277,7 +278,8 @@ class Trend_Smoothness_Validator(BaseValidator):
         """
         try:
             signal_side = signal.get('side', 'N/A')
-            trend_strength = self._convert_trend_strength_to_score(self.context.get('trend_strength')) if self.context.get('trend_strength') is not None else None
+            trend_strength_value = self.context.get('trend_strength')
+            trend_strength = self._convert_trend_strength_to_score(str(trend_strength_value)) if trend_strength_value is not None else None
             trend_angle = float(self.context.get('trend_angle', 0)) if self.context.get('trend_angle') is not None else None
             trend_alignment = float(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None
             

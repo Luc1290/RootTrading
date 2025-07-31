@@ -10,7 +10,7 @@ This module identifies current market conditions and regimes:
 
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Union, Tuple, NamedTuple
+from typing import Dict, List, Optional, Union, Tuple, NamedTuple, Any
 from dataclasses import dataclass
 from enum import Enum
 import logging
@@ -96,14 +96,14 @@ class RegimeDetector:
         self.volume_threshold = volume_threshold
         
         # Cache pour optimiser les calculs
-        self._cache = {}
+        self._cache: Dict[str, Any] = {}
     
     def detect_regime(self,
                      highs: Union[List[float], np.ndarray],
                      lows: Union[List[float], np.ndarray], 
                      closes: Union[List[float], np.ndarray],
                      volumes: Union[List[float], np.ndarray],
-                     symbol: str = None,
+                     symbol: Optional[str] = None,
                      include_analysis: bool = True,
                      enable_cache: bool = True) -> MarketRegime:
         """
@@ -182,10 +182,10 @@ class RegimeDetector:
             return self._unknown_regime()
     
     def _analyze_volatility(self, highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, 
-                           symbol: str = None, enable_cache: bool = True) -> Dict:
+                           symbol: Optional[str] = None, enable_cache: bool = True) -> Dict:
         """Analyse la volatilité du marché."""
-        from ..indicators.volatility.atr import calculate_atr_series
-        from ..indicators.volatility.bollinger import calculate_bollinger_bands_series
+        from .indicators.volatility.atr import calculate_atr_series  # type: ignore
+        from .indicators.volatility.bollinger import calculate_bollinger_bands_series  # type: ignore
         
         # ATR pour volatilité absolue
         atr_series = calculate_atr_series(highs, lows, closes)
@@ -208,7 +208,7 @@ class RegimeDetector:
                 width = (bb_series['upper'][i] - bb_series['lower'][i]) / bb_series['middle'][i]
                 bb_widths.append(width)
         
-        bb_width_percentile = 50
+        bb_width_percentile = 50.0
         if bb_widths:
             current_bb_width = bb_widths[-1]
             bb_width_percentile = self._calculate_percentile(bb_widths, current_bb_width, 20)
@@ -227,10 +227,10 @@ class RegimeDetector:
             'regime': volatility_regime
         }
     
-    def _analyze_trend(self, closes: np.ndarray, symbol: str = None, enable_cache: bool = True) -> Dict:
+    def _analyze_trend(self, closes: np.ndarray, symbol: Optional[str] = None, enable_cache: bool = True) -> Dict:
         """Analyse la tendance."""
-        from ..indicators.trend.moving_averages import calculate_ema_series
-        from ..indicators.trend.adx import calculate_adx_full
+        from .indicators.trend.moving_averages import calculate_ema_series  # type: ignore
+        from .indicators.trend.adx import calculate_adx  # type: ignore
         
         # Définir les périodes EMA localement
         ema_periods = {
@@ -306,10 +306,10 @@ class RegimeDetector:
             'ema_alignment': direction in ['bullish', 'bearish']
         }
     
-    def _analyze_momentum(self, closes: np.ndarray, symbol: str = None, enable_cache: bool = True) -> Dict:
+    def _analyze_momentum(self, closes: np.ndarray, symbol: Optional[str] = None, enable_cache: bool = True) -> Dict:
         """Analyse le momentum."""
-        from ..indicators.momentum.rsi import calculate_rsi_series, calculate_rsi
-        from ..indicators.trend.macd import calculate_macd_series
+        from .indicators.momentum.rsi import calculate_rsi_series, calculate_rsi  # type: ignore
+        from .indicators.trend.macd import calculate_macd, calculate_macd_series  # type: ignore
         
         # RSI pour momentum (with caching if symbol provided)
         if symbol and enable_cache:
@@ -382,8 +382,9 @@ class RegimeDetector:
         # Trend du volume
         volume_trend = 'stable'
         if len(volumes) >= 10:
-            recent_volumes = volumes[-10:]
-            volume_slope = self._calculate_slope(recent_volumes)
+            recent_volumes = volumes[-10:].astype(float)
+            volume_list = [float(v) for v in recent_volumes]
+            volume_slope = self._calculate_slope(volume_list)
             if volume_slope > 0.1:
                 volume_trend = 'increasing'
             elif volume_slope < -0.1:
@@ -518,7 +519,7 @@ class RegimeDetector:
     
     def _identify_key_levels(self, highs: np.ndarray, lows: np.ndarray, closes: np.ndarray) -> List[float]:
         """Identifie les niveaux de prix clés."""
-        key_levels = []
+        key_levels: List[float] = []
         
         if len(closes) < 20:
             return key_levels

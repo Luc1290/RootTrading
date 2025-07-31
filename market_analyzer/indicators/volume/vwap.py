@@ -176,7 +176,7 @@ def calculate_vwap_series(highs: Union[List[float], np.ndarray, pd.Series],
     # Calculate typical price
     typical_prices = (highs_array + lows_array + closes_array) / 3
     
-    vwap_series = []
+    vwap_series: List[Optional[float]] = []
     
     for i in range(len(typical_prices)):
         if period is None:
@@ -251,7 +251,7 @@ def calculate_vwap_quote_series(highs: Union[List[float], np.ndarray, pd.Series]
     # Calculate typical price
     typical_prices = (highs_array + lows_array + closes_array) / 3
     
-    vwap_series = []
+    vwap_series: List[Optional[float]] = []
     
     for i in range(len(typical_prices)):
         if period is None:
@@ -528,7 +528,7 @@ def find_poc(prices: Union[List[float], np.ndarray, pd.Series],
 def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
-        return data.values
+        return np.asarray(data.values, dtype=float)
     elif isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)

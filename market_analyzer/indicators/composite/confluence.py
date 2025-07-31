@@ -6,7 +6,7 @@ pour mesurer la cohérence des signaux haussiers/baissiers.
 """
 
 import logging
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -33,8 +33,8 @@ def calculate_confluence_score(indicators: Dict,
         Score entre 0.0 et 100.0 (50 = neutre, >50 = haussier, <50 = baissier)
     """
     try:
-        signals = []
-        weights = []
+        signals: List[float] = []
+        weights: List[float] = []
         
         # === MOYENNES MOBILES ===
         if confluence_type == ConfluenceType.MONO_TIMEFRAME:

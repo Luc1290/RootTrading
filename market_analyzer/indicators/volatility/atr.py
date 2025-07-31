@@ -338,7 +338,7 @@ def volatility_regime(highs: Union[List[float], np.ndarray, pd.Series],
 def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
-        return data.values
+        return np.asarray(data.values, dtype=float)
     elif isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)
@@ -380,7 +380,7 @@ def _calculate_atr_series_manual(highs: np.ndarray,
                                 closes: np.ndarray,
                                 period: int) -> List[Optional[float]]:
     """Manual ATR series calculation."""
-    atr_series = []
+    atr_series: List[Optional[float]] = []
     
     # Not enough data for first period
     if len(highs) < period + 1:

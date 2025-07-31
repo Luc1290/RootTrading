@@ -253,7 +253,7 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
         signal_side = None
         reason = ""
         confidence_boost = 0.0
-        metadata = {
+        metadata: Dict[str, Any] = {
             "strategy": self.name,
             "symbol": self.symbol
         }

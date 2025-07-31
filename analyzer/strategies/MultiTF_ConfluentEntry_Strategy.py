@@ -111,9 +111,10 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         
         # Récupération des MAs disponibles
         for key in ma_keys:
-            if values.get(key) is not None:
+            value = values.get(key)
+            if value is not None:
                 try:
-                    mas[key] = float(values[key])
+                    mas[key] = float(value)
                 except (ValueError, TypeError):
                     continue
                     
@@ -165,7 +166,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         # RSI
         if values.get('rsi_14') is not None:
             try:
-                rsi = float(values['rsi_14'])
+                rsi = float(values['rsi_14']) if values['rsi_14'] is not None else 0.0
                 if rsi <= 30:
                     oscillators['rsi_14'] = 'oversold'
                 elif rsi >= 70:
@@ -178,8 +179,8 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         # Stochastic
         if values.get('stoch_k') is not None and values.get('stoch_d') is not None:
             try:
-                k = float(values['stoch_k'])
-                d = float(values['stoch_d'])
+                k = float(values['stoch_k']) if values['stoch_k'] is not None else 0.0
+                d = float(values['stoch_d']) if values['stoch_d'] is not None else 0.0
                 if k <= 20 and d <= 20:
                     oscillators['stoch'] = 'oversold'
                 elif k >= 80 and d >= 80:
@@ -192,7 +193,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         # CCI
         if values.get('cci_20') is not None:
             try:
-                cci = float(values['cci_20'])
+                cci = float(values['cci_20']) if values['cci_20'] is not None else 0.0
                 if cci <= -100:
                     oscillators['cci'] = 'oversold'
                 elif cci >= 100:
@@ -205,7 +206,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         # Williams %R
         if values.get('williams_r') is not None:
             try:
-                wr = float(values['williams_r'])
+                wr = float(values['williams_r']) if values['williams_r'] is not None else 0.0
                 if wr <= -80:
                     oscillators['williams'] = 'oversold'
                 elif wr >= -20:
@@ -401,7 +402,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
             
             if regime_strength in ['STRONG', 'EXTREME']:
                 confidence_boost += 0.08
-                reason += f" avec régime {regime_strength.lower()}"
+                reason += f" avec régime {str(regime_strength).lower()}"
                     
         # Volume pour confirmation
         volume_ratio = values.get('volume_ratio')

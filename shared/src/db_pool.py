@@ -16,16 +16,11 @@ from psycopg2.extras import RealDictCursor, DictCursor
 
 # Importer la configuration
 from shared.src.config import get_db_url, DB_MIN_CONNECTIONS, DB_MAX_CONNECTIONS
-# Ajouter ce code après les imports dans db_pool.py
 # Compatibilité pour différentes versions de psycopg2
-if not hasattr(psycopg2.extensions, 'STATUS_READY'):
-    psycopg2.extensions.STATUS_READY = 0  # pas de transaction en cours
-    
-if not hasattr(psycopg2.extensions, 'STATUS_INTRANS'):
-    psycopg2.extensions.STATUS_INTRANS = 1  # transaction en cours
-    
-if not hasattr(psycopg2.extensions, 'STATUS_INERROR'):
-    psycopg2.extensions.STATUS_INERROR = 2  # erreur dans la transaction
+# Définir des constantes locales en utilisant getattr pour éviter les erreurs d'attribut
+STATUS_READY = getattr(psycopg2.extensions, 'STATUS_READY', 0)
+STATUS_INTRANS = getattr(psycopg2.extensions, 'STATUS_INTRANS', 1) 
+STATUS_INERROR = getattr(psycopg2.extensions, 'STATUS_INERROR', 2)
 
 # Configuration du logging
 logger = logging.getLogger(__name__)
@@ -382,7 +377,7 @@ class AdvancedConnectionPool:
         # Nettoyer systématiquement toute transaction en cours
         try:
             tx_status = conn.connection.get_transaction_status()
-            if tx_status != extensions.STATUS_READY:  # Pas dans l'état IDLE
+            if tx_status != STATUS_READY:  # Pas dans l'état IDLE
                 conn.connection.rollback()
                 # Debug supprimé - trop répétitif
         except Exception as e:
@@ -673,7 +668,7 @@ class DBContextManager:
         self.conn = self.pool.get_connection(max_retries=self.max_retries)
         
         # Vérifier et nettoyer toute transaction résiduelle
-        if self.conn.get_transaction_status() != extensions.STATUS_READY:
+        if self.conn.get_transaction_status() != STATUS_READY:
             # Debug supprimé - trop répétitif
             self.conn.rollback()
         
@@ -764,26 +759,26 @@ class DBContextManager:
                 if self.auto_transaction:
                     if exc_type is None:
                         # Pas d'erreur → commit si transaction active
-                        if status == extensions.STATUS_INTRANS:
+                        if status == STATUS_INTRANS:
                             self.conn.commit()
                             # Enregistrer la transaction dans les métriques
                             self.pool.metrics.record_transaction()
                             logger.debug("Transaction validée automatiquement")
                     else:
                         # Erreur → rollback si nécessaire
-                        if status in (extensions.STATUS_INTRANS, extensions.STATUS_INERROR):
+                        if status in (STATUS_INTRANS, STATUS_INERROR):
                             self.conn.rollback()
                             logger.debug(f"Transaction annulée automatiquement suite à {exc_type.__name__}: {exc_val}")
                 else:
                     # En mode sans auto_transaction, vérifier qu'aucune transaction n'est encore active
-                    if status in (extensions.STATUS_INTRANS, extensions.STATUS_INERROR):
+                    if status in (STATUS_INTRANS, STATUS_INERROR):
                         # Debug supprimé - trop répétitif
                         self.conn.rollback()
         finally:
             # 3) toujours s'assurer qu'aucune transaction n'est active avant de changer autocommit
             if self.conn and not self.conn.closed:
                 # Vérifier qu'il n'y a plus de transactions actives 
-                if self.conn.get_transaction_status() != extensions.STATUS_READY:
+                if self.conn.get_transaction_status() != STATUS_READY:
                     # Debug supprimé - trop répétitif
                     self.conn.rollback()
                 
@@ -817,9 +812,9 @@ def transaction(cursor_factory=None):
         cursor = db_ctx.__enter__()
         
         # Vérifier que la transaction est bien démarrée
-        if cursor.connection.get_transaction_status() != extensions.STATUS_INTRANS:
+        if cursor.connection.get_transaction_status() != STATUS_INTRANS:
             # S'assurer qu'aucune transaction n'est active
-            if cursor.connection.get_transaction_status() != extensions.STATUS_READY:
+            if cursor.connection.get_transaction_status() != STATUS_READY:
                 cursor.connection.rollback()
                 # Debug supprimé - trop répétitif
             

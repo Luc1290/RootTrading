@@ -70,14 +70,16 @@ class Liquidity_Sweep_Validator(BaseValidator):
             try:
                 nearest_support = float(self.context.get('nearest_support', 0)) if self.context.get('nearest_support') is not None else None
                 nearest_resistance = float(self.context.get('nearest_resistance', 0)) if self.context.get('nearest_resistance') is not None else None
-                support_strength = self._convert_strength_to_score(self.context.get('support_strength')) if self.context.get('support_strength') is not None else None
-                resistance_strength = self._convert_strength_to_score(self.context.get('resistance_strength')) if self.context.get('resistance_strength') is not None else None
+                support_strength_value = self.context.get('support_strength')
+                support_strength = self._convert_strength_to_score(str(support_strength_value)) if support_strength_value is not None else None
+                resistance_strength_value = self.context.get('resistance_strength')
+                resistance_strength = self._convert_strength_to_score(str(resistance_strength_value)) if resistance_strength_value is not None else None
                 break_probability = float(self.context.get('break_probability', 0.5)) if self.context.get('break_probability') is not None else None
                 
                 # Volume indicators
                 volume_ratio = float(self.context.get('volume_ratio', 1.0)) if self.context.get('volume_ratio') is not None else None
                 volume_spike_multiplier = float(self.context.get('volume_spike_multiplier', 1.0)) if self.context.get('volume_spike_multiplier') is not None else None
-                volume_quality_score = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else None
+                volume_quality_score = float(self.context.get('volume_quality_score', 50.0)) if self.context.get('volume_quality_score') is not None else None
                 trade_intensity = float(self.context.get('trade_intensity', 0.5)) if self.context.get('trade_intensity') is not None else None
                 
                 # Market context
@@ -131,19 +133,32 @@ class Liquidity_Sweep_Validator(BaseValidator):
             if not self._is_liquidity_sweep_strategy(signal_strategy):
                 # Pour autres stratégies, validation moins stricte mais toujours pertinente
                 logger.debug(f"{self.name}: Stratégie non-sweep ({signal_strategy}) - validation basique pour {self.symbol}")
-                return self._validate_basic_structure(signal, current_price, nearest_support, nearest_resistance)
+                if nearest_support is not None and nearest_resistance is not None:
+                    return self._validate_basic_structure(signal, current_price, nearest_support, nearest_resistance)
+                else:
+                    return True  # Si pas de niveaux S/R, on accepte
                 
             # 2. Validation spécifique pour liquidity sweep strategies
             if signal_side == "BUY":
-                return self._validate_bullish_sweep(
-                    signal, current_price, nearest_support, support_strength, 
-                    break_probability, volume_ratio, volume_spike_multiplier, volume_quality_score
-                )
+                if (nearest_support is not None and support_strength is not None and 
+                    break_probability is not None and volume_ratio is not None and 
+                    volume_spike_multiplier is not None and volume_quality_score is not None):
+                    return self._validate_bullish_sweep(
+                        signal, current_price, nearest_support, support_strength, 
+                        break_probability, volume_ratio, volume_spike_multiplier, volume_quality_score
+                    )
+                else:
+                    return True  # Si indicateurs manquants, on accepte
             elif signal_side == "SELL":
-                return self._validate_bearish_sweep(
-                    signal, current_price, nearest_resistance, resistance_strength,
-                    break_probability, volume_ratio, volume_spike_multiplier, volume_quality_score
-                )
+                if (nearest_resistance is not None and resistance_strength is not None and 
+                    break_probability is not None and volume_ratio is not None and 
+                    volume_spike_multiplier is not None and volume_quality_score is not None):
+                    return self._validate_bearish_sweep(
+                        signal, current_price, nearest_resistance, resistance_strength,
+                        break_probability, volume_ratio, volume_spike_multiplier, volume_quality_score
+                    )
+                else:
+                    return True  # Si indicateurs manquants, on accepte
                 
             return False
             
@@ -316,12 +331,14 @@ class Liquidity_Sweep_Validator(BaseValidator):
                 return 0.0
                 
             # Calcul du score basé sur liquidity sweep
-            support_strength = self._convert_strength_to_score(self.context.get('support_strength')) if self.context.get('support_strength') is not None else 0.5
-            resistance_strength = self._convert_strength_to_score(self.context.get('resistance_strength')) if self.context.get('resistance_strength') is not None else 0.5
+            support_strength_value = self.context.get('support_strength')
+            support_strength = self._convert_strength_to_score(str(support_strength_value)) if support_strength_value is not None else 0.5
+            resistance_strength_value = self.context.get('resistance_strength')
+            resistance_strength = self._convert_strength_to_score(str(resistance_strength_value)) if resistance_strength_value is not None else 0.5
             break_probability = float(self.context.get('break_probability', 0.5)) if self.context.get('break_probability') is not None else 0.5
             volume_ratio = float(self.context.get('volume_ratio', 1.0)) if self.context.get('volume_ratio') is not None else 1.0
             volume_spike_multiplier = float(self.context.get('volume_spike_multiplier', 1.0)) if self.context.get('volume_spike_multiplier') is not None else 1.0
-            volume_quality_score = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else 0.5
+            volume_quality_score = float(self.context.get('volume_quality_score', 50.0)) if self.context.get('volume_quality_score') is not None else 50.0
             
             signal_side = signal.get('side')
             signal_strategy = signal.get('strategy', '')
@@ -447,7 +464,7 @@ class Liquidity_Sweep_Validator(BaseValidator):
             
         return True
         
-    def _get_current_price(self) -> float:
+    def _get_current_price(self) -> float | None:
         """Helper method to get current price from data or context."""
         if self.data:
             # Essayer d'abord la valeur scalaire (format préféré)

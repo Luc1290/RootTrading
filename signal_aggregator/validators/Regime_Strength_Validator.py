@@ -84,12 +84,12 @@ class Regime_Strength_Validator(BaseValidator):
                 current_regime = self.context.get('current_regime')
                 regime_strength_raw = self.context.get('regime_strength')
                 regime_strength = self._convert_regime_strength_to_score(regime_strength_raw) if regime_strength_raw else None
-                regime_confidence = float(self.context.get('regime_confidence', 0)) if self.context.get('regime_confidence') is not None else None
-                regime_persistence = float(self.context.get('regime_persistence', 0)) if self.context.get('regime_persistence') is not None else None
+                regime_confidence = float(self.context.get('regime_confidence', 50.0)) if self.context.get('regime_confidence') is not None else None
+                regime_persistence = float(self.context.get('regime_persistence', 50.0)) if self.context.get('regime_persistence') is not None else None
                 
                 # Durée et stabilité
                 regime_duration_bars = int(self.context.get('regime_duration_bars', 0)) if self.context.get('regime_duration_bars') is not None else None
-                regime_stability = float(self.context.get('regime_stability', 0)) if self.context.get('regime_stability') is not None else None
+                regime_stability = float(self.context.get('regime_stability', 50.0)) if self.context.get('regime_stability') is not None else None
                 last_regime_change_bars = int(self.context.get('last_regime_change_bars', 999)) if self.context.get('last_regime_change_bars') is not None else None
                 
                 # Transitions et changements
@@ -103,7 +103,7 @@ class Regime_Strength_Validator(BaseValidator):
                 momentum_regime = self.context.get('momentum_regime')
                 
                 # Consensus et cohérence
-                regime_consensus_score = float(self.context.get('regime_consensus_score', 0)) if self.context.get('regime_consensus_score') is not None else None
+                regime_consensus_score = float(self.context.get('regime_consensus_score', 60.0)) if self.context.get('regime_consensus_score') is not None else None
                 regime_divergence_score = float(self.context.get('regime_divergence_score', 0)) if self.context.get('regime_divergence_score') is not None else None
                 
                 # Indicateurs de force du régime
@@ -180,9 +180,12 @@ class Regime_Strength_Validator(BaseValidator):
                     return False
                     
             # 8. Validation consensus entre régimes multiples
-            regime_coherence = self._validate_regime_coherence(
-                current_regime, volatility_regime, trend_regime, momentum_regime
-            )
+            if (current_regime and volatility_regime and trend_regime and momentum_regime):
+                regime_coherence = self._validate_regime_coherence(
+                    current_regime, volatility_regime, trend_regime, momentum_regime
+                )
+            else:
+                regime_coherence = True
             if not regime_coherence:
                 logger.debug(f"{self.name}: Incohérence entre régimes pour {self.symbol}")
                 if signal_confidence < 0.7:
@@ -215,7 +218,10 @@ class Regime_Strength_Validator(BaseValidator):
                     return False
                     
             # 13. Validation cohérence stratégie/régime
-            strategy_regime_match = self._validate_strategy_regime_match(signal_strategy, current_regime)
+            if current_regime:
+                strategy_regime_match = self._validate_strategy_regime_match(signal_strategy, current_regime)
+            else:
+                strategy_regime_match = True
             if not strategy_regime_match:
                 logger.debug(f"{self.name}: Stratégie {signal_strategy} inadaptée au régime {current_regime} pour {self.symbol}")
                 if signal_confidence < 0.6:
@@ -370,10 +376,10 @@ class Regime_Strength_Validator(BaseValidator):
             regime_strength_raw = self.context.get('regime_strength')
             regime_strength = self._convert_regime_strength_to_score(regime_strength_raw) if regime_strength_raw else 0.5
             regime_confidence = float(self.context.get('regime_confidence', 50.0)) if self.context.get('regime_confidence') is not None else 50.0
-            regime_persistence = float(self.context.get('regime_persistence', 0.5)) if self.context.get('regime_persistence') is not None else 0.5
-            regime_stability = float(self.context.get('regime_stability', 0.5)) if self.context.get('regime_stability') is not None else 0.5
+            regime_persistence = float(self.context.get('regime_persistence', 50.0)) if self.context.get('regime_persistence') is not None else 50.0
+            regime_stability = float(self.context.get('regime_stability', 50.0)) if self.context.get('regime_stability') is not None else 50.0
             regime_duration_bars = int(self.context.get('regime_duration_bars', 10)) if self.context.get('regime_duration_bars') is not None else 10
-            regime_consensus_score = float(self.context.get('regime_consensus_score', 0.6)) if self.context.get('regime_consensus_score') is not None else 0.6
+            regime_consensus_score = float(self.context.get('regime_consensus_score', 60.0)) if self.context.get('regime_consensus_score') is not None else 60.0
             regime_transition_probability = float(self.context.get('regime_transition_probability', 0.2)) if self.context.get('regime_transition_probability') is not None else 0.2
             last_regime_change_bars = int(self.context.get('last_regime_change_bars', 10)) if self.context.get('last_regime_change_bars') is not None else 10
             
@@ -446,7 +452,8 @@ class Regime_Strength_Validator(BaseValidator):
             trend_regime = self.context.get('trend_regime')
             momentum_regime = self.context.get('momentum_regime')
             
-            if self._validate_regime_coherence(current_regime, vol_regime, trend_regime, momentum_regime):
+            if (current_regime and vol_regime and trend_regime and momentum_regime and 
+                self._validate_regime_coherence(current_regime, vol_regime, trend_regime, momentum_regime)):
                 base_score += 0.08  # Cohérence entre régimes
                 
             return max(0.0, min(1.0, base_score))
@@ -473,7 +480,7 @@ class Regime_Strength_Validator(BaseValidator):
             current_regime = self.context.get('current_regime', 'N/A')
             regime_strength_raw = self.context.get('regime_strength')
             regime_strength = self._convert_regime_strength_to_score(regime_strength_raw) if regime_strength_raw else None
-            regime_confidence = float(self.context.get('regime_confidence', 0)) if self.context.get('regime_confidence') is not None else None
+            regime_confidence = float(self.context.get('regime_confidence', 50.0)) if self.context.get('regime_confidence') is not None else None
             regime_duration_bars = int(self.context.get('regime_duration_bars', 0)) if self.context.get('regime_duration_bars') is not None else None
             regime_transition_probability = float(self.context.get('regime_transition_probability', 0)) if self.context.get('regime_transition_probability') is not None else None
             regime_in_transition = self.context.get('regime_in_transition', False)

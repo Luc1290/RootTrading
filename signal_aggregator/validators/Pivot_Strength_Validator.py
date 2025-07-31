@@ -2,7 +2,7 @@
 Pivot_Strength_Validator - Validator basé sur la force des points pivots.
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from .base_validator import BaseValidator
 import logging
 
@@ -82,7 +82,7 @@ class Pivot_Strength_Validator(BaseValidator):
                 resistance_touch_count = int(self.context.get('resistance_touch_count', 0)) if self.context.get('resistance_touch_count') is not None else None
                 
                 # Confluence et niveaux multiples
-                confluence_score = float(self.context.get('confluence_score', 0)) if self.context.get('confluence_score') is not None else None
+                confluence_score = float(self.context.get('confluence_score', 50.0)) if self.context.get('confluence_score') is not None else None
                 pivot_confluence_count = int(self.context.get('pivot_confluence_count', 0)) if self.context.get('pivot_confluence_count') is not None else None
                 
                 # Age et interaction temporelle
@@ -197,10 +197,15 @@ class Pivot_Strength_Validator(BaseValidator):
                     return False
                     
             # 6. Validation cohérence avec S/R généraux
-            sr_coherence = self._validate_sr_coherence(
-                signal_side, current_price, nearest_support, nearest_resistance, 
-                pivot_support, pivot_resistance
-            )
+            if (current_price is not None and nearest_support is not None and 
+                nearest_resistance is not None and pivot_support is not None and 
+                pivot_resistance is not None):
+                sr_coherence = self._validate_sr_coherence(
+                    signal_side, current_price, nearest_support, nearest_resistance, 
+                    pivot_support, pivot_resistance
+                )
+            else:
+                sr_coherence = True
             if not sr_coherence:
                 logger.debug(f"{self.name}: Incohérence entre pivots et S/R généraux pour {self.symbol}")
                 if signal_confidence < 0.6:
@@ -214,10 +219,15 @@ class Pivot_Strength_Validator(BaseValidator):
                     return False
                     
             # 8. Validation qualité globale structure pivot
-            pivot_quality = self._calculate_pivot_quality(
-                pivot_support_strength, pivot_resistance_strength, 
-                support_touch_count, resistance_touch_count, confluence_score
-            )
+            if (pivot_support_strength is not None and pivot_resistance_strength is not None and 
+                support_touch_count is not None and resistance_touch_count is not None and 
+                confluence_score is not None):
+                pivot_quality = self._calculate_pivot_quality(
+                    pivot_support_strength, pivot_resistance_strength, 
+                    support_touch_count, resistance_touch_count, confluence_score
+                )
+            else:
+                pivot_quality = 0.5  # valeur neutre
             if pivot_quality < 0.4:
                 logger.debug(f"{self.name}: Qualité globale pivots insuffisante ({self._safe_format(pivot_quality, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
@@ -416,7 +426,7 @@ class Pivot_Strength_Validator(BaseValidator):
             pivot_resistance_strength = float(self.context.get('pivot_resistance_strength', 0)) if self.context.get('pivot_resistance_strength') is not None else None
             support_touch_count = int(self.context.get('support_touch_count', 0)) if self.context.get('support_touch_count') is not None else None
             resistance_touch_count = int(self.context.get('resistance_touch_count', 0)) if self.context.get('resistance_touch_count') is not None else None
-            confluence_score = float(self.context.get('confluence_score', 0)) if self.context.get('confluence_score') is not None else None
+            confluence_score = float(self.context.get('confluence_score', 50.0)) if self.context.get('confluence_score') is not None else None
             
             if is_valid:
                 relevant_strength = pivot_support_strength if signal_side == "BUY" else pivot_resistance_strength
@@ -474,7 +484,7 @@ class Pivot_Strength_Validator(BaseValidator):
             
         return True
         
-    def _get_current_price(self) -> float:
+    def _get_current_price(self) -> Optional[float]:
         """Helper method to get current price from data or context."""
         if self.data:
             # Essayer d'abord la valeur scalaire (format préféré)

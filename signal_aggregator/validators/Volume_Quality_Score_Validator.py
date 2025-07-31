@@ -64,7 +64,7 @@ class Volume_Quality_Score_Validator(BaseValidator):
             # Extraction des indicateurs de volume depuis le contexte
             try:
                 # Garder le format 0-100 depuis la DB
-                volume_quality_score = float(self.context.get('volume_quality_score', 0)) if self.context.get('volume_quality_score') is not None else None
+                volume_quality_score = float(self.context.get('volume_quality_score', 50.0)) if self.context.get('volume_quality_score') is not None else None
                 relative_volume = float(self.context.get('relative_volume', 1.0)) if self.context.get('relative_volume') is not None else 1.0
                 volume_pattern = self.context.get('volume_pattern')
                 volume_context = self.context.get('volume_context')
@@ -291,7 +291,7 @@ class Volume_Quality_Score_Validator(BaseValidator):
         try:
             signal_side = signal.get('side', 'N/A')
             # Format 0-100 depuis la DB
-            volume_quality_score = float(self.context.get('volume_quality_score', 0)) if self.context.get('volume_quality_score') is not None else 0
+            volume_quality_score = float(self.context.get('volume_quality_score', 50.0)) if self.context.get('volume_quality_score') is not None else 50.0
             relative_volume = float(self.context.get('relative_volume', 1.0)) if self.context.get('relative_volume') is not None else 1.0
             volume_pattern = self.context.get('volume_pattern', 'N/A')
             volume_context = self.context.get('volume_context', 'N/A')

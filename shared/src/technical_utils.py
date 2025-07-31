@@ -10,7 +10,7 @@ Shared utilities for technical indicator calculations:
 
 import numpy as np
 import pandas as pd
-from typing import List, Union, Tuple, Optional, Any
+from typing import List, Union, Tuple, Optional, Any, Dict
 import logging
 
 logger = logging.getLogger(__name__)
@@ -49,18 +49,23 @@ def to_numpy_array(data: Union[List[float], np.ndarray, pd.Series],
         except (TypeError, ValueError) as e:
             raise ValueError(f"Cannot convert data to numpy array: {e}")
     
+    # Convert to numpy array if needed
+    if hasattr(array, 'values'):  # pandas Series/DataFrame
+        array = array.values
+    array = np.asarray(array, dtype=float)
+    
     # Validate array
     if array.size == 0:
         raise ValueError("Input array cannot be empty")
     
     # Check for NaN values
     if not allow_nan and np.isnan(array).any():
-        nan_count = np.isnan(array).sum()
+        nan_count = int(np.isnan(array).sum())
         raise ValueError(f"Array contains {nan_count} NaN values (not allowed)")
     
     # Check for infinite values
     if np.isinf(array).any():
-        inf_count = np.isinf(array).sum()
+        inf_count = int(np.isinf(array).sum())
         logger.warning(f"Array contains {inf_count} infinite values")
         # Replace inf with NaN for consistency
         array = np.where(np.isinf(array), np.nan, array)
@@ -159,7 +164,15 @@ def safe_divide(numerator: Union[float, np.ndarray],
     """
     # Handle scalar case
     if np.isscalar(numerator) and np.isscalar(denominator):
-        return default_value if denominator == 0 else numerator / denominator
+        try:
+            numerator_float = float(numerator) if isinstance(numerator, (int, float, str)) else 0.0
+            denominator_float = float(denominator) if isinstance(denominator, (int, float, str)) else 1.0
+            if denominator_float == 0:
+                return float(default_value)
+            else:
+                return numerator_float / denominator_float
+        except (TypeError, ValueError, OverflowError):
+            return float(default_value)
     
     # Handle array case
     numerator = np.asarray(numerator)
@@ -206,7 +219,7 @@ def calculate_returns(prices: Union[List[float], np.ndarray],
 
 def calculate_rolling_stats(data: Union[List[float], np.ndarray],
                            window: int,
-                           stats: List[str] = None) -> dict:
+                           stats: Optional[List[str]] = None) -> dict:
     """
     Calculate rolling statistics for a data series.
     
@@ -353,13 +366,13 @@ def smooth_data(data: Union[List[float], np.ndarray],
                 
     elif method == 'gaussian':
         # Gaussian smoothing
-        from scipy.ndimage import gaussian_filter1d
+        from scipy.ndimage import gaussian_filter1d  # type: ignore
         sigma = kwargs.get('sigma', window / 6.0)
         smoothed = gaussian_filter1d(data_array, sigma=sigma)
         
     elif method == 'savgol':
         # Savitzky-Golay filter
-        from scipy.signal import savgol_filter
+        from scipy.signal import savgol_filter  # type: ignore
         polyorder = kwargs.get('polyorder', min(3, window - 1))
         if window % 2 == 0:
             window += 1  # Must be odd
@@ -371,7 +384,7 @@ def smooth_data(data: Union[List[float], np.ndarray],
     return smoothed
 
 
-def validate_indicator_params(**params) -> dict:
+def validate_indicator_params(**params) -> Dict[str, Union[int, float, Any]]:
     """
     Validate common indicator parameters.
     
@@ -384,7 +397,7 @@ def validate_indicator_params(**params) -> dict:
     Raises:
         ValueError: If any parameter is invalid
     """
-    validated = {}
+    validated: Dict[str, Union[int, float, Any]] = {}
     
     # Common validations
     for key, value in params.items():

@@ -55,9 +55,9 @@ class RSI_Regime_Validator(BaseValidator):
                 
             # Extraction des indicateurs RSI depuis le contexte
             try:
-                rsi_14 = float(self.context.get('rsi_14', 0)) if self.context.get('rsi_14') is not None else None
-                rsi_21 = float(self.context.get('rsi_21', 0)) if self.context.get('rsi_21') is not None else None
-                momentum_score = float(self.context.get('momentum_score', 0)) if self.context.get('momentum_score') is not None else None
+                rsi_14 = float(self.context.get('rsi_14', 50.0)) if self.context.get('rsi_14') is not None else None
+                rsi_21 = float(self.context.get('rsi_21', 50.0)) if self.context.get('rsi_21') is not None else None
+                momentum_score = float(self.context.get('momentum_score', 50.0)) if self.context.get('momentum_score') is not None else None
             except (ValueError, TypeError) as e:
                 logger.warning(f"{self.name}: Erreur conversion RSI pour {self.symbol}: {e}")
                 return False
@@ -110,10 +110,11 @@ class RSI_Regime_Validator(BaseValidator):
                     logger.debug(f"{self.name}: SELL favorisé - RSI surachat ({self._safe_format(rsi_14, '.1f')}) pour {self.symbol}")
                     return True
                     
-                # SELL acceptable si RSI > 30 avec momentum négatif
+                # SELL acceptable si RSI > 30 avec momentum bearish
                 if rsi_14 > self.oversold_threshold:
-                    if momentum_score is not None and momentum_score < -30.0:  # Format 0-100
-                        logger.debug(f"{self.name}: SELL accepté - RSI modéré ({self._safe_format(rsi_14, '.1f')}) + momentum négatif pour {self.symbol}")
+                    # Momentum bearish = momentum_score < 50 (car 0-100, 50 est neutre)
+                    if momentum_score is not None and momentum_score < 40.0:  # Momentum bearish
+                        logger.debug(f"{self.name}: SELL accepté - RSI modéré ({self._safe_format(rsi_14, '.1f')}) + momentum bearish ({self._safe_format(momentum_score, '.1f')}) pour {self.symbol}")
                         return True
                     elif rsi_14 > 35.0:  # Zone acceptable même sans momentum fort
                         return True
@@ -159,10 +160,10 @@ class RSI_Regime_Validator(BaseValidator):
                 return 0.0
                 
             # Calcul du score basé sur RSI
-            rsi_14 = float(self.context.get('rsi_14', 0)) if self.context.get('rsi_14') is not None else 50
+            rsi_14 = float(self.context.get('rsi_14', 50.0)) if self.context.get('rsi_14') is not None else 50.0
             signal_side = signal.get('side')
             signal_confidence = signal.get('confidence', 0.0)
-            momentum_score = float(self.context.get('momentum_score', 0)) if self.context.get('momentum_score') is not None else None
+            momentum_score = float(self.context.get('momentum_score', 50.0)) if self.context.get('momentum_score') is not None else None
             
             base_score = 0.5  # Score de base si validé
             
@@ -193,10 +194,13 @@ class RSI_Regime_Validator(BaseValidator):
                     
             # Bonus momentum cohérent
             if momentum_score is not None:
-                if signal_side == "BUY" and momentum_score > 50.0:  # Format 0-100
+                if signal_side == "BUY" and momentum_score > 60.0:  # Momentum bullish fort
                     base_score += 0.1  # Momentum bullish pour BUY
-                elif signal_side == "SELL" and momentum_score < -50.0:  # Format 0-100
+                elif signal_side == "SELL" and momentum_score < 40.0:  # Momentum bearish fort
                     base_score += 0.1  # Momentum bearish pour SELL
+                    # Bonus supplémentaire si momentum très bearish
+                    if momentum_score < 25.0:
+                        base_score += 0.05
                     
             # Bonus confidence élevée
             if signal_confidence >= 0.8:
@@ -220,7 +224,7 @@ class RSI_Regime_Validator(BaseValidator):
             Raison de la décision
         """
         try:
-            rsi_14 = float(self.context.get('rsi_14', 0)) if self.context.get('rsi_14') is not None else 0
+            rsi_14 = float(self.context.get('rsi_14', 50.0)) if self.context.get('rsi_14') is not None else 50.0
             signal_side = signal.get('side', 'N/A')
             
             if is_valid:

@@ -232,21 +232,31 @@ def calculate_cci_divergence(prices: Union[List[float], np.ndarray, pd.Series],
         elif price < prev_price and price < next_price:
             price_lows.append((idx, price))
         
-        # CCI peaks and troughs
-        if cci > prev_cci and cci > next_cci:
+        # CCI peaks and troughs (vérifications None)
+        if (cci is not None and prev_cci is not None and next_cci is not None and
+            cci > prev_cci and cci > next_cci):
             cci_highs.append((idx, cci))
-        elif cci < prev_cci and cci < next_cci:
+        elif (cci is not None and prev_cci is not None and next_cci is not None and
+              cci < prev_cci and cci < next_cci):
             cci_lows.append((idx, cci))
     
     # Check for divergence
     # Bullish divergence: Price makes lower lows, CCI makes higher lows
     if len(price_lows) >= 2 and len(cci_lows) >= 2:
-        if price_lows[-1][1] < price_lows[-2][1] and cci_lows[-1][1] > cci_lows[-2][1]:
+        price_val1, price_val2 = price_lows[-1][1], price_lows[-2][1]
+        cci_val1, cci_val2 = cci_lows[-1][1], cci_lows[-2][1]
+        if (price_val1 is not None and price_val2 is not None and
+            cci_val1 is not None and cci_val2 is not None and
+            price_val1 < price_val2 and cci_val1 > cci_val2):
             return 'bullish_divergence'
     
     # Bearish divergence: Price makes higher highs, CCI makes lower highs
     if len(price_highs) >= 2 and len(cci_highs) >= 2:
-        if price_highs[-1][1] > price_highs[-2][1] and cci_highs[-1][1] < cci_highs[-2][1]:
+        price_val1, price_val2 = price_highs[-1][1], price_highs[-2][1]
+        cci_val1, cci_val2 = cci_highs[-1][1], cci_highs[-2][1]
+        if (price_val1 is not None and price_val2 is not None and
+            cci_val1 is not None and cci_val2 is not None and
+            price_val1 > price_val2 and cci_val1 < cci_val2):
             return 'bearish_divergence'
     
     return 'none'
@@ -328,7 +338,7 @@ def calculate_cci_volatility(highs: Union[List[float], np.ndarray, pd.Series],
 def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
     """Convert input data to numpy array."""
     if isinstance(data, pd.Series):
-        return data.values
+        return np.asarray(data.values, dtype=float)
     elif isinstance(data, list):
         return np.array(data, dtype=float)
     return np.asarray(data, dtype=float)
@@ -394,7 +404,7 @@ def _calculate_cci_series_manual(highs: np.ndarray,
                                 closes: np.ndarray,
                                 period: int) -> List[Optional[float]]:
     """Manual CCI series calculation."""
-    cci_series = []
+    cci_series: List[Optional[float]] = []
     
     # Calculate typical price series
     typical_prices = _calculate_typical_price(highs, lows, closes)

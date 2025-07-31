@@ -10,6 +10,7 @@ import sys
 import os
 import time
 from aiohttp import web
+from typing import Callable
 
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
@@ -248,10 +249,12 @@ if __name__ == "__main__":
     
     # Configurer les gestionnaires de signaux pour l'arrêt propre
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(
-            sig, 
-            lambda s=sig: asyncio.create_task(shutdown(s, loop))
-        )
+        def make_signal_handler(signal_type: signal.Signals) -> Callable[[], None]:
+            def handler() -> None:
+                asyncio.create_task(shutdown(signal_type, loop))
+            return handler
+        
+        loop.add_signal_handler(sig, make_signal_handler(sig))
     
     try:
         # Exécuter la fonction principale

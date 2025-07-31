@@ -163,7 +163,7 @@ class Psychological_Level_Validator(BaseValidator):
                         return False
                         
             # 8. Validation type de niveau psychologique
-            level_importance = self._assess_level_importance(psychological_level_type, nearest_psychological_level)
+            level_importance = self._assess_level_importance(str(psychological_level_type) if psychological_level_type is not None else '', nearest_psychological_level if nearest_psychological_level is not None else 0.0)
             if level_importance < 0.3:
                 logger.debug(f"{self.name}: Niveau psychologique peu important ({self._safe_format(level_importance, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
@@ -177,7 +177,7 @@ class Psychological_Level_Validator(BaseValidator):
                     
             # 10. Validation cohérence signal/niveau selon direction
             level_coherence = self._validate_signal_level_coherence(
-                signal_side, current_price, nearest_psychological_level, psychological_level_type
+                signal_side, current_price, nearest_psychological_level if nearest_psychological_level is not None else 0.0, str(psychological_level_type) if psychological_level_type is not None else ''
             )
             if not level_coherence:
                 logger.debug(f"{self.name}: Cohérence signal/niveau psychologique insuffisante pour {self.symbol}")
@@ -185,7 +185,7 @@ class Psychological_Level_Validator(BaseValidator):
                     return False
                     
             # 11. Validation spécifique selon stratégie
-            strategy_psych_match = self._validate_strategy_psychological_match(signal_strategy, distance_to_level)
+            strategy_psych_match = self._validate_strategy_psychological_match(signal_strategy, distance_to_level if distance_to_level is not None else 0.0)
             if not strategy_psych_match:
                 logger.debug(f"{self.name}: Stratégie {signal_strategy} inadaptée aux niveaux psychologiques pour {self.symbol}")
                 if signal_confidence < 0.6:
@@ -507,4 +507,4 @@ class Psychological_Level_Validator(BaseValidator):
                     return float(current_price)
                 except (ValueError, TypeError):
                     pass
-        return None
+        return 0.0  # Retourner 0.0 au lieu de None pour correspondre au type de retour float

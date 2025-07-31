@@ -373,4 +373,4 @@ class Bollinger_Width_Validator(BaseValidator):
                     return float(current_price)
                 except (ValueError, TypeError):
                     pass
-        return None
+        return 0.0  # Retourner 0.0 au lieu de None pour correspondre au type de retour float

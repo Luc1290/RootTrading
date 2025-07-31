@@ -160,9 +160,9 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
             ema_50 = values.get('ema_50')
             
             if all(x is not None for x in [ema_12, ema_26, ema_50]):
-                ema12_val = float(ema_12)
-                ema26_val = float(ema_26)
-                ema50_val = float(ema_50)
+                ema12_val = float(ema_12) if ema_12 is not None else 0.0
+                ema26_val = float(ema_26) if ema_26 is not None else 0.0
+                ema50_val = float(ema_50) if ema_50 is not None else 0.0
                 
                 # Tendance haussière: prix > EMA12 > EMA26 > EMA50
                 if current_price > ema12_val > ema26_val > ema50_val:

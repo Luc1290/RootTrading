@@ -138,7 +138,7 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
             }
             
         # Créer le signal d'achat avec confirmations
-        return self._create_oversold_buy_signal(values, current_price, stoch_analysis, buy_condition)
+        return self._create_oversold_buy_signal(values, current_price or 0.0, stoch_analysis, buy_condition)
         
     def _analyze_stochastic_conditions(self, values: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Analyse les conditions actuelles du Stochastic."""
@@ -340,13 +340,13 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
             
         if trend_strength is not None:
             try:
-                strength = float(trend_strength)
-                if strength > 0.6:
+                trend_strength_val = float(trend_strength)
+                if trend_strength_val > 0.6:
                     confidence_boost += 0.08
-                    reason += f" + tendance forte ({strength:.2f})"
-                elif strength > 0.4:
+                    reason += f" + tendance forte ({trend_strength_val:.2f})"
+                elif trend_strength_val > 0.4:
                     confidence_boost += 0.05
-                    reason += f" + tendance modérée ({strength:.2f})"
+                    reason += f" + tendance modérée ({trend_strength_val:.2f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -457,7 +457,7 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
                 pass
                 
         confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
-        strength = self.get_strength_from_confidence(confidence)
+        strength: str = self.get_strength_from_confidence(confidence)
         
         return {
             "side": signal_side,

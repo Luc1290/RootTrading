@@ -9,7 +9,7 @@ import asyncio
 import asyncpg
 import json
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import sys
 import os
 
@@ -287,7 +287,7 @@ class DataListener:
             params.append(timeframe)
         
         query += " ORDER BY md.timeframe, md.time ASC LIMIT $" + str(len(params) + 1)
-        params.append(limit)
+        params.append(str(limit))
         
         total_processed = 0
         
@@ -302,7 +302,7 @@ class DataListener:
             logger.info(f"📊 {symbol}: {len(rows)} données à analyser")
             
             # Grouper par timeframe pour optimiser
-            timeframes = {}
+            timeframes: Dict[str, List] = {}
             for row in rows:
                 tf = row['timeframe']
                 if tf not in timeframes:

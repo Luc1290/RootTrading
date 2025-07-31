@@ -71,9 +71,10 @@ class IndicatorProcessor:
     Processeur simple qui appelle vos modules existants et sauvegarde en DB.
     """
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.db_pool = None
         self.running = False
+        self.redis_client: Optional[redis.Redis] = None
         
         # Initialiser les détecteurs
         self.regime_detector = RegimeDetector()
@@ -133,7 +134,7 @@ class IndicatorProcessor:
         except Exception as e:
             logger.error(f"❌ Erreur traitement {symbol} {timeframe}: {e}")
 
-    async def _get_historical_data(self, symbol: str, timeframe: str, limit: int = 1000000, up_to_timestamp: datetime = None) -> List[Dict]:
+    async def _get_historical_data(self, symbol: str, timeframe: str, limit: int = 1000000, up_to_timestamp: Optional[datetime] = None) -> List[Dict]:
         """Récupère les données OHLCV historiques depuis market_data jusqu'à un timestamp donné."""
         if up_to_timestamp:
             query = """
@@ -156,6 +157,8 @@ class IndicatorProcessor:
             """
             params = [symbol, timeframe, limit]
         
+        if self.db_pool is None:
+            raise RuntimeError("Database pool not initialized")
         async with self.db_pool.acquire() as conn:
             rows = await conn.fetch(query, *params)
             
@@ -437,13 +440,15 @@ class IndicatorProcessor:
                         # Calculer trend_alignment à partir du trend_slope (normaliser entre -100 et 100)
                         trend_alignment = max(-100, min(100, regime_result.trend_slope * 10))
                         
-                        # Calculer momentum_score avec direction (-100 à +100)
+                        # Calculer momentum_score (0-100, où 50 = neutre)
                         # Confidence donne la force (0-100), trend_slope donne la direction
                         base_momentum = regime_result.confidence  # 0-100
                         if regime_result.trend_slope < 0:
-                            momentum_score = -base_momentum  # -100 à 0 en tendance baissière
+                            # Tendance baissière: inverser pour obtenir 0-50 (50 - base_momentum/2)
+                            momentum_score = max(0, 50 - (base_momentum / 2))  # 0 à 50 en tendance baissière
                         else:
-                            momentum_score = base_momentum   # 0 à +100 en tendance haussière
+                            # Tendance haussière: 50 à 100 (50 + base_momentum/2)
+                            momentum_score = min(100, 50 + (base_momentum / 2))   # 50 à 100 en tendance haussière
                         
                         indicators.update({
                             'market_regime': str(regime_result.regime_type.value if hasattr(regime_result.regime_type, 'value') else regime_result.regime_type).upper(),
@@ -852,7 +857,7 @@ class IndicatorProcessor:
     async def _notify_analyzer_ready(self, indicators: Dict):
         """Notifie l'Analyzer que de nouvelles données sont prêtes."""
         try:
-            if not hasattr(self, 'redis_client') or not self.redis_client:
+            if not self.redis_client:
                 # Connexion Redis paresseuse
                 self.redis_client = redis.from_url('redis://redis:6379')
             
@@ -860,10 +865,11 @@ class IndicatorProcessor:
                 'event': 'analyzer_data_ready',
                 'symbol': indicators.get('symbol'),
                 'timeframe': indicators.get('timeframe'),
-                'timestamp': indicators.get('time').isoformat() if indicators.get('time') else None
+                'timestamp': indicators.get('time').isoformat() if indicators.get('time') and hasattr(indicators.get('time'), 'isoformat') else None
             }
             
-            await self.redis_client.publish('analyzer_trigger', json.dumps(notification))
+            if self.redis_client:
+                await self.redis_client.publish('analyzer_trigger', json.dumps(notification))
             logger.debug(f"📢 Notification envoyée: {indicators.get('symbol')} {indicators.get('timeframe')}")
             
         except Exception as e:

@@ -211,8 +211,8 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
             
             if all(x is not None for x in [bb_upper, bb_lower]) and bb_squeeze:
                 try:
-                    upper_val = float(bb_upper)
-                    lower_val = float(bb_lower)
+                    upper_val = float(bb_upper) if bb_upper is not None else 0.0
+                    lower_val = float(bb_lower) if bb_lower is not None else 0.0
                     range_width = (upper_val - lower_val) / lower_val
                     
                     if self.min_range_width <= range_width <= self.max_range_width:
@@ -341,9 +341,9 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         
         if all(x is not None for x in [adx_14, plus_di, minus_di]):
             try:
-                adx = float(adx_14)
-                plus_val = float(plus_di)
-                minus_val = float(minus_di)
+                adx = float(adx_14) if adx_14 is not None else 0.0
+                plus_val = float(plus_di) if plus_di is not None else 0.0
+                minus_val = float(minus_di) if minus_di is not None else 0.0
                 
                 if adx > 20:  # Tendance en formation
                     if breakout_type == "bullish" and plus_val > minus_val:

@@ -9,7 +9,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Type, List
+from typing import Dict, Type, List, Optional, Any
 
 # Ajouter le répertoire parent au path pour les imports
 analyzer_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class StrategyLoader:
     """Gestionnaire de chargement dynamique des stratégies."""
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.strategies: Dict[str, Type[BaseStrategy]] = {}
         self.strategies_path = Path(__file__).parent.parent / "strategies"
         
@@ -34,7 +34,7 @@ class StrategyLoader:
             '__pycache__'
         }
         
-    def load_strategies(self):
+    def load_strategies(self) -> None:
         """Charge toutes les stratégies disponibles depuis le dossier strategies."""
         logger.info("Chargement des stratégies...")
         
@@ -59,7 +59,7 @@ class StrategyLoader:
         for name in self.strategies.keys():
             logger.info(f"  - {name}")
             
-    def _load_strategy_from_file(self, strategy_name: str):
+    def _load_strategy_from_file(self, strategy_name: str) -> None:
         """
         Charge une stratégie depuis un fichier spécifique.
         
@@ -92,7 +92,7 @@ class StrategyLoader:
         except Exception as e:
             logger.error(f"Erreur lors du chargement de {strategy_name}: {e}")
             
-    def get_strategy(self, strategy_name: str) -> Type[BaseStrategy]:
+    def get_strategy(self, strategy_name: str) -> Optional[Type[BaseStrategy]]:
         """
         Récupère une stratégie par son nom.
         
@@ -122,7 +122,7 @@ class StrategyLoader:
         """
         return list(self.strategies.keys())
         
-    def reload_strategies(self):
+    def reload_strategies(self) -> None:
         """Recharge toutes les stratégies (utile pour le développement)."""
         logger.info("Rechargement des stratégies...")
         
@@ -178,7 +178,7 @@ class StrategyLoader:
             logger.error(f"Erreur lors de la validation de {strategy_class.__name__}: {e}")
             return False
             
-    def get_strategy_info(self, strategy_name: str) -> Dict:
+    def get_strategy_info(self, strategy_name: str) -> Optional[Dict[str, Any]]:
         """
         Récupère les informations d'une stratégie.
         
@@ -202,7 +202,7 @@ class StrategyLoader:
         
     def filter_strategies(self, 
                          enabled_only: bool = True,
-                         categories: List[str] = None) -> Dict[str, Type[BaseStrategy]]:
+                         categories: Optional[List[str]] = None) -> Dict[str, Type[BaseStrategy]]:
         """
         Filtre les stratégies selon des critères.
         

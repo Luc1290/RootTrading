@@ -6,7 +6,7 @@ Gère la réception des signaux depuis l'analyzer et la publication vers le coor
 import asyncio
 import json
 import logging
-from typing import Dict, Any, Callable, Optional
+from typing import Dict, Any, Callable, Optional, Union
 import redis.asyncio as redis
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class RedisHandler:
     """Gestionnaire des communications Redis pour le signal aggregator."""
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.redis_client: Optional[redis.Redis] = None
         self.subscriber_client: Optional[redis.Redis] = None
         self.is_connected = False
@@ -25,7 +25,7 @@ class RedisHandler:
         self.filtered_signals_channel = "roottrading:signals:filtered"  # Vers coordinator
         
         # Callback pour traitement des signaux
-        self.signal_callback: Optional[Callable] = None
+        self.signal_callback: Optional[Union[Callable[[str], None], Callable[[str], Any]]] = None
         
         # Statistiques
         self.stats = {
@@ -45,11 +45,13 @@ class RedisHandler:
         try:
             # Client principal pour publication
             self.redis_client = redis.from_url(redis_url, decode_responses=True)
-            await self.redis_client.ping()
+            if self.redis_client is not None:
+                await self.redis_client.ping()
             
             # Client séparé pour abonnement (recommandé par redis-py)
             self.subscriber_client = redis.from_url(redis_url, decode_responses=True)
-            await self.subscriber_client.ping()
+            if self.subscriber_client is not None:
+                await self.subscriber_client.ping()
             
             self.is_connected = True
             logger.info(f"Connexion Redis établie: {redis_url}")
@@ -72,7 +74,7 @@ class RedisHandler:
         self.is_connected = False
         logger.info("Connexions Redis fermées")
         
-    async def subscribe_to_signals(self, callback: Callable[[str], None]):
+    async def subscribe_to_signals(self, callback: Union[Callable[[str], None], Callable[[str], Any]]):
         """
         S'abonne aux signaux depuis l'analyzer.
         
@@ -85,6 +87,8 @@ class RedisHandler:
         self.signal_callback = callback
         
         # Créer un abonnement
+        if self.subscriber_client is None:
+            raise RuntimeError("Client subscriber non initialisé")
         pubsub = self.subscriber_client.pubsub()
         await pubsub.subscribe(self.signals_channel)
         
@@ -101,8 +105,11 @@ class RedisHandler:
                         logger.debug(f"Signal reçu depuis Redis: {len(signal_data)} chars")
                         
                         # Appeler le callback de traitement
-                        if self.signal_callback:
-                            await self.signal_callback(signal_data)
+                        if self.signal_callback and callable(self.signal_callback):
+                            if asyncio.iscoroutinefunction(self.signal_callback):
+                                await self.signal_callback(signal_data)
+                            else:
+                                self.signal_callback(signal_data)
                             
                     except Exception as e:
                         logger.error(f"Erreur traitement message Redis: {e}")
@@ -128,6 +135,8 @@ class RedisHandler:
             signal_json = json.dumps(validated_signal, default=str)
             
             # Publication vers le coordinator
+            if self.redis_client is None:
+                raise RuntimeError("Client Redis non initialisé")
             await self.redis_client.publish(self.filtered_signals_channel, signal_json)
             
             self.stats['signals_published'] += 1
@@ -157,6 +166,8 @@ class RedisHandler:
             
         try:
             # Publication en pipeline pour optimiser les performances
+            if self.redis_client is None:
+                raise RuntimeError("Client Redis non initialisé")
             pipe = self.redis_client.pipeline()
             
             for signal in validated_signals:
@@ -183,8 +194,11 @@ class RedisHandler:
         """
         try:
             # Vérifier la longueur de la liste des signaux en attente
-            count = await self.redis_client.llen("roottrading:signals:pending")
-            return count
+            if self.redis_client is None:
+                return 0
+            count_result = self.redis_client.llen("roottrading:signals:pending")
+            count = await count_result if hasattr(count_result, '__await__') else count_result
+            return int(count) if count is not None else 0
         except Exception as e:
             logger.error(f"Erreur récupération count signaux: {e}")
             return 0
@@ -201,8 +215,10 @@ class RedisHandler:
                 return False
                 
             # Test ping sur les deux clients
-            await self.redis_client.ping()
-            await self.subscriber_client.ping()
+            if self.redis_client is not None:
+                await self.redis_client.ping()
+            if self.subscriber_client is not None:
+                await self.subscriber_client.ping()
             
             return True
             
@@ -247,7 +263,7 @@ class RedisHandler:
         except Exception as e:
             logger.error(f"Erreur flush canaux: {e}")
             
-    async def set_callback(self, callback: Callable[[str], None]):
+    async def set_callback(self, callback: Union[Callable[[str], None], Callable[[str], Any]]):
         """
         Définit le callback pour le traitement des signaux.
         

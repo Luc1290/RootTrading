@@ -127,20 +127,21 @@ class DatabasePersister:
                 data["time"] = datetime.fromisoformat(data["time"])
             
         # Exécuter l'insertion en async
-        future = asyncio.run_coroutine_threadsafe(
-            self._insert_market_data(data),
-            self.loop
-        )
-        
-        # Attendre le résultat avec timeout
-        try:
-            future.result(timeout=5.0)
-        except Exception as e:
-            import traceback
-            logger.error(f"Erreur lors de l'insertion des données de marché: {e}")
-            logger.error(f"Type d'erreur: {type(e).__name__}")
-            logger.error(f"Traceback complet: {traceback.format_exc()}")
-            logger.error(f"Données problématiques: {data}")
+        if self.loop is not None:
+            future = asyncio.run_coroutine_threadsafe(
+                self._insert_market_data(data),
+                self.loop
+            )
+            
+            # Attendre le résultat avec timeout
+            try:
+                future.result(timeout=5.0)
+            except Exception as e:
+                import traceback
+                logger.error(f"Erreur lors de l'insertion des données de marché: {e}")
+                logger.error(f"Type d'erreur: {type(e).__name__}")
+                logger.error(f"Traceback complet: {traceback.format_exc()}")
+                logger.error(f"Données problématiques: {data}")
 
     
     async def _insert_market_data(self, data: Dict[str, Any]):
@@ -173,17 +174,18 @@ class DatabasePersister:
         """
         
         try:
-            async with self.db_pool.acquire() as conn:
-                await conn.execute(
-                    query,
-                    data["time"], data["symbol"], data["timeframe"],
-                    data["open"], data["high"], data["low"], data["close"], data["volume"],
-                    data.get("quote_asset_volume"), data.get("number_of_trades"),
-                    data.get("taker_buy_base_asset_volume"), data.get("taker_buy_quote_asset_volume")
-                )
-                
-                # Log pour les données OHLCV brutes sauvegardées
-                logger.debug(f"✓ Données OHLCV brutes sauvegardées: {data['symbol']} {data['timeframe']} @ {data['close']}")
+            if self.db_pool is not None:
+                async with self.db_pool.acquire() as conn:
+                    await conn.execute(
+                        query,
+                        data["time"], data["symbol"], data["timeframe"],
+                        data["open"], data["high"], data["low"], data["close"], data["volume"],
+                        data.get("quote_asset_volume"), data.get("number_of_trades"),
+                        data.get("taker_buy_base_asset_volume"), data.get("taker_buy_quote_asset_volume")
+                    )
+                    
+                    # Log pour les données OHLCV brutes sauvegardées
+                    logger.debug(f"✓ Données OHLCV brutes sauvegardées: {data['symbol']} {data['timeframe']} @ {data['close']}")
                     
         except Exception as e:
             import traceback

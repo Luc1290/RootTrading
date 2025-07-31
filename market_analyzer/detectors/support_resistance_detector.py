@@ -10,12 +10,12 @@ This module identifies key support and resistance levels using multiple methods:
 
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Union, Tuple, NamedTuple
+from typing import Dict, List, Optional, Union, Tuple, NamedTuple, Any
 from dataclasses import dataclass
 from enum import Enum
 import logging
-from scipy import stats
-from scipy.signal import find_peaks
+from scipy import stats  # type: ignore
+from scipy.signal import find_peaks  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,7 @@ class SupportResistanceDetector:
         self.volume_window = volume_window
         
         # Cache pour optimiser les calculs répétés
-        self._cache = {}
+        self._cache: Dict[str, Any] = {}
     
     def detect_levels(self,
                      highs: Union[List[float], np.ndarray],
@@ -521,7 +521,7 @@ class SupportResistanceDetector:
         if total_confidence > 0:
             weighted_price = sum(level.price * level.confidence for level in levels) / total_confidence
         else:
-            weighted_price = np.mean([level.price for level in levels])
+            weighted_price = float(np.mean([level.price for level in levels]))
         
         # Prendre les meilleures caractéristiques
         max_confidence_level = max(levels, key=lambda x: x.confidence)
@@ -543,7 +543,7 @@ class SupportResistanceDetector:
             volume_strength=max_volume_strength,
             distance_from_price=max_confidence_level.distance_from_price,
             last_test_age=min_last_test_age,
-            break_probability=np.mean([level.break_probability for level in levels]),
+            break_probability=float(np.mean([level.break_probability for level in levels])),
             slope=max_confidence_level.slope,
             timeframe=max_confidence_level.timeframe
         )

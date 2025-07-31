@@ -99,7 +99,7 @@ class SimpleDataFetcher:
             params = {
                 'symbol': symbol,
                 'interval': timeframe,
-                'limit': limit
+                'limit': str(limit)
             }
             
             async with aiohttp.ClientSession(timeout=self.timeout) as session:
@@ -194,7 +194,7 @@ class SimpleDataFetcher:
             params = {
                 'symbol': symbol,
                 'interval': timeframe,
-                'limit': 5
+                'limit': '5'
             }
             
             async with aiohttp.ClientSession(timeout=self.timeout) as session:
@@ -223,9 +223,9 @@ class SimpleDataFetcher:
             params = {
                 'symbol': symbol,
                 'interval': timeframe,
-                'startTime': start_ts,
-                'endTime': end_ts,
-                'limit': 1000
+                'startTime': str(start_ts),
+                'endTime': str(end_ts),
+                'limit': '1000'
             }
             
             async with aiohttp.ClientSession(timeout=self.timeout) as session:

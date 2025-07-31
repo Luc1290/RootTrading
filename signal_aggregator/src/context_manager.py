@@ -183,7 +183,7 @@ class ContextManager:
             recent_high = max(highs[-20:]) if len(highs) >= 20 else max(highs)
             recent_low = min(lows[-20:]) if len(lows) >= 20 else min(lows)
             
-            structure = {
+            structure: Dict[str, Any] = {
                 'current_price': current_price,
                 'recent_high': recent_high,
                 'recent_low': recent_low,
@@ -307,21 +307,21 @@ class ContextManager:
             Liste des niveaux psychologiques
         """
         try:
-            levels = []
+            levels: List[float] = []
             
             # Niveaux ronds basés sur la magnitude du prix
             if price >= 1000:
                 # Pour les prix élevés, utiliser des niveaux de 100
-                base = int(price / 100) * 100
-                levels.extend([base, base + 100, base - 100])
+                base = float(int(price / 100) * 100)
+                levels.extend([base, base + 100.0, base - 100.0])
             elif price >= 100:
                 # Pour les prix moyens, utiliser des niveaux de 10
-                base = int(price / 10) * 10
-                levels.extend([base, base + 10, base - 10])
+                base = float(int(price / 10) * 10)
+                levels.extend([base, base + 10.0, base - 10.0])
             elif price >= 10:
                 # Pour les prix bas, utiliser des niveaux de 1
-                base = int(price)
-                levels.extend([base, base + 1, base - 1])
+                base = float(int(price))
+                levels.extend([base, base + 1.0, base - 1.0])
             else:
                 # Pour les très petits prix, utiliser des décimales
                 base = round(price, 1)

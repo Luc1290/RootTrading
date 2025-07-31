@@ -230,7 +230,10 @@ class ZScore_Context_Validator(BaseValidator):
                         return False
                         
             # 14. Validation spécifique selon stratégie
-            strategy_zscore_match = self._validate_strategy_zscore_match(signal_strategy, price_zscore, volume_zscore)
+            if price_zscore is not None and volume_zscore is not None:
+                strategy_zscore_match = self._validate_strategy_zscore_match(signal_strategy, price_zscore, volume_zscore)
+            else:
+                strategy_zscore_match = True
             if not strategy_zscore_match:
                 logger.debug(f"{self.name}: Stratégie {signal_strategy} inadaptée au contexte Z-Score pour {self.symbol}")
                 if signal_confidence < 0.6:
@@ -395,7 +398,7 @@ class ZScore_Context_Validator(BaseValidator):
             # Bonus mean reversion cohérent
             signal_side = signal.get('side')
             mean_reversion_signal = self.context.get('mean_reversion_signal', False)
-            if mean_reversion_signal and self._validate_mean_reversion_coherence(signal_side, price_zscore):
+            if mean_reversion_signal and signal_side is not None and price_zscore is not None and self._validate_mean_reversion_coherence(signal_side, price_zscore):
                 base_score += 0.10  # Signal cohérent avec mean reversion
                 
             return max(0.0, min(1.0, base_score))

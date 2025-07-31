@@ -246,7 +246,7 @@ if __name__ == "__main__":
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(
             sig, 
-            lambda s=sig: asyncio.create_task(shutdown(s, loop))
+            lambda s=sig: asyncio.create_task(shutdown(s, loop))  # type: ignore
         )
     
     try:

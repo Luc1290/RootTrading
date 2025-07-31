@@ -11,7 +11,7 @@ This module aggregates signals and trends across multiple timeframes to provide:
 
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Union, Tuple, NamedTuple
+from typing import Dict, List, Optional, Union, Tuple, NamedTuple, Any
 from dataclasses import dataclass
 from enum import Enum
 import logging
@@ -140,7 +140,7 @@ class MultiTimeframeAnalyzer:
     """
     
     def __init__(self,
-                 timeframes: List[TimeframeType] = None,
+                 timeframes: Optional[List[TimeframeType]] = None,
                  primary_timeframe: TimeframeType = TimeframeType.M5,
                  min_confluence: int = 2):
         """
@@ -165,12 +165,12 @@ class MultiTimeframeAnalyzer:
         self.sr_detector = SupportResistanceDetector()
         
         # Cache pour optimisation
-        self._cache = {}
+        self._cache: Dict[str, Any] = {}
     
     def analyze_multiple_timeframes(self,
                                   timeframe_data: Dict[str, Dict],
                                   current_price: float,
-                                  symbol: str = None,
+                                  symbol: Optional[str] = None,
                                   enable_cache: bool = True) -> MultiTimeframeAnalysis:
         """
         Analyse plusieurs timeframes et agrège les signaux.
@@ -265,7 +265,7 @@ class MultiTimeframeAnalyzer:
     
     def _analyze_single_timeframe(self, timeframe: TimeframeType, 
                                  data: Dict, current_price: float,
-                                 symbol: str = None, enable_cache: bool = True) -> TimeframeSignal:
+                                 symbol: Optional[str] = None, enable_cache: bool = True) -> TimeframeSignal:
         """Analyse un timeframe spécifique."""
         try:
             highs = np.array(data['highs'], dtype=float)
@@ -308,7 +308,7 @@ class MultiTimeframeAnalyzer:
             logger.warning(f"Erreur analyse timeframe {timeframe}: {e}")
             return self._empty_timeframe_signal(timeframe)
     
-    def _analyze_trend_simple(self, closes: np.ndarray, symbol: str = None, enable_cache: bool = True) -> Tuple[str, float]:
+    def _analyze_trend_simple(self, closes: np.ndarray, symbol: Optional[str] = None, enable_cache: bool = True) -> Tuple[str, float]:
         """Analyse simple de tendance."""
         if len(closes) < 20:
             return "neutral", 0.0
@@ -354,7 +354,7 @@ class MultiTimeframeAnalyzer:
         
         return direction, strength
     
-    def _analyze_momentum_simple(self, closes: np.ndarray, symbol: str = None, enable_cache: bool = True) -> Tuple[str, float]:
+    def _analyze_momentum_simple(self, closes: np.ndarray, symbol: Optional[str] = None, enable_cache: bool = True) -> Tuple[str, float]:
         """Analyse simple de momentum."""
         if len(closes) < 14:
             return "neutral", 0.0
@@ -432,8 +432,8 @@ class MultiTimeframeAnalyzer:
             return SignalStrength.VERY_WEAK
         
         # Moyenne pondérée des forces de tendance
-        total_weight = 0
-        weighted_strength = 0
+        total_weight = 0.0
+        weighted_strength = 0.0
         
         timeframe_weights = {
             "1m": 0.5, "5m": 1.0, "15m": 1.5, "30m": 2.0,
@@ -442,8 +442,8 @@ class MultiTimeframeAnalyzer:
         
         for tf_str, signal in signals.items():
             weight = timeframe_weights.get(tf_str, 1.0)
-            weighted_strength += signal.trend_strength * weight * (signal.confidence / 100)
-            total_weight += weight
+            weighted_strength += float(signal.trend_strength) * weight * (signal.confidence / 100)
+            total_weight += float(weight)
         
         if total_weight == 0:
             return SignalStrength.VERY_WEAK
@@ -467,8 +467,8 @@ class MultiTimeframeAnalyzer:
             return "neutral"
         
         # Pondération par timeframe
-        bullish_weight = 0
-        bearish_weight = 0
+        bullish_weight = 0.0
+        bearish_weight = 0.0
         
         timeframe_weights = {
             "1m": 0.5, "5m": 1.0, "15m": 1.5, "30m": 2.0,
@@ -479,9 +479,9 @@ class MultiTimeframeAnalyzer:
             weight = timeframe_weights.get(tf_str, 1.0) * (signal.confidence / 100)
             
             if signal.trend_direction == "bullish":
-                bullish_weight += weight
+                bullish_weight += float(weight)
             elif signal.trend_direction == "bearish":
-                bearish_weight += weight
+                bearish_weight += float(weight)
         
         if bullish_weight > bearish_weight * 1.2:
             return "bullish"
@@ -580,7 +580,7 @@ class MultiTimeframeAnalyzer:
         if not signals:
             return "unknown"
         
-        regime_counts = {}
+        regime_counts: Dict[str, int] = {}
         for signal in signals.values():
             regime = signal.regime_type
             regime_counts[regime] = regime_counts.get(regime, 0) + 1
@@ -692,7 +692,7 @@ class MultiTimeframeAnalyzer:
     
     def _detect_divergences(self, signals: Dict[str, TimeframeSignal]) -> List[str]:
         """Détecte les divergences entre timeframes."""
-        divergences = []
+        divergences: List[str] = []
         
         if len(signals) < 2:
             return divergences
@@ -760,7 +760,7 @@ class MultiTimeframeAnalyzer:
         elif trend_alignment in [TrendAlignment.MOSTLY_ALIGNED_BULL, TrendAlignment.MOSTLY_ALIGNED_BEAR]:
             alignment_bonus = 10
         
-        return min(avg_confidence + alignment_bonus, 100)
+        return min(float(avg_confidence + alignment_bonus), 100.0)
     
     def _identify_next_key_levels(self, all_levels: List[float], current_price: float) -> List[float]:
         """Identifie les prochains niveaux clés."""
@@ -791,12 +791,27 @@ class MultiTimeframeAnalyzer:
         """
         Calcule un score de confluence entre 0 et 100 basé sur l'analyse multi-timeframe.
         """
-        return calculate_multi_timeframe_confluence(
-            signal_strength.value,
-            trend_alignment.value,
-            confidence,
-            risk_level
-        )
+        # Calcul simple du score de confluence
+        base_score = 50.0
+        
+        # Bonus selon la force du signal
+        strength_bonus = {
+            "very_weak": 0, "weak": 10, "moderate": 20,
+            "strong": 30, "very_strong": 40
+        }.get(signal_strength.value, 0)
+        
+        # Bonus selon l'alignement
+        alignment_bonus = {
+            "fully_aligned_bull": 30, "fully_aligned_bear": 30,
+            "mostly_aligned_bull": 20, "mostly_aligned_bear": 20,
+            "mixed": 5, "conflicting": -10
+        }.get(trend_alignment.value, 0)
+        
+        # Ajustement selon le risque
+        risk_penalty = {"high": -15, "medium": 0, "low": 10}.get(risk_level, 0)
+        
+        final_score = base_score + strength_bonus + alignment_bonus + risk_penalty
+        return max(0.0, min(100.0, final_score * (confidence / 100)))
 
     
     def _empty_timeframe_signal(self, timeframe: TimeframeType) -> TimeframeSignal:
@@ -860,7 +875,11 @@ class MultiTimeframeAnalyzer:
             analysis.confidence > 70):
             
             recommendation['action'] = 'BUY'
-            recommendation['reasoning'].append("Forte confluence haussière multi-timeframe")
+            reasoning_list = recommendation.get('reasoning', [])
+            if isinstance(reasoning_list, list):
+                reasoning_list.append("Forte confluence haussière multi-timeframe")
+            else:
+                recommendation['reasoning'] = ["Forte confluence haussière multi-timeframe"]
             
             # Prix d'entrée (niveau de support proche ou prix actuel)
             if analysis.key_support_levels:
@@ -875,16 +894,28 @@ class MultiTimeframeAnalyzer:
             
             # Stop loss (support en dessous)
             if analysis.key_support_levels:
-                supports_below = [s for s in analysis.key_support_levels if s < recommendation['entry_price']]
-                if supports_below:
-                    recommendation['stop_loss'] = max(supports_below) * 0.995
+                entry_price = recommendation.get('entry_price', current_price)
+                try:
+                    entry_price_float = float(entry_price) if isinstance(entry_price, (int, float, str)) else current_price
+                    supports_below = [s for s in analysis.key_support_levels if s < entry_price_float]
+                    if supports_below:
+                        recommendation['stop_loss'] = max(supports_below) * 0.995
+                except (TypeError, ValueError):
+                    # Si la conversion échoue, utiliser current_price
+                    supports_below = [s for s in analysis.key_support_levels if s < current_price]
+                    if supports_below:
+                        recommendation['stop_loss'] = max(supports_below) * 0.995
         
         elif (analysis.signal_strength in [SignalStrength.STRONG, SignalStrength.VERY_STRONG] and
               analysis.trend_alignment in [TrendAlignment.FULLY_ALIGNED_BEAR, TrendAlignment.MOSTLY_ALIGNED_BEAR] and
               analysis.confidence > 70):
             
             recommendation['action'] = 'SELL'
-            recommendation['reasoning'].append("Forte confluence baissière multi-timeframe")
+            reasoning_list = recommendation.get('reasoning', [])
+            if isinstance(reasoning_list, list):
+                reasoning_list.append("Forte confluence baissière multi-timeframe")
+            else:
+                recommendation['reasoning'] = ["Forte confluence baissière multi-timeframe"]
             
             # Prix d'entrée (résistance proche ou prix actuel)
             if analysis.key_resistance_levels:
@@ -899,9 +930,17 @@ class MultiTimeframeAnalyzer:
             
             # Stop loss (résistance au-dessus)
             if analysis.key_resistance_levels:
-                resistances_above = [r for r in analysis.key_resistance_levels if r > recommendation['entry_price']]
-                if resistances_above:
-                    recommendation['stop_loss'] = min(resistances_above) * 1.005
+                entry_price = recommendation.get('entry_price', current_price)
+                try:
+                    entry_price_float = float(entry_price) if isinstance(entry_price, (int, float, str)) else current_price
+                    resistances_above = [r for r in analysis.key_resistance_levels if r > entry_price_float]
+                    if resistances_above:
+                        recommendation['stop_loss'] = min(resistances_above) * 1.005
+                except (TypeError, ValueError):
+                    # Si la conversion échoue, utiliser current_price
+                    resistances_above = [r for r in analysis.key_resistance_levels if r > current_price]
+                    if resistances_above:
+                        recommendation['stop_loss'] = min(resistances_above) * 1.005
         
         # Ajuster la taille de position selon le risque
         if analysis.risk_level == "high":

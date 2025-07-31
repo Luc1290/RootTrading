@@ -2,7 +2,7 @@
 Volume_Buildup_Validator - Validator basé sur l'accumulation de volume et patterns de liquidité.
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from .base_validator import BaseValidator
 import logging
 
@@ -99,7 +99,7 @@ class Volume_Buildup_Validator(BaseValidator):
                 volume_sma_20 = float(self.context.get('volume_sma_20', 0)) if self.context.get('volume_sma_20') is not None else None
                 
                 # Accumulation/Distribution
-                accumulation_distribution_score = float(self.context.get('accumulation_distribution_score', 0)) if self.context.get('accumulation_distribution_score') is not None else None
+                accumulation_distribution_score = float(self.context.get('accumulation_distribution_score', 50.0)) if self.context.get('accumulation_distribution_score') is not None else None
                 buy_sell_pressure = float(self.context.get('buy_sell_pressure', 0.5)) if self.context.get('buy_sell_pressure') is not None else None
                 volume_weighted_price = float(self.context.get('volume_weighted_price', 0)) if self.context.get('volume_weighted_price') is not None else None
                 
@@ -109,7 +109,7 @@ class Volume_Buildup_Validator(BaseValidator):
                 volume_buildup_consistency = float(self.context.get('volume_buildup_consistency', 0)) if self.context.get('volume_buildup_consistency') is not None else None
                 
                 # Liquidité
-                liquidity_score = float(self.context.get('liquidity_score', 0.5)) if self.context.get('liquidity_score') is not None else None
+                liquidity_score = float(self.context.get('liquidity_score', 50.0)) if self.context.get('liquidity_score') is not None else None
                 bid_ask_ratio = float(self.context.get('bid_ask_ratio', 1.0)) if self.context.get('bid_ask_ratio') is not None else None
                 spread_ratio = float(self.context.get('spread_ratio', 0.001)) if self.context.get('spread_ratio') is not None else None
                 market_depth_score = float(self.context.get('market_depth_score', 0.5)) if self.context.get('market_depth_score') is not None else None
@@ -121,7 +121,7 @@ class Volume_Buildup_Validator(BaseValidator):
                 chaikin_money_flow = float(self.context.get('chaikin_money_flow', 0)) if self.context.get('chaikin_money_flow') is not None else None
                 
                 # Qualité volume
-                volume_quality_score = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else None
+                volume_quality_score = float(self.context.get('volume_quality_score', 50.0)) if self.context.get('volume_quality_score') is not None else None
                 average_trade_size_ratio = float(self.context.get('average_trade_size_ratio', 1.0)) if self.context.get('average_trade_size_ratio') is not None else None
                 volume_volatility = float(self.context.get('volume_volatility', 1.0)) if self.context.get('volume_volatility') is not None else None
                 
@@ -314,13 +314,13 @@ class Volume_Buildup_Validator(BaseValidator):
                 volume_trend = float(self.context.get('volume_trend_numeric', 0.0)) if self.context.get('volume_trend_numeric') is not None else 0.0
             else:
                 volume_trend = float(volume_trend_raw) if volume_trend_raw is not None else 0
-            accumulation_distribution_score = float(self.context.get('accumulation_distribution_score', 0)) if self.context.get('accumulation_distribution_score') is not None else 0
+            accumulation_distribution_score = float(self.context.get('accumulation_distribution_score', 50.0)) if self.context.get('accumulation_distribution_score') is not None else 50.0
             buy_sell_pressure = float(self.context.get('buy_sell_pressure', 0.5)) if self.context.get('buy_sell_pressure') is not None else 0.5
             volume_buildup_bars = int(self.context.get('volume_buildup_bars', 0)) if self.context.get('volume_buildup_bars') is not None else 0
             volume_buildup_consistency = float(self.context.get('volume_buildup_consistency', 0.5)) if self.context.get('volume_buildup_consistency') is not None else 0.5
-            liquidity_score = float(self.context.get('liquidity_score', 0.5)) if self.context.get('liquidity_score') is not None else 0.5
+            liquidity_score = float(self.context.get('liquidity_score', 50.0)) if self.context.get('liquidity_score') is not None else 50.0
             money_flow_index = float(self.context.get('money_flow_index', 0.5)) if self.context.get('money_flow_index') is not None else 0.5
-            volume_quality_score = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else 0.5
+            volume_quality_score = float(self.context.get('volume_quality_score', 50.0)) if self.context.get('volume_quality_score') is not None else 50.0
             
             signal_side = signal.get('side')
             
@@ -410,17 +410,17 @@ class Volume_Buildup_Validator(BaseValidator):
             signal_strategy = signal.get('strategy', 'N/A')
             
             volume_ratio = float(self.context.get('volume_ratio', 1.0)) if self.context.get('volume_ratio') is not None else None
-            accumulation_distribution_score = float(self.context.get('accumulation_distribution_score', 0)) if self.context.get('accumulation_distribution_score') is not None else None
+            accumulation_distribution_score = float(self.context.get('accumulation_distribution_score', 50.0)) if self.context.get('accumulation_distribution_score') is not None else None
             buy_sell_pressure = float(self.context.get('buy_sell_pressure', 0.5)) if self.context.get('buy_sell_pressure') is not None else None
             volume_buildup_bars = int(self.context.get('volume_buildup_bars', 0)) if self.context.get('volume_buildup_bars') is not None else None
-            liquidity_score = float(self.context.get('liquidity_score', 0.5)) if self.context.get('liquidity_score') is not None else None
+            liquidity_score = float(self.context.get('liquidity_score', 50.0)) if self.context.get('liquidity_score') is not None else None
             
             if is_valid:
                 reason = f"Volume buildup favorable"
                 if volume_ratio:
                     reason += f" (ratio: {self._safe_format(volume_ratio, '.2f')}x)"
                 if accumulation_distribution_score:
-                    acc_desc = "accumulation" if accumulation_distribution_score > 0 else "distribution"
+                    acc_desc = "accumulation" if accumulation_distribution_score > 50.0 else "distribution"
                     reason += f", {acc_desc}: {self._safe_format(abs(accumulation_distribution_score), '.2f')}"
                 if buy_sell_pressure:
                     pressure_desc = "achat" if buy_sell_pressure > 0.5 else "vente"
@@ -478,7 +478,7 @@ class Volume_Buildup_Validator(BaseValidator):
             
         return True
         
-    def _get_current_price(self) -> float:
+    def _get_current_price(self) -> Optional[float]:
         """Helper method to get current price from data or context."""
         if self.data:
             # Essayer d'abord la valeur scalaire (format préféré)

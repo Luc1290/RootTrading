@@ -159,9 +159,9 @@ class VolumeContextAnalyzer:
     def analyze_volume_context(self,
                               volumes: Union[List[float], np.ndarray],
                               closes: Union[List[float], np.ndarray],
-                              highs: Union[List[float], np.ndarray] = None,
-                              lows: Union[List[float], np.ndarray] = None,
-                              symbol: str = None,
+                              highs: Optional[Union[List[float], np.ndarray]] = None,
+                              lows: Optional[Union[List[float], np.ndarray]] = None,
+                              symbol: Optional[str] = None,
                               signal_type: str = "BUY",
                               enable_cache: bool = True) -> VolumeAnalysis:
         """
@@ -193,7 +193,10 @@ class VolumeContextAnalyzer:
             
             # 2. Calcul des indicateurs techniques (avec cache si possible)
             market_conditions = self._calculate_market_indicators(
-                closes, highs, lows, symbol, enable_cache
+                np.asarray(closes), 
+                np.asarray(highs) if highs is not None else None, 
+                np.asarray(lows) if lows is not None else None, 
+                symbol, enable_cache
             )
             
             # 3. Détection du contexte market
@@ -233,33 +236,33 @@ class VolumeContextAnalyzer:
             
         except Exception as e:
             logger.error(f"Erreur analyse contexte volume: {e}")
-            return self._create_default_analysis(volumes, closes)
+            return self._create_default_analysis(np.asarray(volumes), np.asarray(closes))
     
     def _calculate_market_indicators(self,
                                    closes: np.ndarray,
-                                   highs: np.ndarray = None,
-                                   lows: np.ndarray = None,
-                                   symbol: str = None,
+                                   highs: Optional[np.ndarray] = None,
+                                   lows: Optional[np.ndarray] = None,
+                                   symbol: Optional[str] = None,
                                    enable_cache: bool = True) -> Dict[str, float]:
         """Calcule les indicateurs techniques nécessaires."""
         indicators = {}
         
         try:
             # RSI (avec cache si symbol fourni)
-            from ..indicators.momentum.rsi import calculate_rsi
+            from ..indicators.momentum.rsi import calculate_rsi  # type: ignore
             rsi = calculate_rsi(closes, 14, symbol, enable_cache)
             if rsi is not None:
                 indicators['rsi'] = rsi
             
             # CCI (avec cache si symbol fourni)  
-            from ..indicators.momentum.cci import calculate_cci
+            from ..indicators.momentum.cci import calculate_cci  # type: ignore
             if highs is not None and lows is not None:
                 cci = calculate_cci(highs, lows, closes, 20)
                 if cci is not None:
                     indicators['cci'] = cci
             
             # ADX (sans cache - non supporté)
-            from ..indicators.trend.adx import calculate_adx
+            from ..indicators.trend.adx import calculate_adx  # type: ignore
             if highs is not None and lows is not None:
                 adx = calculate_adx(highs, lows, closes, 14)
                 if adx is not None:
@@ -333,14 +336,19 @@ class VolumeContextAnalyzer:
         # Pattern détecté
         pattern_detected = self._identify_volume_pattern(volumes)
         
+        # Extraction sécurisée des valeurs de configuration
+        min_ratio = config.get('min_ratio', 1.5)
+        ideal_ratio = config.get('ideal_ratio', 2.5)
+        description = config.get('description', 'Contexte neutre')
+        
         return VolumeContext(
             context_type=best_context,
-            min_ratio=config['min_ratio'] * tolerance_factor,
-            ideal_ratio=config['ideal_ratio'] * tolerance_factor,
+            min_ratio=float(min_ratio if isinstance(min_ratio, (int, float, str)) else 0.0) * tolerance_factor,
+            ideal_ratio=float(ideal_ratio if isinstance(ideal_ratio, (int, float, str)) else 0.0) * tolerance_factor,
             confidence=confidence,
             pattern_detected=pattern_detected,
             tolerance_factor=tolerance_factor,
-            description=config['description'],
+            description=str(description),
             market_conditions=market_conditions
         )
     
@@ -559,7 +567,7 @@ class VolumeContextAnalyzer:
                              volumes: Union[List[float], np.ndarray],
                              closes: Union[List[float], np.ndarray],
                              signal_type: str = "BUY",
-                             symbol: str = None) -> Tuple[float, str]:
+                             symbol: Optional[str] = None) -> Tuple[float, str]:
         """
         Retourne le seuil volume adaptatif et le contexte détecté.
         
@@ -573,7 +581,7 @@ class VolumeContextAnalyzer:
                            current_volume_ratio: float,
                            volumes: Union[List[float], np.ndarray],
                            closes: Union[List[float], np.ndarray],
-                           symbol: str = None) -> Tuple[bool, float]:
+                           symbol: Optional[str] = None) -> Tuple[bool, float]:
         """
         Vérifie si le volume est acceptable selon le contexte.
         

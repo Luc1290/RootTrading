@@ -12,7 +12,7 @@ This module detects anomalous price and volume movements that may indicate:
 
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Union, Tuple, NamedTuple
+from typing import Dict, List, Optional, Union, Tuple, NamedTuple, Any
 from dataclasses import dataclass
 from enum import Enum
 from datetime import datetime, timedelta
@@ -66,7 +66,7 @@ class SpikeEvent:
     z_score_volume: float  # Z-score pour le volume
     pre_spike_trend: str  # Tendance avant le spike
     post_spike_behavior: Optional[str] = None  # Comportement après
-    related_levels: List[float] = None  # Niveaux S/R impliqués
+    related_levels: Optional[List[float]] = None  # Niveaux S/R impliqués
     liquidity_impact: float = 0.0  # Impact sur la liquidité
     
     def __post_init__(self):
@@ -126,7 +126,7 @@ class SpikeDetector:
         self.min_spike_duration = min_spike_duration
         
         # Cache pour optimisation
-        self._cache = {}
+        self._cache: Dict[str, Any] = {}
     
     def detect_spikes(self,
                      highs: Union[List[float], np.ndarray],
@@ -735,7 +735,7 @@ class SpikeDetector:
             z_score_price=primary.z_score_price,
             z_score_volume=primary.z_score_volume,
             pre_spike_trend=primary.pre_spike_trend,
-            related_levels=list(set().union(*[s.related_levels for s in spikes])),
+            related_levels=list(set().union(*[s.related_levels for s in spikes if s.related_levels is not None])),
             liquidity_impact=max(s.liquidity_impact for s in spikes)
         )
     
@@ -768,8 +768,8 @@ class SpikeDetector:
         if not spikes:
             return {'total': 0, 'by_type': {}, 'by_intensity': {}}
         
-        by_type = {}
-        by_intensity = {}
+        by_type: Dict[str, int] = {}
+        by_intensity: Dict[str, int] = {}
         
         for spike in spikes:
             # Compter par type

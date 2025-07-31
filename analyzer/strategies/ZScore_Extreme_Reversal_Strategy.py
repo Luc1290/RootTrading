@@ -4,7 +4,7 @@ Le Z-Score mesure combien d'écarts-types le prix s'éloigne de sa moyenne - les
 indiquent des surachat/survente propices aux reversals.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, cast
 from .base_strategy import BaseStrategy
 import logging
 import math
@@ -147,7 +147,7 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
         
     def _calculate_zscore_proxy(self, values: Dict[str, Any], current_price: float) -> Dict[str, Any]:
         """Calcule une approximation du Z-Score basée sur Bollinger Bands et oscillateurs."""
-        zscore_data = {
+        zscore_data: Dict[str, Any] = {
             'zscore_value': None,
             'zscore_direction': None,
             'zscore_strength': 'weak',
@@ -164,7 +164,7 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
                 zscore_from_bb = (bb_pos - 0.5) * 6  # Approximation linéaire
                 
                 zscore_data['zscore_value'] = zscore_from_bb
-                zscore_data['zscore_components'].append(f"BB position ({bb_pos:.3f})")
+                cast(List[str], zscore_data['zscore_components']).append(f"BB position ({bb_pos:.3f})")
                 
                 # Direction et force selon valeur
                 abs_zscore = abs(zscore_from_bb)
@@ -196,17 +196,17 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
                 
                 # RSI extrêmes renforcent le Z-Score
                 if rsi_val <= self.rsi_very_extreme_threshold:
-                    zscore_data['zscore_components'].append(f"RSI très extrême ({rsi_val:.1f})")
+                    cast(List[str], zscore_data['zscore_components']).append(f"RSI très extrême ({rsi_val:.1f})")
                     if zscore_data['zscore_direction'] == 'extreme_negative':
                         zscore_data['zscore_strength'] = 'ultra_extreme'
                 elif rsi_val <= self.rsi_oversold_threshold:
-                    zscore_data['zscore_components'].append(f"RSI survente ({rsi_val:.1f})")
+                    cast(List[str], zscore_data['zscore_components']).append(f"RSI survente ({rsi_val:.1f})")
                 elif rsi_val >= 100 - self.rsi_very_extreme_threshold:
-                    zscore_data['zscore_components'].append(f"RSI très extrême ({rsi_val:.1f})")
+                    cast(List[str], zscore_data['zscore_components']).append(f"RSI très extrême ({rsi_val:.1f})")
                     if zscore_data['zscore_direction'] == 'extreme_positive':
                         zscore_data['zscore_strength'] = 'ultra_extreme'
                 elif rsi_val >= self.rsi_overbought_threshold:
-                    zscore_data['zscore_components'].append(f"RSI surachat ({rsi_val:.1f})")
+                    cast(List[str], zscore_data['zscore_components']).append(f"RSI surachat ({rsi_val:.1f})")
                     
             except (ValueError, TypeError):
                 pass
@@ -218,13 +218,13 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
                 williams_val = float(williams_r)
                 
                 if williams_val <= -90:  # Très extrême
-                    zscore_data['zscore_components'].append(f"Williams %R très extrême ({williams_val:.1f})")
+                    cast(List[str], zscore_data['zscore_components']).append(f"Williams %R très extrême ({williams_val:.1f})")
                 elif williams_val <= self.williams_oversold_threshold:
-                    zscore_data['zscore_components'].append(f"Williams %R survente ({williams_val:.1f})")
+                    cast(List[str], zscore_data['zscore_components']).append(f"Williams %R survente ({williams_val:.1f})")
                 elif williams_val >= -10:  # Très extrême haut
-                    zscore_data['zscore_components'].append(f"Williams %R très extrême ({williams_val:.1f})")
+                    cast(List[str], zscore_data['zscore_components']).append(f"Williams %R très extrême ({williams_val:.1f})")
                 elif williams_val >= self.williams_overbought_threshold:
-                    zscore_data['zscore_components'].append(f"Williams %R surachat ({williams_val:.1f})")
+                    cast(List[str], zscore_data['zscore_components']).append(f"Williams %R surachat ({williams_val:.1f})")
                     
             except (ValueError, TypeError):
                 pass

@@ -70,18 +70,21 @@ class Market_Structure_Validator(BaseValidator):
             try:
                 # Régimes principaux
                 market_regime = self.context.get('market_regime')
-                regime_strength = self._convert_regime_strength_to_score(self.context.get('regime_strength')) if self.context.get('regime_strength') is not None else None
-                regime_confidence = float(self.context.get('regime_confidence', 0)) if self.context.get('regime_confidence') is not None else None
+                regime_strength_raw = self.context.get('regime_strength')
+                regime_strength = self._convert_regime_strength_to_score(str(regime_strength_raw)) if regime_strength_raw is not None else None
+                regime_confidence = float(self.context.get('regime_confidence', 50.0)) if self.context.get('regime_confidence') is not None else None
                 volatility_regime = self.context.get('volatility_regime')
                 
                 # Alignement et confluence
                 trend_alignment = float(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None
-                signal_strength = self._convert_signal_strength_to_score(self.context.get('signal_strength')) if self.context.get('signal_strength') is not None else None
-                confluence_score = float(self.context.get('confluence_score', 0)) if self.context.get('confluence_score') is not None else None
+                signal_strength_raw = self.context.get('signal_strength')
+                signal_strength = self._convert_signal_strength_to_score(str(signal_strength_raw)) if signal_strength_raw is not None else None
+                confluence_score = float(self.context.get('confluence_score', 50.0)) if self.context.get('confluence_score') is not None else None
                 
                 # Direction et tendance
                 directional_bias = self.context.get('directional_bias')
-                trend_strength = self._convert_trend_strength_to_score(self.context.get('trend_strength')) if self.context.get('trend_strength') is not None else None
+                trend_strength_raw = self.context.get('trend_strength')
+                trend_strength = self._convert_trend_strength_to_score(str(trend_strength_raw)) if trend_strength_raw is not None else None
                 trend_angle = float(self.context.get('trend_angle', 0)) if self.context.get('trend_angle') is not None else None
                 
                 # Pattern recognition
@@ -181,7 +184,7 @@ class Market_Structure_Validator(BaseValidator):
                         return False
                         
             # 11. Validation croisée régimes
-            regime_conflict = self._detect_regime_conflicts(market_regime, volatility_regime, directional_bias)
+            regime_conflict = self._detect_regime_conflicts(str(market_regime) if market_regime is not None else '', str(volatility_regime) if volatility_regime is not None else '', str(directional_bias) if directional_bias is not None else '')
             if regime_conflict:
                 logger.debug(f"{self.name}: Conflit entre régimes détecté pour {self.symbol}")
                 if signal_confidence < 0.8:
@@ -189,7 +192,7 @@ class Market_Structure_Validator(BaseValidator):
                     
             # 12. Validation spécifique selon type stratégie
             strategy_regime_match = self._validate_strategy_regime_match(
-                signal_strategy, market_regime, volatility_regime
+                signal_strategy, str(market_regime) if market_regime is not None else '', str(volatility_regime) if volatility_regime is not None else ''
             )
             if not strategy_regime_match:
                 logger.debug(f"{self.name}: Stratégie {signal_strategy} inadaptée au régime pour {self.symbol}")
@@ -274,12 +277,14 @@ class Market_Structure_Validator(BaseValidator):
                 
             # Calcul du score basé sur structure marché
             market_regime = self.context.get('market_regime')
-            regime_strength = self._convert_regime_strength_to_score(self.context.get('regime_strength')) if self.context.get('regime_strength') is not None else 0.5
-            regime_confidence = float(self.context.get('regime_confidence', 0.5)) if self.context.get('regime_confidence') is not None else 0.5
+            regime_strength_raw = self.context.get('regime_strength')
+            regime_strength = self._convert_regime_strength_to_score(str(regime_strength_raw)) if regime_strength_raw is not None else 0.5
+            regime_confidence = float(self.context.get('regime_confidence', 50.0)) if self.context.get('regime_confidence') is not None else 50.0
             volatility_regime = self.context.get('volatility_regime')
             trend_alignment = float(self.context.get('trend_alignment', 0.5)) if self.context.get('trend_alignment') is not None else 0.5
-            signal_strength = self._convert_signal_strength_to_score(self.context.get('signal_strength')) if self.context.get('signal_strength') is not None else 0.5
-            confluence_score = float(self.context.get('confluence_score', 0.5)) if self.context.get('confluence_score') is not None else 0.5
+            signal_strength_raw = self.context.get('signal_strength')
+            signal_strength = self._convert_signal_strength_to_score(str(signal_strength_raw)) if signal_strength_raw is not None else 0.5
+            confluence_score = float(self.context.get('confluence_score', 50.0)) if self.context.get('confluence_score') is not None else 50.0
             directional_bias = self.context.get('directional_bias')
             
             signal_side = signal.get('side')
@@ -336,14 +341,14 @@ class Market_Structure_Validator(BaseValidator):
                     
             # Bonus adéquation stratégie/régime
             strategy_match = self._validate_strategy_regime_match(
-                signal_strategy, market_regime, volatility_regime
+                signal_strategy, str(market_regime) if market_regime is not None else '', str(volatility_regime) if volatility_regime is not None else ''
             )
             if strategy_match:
                 base_score += 0.10
                 
             # Malus conflits régimes
             regime_conflict = self._detect_regime_conflicts(
-                market_regime, volatility_regime, directional_bias
+                str(market_regime) if market_regime is not None else '', str(volatility_regime) if volatility_regime is not None else '', str(directional_bias) if directional_bias is not None else ''
             )
             if regime_conflict:
                 base_score += self.regime_mismatch_penalty
@@ -370,7 +375,7 @@ class Market_Structure_Validator(BaseValidator):
             volatility_regime = self.context.get('volatility_regime', 'N/A')
             directional_bias = self.context.get('directional_bias', 'N/A')
             trend_alignment = float(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None
-            confluence_score = float(self.context.get('confluence_score', 0)) if self.context.get('confluence_score') is not None else None
+            confluence_score = float(self.context.get('confluence_score', 50.0)) if self.context.get('confluence_score') is not None else None
             signal_side = signal.get('side', 'N/A')
             signal_strategy = signal.get('strategy', 'N/A')
             

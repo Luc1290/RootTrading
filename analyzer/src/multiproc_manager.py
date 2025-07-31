@@ -29,8 +29,8 @@ class MultiProcessManager:
         # Métriques de performance
         self.metrics = {
             'tasks_executed': 0,
-            'total_execution_time': 0,
-            'average_execution_time': 0,
+            'total_execution_time': 0.0,
+            'average_execution_time': 0.0,
             'errors': 0,
             'active_workers': 0
         }
@@ -99,12 +99,12 @@ class MultiProcessManager:
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
             # Traitement des résultats et gestion des erreurs
-            processed_results = []
+            processed_results: List[Dict[str, Any]] = []
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
                     logger.error(f"Erreur tâche {i}: {result}")
                     self.metrics['errors'] += 1
-                else:
+                elif isinstance(result, dict):
                     processed_results.append(result)
                     
             # Mise à jour des métriques
@@ -112,7 +112,7 @@ class MultiProcessManager:
             self.metrics['tasks_executed'] += len(strategy_tasks)
             self.metrics['total_execution_time'] += execution_time
             self.metrics['average_execution_time'] = (
-                self.metrics['total_execution_time'] / self.metrics['tasks_executed']
+                self.metrics['total_execution_time'] / max(self.metrics['tasks_executed'], 1)
             )
             
             logger.info(f"Exécution parallèle terminée: {len(processed_results)}/{len(strategy_tasks)} "

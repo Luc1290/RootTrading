@@ -221,7 +221,10 @@ class Volume_Spike_Validator(BaseValidator):
                     return False
                     
             # 13. Validation spécifique selon stratégie
-            strategy_spike_match = self._validate_strategy_spike_match(signal_strategy, volume_spike_multiplier)
+            if volume_spike_multiplier is not None:
+                strategy_spike_match = self._validate_strategy_spike_match(signal_strategy, volume_spike_multiplier)
+            else:
+                strategy_spike_match = True
             if not strategy_spike_match:
                 logger.debug(f"{self.name}: Stratégie {signal_strategy} inadaptée aux spikes pour {self.symbol}")
                 if signal_confidence < 0.6:

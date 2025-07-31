@@ -9,6 +9,7 @@ import time
 from typing import Dict, Any, List, Optional
 import asyncio
 import websockets
+from websockets.client import ClientProtocol as WebSocketClientProtocol
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 # Importer les clients partagés
@@ -43,7 +44,7 @@ class SimpleBinanceWebSocket:
         self.symbols = symbols or SYMBOLS
         self.intervals = intervals or ['1m', '3m', '5m', '15m', '1d']
         self.kafka_client = kafka_client or get_producer()
-        self.ws: Optional[websockets.WebSocketClientProtocol] = None
+        self.ws: Optional[WebSocketClientProtocol] = None
         self.running = False
         self.reconnect_delay = 1  # Secondes, pour backoff exponentiel
         self.last_message_time = 0.0
@@ -203,7 +204,14 @@ class SimpleBinanceWebSocket:
             }
             
             # Utiliser la méthode correcte du KafkaProducer
-            self.kafka_client.publish_market_data(market_data, key=candle_data['symbol'])
+            if hasattr(self.kafka_client, 'publish_market_data'):
+                self.kafka_client.publish_market_data(market_data, key=candle_data['symbol'])
+            else:
+                # Fallback - essayer d'autres méthodes disponibles
+                if hasattr(self.kafka_client, 'send'):
+                    self.kafka_client.send('market_data', market_data, key=candle_data['symbol'])
+                else:
+                    logger.warning(f"Méthode de publication Kafka non trouvée pour {type(self.kafka_client)}")
             
             logger.debug(f"📡 Données brutes publiées: {candle_data['symbol']} @ {candle_data['interval']}")
             

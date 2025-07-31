@@ -55,8 +55,8 @@ class IndicatorCache:
     """
     
     def __init__(self,
-                 redis_host: str = None,
-                 redis_port: int = None,
+                 redis_host: Optional[str] = None,
+                 redis_port: Optional[int] = None,
                  redis_db: int = 2,  # DB séparée pour les indicateurs
                  redis_password: Optional[str] = None,
                  ttl_hours: int = 48,
@@ -143,7 +143,7 @@ class IndicatorCache:
                 logger.error(f"Erreur auto-save: {e}")
                 self.metrics.error_count += 1
     
-    def get(self, key: str, symbol: str = None) -> Optional[Any]:
+    def get(self, key: str, symbol: Optional[str] = None) -> Optional[Any]:
         """
         Récupère une valeur du cache.
         
@@ -166,8 +166,10 @@ class IndicatorCache:
             if self.redis_client:
                 try:
                     redis_value = self.redis_client.get(full_key)
-                    if redis_value:
-                        value = pickle.loads(redis_value)
+                    if redis_value and isinstance(redis_value, (bytes, str)):
+                        # Convertir en bytes si nécessaire pour pickle.loads
+                        redis_bytes = redis_value if isinstance(redis_value, bytes) else redis_value.encode('utf-8')
+                        value = pickle.loads(redis_bytes)
                         # Mettre en cache mémoire
                         self._memory_cache[full_key] = value
                         self._cache_timestamps[full_key] = time.time()
@@ -181,7 +183,7 @@ class IndicatorCache:
             self.metrics.miss_count += 1
             return None
     
-    def set(self, key: str, value: Any, symbol: str = None):
+    def set(self, key: str, value: Any, symbol: Optional[str] = None):
         """
         Stocke une valeur dans le cache.
         
@@ -209,12 +211,13 @@ class IndicatorCache:
         """Sauvegarde en Redis (méthode privée pour threading)."""
         try:
             serialized = pickle.dumps(value)
-            self.redis_client.setex(full_key, self.ttl_seconds, serialized)
+            if self.redis_client is not None:
+                self.redis_client.setex(full_key, self.ttl_seconds, serialized)
         except Exception as e:
             logger.warning(f"Erreur écriture Redis {full_key}: {e}")
             self.metrics.error_count += 1
     
-    def delete(self, key: str, symbol: str = None):
+    def delete(self, key: str, symbol: Optional[str] = None):
         """
         Supprime une entrée du cache.
         
@@ -260,7 +263,7 @@ class IndicatorCache:
                 # Effacer Redis
                 if self.redis_client:
                     redis_keys = self.redis_client.keys(pattern)
-                    if redis_keys:
+                    if redis_keys and isinstance(redis_keys, list):
                         self.redis_client.delete(*redis_keys)
                 
                 logger.info(f"Cache effacé pour {symbol}: {len(keys_to_remove)} entrées")
@@ -324,7 +327,7 @@ class IndicatorCache:
                 logger.error(f"Erreur pipeline Redis: {e}")
                 self.metrics.error_count += 1
     
-    def restore_from_redis(self, symbol: str = None) -> int:
+    def restore_from_redis(self, symbol: Optional[str] = None) -> int:
         """
         Restaure le cache depuis Redis.
         
@@ -344,7 +347,7 @@ class IndicatorCache:
             try:
                 keys = self.redis_client.keys(pattern)
                 
-                if keys:
+                if keys and isinstance(keys, list):
                     # Utiliser pipeline pour efficiency
                     pipe = self.redis_client.pipeline()
                     for key in keys:
@@ -352,21 +355,22 @@ class IndicatorCache:
                     
                     values = pipe.execute()
                     
-                    for key, value in zip(keys, values):
-                        if value:
-                            try:
-                                # Décoder key bytes vers string
-                                if isinstance(key, bytes):
-                                    key = key.decode('utf-8')
-                                
-                                deserialized = pickle.loads(value)
-                                self._memory_cache[key] = deserialized
-                                self._cache_timestamps[key] = time.time()
-                                restored_count += 1
-                                
-                            except Exception as e:
-                                logger.warning(f"Erreur désérialisation {key}: {e}")
-                                continue
+                    if isinstance(values, list):
+                        for key, value in zip(keys, values):
+                            if value:
+                                try:
+                                    # Décoder key bytes vers string
+                                    if isinstance(key, bytes):
+                                        key = key.decode('utf-8')
+                                    
+                                    deserialized = pickle.loads(value)
+                                    self._memory_cache[key] = deserialized
+                                    self._cache_timestamps[key] = time.time()
+                                    restored_count += 1
+                                    
+                                except Exception as e:
+                                    logger.warning(f"Erreur désérialisation {key}: {e}")
+                                    continue
                 
                 self.metrics.restore_count += restored_count
                 
@@ -395,7 +399,7 @@ class IndicatorCache:
             return {
                 'entries': total_entries,
                 'estimated_bytes': total_size,
-                'estimated_mb': total_size / (1024 * 1024)
+                'estimated_mb': int(total_size / (1024 * 1024))
             }
     
     def cleanup_expired(self, max_age_seconds: int = 3600):
@@ -433,7 +437,7 @@ class IndicatorCache:
             'ttl_hours': self.ttl_seconds / 3600
         }
     
-    def _make_full_key(self, key: str, symbol: str = None) -> str:
+    def _make_full_key(self, key: str, symbol: Optional[str] = None) -> str:
         """Génère une clé complète."""
         if symbol:
             return f"indicators:{symbol}:{key}"

@@ -126,6 +126,15 @@ class TEMA_Slope_Strategy(BaseStrategy):
         recent_prices = self._get_recent_prices()
         
         # Analyser le TEMA et sa pente
+        if current_price is None or recent_prices is None:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": "Prix ou données récentes non disponibles",
+                "metadata": {"strategy": self.name}
+            }
+        
         tema_analysis = self._analyze_tema_slope(values, current_price, recent_prices)
         if tema_analysis is None:
             return {
@@ -148,6 +157,15 @@ class TEMA_Slope_Strategy(BaseStrategy):
             }
             
         # Créer le signal avec confirmations
+        if current_price is None:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": "Prix actuel non disponible",
+                "metadata": {"strategy": self.name}
+            }
+        
         return self._create_tema_slope_signal(values, current_price, tema_analysis, signal_condition)
         
     def _analyze_tema_slope(self, values: Dict[str, Any], current_price: float, recent_prices: list) -> Optional[Dict[str, Any]]:
@@ -415,13 +433,13 @@ class TEMA_Slope_Strategy(BaseStrategy):
         trend_strength = values.get('trend_strength')
         if trend_strength is not None:
             try:
-                strength = float(trend_strength)
-                if strength > 0.6:
+                trend_strength_val = float(trend_strength)
+                if trend_strength_val > 0.6:
                     confidence_boost += 0.12
-                    reason += f" + tendance forte ({strength:.2f})"
-                elif strength > 0.4:
+                    reason += f" + tendance forte ({trend_strength_val:.2f})"
+                elif trend_strength_val > 0.4:
                     confidence_boost += 0.08
-                    reason += f" + tendance modérée ({strength:.2f})"
+                    reason += f" + tendance modérée ({trend_strength_val:.2f})"
             except (ValueError, TypeError):
                 pass
                 

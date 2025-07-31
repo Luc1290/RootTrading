@@ -488,7 +488,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
         # Vérifier alignement momentum si requis
         momentum_analysis = self._detect_momentum_alignment(values, signal_side)
         
-        if self.momentum_alignment_required and not momentum_analysis['is_aligned']:
+        if self.momentum_alignment_required and momentum_analysis is not None and not momentum_analysis['is_aligned']:
             return {
                 "side": None,
                 "confidence": 0.0,
@@ -497,8 +497,8 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
-                    "vwap_score": primary_analysis['score'],
-                    "momentum_score": momentum_analysis['score']
+                    "vwap_score": primary_analysis['score'] if primary_analysis else 0.0,
+                    "momentum_score": momentum_analysis['score'] if momentum_analysis else 0.0
                 }
             }
             
@@ -507,24 +507,26 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
         confidence_boost = 0.0
         
         # Score VWAP principal
-        confidence_boost += primary_analysis['score'] * 0.4
+        if primary_analysis is not None:
+            confidence_boost += primary_analysis['score'] * 0.4
         
         # Score momentum
-        confidence_boost += momentum_analysis['score'] * 0.3
+        if momentum_analysis is not None:
+            confidence_boost += momentum_analysis['score'] * 0.3
         
         # Construire raison
-        vwap_level = primary_analysis['vwap_level']
-        vwap_distance = primary_analysis['vwap_distance_pct']
+        vwap_level = primary_analysis['vwap_level'] if primary_analysis else 0.0
+        vwap_distance = primary_analysis['vwap_distance_pct'] if primary_analysis else 0.0
         
         if signal_side == "BUY":
             reason = f"VWAP support {vwap_level:.2f} (distance: {vwap_distance:.2f}%)"
         else:
             reason = f"VWAP résistance {vwap_level:.2f} (distance: {vwap_distance:.2f}%)"
             
-        if primary_analysis['indicators']:
+        if primary_analysis and primary_analysis['indicators']:
             reason += f" - {primary_analysis['indicators'][0]}"
             
-        if momentum_analysis['indicators']:
+        if momentum_analysis and momentum_analysis['indicators']:
             reason += f" + {momentum_analysis['indicators'][0]}"
             
         # Bonus confluences et confirmations supplémentaires
@@ -632,10 +634,10 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                 "current_price": current_price,
                 "vwap_level": vwap_level,
                 "vwap_distance_pct": vwap_distance,
-                "vwap_score": primary_analysis['score'],
-                "momentum_score": momentum_analysis['score'],
-                "vwap_indicators": primary_analysis['indicators'],
-                "momentum_indicators": momentum_analysis['indicators'],
+                "vwap_score": primary_analysis['score'] if primary_analysis else 0.0,
+                "momentum_score": momentum_analysis['score'] if momentum_analysis else 0.0,
+                "vwap_indicators": primary_analysis['indicators'] if primary_analysis else [],
+                "momentum_indicators": momentum_analysis['indicators'] if momentum_analysis else [],
                 "support_analysis": support_analysis if signal_side == "BUY" else None,
                 "resistance_analysis": resistance_analysis if signal_side == "SELL" else None,
                 "volume_ratio": values.get('volume_ratio'),

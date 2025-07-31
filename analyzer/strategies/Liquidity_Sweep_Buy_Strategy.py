@@ -110,6 +110,12 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         if any(v is None for v in [current_price, current_low, prev_low_1, prev_low_2]):
             return {'is_sweep': False, 'reason': 'Données prix incomplètes'}
             
+        # Assertions pour mypy - on sait que les valeurs ne sont pas None
+        assert current_price is not None
+        assert current_low is not None
+        assert prev_low_1 is not None
+        assert prev_low_2 is not None
+            
         # Détection du sweep : prix a cassé sous support récemment
         sweep_distance = (support_level - current_low) / support_level
         recent_sweep = False
@@ -118,7 +124,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         # Vérifier si on a cassé sous support dans les dernières barres
         lows = [current_low, prev_low_1, prev_low_2]
         for i, low in enumerate(lows):
-            if low < support_level * (1 - self.sweep_threshold):
+            if low is not None and low < support_level * (1 - self.sweep_threshold):
                 recent_sweep = True
                 sweep_bars_ago = i
                 break
@@ -127,19 +133,19 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             return {'is_sweep': False, 'reason': 'Pas de sweep récent détecté'}
             
         # Vérification recovery : prix est revenu au-dessus du support
-        recovery_successful = current_price > support_level * (1 + self.recovery_threshold)
+        recovery_successful = current_price is not None and current_price > support_level * (1 + self.recovery_threshold)
         
         if not recovery_successful:
             return {'is_sweep': False, 'reason': 'Pas encore de recovery au-dessus support'}
             
         # Calcul de la force du sweep
-        max_sweep_distance = max(abs(low - support_level) / support_level for low in lows if low < support_level)
+        max_sweep_distance = max(abs(low - support_level) / support_level for low in lows if low is not None and low < support_level)
         
         return {
             'is_sweep': True,
             'sweep_bars_ago': sweep_bars_ago,
             'max_sweep_distance': max_sweep_distance,
-            'recovery_distance': (current_price - support_level) / support_level,
+            'recovery_distance': (current_price - support_level) / support_level if current_price is not None else 0.0,
             'reason': f'Liquidity sweep détecté il y a {sweep_bars_ago} barres'
         }
         
