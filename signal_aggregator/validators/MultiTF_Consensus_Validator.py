@@ -171,7 +171,7 @@ class MultiTF_Consensus_Validator(BaseValidator):
                     return False
                     
             # 10. Validation pattern confidence
-            if pattern_confidence is not None and pattern_confidence < 0.4:
+            if pattern_confidence is not None and pattern_confidence < 40:
                 logger.debug(f"{self.name}: Pattern confidence faible ({self._safe_format(pattern_confidence, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False

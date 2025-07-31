@@ -39,8 +39,8 @@ class S_R_Level_Proximity_Validator(BaseValidator):
         self.very_strong_level_threshold = 0.9 # Seuil niveau très fort
         
         # Paramètres de cassure
-        self.min_break_probability = 0.6     # Probabilité min de cassure
-        self.high_break_probability = 0.8    # Probabilité haute de cassure
+        self.min_break_probability = 60     # Probabilité min de cassure
+        self.high_break_probability = 80    # Probabilité haute de cassure
         
     def validate_signal(self, signal: Dict[str, Any]) -> bool:
         """

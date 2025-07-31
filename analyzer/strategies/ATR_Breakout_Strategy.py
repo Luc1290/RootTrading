@@ -194,10 +194,10 @@ class ATR_Breakout_Strategy(BaseStrategy):
             
         # Ajustements de confiance selon l'ATR
         if atr_percentile is not None:
-            if atr_percentile >= 0.8:
+            if atr_percentile >= 80:
                 confidence_boost += 0.2
                 reason += " - volatilité extrême"
-            elif atr_percentile >= 0.7:
+            elif atr_percentile >= 70:
                 confidence_boost += 0.15
                 reason += " - volatilité élevée"
             else:

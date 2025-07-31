@@ -321,7 +321,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
         
     def _detect_momentum_alignment(self, values: Dict[str, Any], signal_direction: str) -> Dict[str, Any]:
         """Détecte l'alignement du momentum avec la direction du signal."""
-        momentum_score = 0.0
+        momentum_score = 0
         momentum_indicators = []
         
         # Momentum score général
@@ -331,10 +331,10 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                 momentum = float(momentum_val)
                 
                 if signal_direction == "BUY" and momentum >= self.min_momentum_threshold:
-                    momentum_score += 0.25
+                    momentum_score += 25
                     momentum_indicators.append(f"Momentum haussier ({momentum:.2f})")
                 elif signal_direction == "SELL" and momentum <= -self.min_momentum_threshold:
-                    momentum_score += 0.25
+                    momentum_score += 25
                     momentum_indicators.append(f"Momentum baissier ({momentum:.2f})")
             except (ValueError, TypeError):
                 pass
@@ -344,7 +344,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
         if directional_bias:
             if (signal_direction == "BUY" and directional_bias == 'bullish') or \
                (signal_direction == "SELL" and directional_bias == 'bearish'):
-                momentum_score += 0.2
+                momentum_score += 20
                 momentum_indicators.append(f"Bias directionnel {directional_bias}")
                 
         # MACD confirmation
@@ -356,10 +356,10 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                 macd_sig = float(macd_signal)
                 
                 if signal_direction == "BUY" and macd_val > macd_sig:
-                    momentum_score += 0.15
+                    momentum_score += 15
                     momentum_indicators.append("MACD haussier")
                 elif signal_direction == "SELL" and macd_val < macd_sig:
-                    momentum_score += 0.15
+                    momentum_score += 15
                     momentum_indicators.append("MACD baissier")
             except (ValueError, TypeError):
                 pass
@@ -377,10 +377,10 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                 
                 if adx_val > 25:  # Tendance forte
                     if signal_direction == "BUY" and plus_di_val > minus_di_val:
-                        momentum_score += 0.15
+                        momentum_score += 15
                         momentum_indicators.append(f"ADX fort + DI+ ({adx_val:.1f})")
                     elif signal_direction == "SELL" and minus_di_val > plus_di_val:
-                        momentum_score += 0.15
+                        momentum_score += 15
                         momentum_indicators.append(f"ADX fort + DI- ({adx_val:.1f})")
             except (ValueError, TypeError):
                 pass
@@ -391,20 +391,20 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
             try:
                 rsi_val = float(rsi_14)
                 if signal_direction == "BUY" and 30 <= rsi_val <= 70:
-                    momentum_score += 0.1
+                    momentum_score += 10
                     momentum_indicators.append(f"RSI favorable BUY ({rsi_val:.1f})")
                 elif signal_direction == "SELL" and 30 <= rsi_val <= 70:
-                    momentum_score += 0.1
+                    momentum_score += 10
                     momentum_indicators.append(f"RSI favorable SELL ({rsi_val:.1f})")
                 elif (signal_direction == "BUY" and rsi_val >= 80) or \
                      (signal_direction == "SELL" and rsi_val <= 20):
-                    momentum_score -= 0.1
+                    momentum_score -= 10
                     momentum_indicators.append(f"RSI extrême ({rsi_val:.1f})")
             except (ValueError, TypeError):
                 pass
                 
         return {
-            'is_aligned': momentum_score >= 0.3,
+            'is_aligned': momentum_score >= 30,
             'score': momentum_score,
             'indicators': momentum_indicators
         }
@@ -603,7 +603,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
         if pattern_detected and pattern_confidence is not None:
             try:
                 pattern_conf = float(pattern_confidence)
-                if pattern_conf > 0.7:
+                if pattern_conf > 70:
                     confidence_boost += 0.08
                     reason += " + pattern détecté"
             except (ValueError, TypeError):
@@ -614,10 +614,10 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
         if confluence_score is not None:
             try:
                 conf_val = float(confluence_score)
-                if conf_val > 0.8:
+                if conf_val > 80:
                     confidence_boost += 0.12
                     reason += " + très haute confluence"
-                elif conf_val > 0.6:
+                elif conf_val > 60:
                     confidence_boost += 0.08
                     reason += " + haute confluence"
             except (ValueError, TypeError):

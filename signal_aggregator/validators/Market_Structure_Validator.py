@@ -34,7 +34,7 @@ class Market_Structure_Validator(BaseValidator):
         self.regime_confidence_min = 0.5    # Confidence minimum régime
         
         # Paramètres alignement
-        self.min_trend_alignment = 0.6      # Alignement minimum tendance
+        self.min_trend_alignment = 60      # Alignement minimum tendance
         self.min_signal_strength = 0.5      # Force signal minimum
         self.min_confluence_score = 40.0    # Score confluence minimum (format 0-100)
         
@@ -178,7 +178,7 @@ class Market_Structure_Validator(BaseValidator):
                     
             # 10. Validation pattern si détecté
             if pattern_detected and pattern_confidence is not None:
-                if pattern_confidence < 0.5:
+                if pattern_confidence < 50:
                     logger.debug(f"{self.name}: Pattern {pattern_detected} confidence faible ({self._safe_format(pattern_confidence, '.2f')}) pour {self.symbol}")
                     if signal_confidence < 0.7:
                         return False
@@ -314,11 +314,11 @@ class Market_Structure_Validator(BaseValidator):
                     base_score += 0.04  # Bonus supplémentaire normal
                     
             # Bonus alignement tendance
-            if trend_alignment >= 0.8:
+            if trend_alignment >= 80:
                 base_score += self.perfect_alignment_bonus
-            elif trend_alignment >= 0.7:
+            elif trend_alignment >= 70:
                 base_score += 0.15
-            elif trend_alignment >= 0.6:
+            elif trend_alignment >= 60:
                 base_score += 0.10
                 
             # Bonus force signal

@@ -56,7 +56,7 @@ class Regime_Strength_Validator(BaseValidator):
         
         # Bonus/malus
         self.strong_regime_bonus = 0.25          # Bonus régime fort
-        self.persistence_bonus = 0.20            # Bonus persistance
+        self.persistence_bonus = 20            # Bonus persistance
         self.consensus_bonus = 0.18              # Bonus consensus régimes
         self.transition_penalty = -0.30          # Pénalité transition
         self.weak_regime_penalty = -0.25         # Pénalité régime faible

@@ -158,7 +158,7 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                     
             # Utilisation du confluence_score
             confluence_score = values.get('confluence_score', 0)
-            if confluence_score and confluence_score > 0.7:
+            if confluence_score and confluence_score > 70:
                 confidence_boost += 0.15
                 reason += " avec haute confluence"
                 

@@ -63,7 +63,7 @@ class ZScore_Context_Validator(BaseValidator):
         # Bonus/malus
         self.optimal_zscore_bonus = 0.25        # Bonus Z-Score optimal
         self.statistical_confluence_bonus = 0.20 # Bonus confluence statistique
-        self.context_persistence_bonus = 0.15   # Bonus persistance contexte
+        self.context_persistence_bonus = 15   # Bonus persistance contexte
         self.normality_bonus = 0.12             # Bonus normalité distribution
         self.extreme_zscore_penalty = -0.30     # Pénalité Z-Score extrême
         self.poor_context_penalty = -0.25       # Pénalité contexte défavorable

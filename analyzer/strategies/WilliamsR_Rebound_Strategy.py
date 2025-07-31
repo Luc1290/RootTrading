@@ -256,7 +256,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
         
     def _detect_oscillator_confluence(self, values: Dict[str, Any], signal_direction: str) -> Dict[str, Any]:
         """Détecte la confluence avec autres oscillateurs."""
-        confluence_score = 0.0
+        confluence_score = 0
         confluence_indicators = []
         
         # RSI confluence
@@ -326,7 +326,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_confluent': confluence_score >= 0.15,
+            'is_confluent': confluence_score >= 15,
             'score': confluence_score,
             'indicators': confluence_indicators
         }
@@ -649,10 +649,10 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
         if confluence_score_global is not None:
             try:
                 conf_val = float(confluence_score_global)
-                if conf_val > 0.8:
+                if conf_val > 80:
                     confidence_boost += 0.1
                     reason += " + très haute confluence"
-                elif conf_val > 0.6:
+                elif conf_val > 60:
                     confidence_boost += 0.05
                     reason += " + haute confluence"
             except (ValueError, TypeError):

@@ -28,7 +28,7 @@ class OBV_Crossover_Strategy(BaseStrategy):
         # Paramètres OBV
         self.min_obv_ma_distance = 0.001  # Distance minimum OBV/MA pour éviter bruit
         self.volume_confirmation_threshold = 1.2  # Seuil volume ratio pour confirmation
-        self.trend_alignment_bonus = 0.15  # Bonus si aligné avec tendance prix
+        self.trend_alignment_bonus = 15  # Bonus si aligné avec tendance prix
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs OBV et volume."""

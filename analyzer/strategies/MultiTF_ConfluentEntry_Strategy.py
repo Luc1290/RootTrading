@@ -28,9 +28,9 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres de confluence multi-TF
-        self.min_confluence_score = 0.7      # Score confluence minimum
+        self.min_confluence_score = 70      # Score confluence minimum
         self.min_signal_strength = 0.6      # Force signal minimum
-        self.min_trend_alignment = 0.7      # Alignement tendance minimum
+        self.min_trend_alignment = 70      # Alignement tendance minimum
         self.max_regime_conflicts = 1       # Max conflits entre régimes
         self.volume_confirmation_min = 1.1  # Volume minimum requis
         
@@ -362,10 +362,10 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
             }
             
         # Bonus selon la force des scores
-        if confluence_score >= 0.9:
+        if confluence_score >= 90:
             confidence_boost += 0.15
             reason += " - confluence exceptionnelle"
-        elif confluence_score >= 0.8:
+        elif confluence_score >= 80:
             confidence_boost += 0.10
             reason += " - confluence très forte"
             

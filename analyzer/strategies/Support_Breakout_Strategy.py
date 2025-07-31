@@ -53,7 +53,7 @@ class Support_Breakout_Strategy(BaseStrategy):
         # Paramètres de support
         self.min_support_strength = 0.4         # Force minimum du support
         self.strong_support_bonus = 0.15        # Bonus si support fort (cassure plus significative)
-        self.min_break_probability = 0.3        # Probabilité cassure minimum
+        self.min_break_probability = 30        # Probabilité cassure minimum
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
@@ -187,7 +187,7 @@ class Support_Breakout_Strategy(BaseStrategy):
                 if break_prob >= 70:  # Haute probabilité
                     breakdown_score += 0.15
                     breakdown_indicators.append(f"Haute probabilité cassure ({break_prob:.0f}%)")
-                elif break_prob >= self.min_break_probability * 100:
+                elif break_prob >= self.min_break_probability:
                     breakdown_score += 0.1
                     breakdown_indicators.append(f"Probabilité cassure modérée ({break_prob:.0f}%)")
             except (ValueError, TypeError):
@@ -220,7 +220,7 @@ class Support_Breakout_Strategy(BaseStrategy):
         
     def _detect_bearish_momentum(self, values: Dict[str, Any]) -> Dict[str, Any]:
         """Détecte le momentum baissier pour continuation."""
-        momentum_score = 0.0
+        momentum_score = 0
         momentum_indicators = []
         
         # Momentum score général
@@ -229,7 +229,7 @@ class Support_Breakout_Strategy(BaseStrategy):
             try:
                 momentum_float = float(momentum_val)
                 if momentum_float <= self.momentum_bearish_threshold:
-                    momentum_score += 0.25
+                    momentum_score += 25
                     momentum_indicators.append(f"Momentum baissier ({momentum_float:.2f})")
             except (ValueError, TypeError):
                 pass
@@ -240,7 +240,7 @@ class Support_Breakout_Strategy(BaseStrategy):
             try:
                 roc_val = float(roc_10)
                 if roc_val <= self.roc_bearish_threshold:
-                    momentum_score += 0.2
+                    momentum_score += 20
                     momentum_indicators.append(f"ROC baissier ({roc_val:.1f}%)")
             except (ValueError, TypeError):
                 pass
@@ -248,7 +248,7 @@ class Support_Breakout_Strategy(BaseStrategy):
         # Directional bias baissier
         directional_bias = values.get('directional_bias')
         if directional_bias == 'bearish':
-            momentum_score += 0.15
+            momentum_score += 15
             momentum_indicators.append("Bias directionnel baissier")
             
         # ADX DI confirmation
@@ -261,7 +261,7 @@ class Support_Breakout_Strategy(BaseStrategy):
                 minus_di_val = float(minus_di)
                 
                 if minus_di_val > plus_di_val:  # DI- > DI+ = pression baissière
-                    momentum_score += 0.15
+                    momentum_score += 15
                     momentum_indicators.append(f"DI- > DI+ ({minus_di_val:.1f} > {plus_di_val:.1f})")
             except (ValueError, TypeError):
                 pass
@@ -272,13 +272,13 @@ class Support_Breakout_Strategy(BaseStrategy):
             try:
                 trend_align = float(trend_alignment)
                 if trend_align < -20:  # Alignment baissier fort
-                    momentum_score += 0.1
+                    momentum_score += 10
                     momentum_indicators.append(f"Trend alignment baissier ({trend_align:.0f})")
             except (ValueError, TypeError):
                 pass
                 
         return {
-            'is_bearish_momentum': momentum_score >= 0.3,
+            'is_bearish_momentum': momentum_score >= 30,
             'score': momentum_score,
             'indicators': momentum_indicators
         }
@@ -436,7 +436,7 @@ class Support_Breakout_Strategy(BaseStrategy):
             if confluence_score is not None:
                 try:
                     conf_val = float(confluence_score)
-                    if conf_val > 0.7:
+                    if conf_val > 70:
                         confidence_boost += 0.1
                         reason += " + haute confluence"
                 except (ValueError, TypeError):

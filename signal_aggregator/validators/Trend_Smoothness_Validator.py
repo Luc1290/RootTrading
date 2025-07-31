@@ -39,7 +39,7 @@ class Trend_Smoothness_Validator(BaseValidator):
         self.steep_trend_angle = 45.0         # Angle raide
         
         # Paramètres d'alignement
-        self.min_trend_alignment = 0.6        # Alignement minimum des MAs
+        self.min_trend_alignment = 60        # Alignement minimum des MAs
         self.strong_alignment_threshold = 0.8 # Alignement fort
         
         # Paramètres de volatilité

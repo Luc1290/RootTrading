@@ -42,8 +42,8 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
         self.ultra_extreme_zscore_threshold = 3.0 # Z-Score > 3.0 pour ultra extrême
         
         # Paramètres Bollinger Bands (proxy Z-Score)
-        self.bb_extreme_position_threshold = 0.95   # Position BB > 95% = extrême
-        self.bb_very_extreme_threshold = 0.98       # Position BB > 98% = très extrême
+        self.bb_extreme_position_threshold = 95   # Position BB > 95% = extrême
+        self.bb_very_extreme_threshold = 98       # Position BB > 98% = très extrême
         self.bb_squeeze_bonus = 0.15                # Bonus si BB squeeze avant expansion
         
         # Paramètres RSI reversal
@@ -58,7 +58,7 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
         # Paramètres volume et momentum
         self.min_volume_confirmation = 1.1          # Volume minimum pour reversal
         self.momentum_divergence_required = True    # Divergence momentum/prix requise
-        self.min_volatility_percentile = 0.6       # Volatilité minimum pour signal fort
+        self.min_volatility_percentile = 60       # Volatilité minimum pour signal fort
         
         # Paramètres temporels
         self.max_extreme_duration = 5               # Max barres en zone extrême
@@ -280,10 +280,10 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
                 momentum_val = float(momentum_score)
                 
                 # Divergence momentum/prix favorable au reversal
-                if reversal_direction == 'bullish' and momentum_val > -0.1:  # Momentum moins négatif = divergence
+                if reversal_direction == 'bullish' and momentum_val > -10:  # Momentum moins négatif = divergence
                     reversal_score += 0.15
                     reversal_indicators.append(f"Divergence momentum haussière ({momentum_val:.2f})")
-                elif reversal_direction == 'bearish' and momentum_val < 0.1:  # Momentum moins positif = divergence
+                elif reversal_direction == 'bearish' and momentum_val < 10:  # Momentum moins positif = divergence
                     reversal_score += 0.15
                     reversal_indicators.append(f"Divergence momentum baissière ({momentum_val:.2f})")
                     
@@ -577,7 +577,7 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
             if pattern_confidence is not None:
                 try:
                     pattern_conf = float(pattern_confidence)
-                    if pattern_conf > 0.7:
+                    if pattern_conf > 70:
                         confidence_boost += 0.1
                         reason += " + pattern reversal"
                 except (ValueError, TypeError):
@@ -588,7 +588,7 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
         if confluence_score is not None:
             try:
                 conf_val = float(confluence_score)
-                if conf_val > 0.8:
+                if conf_val > 80:
                     confidence_boost += 0.1
                     reason += " + haute confluence"
             except (ValueError, TypeError):

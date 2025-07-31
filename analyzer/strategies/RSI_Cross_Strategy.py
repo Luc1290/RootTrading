@@ -106,7 +106,7 @@ class RSI_Cross_Strategy(BaseStrategy):
                     confidence_boost += 0.15
                     reason += " avec momentum favorable"
                 elif (signal_side == "BUY" and momentum_score < -0.3) or \
-                     (signal_side == "SELL" and momentum_score > 0.3):
+                     (signal_side == "SELL" and momentum_score > 30):
                     confidence_boost -= 0.1
                     
             # Ajustement avec trend_strength
@@ -125,7 +125,7 @@ class RSI_Cross_Strategy(BaseStrategy):
                     
             # Ajustement avec confluence_score
             confluence_score = values.get('confluence_score', 0)
-            if confluence_score and confluence_score > 0.6:
+            if confluence_score and confluence_score > 60:
                 confidence_boost += 0.15
                 reason += " avec haute confluence"
                 

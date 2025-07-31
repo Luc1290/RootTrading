@@ -389,9 +389,9 @@ class Trend_Alignment_Validator(BaseValidator):
                 base_score += 0.10  # Nombreux timeframes alignés
                 
             # Bonus alignement momentum
-            if momentum_trend_alignment >= 0.8:
+            if momentum_trend_alignment >= 80:
                 base_score += 0.12  # Momentum très aligné
-            elif momentum_trend_alignment >= 0.6:
+            elif momentum_trend_alignment >= 60:
                 base_score += 0.08  # Momentum aligné
                 
             # Bonus cohérence parfaite signal/tendance 

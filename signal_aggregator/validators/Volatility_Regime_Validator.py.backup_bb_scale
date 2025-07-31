@@ -139,13 +139,13 @@ class Volatility_Regime_Validator(BaseValidator):
                         
                 # Expansion extrême - attention aux reversals
                 elif bb_width >= self.bb_extreme_expansion:
-                    if signal_side == "BUY" and bb_position is not None and bb_position > 0.80:
+                    if signal_side == "BUY" and bb_position is not None and bb_position > 80:
                         # BUY près de la bande supérieure en expansion = dangereux
                         if signal_confidence < 0.8:
                             logger.debug(f"{self.name}: BUY près BB supérieure en expansion nécessite forte confidence pour {self.symbol}")
                             return False
                             
-                    elif signal_side == "SELL" and bb_position is not None and bb_position < 0.20:
+                    elif signal_side == "SELL" and bb_position is not None and bb_position < 20:
                         # SELL près de la bande inférieure en expansion = dangereux
                         if signal_confidence < 0.8:
                             logger.debug(f"{self.name}: SELL près BB inférieure en expansion nécessite forte confidence pour {self.symbol}")
