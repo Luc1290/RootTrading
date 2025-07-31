@@ -437,3 +437,76 @@ def _calculate_stochastic_series_manual(highs: np.ndarray,
         'k': smoothed_k,
         'd': d_values
     }
+
+
+def calculate_stochastic_signal(highs: Union[List[float], np.ndarray, pd.Series],
+                               lows: Union[List[float], np.ndarray, pd.Series],
+                               closes: Union[List[float], np.ndarray, pd.Series],
+                               k_period: int = 14,
+                               d_period: int = 3) -> str:
+    """
+    Calculate Stochastic trading signal based on %K and %D crossovers and levels.
+    
+    Args:
+        highs: High prices
+        lows: Low prices  
+        closes: Close prices
+        k_period: Period for %K calculation
+        d_period: Period for %D smoothing
+        
+    Returns:
+        'BULLISH' for buy signal, 'BEARISH' for sell signal, 'NEUTRAL' for no signal
+    """
+    if len(closes) < max(k_period, d_period) + 5:
+        return 'NEUTRAL'
+    
+    # Calculate stochastic values
+    stoch_data = calculate_stochastic(highs, lows, closes, k_period, 1, d_period)
+    
+    if not stoch_data or stoch_data['k'] is None or stoch_data['d'] is None:
+        return 'NEUTRAL'
+    
+    current_k = float(stoch_data['k'])
+    current_d = float(stoch_data['d'])
+    
+    # Get previous values for crossover detection
+    if len(closes) >= max(k_period, d_period) + 6:
+        prev_stoch = calculate_stochastic(
+            highs[:-1], lows[:-1], closes[:-1], 
+            k_period, 1, d_period
+        )
+        if prev_stoch and prev_stoch['k'] is not None and prev_stoch['d'] is not None:
+            prev_k = float(prev_stoch['k'])
+            prev_d = float(prev_stoch['d'])
+        else:
+            prev_k = current_k
+            prev_d = current_d
+    else:
+        prev_k = current_k  
+        prev_d = current_d
+    
+    # Signal conditions
+    oversold_level = 20
+    overbought_level = 80
+    
+    # Bullish signals
+    if (current_k < oversold_level and current_d < oversold_level and 
+        current_k > current_d and prev_k <= prev_d):
+        # Bullish crossover in oversold territory
+        return 'BULLISH'
+    elif (current_k > current_d and prev_k <= prev_d and 
+          current_k < 50):
+        # Bullish crossover below midline
+        return 'BULLISH'
+    
+    # Bearish signals  
+    elif (current_k > overbought_level and current_d > overbought_level and
+          current_k < current_d and prev_k >= prev_d):
+        # Bearish crossover in overbought territory
+        return 'BEARISH'
+    elif (current_k < current_d and prev_k >= prev_d and
+          current_k > 50):
+        # Bearish crossover above midline
+        return 'BEARISH'
+    
+    return 'NEUTRAL'

@@ -263,6 +263,31 @@ class IndicatorProcessor:
                         'macd_signal': macd_signal_series[-1] if macd_signal_series else None,
                         'macd_histogram': macd_histogram_series[-1] if macd_histogram_series else None
                     })
+                    
+                    # MACD Signaux binaires
+                    from ..indicators.trend.macd import macd_zero_cross, macd_signal_cross, calculate_macd_trend
+                    if macd_line_series and macd_signal_series and len(macd_line_series) >= 2:
+                        current_macd = {
+                            'macd_line': macd_line_series[-1],
+                            'macd_signal': macd_signal_series[-1],
+                            'macd_histogram': macd_histogram_series[-1] if macd_histogram_series else None
+                        }
+                        prev_macd = {
+                            'macd_line': macd_line_series[-2],
+                            'macd_signal': macd_signal_series[-2],
+                            'macd_histogram': macd_histogram_series[-2] if macd_histogram_series and len(macd_histogram_series) >= 2 else None
+                        }
+                        
+                        # Croisements
+                        zero_cross = self._safe_call(lambda: macd_zero_cross(current_macd, prev_macd))
+                        signal_cross = self._safe_call(lambda: macd_signal_cross(current_macd, prev_macd))
+                        trend = self._safe_call(lambda: calculate_macd_trend(current_macd, prev_macd))
+                        
+                        indicators.update({
+                            'macd_zero_cross': bool(zero_cross not in [None, 'none']),
+                            'macd_signal_cross': bool(signal_cross not in [None, 'none']),
+                            'macd_trend': trend.upper() if trend and trend != 'none' else 'NEUTRAL'
+                        })
                 
                 # PPO
                 indicators['ppo'] = self._safe_call(lambda: calculate_price_oscillator(closes, 12, 26))
@@ -334,6 +359,18 @@ class IndicatorProcessor:
                         'bb_position': bb_percent_b_series[-1] if bb_percent_b_series else None,
                         'bb_width': bb_bandwidth_series[-1] if bb_bandwidth_series else None
                     })
+                    
+                    # Bollinger Signaux binaires
+                    from ..indicators.volatility.bollinger import calculate_bollinger_squeeze, calculate_bollinger_expansion, calculate_bollinger_breakout_direction
+                    squeeze_data = self._safe_call(lambda: calculate_bollinger_squeeze(closes, 20, 2.0, 20))
+                    expansion = self._safe_call(lambda: calculate_bollinger_expansion(closes, 20, 2.0, 10))
+                    breakout_dir = self._safe_call(lambda: calculate_bollinger_breakout_direction(closes, 20, 2.0, 3))
+                    
+                    indicators.update({
+                        'bb_squeeze': bool(squeeze_data.get('in_squeeze', False)) if squeeze_data else False,
+                        'bb_expansion': bool(expansion) if expansion is not None else False,
+                        'bb_breakout_direction': breakout_dir if breakout_dir else 'NONE'
+                    })
                 
                 # Keltner Channels (utilise la fonction dédiée)
                 if len(highs) >= 20 and len(lows) >= 20:
@@ -372,6 +409,16 @@ class IndicatorProcessor:
                     indicators.update({
                         'stoch_fast_k': fast_k_series[-1] if fast_k_series else None,
                         'stoch_fast_d': fast_d_series[-1] if fast_d_series else None
+                    })
+                    
+                    # Stochastic Signaux binaires
+                    from ..indicators.oscillators.stochastic import calculate_stochastic_divergence, calculate_stochastic_signal
+                    divergence = self._safe_call(lambda: calculate_stochastic_divergence(closes, highs, lows, closes))
+                    signal = self._safe_call(lambda: calculate_stochastic_signal(highs, lows, closes, 14, 3))
+                    
+                    indicators.update({
+                        'stoch_divergence': bool(divergence not in [None, 'none']) if divergence else False,
+                        'stoch_signal': signal.upper() if signal and signal != 'none' else 'NEUTRAL'
                     })
             
             # Williams %R
@@ -422,15 +469,17 @@ class IndicatorProcessor:
                 # Anchored VWAP (utilise un point d'ancrage significatif)
                 from ..indicators.volume.vwap import calculate_anchored_vwap
                 if len(closes) >= 20:  # Minimum de données nécessaires
-                    indicators['anchored_vwap'] = self._safe_call(lambda: calculate_anchored_vwap(highs, lows, closes, volumes))
+                    # Utilise les 50 derniers points comme ancrage ou début des données si moins de 50 points
+                    anchor_index = max(0, len(closes) - 50) if len(closes) > 50 else 0
+                    indicators['anchored_vwap'] = self._safe_call(lambda: calculate_anchored_vwap(highs, lows, closes, volumes, anchor_index))
                 
                 # VWAP Bands (upper/lower bands pour support/résistance)
                 from ..indicators.volume.vwap import calculate_vwap_bands
                 if len(closes) >= 20:
                     vwap_bands = self._safe_call(lambda: calculate_vwap_bands(highs, lows, closes, volumes))
                     if vwap_bands and isinstance(vwap_bands, dict):
-                        indicators['vwap_upper_band'] = vwap_bands.get('upper')
-                        indicators['vwap_lower_band'] = vwap_bands.get('lower')
+                        indicators['vwap_upper_band'] = vwap_bands.get('upper_band')
+                        indicators['vwap_lower_band'] = vwap_bands.get('lower_band')
                 
                 # Volume context avec métriques avancées
                 if len(volumes) >= 20:
@@ -447,6 +496,16 @@ class IndicatorProcessor:
                         'avg_trade_size': self._safe_call(lambda: calculate_avg_trade_size(volumes[-1], trades_counts[-1])),
                         'trade_intensity': self._safe_call(lambda: calculate_trade_intensity(trades_counts, 20))
                     })
+                
+                # Volume Profile (POC, VAH, VAL)
+                if len(volumes) >= 20:
+                    from ..indicators.volume.vwap import find_poc, calculate_value_area
+                    indicators['volume_profile_poc'] = self._safe_call(lambda: find_poc(closes, volumes, 20))
+                    
+                    value_area = self._safe_call(lambda: calculate_value_area(closes, volumes, 0.7, 20))
+                    if value_area and isinstance(value_area, dict):
+                        indicators['volume_profile_vah'] = value_area.get('vah')
+                        indicators['volume_profile_val'] = value_area.get('val')
             
             # === APPEL DIRECT DE VOS MODULES DETECTORS ===
             if len(closes) >= 100:  # Assez de données pour les détecteurs
@@ -712,6 +771,7 @@ class IndicatorProcessor:
                 -- Volume avancé
                 vwap_10, vwap_quote_10, anchored_vwap, vwap_upper_band, vwap_lower_band, volume_ratio, avg_volume_20, quote_volume_ratio, avg_trade_size, trade_intensity,
                 obv, obv_ma_10, obv_oscillator, ad_line,
+                volume_profile_poc, volume_profile_vah, volume_profile_val,
                 -- Régime de marché
                 market_regime, regime_strength, regime_confidence, regime_duration, trend_alignment, momentum_score,
                 -- Support/Résistance
@@ -738,12 +798,13 @@ class IndicatorProcessor:
                 $58, $59, $60, $61, $62, $63,
                 $64, $65, $66, $67, $68, $69, $70, $71, $72, $73,
                 $74, $75, $76, $77,
-                $78, $79, $80, $81, $82, $83,
-                $84, $85, $86, $87, $88, $89, $90, $91,
-                $92, $93, $94, $95, $96, $97,
-                $98, $99,
-                $100, $101,
-                $102, $103, $104
+                $78, $79, $80,
+                $81, $82, $83, $84, $85, $86,
+                $87, $88, $89, $90, $91, $92, $93, $94,
+                $95, $96, $97, $98, $99, $100,
+                $101, $102,
+                $103, $104,
+                $105, $106, $107
             )
             ON CONFLICT (time, symbol, timeframe) DO UPDATE SET
                 analysis_timestamp = EXCLUDED.analysis_timestamp,
@@ -841,6 +902,9 @@ class IndicatorProcessor:
                 self._sanitize_numeric_value(indicators.get('obv_ma_10')), 
                 self._sanitize_numeric_value(indicators.get('obv_oscillator')),
                 self._sanitize_numeric_value(indicators.get('ad_line')),
+                self._sanitize_numeric_value(indicators.get('volume_profile_poc')),
+                self._sanitize_numeric_value(indicators.get('volume_profile_vah')),
+                self._sanitize_numeric_value(indicators.get('volume_profile_val')),
                 # Régime de marché
                 indicators.get('market_regime'), indicators.get('regime_strength'), 
                 self._sanitize_numeric_value(indicators.get('regime_confidence')),

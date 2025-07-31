@@ -336,6 +336,75 @@ def macd_zero_cross(macd_values: Dict[str, Optional[float]],
     return 'none'
 
 
+def calculate_macd_trend(macd_values: Dict[str, Optional[float]],
+                        prev_macd_values: Optional[Dict[str, Optional[float]]] = None) -> str:
+    """
+    Determine MACD trend direction based on MACD line and signal line.
+    
+    Args:
+        macd_values: Current MACD values (macd_line, macd_signal, macd_histogram)
+        prev_macd_values: Previous MACD values for trend analysis
+        
+    Returns:
+        'BULLISH' for upward trend, 'BEARISH' for downward trend, 'NEUTRAL' for no clear trend
+    """
+    if not macd_values or macd_values.get('macd_line') is None or macd_values.get('macd_signal') is None:
+        return 'NEUTRAL'
+    
+    macd_line = macd_values['macd_line']
+    signal_line = macd_values['macd_signal']
+    histogram = macd_values.get('macd_histogram')
+    
+    # Primary trend signals
+    bullish_signals = 0
+    bearish_signals = 0
+    
+    # 1. MACD line above/below signal line
+    if macd_line > signal_line:
+        bullish_signals += 1
+    elif macd_line < signal_line:
+        bearish_signals += 1
+    
+    # 2. MACD line above/below zero
+    if macd_line > 0:
+        bullish_signals += 1
+    elif macd_line < 0:
+        bearish_signals += 1
+    
+    # 3. Histogram analysis (if available)
+    if histogram is not None:
+        if histogram > 0:
+            bullish_signals += 1
+        elif histogram < 0:
+            bearish_signals += 1
+    
+    # 4. Momentum analysis with previous values
+    if prev_macd_values and prev_macd_values.get('macd_line') is not None:
+        prev_macd = prev_macd_values['macd_line']
+        
+        # MACD line direction
+        if macd_line > prev_macd:
+            bullish_signals += 1
+        elif macd_line < prev_macd:
+            bearish_signals += 1
+            
+        # Signal line comparison with previous
+        if prev_macd_values.get('macd_signal') is not None:
+            prev_signal = prev_macd_values['macd_signal']
+            if signal_line > prev_signal:
+                bullish_signals += 0.5
+            elif signal_line < prev_signal:
+                bearish_signals += 0.5
+    
+    # Determine trend based on signal strength
+    if bullish_signals > bearish_signals + 1:  # Need clear majority
+        return 'BULLISH'
+    elif bearish_signals > bullish_signals + 1:
+        return 'BEARISH'
+    else:
+        return 'NEUTRAL'
+
+
 # ============ Helper Functions ============
 
 def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:

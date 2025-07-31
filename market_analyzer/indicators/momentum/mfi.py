@@ -16,8 +16,8 @@ import numpy as np
 from typing import Union, List, Optional
 
 
-def calculate_mfi(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, 
-                  volumes: np.ndarray, period: int = 14) -> Optional[float]:
+def calculate_mfi(highs: Union[List[float], np.ndarray], lows: Union[List[float], np.ndarray], closes: Union[List[float], np.ndarray], 
+                  volumes: Union[List[float], np.ndarray], period: int = 14) -> Optional[float]:
     """
     Calculate Money Flow Index for the most recent period.
     
@@ -31,14 +31,20 @@ def calculate_mfi(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray,
     Returns:
         MFI value (0-100) or None if insufficient data
     """
-    if len(highs) < period + 1 or len(lows) < period + 1 or len(closes) < period + 1 or len(volumes) < period + 1:
+    # Convert to numpy arrays
+    highs_array = np.array(highs, dtype=float)
+    lows_array = np.array(lows, dtype=float)
+    closes_array = np.array(closes, dtype=float)
+    volumes_array = np.array(volumes, dtype=float)
+    
+    if len(highs_array) < period + 1 or len(lows_array) < period + 1 or len(closes_array) < period + 1 or len(volumes_array) < period + 1:
         return None
         
     # Calculate typical price
-    typical_prices = (highs + lows + closes) / 3
+    typical_prices = (highs_array + lows_array + closes_array) / 3
     
     # Calculate raw money flow
-    money_flows = typical_prices * volumes
+    money_flows = typical_prices * volumes_array
     
     # Get the last period+1 values (need period+1 to compare direction)
     recent_typical = typical_prices[-(period + 1):]

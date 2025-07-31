@@ -240,6 +240,106 @@ def calculate_bollinger_squeeze(prices: Union[List[float], np.ndarray, pd.Series
     }
 
 
+def calculate_bollinger_expansion(prices: Union[List[float], np.ndarray, pd.Series],
+                                period: int = 20,
+                                std_dev: float = 2.0,
+                                lookback: int = 10) -> bool:
+    """
+    Detect Bollinger Band expansion (volatility increasing).
+    
+    Args:
+        prices: Price data
+        period: Period for BB calculation
+        std_dev: Standard deviation multiplier
+        lookback: Periods to compare for expansion detection
+        
+    Returns:
+        True if bands are expanding, False otherwise
+    """
+    if len(prices) < period + lookback:
+        return False
+    
+    prices_array = _to_numpy_array(prices)
+    
+    # Calculate BB width for recent periods
+    widths = []
+    for i in range(lookback):
+        end_idx = len(prices_array) - i
+        start_idx = max(0, end_idx - period)
+        
+        if end_idx - start_idx < period:
+            continue
+            
+        window_prices = prices_array[start_idx:end_idx]
+        sma = np.mean(window_prices)
+        std = np.std(window_prices, ddof=1)
+        
+        upper_band = sma + (std_dev * std)
+        lower_band = sma - (std_dev * std)
+        width = upper_band - lower_band
+        
+        widths.append(width)
+    
+    if len(widths) < 3:
+        return False
+    
+    # Check if width is increasing (expansion)
+    current_width = widths[0]  # Most recent
+    previous_width = widths[1]  # Previous period
+    avg_width = np.mean(widths[2:])  # Historical average
+    
+    # Expansion if current > previous AND current > average
+    is_expanding = current_width > previous_width and current_width > avg_width
+    
+    return bool(is_expanding)
+
+
+def calculate_bollinger_breakout_direction(prices: Union[List[float], np.ndarray, pd.Series],
+                                         period: int = 20,
+                                         std_dev: float = 2.0,
+                                         lookback: int = 3) -> str:
+    """
+    Detect Bollinger Band breakout direction.
+    
+    Args:
+        prices: Price data
+        period: Period for BB calculation
+        std_dev: Standard deviation multiplier
+        lookback: Periods to analyze for breakout
+        
+    Returns:
+        'UP' for upward breakout, 'DOWN' for downward breakout, 'NONE' for no breakout
+    """
+    if len(prices) < period + lookback:
+        return 'NONE'
+    
+    prices_array = _to_numpy_array(prices)
+    recent_prices = prices_array[-lookback:]
+    
+    # Calculate current BB levels
+    bb_data = prices_array[-period:]
+    sma = np.mean(bb_data)
+    std = np.std(bb_data, ddof=1)
+    
+    upper_band = sma + (std_dev * std)
+    lower_band = sma - (std_dev * std)
+    
+    # Check for breakouts in recent periods
+    upper_breaks = np.sum(recent_prices > upper_band)
+    lower_breaks = np.sum(recent_prices < lower_band)
+    
+    # Current price position
+    current_price = recent_prices[-1]
+    
+    # Determine breakout direction
+    if current_price > upper_band and upper_breaks >= 2:
+        return 'UP'
+    elif current_price < lower_band and lower_breaks >= 2:
+        return 'DOWN'
+    else:
+        return 'NONE'
+
+
 def calculate_keltner_channels(prices: Union[List[float], np.ndarray, pd.Series],
                               highs: Union[List[float], np.ndarray, pd.Series],
                               lows: Union[List[float], np.ndarray, pd.Series],

@@ -523,6 +523,61 @@ def find_poc(prices: Union[List[float], np.ndarray, pd.Series],
     return float(profile['price_levels'][max_volume_index])
 
 
+def calculate_value_area(prices: Union[List[float], np.ndarray, pd.Series],
+                        volumes: Union[List[float], np.ndarray, pd.Series],
+                        value_area_percent: float = 0.7,
+                        num_bins: int = 20) -> Dict[str, Optional[float]]:
+    """
+    Calculate Value Area High (VAH) and Value Area Low (VAL).
+    
+    Value Area contains the specified percentage of total volume (default 70%).
+    
+    Args:
+        prices: Price data
+        volumes: Volume data  
+        value_area_percent: Percentage of volume in value area (0.7 = 70%)
+        num_bins: Number of price bins
+        
+    Returns:
+        Dictionary with 'vah' (Value Area High) and 'val' (Value Area Low)
+    """
+    profile = calculate_volume_profile(prices, volumes, num_bins)
+    
+    if not profile['volume_profile'] or not profile['price_levels']:
+        return {'vah': None, 'val': None}
+    
+    # Get total volume and target volume for value area
+    total_volume = sum(profile['volume_profile'])
+    target_volume = total_volume * value_area_percent
+    
+    # Find POC (Point of Control)
+    poc_index = np.argmax(profile['volume_profile'])
+    
+    # Expand from POC until we reach target volume
+    accumulated_volume = profile['volume_profile'][poc_index]
+    low_index = poc_index
+    high_index = poc_index
+    
+    while accumulated_volume < target_volume and (low_index > 0 or high_index < len(profile['volume_profile']) - 1):
+        # Determine which direction to expand (choose side with more volume)
+        left_volume = profile['volume_profile'][low_index - 1] if low_index > 0 else 0
+        right_volume = profile['volume_profile'][high_index + 1] if high_index < len(profile['volume_profile']) - 1 else 0
+        
+        if left_volume >= right_volume and low_index > 0:
+            low_index -= 1
+            accumulated_volume += profile['volume_profile'][low_index]
+        elif right_volume > 0 and high_index < len(profile['volume_profile']) - 1:
+            high_index += 1
+            accumulated_volume += profile['volume_profile'][high_index]
+        else:
+            break
+    
+    return {
+        'vah': float(profile['price_levels'][high_index]),  # Value Area High
+        'val': float(profile['price_levels'][low_index])    # Value Area Low
+    }
+
+
 # ============ Helper Functions ============
 
 def _to_numpy_array(data: Union[List[float], np.ndarray, pd.Series]) -> np.ndarray:
