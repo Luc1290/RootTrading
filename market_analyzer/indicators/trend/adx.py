@@ -7,6 +7,7 @@ Includes:
 - +DI (positive directional indicator)
 - -DI (negative directional indicator)
 - DX (directional movement index)
+- Trend Angle (slope of price movement)
 """
 
 import numpy as np
@@ -515,3 +516,59 @@ def _calculate_adx_series_manual(highs: np.ndarray,
         'plus_di': plus_di_series,
         'minus_di': minus_di_series
     }
+
+
+def calculate_trend_angle(closes: Union[List[float], np.ndarray, pd.Series], 
+                         period: int = 14) -> Optional[float]:
+    """
+    Calculate trend angle as the slope of linear regression line.
+    
+    Args:
+        closes: Close prices
+        period: Number of periods to calculate slope over
+        
+    Returns:
+        Trend angle in degrees, or None if insufficient data
+        
+    Notes:
+        - Positive angle: Upward trend
+        - Negative angle: Downward trend  
+        - Angle near 0: Sideways movement
+        - Angle > 45°: Strong upward trend
+        - Angle < -45°: Strong downward trend
+    """
+    if len(closes) < period:
+        return None
+        
+    closes_array = _to_numpy_array(closes)
+    recent_closes = closes_array[-period:]
+    
+    # Linear regression to find slope
+    x = np.arange(period)
+    y = recent_closes
+    
+    # Calculate slope using linear regression formula
+    n = len(x)
+    sum_x = np.sum(x)
+    sum_y = np.sum(y)
+    sum_xy = np.sum(x * y)
+    sum_x2 = np.sum(x * x)
+    
+    # Slope = (n*sum_xy - sum_x*sum_y) / (n*sum_x2 - sum_x^2)
+    denominator = n * sum_x2 - sum_x * sum_x
+    if denominator == 0:
+        return 0.0
+        
+    slope = (n * sum_xy - sum_x * sum_y) / denominator
+    
+    # Convert slope to angle in degrees
+    # Normalize by average price to get relative slope
+    avg_price = np.mean(recent_closes)
+    if avg_price == 0:
+        return 0.0
+        
+    normalized_slope = slope / avg_price
+    angle_radians = np.arctan(normalized_slope * period)  # Scale by period
+    angle_degrees = np.degrees(angle_radians)
+    
+    return float(angle_degrees)

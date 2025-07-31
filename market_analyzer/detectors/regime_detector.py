@@ -184,8 +184,8 @@ class RegimeDetector:
     def _analyze_volatility(self, highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, 
                            symbol: Optional[str] = None, enable_cache: bool = True) -> Dict:
         """Analyse la volatilité du marché."""
-        from .indicators.volatility.atr import calculate_atr_series  # type: ignore
-        from .indicators.volatility.bollinger import calculate_bollinger_bands_series  # type: ignore
+        from ..indicators.volatility.atr import calculate_atr_series  # type: ignore
+        from ..indicators.volatility.bollinger import calculate_bollinger_bands_series  # type: ignore
         
         # ATR pour volatilité absolue
         atr_series = calculate_atr_series(highs, lows, closes)
@@ -229,8 +229,8 @@ class RegimeDetector:
     
     def _analyze_trend(self, closes: np.ndarray, symbol: Optional[str] = None, enable_cache: bool = True) -> Dict:
         """Analyse la tendance."""
-        from .indicators.trend.moving_averages import calculate_ema_series  # type: ignore
-        from .indicators.trend.adx import calculate_adx  # type: ignore
+        from ..indicators.trend.moving_averages import calculate_ema_series  # type: ignore
+        from ..indicators.trend.adx import calculate_adx  # type: ignore
         
         # Définir les périodes EMA localement
         ema_periods = {
@@ -308,8 +308,8 @@ class RegimeDetector:
     
     def _analyze_momentum(self, closes: np.ndarray, symbol: Optional[str] = None, enable_cache: bool = True) -> Dict:
         """Analyse le momentum."""
-        from .indicators.momentum.rsi import calculate_rsi_series, calculate_rsi  # type: ignore
-        from .indicators.trend.macd import calculate_macd, calculate_macd_series  # type: ignore
+        from ..indicators.momentum.rsi import calculate_rsi_series, calculate_rsi  # type: ignore
+        from ..indicators.trend.macd import calculate_macd, calculate_macd_series  # type: ignore
         
         # RSI pour momentum (with caching if symbol provided)
         if symbol and enable_cache:

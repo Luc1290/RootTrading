@@ -291,6 +291,11 @@ class IndicatorProcessor:
                     if plus_di is not None and minus_di is not None:
                         indicators['directional_bias'] = calculate_directional_bias(plus_di, minus_di, adx_value)
             
+            # Trend Angle
+            if len(closes) >= 14:
+                from ..indicators.trend.adx import calculate_trend_angle
+                indicators['trend_angle'] = self._safe_call(lambda: calculate_trend_angle(closes, 14))
+            
             # ATR et volatilité (calculer d'abord car utilisé par Keltner)
             atr = None
             if len(closes) >= 14:
@@ -373,6 +378,11 @@ class IndicatorProcessor:
             if len(closes) >= 14:
                 indicators['williams_r'] = self._safe_call(lambda: calculate_williams_r(highs, lows, closes, 14))
             
+            # MFI (Money Flow Index)
+            if len(closes) >= 15 and len(volumes) >= 15:  # Need period + 1
+                from ..indicators.momentum.mfi import calculate_mfi
+                indicators['mfi_14'] = self._safe_call(lambda: calculate_mfi(highs, lows, closes, volumes, 14))
+            
             # CCI
             if len(closes) >= 20:
                 indicators['cci_20'] = self._safe_call(lambda: calculate_cci(highs, lows, closes, 20))
@@ -395,6 +405,10 @@ class IndicatorProcessor:
                         indicators['obv_ma_10'] = self._safe_call(lambda: calculate_obv_ma(closes, volumes, 10))
                         indicators['obv_oscillator'] = self._safe_call(lambda: calculate_obv_oscillator(closes, volumes, 10))
                 
+                # A/D Line (Accumulation/Distribution Line)
+                from ..indicators.volume.obv import calculate_volume_accumulation_distribution
+                indicators['ad_line'] = self._safe_call(lambda: calculate_volume_accumulation_distribution(highs, lows, closes, volumes))
+                
                 vwap_series = self._safe_call(lambda: calculate_vwap_series(highs, lows, closes, volumes))
                 if vwap_series and isinstance(vwap_series, list) and len(vwap_series) > 0:
                     indicators['vwap_10'] = vwap_series[-1]
@@ -404,6 +418,19 @@ class IndicatorProcessor:
                 vwap_quote_series = self._safe_call(lambda: calculate_vwap_quote_series(highs, lows, closes, quote_volumes))
                 if vwap_quote_series and isinstance(vwap_quote_series, list) and len(vwap_quote_series) > 0:
                     indicators['vwap_quote_10'] = vwap_quote_series[-1]
+                
+                # Anchored VWAP (utilise un point d'ancrage significatif)
+                from ..indicators.volume.vwap import calculate_anchored_vwap
+                if len(closes) >= 20:  # Minimum de données nécessaires
+                    indicators['anchored_vwap'] = self._safe_call(lambda: calculate_anchored_vwap(highs, lows, closes, volumes))
+                
+                # VWAP Bands (upper/lower bands pour support/résistance)
+                from ..indicators.volume.vwap import calculate_vwap_bands
+                if len(closes) >= 20:
+                    vwap_bands = self._safe_call(lambda: calculate_vwap_bands(highs, lows, closes, volumes))
+                    if vwap_bands and isinstance(vwap_bands, dict):
+                        indicators['vwap_upper_band'] = vwap_bands.get('upper')
+                        indicators['vwap_lower_band'] = vwap_bands.get('lower')
                 
                 # Volume context avec métriques avancées
                 if len(volumes) >= 20:

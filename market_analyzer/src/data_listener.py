@@ -287,7 +287,7 @@ class DataListener:
             params.append(timeframe)
         
         query += " ORDER BY md.timeframe, md.time ASC LIMIT $" + str(len(params) + 1)
-        params.append(str(limit))
+        params.append(limit)
         
         total_processed = 0
         
