@@ -844,6 +844,8 @@ class IndicatorProcessor:
                 indicators.get('calculation_time_ms'), indicators.get('data_quality'), indicators.get('anomaly_detected')
             ]
             
+            if self.db_pool is None:
+                raise RuntimeError("Database pool not initialized")
             async with self.db_pool.acquire() as conn:
                 await conn.execute(query, *sanitized_params)
                 
@@ -865,7 +867,7 @@ class IndicatorProcessor:
                 'event': 'analyzer_data_ready',
                 'symbol': indicators.get('symbol'),
                 'timeframe': indicators.get('timeframe'),
-                'timestamp': indicators.get('time').isoformat() if indicators.get('time') and hasattr(indicators.get('time'), 'isoformat') else None
+                'timestamp': indicators.get('time').isoformat() if indicators.get('time') is not None and hasattr(indicators.get('time'), 'isoformat') else None
             }
             
             if self.redis_client:
