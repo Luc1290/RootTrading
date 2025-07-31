@@ -72,22 +72,31 @@ class Pivot_Strength_Validator(BaseValidator):
             # Extraction des indicateurs pivot depuis le contexte
             try:
                 # Pivots support principaux
-                pivot_support = float(self.context.get('pivot_support', 0)) if self.context.get('pivot_support') is not None else None
-                pivot_support_strength = float(self.context.get('pivot_support_strength', 0)) if self.context.get('pivot_support_strength') is not None else None
-                support_touch_count = int(self.context.get('support_touch_count', 0)) if self.context.get('support_touch_count') is not None else None
+                # pivot_support → nearest_support
+                pivot_support = float(self.context.get('nearest_support', 0)) if self.context.get('nearest_support') is not None else None
+                # pivot_support_strength → support_strength
+                pivot_support_strength = float(self.context.get('support_strength', 0)) if self.context.get('support_strength') is not None else None
+                # support_touch_count → volume_buildup_periods
+                support_touch_count = int(self.context.get('volume_buildup_periods', 0)) if self.context.get('volume_buildup_periods') is not None else None
                 
                 # Pivots résistance principaux
-                pivot_resistance = float(self.context.get('pivot_resistance', 0)) if self.context.get('pivot_resistance') is not None else None
-                pivot_resistance_strength = float(self.context.get('pivot_resistance_strength', 0)) if self.context.get('pivot_resistance_strength') is not None else None
-                resistance_touch_count = int(self.context.get('resistance_touch_count', 0)) if self.context.get('resistance_touch_count') is not None else None
+                # pivot_resistance → nearest_resistance
+                pivot_resistance = float(self.context.get('nearest_resistance', 0)) if self.context.get('nearest_resistance') is not None else None
+                # pivot_resistance_strength → resistance_strength
+                pivot_resistance_strength = float(self.context.get('resistance_strength', 0)) if self.context.get('resistance_strength') is not None else None
+                # resistance_touch_count → volume_buildup_periods
+                resistance_touch_count = int(self.context.get('volume_buildup_periods', 0)) if self.context.get('volume_buildup_periods') is not None else None
                 
                 # Confluence et niveaux multiples
                 confluence_score = float(self.context.get('confluence_score', 50.0)) if self.context.get('confluence_score') is not None else None
-                pivot_confluence_count = int(self.context.get('pivot_confluence_count', 0)) if self.context.get('pivot_confluence_count') is not None else None
+                # pivot_confluence_count → pivot_count (existe déjà!)
+                pivot_confluence_count = int(self.context.get('pivot_count', 0)) if self.context.get('pivot_count') is not None else None
                 
                 # Age et interaction temporelle
-                pivot_age_bars = int(self.context.get('pivot_age_bars', 0)) if self.context.get('pivot_age_bars') is not None else None
-                last_interaction_bars = int(self.context.get('last_interaction_bars', 999)) if self.context.get('last_interaction_bars') is not None else None
+                # pivot_age_bars → regime_duration
+                pivot_age_bars = int(self.context.get('regime_duration', 0)) if self.context.get('regime_duration') is not None else None
+                # last_interaction_bars → regime_duration
+                last_interaction_bars = int(self.context.get('regime_duration', 999)) if self.context.get('regime_duration') is not None else None
                 
                 # Niveaux généraux S/R
                 nearest_support = float(self.context.get('nearest_support', 0)) if self.context.get('nearest_support') is not None else None
@@ -112,7 +121,7 @@ class Pivot_Strength_Validator(BaseValidator):
                 
                 # Fallback: essayer current_price dans le contexte
                 if current_price is None:
-                    current_price = self.context.get('current_price')
+                    # current_price n'est pas dans analyzer_data, utiliser self.data['close']
                     if current_price is not None:
                         try:
                             current_price = float(current_price)
@@ -337,13 +346,19 @@ class Pivot_Strength_Validator(BaseValidator):
                 return 0.0
                 
             # Calcul du score basé sur pivots
-            pivot_support_strength = float(self.context.get('pivot_support_strength', 0.5)) if self.context.get('pivot_support_strength') is not None else 0.5
-            pivot_resistance_strength = float(self.context.get('pivot_resistance_strength', 0.5)) if self.context.get('pivot_resistance_strength') is not None else 0.5
-            support_touch_count = int(self.context.get('support_touch_count', 2)) if self.context.get('support_touch_count') is not None else 2
-            resistance_touch_count = int(self.context.get('resistance_touch_count', 2)) if self.context.get('resistance_touch_count') is not None else 2
+            # pivot_support_strength → support_strength
+            pivot_support_strength = float(self.context.get('support_strength', 0.5)) if self.context.get('support_strength') is not None else 0.5
+            # pivot_resistance_strength → resistance_strength
+            pivot_resistance_strength = float(self.context.get('resistance_strength', 0.5)) if self.context.get('resistance_strength') is not None else 0.5
+            # support_touch_count → volume_buildup_periods
+            support_touch_count = int(self.context.get('volume_buildup_periods', 2)) if self.context.get('volume_buildup_periods') is not None else 2
+            # resistance_touch_count → volume_buildup_periods
+            resistance_touch_count = int(self.context.get('volume_buildup_periods', 2)) if self.context.get('volume_buildup_periods') is not None else 2
             confluence_score = float(self.context.get('confluence_score', 50.0)) if self.context.get('confluence_score') is not None else 50.0
-            pivot_confluence_count = int(self.context.get('pivot_confluence_count', 1)) if self.context.get('pivot_confluence_count') is not None else 1
-            last_interaction_bars = int(self.context.get('last_interaction_bars', 20)) if self.context.get('last_interaction_bars') is not None else 20
+            # pivot_confluence_count → pivot_count (existe déjà!)
+            pivot_confluence_count = int(self.context.get('pivot_count', 1)) if self.context.get('pivot_count') is not None else 1
+            # last_interaction_bars → regime_duration
+            last_interaction_bars = int(self.context.get('regime_duration', 20)) if self.context.get('regime_duration') is not None else 20
             
             signal_side = signal.get('side')
             signal_strategy = signal.get('strategy', '')
@@ -382,8 +397,10 @@ class Pivot_Strength_Validator(BaseValidator):
             # Bonus distance optimale (calculée si pivot disponible)
             try:
                 current_price = self._get_current_price() if self.data and 'close' in self.data and self.data['close'] else None
-                pivot_support = float(self.context.get('pivot_support', 0)) if self.context.get('pivot_support') is not None else None
-                pivot_resistance = float(self.context.get('pivot_resistance', 0)) if self.context.get('pivot_resistance') is not None else None
+                # pivot_support → nearest_support
+                pivot_support = float(self.context.get('nearest_support', 0)) if self.context.get('nearest_support') is not None else None
+                # pivot_resistance → nearest_resistance
+                pivot_resistance = float(self.context.get('nearest_resistance', 0)) if self.context.get('nearest_resistance') is not None else None
                 
                 if current_price:
                     relevant_pivot = pivot_support if signal_side == "BUY" else pivot_resistance
@@ -422,10 +439,14 @@ class Pivot_Strength_Validator(BaseValidator):
             signal_side = signal.get('side', 'N/A')
             signal_strategy = signal.get('strategy', 'N/A')
             
-            pivot_support_strength = float(self.context.get('pivot_support_strength', 0)) if self.context.get('pivot_support_strength') is not None else None
-            pivot_resistance_strength = float(self.context.get('pivot_resistance_strength', 0)) if self.context.get('pivot_resistance_strength') is not None else None
-            support_touch_count = int(self.context.get('support_touch_count', 0)) if self.context.get('support_touch_count') is not None else None
-            resistance_touch_count = int(self.context.get('resistance_touch_count', 0)) if self.context.get('resistance_touch_count') is not None else None
+            # pivot_support_strength → support_strength
+            pivot_support_strength = float(self.context.get('support_strength', 0)) if self.context.get('support_strength') is not None else None
+            # pivot_resistance_strength → resistance_strength
+            pivot_resistance_strength = float(self.context.get('resistance_strength', 0)) if self.context.get('resistance_strength') is not None else None
+            # support_touch_count → volume_buildup_periods
+            support_touch_count = int(self.context.get('volume_buildup_periods', 0)) if self.context.get('volume_buildup_periods') is not None else None
+            # resistance_touch_count → volume_buildup_periods
+            resistance_touch_count = int(self.context.get('volume_buildup_periods', 0)) if self.context.get('volume_buildup_periods') is not None else None
             confluence_score = float(self.context.get('confluence_score', 50.0)) if self.context.get('confluence_score') is not None else None
             
             if is_valid:
@@ -471,8 +492,8 @@ class Pivot_Strength_Validator(BaseValidator):
             
         # Au minimum, on a besoin d'un indicateur de pivot (support ou résistance)
         pivot_indicators = [
-            'pivot_support', 'pivot_resistance', 'pivot_support_strength', 
-            'pivot_resistance_strength', 'confluence_score'
+            'nearest_support', 'nearest_resistance', 'support_strength', 
+            'resistance_strength', 'confluence_score'
         ]
         
         available_indicators = sum(1 for ind in pivot_indicators 
@@ -498,7 +519,7 @@ class Pivot_Strength_Validator(BaseValidator):
                     pass
             
             # Fallback: essayer current_price dans le contexte
-            current_price = self.context.get('current_price')
+            # current_price n'est pas dans analyzer_data, utiliser self.data['close']
             if current_price is not None:
                 try:
                     return float(current_price)

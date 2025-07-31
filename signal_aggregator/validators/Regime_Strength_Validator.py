@@ -81,34 +81,52 @@ class Regime_Strength_Validator(BaseValidator):
             # Extraction des indicateurs de régime depuis le contexte
             try:
                 # Régime principal et force
-                current_regime = self.context.get('current_regime')
+                # current_regime → market_regime
+                current_regime = self.context.get('market_regime')
                 regime_strength_raw = self.context.get('regime_strength')
                 regime_strength = self._convert_regime_strength_to_score(regime_strength_raw) if regime_strength_raw else None
+                # regime_confidence existe déjà !
                 regime_confidence = float(self.context.get('regime_confidence', 50.0)) if self.context.get('regime_confidence') is not None else None
-                regime_persistence = float(self.context.get('regime_persistence', 50.0)) if self.context.get('regime_persistence') is not None else None
+                # regime_persistence → regime_strength (même concept)
+                regime_persistence = float(self.context.get('regime_strength', 50.0)) if self.context.get('regime_strength') is not None else None
                 
                 # Durée et stabilité
-                regime_duration_bars = int(self.context.get('regime_duration_bars', 0)) if self.context.get('regime_duration_bars') is not None else None
-                regime_stability = float(self.context.get('regime_stability', 50.0)) if self.context.get('regime_stability') is not None else None
-                last_regime_change_bars = int(self.context.get('last_regime_change_bars', 999)) if self.context.get('last_regime_change_bars') is not None else None
+                # regime_duration_bars → regime_duration (existe déjà!)
+                regime_duration_bars = int(self.context.get('regime_duration', 0)) if self.context.get('regime_duration') is not None else None
+                # regime_stability → regime_strength
+                regime_stability = float(self.context.get('regime_strength', 50.0)) if self.context.get('regime_strength') is not None else None
+                # last_regime_change_bars → regime_duration
+                last_regime_change_bars = int(self.context.get('regime_duration', 999)) if self.context.get('regime_duration') is not None else None
                 
                 # Transitions et changements
-                regime_transition_probability = float(self.context.get('regime_transition_probability', 0)) if self.context.get('regime_transition_probability') is not None else None
+                # regime_transition_probability → pattern_confidence
+                regime_transition_probability = float(self.context.get('pattern_confidence', 0)) if self.context.get('pattern_confidence') is not None else None
                 regime_in_transition = self.context.get('regime_in_transition', False)
-                transition_direction = self.context.get('transition_direction')  # 'to_bullish', 'to_bearish', etc.
+                # transition_direction → directional_bias
+                transition_direction = self.context.get('directional_bias')  # 'to_bullish', 'to_bearish', etc.
                 
                 # Régimes multiples (volatilité, trend, momentum)
                 volatility_regime = self.context.get('volatility_regime')
-                trend_regime = self.context.get('trend_regime')
-                momentum_regime = self.context.get('momentum_regime')
+                # trend_regime → market_regime (utiliser le régime principal)
+                trend_regime = self.context.get('market_regime')
+                # momentum_regime → momentum_score
+                momentum_regime = self.context.get('momentum_score')
                 
                 # Consensus et cohérence
-                regime_consensus_score = float(self.context.get('regime_consensus_score', 60.0)) if self.context.get('regime_consensus_score') is not None else None
-                regime_divergence_score = float(self.context.get('regime_divergence_score', 0)) if self.context.get('regime_divergence_score') is not None else None
+                # regime_consensus_score → confluence_score
+                regime_consensus_score = float(self.context.get('confluence_score', 60.0)) if self.context.get('confluence_score') is not None else None
+                # regime_divergence_score → signal_strength
+                regime_divergence_score = float(self.context.get('signal_strength', 0)) if self.context.get('signal_strength') is not None else None
                 
                 # Indicateurs de force du régime
-                regime_momentum = float(self.context.get('regime_momentum', 0)) if self.context.get('regime_momentum') is not None else None
-                regime_volatility_score = float(self.context.get('regime_volatility_score', 0.5)) if self.context.get('regime_volatility_score') is not None else None
+                # regime_momentum → momentum_score
+                regime_momentum = float(self.context.get('momentum_score', 0)) if self.context.get('momentum_score') is not None else None
+                # regime_volatility_score → volatility_regime (convertir en score)
+                volatility_raw = self.context.get('volatility_regime', 'normal')
+                if isinstance(volatility_raw, str):
+                    regime_volatility_score = self._convert_volatility_regime_to_score(volatility_raw)
+                else:
+                    regime_volatility_score = float(volatility_raw) if volatility_raw is not None else 0.5
                 
             except (ValueError, TypeError) as e:
                 logger.warning(f"{self.name}: Erreur conversion indicateurs pour {self.symbol}: {e}")
@@ -376,12 +394,18 @@ class Regime_Strength_Validator(BaseValidator):
             regime_strength_raw = self.context.get('regime_strength')
             regime_strength = self._convert_regime_strength_to_score(regime_strength_raw) if regime_strength_raw else 0.5
             regime_confidence = float(self.context.get('regime_confidence', 50.0)) if self.context.get('regime_confidence') is not None else 50.0
-            regime_persistence = float(self.context.get('regime_persistence', 50.0)) if self.context.get('regime_persistence') is not None else 50.0
-            regime_stability = float(self.context.get('regime_stability', 50.0)) if self.context.get('regime_stability') is not None else 50.0
-            regime_duration_bars = int(self.context.get('regime_duration_bars', 10)) if self.context.get('regime_duration_bars') is not None else 10
-            regime_consensus_score = float(self.context.get('regime_consensus_score', 60.0)) if self.context.get('regime_consensus_score') is not None else 60.0
-            regime_transition_probability = float(self.context.get('regime_transition_probability', 0.2)) if self.context.get('regime_transition_probability') is not None else 0.2
-            last_regime_change_bars = int(self.context.get('last_regime_change_bars', 10)) if self.context.get('last_regime_change_bars') is not None else 10
+            # regime_persistence → regime_strength (même concept)
+            regime_persistence = float(self.context.get('regime_strength', 50.0)) if self.context.get('regime_strength') is not None else 50.0
+            # regime_stability → regime_strength
+            regime_stability = float(self.context.get('regime_strength', 50.0)) if self.context.get('regime_strength') is not None else 50.0
+            # regime_duration_bars → regime_duration (existe déjà!)
+            regime_duration_bars = int(self.context.get('regime_duration', 10)) if self.context.get('regime_duration') is not None else 10
+            # regime_consensus_score → confluence_score
+            regime_consensus_score = float(self.context.get('confluence_score', 60.0)) if self.context.get('confluence_score') is not None else 60.0
+            # regime_transition_probability → pattern_confidence
+            regime_transition_probability = float(self.context.get('pattern_confidence', 0.2)) if self.context.get('pattern_confidence') is not None else 0.2
+            # last_regime_change_bars → regime_duration
+            last_regime_change_bars = int(self.context.get('regime_duration', 10)) if self.context.get('regime_duration') is not None else 10
             
             current_regime = self.context.get('current_regime', 'neutral')
             signal_strategy = signal.get('strategy', '')
@@ -449,8 +473,10 @@ class Regime_Strength_Validator(BaseValidator):
                 
             # Validation régimes multiples
             vol_regime = self.context.get('volatility_regime')
-            trend_regime = self.context.get('trend_regime')
-            momentum_regime = self.context.get('momentum_regime')
+            # trend_regime → market_regime (utiliser le régime principal)
+            trend_regime = self.context.get('market_regime')
+            # momentum_regime → momentum_score
+            momentum_regime = self.context.get('momentum_score')
             
             if (current_regime and vol_regime and trend_regime and momentum_regime and 
                 self._validate_regime_coherence(current_regime, vol_regime, trend_regime, momentum_regime)):
@@ -481,8 +507,10 @@ class Regime_Strength_Validator(BaseValidator):
             regime_strength_raw = self.context.get('regime_strength')
             regime_strength = self._convert_regime_strength_to_score(regime_strength_raw) if regime_strength_raw else None
             regime_confidence = float(self.context.get('regime_confidence', 50.0)) if self.context.get('regime_confidence') is not None else None
-            regime_duration_bars = int(self.context.get('regime_duration_bars', 0)) if self.context.get('regime_duration_bars') is not None else None
-            regime_transition_probability = float(self.context.get('regime_transition_probability', 0)) if self.context.get('regime_transition_probability') is not None else None
+            # regime_duration_bars → regime_duration (existe déjà!)
+            regime_duration_bars = int(self.context.get('regime_duration', 0)) if self.context.get('regime_duration') is not None else None
+            # regime_transition_probability → pattern_confidence
+            regime_transition_probability = float(self.context.get('pattern_confidence', 0)) if self.context.get('pattern_confidence') is not None else None
             regime_in_transition = self.context.get('regime_in_transition', False)
             
             if is_valid:
@@ -532,8 +560,8 @@ class Regime_Strength_Validator(BaseValidator):
             
         # Au minimum, on a besoin d'un indicateur de régime
         regime_indicators = [
-            'current_regime', 'regime_strength', 'regime_confidence', 
-            'regime_duration_bars', 'regime_stability'
+            'market_regime', 'regime_strength', 'regime_confidence', 
+            'regime_duration', 'regime_strength'
         ]
         
         available_indicators = sum(1 for ind in regime_indicators 
@@ -544,3 +572,56 @@ class Regime_Strength_Validator(BaseValidator):
             return False
             
         return True
+            
+    def _convert_regime_strength_to_score(self, regime_strength_raw) -> float:
+        """Convertit une valeur de force de régime en score 0-1."""
+        try:
+            if regime_strength_raw is None:
+                return 0.5
+                
+            if isinstance(regime_strength_raw, str):
+                strength_lower = regime_strength_raw.lower()
+                if strength_lower in ['very_strong', 'strong', 'high']:
+                    return 0.8
+                elif strength_lower in ['moderate', 'medium', 'normal']:
+                    return 0.6
+                elif strength_lower in ['weak', 'low']:
+                    return 0.3
+                elif strength_lower in ['very_weak', 'very_low']:
+                    return 0.1
+                else:
+                    return 0.5
+            else:
+                # Essayer de convertir directement
+                score = float(regime_strength_raw)
+                if score > 10:  # Format 0-100
+                    return score / 100.0
+                else:  # Format 0-1
+                    return score
+                    
+        except (ValueError, TypeError):
+            return 0.5
+            
+    def _convert_volatility_regime_to_score(self, volatility_regime: str) -> float:
+        """Convertit un régime de volatilité en score 0-1."""
+        try:
+            if not volatility_regime:
+                return 0.5
+                
+            vol_lower = volatility_regime.lower()
+            
+            if vol_lower in ['extreme', 'very_high']:
+                return 0.9
+            elif vol_lower in ['high', 'elevated']:
+                return 0.7
+            elif vol_lower in ['normal', 'medium', 'moderate']:
+                return 0.5
+            elif vol_lower in ['low', 'calm']:
+                return 0.3
+            elif vol_lower in ['very_low', 'dormant']:
+                return 0.1
+            else:
+                return 0.5
+                
+        except Exception:
+            return 0.5

@@ -146,41 +146,41 @@ class ROC_Threshold_Strategy(BaseStrategy):
         roc_data = {}
         
         # Collecter les valeurs ROC disponibles
-        for period in ['10', '20']:
-            roc_key = f'roc_{period}'
-            roc_value = values.get(roc_key)
-            if roc_value is not None:
-                try:
-                    roc_data[period] = float(roc_value)
-                except (ValueError, TypeError):
-                    continue
-                    
-        # Ajouter momentum classique s'il est disponible
-        momentum_10 = values.get('momentum_10')
-        if momentum_10 is not None:
+        # Utiliser roc comme indicateur principal (existe dans analyzer_data)
+        roc_value = values.get('roc_10')  # Chercher d'abord roc_10 mais utiliser 'roc' 
+        if roc_value is None:
+            roc_value = self.indicators.get('roc')  # Fallback vers 'roc' standard
+        
+        if roc_value is not None:
             try:
-                # Convertir momentum en ROC-like (pourcentage)
-                mom_val = float(momentum_10)
-                roc_data['momentum_10'] = mom_val
+                roc_data['10'] = float(roc_value)
+            except (ValueError, TypeError):
+                pass
+                    
+        # Ajouter momentum_score s'il est disponible (existe dans analyzer_data)
+        momentum_score = values.get('momentum_score')
+        if momentum_score is not None:
+            try:
+                # momentum_score est déjà en format 0-100, convertir en ROC-like (-100 à +100)
+                # Normaliser de 0-100 vers -100 à +100 (50 = neutre = 0)
+                mom_val = (float(momentum_score) - 50) * 2
+                roc_data['momentum_score'] = mom_val
             except (ValueError, TypeError):
                 pass
                 
         if not roc_data:
             return None
             
-        # Choisir le ROC principal (priorité ROC_10, puis ROC_20, puis momentum)
+        # Choisir le ROC principal (priorité ROC, puis momentum_score)
         primary_roc = None
         primary_period = None
         
         if '10' in roc_data:
             primary_roc = roc_data['10']
-            primary_period = 'roc_10'
-        elif '20' in roc_data:
-            primary_roc = roc_data['20']
-            primary_period = 'roc_20'
-        elif 'momentum_10' in roc_data:
-            primary_roc = roc_data['momentum_10']
-            primary_period = 'momentum_10'
+            primary_period = 'roc'
+        elif 'momentum_score' in roc_data:
+            primary_roc = roc_data['momentum_score']
+            primary_period = 'momentum_score'
             
         if primary_roc is None:
             return None

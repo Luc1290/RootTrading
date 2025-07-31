@@ -99,27 +99,15 @@ class Liquidity_Sweep_Validator(BaseValidator):
                         if isinstance(self.data['close'], (int, float)):
                             current_price = float(self.data['close'])
                         elif isinstance(self.data['close'], list) and len(self.data['close']) > 0:
-                            current_price = self._get_current_price()
+                            current_price = float(self.data['close'][-1])
                     except (IndexError, ValueError, TypeError):
                         pass
                 
-                # Fallback: essayer current_price dans le contexte
-                if current_price is None:
-                    current_price = self.context.get('current_price')
-                    if current_price is not None:
-                        try:
-                            current_price = float(current_price)
-                        except (ValueError, TypeError):
-                            current_price = None
+                # Fallback: current_price n'est pas dans le contexte analyzer_data
+                # Le prix actuel vient de self.data['close']
                 
-                # Fallback: essayer current_price dans le contexte
-                if current_price is None:
-                    current_price = self.context.get('current_price')
-                    if current_price is not None:
-                        try:
-                            current_price = float(current_price)
-                        except (ValueError, TypeError):
-                            current_price = None
+                # Fallback: current_price n'est pas dans le contexte analyzer_data
+                # Le prix actuel vient de self.data['close']
                     
             signal_side = signal.get('side')
             signal_strategy = signal.get('strategy', 'Unknown')
@@ -477,11 +465,6 @@ class Liquidity_Sweep_Validator(BaseValidator):
                 except (IndexError, ValueError, TypeError):
                     pass
             
-            # Fallback: essayer current_price dans le contexte
-            current_price = self.context.get('current_price')
-            if current_price is not None:
-                try:
-                    return float(current_price)
-                except (ValueError, TypeError):
-                    pass
+            # Fallback: pas de current_price dans analyzer_data
+            # current_price n'est pas disponible dans analyzer_data
         return None

@@ -80,30 +80,45 @@ class Range_Validator(BaseValidator):
             # Extraction des indicateurs de range depuis le contexte
             try:
                 # Bornes du range
-                range_high = float(self.context.get('range_high', 0)) if self.context.get('range_high') is not None else None
-                range_low = float(self.context.get('range_low', 0)) if self.context.get('range_low') is not None else None
-                range_width = float(self.context.get('range_width', 0)) if self.context.get('range_width') is not None else None
-                range_center = float(self.context.get('range_center', 0)) if self.context.get('range_center') is not None else None
+                # range_high → nearest_resistance (résistance la plus proche)
+                range_high = float(self.context.get('nearest_resistance', 0)) if self.context.get('nearest_resistance') is not None else None
+                # range_low → nearest_support (support le plus proche)
+                range_low = float(self.context.get('nearest_support', 0)) if self.context.get('nearest_support') is not None else None
+                # range_width → bb_width (largeur Bollinger comme proxy)
+                range_width = float(self.context.get('bb_width', 0)) if self.context.get('bb_width') is not None else None
+                # range_center → bb_middle (milieu Bollinger)
+                range_center = float(self.context.get('bb_middle', 0)) if self.context.get('bb_middle') is not None else None
                 
                 # Informations temporelles et force
-                range_age_bars = int(self.context.get('range_age_bars', 0)) if self.context.get('range_age_bars') is not None else None
-                range_strength = float(self.context.get('range_strength', 0)) if self.context.get('range_strength') is not None else None
-                boundary_test_count = int(self.context.get('boundary_test_count', 0)) if self.context.get('boundary_test_count') is not None else None
+                # range_age_bars → regime_duration (durée du régime)
+                range_age_bars = int(self.context.get('regime_duration', 0)) if self.context.get('regime_duration') is not None else None
+                # range_strength → regime_strength (force du régime)
+                range_strength = float(self.context.get('regime_strength', 0)) if self.context.get('regime_strength') is not None else None
+                # boundary_test_count → volume_buildup_periods
+                boundary_test_count = int(self.context.get('volume_buildup_periods', 0)) if self.context.get('volume_buildup_periods') is not None else None
                 
                 # Position et mouvement dans range
-                range_position = float(self.context.get('range_position', 0.5)) if self.context.get('range_position') is not None else None  # 0-1
-                range_movement_direction = self.context.get('range_movement_direction')  # 'up', 'down', 'neutral'
-                time_in_range = int(self.context.get('time_in_range', 0)) if self.context.get('time_in_range') is not None else None
+                # range_position → bb_position (position dans Bollinger)
+                range_position = float(self.context.get('bb_position', 0.5)) if self.context.get('bb_position') is not None else None  # 0-1
+                # range_movement_direction → directional_bias
+                range_movement_direction = self.context.get('directional_bias')  # 'up', 'down', 'neutral'
+                # time_in_range → regime_duration
+                time_in_range = int(self.context.get('regime_duration', 0)) if self.context.get('regime_duration') is not None else None
                 
                 # Probabilité breakout et volatilité
-                breakout_probability = float(self.context.get('breakout_probability', 0.5)) if self.context.get('breakout_probability') is not None else None
-                range_volatility = float(self.context.get('range_volatility', 0.02)) if self.context.get('range_volatility') is not None else None
-                range_compression = float(self.context.get('range_compression', 0.5)) if self.context.get('range_compression') is not None else None
+                # breakout_probability existe déjà !
+                breakout_probability = float(self.context.get('break_probability', 0.5)) if self.context.get('break_probability') is not None else None
+                # range_volatility → volatility_regime
+                range_volatility = float(self.context.get('volatility_regime', 0.02)) if self.context.get('volatility_regime') is not None else None
+                # range_compression → bb_squeeze (compression = squeeze)
+                range_compression = float(self.context.get('bb_squeeze', 0.5)) if self.context.get('bb_squeeze') is not None else None
                 
                 # Tests et respect des bornes
-                upper_boundary_tests = int(self.context.get('upper_boundary_tests', 0)) if self.context.get('upper_boundary_tests') is not None else None
-                lower_boundary_tests = int(self.context.get('lower_boundary_tests', 0)) if self.context.get('lower_boundary_tests') is not None else None
-                boundary_respect_rate = float(self.context.get('boundary_respect_rate', 0.7)) if self.context.get('boundary_respect_rate') is not None else None
+                # upper/lower_boundary_tests → volume_spike_multiplier
+                upper_boundary_tests = int(self.context.get('volume_spike_multiplier', 0)) if self.context.get('volume_spike_multiplier') is not None else None
+                lower_boundary_tests = int(self.context.get('volume_spike_multiplier', 0)) if self.context.get('volume_spike_multiplier') is not None else None
+                # boundary_respect_rate → pattern_confidence
+                boundary_respect_rate = float(self.context.get('pattern_confidence', 0.7)) if self.context.get('pattern_confidence') is not None else None
                 
             except (ValueError, TypeError) as e:
                 logger.warning(f"{self.name}: Erreur conversion indicateurs pour {self.symbol}: {e}")
@@ -122,23 +137,11 @@ class Range_Validator(BaseValidator):
                     except (IndexError, ValueError, TypeError):
                         pass
                 
-                # Fallback: essayer current_price dans le contexte
-                if current_price is None:
-                    current_price = self.context.get('current_price')
-                    if current_price is not None:
-                        try:
-                            current_price = float(current_price)
-                        except (ValueError, TypeError):
-                            current_price = None
+                # Fallback: current_price n'est pas dans le contexte analyzer_data
+                # Le prix actuel vient de self.data['close']
                 
-                # Fallback: essayer current_price dans le contexte
-                if current_price is None:
-                    current_price = self.context.get('current_price')
-                    if current_price is not None:
-                        try:
-                            current_price = float(current_price)
-                        except (ValueError, TypeError):
-                            current_price = None
+                # Fallback: current_price n'est pas dans le contexte analyzer_data
+                # Le prix actuel vient de self.data['close']
                     
             signal_side = signal.get('side')
             signal_strategy = signal.get('strategy', 'Unknown')
@@ -398,13 +401,8 @@ class Range_Validator(BaseValidator):
                 except (IndexError, ValueError, TypeError):
                     pass
             
-            # Fallback: essayer current_price dans le contexte
-            current_price = self.context.get('current_price')
-            if current_price is not None:
-                try:
-                    return float(current_price)
-                except (ValueError, TypeError):
-                    pass
+            # Fallback: pas de current_price dans analyzer_data
+            # current_price n'est pas disponible dans analyzer_data
         return None
             
     def get_validation_score(self, signal: Dict[str, Any]) -> float:
@@ -422,14 +420,22 @@ class Range_Validator(BaseValidator):
                 return 0.0
                 
             # Calcul du score basé sur range
-            range_width = float(self.context.get('range_width', 0.02)) if self.context.get('range_width') is not None else 0.02
-            range_position = float(self.context.get('range_position', 0.5)) if self.context.get('range_position') is not None else 0.5
-            range_strength = float(self.context.get('range_strength', 0.5)) if self.context.get('range_strength') is not None else 0.5
-            range_age_bars = int(self.context.get('range_age_bars', 20)) if self.context.get('range_age_bars') is not None else 20
-            boundary_test_count = int(self.context.get('boundary_test_count', 2)) if self.context.get('boundary_test_count') is not None else 2
-            boundary_respect_rate = float(self.context.get('boundary_respect_rate', 0.7)) if self.context.get('boundary_respect_rate') is not None else 0.7
-            breakout_probability = float(self.context.get('breakout_probability', 0.5)) if self.context.get('breakout_probability') is not None else 0.5
-            range_volatility = float(self.context.get('range_volatility', 0.02)) if self.context.get('range_volatility') is not None else 0.02
+            # range_width → bb_width (largeur Bollinger comme proxy)
+            range_width = float(self.context.get('bb_width', 0.02)) if self.context.get('bb_width') is not None else 0.02
+            # range_position → bb_position (position dans Bollinger)
+            range_position = float(self.context.get('bb_position', 0.5)) if self.context.get('bb_position') is not None else 0.5
+            # range_strength → regime_strength (force du régime)
+            range_strength = float(self.context.get('regime_strength', 0.5)) if self.context.get('regime_strength') is not None else 0.5
+            # range_age_bars → regime_duration (durée du régime)
+            range_age_bars = int(self.context.get('regime_duration', 20)) if self.context.get('regime_duration') is not None else 20
+            # boundary_test_count → volume_buildup_periods
+            boundary_test_count = int(self.context.get('volume_buildup_periods', 2)) if self.context.get('volume_buildup_periods') is not None else 2
+            # boundary_respect_rate → pattern_confidence
+            boundary_respect_rate = float(self.context.get('pattern_confidence', 0.7)) if self.context.get('pattern_confidence') is not None else 0.7
+            # breakout_probability → break_probability (existe déjà!)
+            breakout_probability = float(self.context.get('break_probability', 0.5)) if self.context.get('break_probability') is not None else 0.5
+            # range_volatility → volatility_regime
+            range_volatility = float(self.context.get('volatility_regime', 0.02)) if self.context.get('volatility_regime') is not None else 0.02
             
             signal_strategy = signal.get('strategy', '')
             
@@ -512,11 +518,16 @@ class Range_Validator(BaseValidator):
             signal_side = signal.get('side', 'N/A')
             signal_strategy = signal.get('strategy', 'N/A')
             
-            range_position = float(self.context.get('range_position', 0.5)) if self.context.get('range_position') is not None else None
-            range_width = float(self.context.get('range_width', 0)) if self.context.get('range_width') is not None else None
-            range_age_bars = int(self.context.get('range_age_bars', 0)) if self.context.get('range_age_bars') is not None else None
-            breakout_probability = float(self.context.get('breakout_probability', 0.5)) if self.context.get('breakout_probability') is not None else None
-            boundary_respect_rate = float(self.context.get('boundary_respect_rate', 0.7)) if self.context.get('boundary_respect_rate') is not None else None
+            # range_position → bb_position (position dans Bollinger)
+            range_position = float(self.context.get('bb_position', 0.5)) if self.context.get('bb_position') is not None else None
+            # range_width → bb_width (largeur Bollinger comme proxy)
+            range_width = float(self.context.get('bb_width', 0)) if self.context.get('bb_width') is not None else None
+            # range_age_bars → regime_duration (durée du régime)
+            range_age_bars = int(self.context.get('regime_duration', 0)) if self.context.get('regime_duration') is not None else None
+            # breakout_probability → break_probability (existe déjà!)
+            breakout_probability = float(self.context.get('break_probability', 0.5)) if self.context.get('break_probability') is not None else None
+            # boundary_respect_rate → pattern_confidence
+            boundary_respect_rate = float(self.context.get('pattern_confidence', 0.7)) if self.context.get('pattern_confidence') is not None else None
             
             if is_valid:
                 reason = f"Conditions range favorables"
@@ -583,7 +594,7 @@ class Range_Validator(BaseValidator):
                 
         # Indicateurs optionnels (si pas présents, détection automatique)
         optional_indicators = [
-            'range_high', 'range_low', 'range_position', 'range_width', 'breakout_probability'
+            'nearest_resistance', 'nearest_support', 'bb_position', 'bb_width', 'break_probability'
         ]
         
         available_indicators = sum(1 for ind in optional_indicators 

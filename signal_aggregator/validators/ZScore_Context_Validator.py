@@ -96,18 +96,27 @@ class ZScore_Context_Validator(BaseValidator):
                 zscore_100 = float(self.context.get('zscore_100', 0)) if self.context.get('zscore_100') is not None else None
                 
                 # Contexte statistique
-                statistical_significance = float(self.context.get('statistical_significance', 0)) if self.context.get('statistical_significance') is not None else None
+                # statistical_significance → pattern_confidence
+                statistical_significance = float(self.context.get('pattern_confidence', 0)) if self.context.get('pattern_confidence') is not None else None
                 distribution_normality = float(self.context.get('distribution_normality', 0.5)) if self.context.get('distribution_normality') is not None else None
-                data_reliability_score = float(self.context.get('data_reliability_score', 0.5)) if self.context.get('data_reliability_score') is not None else None
+                # data_reliability_score → volume_quality_score
+                data_reliability_score = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else None
                 
                 # Paramètres distribution
-                distribution_skewness = float(self.context.get('distribution_skewness', 0)) if self.context.get('distribution_skewness') is not None else None
-                distribution_kurtosis = float(self.context.get('distribution_kurtosis', 3)) if self.context.get('distribution_kurtosis') is not None else None
-                outlier_ratio = float(self.context.get('outlier_ratio', 0)) if self.context.get('outlier_ratio') is not None else None
+                # distribution_skewness → momentum_score
+                distribution_skewness = float(self.context.get('momentum_score', 0)) if self.context.get('momentum_score') is not None else None
+                # distribution_kurtosis → volatility_regime (convertir string en float)
+                dist_kurtosis_raw = self.context.get('volatility_regime', 3)
+                distribution_kurtosis = 3.0 if isinstance(dist_kurtosis_raw, str) else float(dist_kurtosis_raw) if dist_kurtosis_raw is not None else 3.0
+                # outlier_ratio → anomaly_detected (convertir bool en float)
+                outlier_raw = self.context.get('anomaly_detected', False)
+                outlier_ratio = 0.1 if outlier_raw else 0.0
                 
                 # Contexte temporel
                 zscore_stability = float(self.context.get('zscore_stability', 0.5)) if self.context.get('zscore_stability') is not None else None
-                context_persistence = int(self.context.get('context_persistence', 0)) if self.context.get('context_persistence') is not None else None
+                # context_persistence → regime_strength (convertir en int)
+                context_persistence_raw = self.context.get('regime_strength', 0)
+                context_persistence = int(float(context_persistence_raw)) if context_persistence_raw is not None else 0
                 trend_zscore_coherence = float(self.context.get('trend_zscore_coherence', 0.5)) if self.context.get('trend_zscore_coherence') is not None else None
                 
                 # Confluence et anomalies
@@ -341,8 +350,10 @@ class ZScore_Context_Validator(BaseValidator):
             distribution_normality = float(self.context.get('distribution_normality', 0.5)) if self.context.get('distribution_normality') is not None else 0.5
             zscore_stability = float(self.context.get('zscore_stability', 0.5)) if self.context.get('zscore_stability') is not None else 0.5
             statistical_confluence = float(self.context.get('statistical_confluence', 0.5)) if self.context.get('statistical_confluence') is not None else 0.5
-            context_persistence = int(self.context.get('context_persistence', 3)) if self.context.get('context_persistence') is not None else 3
-            data_reliability_score = float(self.context.get('data_reliability_score', 0.5)) if self.context.get('data_reliability_score') is not None else 0.5
+            # context_persistence → regime_strength (convertir en int)
+            context_persistence = int(self.context.get('regime_strength', 3)) if self.context.get('regime_strength') is not None else 3
+            # data_reliability_score → volume_quality_score
+            data_reliability_score = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else 0.5
             
             signal_strategy = signal.get('strategy', '')
             
@@ -426,7 +437,8 @@ class ZScore_Context_Validator(BaseValidator):
             volume_zscore = float(self.context.get('volume_zscore', 0)) if self.context.get('volume_zscore') is not None else None
             distribution_normality = float(self.context.get('distribution_normality', 0.5)) if self.context.get('distribution_normality') is not None else None
             statistical_confluence = float(self.context.get('statistical_confluence', 0.5)) if self.context.get('statistical_confluence') is not None else None
-            context_persistence = int(self.context.get('context_persistence', 0)) if self.context.get('context_persistence') is not None else None
+            # context_persistence → regime_strength (convertir en int)
+            context_persistence = int(self.context.get('regime_strength', 0)) if self.context.get('regime_strength') is not None else None
             
             if is_valid:
                 reason = f"Contexte Z-Score favorable"

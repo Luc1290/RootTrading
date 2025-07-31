@@ -73,30 +73,40 @@ class Psychological_Level_Validator(BaseValidator):
             # Extraction des indicateurs psychologiques depuis le contexte
             try:
                 # Niveaux psychologiques principaux
-                nearest_psychological_level = float(self.context.get('nearest_psychological_level', 0)) if self.context.get('nearest_psychological_level') is not None else None
-                psychological_level_strength = float(self.context.get('psychological_level_strength', 0)) if self.context.get('psychological_level_strength') is not None else None
-                psychological_level_type = self.context.get('psychological_level_type')  # 'major', 'minor', 'custom'
+                # nearest_psychological_level → nearest_support
+                nearest_psychological_level = float(self.context.get('nearest_support', 0)) if self.context.get('nearest_support') is not None else None
+                # psychological_level_strength → support_strength
+                psychological_level_strength = float(self.context.get('support_strength', 0)) if self.context.get('support_strength') is not None else None
+                # psychological_level_type → pattern_detected
+                psychological_level_type = self.context.get('pattern_detected')  # 'major', 'minor', 'custom'
                 
                 # Réactions historiques
-                level_reaction_count = int(self.context.get('level_reaction_count', 0)) if self.context.get('level_reaction_count') is not None else None
-                level_bounce_strength = float(self.context.get('level_bounce_strength', 0)) if self.context.get('level_bounce_strength') is not None else None
-                last_reaction_bars = int(self.context.get('last_reaction_bars', 999)) if self.context.get('last_reaction_bars') is not None else None
+                # level_reaction_count → volume_buildup_periods
+                level_reaction_count = int(self.context.get('volume_buildup_periods', 0)) if self.context.get('volume_buildup_periods') is not None else None
+                # level_bounce_strength → momentum_score
+                level_bounce_strength = float(self.context.get('momentum_score', 0)) if self.context.get('momentum_score') is not None else None
+                # last_reaction_bars → regime_duration
+                last_reaction_bars = int(self.context.get('regime_duration', 999)) if self.context.get('regime_duration') is not None else None
                 
                 # Distance et timing
-                distance_to_level = float(self.context.get('distance_to_level', 0)) if self.context.get('distance_to_level') is not None else None
-                level_approach_angle = float(self.context.get('level_approach_angle', 0)) if self.context.get('level_approach_angle') is not None else None
+                # distance_to_level -> à calculer depuis nearest_support - current_price
+                distance_to_level = None  # À calculer dynamiquement
+                # level_approach_angle → trend_angle
+                level_approach_angle = float(self.context.get('trend_angle', 0)) if self.context.get('trend_angle') is not None else None
                 
                 # Confluence avec autres niveaux
                 multiple_levels_confluence = self.context.get('multiple_levels_confluence', False)
-                psychological_confluence_score = float(self.context.get('psychological_confluence_score', 0)) if self.context.get('psychological_confluence_score') is not None else None
+                # psychological_confluence_score → confluence_score
+                psychological_confluence_score = float(self.context.get('confluence_score', 0)) if self.context.get('confluence_score') is not None else None
                 
             except (ValueError, TypeError) as e:
                 logger.warning(f"{self.name}: Erreur conversion indicateurs pour {self.symbol}: {e}")
                 return False
                 
             # Récupération prix actuel depuis contexte ou data
-            current_price = self.context.get('current_price')
-            if current_price is None and self.data:
+            # current_price n'est pas dans analyzer_data, utiliser self.data['close']
+            current_price = None
+            if self.data:
                 try:
                     # Utiliser la valeur scalaire directement
                     if 'close' in self.data and self.data['close'] is not None:
@@ -332,13 +342,25 @@ class Psychological_Level_Validator(BaseValidator):
                 return 0.0
                 
             # Calcul du score basé sur niveaux psychologiques
-            psychological_level_strength = float(self.context.get('psychological_level_strength', 0.5)) if self.context.get('psychological_level_strength') is not None else 0.5
-            psychological_level_type = self.context.get('psychological_level_type', 'minor')
-            level_reaction_count = int(self.context.get('level_reaction_count', 2)) if self.context.get('level_reaction_count') is not None else 2
-            level_bounce_strength = float(self.context.get('level_bounce_strength', 0.5)) if self.context.get('level_bounce_strength') is not None else 0.5
-            distance_to_level = float(self.context.get('distance_to_level', 0.01)) if self.context.get('distance_to_level') is not None else 0.01
-            psychological_confluence_score = float(self.context.get('psychological_confluence_score', 0.5)) if self.context.get('psychological_confluence_score') is not None else 0.5
-            last_reaction_bars = int(self.context.get('last_reaction_bars', 50)) if self.context.get('last_reaction_bars') is not None else 50
+            # psychological_level_strength → support_strength
+            psychological_level_strength = float(self.context.get('support_strength', 0.5)) if self.context.get('support_strength') is not None else 0.5
+            # psychological_level_type → pattern_detected
+            psychological_level_type = self.context.get('pattern_detected', 'minor')
+            # level_reaction_count → volume_buildup_periods
+            level_reaction_count = int(self.context.get('volume_buildup_periods', 2)) if self.context.get('volume_buildup_periods') is not None else 2
+            # level_bounce_strength → momentum_score
+            level_bounce_strength = float(self.context.get('momentum_score', 0.5)) if self.context.get('momentum_score') is not None else 0.5
+            # distance_to_level -> calculé dynamiquement depuis nearest_support
+            current_price = self._get_current_price() or 1.0
+            nearest_psychological_level = float(self.context.get('nearest_support', 0)) if self.context.get('nearest_support') is not None else None
+            if nearest_psychological_level and current_price > 0:
+                distance_to_level = abs(current_price - nearest_psychological_level) / current_price
+            else:
+                distance_to_level = 0.01
+            # psychological_confluence_score → confluence_score
+            psychological_confluence_score = float(self.context.get('confluence_score', 0.5)) if self.context.get('confluence_score') is not None else 0.5
+            # last_reaction_bars → regime_duration
+            last_reaction_bars = int(self.context.get('regime_duration', 50)) if self.context.get('regime_duration') is not None else 50
             
             signal_strategy = signal.get('strategy', '')
             
@@ -422,11 +444,21 @@ class Psychological_Level_Validator(BaseValidator):
             signal_side = signal.get('side', 'N/A')
             signal_strategy = signal.get('strategy', 'N/A')
             
-            nearest_psychological_level = float(self.context.get('nearest_psychological_level', 0)) if self.context.get('nearest_psychological_level') is not None else None
-            psychological_level_type = self.context.get('psychological_level_type', 'N/A')
-            psychological_level_strength = float(self.context.get('psychological_level_strength', 0)) if self.context.get('psychological_level_strength') is not None else None
-            distance_to_level = float(self.context.get('distance_to_level', 0)) if self.context.get('distance_to_level') is not None else None
-            level_reaction_count = int(self.context.get('level_reaction_count', 0)) if self.context.get('level_reaction_count') is not None else None
+            # nearest_psychological_level → nearest_support
+            nearest_psychological_level = float(self.context.get('nearest_support', 0)) if self.context.get('nearest_support') is not None else None
+            # psychological_level_type → pattern_detected
+            psychological_level_type = self.context.get('pattern_detected', 'N/A')
+            # psychological_level_strength → support_strength
+            psychological_level_strength = float(self.context.get('support_strength', 0)) if self.context.get('support_strength') is not None else None
+            # distance_to_level -> calculé dynamiquement depuis nearest_support
+            current_price = self._get_current_price() or 1.0
+            nearest_psychological_level = float(self.context.get('nearest_support', 0)) if self.context.get('nearest_support') is not None else None
+            if nearest_psychological_level and current_price > 0:
+                distance_to_level = abs(current_price - nearest_psychological_level) / current_price
+            else:
+                distance_to_level = None
+            # level_reaction_count → volume_buildup_periods
+            level_reaction_count = int(self.context.get('volume_buildup_periods', 0)) if self.context.get('volume_buildup_periods') is not None else None
             
             if is_valid:
                 reason = f"Niveau psychologique favorable"
@@ -475,8 +507,8 @@ class Psychological_Level_Validator(BaseValidator):
             
         # Indicateurs optionnels (si pas présents, détection automatique)
         optional_indicators = [
-            'nearest_psychological_level', 'psychological_level_strength', 
-            'level_reaction_count', 'distance_to_level'
+            'nearest_support', 'support_strength', 
+            'volume_buildup_periods'  # distance_to_level est calculé dynamiquement
         ]
         
         available_indicators = sum(1 for ind in optional_indicators 
@@ -500,11 +532,6 @@ class Psychological_Level_Validator(BaseValidator):
                 except (IndexError, ValueError, TypeError):
                     pass
             
-            # Fallback: essayer current_price dans le contexte
-            current_price = self.context.get('current_price')
-            if current_price is not None:
-                try:
-                    return float(current_price)
-                except (ValueError, TypeError):
-                    pass
+            # Fallback: pas d'autre current_price disponible
+            # current_price n'est pas dans analyzer_data, utiliser seulement self.data['close']
         return 0.0  # Retourner 0.0 au lieu de None pour correspondre au type de retour float

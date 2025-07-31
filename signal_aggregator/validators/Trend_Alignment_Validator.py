@@ -78,33 +78,47 @@ class Trend_Alignment_Validator(BaseValidator):
             # Extraction des indicateurs de tendance depuis le contexte
             try:
                 # Tendance principale
-                primary_trend_direction = self.context.get('primary_trend_direction')  # 'bullish', 'bearish', 'neutral'
-                primary_trend_strength_raw = self.context.get('primary_trend_strength')
+                # primary_trend_direction → directional_bias
+                primary_trend_direction = self.context.get('directional_bias')  # 'bullish', 'bearish', 'neutral'
+                # primary_trend_strength → trend_strength
+                primary_trend_strength_raw = self.context.get('trend_strength')
                 primary_trend_strength = self._convert_trend_strength_to_score(str(primary_trend_strength_raw)) if primary_trend_strength_raw is not None else None
-                primary_trend_age = int(self.context.get('primary_trend_age', 0)) if self.context.get('primary_trend_age') is not None else None
+                # primary_trend_age → regime_duration
+                primary_trend_age = int(self.context.get('regime_duration', 0)) if self.context.get('regime_duration') is not None else None
                 
                 # EMA alignment
-                ema_alignment_score = float(self.context.get('ema_alignment_score', 50.0)) if self.context.get('ema_alignment_score') is not None else None
-                ema_separation_ratio = float(self.context.get('ema_separation_ratio', 0)) if self.context.get('ema_separation_ratio') is not None else None
-                ema_slope_strength = float(self.context.get('ema_slope_strength', 0)) if self.context.get('ema_slope_strength') is not None else None
+                # ema_alignment_score → trend_alignment
+                ema_alignment_score = float(self.context.get('trend_alignment', 50.0)) if self.context.get('trend_alignment') is not None else None
+                # ema_separation_ratio → trend_strength
+                ema_separation_ratio = float(self.context.get('trend_strength', 0)) if self.context.get('trend_strength') is not None else None
+                # ema_slope_strength → trend_angle
+                ema_slope_strength = float(self.context.get('trend_angle', 0)) if self.context.get('trend_angle') is not None else None
                 
                 # MACD alignment
-                macd_trend_coherence = float(self.context.get('macd_trend_coherence', 0)) if self.context.get('macd_trend_coherence') is not None else None
-                macd_histogram_strength = float(self.context.get('macd_histogram_strength', 0)) if self.context.get('macd_histogram_strength') is not None else None
-                macd_signal_alignment = float(self.context.get('macd_signal_alignment', 0)) if self.context.get('macd_signal_alignment') is not None else None
+                # macd_trend_coherence → macd_trend
+                macd_trend_coherence = float(self.context.get('macd_trend', 0)) if self.context.get('macd_trend') is not None else None
+                # macd_histogram_strength → macd_histogram
+                macd_histogram_strength = float(self.context.get('macd_histogram', 0)) if self.context.get('macd_histogram') is not None else None
+                # macd_signal_alignment → macd_signal_cross
+                macd_signal_alignment = float(self.context.get('macd_signal_cross', 0)) if self.context.get('macd_signal_cross') is not None else None
                 
                 # Multi-timeframe consensus
-                timeframe_consensus_score = float(self.context.get('timeframe_consensus_score', 60.0)) if self.context.get('timeframe_consensus_score') is not None else None
-                aligned_timeframes_count = int(self.context.get('aligned_timeframes_count', 0)) if self.context.get('aligned_timeframes_count') is not None else None
+                # timeframe_consensus_score → confluence_score
+                timeframe_consensus_score = float(self.context.get('confluence_score', 60.0)) if self.context.get('confluence_score') is not None else None
+                # aligned_timeframes_count → trend_alignment
+                aligned_timeframes_count = int(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None
                 
                 # Transitions et momentum
-                trend_transition_probability = float(self.context.get('trend_transition_probability', 0)) if self.context.get('trend_transition_probability') is not None else None
-                momentum_trend_alignment = float(self.context.get('momentum_trend_alignment', 0)) if self.context.get('momentum_trend_alignment') is not None else None
+                # trend_transition_probability → pattern_confidence
+                trend_transition_probability = float(self.context.get('pattern_confidence', 0)) if self.context.get('pattern_confidence') is not None else None
+                # momentum_trend_alignment → momentum_score
+                momentum_trend_alignment = float(self.context.get('momentum_score', 0)) if self.context.get('momentum_score') is not None else None
                 
                 # Tendances par timeframe (si disponibles)
-                trend_1h = self.context.get('trend_1h')
-                trend_4h = self.context.get('trend_4h') 
-                trend_1d = self.context.get('trend_1d')
+                # trend_1h/4h/1d → trend_strength (utiliser même indicateur)
+                trend_1h = self.context.get('trend_strength')
+                trend_4h = self.context.get('trend_strength') 
+                trend_1d = self.context.get('trend_strength')
                 
             except (ValueError, TypeError) as e:
                 logger.warning(f"{self.name}: Erreur conversion indicateurs pour {self.symbol}: {e}")
@@ -317,16 +331,24 @@ class Trend_Alignment_Validator(BaseValidator):
                 return 0.0
                 
             # Calcul du score basé sur alignement tendances
-            primary_trend_strength_raw = self.context.get('primary_trend_strength')
+            # primary_trend_strength → trend_strength
+            primary_trend_strength_raw = self.context.get('trend_strength')
             primary_trend_strength = self._convert_trend_strength_to_score(str(primary_trend_strength_raw)) if primary_trend_strength_raw is not None else 0.5
-            ema_alignment_score = float(self.context.get('ema_alignment_score', 50.0)) if self.context.get('ema_alignment_score') is not None else 50.0
-            ema_separation_ratio = float(self.context.get('ema_separation_ratio', 0.01)) if self.context.get('ema_separation_ratio') is not None else 0.01
-            macd_trend_coherence = float(self.context.get('macd_trend_coherence', 0.5)) if self.context.get('macd_trend_coherence') is not None else 0.5
-            timeframe_consensus_score = float(self.context.get('timeframe_consensus_score', 60.0)) if self.context.get('timeframe_consensus_score') is not None else 60.0
-            aligned_timeframes_count = int(self.context.get('aligned_timeframes_count', 2)) if self.context.get('aligned_timeframes_count') is not None else 2
-            momentum_trend_alignment = float(self.context.get('momentum_trend_alignment', 0.5)) if self.context.get('momentum_trend_alignment') is not None else 0.5
+            # ema_alignment_score → trend_alignment
+            ema_alignment_score = float(self.context.get('trend_alignment', 50.0)) if self.context.get('trend_alignment') is not None else 50.0
+            # ema_separation_ratio → trend_strength
+            ema_separation_ratio = float(self.context.get('trend_strength', 0.01)) if self.context.get('trend_strength') is not None else 0.01
+            # macd_trend_coherence → macd_trend
+            macd_trend_coherence = float(self.context.get('macd_trend', 0.5)) if self.context.get('macd_trend') is not None else 0.5
+            # timeframe_consensus_score → confluence_score
+            timeframe_consensus_score = float(self.context.get('confluence_score', 60.0)) if self.context.get('confluence_score') is not None else 60.0
+            # aligned_timeframes_count → trend_alignment
+            aligned_timeframes_count = int(self.context.get('trend_alignment', 2)) if self.context.get('trend_alignment') is not None else 2
+            # momentum_trend_alignment → momentum_score
+            momentum_trend_alignment = float(self.context.get('momentum_score', 0.5)) if self.context.get('momentum_score') is not None else 0.5
             
-            primary_trend_direction = self.context.get('primary_trend_direction', 'neutral')
+            # primary_trend_direction → directional_bias
+            primary_trend_direction = self.context.get('directional_bias', 'neutral')
             signal_strategy = signal.get('strategy', '')
             signal_side = signal.get('side')
             
@@ -412,11 +434,17 @@ class Trend_Alignment_Validator(BaseValidator):
             signal_side = signal.get('side', 'N/A')
             signal_strategy = signal.get('strategy', 'N/A')
             
-            primary_trend_direction = self.context.get('primary_trend_direction', 'N/A')
-            primary_trend_strength = float(self.context.get('primary_trend_strength', 0)) if self.context.get('primary_trend_strength') is not None else None
-            ema_alignment_score = float(self.context.get('ema_alignment_score', 50.0)) if self.context.get('ema_alignment_score') is not None else None
-            timeframe_consensus_score = float(self.context.get('timeframe_consensus_score', 60.0)) if self.context.get('timeframe_consensus_score') is not None else None
-            aligned_timeframes_count = int(self.context.get('aligned_timeframes_count', 0)) if self.context.get('aligned_timeframes_count') is not None else None
+            # primary_trend_direction → directional_bias
+            primary_trend_direction = self.context.get('directional_bias', 'N/A')
+            # primary_trend_strength → trend_strength
+            primary_trend_strength_raw = self.context.get('trend_strength', 0)
+            primary_trend_strength = self._convert_trend_strength_to_score(str(primary_trend_strength_raw)) if primary_trend_strength_raw is not None else None
+            # ema_alignment_score → trend_alignment
+            ema_alignment_score = float(self.context.get('trend_alignment', 50.0)) if self.context.get('trend_alignment') is not None else None
+            # timeframe_consensus_score → confluence_score
+            timeframe_consensus_score = float(self.context.get('confluence_score', 60.0)) if self.context.get('confluence_score') is not None else None
+            # aligned_timeframes_count → trend_alignment
+            aligned_timeframes_count = int(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None
             
             if is_valid:
                 reason = f"Alignement de tendance favorable"
@@ -461,8 +489,8 @@ class Trend_Alignment_Validator(BaseValidator):
             
         # Au minimum, on a besoin d'un indicateur de tendance
         trend_indicators = [
-            'primary_trend_direction', 'primary_trend_strength', 'ema_alignment_score',
-            'timeframe_consensus_score', 'macd_trend_coherence'
+            'directional_bias', 'trend_strength', 'trend_alignment',
+            'confluence_score', 'macd_trend'
         ]
         
         available_indicators = sum(1 for ind in trend_indicators 
@@ -473,3 +501,31 @@ class Trend_Alignment_Validator(BaseValidator):
             return False
             
         return True
+            
+    def _convert_trend_strength_to_score(self, trend_strength_str: str) -> float:
+        """Convertit une chaîne de force de tendance en score numérique."""
+        try:
+            if not trend_strength_str:
+                return 0.5
+                
+            trend_lower = trend_strength_str.lower()
+            
+            if trend_lower in ['very_strong', 'strong_bullish', 'strong_bearish']:
+                return 0.9
+            elif trend_lower in ['strong', 'bullish', 'bearish']:
+                return 0.7
+            elif trend_lower in ['moderate', 'weak_bullish', 'weak_bearish']:
+                return 0.5
+            elif trend_lower in ['weak', 'very_weak']:
+                return 0.3
+            elif trend_lower in ['neutral', 'sideways']:
+                return 0.1
+            else:
+                # Essayer de convertir directement en float
+                try:
+                    return float(trend_strength_str)
+                except (ValueError, TypeError):
+                    return 0.5
+                    
+        except Exception:
+            return 0.5

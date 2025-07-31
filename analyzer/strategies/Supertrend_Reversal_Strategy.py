@@ -292,8 +292,11 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         
         # Récupérer prix actuel
         current_price = None
-        if 'ohlcv' in self.data and self.data['ohlcv']:
-            current_price = float(self.data['ohlcv'][-1]['close'])
+        if 'close' in self.data and self.data['close']:
+            try:
+                current_price = float(self.data['close'][-1])
+            except (IndexError, ValueError, TypeError):
+                pass
             
         if current_price is None:
             return {
@@ -490,8 +493,8 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                 return False
                 
         # Vérifier données OHLCV
-        if 'ohlcv' not in self.data or not self.data['ohlcv']:
-            logger.warning(f"{self.name}: Données OHLCV manquantes")
+        if 'close' not in self.data or not self.data['close']:
+            logger.warning(f"{self.name}: Données close manquantes")
             return False
             
         return True

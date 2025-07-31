@@ -66,8 +66,10 @@ class MultiTF_Consensus_Validator(BaseValidator):
             # Extraction des indicateurs multi-TF depuis le contexte
             try:
                 # Scores principaux multi-TF
-                consensus_score = float(self.context.get('consensus_score', 0)) if self.context.get('consensus_score') is not None else None
-                tf_alignment = float(self.context.get('tf_alignment', 0)) if self.context.get('tf_alignment') is not None else None
+                # consensus_score → confluence_score (score de confluence)
+                consensus_score = float(self.context.get('confluence_score', 0)) if self.context.get('confluence_score') is not None else None
+                # tf_alignment → trend_alignment (alignement de tendance)
+                tf_alignment = float(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None
                 trend_alignment = float(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None
                 # Ligne 72: Vérification None et type avant conversion
                 signal_strength_raw = self.context.get('signal_strength')
@@ -301,8 +303,10 @@ class MultiTF_Consensus_Validator(BaseValidator):
                 return 0.0
                 
             # Calcul du score basé sur consensus multi-TF
-            consensus_score = float(self.context.get('consensus_score', 0.5)) if self.context.get('consensus_score') is not None else 0.5
-            tf_alignment = float(self.context.get('tf_alignment', 0.5)) if self.context.get('tf_alignment') is not None else 0.5
+            # consensus_score → confluence_score (score de confluence)
+            consensus_score = float(self.context.get('confluence_score', 0.5)) if self.context.get('confluence_score') is not None else 0.5
+            # tf_alignment → trend_alignment (alignement de tendance)
+            tf_alignment = float(self.context.get('trend_alignment', 0.5)) if self.context.get('trend_alignment') is not None else 0.5
             trend_alignment = float(self.context.get('trend_alignment', 0.5)) if self.context.get('trend_alignment') is not None else 0.5
             # Ligne 301: Vérification None et type avant conversion
             signal_strength_raw = self.context.get('signal_strength')
@@ -400,8 +404,10 @@ class MultiTF_Consensus_Validator(BaseValidator):
             Raison de la décision
         """
         try:
-            consensus_score = float(self.context.get('consensus_score', 0)) if self.context.get('consensus_score') is not None else None
-            tf_alignment = float(self.context.get('tf_alignment', 0)) if self.context.get('tf_alignment') is not None else None
+            # consensus_score → confluence_score (score de confluence)
+            consensus_score = float(self.context.get('confluence_score', 0)) if self.context.get('confluence_score') is not None else None
+            # tf_alignment → trend_alignment (alignement de tendance)
+            tf_alignment = float(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None
             trend_alignment = float(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None
             # Ligne 395: Vérification None et type avant conversion
             signal_strength_raw = self.context.get('signal_strength')
@@ -470,7 +476,7 @@ class MultiTF_Consensus_Validator(BaseValidator):
             
         # Indicateurs multi-TF requis (au moins 2 sur 4)
         multitf_indicators = [
-            'consensus_score', 'tf_alignment', 'trend_alignment', 'signal_strength'
+            'confluence_score', 'trend_alignment', 'trend_alignment', 'signal_strength'
         ]
         
         available_indicators = sum(1 for ind in multitf_indicators 

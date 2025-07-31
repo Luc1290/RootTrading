@@ -86,33 +86,49 @@ class Volume_Spike_Validator(BaseValidator):
             try:
                 # Spike de base
                 volume_spike_multiplier = float(self.context.get('volume_spike_multiplier', 1.0)) if self.context.get('volume_spike_multiplier') is not None else None
-                current_volume_spike = float(self.context.get('current_volume_spike', 1.0)) if self.context.get('current_volume_spike') is not None else None
-                volume_spike_strength = float(self.context.get('volume_spike_strength', 0)) if self.context.get('volume_spike_strength') is not None else None
+                # current_volume_spike → volume_spike_multiplier
+                current_volume_spike = float(self.context.get('volume_spike_multiplier', 1.0)) if self.context.get('volume_spike_multiplier') is not None else None
+                # volume_spike_strength → volume_spike_multiplier
+                volume_spike_strength = float(self.context.get('volume_spike_multiplier', 0)) if self.context.get('volume_spike_multiplier') is not None else None
                 
                 # Durée et persistance
-                spike_duration_bars = int(self.context.get('spike_duration_bars', 0)) if self.context.get('spike_duration_bars') is not None else None
-                spike_decay_rate = float(self.context.get('spike_decay_rate', 0)) if self.context.get('spike_decay_rate') is not None else None
-                spike_persistence_score = float(self.context.get('spike_persistence_score', 0)) if self.context.get('spike_persistence_score') is not None else None
+                # spike_duration_bars → volume_buildup_periods
+                spike_duration_bars = int(self.context.get('volume_buildup_periods', 0)) if self.context.get('volume_buildup_periods') is not None else None
+                # spike_decay_rate → momentum_score
+                spike_decay_rate = float(self.context.get('momentum_score', 0)) if self.context.get('momentum_score') is not None else None
+                # spike_persistence_score → signal_strength
+                spike_persistence_score = float(self.context.get('signal_strength', 0)) if self.context.get('signal_strength') is not None else None
                 
                 # Qualité spike
-                spike_quality_score = float(self.context.get('spike_quality_score', 0.5)) if self.context.get('spike_quality_score') is not None else None
-                spike_consistency = float(self.context.get('spike_consistency', 0.5)) if self.context.get('spike_consistency') is not None else None
-                spike_legitimacy_score = float(self.context.get('spike_legitimacy_score', 0.5)) if self.context.get('spike_legitimacy_score') is not None else None
+                # spike_quality_score → volume_quality_score
+                spike_quality_score = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else None
+                # spike_consistency → volume_quality_score
+                spike_consistency = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else None
+                # spike_legitimacy_score → pattern_confidence
+                spike_legitimacy_score = float(self.context.get('pattern_confidence', 0.5)) if self.context.get('pattern_confidence') is not None else None
                 
                 # Timing
-                time_since_spike = int(self.context.get('time_since_spike', 0)) if self.context.get('time_since_spike') is not None else None
-                recent_spike_count = int(self.context.get('recent_spike_count', 0)) if self.context.get('recent_spike_count') is not None else None
-                last_spike_bars_ago = int(self.context.get('last_spike_bars_ago', 999)) if self.context.get('last_spike_bars_ago') is not None else None
+                # time_since_spike → regime_duration
+                time_since_spike = int(self.context.get('regime_duration', 0)) if self.context.get('regime_duration') is not None else None
+                # recent_spike_count → volume_spike_multiplier
+                recent_spike_count = int(self.context.get('volume_spike_multiplier', 0)) if self.context.get('volume_spike_multiplier') is not None else None
+                # last_spike_bars_ago → regime_duration
+                last_spike_bars_ago = int(self.context.get('regime_duration', 999)) if self.context.get('regime_duration') is not None else None
                 
                 # Contexte marché
-                relative_spike_strength = float(self.context.get('relative_spike_strength', 1.0)) if self.context.get('relative_spike_strength') is not None else None
-                market_activity_level = float(self.context.get('market_activity_level', 0.5)) if self.context.get('market_activity_level') is not None else None
+                # relative_spike_strength → relative_volume
+                relative_spike_strength = float(self.context.get('relative_volume', 1.0)) if self.context.get('relative_volume') is not None else None
+                # market_activity_level → trade_intensity
+                market_activity_level = float(self.context.get('trade_intensity', 0.5)) if self.context.get('trade_intensity') is not None else None
                 unusual_activity_detected = self.context.get('unusual_activity_detected', False)
                 
                 # Divergences et confirmations
-                price_volume_divergence = float(self.context.get('price_volume_divergence', 0)) if self.context.get('price_volume_divergence') is not None else None
-                spike_price_confirmation = float(self.context.get('spike_price_confirmation', 0.5)) if self.context.get('spike_price_confirmation') is not None else None
-                volume_trend_coherence = float(self.context.get('volume_trend_coherence', 0.5)) if self.context.get('volume_trend_coherence') is not None else None
+                # price_volume_divergence → signal_strength
+                price_volume_divergence = float(self.context.get('signal_strength', 0)) if self.context.get('signal_strength') is not None else None
+                # spike_price_confirmation → pattern_confidence
+                spike_price_confirmation = float(self.context.get('pattern_confidence', 0.5)) if self.context.get('pattern_confidence') is not None else None
+                # volume_trend_coherence → volume_quality_score
+                volume_trend_coherence = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else None
                 
             except (ValueError, TypeError) as e:
                 logger.warning(f"{self.name}: Erreur conversion indicateurs pour {self.symbol}: {e}")
@@ -291,13 +307,20 @@ class Volume_Spike_Validator(BaseValidator):
                 
             # Calcul du score basé sur volume spikes
             volume_spike_multiplier = float(self.context.get('volume_spike_multiplier', 1.0)) if self.context.get('volume_spike_multiplier') is not None else 1.0
-            spike_duration_bars = int(self.context.get('spike_duration_bars', 1)) if self.context.get('spike_duration_bars') is not None else 1
-            spike_quality_score = float(self.context.get('spike_quality_score', 0.5)) if self.context.get('spike_quality_score') is not None else 0.5
-            spike_consistency = float(self.context.get('spike_consistency', 0.5)) if self.context.get('spike_consistency') is not None else 0.5
-            spike_legitimacy_score = float(self.context.get('spike_legitimacy_score', 0.5)) if self.context.get('spike_legitimacy_score') is not None else 0.5
-            time_since_spike = int(self.context.get('time_since_spike', 5)) if self.context.get('time_since_spike') is not None else 5
-            relative_spike_strength = float(self.context.get('relative_spike_strength', 1.0)) if self.context.get('relative_spike_strength') is not None else 1.0
-            spike_price_confirmation = float(self.context.get('spike_price_confirmation', 0.5)) if self.context.get('spike_price_confirmation') is not None else 0.5
+            # spike_duration_bars → volume_buildup_periods
+            spike_duration_bars = int(self.context.get('volume_buildup_periods', 1)) if self.context.get('volume_buildup_periods') is not None else 1
+            # spike_quality_score → volume_quality_score
+            spike_quality_score = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else 0.5
+            # spike_consistency → volume_quality_score
+            spike_consistency = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else 0.5
+            # spike_legitimacy_score → pattern_confidence
+            spike_legitimacy_score = float(self.context.get('pattern_confidence', 0.5)) if self.context.get('pattern_confidence') is not None else 0.5
+            # time_since_spike → regime_duration
+            time_since_spike = int(self.context.get('regime_duration', 5)) if self.context.get('regime_duration') is not None else 5
+            # relative_spike_strength → relative_volume
+            relative_spike_strength = float(self.context.get('relative_volume', 1.0)) if self.context.get('relative_volume') is not None else 1.0
+            # spike_price_confirmation → pattern_confidence
+            spike_price_confirmation = float(self.context.get('pattern_confidence', 0.5)) if self.context.get('pattern_confidence') is not None else 0.5
             unusual_activity_detected = self.context.get('unusual_activity_detected', False)
             
             signal_strategy = signal.get('strategy', '')
@@ -385,10 +408,14 @@ class Volume_Spike_Validator(BaseValidator):
             signal_strategy = signal.get('strategy', 'N/A')
             
             volume_spike_multiplier = float(self.context.get('volume_spike_multiplier', 1.0)) if self.context.get('volume_spike_multiplier') is not None else None
-            spike_duration_bars = int(self.context.get('spike_duration_bars', 0)) if self.context.get('spike_duration_bars') is not None else None
-            spike_quality_score = float(self.context.get('spike_quality_score', 0.5)) if self.context.get('spike_quality_score') is not None else None
-            time_since_spike = int(self.context.get('time_since_spike', 0)) if self.context.get('time_since_spike') is not None else None
-            spike_legitimacy_score = float(self.context.get('spike_legitimacy_score', 0.5)) if self.context.get('spike_legitimacy_score') is not None else None
+            # spike_duration_bars → volume_buildup_periods
+            spike_duration_bars = int(self.context.get('volume_buildup_periods', 0)) if self.context.get('volume_buildup_periods') is not None else None
+            # spike_quality_score → volume_quality_score
+            spike_quality_score = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else None
+            # time_since_spike → regime_duration
+            time_since_spike = int(self.context.get('regime_duration', 0)) if self.context.get('regime_duration') is not None else None
+            # spike_legitimacy_score → pattern_confidence
+            spike_legitimacy_score = float(self.context.get('pattern_confidence', 0.5)) if self.context.get('pattern_confidence') is not None else None
             
             if is_valid:
                 reason = f"Spike volume favorable"
@@ -437,10 +464,10 @@ class Volume_Spike_Validator(BaseValidator):
         if not super().validate_data():
             return False
             
-        # Au minimum, on a besoin d'un indicateur de spike
+        # Au minimum, on a besoin d'un indicateur de spike (avec mappings)
         spike_indicators = [
-            'volume_spike_multiplier', 'current_volume_spike', 'spike_quality_score',
-            'spike_duration_bars', 'time_since_spike', 'relative_spike_strength'
+            'volume_spike_multiplier', 'volume_spike_multiplier', 'volume_quality_score',
+            'volume_buildup_periods', 'regime_duration', 'relative_volume'
         ]
         
         available_indicators = sum(1 for ind in spike_indicators 

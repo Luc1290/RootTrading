@@ -386,8 +386,11 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
                 try:
                     # Récupérer prix actuel depuis OHLCV si disponible
                     current_price = None
-                    if 'ohlcv' in self.data and self.data['ohlcv']:
-                        current_price = float(self.data['ohlcv'][-1]['close'])
+                    if 'close' in self.data and self.data['close']:
+                        try:
+                            current_price = float(self.data['close'][-1])
+                        except (IndexError, ValueError, TypeError):
+                            pass
                         
                     if current_price is not None:
                         support_val = float(nearest_support)
