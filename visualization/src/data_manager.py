@@ -258,7 +258,7 @@ class DataManager:
         
         if limit:
             query += f" LIMIT ${len(params) + 1}"
-            params.append(str(limit))
+            params.append(limit)
             
         try:
             async with self.postgres_pool.acquire() as conn:
@@ -398,7 +398,7 @@ class DataManager:
             params.append(end_time.isoformat() if isinstance(end_time, datetime) else end_time)
             
         query += " ORDER BY timestamp DESC LIMIT $" + str(len(params) + 1)
-        params.append("10000")  # Plus de signaux historiques
+        params.append(10000)  # Plus de signaux historiques
         
         try:
             async with self.postgres_pool.acquire() as conn:
@@ -724,7 +724,7 @@ class DataManager:
         
         if limit:
             query += f" LIMIT ${len(params) + 1}"
-            params.append(str(limit))
+            params.append(limit)
             
         try:
             async with self.postgres_pool.acquire() as conn:
