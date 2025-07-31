@@ -311,7 +311,7 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         volatility_regime = values.get('volatility_regime')
         if volatility_regime is not None:
             try:
-                vol_regime = float(volatility_regime)
+                vol_regime = self._convert_volatility_to_score(str(volatility_regime))  
                 if vol_regime < self.min_volatility_regime or vol_regime > self.max_volatility_regime:
                     return {
                         "side": None,
@@ -498,3 +498,27 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
             return False
             
         return True
+    
+    def _convert_volatility_to_score(self, volatility_regime: str) -> float:
+        """Convertit un régime de volatilité en score numérique."""
+        try:
+            if not volatility_regime:
+                return 1.0
+                
+            vol_lower = volatility_regime.lower()
+            
+            if vol_lower in ['high', 'very_high', 'extreme']:
+                return 3.0  # Haute volatilité
+            elif vol_lower in ['normal', 'moderate', 'average']:
+                return 2.0  # Volatilité normale
+            elif vol_lower in ['low', 'very_low', 'minimal']:
+                return 1.0  # Faible volatilité
+            else:
+                # Essayer de convertir directement en float
+                try:
+                    return float(volatility_regime)
+                except (ValueError, TypeError):
+                    return 2.0  # Valeur par défaut
+                    
+        except Exception:
+            return 2.0

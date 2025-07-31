@@ -89,14 +89,16 @@ class Trend_Alignment_Validator(BaseValidator):
                 # EMA alignment
                 # ema_alignment_score → trend_alignment
                 ema_alignment_score = float(self.context.get('trend_alignment', 50.0)) if self.context.get('trend_alignment') is not None else None
-                # ema_separation_ratio → trend_strength
-                ema_separation_ratio = float(self.context.get('trend_strength', 0)) if self.context.get('trend_strength') is not None else None
+                # ema_separation_ratio → trend_strength (éviter conversion si catégoriel)
+                trend_strength_raw = self.context.get('trend_strength', 0)
+                ema_separation_ratio = self._safe_float_conversion(trend_strength_raw, 0.01)
                 # ema_slope_strength → trend_angle
                 ema_slope_strength = float(self.context.get('trend_angle', 0)) if self.context.get('trend_angle') is not None else None
                 
                 # MACD alignment
-                # macd_trend_coherence → macd_trend
-                macd_trend_coherence = float(self.context.get('macd_trend', 0)) if self.context.get('macd_trend') is not None else None
+                # macd_trend_coherence → macd_trend (catégoriel: BEARISH/BULLISH/NEUTRAL)
+                macd_trend_raw = self.context.get('macd_trend', 'NEUTRAL')
+                macd_trend_coherence = self._convert_macd_trend_to_score(str(macd_trend_raw)) if macd_trend_raw is not None else None
                 # macd_histogram_strength → macd_histogram
                 macd_histogram_strength = float(self.context.get('macd_histogram', 0)) if self.context.get('macd_histogram') is not None else None
                 # macd_signal_alignment → macd_signal_cross
@@ -336,10 +338,12 @@ class Trend_Alignment_Validator(BaseValidator):
             primary_trend_strength = self._convert_trend_strength_to_score(str(primary_trend_strength_raw)) if primary_trend_strength_raw is not None else 0.5
             # ema_alignment_score → trend_alignment
             ema_alignment_score = float(self.context.get('trend_alignment', 50.0)) if self.context.get('trend_alignment') is not None else 50.0
-            # ema_separation_ratio → trend_strength
-            ema_separation_ratio = float(self.context.get('trend_strength', 0.01)) if self.context.get('trend_strength') is not None else 0.01
-            # macd_trend_coherence → macd_trend
-            macd_trend_coherence = float(self.context.get('macd_trend', 0.5)) if self.context.get('macd_trend') is not None else 0.5
+            # ema_separation_ratio → trend_strength (éviter conversion si catégoriel) 
+            trend_strength_raw = self.context.get('trend_strength', 0.01)
+            ema_separation_ratio = self._safe_float_conversion(trend_strength_raw, 0.01)
+            # macd_trend_coherence → macd_trend (catégoriel: BEARISH/BULLISH/NEUTRAL)
+            macd_trend_raw = self.context.get('macd_trend', 'NEUTRAL')
+            macd_trend_coherence = self._convert_macd_trend_to_score(str(macd_trend_raw))
             # timeframe_consensus_score → confluence_score
             timeframe_consensus_score = float(self.context.get('confluence_score', 60.0)) if self.context.get('confluence_score') is not None else 60.0
             # aligned_timeframes_count → trend_alignment
@@ -518,14 +522,59 @@ class Trend_Alignment_Validator(BaseValidator):
                 return 0.5
             elif trend_lower in ['weak', 'very_weak']:
                 return 0.3
-            elif trend_lower in ['neutral', 'sideways']:
+            elif trend_lower in ['neutral', 'sideways', 'absent']:
                 return 0.1
             else:
                 # Essayer de convertir directement en float
                 try:
                     return float(trend_strength_str)
                 except (ValueError, TypeError):
+                    # Si conversion impossible, traiter comme neutre
                     return 0.5
+                    
+        except Exception:
+            return 0.5
+    
+    def _safe_float_conversion(self, value, default: float) -> float:
+        """Conversion sécurisée vers float, évite les erreurs avec valeurs catégorielles."""
+        try:
+            if value is None:
+                return default
+            if isinstance(value, (int, float)):
+                return float(value)
+            if isinstance(value, str):
+                # Essayer conversion directe
+                try:
+                    return float(value)
+                except (ValueError, TypeError):
+                    # Si c'est une valeur catégorielle, convertir via _convert_trend_strength_to_score
+                    if value.lower() in ['bearish', 'bullish', 'neutral', 'strong', 'weak', 'moderate']:
+                        return self._convert_trend_strength_to_score(value)
+                    return default
+            return default
+        except Exception:
+            return default
+    
+    def _convert_macd_trend_to_score(self, macd_trend: str) -> float:
+        """Convertit une tendance MACD catégorielle en score numérique."""
+        try:
+            if not macd_trend:
+                return 0.5
+                
+            trend_lower = macd_trend.lower()
+            
+            if trend_lower in ['bullish', 'up', 'positive']:
+                return 0.8  # MACD haussier
+            elif trend_lower in ['bearish', 'down', 'negative']:
+                return 0.2  # MACD baissier
+            elif trend_lower in ['neutral', 'sideways', 'flat']:
+                return 0.5  # MACD neutre
+            else:
+                # Essayer de convertir directement en float
+                try:
+                    return float(macd_trend)
+                except (ValueError, TypeError):
+                    return 0.5  # Valeur par défaut
                     
         except Exception:
             return 0.5

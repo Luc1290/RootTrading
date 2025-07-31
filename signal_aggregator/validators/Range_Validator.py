@@ -108,8 +108,9 @@ class Range_Validator(BaseValidator):
                 # Probabilité breakout et volatilité
                 # breakout_probability existe déjà !
                 breakout_probability = float(self.context.get('break_probability', 0.5)) if self.context.get('break_probability') is not None else None
-                # range_volatility → volatility_regime
-                range_volatility = float(self.context.get('volatility_regime', 0.02)) if self.context.get('volatility_regime') is not None else None
+                # range_volatility → volatility_regime (catégoriel: 'low', 'normal', 'high')
+                range_volatility_raw = self.context.get('volatility_regime')
+                range_volatility = self._convert_volatility_to_score(str(range_volatility_raw)) if range_volatility_raw is not None else 0.02
                 # range_compression → bb_squeeze (compression = squeeze)
                 range_compression = float(self.context.get('bb_squeeze', 0.5)) if self.context.get('bb_squeeze') is not None else None
                 
@@ -434,8 +435,9 @@ class Range_Validator(BaseValidator):
             boundary_respect_rate = float(self.context.get('pattern_confidence', 0.7)) if self.context.get('pattern_confidence') is not None else 0.7
             # breakout_probability → break_probability (existe déjà!)
             breakout_probability = float(self.context.get('break_probability', 0.5)) if self.context.get('break_probability') is not None else 0.5
-            # range_volatility → volatility_regime
-            range_volatility = float(self.context.get('volatility_regime', 0.02)) if self.context.get('volatility_regime') is not None else 0.02
+            # range_volatility → volatility_regime (catégoriel: 'low', 'normal', 'high')
+            range_volatility_raw = self.context.get('volatility_regime')
+            range_volatility = self._convert_volatility_to_score(str(range_volatility_raw)) if range_volatility_raw is not None else 0.02
             
             signal_strategy = signal.get('strategy', '')
             
@@ -603,3 +605,27 @@ class Range_Validator(BaseValidator):
         logger.debug(f"{self.name}: {available_indicators}/{len(optional_indicators)} indicateurs range disponibles pour {self.symbol}")
         
         return True
+    
+    def _convert_volatility_to_score(self, volatility_regime: str) -> float:
+        """Convertit un régime de volatilité en score numérique."""
+        try:
+            if not volatility_regime:
+                return 0.02
+                
+            vol_lower = volatility_regime.lower()
+            
+            if vol_lower in ['high', 'very_high', 'extreme']:
+                return 0.05  # Haute volatilité
+            elif vol_lower in ['normal', 'moderate', 'average']:
+                return 0.02  # Volatilité normale
+            elif vol_lower in ['low', 'very_low', 'minimal']:
+                return 0.01  # Faible volatilité
+            else:
+                # Essayer de convertir directement en float
+                try:
+                    return float(volatility_regime)
+                except (ValueError, TypeError):
+                    return 0.02  # Valeur par défaut
+                    
+        except Exception:
+            return 0.02

@@ -354,3 +354,29 @@ class Volatility_Regime_Validator(BaseValidator):
             return False
             
         return True
+    
+    def _convert_regime_strength_to_score(self, regime_strength_str: str) -> float:
+        """Convertit une force de régime en score numérique."""
+        try:
+            if not regime_strength_str:
+                return 0.5
+                
+            strength_lower = regime_strength_str.lower()
+            
+            if strength_lower in ['very_strong', 'strong']:
+                return 0.9
+            elif strength_lower in ['moderate', 'medium']:
+                return 0.6
+            elif strength_lower in ['weak', 'very_weak']:
+                return 0.3
+            elif strength_lower in ['neutral', 'absent']:
+                return 0.1
+            else:
+                # Essayer de convertir directement en float
+                try:
+                    return float(regime_strength_str)
+                except (ValueError, TypeError):
+                    return 0.5
+                    
+        except Exception:
+            return 0.5

@@ -89,21 +89,19 @@ class Volume_Buildup_Validator(BaseValidator):
             try:
                 # Volume de base
                 volume_ratio = float(self.context.get('volume_ratio', 1.0)) if self.context.get('volume_ratio') is not None else None
-                # volume_trend → volume_pattern (pattern de volume)
+                # volume_trend → volume_pattern (pattern de volume - toujours string)
                 volume_trend_raw = self.context.get('volume_pattern')
-                if isinstance(volume_trend_raw, str):
-                    # volume_trend_numeric → volume_ratio
-                    volume_trend = self.context.get('volume_ratio', 0.0)
-                else:
-                    volume_trend = float(volume_trend_raw) if volume_trend_raw is not None else None
+                # volume_pattern est toujours une string catégorielle: 'DECLINING', 'NORMAL', 'INCREASING' 
+                volume_trend = str(volume_trend_raw) if volume_trend_raw is not None else 'NORMAL'
                 # volume_sma_20 → avg_volume_20 (existe déjà!)
                 volume_sma_20 = float(self.context.get('avg_volume_20', 0)) if self.context.get('avg_volume_20') is not None else None
                 
                 # Accumulation/Distribution
                 # accumulation_distribution_score → ad_line
                 accumulation_distribution_score = float(self.context.get('ad_line', 50.0)) if self.context.get('ad_line') is not None else None
-                # buy_sell_pressure → volume_pattern (utiliser pattern)
-                buy_sell_pressure = float(self.context.get('volume_pattern', 0.5)) if self.context.get('volume_pattern') is not None else None
+                # buy_sell_pressure → volume_pattern (utiliser mapping)
+                buy_sell_pressure_raw = self.context.get('volume_pattern', 'NORMAL')
+                buy_sell_pressure = self._convert_volume_pattern_to_pressure(str(buy_sell_pressure_raw))
                 # volume_weighted_price → vwap_10
                 volume_weighted_price = float(self.context.get('vwap_10', 0)) if self.context.get('vwap_10') is not None else None
                 
@@ -139,8 +137,9 @@ class Volume_Buildup_Validator(BaseValidator):
                 volume_quality_score = float(self.context.get('volume_quality_score', 50.0)) if self.context.get('volume_quality_score') is not None else None
                 # average_trade_size_ratio → avg_trade_size
                 average_trade_size_ratio = float(self.context.get('avg_trade_size', 1.0)) if self.context.get('avg_trade_size') is not None else None
-                # volume_volatility → volatility_regime
-                volume_volatility = float(self.context.get('volatility_regime', 1.0)) if self.context.get('volatility_regime') is not None else None
+                # volume_volatility → volatility_regime (catégoriel)
+                volume_volatility_raw = self.context.get('volatility_regime', 'normal')
+                volume_volatility = self._convert_volatility_to_score(str(volume_volatility_raw))
                 
             except (ValueError, TypeError) as e:
                 logger.warning(f"{self.name}: Erreur conversion indicateurs pour {self.symbol}: {e}")
@@ -160,9 +159,9 @@ class Volume_Buildup_Validator(BaseValidator):
                 if signal_confidence < 0.8:
                     return False
                     
-            # 2. Validation trend volume
-            if volume_trend is not None and volume_trend < self.min_volume_trend:
-                logger.debug(f"{self.name}: Trend volume décroissant ({self._safe_format(volume_trend, '.2f')}) pour {self.symbol}")
+            # 2. Validation trend volume (catégoriel)
+            if volume_trend is not None and volume_trend.upper() in ['DECLINING', 'FALLING', 'WEAK']:
+                logger.debug(f"{self.name}: Trend volume décroissant ({volume_trend}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
@@ -324,17 +323,15 @@ class Volume_Buildup_Validator(BaseValidator):
                 
             # Calcul du score basé sur volume buildup
             volume_ratio = float(self.context.get('volume_ratio', 1.0)) if self.context.get('volume_ratio') is not None else 1.0
-            # volume_trend → volume_pattern (pattern de volume)
+            # volume_trend → volume_pattern (pattern de volume - toujours string)
             volume_trend_raw = self.context.get('volume_pattern')
-            if isinstance(volume_trend_raw, str):
-                # volume_trend_numeric → volume_ratio
-                volume_trend = self.context.get('volume_ratio', 0.0)
-            else:
-                volume_trend = float(volume_trend_raw) if volume_trend_raw is not None else 0
+            # volume_pattern est toujours une string catégorielle: 'DECLINING', 'NORMAL', 'INCREASING' 
+            volume_trend = str(volume_trend_raw) if volume_trend_raw is not None else 'NORMAL'
             # accumulation_distribution_score → ad_line
             accumulation_distribution_score = float(self.context.get('ad_line', 50.0)) if self.context.get('ad_line') is not None else 50.0
-            # buy_sell_pressure → volume_pattern (utiliser pattern)
-            buy_sell_pressure = float(self.context.get('volume_pattern', 0.5)) if self.context.get('volume_pattern') is not None else 0.5
+            # buy_sell_pressure → volume_pattern (utiliser mapping)
+            buy_sell_pressure_raw = self.context.get('volume_pattern', 'NORMAL')
+            buy_sell_pressure = self._convert_volume_pattern_to_pressure(str(buy_sell_pressure_raw))
             volume_buildup_bars = int(self.context.get('volume_buildup_periods', 0)) if self.context.get('volume_buildup_periods') is not None else 0
             # volume_buildup_consistency → volume_quality_score
             volume_buildup_consistency = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else 0.5
@@ -356,10 +353,10 @@ class Volume_Buildup_Validator(BaseValidator):
             elif volume_ratio >= self.min_volume_ratio + 0.3:
                 base_score += 0.10
                 
-            # Bonus trend volume croissant
-            if volume_trend >= 0.3:
+            # Bonus trend volume croissant (catégoriel)
+            if volume_trend and volume_trend.upper() in ['INCREASING', 'RISING', 'STRONG', 'BULLISH']:
                 base_score += 0.15  # Trend volume très positif
-            elif volume_trend >= 0.15:
+            elif volume_trend and volume_trend.upper() in ['NORMAL', 'STABLE', 'MODERATE']:
                 base_score += 0.10  # Trend volume positif
                 
             # Bonus accumulation/distribution selon signal
@@ -434,8 +431,9 @@ class Volume_Buildup_Validator(BaseValidator):
             volume_ratio = float(self.context.get('volume_ratio', 1.0)) if self.context.get('volume_ratio') is not None else None
             # accumulation_distribution_score → ad_line
             accumulation_distribution_score = float(self.context.get('ad_line', 50.0)) if self.context.get('ad_line') is not None else None
-            # buy_sell_pressure → volume_pattern (utiliser pattern)
-            buy_sell_pressure = float(self.context.get('volume_pattern', 0.5)) if self.context.get('volume_pattern') is not None else None
+            # buy_sell_pressure → volume_pattern (utiliser mapping)
+            buy_sell_pressure_raw = self.context.get('volume_pattern', 'NORMAL')
+            buy_sell_pressure = self._convert_volume_pattern_to_pressure(str(buy_sell_pressure_raw))
             volume_buildup_bars = int(self.context.get('volume_buildup_periods', 0)) if self.context.get('volume_buildup_periods') is not None else None
             # liquidity_score → trade_intensity
             liquidity_score = float(self.context.get('trade_intensity', 50.0)) if self.context.get('trade_intensity') is not None else None
@@ -524,3 +522,51 @@ class Volume_Buildup_Validator(BaseValidator):
                 except (ValueError, TypeError):
                     pass
         return None
+    
+    def _convert_volume_pattern_to_pressure(self, volume_pattern: str) -> float:
+        """Convertit un pattern de volume en score de pression achat/vente."""
+        try:
+            if not volume_pattern:
+                return 0.5
+                
+            pattern_lower = volume_pattern.lower()
+            
+            if pattern_lower in ['increasing', 'rising', 'strong', 'bullish']:
+                return 0.8  # Forte pression acheteuse
+            elif pattern_lower in ['declining', 'falling', 'weak', 'bearish']:
+                return 0.2  # Forte pression vendeuse
+            elif pattern_lower in ['normal', 'stable', 'moderate', 'neutral']:
+                return 0.5  # Pression équilibrée
+            else:
+                # Essayer de convertir directement en float
+                try:
+                    return float(volume_pattern)
+                except (ValueError, TypeError):
+                    return 0.5  # Valeur par défaut
+                    
+        except Exception:
+            return 0.5
+    
+    def _convert_volatility_to_score(self, volatility_regime: str) -> float:
+        """Convertit un régime de volatilité en score numérique."""
+        try:
+            if not volatility_regime:
+                return 1.0
+                
+            vol_lower = volatility_regime.lower()
+            
+            if vol_lower in ['high', 'very_high', 'extreme']:
+                return 2.5  # Haute volatilité
+            elif vol_lower in ['normal', 'moderate', 'average']:
+                return 1.0  # Volatilité normale
+            elif vol_lower in ['low', 'very_low', 'minimal']:
+                return 0.5  # Faible volatilité
+            else:
+                # Essayer de convertir directement en float
+                try:
+                    return float(volatility_regime)
+                except (ValueError, TypeError):
+                    return 1.0  # Valeur par défaut
+                    
+        except Exception:
+            return 1.0
