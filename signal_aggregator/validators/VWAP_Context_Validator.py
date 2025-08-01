@@ -260,36 +260,40 @@ class VWAP_Context_Validator(BaseValidator):
             vwap_distance_pct = abs(current_price - main_vwap) / main_vwap
             price_above_vwap = current_price > main_vwap
             
-            # Scoring selon position favorable
+            # CORRECTION: Scoring VWAP plus strict pour éviter signaux contradictoires
             if signal_side == "BUY":
                 if not price_above_vwap:
-                    # BUY en-dessous VWAP = excellent
+                    # BUY en-dessous VWAP = excellent (acheter bas)
                     base_score += 0.3
                 elif vwap_distance_pct <= self.close_to_vwap_threshold:
-                    # BUY très proche VWAP = très bon
-                    base_score += 0.25
+                    # BUY très proche VWAP au-dessus = neutre (pas de gros bonus)
+                    base_score += 0.10  # Réduit de 0.25 à 0.10
                 elif vwap_distance_pct <= self.moderate_distance_threshold:
-                    # BUY proche VWAP = bon
-                    base_score += 0.15
+                    # BUY modérément au-dessus VWAP = légèrement défavorable
+                    base_score += 0.05  # Réduit de 0.15 à 0.05
                 else:
-                    # BUY loin VWAP mais avec momentum
+                    # BUY loin VWAP au-dessus = défavorable sauf momentum très fort
                     if momentum_score >= self.strong_momentum_threshold:
-                        base_score += 0.1
+                        base_score += 0.05  # Réduit de 0.1 à 0.05
+                    else:
+                        base_score -= 0.05  # Malus pour position défavorable
                         
             elif signal_side == "SELL":
                 if price_above_vwap:
-                    # SELL au-dessus VWAP = excellent
+                    # SELL au-dessus VWAP = excellent (vendre haut)
                     base_score += 0.3
                 elif vwap_distance_pct <= self.close_to_vwap_threshold:
-                    # SELL très proche VWAP = très bon
-                    base_score += 0.25
+                    # SELL très proche VWAP en-dessous = neutre (pas de gros bonus)
+                    base_score += 0.10  # Réduit de 0.25 à 0.10
                 elif vwap_distance_pct <= self.moderate_distance_threshold:
-                    # SELL proche VWAP = bon
-                    base_score += 0.15
+                    # SELL modérément en-dessous VWAP = légèrement défavorable
+                    base_score += 0.05  # Réduit de 0.15 à 0.05
                 else:
-                    # SELL loin VWAP mais avec momentum
+                    # SELL loin VWAP en-dessous = défavorable sauf momentum très fort
                     if momentum_score <= -self.strong_momentum_threshold:
-                        base_score += 0.1
+                        base_score += 0.05  # Réduit de 0.1 à 0.05
+                    else:
+                        base_score -= 0.05  # Malus pour position défavorable
                         
             # Bonus position dans bandes VWAP
             if vwap_upper_band is not None and vwap_lower_band is not None:

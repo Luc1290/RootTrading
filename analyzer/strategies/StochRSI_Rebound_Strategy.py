@@ -142,11 +142,15 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                     confidence_boost += 0.1
                     reason += " avec momentum favorable"
                     
-            # Utilisation du trend_strength
+            # CORRECTION: Utilisation du trend_strength directionnel
             trend_strength = values.get('trend_strength')
             if trend_strength and trend_strength in ['STRONG', 'VERY_STRONG']:
-                confidence_boost += 0.1
-                reason += " et tendance forte"
+                if signal_side == "BUY":
+                    confidence_boost += 0.12  # Rebond oversold + trend fort = excellent
+                    reason += " et tendance forte haussière"
+                else:  # SELL
+                    confidence_boost += 0.08  # Rebond overbought + trend fort = bon
+                    reason += " et tendance forte baissière"
                 
             # Utilisation du directional_bias
             directional_bias = values.get('directional_bias')

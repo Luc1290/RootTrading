@@ -235,6 +235,66 @@ class MultiTF_Consensus_Validator(BaseValidator):
         except Exception:
             return 0.3  # Score de sécurité
             
+    def _calculate_ma_alignment_directional(self, signal_side: str, directional_bias: str) -> float:
+        """Calcule le score d'alignement des moyennes mobiles avec logique directionnelle."""
+        try:
+            # Score d'alignement base
+            base_ma_alignment = self._calculate_ma_alignment()
+            
+            # Récupération des MA pour logique directionnelle
+            mas = {}
+            ma_keys = ['ema_7', 'ema_12', 'ema_26', 'ema_50', 'ema_99', 'sma_20', 'sma_50']
+            
+            for key in ma_keys:
+                if key in self.context and self.context[key] is not None:
+                    try:
+                        mas[key] = float(self.context[key])
+                    except (ValueError, TypeError):
+                        continue
+                        
+            if len(mas) < 3:
+                return base_ma_alignment  # Retourner score de base si pas assez de MA
+                
+            # Analyser ordre des MA selon direction souhaitée
+            fast_mas = [v for k, v in mas.items() if k in ['ema_7', 'ema_12', 'ema_26']]
+            slow_mas = [v for k, v in mas.items() if k in ['ema_50', 'ema_99', 'sma_50']]
+            
+            if not fast_mas or not slow_mas:
+                return base_ma_alignment
+                
+            avg_fast = sum(fast_mas) / len(fast_mas)
+            avg_slow = sum(slow_mas) / len(slow_mas)
+            
+            # Logique directionnelle
+            ma_bullish_alignment = avg_fast > avg_slow  # MA rapides > MA lentes = bullish
+            
+            # Cohérence avec signal et bias
+            directional_coherence = False
+            
+            if signal_side == "BUY":
+                # BUY favorisé si MA bullish alignment
+                if ma_bullish_alignment:
+                    directional_coherence = True
+                # Bonus supplémentaire si bias confirme
+                if directional_bias == "bullish":
+                    base_ma_alignment *= 1.2  # Bonus 20%
+            elif signal_side == "SELL":
+                # SELL favorisé si MA bearish alignment
+                if not ma_bullish_alignment:
+                    directional_coherence = True
+                # Bonus supplémentaire si bias confirme
+                if directional_bias == "bearish":
+                    base_ma_alignment *= 1.2  # Bonus 20%
+                    
+            # Ajustement selon cohérence directionnelle
+            if directional_coherence:
+                return min(1.0, base_ma_alignment * 1.1)  # Bonus 10% pour cohérence
+            else:
+                return base_ma_alignment * 0.8  # Malus 20% pour incohérence
+                
+        except Exception:
+            return 0.3  # Score de sécurité
+            
     def _validate_directional_consensus(self, signal_side: str, directional_bias: str, 
                                        trend_strength: float) -> bool:
         """Valide le consensus directionnel."""
@@ -323,32 +383,47 @@ class MultiTF_Consensus_Validator(BaseValidator):
             
             base_score = 0.5  # Score de base si validé
             
-            # Bonus consensus score
+            # CORRECTION: Bonus consensus selon cohérence directionnelle
+            directional_consensus = self._validate_directional_consensus(
+                str(signal_side) if signal_side is not None else "UNKNOWN", str(directional_bias) if directional_bias is not None else "neutral", trend_strength
+            )
+            
+            # Bonus consensus score (réduit si pas de cohérence directionnelle)
+            consensus_bonus_multiplier = 1.0 if directional_consensus else 0.6
             if consensus_score >= self.perfect_alignment_threshold:
-                base_score += self.perfect_consensus_bonus
+                base_score += self.perfect_consensus_bonus * consensus_bonus_multiplier
             elif consensus_score >= self.strong_consensus_threshold:
-                base_score += 0.20
+                base_score += 0.20 * consensus_bonus_multiplier
             elif consensus_score >= self.min_consensus_score:
-                base_score += 0.10
+                base_score += 0.10 * consensus_bonus_multiplier
                 
-            # Bonus alignement TF
+            # Bonus alignement TF (réduit si pas de cohérence directionnelle)
             if tf_alignment >= self.perfect_alignment_threshold:
-                base_score += self.strong_alignment_bonus
+                base_score += self.strong_alignment_bonus * consensus_bonus_multiplier
             elif tf_alignment >= self.strong_consensus_threshold:
-                base_score += 0.15
+                base_score += 0.15 * consensus_bonus_multiplier
             elif tf_alignment >= self.min_tf_alignment:
-                base_score += 0.08
+                base_score += 0.08 * consensus_bonus_multiplier
                 
-            # Bonus alignement tendance
+            # Bonus alignement tendance (plus strict selon direction)
             if trend_alignment >= self.perfect_alignment_threshold:
-                base_score += 0.18
+                if directional_consensus:
+                    base_score += 0.18  # Plein bonus si cohérent
+                else:
+                    base_score += 0.09  # Bonus réduit si incohérent
             elif trend_alignment >= self.strong_consensus_threshold:
-                base_score += 0.12
+                if directional_consensus:
+                    base_score += 0.12
+                else:
+                    base_score += 0.06
             elif trend_alignment >= self.min_ma_alignment:
-                base_score += 0.08
+                if directional_consensus:
+                    base_score += 0.08
+                else:
+                    base_score += 0.04
                 
-            # Bonus alignement MA calculé
-            ma_alignment_score = self._calculate_ma_alignment()
+            # CORRECTION: Bonus alignement MA avec logique directionnelle
+            ma_alignment_score = self._calculate_ma_alignment_directional(signal_side, directional_bias)
             if ma_alignment_score >= 0.9:
                 base_score += self.ma_confluence_bonus
             elif ma_alignment_score >= 0.8:
@@ -356,25 +431,35 @@ class MultiTF_Consensus_Validator(BaseValidator):
             elif ma_alignment_score >= 0.7:
                 base_score += 0.05
                 
-            # Bonus force signal
+            # Bonus force signal (cohérence directionnelle)
             if signal_strength >= 0.8:
-                base_score += 0.12
+                if directional_consensus:
+                    base_score += 0.12
+                else:
+                    base_score += 0.06  # Réduit si incohérent
             elif signal_strength >= 0.65:
-                base_score += 0.08
+                if directional_consensus:
+                    base_score += 0.08  
+                else:
+                    base_score += 0.04
                 
-            # Bonus consensus directionnel
-            # Ligne 352: Vérification None et type avant appel
-            directional_consensus = self._validate_directional_consensus(
-                str(signal_side) if signal_side is not None else "UNKNOWN", str(directional_bias) if directional_bias is not None else "neutral", trend_strength
-            )
+            # Bonus consensus directionnel (principal facteur de différenciation)
             if directional_consensus:
-                base_score += 0.10
+                base_score += 0.15  # Bonus fort pour cohérence directionnelle
+            else:
+                base_score -= 0.05  # Malus pour incohérence
                 
-            # Bonus confluence générale
+            # Bonus confluence générale (avec cohérence directionnelle)
             if confluence_score >= 80.0:
-                base_score += 0.10
+                if directional_consensus:
+                    base_score += 0.10
+                else:
+                    base_score += 0.05
             elif confluence_score >= 60.0:
-                base_score += 0.05
+                if directional_consensus:
+                    base_score += 0.05
+                else:
+                    base_score += 0.025
                 
             # Bonus stratégie spécialisée multi-TF
             if self._is_multitf_strategy(signal_strategy):

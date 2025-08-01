@@ -276,17 +276,39 @@ class Bollinger_Width_Validator(BaseValidator):
                    (signal_side == "SELL" and bb_breakout_direction == "down"):
                     base_score += self.breakout_bonus
                     
-            # Ajustement selon position prix dans BB
+            # CORRECTION: Ajustement selon position prix dans BB + direction signal
+            signal_side = signal.get('side')
+            signal_strategy = signal.get('strategy', '')
+            
             if bb_position is not None:
-                if self.safe_position_min <= bb_position <= self.safe_position_max:
-                    base_score += 0.1  # Position sûre dans les bandes
-                elif bb_position > self.extreme_position_threshold or bb_position < (1 - self.extreme_position_threshold):
-                    # Position extrême - peut être opportunité breakout
-                    signal_strategy = signal.get('strategy', '')
-                    if self._is_breakout_strategy(signal_strategy):
-                        base_score += 0.15  # Bonus position extrême pour breakout
-                    else:
-                        base_score -= 0.1  # Pénalité position extrême pour autres
+                # Logique directionnelle pour positions BB
+                if signal_side == "BUY":
+                    # BUY: Meilleur près de la bande inférieure (prix bas)
+                    if bb_position <= 0.3:  # Proche bande inférieure
+                        base_score += 0.15  # Excellent pour BUY (prix bas)
+                    elif bb_position <= 0.5:  # Zone médiane basse
+                        base_score += 0.08  # Bon pour BUY
+                    elif bb_position >= 0.8:  # Proche bande supérieure
+                        if self._is_breakout_strategy(signal_strategy):
+                            base_score += 0.10  # BUY breakout haut peut être ok
+                        else:
+                            base_score -= 0.15  # Mauvais BUY (prix déjà haut)
+                            
+                elif signal_side == "SELL":
+                    # SELL: Meilleur près de la bande supérieure (prix haut)
+                    if bb_position >= 0.7:  # Proche bande supérieure
+                        base_score += 0.15  # Excellent pour SELL (prix haut)
+                    elif bb_position >= 0.5:  # Zone médiane haute
+                        base_score += 0.08  # Bon pour SELL
+                    elif bb_position <= 0.2:  # Proche bande inférieure
+                        if self._is_breakout_strategy(signal_strategy):
+                            base_score += 0.10  # SELL breakout bas peut être ok
+                        else:
+                            base_score -= 0.15  # Mauvais SELL (prix déjà bas)
+                            
+                # Position centrale (0.4-0.6) → neutre pour les deux directions
+                if 0.4 <= bb_position <= 0.6:
+                    base_score += 0.05  # Léger bonus position neutre
                         
             # Bonus stratégie spécialisée Bollinger
             signal_strategy = signal.get('strategy', '')

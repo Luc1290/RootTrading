@@ -468,13 +468,35 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
         primary_rebound = None
         
         if buy_rebound['is_rebound'] and sell_rebound['is_rebound']:
-            # Conflit - prendre le score le plus élevé
-            if buy_rebound['score'] > sell_rebound['score']:
-                signal_side = "BUY"
-                primary_rebound = buy_rebound
+            # SÉCURITÉ: Conflit théoriquement impossible avec Williams %R mais vérification
+            # Si conflit, vérifier la valeur Williams %R pour trancher
+            williams_val = values.get('williams_r')
+            if williams_val is not None:
+                try:
+                    williams_value = float(williams_val)
+                    # Trancher selon la position Williams %R actuelle
+                    if williams_value > -50:  # Plus proche zone SELL
+                        signal_side = "SELL"
+                        primary_rebound = sell_rebound
+                    else:  # Plus proche zone BUY  
+                        signal_side = "BUY"
+                        primary_rebound = buy_rebound
+                except (ValueError, TypeError):
+                    # Fallback sur le score le plus élevé
+                    if buy_rebound['score'] > sell_rebound['score']:
+                        signal_side = "BUY"
+                        primary_rebound = buy_rebound
+                    else:
+                        signal_side = "SELL"
+                        primary_rebound = sell_rebound
             else:
-                signal_side = "SELL"
-                primary_rebound = sell_rebound
+                # Pas de Williams %R disponible - utiliser scores
+                if buy_rebound['score'] > sell_rebound['score']:
+                    signal_side = "BUY"
+                    primary_rebound = buy_rebound
+                else:
+                    signal_side = "SELL"
+                    primary_rebound = sell_rebound
         elif buy_rebound['is_rebound']:
             signal_side = "BUY"
             primary_rebound = buy_rebound
@@ -547,18 +569,41 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
             
         # Confirmations supplémentaires
         
-        # Momentum alignment
+        # CORRECTION: Momentum alignment - logique directionnelle optimisée pour rebonds
         momentum_score_val = values.get('momentum_score')
         if momentum_score_val is not None:
             try:
                 momentum = float(momentum_score_val)
                 
-                if signal_side == "BUY" and momentum >= self.min_momentum_threshold:
-                    confidence_boost += 0.1
-                    reason += " + momentum haussier"
-                elif signal_side == "SELL" and momentum <= -self.min_momentum_threshold:
-                    confidence_boost += 0.1
-                    reason += " + momentum baissier"
+                # BUY : momentum en récupération (pas forcément très positif pour un rebound)
+                if signal_side == "BUY":
+                    if momentum >= 0.2:
+                        confidence_boost += 0.12  # Momentum franchement positif = excellent
+                        reason += f" + momentum positif ({momentum:.2f})"
+                    elif momentum >= 0.05:
+                        confidence_boost += 0.08  # Momentum légèrement positif = bon signe
+                        reason += f" + momentum récupération ({momentum:.2f})"
+                    elif momentum >= -0.1:
+                        confidence_boost += 0.05  # Momentum neutre acceptable pour rebound
+                        reason += f" + momentum neutre ({momentum:.2f})"
+                    else:
+                        confidence_boost -= 0.05  # Momentum trop négatif = rebound difficile
+                        reason += f" mais momentum négatif ({momentum:.2f})"
+                        
+                # SELL : momentum en détérioration (pas forcément très négatif pour un rebound)
+                elif signal_side == "SELL":
+                    if momentum <= -0.2:
+                        confidence_boost += 0.12  # Momentum franchement négatif = excellent
+                        reason += f" + momentum négatif ({momentum:.2f})"
+                    elif momentum <= -0.05:
+                        confidence_boost += 0.08  # Momentum légèrement négatif = bon signe
+                        reason += f" + momentum détérioration ({momentum:.2f})"
+                    elif momentum <= 0.1:
+                        confidence_boost += 0.05  # Momentum neutre acceptable pour rebound
+                        reason += f" + momentum neutre ({momentum:.2f})"
+                    else:
+                        confidence_boost -= 0.05  # Momentum trop positif = rebound difficile
+                        reason += f" mais momentum positif ({momentum:.2f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -598,17 +643,60 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
                 confidence_boost += 0.08
                 reason += f" + bias {directional_bias}"
                 
-        # ADX context (rebonds meilleurs avec ADX modéré)
+        # CORRECTION: ADX context - adaptation selon direction et DI
         adx_14 = values.get('adx_14')
+        plus_di = values.get('plus_di')
+        minus_di = values.get('minus_di')
+        
         if adx_14 is not None:
             try:
                 adx_val = float(adx_14)
-                if 20 <= adx_val <= 35:  # ADX modéré = rebonds plus probables
-                    confidence_boost += 0.05
-                    reason += " + ADX modéré"
-                elif adx_val > 50:  # Trend très fort = rebonds difficiles
-                    confidence_boost -= 0.08
-                    reason += " mais ADX très fort"
+                
+                # Analyser les DI si disponibles pour contexte directionnel
+                di_context = ""
+                if plus_di is not None and minus_di is not None:
+                    try:
+                        plus_di_val = float(plus_di)
+                        minus_di_val = float(minus_di)
+                        
+                        # BUY : favoriser si +DI commence à dépasser -DI ou trend baissier s'affaiblit
+                        if signal_side == "BUY":
+                            if plus_di_val > minus_di_val:
+                                confidence_boost += 0.08
+                                di_context = " +DI > -DI"
+                            elif plus_di_val > minus_di_val * 0.8:  # +DI rattrape
+                                confidence_boost += 0.05
+                                di_context = " +DI rattrape"
+                                
+                        # SELL : favoriser si -DI commence à dépasser +DI ou trend haussier s'affaiblit  
+                        elif signal_side == "SELL":
+                            if minus_di_val > plus_di_val:
+                                confidence_boost += 0.08
+                                di_context = " -DI > +DI"
+                            elif minus_di_val > plus_di_val * 0.8:  # -DI rattrape
+                                confidence_boost += 0.05
+                                di_context = " -DI rattrape"
+                    except (ValueError, TypeError):
+                        pass
+                
+                # ADX général : rebonds meilleurs avec ADX modéré
+                if 15 <= adx_val <= 30:  # ADX modéré = rebonds plus probables
+                    confidence_boost += 0.08
+                    reason += f" + ADX modéré ({adx_val:.1f}){di_context}"
+                elif 30 < adx_val <= 45:  # ADX élevé mais rebonds possibles
+                    confidence_boost += 0.03
+                    reason += f" + ADX élevé ({adx_val:.1f}){di_context}"
+                elif adx_val > 50:  # Trend très fort = rebonds difficiles mais DI peut aider
+                    if di_context:  # Si DI favorable, moins de pénalité
+                        confidence_boost -= 0.03
+                        reason += f" ADX très fort ({adx_val:.1f}) mais{di_context}"
+                    else:
+                        confidence_boost -= 0.10
+                        reason += f" mais ADX très fort ({adx_val:.1f})"
+                elif adx_val < 15:  # ADX très faible = marché sans direction
+                    confidence_boost += 0.05  # Favorable aux rebonds
+                    reason += f" + ADX faible directionless ({adx_val:.1f})"
+                    
             except (ValueError, TypeError):
                 pass
                 

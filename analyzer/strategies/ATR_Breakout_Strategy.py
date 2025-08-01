@@ -204,13 +204,69 @@ class ATR_Breakout_Strategy(BaseStrategy):
                 confidence_boost += 0.1
                 reason += " - volatilité modérée"
                 
-        # Régime de volatilité
-        if volatility_regime == "high":
-            confidence_boost += 0.1
-            reason += " (régime volatil)"
-        elif volatility_regime == "expanding":
-            confidence_boost += 0.15
-            reason += " (volatilité en expansion)"
+        # CORRECTION MAGISTRALE: Régime volatilité ATR avec seuils adaptatifs
+        if volatility_regime is not None and atr_percentile is not None:
+            try:
+                atr_pct = float(atr_percentile)
+                
+                if signal_side == "BUY":
+                    # BUY breakout ATR : volatilité expansion + proximité résistance = explosion haussière
+                    if volatility_regime == "expanding":
+                        if atr_pct > 85:  # Expansion extrême + résistance
+                            confidence_boost += 0.25
+                            reason += f" + expansion extrême résistance ({atr_pct:.0f}%)"
+                        elif atr_pct > 70:  # Expansion forte
+                            confidence_boost += 0.20
+                            reason += f" + expansion forte breakout ({atr_pct:.0f}%)"
+                        else:  # Expansion modérée
+                            confidence_boost += 0.15
+                            reason += f" + expansion modérée ({atr_pct:.0f}%)"
+                    elif volatility_regime == "high":
+                        if atr_pct > 90:  # Volatilité extrême = continuation explosive
+                            confidence_boost += 0.18
+                            reason += f" + volatilité extrême explosion ({atr_pct:.0f}%)"
+                        elif atr_pct > 75:  # Volatilité élevée favorable
+                            confidence_boost += 0.15
+                            reason += f" + volatilité élevée breakout ({atr_pct:.0f}%)"
+                        else:  # Volatilité modérément élevée
+                            confidence_boost += 0.10
+                            reason += f" + volatilité favorable ({atr_pct:.0f}%)"
+                    elif volatility_regime == "normal":
+                        if 40 <= atr_pct <= 60:  # Volatilité idéale pour breakout contrôlé
+                            confidence_boost += 0.12
+                            reason += f" + volatilité idéale contrôlée ({atr_pct:.0f}%)"
+                        else:
+                            confidence_boost += 0.08
+                            reason += f" + volatilité normale ({atr_pct:.0f}%)"
+                    elif volatility_regime == "low":
+                        confidence_boost += 0.05  # Faible volatilité = breakout moins puissant
+                        reason += f" + volatilité faible limitée ({atr_pct:.0f}%)"
+                        
+                else:  # SELL
+                    # SELL breakdown ATR : volatilité élevée + proximité support = chute violente
+                    if volatility_regime == "expanding":
+                        if atr_pct > 80:  # Expansion + support = cascade baissière
+                            confidence_boost += 0.22
+                            reason += f" + expansion cascade support ({atr_pct:.0f}%)"
+                        else:  # Expansion modérée
+                            confidence_boost += 0.18
+                            reason += f" + expansion breakdown ({atr_pct:.0f}%)"
+                    elif volatility_regime == "high":
+                        if atr_pct > 85:  # Volatilité extrême = panique/liquidation
+                            confidence_boost += 0.20
+                            reason += f" + volatilité extrême panique ({atr_pct:.0f}%)"
+                        else:  # Volatilité élevée
+                            confidence_boost += 0.15
+                            reason += f" + volatilité élevée breakdown ({atr_pct:.0f}%)"
+                    elif volatility_regime == "normal":
+                        confidence_boost += 0.10
+                        reason += f" + volatilité normale breakdown ({atr_pct:.0f}%)"
+                    elif volatility_regime == "low":
+                        confidence_boost += 0.08  # Volatilité faible = breakdown contrôlé
+                        reason += f" + volatilité faible contrôlée ({atr_pct:.0f}%)"
+                        
+            except (ValueError, TypeError):
+                pass
             
         # Bollinger Bands pour confirmation
         bb_upper = values.get('bb_upper')

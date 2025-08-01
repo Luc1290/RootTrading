@@ -200,13 +200,33 @@ class ADX_Direction_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
+        # CORRECTION: Confluence score avec logique directionnelle asymétrique
         confluence_score = values.get('confluence_score')
         if confluence_score:
             try:
                 confluence = float(confluence_score)
-                if confluence > 0.6:
-                    confidence_boost += 0.10
-                    reason += " avec haute confluence"
+                if signal_side == "BUY":
+                    # BUY : confluence élevée = signaux haussiers multiples
+                    if confluence > 0.8:
+                        confidence_boost += 0.18
+                        reason += " + confluence très élevée BUY"
+                    elif confluence > 0.7:
+                        confidence_boost += 0.14
+                        reason += " + confluence élevée BUY"
+                    elif confluence > 0.6:
+                        confidence_boost += 0.10
+                        reason += " + confluence modérée"
+                elif signal_side == "SELL":
+                    # SELL : confluence + ADX baissier = momentum très fort
+                    if confluence > 0.75:
+                        confidence_boost += 0.20  # Bonus supérieur SELL
+                        reason += " + confluence très élevée SELL"
+                    elif confluence > 0.65:
+                        confidence_boost += 0.16
+                        reason += " + confluence élevée SELL"
+                    elif confluence > 0.55:
+                        confidence_boost += 0.12
+                        reason += " + confluence modérée"
             except (ValueError, TypeError):
                 pass
                 

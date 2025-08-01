@@ -425,25 +425,145 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         if ema_analysis['indicators']:
             reason += f" + {ema_analysis['indicators'][0]}"
             
-        # Volume confirmation
+        # CORRECTION: Volume confirmation - adaptation selon direction reversal
         volume_ratio = values.get('volume_ratio')
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio >= self.min_volume_confirmation:
-                    confidence_boost += 0.1
-                    reason += f" + volume ({vol_ratio:.1f}x)"
+                
+                # Volume requis plus élevé pour confirmations selon direction
+                if signal_side == "BUY":
+                    # Reversal haussier : volume fort pour confirmer changement de tendance
+                    if vol_ratio >= self.min_volume_confirmation * 1.3:  # 1.56x minimum
+                        confidence_boost += 0.15  # Bonus élevé pour BUY avec fort volume
+                        reason += f" + volume reversal haussier ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= self.min_volume_confirmation:
+                        confidence_boost += 0.08  # Bonus modéré
+                        reason += f" + volume modéré ({vol_ratio:.1f}x)"
+                elif signal_side == "SELL":
+                    # Reversal baissier : volume modéré acceptable (selling plus naturel)
+                    if vol_ratio >= self.min_volume_confirmation * 1.2:  # 1.44x minimum
+                        confidence_boost += 0.15  # Bonus élevé pour SELL avec volume
+                        reason += f" + volume reversal baissier ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= self.min_volume_confirmation * 0.9:  # Plus permissif pour SELL
+                        confidence_boost += 0.10  # Bonus bon pour SELL
+                        reason += f" + volume confirmé ({vol_ratio:.1f}x)"
             except (ValueError, TypeError):
                 pass
                 
-        # Confluence score
+        # CORRECTION: Confluence score - vérification cohérence directionnelle
         confluence_score = values.get('confluence_score')
         if confluence_score is not None:
             try:
                 conf_val = float(confluence_score)
-                if conf_val > 0.7:
-                    confidence_boost += 0.1
-                    reason += " + haute confluence"
+                
+                # Vérifier cohérence confluence avec direction reversal
+                trend_alignment = values.get('trend_alignment')
+                directional_bias = values.get('directional_bias')
+                
+                confluence_coherent = True
+                if trend_alignment is not None and directional_bias is not None:
+                    try:
+                        trend_align_val = float(trend_alignment)
+                        # Vérifier cohérence entre confluence, trend alignment et direction
+                        if signal_side == "BUY" and directional_bias == "bullish":
+                            confluence_coherent = trend_align_val > 0.5  # Alignement haussier requis
+                        elif signal_side == "SELL" and directional_bias == "bearish":
+                            confluence_coherent = trend_align_val < 0.5  # Alignement baissier requis
+                        else:
+                            confluence_coherent = False  # Incohérence direction
+                    except (ValueError, TypeError):
+                        pass
+                
+                # Bonus confluence adapté selon cohérence
+                if conf_val > 0.8 and confluence_coherent:
+                    confidence_boost += 0.12  # Confluence très élevée et cohérente
+                    reason += " + très haute confluence cohérente"
+                elif conf_val > 0.7 and confluence_coherent:
+                    confidence_boost += 0.10  # Confluence élevée et cohérente
+                    reason += " + haute confluence cohérente"
+                elif conf_val > 0.6 and confluence_coherent:
+                    confidence_boost += 0.06  # Confluence modérée et cohérente
+                    reason += " + confluence modérée"
+                elif conf_val > 0.7 and not confluence_coherent:
+                    confidence_boost += 0.05  # Confluence élevée mais incohérente
+                    reason += " + confluence élevée (partielle)"
+                # Pas de bonus si confluence faible ou très incohérente
+                    
+            except (ValueError, TypeError):
+                pass
+        
+        # CORRECTION: Confirmations directionnelles supplémentaires
+        
+        # RSI confirmation pour reversal
+        rsi_14 = values.get('rsi_14')
+        if rsi_14 is not None:
+            try:
+                rsi_val = float(rsi_14)
+                # BUY reversal : RSI sort d'oversold ou en zone neutre-haussière
+                if signal_side == "BUY":
+                    if 35 <= rsi_val <= 60:  # Zone optimale pour reversal haussier
+                        confidence_boost += 0.08
+                        reason += f" + RSI reversal optimal ({rsi_val:.1f})"
+                    elif 25 <= rsi_val <= 34:  # Sortie d'oversold
+                        confidence_boost += 0.12
+                        reason += f" + RSI sortie oversold ({rsi_val:.1f})"
+                    elif rsi_val >= 70:  # Déjà overbought = reversal difficile
+                        confidence_boost -= 0.05
+                        reason += f" mais RSI overbought ({rsi_val:.1f})"
+                        
+                # SELL reversal : RSI sort d'overbought ou en zone neutre-baissière
+                elif signal_side == "SELL":
+                    if 40 <= rsi_val <= 65:  # Zone optimale pour reversal baissier
+                        confidence_boost += 0.08
+                        reason += f" + RSI reversal optimal ({rsi_val:.1f})"
+                    elif 66 <= rsi_val <= 75:  # Sortie d'overbought
+                        confidence_boost += 0.12
+                        reason += f" + RSI sortie overbought ({rsi_val:.1f})"
+                    elif rsi_val <= 30:  # Déjà oversold = reversal difficile
+                        confidence_boost -= 0.05
+                        reason += f" mais RSI oversold ({rsi_val:.1f})"
+            except (ValueError, TypeError):
+                pass
+        
+        # Support/Résistance confluence pour reversal
+        if signal_side == "BUY":
+            nearest_support = values.get('nearest_support')
+            if nearest_support is not None:
+                try:
+                    support_level = float(nearest_support)
+                    distance_to_support = abs(current_price - support_level) / current_price
+                    if distance_to_support <= 0.015:  # 1.5% du support
+                        confidence_boost += 0.10
+                        reason += f" + proche support ({distance_to_support*100:.1f}%)"
+                except (ValueError, TypeError):
+                    pass
+                    
+        elif signal_side == "SELL":
+            nearest_resistance = values.get('nearest_resistance')
+            if nearest_resistance is not None:
+                try:
+                    resistance_level = float(nearest_resistance)
+                    distance_to_resistance = abs(current_price - resistance_level) / current_price
+                    if distance_to_resistance <= 0.015:  # 1.5% de la résistance
+                        confidence_boost += 0.10
+                        reason += f" + proche résistance ({distance_to_resistance*100:.1f}%)"
+                except (ValueError, TypeError):
+                    pass
+        
+        # ROC confirmation pour momentum reversal
+        roc_10 = values.get('roc_10')
+        if roc_10 is not None:
+            try:
+                roc_val = float(roc_10)
+                # BUY reversal : ROC commence à devenir positif
+                if signal_side == "BUY" and roc_val > 0.5:
+                    confidence_boost += 0.08
+                    reason += f" + ROC positif ({roc_val:.1f}%)"
+                # SELL reversal : ROC commence à devenir négatif  
+                elif signal_side == "SELL" and roc_val < -0.5:
+                    confidence_boost += 0.08
+                    reason += f" + ROC négatif ({roc_val:.1f}%)"
             except (ValueError, TypeError):
                 pass
                 

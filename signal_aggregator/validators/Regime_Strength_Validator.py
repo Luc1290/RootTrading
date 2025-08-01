@@ -376,6 +376,36 @@ class Regime_Strength_Validator(BaseValidator):
         except Exception:
             return True
             
+    def _get_directional_regime_multiplier(self, signal_side: str, current_regime: str) -> float:
+        """Calcule un multiplicateur de bonus selon la cohérence signal/régime."""
+        try:
+            if not signal_side or not current_regime:
+                return 1.0
+                
+            regime_lower = current_regime.lower()
+            
+            # Régimes directionnels favorables
+            if signal_side == "BUY":
+                if regime_lower in ["bullish", "trending", "momentum", "expansion"]:
+                    return 1.3  # Bonus 30% pour BUY dans régimes haussiers
+                elif regime_lower in ["bearish"]:
+                    return 0.6  # Malus 40% pour BUY dans régime bearish
+                elif regime_lower in ["ranging", "consolidation", "neutral"]:
+                    return 0.9  # Léger malus pour BUY en range
+                    
+            elif signal_side == "SELL":
+                if regime_lower in ["bearish", "trending", "momentum", "expansion"]:
+                    return 1.3  # Bonus 30% pour SELL dans régimes baissiers
+                elif regime_lower in ["bullish"]:
+                    return 0.6  # Malus 40% pour SELL dans régime bullish
+                elif regime_lower in ["ranging", "consolidation", "neutral"]:
+                    return 0.9  # Léger malus pour SELL en range
+                    
+            return 1.0  # Neutre par défaut
+            
+        except Exception:
+            return 1.0
+            
     def get_validation_score(self, signal: Dict[str, Any]) -> float:
         """
         Calcule un score de validation basé sur la force des régimes.
@@ -409,28 +439,32 @@ class Regime_Strength_Validator(BaseValidator):
             
             current_regime = self.context.get('current_regime', 'neutral')
             signal_strategy = signal.get('strategy', '')
+            signal_side = signal.get('side')
             
             base_score = 0.5  # Score de base si validé
             
-            # Bonus force du régime
+            # CORRECTION: Bonus force du régime avec logique directionnelle
+            force_bonus_multiplier = self._get_directional_regime_multiplier(signal_side, current_regime)
+            
             if regime_strength >= self.very_strong_regime_threshold:
-                base_score += self.strong_regime_bonus + 0.05  # Bonus supplémentaire très fort
+                base_score += (self.strong_regime_bonus + 0.05) * force_bonus_multiplier
             elif regime_strength >= self.strong_regime_threshold:
-                base_score += self.strong_regime_bonus
+                base_score += self.strong_regime_bonus * force_bonus_multiplier
             elif regime_strength >= self.min_regime_strength + 0.2:
-                base_score += 0.15
+                base_score += 0.15 * force_bonus_multiplier
                 
-            # Bonus confidence du régime
+            # Bonus confidence du régime (réduit si incohérence directionnelle)
+            confidence_bonus_multiplier = 1.0 if force_bonus_multiplier >= 1.0 else 0.7
             if regime_confidence >= self.high_regime_confidence:
-                base_score += 0.15  # Confidence très élevée
+                base_score += 0.15 * confidence_bonus_multiplier
             elif regime_confidence >= self.min_regime_confidence + 0.2:
-                base_score += 0.10
+                base_score += 0.10 * confidence_bonus_multiplier
                 
-            # Bonus persistance
+            # Bonus persistance (avec cohérence directionnelle)
             if regime_persistence >= 80.0:
-                base_score += self.persistence_bonus
+                base_score += self.persistence_bonus * force_bonus_multiplier
             elif regime_persistence >= 60.0:
-                base_score += 0.12
+                base_score += 0.12 * force_bonus_multiplier
                 
             # Bonus stabilité
             if regime_stability >= 80.0:
@@ -444,14 +478,29 @@ class Regime_Strength_Validator(BaseValidator):
             elif self.min_regime_duration <= regime_duration_bars <= self.max_regime_duration:
                 base_score += 0.08  # Durée acceptable
                 
-            # Bonus type de régime
+            # CORRECTION: Bonus type de régime avec logique directionnelle
             if current_regime in self.favorable_regimes:
-                base_score += 0.15  # Régime favorable
+                # Bonus additionnel pour cohérence directionnelle
+                if signal_side == "BUY" and current_regime in ["bullish", "trending", "momentum"]:
+                    base_score += 0.20  # Excellent pour BUY
+                elif signal_side == "SELL" and current_regime in ["bearish", "trending", "momentum"]:
+                    base_score += 0.20  # Excellent pour SELL  
+                else:
+                    base_score += 0.15  # Régime favorable général
             elif current_regime in self.neutral_regimes:
                 base_score += 0.05  # Régime neutre
-            else:
-                # Régime défavorable déjà pénalisé dans validation
-                pass
+            elif current_regime in ["bullish"]:
+                # Régime bullish : favoriser BUY, pénaliser SELL
+                if signal_side == "BUY":
+                    base_score += 0.15  # Bonus BUY en régime bullish
+                elif signal_side == "SELL":
+                    base_score -= 0.05  # Malus SELL en régime bullish
+            elif current_regime in ["bearish"]:
+                # Régime bearish : favoriser SELL, pénaliser BUY
+                if signal_side == "SELL":
+                    base_score += 0.15  # Bonus SELL en régime bearish
+                elif signal_side == "BUY":
+                    base_score -= 0.05  # Malus BUY en régime bearish
                 
             # Bonus consensus élevé
             if regime_consensus_score >= 80.0:
@@ -470,6 +519,31 @@ class Regime_Strength_Validator(BaseValidator):
             # Bonus adéquation stratégie/régime
             if self._validate_strategy_regime_match(signal_strategy, current_regime):
                 base_score += 0.10  # Stratégie adaptée au régime
+                
+            # CORRECTION: Bonus momentum du régime avec logique directionnelle
+            regime_momentum = self.context.get('momentum_score')
+            if regime_momentum is not None:
+                momentum_coherence = self._validate_momentum_coherence(signal_side, regime_momentum)
+                if momentum_coherence:
+                    # Bonus pour cohérence momentum + direction
+                    if signal_side == "BUY" and regime_momentum > 0.2:
+                        base_score += 0.10  # BUY avec momentum positif
+                    elif signal_side == "SELL" and regime_momentum < -0.2:
+                        base_score += 0.10  # SELL avec momentum négatif
+                else:
+                    # Malus pour incohérence momentum
+                    base_score -= 0.08
+                
+            # CORRECTION: Validation transitions avec bonus directionnel  
+            transition_direction = self.context.get('directional_bias')
+            if transition_direction and signal_side:
+                transition_coherence = self._validate_transition_coherence(signal_side, transition_direction)
+                if transition_coherence:
+                    # Bonus pour transition cohérente
+                    if signal_side == "BUY" and "bullish" in str(transition_direction).lower():
+                        base_score += 0.08  # BUY avec transition bullish
+                    elif signal_side == "SELL" and "bearish" in str(transition_direction).lower():
+                        base_score += 0.08  # SELL avec transition bearish
                 
             # Validation régimes multiples
             vol_regime = self.context.get('volatility_regime')

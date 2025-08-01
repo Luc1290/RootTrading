@@ -265,23 +265,41 @@ class ROC_Threshold_Strategy(BaseStrategy):
             confidence_boost += 0.05
             reason += f" + excès faible ({exceeded_by:.1f}%)"
             
-        # Confirmation avec momentum_score global
+        # CORRECTION: Momentum confirmation directionnelle stricte
         momentum_score = values.get('momentum_score')
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                momentum_aligned = (signal_side == "BUY" and momentum > self.momentum_confirmation_threshold) or \
-                                 (signal_side == "SELL" and momentum < -self.momentum_confirmation_threshold)
                 
-                if momentum_aligned:
-                    confidence_boost += 0.15
-                    reason += " + momentum score confirmé"
-                elif abs(momentum) > 0.1:  # Momentum faible mais dans la bonne direction
-                    confidence_boost += 0.08
-                    reason += " + momentum score aligné"
-                else:
-                    confidence_boost -= 0.05
-                    reason += " mais momentum score faible"
+                # BUY : momentum fortement positif requis
+                if signal_side == "BUY":
+                    if momentum > 0.5:  # Momentum très positif
+                        confidence_boost += 0.18
+                        reason += f" + momentum très positif ({momentum:.2f})"
+                    elif momentum > self.momentum_confirmation_threshold:  # 0.3
+                        confidence_boost += 0.15
+                        reason += f" + momentum confirmé ({momentum:.2f})"
+                    elif momentum > 0.1:  # Momentum faible mais positif
+                        confidence_boost += 0.06
+                        reason += f" + momentum aligné ({momentum:.2f})"
+                    elif momentum < -0.1:  # Momentum négatif = contradictoire
+                        confidence_boost -= 0.10
+                        reason += f" mais momentum négatif ({momentum:.2f})"
+                        
+                # SELL : momentum fortement négatif requis  
+                elif signal_side == "SELL":
+                    if momentum < -0.5:  # Momentum très négatif
+                        confidence_boost += 0.18
+                        reason += f" + momentum très négatif ({momentum:.2f})"
+                    elif momentum < -self.momentum_confirmation_threshold:  # -0.3
+                        confidence_boost += 0.15
+                        reason += f" + momentum confirmé ({momentum:.2f})"
+                    elif momentum < -0.1:  # Momentum faible mais négatif
+                        confidence_boost += 0.06
+                        reason += f" + momentum aligné ({momentum:.2f})"
+                    elif momentum > 0.1:  # Momentum positif = contradictoire
+                        confidence_boost -= 0.10
+                        reason += f" mais momentum positif ({momentum:.2f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -328,54 +346,121 @@ class ROC_Threshold_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation avec CCI (Commodity Channel Index)
+        # CORRECTION: CCI avec seuils directionnels adaptatifs
         cci_20 = values.get('cci_20')
         if cci_20 is not None:
             try:
                 cci = float(cci_20)
-                if signal_side == "BUY" and cci > 100:  # CCI overbought = momentum fort
-                    confidence_boost += 0.10
-                    reason += " + CCI momentum fort"
-                elif signal_side == "SELL" and cci < -100:  # CCI oversold = momentum fort
-                    confidence_boost += 0.10
-                    reason += " + CCI momentum fort"
-                elif signal_side == "BUY" and cci > 0:
-                    confidence_boost += 0.05
-                    reason += " + CCI favorable"
-                elif signal_side == "SELL" and cci < 0:
-                    confidence_boost += 0.05
-                    reason += " + CCI favorable"
+                # BUY : CCI favorise momentum haussier avec seuils adaptatifs
+                if signal_side == "BUY":
+                    if cci > 150:  # CCI très élevé = momentum exceptionnel
+                        confidence_boost += 0.15
+                        reason += f" + CCI momentum exceptionnel ({cci:.0f})"
+                    elif cci > 100:  # CCI overbought = momentum fort haussier
+                        confidence_boost += 0.12
+                        reason += f" + CCI momentum fort ({cci:.0f})"
+                    elif cci > 50:  # CCI positif modéré
+                        confidence_boost += 0.08
+                        reason += f" + CCI favorable ({cci:.0f})"
+                    elif cci > 0:  # CCI légèrement positif
+                        confidence_boost += 0.04
+                        reason += f" + CCI neutre positif ({cci:.0f})"
+                    elif cci < -50:  # CCI négatif = contradictoire avec ROC haussier
+                        confidence_boost -= 0.05
+                        reason += f" mais CCI négatif ({cci:.0f})"
+                        
+                # SELL : CCI favorise momentum baissier avec seuils adaptatifs
+                elif signal_side == "SELL":
+                    if cci < -150:  # CCI très bas = momentum exceptionnel
+                        confidence_boost += 0.15
+                        reason += f" + CCI momentum exceptionnel ({cci:.0f})"
+                    elif cci < -100:  # CCI oversold = momentum fort baissier
+                        confidence_boost += 0.12
+                        reason += f" + CCI momentum fort ({cci:.0f})"
+                    elif cci < -50:  # CCI négatif modéré
+                        confidence_boost += 0.08
+                        reason += f" + CCI favorable ({cci:.0f})"
+                    elif cci < 0:  # CCI légèrement négatif
+                        confidence_boost += 0.04
+                        reason += f" + CCI neutre négatif ({cci:.0f})"
+                    elif cci > 50:  # CCI positif = contradictoire avec ROC baissier
+                        confidence_boost -= 0.05
+                        reason += f" mais CCI positif ({cci:.0f})"
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation avec Williams %R
+        # CORRECTION: Williams %R avec zones directionnelles spécifiques
         williams_r = values.get('williams_r')
         if williams_r is not None:
             try:
                 wr = float(williams_r)
-                if signal_side == "BUY" and wr > -50:  # Williams R indique momentum haussier
-                    confidence_boost += 0.08
-                    reason += " + Williams R confirme"
-                elif signal_side == "SELL" and wr < -50:  # Williams R indique momentum baissier
-                    confidence_boost += 0.08
-                    reason += " + Williams R confirme"
+                # BUY : Williams %R favorise sortie d'oversold et momentum haussier
+                if signal_side == "BUY":
+                    if wr > -20:  # Williams R overbought = momentum haussier fort
+                        confidence_boost += 0.12
+                        reason += f" + Williams R momentum fort ({wr:.0f})"
+                    elif wr > -40:  # Williams R sortie d'oversold
+                        confidence_boost += 0.10
+                        reason += f" + Williams R confirme ({wr:.0f})"
+                    elif wr > -60:  # Williams R neutre haussier
+                        confidence_boost += 0.06
+                        reason += f" + Williams R favorable ({wr:.0f})"
+                    elif wr < -80:  # Williams R oversold profond = potentiel mais risqué
+                        confidence_boost += 0.03
+                        reason += f" + Williams R oversold ({wr:.0f})"
+                        
+                # SELL : Williams %R favorise entrée en oversold et momentum baissier
+                elif signal_side == "SELL":
+                    if wr < -80:  # Williams R oversold = momentum baissier fort
+                        confidence_boost += 0.12
+                        reason += f" + Williams R momentum fort ({wr:.0f})"
+                    elif wr < -60:  # Williams R entrée en oversold
+                        confidence_boost += 0.10
+                        reason += f" + Williams R confirme ({wr:.0f})"
+                    elif wr < -40:  # Williams R neutre baissier
+                        confidence_boost += 0.06
+                        reason += f" + Williams R favorable ({wr:.0f})"
+                    elif wr > -20:  # Williams R overbought = potentiel mais risqué
+                        confidence_boost += 0.03
+                        reason += f" + Williams R overbought ({wr:.0f})"
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation avec volume
+        # CORRECTION: Volume confirmation directionnelle - momentum BUY vs SELL
         volume_ratio = values.get('volume_ratio')
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio >= 1.5:  # Volume élevé confirme le momentum
-                    confidence_boost += 0.15
-                    reason += f" + volume élevé ({vol_ratio:.1f}x)"
-                elif vol_ratio >= 1.2:
-                    confidence_boost += 0.10
-                    reason += f" + volume modéré ({vol_ratio:.1f}x)"
-                else:
-                    confidence_boost -= 0.05
-                    reason += f" mais volume faible ({vol_ratio:.1f}x)"
+                
+                # BUY : momentum haussier nécessite volume fort (buying pressure)
+                if signal_side == "BUY":
+                    if vol_ratio >= 2.0:  # Volume très élevé = buying pressure forte
+                        confidence_boost += 0.20
+                        reason += f" + volume très élevé BUY ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= 1.5:  # Volume élevé confirme momentum haussier
+                        confidence_boost += 0.15
+                        reason += f" + volume élevé BUY ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= 1.2:  # Volume modéré acceptable
+                        confidence_boost += 0.08
+                        reason += f" + volume modéré ({vol_ratio:.1f}x)"
+                    elif vol_ratio < 0.8:  # Volume faible = momentum faible
+                        confidence_boost -= 0.08
+                        reason += f" mais volume faible BUY ({vol_ratio:.1f}x)"
+                        
+                # SELL : momentum baissier peut être efficace avec volume modéré (selling plus naturel)
+                elif signal_side == "SELL":
+                    if vol_ratio >= 1.8:  # Volume très élevé = panic selling
+                        confidence_boost += 0.18
+                        reason += f" + volume très élevé SELL ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= 1.3:  # Volume élevé confirme momentum baissier
+                        confidence_boost += 0.15
+                        reason += f" + volume élevé SELL ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= 1.0:  # Volume normal acceptable pour SELL
+                        confidence_boost += 0.10
+                        reason += f" + volume confirmé ({vol_ratio:.1f}x)"
+                    elif vol_ratio < 0.7:  # Volume très faible = momentum faible
+                        confidence_boost -= 0.05
+                        reason += f" mais volume faible ({vol_ratio:.1f}x)"
             except (ValueError, TypeError):
                 pass
                 

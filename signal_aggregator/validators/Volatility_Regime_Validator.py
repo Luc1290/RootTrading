@@ -242,40 +242,105 @@ class Volatility_Regime_Validator(BaseValidator):
             
             signal_confidence = signal.get('confidence', 0.0)
             signal_strength = signal.get('strength', 'moderate')
+            signal_side = signal.get('side')
+            bb_position = float(self.context.get('bb_position', 0.5)) if self.context.get('bb_position') is not None else 0.5
             
             base_score = 0.5  # Score de base si validé
             
-            # Scoring selon régime de volatilité
-            if volatility_regime == "medium":
-                base_score += 0.2  # Régime optimal
+            # CORRECTION: Scoring selon régime de volatilité avec logique directionnelle
+            if volatility_regime == "medium" or volatility_regime == "normal":
+                base_score += 0.2  # Régime optimal pour tous
             elif volatility_regime == "low":
                 if bb_expansion:
-                    base_score += 0.15  # Expansion après compression = bon
+                    # Expansion après compression : favoriser breakout directionnel
+                    if (signal_side == "BUY" and bb_position <= 0.6) or \
+                       (signal_side == "SELL" and bb_position >= 0.4):
+                        base_score += 0.20  # Breakout directionnel favorable
+                    else:
+                        base_score += 0.10  # Breakout mais position moins idéale
                 else:
-                    base_score += 0.05  # Basse volatilité neutre
+                    # Basse volatilité sans expansion
+                    if signal_strength in ['strong', 'very_strong']:
+                        base_score += 0.08  # Signal fort en basse vol
+                    else:
+                        base_score += 0.02  # Basse volatilité peu favorable
             elif volatility_regime == "high":
+                # Haute volatilité : favoriser les stratégies adaptées
                 if signal_confidence >= 0.8:
-                    base_score += 0.1  # Haute volatilité maîtrisée
+                    # Confiance élevée : adapter selon direction et position
+                    if signal_side == "BUY" and bb_position <= 0.3:
+                        base_score += 0.15  # BUY en zone basse haute vol = opportunité
+                    elif signal_side == "SELL" and bb_position >= 0.7:
+                        base_score += 0.15  # SELL en zone haute haute vol = opportunité
+                    else:
+                        base_score += 0.08  # Haute vol maîtrisée position neutre
                 else:
-                    base_score -= 0.05  # Haute volatilité risquée
+                    base_score -= 0.05  # Haute volatilité risquée sans confidence
+            elif volatility_regime == "extreme":
+                # Volatilité extrême : très sélectif selon direction
+                if signal_confidence >= 0.85:
+                    if (signal_side == "BUY" and bb_position <= 0.2) or \
+                       (signal_side == "SELL" and bb_position >= 0.8):
+                        base_score += 0.10  # Positions extrêmes en vol extrême
+                    else:
+                        base_score -= 0.05  # Vol extrême position défavorable
+                else:
+                    base_score -= 0.10  # Vol extrême sans très haute confidence
                     
-            # Scoring selon percentile ATR
+            # CORRECTION: Scoring selon percentile ATR avec logique directionnelle
             if 30 <= atr_percentile <= 70:
-                base_score += 0.15  # Zone ATR optimale
+                base_score += 0.15  # Zone ATR optimale pour tous
             elif atr_percentile < 20:
-                base_score += 0.05  # Volatilité très faible
+                # Volatilité très faible : favoriser signaux forts directionnels
+                if signal_strength in ['strong', 'very_strong']:
+                    if (signal_side == "BUY" and bb_position <= 0.4) or \
+                       (signal_side == "SELL" and bb_position >= 0.6):
+                        base_score += 0.10  # Signal fort directionnel en faible vol
+                    else:
+                        base_score += 0.05  # Signal fort mais position moins idéale
+                else:
+                    base_score += 0.02  # Volatilité très faible signal moyen
             elif atr_percentile > 90:
-                base_score -= 0.1   # Volatilité extrême
+                # Volatilité extrême : adapter selon position et direction
+                if (signal_side == "BUY" and bb_position <= 0.2) or \
+                   (signal_side == "SELL" and bb_position >= 0.8):
+                    base_score -= 0.05  # Positions extrêmes moins risquées
+                else:
+                    base_score -= 0.15  # Vol extrême position défavorable
                 
-            # Bonus/malus Bollinger Bands
+            # CORRECTION: Bonus/malus Bollinger Bands avec logique directionnelle
             if bb_width is not None:
                 if bb_squeeze and bb_expansion:
-                    base_score += 0.2  # Breakout de squeeze = excellent
+                    # Breakout de squeeze : favoriser selon position + direction
+                    if signal_side == "BUY" and bb_position <= 0.6:
+                        base_score += 0.25  # BUY breakout depuis zone basse/médiane
+                    elif signal_side == "SELL" and bb_position >= 0.4:
+                        base_score += 0.25  # SELL breakout depuis zone haute/médiane
+                    else:
+                        base_score += 0.15  # Breakout général mais position moins idéale
+                        
                 elif bb_expansion and not bb_squeeze:
-                    base_score += 0.1  # Expansion normale = bon
+                    # Expansion normale : vérifier position selon direction
+                    if signal_side == "BUY" and bb_position <= 0.5:
+                        base_score += 0.15  # BUY en expansion position favorable
+                    elif signal_side == "SELL" and bb_position >= 0.5:
+                        base_score += 0.15  # SELL en expansion position favorable
+                    elif signal_side == "BUY" and bb_position >= 0.8:
+                        base_score -= 0.05  # BUY en expansion près BB supérieure = risqué
+                    elif signal_side == "SELL" and bb_position <= 0.2:
+                        base_score -= 0.05  # SELL en expansion près BB inférieure = risqué
+                    else:
+                        base_score += 0.08  # Expansion normale position neutre
+                        
                 elif bb_squeeze:
+                    # Compression : favoriser signaux forts avec position directionnelle
                     if signal_strength in ['strong', 'very_strong']:
-                        base_score += 0.05  # Signal fort pendant compression
+                        if signal_side == "BUY" and bb_position <= 0.4:
+                            base_score += 0.10  # BUY fort en compression zone basse
+                        elif signal_side == "SELL" and bb_position >= 0.6:
+                            base_score += 0.10  # SELL fort en compression zone haute
+                        else:
+                            base_score += 0.05  # Signal fort pendant compression position neutre
                     else:
                         base_score -= 0.05  # Signal faible pendant compression
                         
@@ -285,11 +350,24 @@ class Volatility_Regime_Validator(BaseValidator):
             elif regime_strength < 0.5:
                 base_score -= 0.05  # Régime instable
                 
-            # Bonus confidence adaptée à la volatilité
-            if volatility_regime == "high" and signal_confidence >= 0.85:
-                base_score += 0.1  # Très confident en haute volatilité
+            # CORRECTION: Bonus confidence adaptée à la volatilité et direction
+            if volatility_regime in ["high", "extreme"] and signal_confidence >= 0.85:
+                # Haute/extrême volatilité avec très haute confidence
+                if (signal_side == "BUY" and bb_position <= 0.5) or \
+                   (signal_side == "SELL" and bb_position >= 0.5):
+                    base_score += 0.12  # Excellente cohérence direction/vol/confidence
+                else:
+                    base_score += 0.08  # Bonne confidence en haute vol
             elif volatility_regime == "low" and signal_confidence >= 0.6:
-                base_score += 0.05  # Confident en basse volatilité
+                # Basse volatilité : favoriser breakouts directionnels confiants
+                if bb_expansion or (bb_width is not None and bb_width > self.bb_squeeze_threshold * 1.5):
+                    if (signal_side == "BUY" and bb_position <= 0.6) or \
+                       (signal_side == "SELL" and bb_position >= 0.4):
+                        base_score += 0.10  # Confident + expansion directionnelle
+                    else:
+                        base_score += 0.05  # Confident + expansion position neutre
+                else:
+                    base_score += 0.03  # Confident en basse vol sans expansion
                 
             return min(1.0, max(0.0, base_score))
             

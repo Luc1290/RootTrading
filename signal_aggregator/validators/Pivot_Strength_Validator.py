@@ -365,19 +365,40 @@ class Pivot_Strength_Validator(BaseValidator):
             
             base_score = 0.5  # Score de base si validé
             
-            # Bonus force pivot selon direction
-            relevant_strength = pivot_support_strength if signal_side == "BUY" else pivot_resistance_strength
-            if relevant_strength >= self.strong_pivot_threshold:
-                base_score += self.strong_pivot_bonus
-            elif relevant_strength >= self.min_pivot_strength + 0.2:
-                base_score += 0.15
+            # CORRECTION: Bonus/Malus selon cohérence directionnelle pivot
+            if signal_side == "BUY":
+                # BUY: Fort support = bonus, Forte résistance proche = malus
+                if pivot_support_strength >= self.strong_pivot_threshold:
+                    base_score += self.strong_pivot_bonus  # Support fort = bon pour BUY
+                elif pivot_support_strength >= self.min_pivot_strength + 0.2:
+                    base_score += 0.15
                 
-            # Bonus touches/tests
-            relevant_touches = support_touch_count if signal_side == "BUY" else resistance_touch_count
-            if relevant_touches >= self.optimal_touch_count:
-                base_score += 0.15  # Pivot très testé
-            elif relevant_touches >= self.min_touch_count + 1:
-                base_score += 0.10  # Pivot bien testé
+                # Malus si résistance très forte proche (risque de rejet)
+                if pivot_resistance_strength >= self.strong_pivot_threshold:
+                    base_score -= 0.15  # Résistance forte = risque pour BUY
+                    
+                # Bonus touches/tests support
+                if support_touch_count >= self.optimal_touch_count:
+                    base_score += 0.15  # Support très testé = fiable pour BUY
+                elif support_touch_count >= self.min_touch_count + 1:
+                    base_score += 0.10
+                    
+            elif signal_side == "SELL":
+                # SELL: Forte résistance = bonus, Fort support proche = malus
+                if pivot_resistance_strength >= self.strong_pivot_threshold:
+                    base_score += self.strong_pivot_bonus  # Résistance forte = bon pour SELL
+                elif pivot_resistance_strength >= self.min_pivot_strength + 0.2:
+                    base_score += 0.15
+                
+                # Malus si support très fort proche (risque de rebond)
+                if pivot_support_strength >= self.strong_pivot_threshold:
+                    base_score -= 0.15  # Support fort = risque pour SELL
+                    
+                # Bonus touches/tests résistance
+                if resistance_touch_count >= self.optimal_touch_count:
+                    base_score += 0.15  # Résistance très testée = fiable pour SELL
+                elif resistance_touch_count >= self.min_touch_count + 1:
+                    base_score += 0.10
                 
             # Bonus confluence
             if confluence_score >= 70.0:  # Format 0-100

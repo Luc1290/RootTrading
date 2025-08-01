@@ -333,11 +333,15 @@ class Market_Structure_Validator(BaseValidator):
             elif confluence_score >= 60.0:
                 base_score += 0.10
                 
-            # Bonus bias directionnel cohérent
+            # CORRECTION: Bonus/Malus bias directionnel selon cohérence
             if directional_bias:
                 if (signal_side == "BUY" and directional_bias == "bullish") or \
                    (signal_side == "SELL" and directional_bias == "bearish"):
-                    base_score += 0.15
+                    base_score += 0.15  # Bonus cohérence directionnelle
+                elif (signal_side == "BUY" and directional_bias == "bearish") or \
+                     (signal_side == "SELL" and directional_bias == "bullish"):
+                    base_score -= 0.25  # Malus fort pour incohérence directionnelle
+                # Si directional_bias == "neutral", pas de bonus ni malus
                     
             # Bonus adéquation stratégie/régime
             strategy_match = self._validate_strategy_regime_match(

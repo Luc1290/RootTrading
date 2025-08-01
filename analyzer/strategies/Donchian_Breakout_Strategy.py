@@ -250,22 +250,43 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation volume (importante pour les breakouts)
+        # CORRECTION: Volume confirmation directionnelle asymétrique pour breakouts
         volume_ratio = values.get('volume_ratio')
         relative_volume = values.get('relative_volume')
         
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio >= self.volume_confirmation:
-                    confidence_boost += 0.15
-                    reason += f" + volume élevé ({vol_ratio:.1f}x)"
-                elif vol_ratio >= 1.1:
-                    confidence_boost += 0.10
-                    reason += f" + volume modéré ({vol_ratio:.1f}x)"
-                else:
-                    confidence_boost -= 0.05  # Pénalité pour volume faible
-                    reason += f" mais volume faible ({vol_ratio:.1f}x)"
+                
+                if signal_side == "BUY":
+                    # BUY (resistance breakout) : volume élevé crucial (buying pressure)
+                    if vol_ratio >= 2.0:
+                        confidence_boost += 0.20  # Volume très élevé = breakout fort
+                        reason += f" + volume très élevé BUY ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= 1.5:
+                        confidence_boost += 0.16
+                        reason += f" + volume élevé BUY ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= 1.2:
+                        confidence_boost += 0.10
+                        reason += f" + volume modéré ({vol_ratio:.1f}x)"
+                    else:
+                        confidence_boost -= 0.10  # Pénalité forte pour breakout sans volume
+                        reason += f" mais volume insuffisant BUY ({vol_ratio:.1f}x)"
+                        
+                elif signal_side == "SELL":
+                    # SELL (support breakdown) : volume fort requis mais naturellement plus bas
+                    if vol_ratio >= 1.8:
+                        confidence_boost += 0.18  # Volume élevé confirme breakdown
+                        reason += f" + volume élevé SELL ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= 1.3:
+                        confidence_boost += 0.14
+                        reason += f" + volume confirmé SELL ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= 1.0:
+                        confidence_boost += 0.08  # Volume normal acceptable pour SELL
+                        reason += f" + volume normal ({vol_ratio:.1f}x)"
+                    else:
+                        confidence_boost -= 0.08  # Pénalité modérée pour SELL
+                        reason += f" mais volume faible ({vol_ratio:.1f}x)"
             except (ValueError, TypeError):
                 pass
                 
@@ -319,13 +340,33 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
+        # CORRECTION: Confluence score avec logique directionnelle asymétrique
         confluence_score = values.get('confluence_score')
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
-                if confluence > 0.6:
-                    confidence_boost += 0.10
-                    reason += " + confluence"
+                if signal_side == "BUY":
+                    # BUY (resistance breakout) : confluence élevée = multiples confirmations haussières
+                    if confluence > 0.8:
+                        confidence_boost += 0.16
+                        reason += " + confluence très élevée BUY"
+                    elif confluence > 0.7:
+                        confidence_boost += 0.13
+                        reason += " + confluence élevée"
+                    elif confluence > 0.6:
+                        confidence_boost += 0.10
+                        reason += " + confluence modérée"
+                elif signal_side == "SELL":
+                    # SELL (support breakdown) : confluence forte = confirmations baissières multiples
+                    if confluence > 0.75:
+                        confidence_boost += 0.18  # Bonus supérieur pour breakdown
+                        reason += " + confluence très élevée SELL"
+                    elif confluence > 0.65:
+                        confidence_boost += 0.14
+                        reason += " + confluence élevée"
+                    elif confluence > 0.55:
+                        confidence_boost += 0.11
+                        reason += " + confluence modérée"
             except (ValueError, TypeError):
                 pass
                 

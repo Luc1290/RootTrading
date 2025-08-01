@@ -291,6 +291,50 @@ class Volume_Spike_Validator(BaseValidator):
         except Exception:
             return True
             
+    def _is_spike_directionally_coherent(self, signal_side: str, directional_bias: str, 
+                                        price_momentum: float, spike_price_confirmation: float) -> bool:
+        """Détermine si le spike de volume est cohérent avec la direction du signal."""
+        try:
+            # Facteurs de cohérence
+            coherence_factors = 0
+            total_factors = 0
+            
+            # Facteur 1: Cohérence avec bias directionnel
+            if directional_bias and directional_bias != 'neutral':
+                total_factors += 1
+                if ((signal_side == "BUY" and directional_bias == "bullish") or 
+                    (signal_side == "SELL" and directional_bias == "bearish")):
+                    coherence_factors += 1
+                    
+            # Facteur 2: Cohérence avec momentum prix
+            total_factors += 1
+            if signal_side == "BUY" and price_momentum > 55:  # Momentum haussier
+                coherence_factors += 1
+            elif signal_side == "SELL" and price_momentum < 45:  # Momentum baissier
+                coherence_factors += 1
+            elif 45 <= price_momentum <= 55:  # Momentum neutre = cohérent pour les deux
+                coherence_factors += 0.5
+                
+            # Facteur 3: Confirmation prix du spike
+            if spike_price_confirmation is not None:
+                total_factors += 1
+                if spike_price_confirmation >= 0.6:  # Bonne confirmation
+                    coherence_factors += 1
+                elif spike_price_confirmation >= 0.4:  # Confirmation modérée
+                    coherence_factors += 0.5
+                    
+            # Calculer ratio de cohérence
+            if total_factors == 0:
+                return True  # Pas de données pour juger = neutral
+                
+            coherence_ratio = coherence_factors / total_factors
+            
+            # Seuil de cohérence: 60% des facteurs doivent être favorables
+            return coherence_ratio >= 0.6
+            
+        except Exception:
+            return True  # En cas d'erreur, ne pas pénaliser
+            
     def get_validation_score(self, signal: Dict[str, Any]) -> float:
         """
         Calcule un score de validation basé sur les pics de volume.
@@ -324,16 +368,36 @@ class Volume_Spike_Validator(BaseValidator):
             unusual_activity_detected = self.context.get('unusual_activity_detected', False)
             
             signal_strategy = signal.get('strategy', '')
+            signal_side = signal.get('side')
             
             base_score = 0.5  # Score de base si validé
             
-            # Bonus multiplier spike
+            # CORRECTION: Bonus spike selon cohérence directionnelle + contexte
+            # Obtenir le contexte directionnel pour interpréter le spike
+            directional_bias = self.context.get('directional_bias', 'neutral')
+            price_momentum = float(self.context.get('momentum_score', 50)) if self.context.get('momentum_score') is not None else 50
+            
+            # Déterminer si le spike est cohérent avec la direction
+            spike_coherent = self._is_spike_directionally_coherent(
+                signal_side, directional_bias, price_momentum, spike_price_confirmation
+            )
+            
+            # Bonus multiplier spike (réduit si incohérent)
             if volume_spike_multiplier >= self.exceptional_spike_multiplier:
-                base_score += self.exceptional_spike_bonus
+                if spike_coherent:
+                    base_score += self.exceptional_spike_bonus  # Plein bonus si cohérent
+                else:
+                    base_score += self.exceptional_spike_bonus * 0.5  # Bonus réduit si incohérent
             elif volume_spike_multiplier >= self.strong_spike_multiplier:
-                base_score += 0.20
+                if spike_coherent:
+                    base_score += 0.20
+                else:
+                    base_score += 0.10  # Bonus réduit
             elif volume_spike_multiplier >= self.min_spike_multiplier + 0.5:
-                base_score += 0.10
+                if spike_coherent:
+                    base_score += 0.10
+                else:
+                    base_score += 0.05  # Bonus réduit
                 
             # Bonus durée spike optimale
             if spike_duration_bars == self.optimal_spike_duration:

@@ -70,59 +70,89 @@ class ZScore_Context_Validator(BaseValidator):
         
     def validate_signal(self, signal: Dict[str, Any]) -> bool:
         """
-        Valide le signal basé sur l'analyse Z-Score contextuelle et statistiques.
+        Valide le signal basé sur l'analyse contextuelle et statistiques disponibles.
+        
+        NOTE: Ce validator simule une analyse Z-Score en utilisant les indicateurs disponibles
+        car les vrais Z-Scores ne sont pas dans la DB actuelle.
         
         Args:
             signal: Signal à valider contenant strategy, symbol, side, etc.
             
         Returns:
-            True si le signal est valide selon Z-Score context, False sinon
+            True si le signal est valide selon contexte statistique, False sinon
         """
         try:
             if not self.validate_data():
                 logger.warning(f"{self.name}: Données insuffisantes pour {self.symbol}")
                 return False
                 
-            # Extraction des indicateurs Z-Score depuis le contexte
+            # CORRECTION: Utilisation des indicateurs réellement disponibles dans analyzer_data
             try:
-                # Z-Scores principaux
-                price_zscore = float(self.context.get('price_zscore', 0)) if self.context.get('price_zscore') is not None else None
-                volume_zscore = float(self.context.get('volume_zscore', 0)) if self.context.get('volume_zscore') is not None else None
-                returns_zscore = float(self.context.get('returns_zscore', 0)) if self.context.get('returns_zscore') is not None else None
+                # Simuler Z-Scores avec indicateurs disponibles
+                # price_zscore simulé avec bb_position (0-1 converti en -2 à +2)
+                bb_position = float(self.context.get('bb_position', 0.5)) if self.context.get('bb_position') is not None else None
+                price_zscore = ((bb_position - 0.5) * 4) if bb_position is not None else None  # Convert 0-1 to -2 to +2
                 
-                # Z-Scores multi-périodes
-                zscore_20 = float(self.context.get('zscore_20', 0)) if self.context.get('zscore_20') is not None else None
-                zscore_50 = float(self.context.get('zscore_50', 0)) if self.context.get('zscore_50') is not None else None
-                zscore_100 = float(self.context.get('zscore_100', 0)) if self.context.get('zscore_100') is not None else None
+                # volume_zscore simulé avec relative_volume normalisé
+                relative_volume = float(self.context.get('relative_volume', 1.0)) if self.context.get('relative_volume') is not None else None
+                volume_zscore = ((relative_volume - 1.0) * 2) if relative_volume is not None else None  # Rough Z-Score approximation
                 
-                # Contexte statistique
-                # statistical_significance → pattern_confidence
-                statistical_significance = float(self.context.get('pattern_confidence', 0)) if self.context.get('pattern_confidence') is not None else None
-                distribution_normality = float(self.context.get('distribution_normality', 0.5)) if self.context.get('distribution_normality') is not None else None
-                # data_reliability_score → volume_quality_score
-                data_reliability_score = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else None
+                # returns_zscore simulé avec momentum_score normalisé
+                momentum_score = float(self.context.get('momentum_score', 50.0)) if self.context.get('momentum_score') is not None else None
+                returns_zscore = ((momentum_score - 50.0) / 25.0) if momentum_score is not None else None  # Convert 0-100 to -2 to +2
                 
-                # Paramètres distribution
-                # distribution_skewness → momentum_score
-                distribution_skewness = float(self.context.get('momentum_score', 0)) if self.context.get('momentum_score') is not None else None
-                # distribution_kurtosis → volatility_regime (convertir string en float)
-                dist_kurtosis_raw = self.context.get('volatility_regime', 3)
-                distribution_kurtosis = 3.0 if isinstance(dist_kurtosis_raw, str) else float(dist_kurtosis_raw) if dist_kurtosis_raw is not None else 3.0
-                # outlier_ratio → anomaly_detected (convertir bool en float)
-                outlier_raw = self.context.get('anomaly_detected', False)
-                outlier_ratio = 0.1 if outlier_raw else 0.0
+                # Multi-période simulé avec différents indicateurs de régime
+                regime_duration = int(self.context.get('regime_duration', 0)) if self.context.get('regime_duration') is not None else None
+                zscore_20 = (regime_duration - 20) / 10 if regime_duration is not None else None  # Rough approximation
+                
+                # Utiliser atr_percentile comme proxy pour zscore_50
+                atr_percentile = float(self.context.get('atr_percentile', 50.0)) if self.context.get('atr_percentile') is not None else None
+                zscore_50 = ((atr_percentile - 50.0) / 25.0) if atr_percentile is not None else None
+                
+                # Confluence score comme proxy pour zscore_100
+                confluence_score = float(self.context.get('confluence_score', 50.0)) if self.context.get('confluence_score') is not None else None
+                zscore_100 = ((confluence_score - 50.0) / 25.0) if confluence_score is not None else None
+                
+                # Contexte statistique réel
+                statistical_significance = float(self.context.get('pattern_confidence', 50.0)) if self.context.get('pattern_confidence') is not None else None
+                
+                # distribution_normality simulé avec data_quality
+                data_quality = self.context.get('data_quality', 'GOOD')
+                distribution_normality_map = {'EXCELLENT': 0.9, 'GOOD': 0.7, 'FAIR': 0.5, 'POOR': 0.3}
+                distribution_normality = distribution_normality_map.get(data_quality, 0.5)
+                
+                data_reliability_score = float(self.context.get('volume_quality_score', 50.0)) if self.context.get('volume_quality_score') is not None else 50.0
+                
+                # Paramètres distribution simulés
+                distribution_skewness = ((momentum_score - 50.0) / 50.0) if momentum_score is not None else None
+                
+                # Kurtosis simulé avec volatility_regime
+                vol_regime = self.context.get('volatility_regime', 'NORMAL')
+                kurtosis_map = {'LOW': 2.0, 'NORMAL': 3.0, 'HIGH': 4.0, 'EXTREME': 6.0}
+                distribution_kurtosis = kurtosis_map.get(vol_regime, 3.0)
+                
+                # Outlier ratio basé sur anomaly_detected
+                anomaly_detected = self.context.get('anomaly_detected', False)
+                outlier_ratio = 0.15 if anomaly_detected else 0.02
                 
                 # Contexte temporel
-                zscore_stability = float(self.context.get('zscore_stability', 0.5)) if self.context.get('zscore_stability') is not None else None
-                # context_persistence → regime_strength (convertir en int)
-                context_persistence_raw = self.context.get('regime_strength', 0)
-                context_persistence = int(float(context_persistence_raw)) if context_persistence_raw is not None else 0
-                trend_zscore_coherence = float(self.context.get('trend_zscore_coherence', 0.5)) if self.context.get('trend_zscore_coherence') is not None else None
+                # zscore_stability simulé avec regime_confidence
+                regime_confidence = float(self.context.get('regime_confidence', 50.0)) if self.context.get('regime_confidence') is not None else 50.0
+                zscore_stability = regime_confidence / 100.0
+                
+                # context_persistence = regime_duration déjà récupéré
+                context_persistence = regime_duration
+                
+                # trend_zscore_coherence simulé avec trend_alignment
+                trend_alignment = float(self.context.get('trend_alignment', 50.0)) if self.context.get('trend_alignment') is not None else 50.0
+                trend_zscore_coherence = trend_alignment / 100.0
                 
                 # Confluence et anomalies
-                statistical_confluence = float(self.context.get('statistical_confluence', 0.5)) if self.context.get('statistical_confluence') is not None else None
-                anomaly_detected = self.context.get('anomaly_detected', False)
-                mean_reversion_signal = self.context.get('mean_reversion_signal', False)
+                statistical_confluence = confluence_score / 100.0 if confluence_score is not None else 0.5
+                
+                # mean_reversion_signal simulé basé sur RSI
+                rsi_14 = float(self.context.get('rsi_14', 50.0)) if self.context.get('rsi_14') is not None else 50.0
+                mean_reversion_signal = (rsi_14 < 30 or rsi_14 > 70)  # RSI oversold/overbought
                 
             except (ValueError, TypeError) as e:
                 logger.warning(f"{self.name}: Erreur conversion indicateurs pour {self.symbol}: {e}")
@@ -344,33 +374,95 @@ class ZScore_Context_Validator(BaseValidator):
             if not self.validate_signal(signal):
                 return 0.0
                 
-            # Calcul du score basé sur contexte Z-Score
-            price_zscore = float(self.context.get('price_zscore', 0)) if self.context.get('price_zscore') is not None else 0
-            volume_zscore = float(self.context.get('volume_zscore', 0)) if self.context.get('volume_zscore') is not None else 0
-            distribution_normality = float(self.context.get('distribution_normality', 0.5)) if self.context.get('distribution_normality') is not None else 0.5
-            zscore_stability = float(self.context.get('zscore_stability', 0.5)) if self.context.get('zscore_stability') is not None else 0.5
-            statistical_confluence = float(self.context.get('statistical_confluence', 0.5)) if self.context.get('statistical_confluence') is not None else 0.5
-            # context_persistence → regime_strength (convertir en int)
-            context_persistence = int(self.context.get('regime_strength', 3)) if self.context.get('regime_strength') is not None else 3
-            # data_reliability_score → volume_quality_score
-            data_reliability_score = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else 0.5
+            # CORRECTION: Utilisation des indicateurs simulés comme dans validate_signal()
+            # price_zscore simulé avec bb_position (0-1 converti en -2 à +2)
+            bb_position = float(self.context.get('bb_position', 0.5)) if self.context.get('bb_position') is not None else 0.5
+            price_zscore = (bb_position - 0.5) * 4  # Convert 0-1 to -2 to +2
+            
+            # volume_zscore simulé avec relative_volume normalisé
+            relative_volume = float(self.context.get('relative_volume', 1.0)) if self.context.get('relative_volume') is not None else 1.0
+            volume_zscore = (relative_volume - 1.0) * 2  # Rough Z-Score approximation
+            
+            # distribution_normality simulé avec data_quality
+            data_quality = self.context.get('data_quality', 'GOOD')
+            distribution_normality_map = {'EXCELLENT': 0.9, 'GOOD': 0.7, 'FAIR': 0.5, 'POOR': 0.3}
+            distribution_normality = distribution_normality_map.get(data_quality, 0.5)
+            
+            # zscore_stability simulé avec regime_confidence
+            regime_confidence = float(self.context.get('regime_confidence', 50.0)) if self.context.get('regime_confidence') is not None else 50.0
+            zscore_stability = regime_confidence / 100.0
+            
+            # statistical_confluence avec confluence_score
+            confluence_score = float(self.context.get('confluence_score', 50.0)) if self.context.get('confluence_score') is not None else 50.0
+            statistical_confluence = confluence_score / 100.0
+            
+            # context_persistence avec regime_duration
+            context_persistence = int(self.context.get('regime_duration', 3)) if self.context.get('regime_duration') is not None else 3
+            
+            # data_reliability_score avec volume_quality_score (en % donc /100)
+            data_reliability_score = float(self.context.get('volume_quality_score', 50.0)) if self.context.get('volume_quality_score') is not None else 50.0
+            data_reliability_score = data_reliability_score / 100.0  # Convert % to 0-1
             
             signal_strategy = signal.get('strategy', '')
             
             base_score = 0.5  # Score de base si validé
             
-            # Bonus Z-Score prix dans zone optimale
-            if self.optimal_zscore_range_min <= price_zscore <= self.optimal_zscore_range_max:
-                if abs(price_zscore) >= 1.0:  # Z-Score significatif mais pas extrême
-                    base_score += self.optimal_zscore_bonus
-                elif abs(price_zscore) >= 0.5:
-                    base_score += 0.15
+            # CORRECTION: Bonus Z-Score prix avec logique directionnelle
+            signal_side = signal.get('side')
+            
+            if price_zscore is not None and signal_side:
+                # Logique directionnelle pour Z-Score prix
+                if signal_side == "BUY":
+                    # BUY favorisé avec Z-Score négatif (prix sous moyenne = opportunité d'achat)
+                    if price_zscore <= -1.5 and price_zscore >= -2.5:
+                        base_score += self.optimal_zscore_bonus  # Excellent pour BUY
+                    elif price_zscore <= -0.5 and price_zscore >= -3.0:
+                        base_score += 0.15  # Bon pour BUY
+                    elif price_zscore >= 1.5:
+                        base_score -= 0.10  # Défavorable pour BUY (prix au-dessus moyenne)
+                        
+                elif signal_side == "SELL":
+                    # SELL favorisé avec Z-Score positif (prix au-dessus moyenne = opportunité de vente)
+                    if price_zscore >= 1.5 and price_zscore <= 2.5:
+                        base_score += self.optimal_zscore_bonus  # Excellent pour SELL
+                    elif price_zscore >= 0.5 and price_zscore <= 3.0:
+                        base_score += 0.15  # Bon pour SELL
+                    elif price_zscore <= -1.5:
+                        base_score -= 0.10  # Défavorable pour SELL (prix sous moyenne)
+            else:
+                # Fallback sans direction
+                if self.optimal_zscore_range_min <= price_zscore <= self.optimal_zscore_range_max:
+                    if abs(price_zscore) >= 1.0:
+                        base_score += 0.10
+                    elif abs(price_zscore) >= 0.5:
+                        base_score += 0.05
                     
-            # Bonus Z-Score volume approprié
-            if 1.0 <= abs(volume_zscore) <= 2.5:
-                base_score += 0.15  # Volume Z-Score dans zone optimale
-            elif 0.5 <= abs(volume_zscore) <= 3.0:
-                base_score += 0.08
+            # CORRECTION: Bonus Z-Score volume avec logique directionnelle
+            if volume_zscore is not None and signal_side:
+                # Volume Z-Score élevé = activité anormale, peut indiquer mouvement imminent
+                if signal_side == "BUY":
+                    # BUY avec volume Z-Score positif = accumulation
+                    if volume_zscore >= 1.0 and volume_zscore <= 2.5:
+                        base_score += 0.18  # Excellent volume pour BUY
+                    elif volume_zscore >= 0.5 and volume_zscore <= 3.0:
+                        base_score += 0.10  # Bon volume pour BUY
+                    elif volume_zscore <= -1.0:
+                        base_score -= 0.05  # Volume faible défavorable pour BUY
+                        
+                elif signal_side == "SELL":
+                    # SELL avec volume Z-Score positif = distribution/panique
+                    if volume_zscore >= 1.5 and volume_zscore <= 3.0:
+                        base_score += 0.18  # Excellent volume pour SELL (panique)
+                    elif volume_zscore >= 0.5:
+                        base_score += 0.10  # Bon volume pour SELL
+                    elif volume_zscore <= -1.0:
+                        base_score -= 0.05  # Volume faible défavorable pour SELL
+            else:
+                # Fallback sans direction
+                if 1.0 <= abs(volume_zscore) <= 2.5:
+                    base_score += 0.10
+                elif 0.5 <= abs(volume_zscore) <= 3.0:
+                    base_score += 0.05
                 
             # Bonus normalité distribution
             if distribution_normality >= 0.8:
@@ -406,11 +498,43 @@ class ZScore_Context_Validator(BaseValidator):
             if self._validate_strategy_zscore_match(signal_strategy, price_zscore, volume_zscore):
                 base_score += 0.08  # Stratégie bien adaptée au contexte Z-Score
                 
-            # Bonus mean reversion cohérent
-            signal_side = signal.get('side')
+            # CORRECTION: Bonus mean reversion avec logique directionnelle avancée
             mean_reversion_signal = self.context.get('mean_reversion_signal', False)
-            if mean_reversion_signal and signal_side is not None and price_zscore is not None and self._validate_mean_reversion_coherence(signal_side, price_zscore):
-                base_score += 0.10  # Signal cohérent avec mean reversion
+            
+            # Mean reversion classique
+            if mean_reversion_signal and signal_side and price_zscore is not None:
+                if self._validate_mean_reversion_coherence(signal_side, price_zscore):
+                    base_score += 0.15  # Signal très cohérent avec mean reversion
+                else:
+                    base_score -= 0.10  # Incohérence mean reversion
+                    
+            # Bonus pour conditions extrêmes favorables selon direction
+            if signal_side and price_zscore is not None:
+                if signal_side == "BUY" and price_zscore <= -2.0:
+                    # BUY en oversold extrême
+                    base_score += 0.12  # Opportunité d'achat fort
+                elif signal_side == "SELL" and price_zscore >= 2.0:
+                    # SELL en overbought extrême
+                    base_score += 0.12  # Opportunité de vente forte
+                    
+            # Bonus cohérence multi-périodes selon direction avec indicateurs simulés
+            # zscore_20 simulé avec regime_duration
+            regime_duration = int(self.context.get('regime_duration', 20)) if self.context.get('regime_duration') is not None else 20
+            zscore_20 = (regime_duration - 20) / 10  # Rough approximation
+            
+            # zscore_50 simulé avec atr_percentile
+            atr_percentile = float(self.context.get('atr_percentile', 50.0)) if self.context.get('atr_percentile') is not None else 50.0
+            zscore_50 = (atr_percentile - 50.0) / 25.0
+            
+            if signal_side:
+                if signal_side == "BUY":
+                    # BUY avec conditions "Z-Score" négatives cohérentes
+                    if zscore_20 < -0.5 and zscore_50 < -0.5:
+                        base_score += 0.08  # Cohérence multi-périodes BUY
+                elif signal_side == "SELL":
+                    # SELL avec conditions "Z-Score" positives cohérentes
+                    if zscore_20 > 0.5 and zscore_50 > 0.5:
+                        base_score += 0.08  # Cohérence multi-périodes SELL
                 
             return max(0.0, min(1.0, base_score))
             
@@ -433,12 +557,21 @@ class ZScore_Context_Validator(BaseValidator):
             signal_side = signal.get('side', 'N/A')
             signal_strategy = signal.get('strategy', 'N/A')
             
-            price_zscore = float(self.context.get('price_zscore', 0)) if self.context.get('price_zscore') is not None else None
-            volume_zscore = float(self.context.get('volume_zscore', 0)) if self.context.get('volume_zscore') is not None else None
-            distribution_normality = float(self.context.get('distribution_normality', 0.5)) if self.context.get('distribution_normality') is not None else None
-            statistical_confluence = float(self.context.get('statistical_confluence', 0.5)) if self.context.get('statistical_confluence') is not None else None
-            # context_persistence → regime_strength (convertir en int)
-            context_persistence = int(self.context.get('regime_strength', 0)) if self.context.get('regime_strength') is not None else None
+            # CORRECTION: Utiliser les mêmes simulations que dans get_validation_score()
+            bb_position = float(self.context.get('bb_position', 0.5)) if self.context.get('bb_position') is not None else None
+            price_zscore = ((bb_position - 0.5) * 4) if bb_position is not None else None  # Convert 0-1 to -2 to +2
+            
+            relative_volume = float(self.context.get('relative_volume', 1.0)) if self.context.get('relative_volume') is not None else None
+            volume_zscore = ((relative_volume - 1.0) * 2) if relative_volume is not None else None  # Rough Z-Score approximation
+            
+            data_quality = self.context.get('data_quality', 'GOOD')
+            distribution_normality_map = {'EXCELLENT': 0.9, 'GOOD': 0.7, 'FAIR': 0.5, 'POOR': 0.3}
+            distribution_normality = distribution_normality_map.get(data_quality, 0.5)
+            
+            confluence_score = float(self.context.get('confluence_score', 50.0)) if self.context.get('confluence_score') is not None else None
+            statistical_confluence = confluence_score / 100.0 if confluence_score is not None else None
+            
+            context_persistence = int(self.context.get('regime_duration', 0)) if self.context.get('regime_duration') is not None else None
             
             if is_valid:
                 reason = f"Contexte Z-Score favorable"
@@ -489,17 +622,21 @@ class ZScore_Context_Validator(BaseValidator):
         if not super().validate_data():
             return False
             
-        # Au minimum, on a besoin d'un indicateur Z-Score
-        zscore_indicators = [
-            'price_zscore', 'volume_zscore', 'returns_zscore',
-            'distribution_normality', 'statistical_confluence', 'zscore_stability'
+        # CORRECTION: Vérifier les indicateurs réellement disponibles pour simulation Z-Score
+        required_indicators = [
+            'bb_position',        # Pour simuler price_zscore
+            'relative_volume',    # Pour simuler volume_zscore  
+            'momentum_score',     # Pour simuler returns_zscore
+            'data_quality',       # Pour simuler distribution_normality
+            'confluence_score',   # Pour simuler statistical_confluence
+            'regime_confidence'   # Pour simuler zscore_stability
         ]
         
-        available_indicators = sum(1 for ind in zscore_indicators 
+        available_indicators = sum(1 for ind in required_indicators 
                                  if ind in self.context and self.context[ind] is not None)
         
-        if available_indicators < 2:
-            logger.warning(f"{self.name}: Pas assez d'indicateurs Z-Score pour {self.symbol}")
+        if available_indicators < 3:
+            logger.warning(f"{self.name}: Pas assez d'indicateurs disponibles pour simulation Z-Score pour {self.symbol}")
             return False
             
         return True

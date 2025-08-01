@@ -374,34 +374,75 @@ class TEMA_Slope_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation avec momentum indicators
+        # CORRECTION: Confirmation avec momentum indicators - logique directionnelle stricte
         momentum_score = values.get('momentum_score')
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                momentum_aligned = (signal_side == "BUY" and momentum > 0.2) or \
-                                  (signal_side == "SELL" and momentum < -0.2)
-                
-                if momentum_aligned:
-                    confidence_boost += 0.15
-                    reason += " + momentum confirmé"
-                elif abs(momentum) > 0.1:
-                    confidence_boost += 0.08
-                    reason += " + momentum aligné"
+                # BUY : momentum positif requis
+                if signal_side == "BUY":
+                    if momentum > 0.3:
+                        confidence_boost += 0.18  # Momentum très positif = excellent pour BUY
+                        reason += f" + momentum très positif ({momentum:.2f})"
+                    elif momentum > 0.15:
+                        confidence_boost += 0.12  # Momentum positif modéré
+                        reason += f" + momentum positif ({momentum:.2f})"
+                    elif momentum > 0.05:
+                        confidence_boost += 0.06  # Momentum légèrement positif
+                        reason += f" + momentum faible positif ({momentum:.2f})"
+                    elif momentum < -0.1:
+                        confidence_boost -= 0.10  # Momentum négatif = mauvais pour BUY
+                        reason += f" mais momentum négatif ({momentum:.2f})"
+                # SELL : momentum négatif requis
+                elif signal_side == "SELL":
+                    if momentum < -0.3:
+                        confidence_boost += 0.18  # Momentum très négatif = excellent pour SELL
+                        reason += f" + momentum très négatif ({momentum:.2f})"
+                    elif momentum < -0.15:
+                        confidence_boost += 0.12  # Momentum négatif modéré
+                        reason += f" + momentum négatif ({momentum:.2f})"
+                    elif momentum < -0.05:
+                        confidence_boost += 0.06  # Momentum légèrement négatif
+                        reason += f" + momentum faible négatif ({momentum:.2f})"
+                    elif momentum > 0.1:
+                        confidence_boost -= 0.10  # Momentum positif = mauvais pour SELL
+                        reason += f" mais momentum positif ({momentum:.2f})"
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation avec ROC
+        # CORRECTION: Confirmation avec ROC - seuils directionnels adaptatifs
         roc_10 = values.get('roc_10')
         if roc_10 is not None:
             try:
                 roc = float(roc_10)
-                roc_aligned = (signal_side == "BUY" and roc > 1.0) or \
-                             (signal_side == "SELL" and roc < -1.0)
-                
-                if roc_aligned:
-                    confidence_boost += 0.12
-                    reason += f" + ROC confirmé ({roc:.2f}%)"
+                # BUY : ROC positif avec différents niveaux
+                if signal_side == "BUY":
+                    if roc > 3.0:
+                        confidence_boost += 0.15  # ROC très positif = excellent pour BUY
+                        reason += f" + ROC très positif ({roc:.2f}%)"
+                    elif roc > 1.5:
+                        confidence_boost += 0.12  # ROC positif fort
+                        reason += f" + ROC positif fort ({roc:.2f}%)"
+                    elif roc > 0.5:
+                        confidence_boost += 0.08  # ROC positif modéré
+                        reason += f" + ROC positif ({roc:.2f}%)"
+                    elif roc < -1.0:
+                        confidence_boost -= 0.08  # ROC négatif = défavorable pour BUY
+                        reason += f" mais ROC négatif ({roc:.2f}%)"
+                # SELL : ROC négatif avec différents niveaux
+                elif signal_side == "SELL":
+                    if roc < -3.0:
+                        confidence_boost += 0.15  # ROC très négatif = excellent pour SELL
+                        reason += f" + ROC très négatif ({roc:.2f}%)"
+                    elif roc < -1.5:
+                        confidence_boost += 0.12  # ROC négatif fort
+                        reason += f" + ROC négatif fort ({roc:.2f}%)"
+                    elif roc < -0.5:
+                        confidence_boost += 0.08  # ROC négatif modéré
+                        reason += f" + ROC négatif ({roc:.2f}%)"
+                    elif roc > 1.0:
+                        confidence_boost -= 0.08  # ROC positif = défavorable pour SELL
+                        reason += f" mais ROC positif ({roc:.2f}%)"
             except (ValueError, TypeError):
                 pass
                 
@@ -457,20 +498,39 @@ class TEMA_Slope_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation avec RSI (éviter extrêmes)
+        # CORRECTION: Confirmation avec RSI - zones directionnelles optimales
         rsi_14 = values.get('rsi_14')
         if rsi_14 is not None:
             try:
                 rsi = float(rsi_14)
-                if signal_side == "BUY" and 40 <= rsi <= 70:
-                    confidence_boost += 0.08
-                    reason += " + RSI favorable"
-                elif signal_side == "SELL" and 30 <= rsi <= 60:
-                    confidence_boost += 0.08
-                    reason += " + RSI favorable"
-                elif (signal_side == "BUY" and rsi >= 80) or (signal_side == "SELL" and rsi <= 20):
-                    confidence_boost -= 0.10
-                    reason += " mais RSI extrême"
+                # BUY : favoriser RSI en reprise depuis zone basse
+                if signal_side == "BUY":
+                    if 45 <= rsi <= 65:
+                        confidence_boost += 0.12  # Zone optimale BUY (momentum haussier)
+                        reason += " + RSI haussier optimal"
+                    elif 35 <= rsi <= 44:
+                        confidence_boost += 0.08  # Sortie d'oversold = bon pour BUY
+                        reason += " + RSI sortie oversold"
+                    elif rsi >= 75:
+                        confidence_boost -= 0.08  # Overbought = risqué pour BUY
+                        reason += " mais RSI overbought"
+                    elif rsi <= 30:
+                        confidence_boost += 0.05  # Oversold peut être opportunité BUY
+                        reason += " + RSI oversold (opportunité)"
+                # SELL : favoriser RSI en déclin depuis zone haute  
+                elif signal_side == "SELL":
+                    if 35 <= rsi <= 55:
+                        confidence_boost += 0.12  # Zone optimale SELL (momentum baissier)
+                        reason += " + RSI baissier optimal"
+                    elif 56 <= rsi <= 65:
+                        confidence_boost += 0.08  # Entrée en overbought = bon pour SELL
+                        reason += " + RSI entrée overbought"
+                    elif rsi <= 25:
+                        confidence_boost -= 0.08  # Oversold = risqué pour SELL
+                        reason += " mais RSI oversold"
+                    elif rsi >= 70:
+                        confidence_boost += 0.05  # Overbought peut être opportunité SELL
+                        reason += " + RSI overbought (opportunité)"
             except (ValueError, TypeError):
                 pass
                 
@@ -535,18 +595,38 @@ class TEMA_Slope_Strategy(BaseStrategy):
             confidence_boost -= 0.05  # TEMA slope moins fiable en ranging
             reason += " (marché ranging)"
             
-        # Volatility context
+        # CORRECTION: Volatility context - adaptation selon force pente et direction
         volatility_regime = values.get('volatility_regime')
         if volatility_regime == "normal":
-            confidence_boost += 0.05
+            confidence_boost += 0.08  # Volatilité normale toujours favorable
             reason += " + volatilité normale"
-        elif volatility_regime == "high":
+        elif volatility_regime == "low":
+            # Basse volatilité : pentes fortes plus significatives
             if slope_strength in ["strong", "very_strong"]:
-                confidence_boost += 0.05  # Forte pente en haute volatilité = signal plus fiable
-                reason += " + volatilité élevée favorable"
+                confidence_boost += 0.12  # Pente forte en basse vol = signal très fiable
+                reason += " + basse volatilité pente forte"
             else:
-                confidence_boost -= 0.05
-                reason += " mais volatilité élevée"
+                confidence_boost += 0.03  # Pente faible en basse vol = signal faible
+                reason += " + basse volatilité"
+        elif volatility_regime == "high":
+            # Haute volatilité : adapter selon direction et force
+            if slope_strength == "very_strong":
+                confidence_boost += 0.10  # Pente très forte maîtrise la haute volatilité
+                reason += " + haute volatilité maîtrisée"
+            elif slope_strength == "strong":
+                confidence_boost += 0.05  # Pente forte acceptable en haute vol
+                reason += " + haute volatilité acceptable"
+            else:
+                confidence_boost -= 0.08  # Pente faible en haute vol = signal peu fiable
+                reason += " mais haute volatilité défavorable"
+        elif volatility_regime == "extreme":
+            # Volatilité extrême : très sélectif
+            if slope_strength == "very_strong" and abs(tema_slope) > self.very_strong_slope_threshold * 2:
+                confidence_boost += 0.08  # Pente exceptionnelle en vol extrême
+                reason += " + volatilité extrême maîtrisée"
+            else:
+                confidence_boost -= 0.12  # Trop risqué en volatilité extrême
+                reason += " mais volatilité extrême"
                 
         # Confluence score
         confluence_score = values.get('confluence_score')

@@ -415,28 +415,111 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # ATR pour contexte volatilité
+        # CORRECTION MAGISTRALE: ATR volatilité avec psychologie des breakouts
         atr_percentile = values.get('atr_percentile')
+        volatility_regime = values.get('volatility_regime')
+        
         if atr_percentile is not None:
             try:
                 atr_pct = float(atr_percentile)
-                if 30 <= atr_pct <= 70:  # Volatilité normale
-                    confidence_boost += 0.05
-                    reason += " + volatilité normale"
-                elif atr_pct > 80:  # Volatilité très élevée
-                    confidence_boost -= 0.05
-                    reason += " mais volatilité élevée"
+                
+                if signal_side == "BUY":
+                    # Breakout haussier : volatilité contrôlée idéale, haute volatilité = piège
+                    if atr_pct < 20:  # Volatilité très faible = compression
+                        confidence_boost += 0.18
+                        reason += f" + compression extrême breakout ({atr_pct:.0f}%)"
+                    elif 20 <= atr_pct <= 50:  # Volatilité idéale pour breakout haussier
+                        confidence_boost += 0.15
+                        reason += f" + volatilité idéale breakout ({atr_pct:.0f}%)"
+                    elif 50 < atr_pct <= 75:  # Volatilité modérée à élevée
+                        confidence_boost += 0.08
+                        reason += f" + volatilité modérée breakout ({atr_pct:.0f}%)"
+                    elif 75 < atr_pct <= 90:  # Volatilité très élevée = risque faux breakout
+                        confidence_boost -= 0.10
+                        reason += f" mais volatilité élevée risque ({atr_pct:.0f}%)"
+                    else:  # atr_pct > 90 : Volatilité extrême = piège probable
+                        confidence_boost -= 0.18
+                        reason += f" mais volatilité extrême piège ({atr_pct:.0f}%)"
+                        
+                else:  # SELL
+                    # Breakdown baissier : peut profiter de volatilité élevée (panique)
+                    if atr_pct < 25:  # Volatilité très faible = breakdown faible
+                        confidence_boost += 0.10
+                        reason += f" + breakdown contrôlé ({atr_pct:.0f}%)"
+                    elif 25 <= atr_pct <= 60:  # Volatilité normale à modérée
+                        confidence_boost += 0.12
+                        reason += f" + volatilité favorable breakdown ({atr_pct:.0f}%)"
+                    elif 60 < atr_pct <= 85:  # Volatilité élevée = panique favorable
+                        confidence_boost += 0.16
+                        reason += f" + volatilité élevée panique ({atr_pct:.0f}%)"
+                    else:  # atr_pct > 85 : Volatilité extrême = continuation baissière forte
+                        confidence_boost += 0.20
+                        reason += f" + volatilité extrême continuation ({atr_pct:.0f}%)"
+                        
             except (ValueError, TypeError):
                 pass
                 
-        # Market regime
+        # CORRECTION MAGISTRALE: Market regime avec durée de consolidation
         market_regime = values.get('market_regime')
-        if market_regime == "ranging":
-            confidence_boost += 0.12  # Breakouts plus significatifs après ranging
-            reason += " (sortie ranging)"
-        elif market_regime == "trending":
-            confidence_boost += 0.08  # Continuation de tendance
-            reason += " (continuation trend)"
+        regime_strength = values.get('regime_strength')
+        bb_squeeze = values.get('bb_squeeze')
+        
+        if market_regime is not None:
+            try:
+                regime_str = float(regime_strength) if regime_strength is not None else 0.5
+                squeeze_val = float(bb_squeeze) if bb_squeeze is not None else 0.0
+                
+                if signal_side == "BUY":
+                    # Breakout haussier : plus la consolidation est forte/longue, plus le breakout est puissant
+                    if market_regime == "ranging":
+                        if regime_str > 0.8 and squeeze_val > 0.7:  # Range parfait + squeeze
+                            confidence_boost += 0.25
+                            reason += f" + consolidation parfaite breakout ({regime_str:.2f})"
+                        elif regime_str > 0.6:  # Range fort
+                            confidence_boost += 0.20
+                            reason += f" + consolidation forte breakout ({regime_str:.2f})"
+                        elif regime_str > 0.4:  # Range modéré
+                            confidence_boost += 0.15
+                            reason += f" + consolidation modérée ({regime_str:.2f})"
+                        else:  # Range faible = breakout moins fiable
+                            confidence_boost += 0.08
+                            reason += f" + consolidation faible ({regime_str:.2f})"
+                    elif market_regime == "trending":
+                        if regime_str > 0.7:  # Trend fort = continuation puissante
+                            confidence_boost += 0.18
+                            reason += f" + continuation trend forte ({regime_str:.2f})"
+                        else:  # Trend faible = continuation incertaine
+                            confidence_boost += 0.10
+                            reason += f" + continuation trend faible ({regime_str:.2f})"
+                    elif market_regime == "choppy":
+                        confidence_boost -= 0.08  # Chaos = faux breakouts fréquents
+                        reason += " mais marché chaotique défavorable"
+                        
+                else:  # SELL
+                    # Breakdown baissier : efficace en ranging et continuation trend baissier
+                    if market_regime == "ranging":
+                        if regime_str > 0.7 and squeeze_val > 0.6:  # Range + squeeze = breakdown puissant
+                            confidence_boost += 0.22
+                            reason += f" + consolidation parfaite breakdown ({regime_str:.2f})"
+                        elif regime_str > 0.5:  # Range modéré à fort
+                            confidence_boost += 0.18
+                            reason += f" + consolidation forte breakdown ({regime_str:.2f})"
+                        else:  # Range faible
+                            confidence_boost += 0.12
+                            reason += f" + consolidation breakdown ({regime_str:.2f})"
+                    elif market_regime == "trending":
+                        if regime_str > 0.6:  # Trend fort = continuation baissière
+                            confidence_boost += 0.15
+                            reason += f" + continuation baissière forte ({regime_str:.2f})"
+                        else:  # Trend faible
+                            confidence_boost += 0.08
+                            reason += f" + continuation baissière ({regime_str:.2f})"
+                    elif market_regime == "choppy":
+                        confidence_boost += 0.05  # Chaos moins défavorable aux breakdowns
+                        reason += " + marché chaotique neutre breakdown"
+                        
+            except (ValueError, TypeError):
+                pass
             
         # Confluence score
         confluence_score = values.get('confluence_score')

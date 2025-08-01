@@ -358,17 +358,27 @@ class Trend_Alignment_Validator(BaseValidator):
             
             base_score = 0.5  # Score de base si validé
             
-            # Bonus force tendance principale
+            # CORRECTION: Adapter le score selon la cohérence directionnelle
+            direction_coherence = self._validate_trend_signal_coherence(signal_side, str(primary_trend_direction) if primary_trend_direction is not None else 'neutral')
+            
+            if not direction_coherence:
+                # Signal contraire à la tendance = score très faible
+                base_score = 0.1
+                return max(0.0, min(1.0, base_score))
+            
+            # Bonus force tendance principale (seulement si cohérent avec signal)
             if primary_trend_strength >= self.strong_trend_threshold:
                 base_score += self.strong_trend_bonus
             elif primary_trend_strength >= self.min_trend_strength + 0.2:
                 base_score += 0.15
                 
-            # Bonus alignement EMA parfait
+            # Bonus alignement EMA (adapté selon direction)
             if ema_alignment_score >= 90.0:
-                base_score += 0.20  # Alignement parfait
+                # Alignement parfait + direction cohérente = bonus maximal
+                base_score += 0.20
             elif ema_alignment_score >= 70.0:
-                base_score += 0.12  # Bon alignement
+                # Bon alignement + direction cohérente = bonus modéré
+                base_score += 0.12
                 
             # Bonus séparation EMA optimale
             if self.min_ema_separation <= ema_separation_ratio <= self.optimal_ema_separation:

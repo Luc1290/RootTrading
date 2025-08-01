@@ -284,13 +284,33 @@ class Bollinger_Touch_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
+        # CORRECTION: Confluence score avec logique directionnelle asymétrique
         confluence_score = values.get('confluence_score')
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
-                if confluence > 0.6:
-                    confidence_boost += 0.10
-                    reason += " avec confluence"
+                if signal_side == "BUY":
+                    # BUY (lower band touch) : confluence modérée suffisante (oversold confluence)
+                    if confluence > 0.75:
+                        confidence_boost += 0.15
+                        reason += " + confluence très élevée BUY"
+                    elif confluence > 0.65:
+                        confidence_boost += 0.12
+                        reason += " + confluence élevée"
+                    elif confluence > 0.55:
+                        confidence_boost += 0.08
+                        reason += " + confluence modérée"
+                elif signal_side == "SELL":
+                    # SELL (upper band touch) : confluence élevée requise (overbought confirmation)
+                    if confluence > 0.8:
+                        confidence_boost += 0.18  # Bonus supérieur pour SELL
+                        reason += " + confluence très élevée SELL"
+                    elif confluence > 0.7:  
+                        confidence_boost += 0.14
+                        reason += " + confluence élevée"
+                    elif confluence > 0.6:
+                        confidence_boost += 0.09
+                        reason += " + confluence modérée"
             except (ValueError, TypeError):
                 pass
                 

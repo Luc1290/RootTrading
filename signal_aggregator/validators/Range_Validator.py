@@ -441,6 +441,7 @@ class Range_Validator(BaseValidator):
             
             signal_strategy = signal.get('strategy', '')
             
+            signal_side = signal.get('side')
             base_score = 0.5  # Score de base si validé
             
             # Bonus largeur range optimale
@@ -452,17 +453,40 @@ class Range_Validator(BaseValidator):
             elif self.min_range_width <= range_width_ratio <= self.max_range_width:
                 base_score += 0.10
                 
-            # Bonus position dans range
-            if 0.4 <= range_position <= 0.6:  # Zone centrale
-                base_score += self.center_position_bonus
-            elif 0.25 <= range_position <= 0.75:  # Zone sûre
-                base_score += 0.08
+            # CORRECTION: Bonus position dans range avec logique directionnelle
+            if signal_side == "BUY":
+                # BUY: Favoriser positions basses dans le range (acheter pas cher)
+                if range_position <= 0.3:  # Zone basse du range
+                    base_score += 0.20  # Excellent pour BUY
+                elif range_position <= 0.5:  # Zone médiane basse
+                    base_score += self.center_position_bonus  # Bon pour BUY
+                elif range_position <= 0.7:  # Zone médiane haute
+                    base_score += 0.08  # Acceptable pour BUY
+                else:  # Position > 0.7 (zone haute)
+                    if self._is_breakout_strategy(signal_strategy):
+                        base_score += 0.10  # OK pour breakout
+                    else:
+                        base_score += self.edge_position_penalty  # Mauvais pour BUY classique
+                        
+            elif signal_side == "SELL":
+                # SELL: Favoriser positions hautes dans le range (vendre cher)
+                if range_position >= 0.7:  # Zone haute du range
+                    base_score += 0.20  # Excellent pour SELL
+                elif range_position >= 0.5:  # Zone médiane haute
+                    base_score += self.center_position_bonus  # Bon pour SELL
+                elif range_position >= 0.3:  # Zone médiane basse
+                    base_score += 0.08  # Acceptable pour SELL
+                else:  # Position < 0.3 (zone basse)
+                    if self._is_breakout_strategy(signal_strategy):
+                        base_score += 0.10  # OK pour breakout
+                    else:
+                        base_score += self.edge_position_penalty  # Mauvais pour SELL classique
             else:
-                # Position près des bords - bonus seulement pour breakout strategies
-                if self._is_breakout_strategy(signal_strategy):
-                    base_score += 0.10
-                else:
-                    base_score += self.edge_position_penalty
+                # Fallback pour signal_side non défini
+                if 0.4 <= range_position <= 0.6:  # Zone centrale
+                    base_score += self.center_position_bonus
+                elif 0.25 <= range_position <= 0.75:  # Zone sûre
+                    base_score += 0.08
                     
             # Bonus force et tests des bornes
             if boundary_respect_rate >= 0.8:
@@ -479,13 +503,26 @@ class Range_Validator(BaseValidator):
             if self.range_age_min * 2 <= range_age_bars <= self.range_age_max // 2:
                 base_score += 0.10  # Age optimal
                 
-            # Bonus/malus probabilité breakout selon stratégie
+            # CORRECTION: Bonus/malus probabilité breakout selon stratégie et direction
             if self._is_breakout_strategy(signal_strategy):
                 if breakout_probability >= 0.6:
-                    base_score += 0.15  # Bon pour breakout
+                    # Bonus breakout avec validation directionnelle
+                    if signal_side == "BUY" and range_position >= 0.7:
+                        base_score += 0.15  # BUY breakout en haut de range
+                    elif signal_side == "SELL" and range_position <= 0.3:
+                        base_score += 0.15  # SELL breakout en bas de range
+                    else:
+                        base_score += 0.10  # Breakout général mais position moins idéale
             else:
+                # Stratégies mean reversion : favoriser stabilité du range
                 if breakout_probability <= 0.4:
-                    base_score += 0.12  # Stable pour mean reversion
+                    # Range stable = bon pour mean reversion avec cohérence directionnelle
+                    if signal_side == "BUY" and range_position <= 0.4:
+                        base_score += 0.15  # BUY dans range stable en bas
+                    elif signal_side == "SELL" and range_position >= 0.6:
+                        base_score += 0.15  # SELL dans range stable en haut
+                    else:
+                        base_score += 0.08  # Range stable mais position moins idéale
                 elif breakout_probability >= 0.7:
                     base_score += self.breakout_risk_penalty  # Risque pour non-breakout
                     
@@ -498,6 +535,22 @@ class Range_Validator(BaseValidator):
                 base_score += 0.12  # Range très solide
             elif range_strength >= 0.5:
                 base_score += 0.08  # Range solide
+                
+            # CORRECTION: Bonus cohérence mouvement dans range
+            range_movement_direction = self.context.get('directional_bias')
+            if range_movement_direction and signal_side:
+                movement_coherence = self._validate_movement_coherence(
+                    signal_side, range_movement_direction, range_position
+                )
+                if movement_coherence:
+                    # Bonus pour cohérence directionnelle du mouvement
+                    if signal_side == "BUY" and range_movement_direction in ["bullish", "up"]:
+                        base_score += 0.08  # BUY avec mouvement haussier
+                    elif signal_side == "SELL" and range_movement_direction in ["bearish", "down"]:
+                        base_score += 0.08  # SELL avec mouvement baissier
+                else:
+                    # Malus pour incohérence directionnelle
+                    base_score -= 0.05
                 
             return max(0.0, min(1.0, base_score))
             

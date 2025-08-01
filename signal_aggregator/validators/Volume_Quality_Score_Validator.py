@@ -247,23 +247,76 @@ class Volume_Quality_Score_Validator(BaseValidator):
             elif relative_volume >= 1.0:
                 base_score += 0.05  # Volume normal
                 
-            # Bonus patterns favorables
-            if volume_pattern:
+            # CORRECTION: Bonus patterns favorables avec logique directionnelle avancée
+            if volume_pattern and signal_side:
                 buy_patterns = ['accumulation', 'buildup', 'breakout_volume', 'institutional_buying']
                 sell_patterns = ['distribution', 'selling_pressure', 'institutional_selling', 'breakdown_volume']
+                neutral_patterns = ['normal', 'steady', 'balanced']
+                negative_patterns = ['wash_trading', 'bot_activity', 'fake_volume', 'pump_activity']
                 
-                if (signal_side == "BUY" and volume_pattern in buy_patterns) or \
-                   (signal_side == "SELL" and volume_pattern in sell_patterns):
-                    base_score += 0.2  # Pattern très favorable
+                if signal_side == "BUY":
+                    if volume_pattern in buy_patterns:
+                        base_score += 0.20  # Excellent pour BUY
+                    elif volume_pattern in neutral_patterns:
+                        base_score += 0.05  # Neutre pour BUY
+                    elif volume_pattern in sell_patterns:
+                        base_score -= 0.10  # Défavorable pour BUY (patterns de vente)
+                    # negative_patterns déjà filtrés dans validate_signal()
+                        
+                elif signal_side == "SELL":
+                    if volume_pattern in sell_patterns:
+                        base_score += 0.20  # Excellent pour SELL
+                    elif volume_pattern in neutral_patterns:
+                        base_score += 0.05  # Neutre pour SELL
+                    elif volume_pattern in buy_patterns:
+                        base_score -= 0.10  # Défavorable pour SELL (patterns d'achat)
+                    # negative_patterns déjà filtrés dans validate_signal()
                     
-            # Bonus spike authentique
+            # CORRECTION: Bonus spike authentique avec logique directionnelle
             if volume_spike_multiplier >= self.spike_threshold and volume_quality_score >= self.good_quality_score:
-                base_score += 0.1  # Spike de bonne qualité
+                # Spike de volume authentique selon direction
+                if signal_side == "BUY":
+                    # BUY avec spike = souvent breakout haussier
+                    base_score += 0.15  # Excellent pour BUY
+                elif signal_side == "SELL":
+                    # SELL avec spike = souvent breakdown baissier
+                    base_score += 0.15  # Excellent pour SELL
+                else:
+                    base_score += 0.1  # Spike général
                 
-            # Bonus buildup
+            # CORRECTION: Bonus buildup avec logique directionnelle
             if volume_buildup_periods >= self.buildup_periods_min:
-                base_score += 0.1  # Accumulation/distribution confirmée
+                # Buildup selon direction du signal
+                if signal_side == "BUY":
+                    # BUY avec buildup = accumulation favorable
+                    base_score += 0.12  # Excellent pour BUY (accumulation)
+                elif signal_side == "SELL":
+                    # SELL avec buildup = distribution favorable
+                    base_score += 0.12  # Excellent pour SELL (distribution)
+                else:
+                    base_score += 0.08  # Buildup général
                 
+            # CORRECTION: Bonus OBV avec logique directionnelle
+            obv_oscillator = float(self.context.get('obv_oscillator', 0)) if self.context.get('obv_oscillator') is not None else None
+            if obv_oscillator is not None and signal_side:
+                if signal_side == "BUY":
+                    # BUY avec OBV haussier = volume supportant la hausse
+                    if obv_oscillator > 0.2:
+                        base_score += 0.12  # Excellent pour BUY
+                    elif obv_oscillator > 0.0:
+                        base_score += 0.06  # Bon pour BUY
+                    elif obv_oscillator < -0.2:
+                        base_score -= 0.08  # Défavorable pour BUY (divergence)
+                        
+                elif signal_side == "SELL":
+                    # SELL avec OBV baissier = volume supportant la baisse
+                    if obv_oscillator < -0.2:
+                        base_score += 0.12  # Excellent pour SELL
+                    elif obv_oscillator < 0.0:
+                        base_score += 0.06  # Bon pour SELL
+                    elif obv_oscillator > 0.2:
+                        base_score -= 0.08  # Défavorable pour SELL (divergence)
+                        
             # Bonus trade intensity
             if trade_intensity is not None:
                 if trade_intensity >= 1.0:

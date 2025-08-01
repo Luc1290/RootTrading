@@ -363,20 +363,73 @@ class Psychological_Level_Validator(BaseValidator):
             last_reaction_bars = int(self.context.get('regime_duration', 50)) if self.context.get('regime_duration') is not None else 50
             
             signal_strategy = signal.get('strategy', '')
+            signal_side = signal.get('side')
             
             base_score = 0.5  # Score de base si validé
             
-            # Bonus type de niveau
-            if psychological_level_type == "major":
-                base_score += self.major_level_bonus
-            elif psychological_level_type == "minor":
-                base_score += self.minor_level_bonus
+            # CORRECTION: Déterminer si le niveau agit comme support ou résistance
+            current_price = self._get_current_price() if self.data and 'close' in self.data and self.data['close'] else 1.0
+            
+            # Niveau psychologique proche du prix actuel
+            if nearest_psychological_level and current_price:
+                price_vs_level = current_price / nearest_psychological_level
                 
-            # Bonus force du niveau
-            if psychological_level_strength >= self.strong_psychological_threshold:
-                base_score += 0.15  # Niveau très fort
-            elif psychological_level_strength >= self.min_psychological_strength + 0.2:
-                base_score += 0.10  # Niveau fort
+                # Déterminer rôle du niveau selon position prix
+                if price_vs_level > 1.01:  # Prix 1%+ au-dessus niveau
+                    level_role = "support"  # Niveau agit comme support
+                elif price_vs_level < 0.99:  # Prix 1%+ en-dessous niveau
+                    level_role = "resistance"  # Niveau agit comme résistance
+                else:  # Prix très proche du niveau (±1%)
+                    level_role = "pivot"  # Niveau critique, peut aller dans les deux sens
+                    
+                # Bonus/Malus selon cohérence directionnelle
+                if signal_side == "BUY":
+                    if level_role == "support":
+                        # BUY près support psychologique = excellent
+                        if psychological_level_type == "major":
+                            base_score += self.major_level_bonus  # Plein bonus
+                        elif psychological_level_type == "minor":
+                            base_score += self.minor_level_bonus
+                    elif level_role == "resistance":
+                        # BUY près résistance psychologique = risqué
+                        base_score -= 0.10  # Malus pour position défavorable
+                    else:  # level_role == "pivot"
+                        # BUY près niveau pivot = neutre/léger bonus
+                        if psychological_level_type == "major":
+                            base_score += self.major_level_bonus * 0.5  # Bonus réduit
+                        elif psychological_level_type == "minor":
+                            base_score += self.minor_level_bonus * 0.5
+                            
+                elif signal_side == "SELL":
+                    if level_role == "resistance":
+                        # SELL près résistance psychologique = excellent
+                        if psychological_level_type == "major":
+                            base_score += self.major_level_bonus  # Plein bonus
+                        elif psychological_level_type == "minor":
+                            base_score += self.minor_level_bonus
+                    elif level_role == "support":
+                        # SELL près support psychologique = risqué
+                        base_score -= 0.10  # Malus pour position défavorable
+                    else:  # level_role == "pivot"
+                        # SELL près niveau pivot = neutre/léger bonus
+                        if psychological_level_type == "major":
+                            base_score += self.major_level_bonus * 0.5  # Bonus réduit
+                        elif psychological_level_type == "minor":
+                            base_score += self.minor_level_bonus * 0.5
+            else:
+                # Pas de niveau identifié, appliquer bonus standard
+                if psychological_level_type == "major":
+                    base_score += self.major_level_bonus * 0.7
+                elif psychological_level_type == "minor":
+                    base_score += self.minor_level_bonus * 0.7
+                
+            # Bonus force du niveau (seulement si position favorable)
+            if ((signal_side == "BUY" and level_role in ["support", "pivot"]) or 
+                (signal_side == "SELL" and level_role in ["resistance", "pivot"])):
+                if psychological_level_strength >= self.strong_psychological_threshold:
+                    base_score += 0.15  # Niveau très fort en position favorable
+                elif psychological_level_strength >= self.min_psychological_strength + 0.2:
+                    base_score += 0.10  # Niveau fort en position favorable
                 
             # Bonus réactions historiques
             if level_reaction_count >= self.optimal_reaction_count:

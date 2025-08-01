@@ -167,30 +167,34 @@ class RSI_Regime_Validator(BaseValidator):
             
             base_score = 0.5  # Score de base si validé
             
-            # Scoring selon position RSI et side
+            # CORRECTION: Scoring RSI plus strict pour éviter signaux contradictoires
             if signal_side == "BUY":
                 if rsi_14 <= self.extreme_oversold:
                     base_score += 0.4  # Excellent pour BUY
                 elif rsi_14 <= self.oversold_threshold:
                     base_score += 0.3  # Très bon pour BUY
-                elif rsi_14 <= 50.0:
-                    base_score += 0.2  # Bon pour BUY
+                elif rsi_14 <= 45.0:  # Zone favorable BUY plus restrictive
+                    base_score += 0.15  # Bon pour BUY
+                elif rsi_14 <= 55.0:  # Zone neutre restrictive
+                    base_score += 0.05  # Légèrement favorable pour BUY
                 elif rsi_14 <= self.overbought_threshold:
-                    base_score += 0.1  # Acceptable pour BUY
+                    base_score -= 0.05  # Défavorable pour BUY
                 else:
-                    base_score -= 0.1  # Moins favorable pour BUY
+                    base_score -= 0.20  # Très défavorable pour BUY (RSI haut)
                     
             elif signal_side == "SELL":
                 if rsi_14 >= self.extreme_overbought:
                     base_score += 0.4  # Excellent pour SELL
                 elif rsi_14 >= self.overbought_threshold:
                     base_score += 0.3  # Très bon pour SELL
-                elif rsi_14 >= 50.0:
-                    base_score += 0.2  # Bon pour SELL
+                elif rsi_14 >= 55.0:  # Zone favorable SELL plus restrictive
+                    base_score += 0.15  # Bon pour SELL
+                elif rsi_14 >= 45.0:  # Zone neutre restrictive
+                    base_score += 0.05  # Légèrement favorable pour SELL
                 elif rsi_14 >= self.oversold_threshold:
-                    base_score += 0.1  # Acceptable pour SELL
+                    base_score -= 0.05  # Défavorable pour SELL
                 else:
-                    base_score -= 0.1  # Moins favorable pour SELL
+                    base_score -= 0.20  # Très défavorable pour SELL (RSI bas)
                     
             # Bonus momentum cohérent
             if momentum_score is not None:
