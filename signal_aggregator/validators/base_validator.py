@@ -96,6 +96,8 @@ class BaseValidator(ABC):
         # Si c'est une string, faire la conversion
         if isinstance(strength_str, str):
             strength_map = {
+                'ABSENT': 0.0,
+                'VERY_WEAK': 0.1,
                 'WEAK': 0.2,
                 'MODERATE': 0.5, 
                 'STRONG': 0.8,

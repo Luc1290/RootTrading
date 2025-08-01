@@ -29,14 +29,14 @@ class Volume_Ratio_Validator(BaseValidator):
         self.category = "volume"
         
         # Paramètres ratios volume
-        self.min_volume_ratio = 30           # Ratio volume minimum vs moyenne
-        self.low_volume_ratio = 50           # Ratio volume faible
+        self.min_volume_ratio = 0.3           # Ratio volume minimum vs moyenne (30%)
+        self.low_volume_ratio = 0.5           # Ratio volume faible (50%)
         self.normal_volume_ratio = 1.0        # Ratio volume normal
         self.high_volume_ratio = 2.0          # Ratio volume élevé
         self.extreme_volume_ratio = 5.0       # Ratio volume extrême
         
         # Paramètres quote/base volume
-        self.min_quote_volume_ratio = 30     # Ratio quote/base minimum
+        self.min_quote_volume_ratio = 0.3     # Ratio quote/base minimum (30%)
         self.max_quote_volume_ratio = 3.0     # Ratio quote/base maximum
         self.ideal_quote_ratio_min = 0.8      # Ratio idéal minimum
         self.ideal_quote_ratio_max = 1.2      # Ratio idéal maximum

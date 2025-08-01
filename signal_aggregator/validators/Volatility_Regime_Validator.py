@@ -63,7 +63,7 @@ class Volatility_Regime_Validator(BaseValidator):
                 
             # Extraction des indicateurs de volatilité depuis le contexte
             try:
-                volatility_regime = self.context.get('volatility_regime')  # 'low', 'medium', 'high'
+                volatility_regime = self.context.get('volatility_regime')  # 'low', 'normal', 'high', 'extreme'
                 atr_14 = float(self.context.get('atr_14', 0)) if self.context.get('atr_14') is not None else None
                 atr_percentile = float(self.context.get('atr_percentile', 50)) if self.context.get('atr_percentile') is not None else 50
                 natr = float(self.context.get('natr', 0)) if self.context.get('natr') is not None else None
@@ -93,10 +93,20 @@ class Volatility_Regime_Validator(BaseValidator):
                 
             # 1. Validation selon régime de volatilité général
             if volatility_regime:
-                if volatility_regime == "high":
-                    # Haute volatilité - exigences strictes
+                if volatility_regime == "extreme":
+                    # Volatilité extrême - très strict
+                    if signal_confidence < self.extreme_vol_min_confidence:
+                        logger.debug(f"{self.name}: Volatilité extrême nécessite confidence ≥ {self.extreme_vol_min_confidence} (actuel: {self._safe_format(signal_confidence, '.2f')}) pour {self.symbol}")
+                        return False
+                elif volatility_regime == "high":
+                    # Haute volatilité - strict
                     if signal_confidence < self.high_vol_min_confidence:
                         logger.debug(f"{self.name}: Haute volatilité nécessite confidence ≥ {self.high_vol_min_confidence} (actuel: {self._safe_format(signal_confidence, '.2f')}) pour {self.symbol}")
+                        return False
+                elif volatility_regime in ["low", "normal"]:
+                    # Basse/Normale volatilité - plus permissif
+                    if signal_confidence < self.low_vol_min_confidence:
+                        logger.debug(f"{self.name}: Volatilité {volatility_regime} nécessite confidence ≥ {self.low_vol_min_confidence} (actuel: {self._safe_format(signal_confidence, '.2f')}) pour {self.symbol}")
                         return False
                         
                     # Signaux faibles rejetés en haute volatilité

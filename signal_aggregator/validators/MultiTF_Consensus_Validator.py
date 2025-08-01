@@ -66,8 +66,9 @@ class MultiTF_Consensus_Validator(BaseValidator):
             # Extraction des indicateurs multi-TF depuis le contexte
             try:
                 # Scores principaux multi-TF
-                # consensus_score → confluence_score (score de confluence)
-                consensus_score = float(self.context.get('confluence_score', 0)) if self.context.get('confluence_score') is not None else None
+                # consensus_score → confluence_score (score de confluence) - convertir 0-100 en 0-1
+                confluence_raw = self.context.get('confluence_score')
+                consensus_score = float(confluence_raw) / 100.0 if confluence_raw is not None else None
                 # tf_alignment → trend_alignment (alignement de tendance)
                 tf_alignment = float(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None
                 trend_alignment = float(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None

@@ -103,22 +103,33 @@ class Bollinger_Width_Validator(BaseValidator):
                 logger.warning(f"{self.name}: Signal side ou BB width manquant pour {self.symbol}")
                 return False
                 
+            # Calculer bb_width en pourcentage du prix actuel
+            bb_width_pct = None
+            if bb_width is not None and current_price is not None and current_price > 0:
+                bb_width_pct = bb_width / current_price
+            elif bb_width is not None and bb_middle is not None and bb_middle > 0:
+                bb_width_pct = bb_width / bb_middle
+            
+            if bb_width_pct is None:
+                logger.warning(f"{self.name}: Impossible de calculer bb_width en % pour {self.symbol}")
+                return False
+            
             # 1. Vérification largeur BB minimum
-            if bb_width < self.min_bb_width:
-                logger.debug(f"{self.name}: BB width trop faible ({self._safe_format(bb_width, '.3f')}) pour {self.symbol} - marché compressé")
+            if bb_width_pct < self.min_bb_width:
+                logger.debug(f"{self.name}: BB width trop faible ({self._safe_format(bb_width_pct, '.3f')}) pour {self.symbol} - marché compressé")
                 # En squeeze sévère, accepter seulement signaux très confiants
                 if signal_confidence < 0.8:
                     return False
                     
             # 2. Vérification largeur BB maximum
-            if bb_width > self.max_bb_width:
-                logger.debug(f"{self.name}: BB width excessive ({self._safe_format(bb_width, '.3f')}) pour {self.symbol} - volatilité dangereuse")
+            if bb_width_pct > self.max_bb_width:
+                logger.debug(f"{self.name}: BB width excessive ({self._safe_format(bb_width_pct, '.3f')}) pour {self.symbol} - volatilité dangereuse")
                 # Volatilité extrême, signaux très sélectifs
                 if signal_confidence < 0.9:
                     return False
                     
             # 3. Gestion état squeeze
-            if bb_squeeze or bb_width < self.squeeze_threshold:
+            if bb_squeeze or bb_width_pct < self.squeeze_threshold:
                 logger.debug(f"{self.name}: BB en squeeze pour {self.symbol}")
                 # En squeeze, priorité aux signaux de breakout anticipé
                 if not self._is_breakout_strategy(signal_strategy):
@@ -127,7 +138,7 @@ class Bollinger_Width_Validator(BaseValidator):
                         return False
                         
             # 4. Gestion état expansion
-            if bb_expansion or bb_width > self.expansion_threshold:
+            if bb_expansion or bb_width_pct > self.expansion_threshold:
                 logger.debug(f"{self.name}: BB en expansion pour {self.symbol}")
                 # En expansion, favoriser trend following et momentum
                 if self._is_meanreversion_strategy(signal_strategy):

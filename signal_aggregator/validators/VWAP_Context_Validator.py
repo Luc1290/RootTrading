@@ -67,12 +67,14 @@ class VWAP_Context_Validator(BaseValidator):
                 vwap_upper_band = float(self.context.get('vwap_upper_band', 0)) if self.context.get('vwap_upper_band') is not None else None
                 vwap_lower_band = float(self.context.get('vwap_lower_band', 0)) if self.context.get('vwap_lower_band') is not None else None
                 
-                # Prix actuel
+                # Prix actuel - depuis le contexte d'abord, puis signal, puis data
                 current_price = None
-                if 'close' in self.data:
-                    current_price = float(self.data['close'])
+                if 'current_price' in self.context:
+                    current_price = float(self.context['current_price'])
                 elif 'price' in signal:
                     current_price = float(signal['price'])
+                elif 'close' in self.data:
+                    current_price = float(self.data['close'])
                     
                 # Indicateurs complémentaires
                 momentum_score = float(self.context.get('momentum_score', 50.0)) if self.context.get('momentum_score') is not None else None

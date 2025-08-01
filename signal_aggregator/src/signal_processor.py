@@ -35,14 +35,19 @@ class SignalProcessor:
         self.min_validators_passed = 3       # Réduit de 5 à 3 validators minimum
         self.max_validators_failed = 8       # Augmenté de 6 à 8 failures maximum
         
-        # Pondération des validators par catégorie (renforcée)
+        # Seuils ajustés pour timing plus rapide avec consensus fort
+        self.fast_track_consensus = 5        # Si 5+ stratégies d'accord, validation accélérée
+        self.fast_track_min_score = 0.70    # Score réduit pour fast track
+        
+        # Pondération des validators par catégorie (optimisée pour timing)
         self.validator_weights = {
             'trend': 1.8,      # Validators de tendance encore plus importants
-            'volume': 1.5,     # Volume critique pour confirmation
-            'structure': 1.6,   # Structure de marché très importante
+            'volume': 1.6,     # Volume augmenté - signal précoce important
+            'structure': 1.5,   # Structure de marché légèrement réduite
             'regime': 1.7,     # Régime de marché critique
-            'volatility': 1.2,  # Volatilité plus importante
-            'technical': 1.3    # Indicateurs techniques renforcés
+            'volatility': 1.4,  # Volatilité augmentée - détecte les mouvements tôt
+            'technical': 1.3,   # Indicateurs techniques renforcés
+            'momentum': 1.5     # Momentum ajouté pour capturer les changements rapides
         }
         
         # Statistiques de validation
@@ -148,11 +153,27 @@ class SignalProcessor:
                 
             logger.info(f"Traitement batch de {len(signals)} signaux")
             
+            # Compter les stratégies par symbole et side pour consensus
+            strategy_consensus = {}
+            for sig in signals:
+                key = f"{sig.get('symbol')}_{sig.get('side')}"
+                if key not in strategy_consensus:
+                    strategy_consensus[key] = set()
+                strategy_consensus[key].add(sig.get('strategy'))
+            
             validated_signals = []
             
-            # Traiter chaque signal du batch
+            # Traiter chaque signal du batch avec info de consensus
             for signal in signals:
                 try:
+                    # Ajouter le compte de stratégies dans les métadonnées
+                    key = f"{signal.get('symbol')}_{signal.get('side')}"
+                    strategy_count = len(strategy_consensus.get(key, set()))
+                    
+                    if 'metadata' not in signal:
+                        signal['metadata'] = {}
+                    signal['metadata']['strategy_count'] = strategy_count
+                    
                     validated_signal = await self._process_individual_signal(signal)
                     if validated_signal:
                         validated_signals.append(validated_signal)
@@ -397,7 +418,7 @@ class SignalProcessor:
         
         if 'trend' in name_lower or 'adx' in name_lower or 'macd' in name_lower:
             return 'trend'
-        elif 'volume' in name_lower or 'vwap' in name_lower:
+        elif 'volume' in name_lower or 'vwap' in name_lower or 'obv' in name_lower:
             return 'volume'
         elif 'structure' in name_lower or 'pivot' in name_lower or 'level' in name_lower:
             return 'structure'
@@ -405,6 +426,8 @@ class SignalProcessor:
             return 'regime'
         elif 'volatility' in name_lower or 'atr' in name_lower or 'bollinger' in name_lower:
             return 'volatility'
+        elif 'momentum' in name_lower or 'rsi' in name_lower or 'stoch' in name_lower or 'roc' in name_lower:
+            return 'momentum'
         else:
             return 'technical'
             
@@ -522,9 +545,18 @@ class SignalProcessor:
             Tuple (is_valid, final_score)
         """
         try:
-            # Critères de base
-            meets_min_validators = summary['validators_passed'] >= self.min_validators_passed
-            meets_min_score = summary['avg_weighted_score'] >= self.min_validation_score
+            # Vérification fast-track pour consensus fort
+            # Si beaucoup de stratégies sont d'accord, on accélère la validation
+            strategy_count = signal.get('metadata', {}).get('strategy_count', 1)
+            if strategy_count >= self.fast_track_consensus:
+                # Critères assouplis pour fast track
+                meets_min_validators = summary['validators_passed'] >= (self.min_validators_passed - 1)
+                meets_min_score = summary['avg_weighted_score'] >= self.fast_track_min_score
+                logger.info(f"Fast-track activé: {strategy_count} stratégies d'accord")
+            else:
+                # Critères standard
+                meets_min_validators = summary['validators_passed'] >= self.min_validators_passed
+                meets_min_score = summary['avg_weighted_score'] >= self.min_validation_score
             
             # Critères additionnels
             strong_validation = summary['validation_strength'] == 'strong'
