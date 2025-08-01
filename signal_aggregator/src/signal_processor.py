@@ -34,10 +34,9 @@ class SignalProcessor:
         self.min_validation_score = 0.75    # Réduit de 0.86 à 0.75 (75%) 
         self.min_validators_passed = 3       # Réduit de 5 à 3 validators minimum
         self.max_validators_failed = 8       # Augmenté de 6 à 8 failures maximum
+        self.min_strategies_consensus = 3    # Au moins 3 stratégies dans le même sens
         
-        # Seuils ajustés pour timing plus rapide avec consensus fort
-        self.fast_track_consensus = 5        # Si 5+ stratégies d'accord, validation accélérée
-        self.fast_track_min_score = 0.70    # Score réduit pour fast track
+        # Fast-track supprimé - validation stricte uniquement
         
         # Pondération des validators par catégorie (optimisée pour timing)
         self.validator_weights = {
@@ -545,18 +544,10 @@ class SignalProcessor:
             Tuple (is_valid, final_score)
         """
         try:
-            # Vérification fast-track pour consensus fort
-            # Si beaucoup de stratégies sont d'accord, on accélère la validation
-            strategy_count = signal.get('metadata', {}).get('strategy_count', 1)
-            if strategy_count >= self.fast_track_consensus:
-                # Critères assouplis pour fast track
-                meets_min_validators = summary['validators_passed'] >= (self.min_validators_passed - 1)
-                meets_min_score = summary['avg_weighted_score'] >= self.fast_track_min_score
-                logger.info(f"Fast-track activé: {strategy_count} stratégies d'accord")
-            else:
-                # Critères standard
-                meets_min_validators = summary['validators_passed'] >= self.min_validators_passed
-                meets_min_score = summary['avg_weighted_score'] >= self.min_validation_score
+            # Critères de validation stricts (fast-track supprimé)
+            meets_min_validators = summary['validators_passed'] >= self.min_validators_passed
+            meets_min_score = summary['avg_weighted_score'] >= self.min_validation_score
+            meets_min_strategies = signal.get('metadata', {}).get('strategy_count', 1) >= self.min_strategies_consensus
             
             # Critères additionnels
             strong_validation = summary['validation_strength'] == 'strong'
@@ -598,7 +589,13 @@ class SignalProcessor:
                        f"{score_calculation} → final={final_score:.3f}")
             
             # Décision finale
-            is_valid = meets_min_validators and meets_min_score
+            is_valid = meets_min_validators and meets_min_score and meets_min_strategies
+            
+            # Log détaillé de la décision
+            strategy_count = signal.get('metadata', {}).get('strategy_count', 1)
+            if not meets_min_strategies:
+                logger.info(f"Signal REJETÉ pour manque de consensus: {signal['strategy']} {signal['symbol']} "
+                          f"{signal['side']} - {strategy_count} stratégies < {self.min_strategies_consensus} requis")
             
             return is_valid, final_score
             
