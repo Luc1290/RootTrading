@@ -183,7 +183,7 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
                 support_val = float(nearest_support)
                 resistance_val = float(nearest_resistance)
                 
-                if support_val < resistance_val:  # Vérification logique
+                if support_val < resistance_val and support_val > 0:  # Vérification logique + division par zéro
                     range_width = (resistance_val - support_val) / support_val
                     
                     if self.min_range_width <= range_width <= self.max_range_width:
@@ -261,7 +261,7 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         breakout_distance = 0
         
         # Breakout haussier (au-dessus résistance)
-        if current_price > resistance:
+        if current_price > resistance and resistance > 0:
             breakout_distance = (current_price - resistance) / resistance
             if breakout_distance >= self.breakout_threshold:
                 breakout_type = "bullish"

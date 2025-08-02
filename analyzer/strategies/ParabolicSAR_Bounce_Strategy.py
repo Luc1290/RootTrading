@@ -2,7 +2,7 @@
 ParabolicSAR_Bounce_Strategy - Stratégie basée sur les rebonds du prix sur le Parabolic SAR.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 from .base_strategy import BaseStrategy
 import logging
 
@@ -248,8 +248,14 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
+        # S'assurer que reason est défini (au cas où aucune condition ci-dessus ne l'a défini)
+        if 'reason' not in locals() or not reason:
+            reason = f"Rebond potentiel détecté niveau {bounce_level:.4f}"
+            
         # Confirmations additionnelles
-        confidence_boost += self._add_confirmations(values, signal_side, current_price)
+        additional_boost, reason_additions = self._add_confirmations(values, signal_side, current_price)
+        confidence_boost += additional_boost
+        reason += reason_additions
         
         confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
@@ -332,8 +338,14 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
+        # S'assurer que reason est défini (au cas où aucune condition ci-dessus ne l'a défini)
+        if 'reason' not in locals() or not reason:
+            reason = f"Rebond potentiel détecté niveau {bounce_level:.4f}"
+            
         # Confirmations additionnelles  
-        confidence_boost += self._add_confirmations(values, signal_side, current_price)
+        additional_boost, reason_additions = self._add_confirmations(values, signal_side, current_price)
+        confidence_boost += additional_boost
+        reason += reason_additions
         
         confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
@@ -379,9 +391,10 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         except (ValueError, TypeError, ZeroDivisionError):
             return False
             
-    def _add_confirmations(self, values: Dict[str, Any], signal_side: str, current_price: float) -> float:
+    def _add_confirmations(self, values: Dict[str, Any], signal_side: str, current_price: float) -> Tuple[float, str]:
         """Ajoute les confirmations pour renforcer le signal."""
         boost = 0.0
+        reason_additions = ""
         
         # Confirmation avec trend_strength
         trend_strength = values.get('trend_strength')
@@ -474,52 +487,52 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                     if market_regime == "trending":
                         if regime_str > 0.8 and trend_str > 0.7:  # Trend très fort = rebond puissant
                             boost += 0.20
-                            reason += f" + trend très fort rebond ({regime_str:.2f})"
+                            reason_additions += f" + trend très fort rebond ({regime_str:.2f})"
                         elif regime_str > 0.6:  # Trend fort
                             boost += 0.15
-                            reason += f" + trend fort rebond haussier ({regime_str:.2f})"
+                            reason_additions += f" + trend fort rebond haussier ({regime_str:.2f})"
                         elif regime_str > 0.4:  # Trend modéré
                             boost += 0.10
-                            reason += f" + trend modéré rebond ({regime_str:.2f})"
+                            reason_additions += f" + trend modéré rebond ({regime_str:.2f})"
                         else:  # Trend faible = rebond incertain
                             boost += 0.05
-                            reason += f" + trend faible rebond ({regime_str:.2f})"
+                            reason_additions += f" + trend faible rebond ({regime_str:.2f})"
                     elif market_regime == "ranging":
                         if regime_str > 0.7:  # Range bien défini = rebonds prévisibles
                             boost += 0.12
-                            reason += f" + range fort rebond support ({regime_str:.2f})"
+                            reason_additions += f" + range fort rebond support ({regime_str:.2f})"
                         else:  # Range faible
                             boost += 0.08
-                            reason += f" + range rebond ({regime_str:.2f})"
+                            reason_additions += f" + range rebond ({regime_str:.2f})"
                     elif market_regime == "choppy":
                         boost -= 0.05  # Marché chaotique = faux rebonds fréquents
-                        reason += " mais marché chaotique"
+                        reason_additions += " mais marché chaotique"
                         
                 else:  # SELL
                     # Rebond baissier : ranging > trend baissier > trend haussier
                     if market_regime == "ranging":
                         if regime_str > 0.8:  # Range très défini = résistances solides
                             boost += 0.18
-                            reason += f" + range parfait résistance ({regime_str:.2f})"
+                            reason_additions += f" + range parfait résistance ({regime_str:.2f})"
                         elif regime_str > 0.6:  # Range fort
                             boost += 0.14
-                            reason += f" + range fort rebond résistance ({regime_str:.2f})"
+                            reason_additions += f" + range fort rebond résistance ({regime_str:.2f})"
                         else:  # Range modéré
                             boost += 0.10
-                            reason += f" + range rebond résistance ({regime_str:.2f})"
+                            reason_additions += f" + range rebond résistance ({regime_str:.2f})"
                     elif market_regime == "trending":
                         if regime_str > 0.7 and trend_str < -0.5:  # Trend baissier fort
                             boost += 0.15
-                            reason += f" + trend baissier fort rebond ({regime_str:.2f})"
+                            reason_additions += f" + trend baissier fort rebond ({regime_str:.2f})"
                         elif regime_str > 0.5:  # Trend modéré
                             boost += 0.10
-                            reason += f" + trend rebond baissier ({regime_str:.2f})"
+                            reason_additions += f" + trend rebond baissier ({regime_str:.2f})"
                         else:  # Trend faible ou haussier
                             boost += 0.06
-                            reason += f" + trend contre-rebond ({regime_str:.2f})"
+                            reason_additions += f" + trend contre-rebond ({regime_str:.2f})"
                     elif market_regime == "choppy":
                         boost += 0.08  # Chaos moins défavorable aux rebonds baissiers
-                        reason += " + chaos neutre rebond baissier"
+                        reason_additions += " + chaos neutre rebond baissier"
                         
             except (ValueError, TypeError):
                 pass
@@ -536,39 +549,39 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                     # Rebonds haussiers : volatilité faible à normale idéale
                     if volatility_regime == "low" and atr_pct < 30:
                         boost += 0.12
-                        reason += f" + volatilité faible rebond parfait ({atr_pct:.0f}%)"
+                        reason_additions += f" + volatilité faible rebond parfait ({atr_pct:.0f}%)"
                     elif volatility_regime == "normal" and 30 <= atr_pct <= 60:
                         boost += 0.10
-                        reason += f" + volatilité idéale rebond ({atr_pct:.0f}%)"
+                        reason_additions += f" + volatilité idéale rebond ({atr_pct:.0f}%)"
                     elif volatility_regime == "high":
                         if atr_pct > 85:  # Volatilité extrême = faux rebonds
                             boost -= 0.12
-                            reason += f" mais volatilité extrême faux rebonds ({atr_pct:.0f}%)"
+                            reason_additions += f" mais volatilité extrême faux rebonds ({atr_pct:.0f}%)"
                         else:  # Volatilité modérément élevée
                             boost -= 0.06
-                            reason += f" mais volatilité élevée rebonds ({atr_pct:.0f}%)"
+                            reason_additions += f" mais volatilité élevée rebonds ({atr_pct:.0f}%)"
                     elif volatility_regime == "expanding":
                         boost -= 0.08  # Expansion = instabilité défavorable rebonds
-                        reason += " mais expansion défavorable rebonds"
+                        reason_additions += " mais expansion défavorable rebonds"
                         
                 else:  # SELL
                     # Rebonds baissiers : volatilité normale à élevée acceptable
                     if volatility_regime == "low" and atr_pct < 25:
                         boost += 0.08
-                        reason += f" + volatilité faible rebond contrôlé ({atr_pct:.0f}%)"
+                        reason_additions += f" + volatilité faible rebond contrôlé ({atr_pct:.0f}%)"
                     elif volatility_regime == "normal" and 25 <= atr_pct <= 70:
                         boost += 0.10
-                        reason += f" + volatilité normale rebond ({atr_pct:.0f}%)"
+                        reason_additions += f" + volatilité normale rebond ({atr_pct:.0f}%)"
                     elif volatility_regime == "high":
                         if atr_pct > 80:  # Volatilité élevée = continuation baissière après rebond
                             boost += 0.12
-                            reason += f" + volatilité élevée continuation ({atr_pct:.0f}%)"
+                            reason_additions += f" + volatilité élevée continuation ({atr_pct:.0f}%)"
                         else:
                             boost += 0.08
-                            reason += f" + volatilité rebond baissier ({atr_pct:.0f}%)"
+                            reason_additions += f" + volatilité rebond baissier ({atr_pct:.0f}%)"
                     elif volatility_regime == "expanding":
                         boost += 0.06  # Expansion moins défavorable aux rebonds baissiers
-                        reason += " + expansion neutre rebond baissier"
+                        reason_additions += " + expansion neutre rebond baissier"
                         
             except (ValueError, TypeError):
                 pass
@@ -594,7 +607,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        return boost
+        return boost, reason_additions
         
     def _get_metadata_values(self, values: Dict[str, Any]) -> Dict[str, Any]:
         """Récupère les valeurs importantes pour les métadonnées."""

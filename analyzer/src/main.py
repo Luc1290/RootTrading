@@ -186,8 +186,11 @@ class AnalyzerService:
                         # Conversion ultra-robuste des valeurs
                         try:
                             if value is None or value == '':
-                                # Valeur nulle ou vide
-                                indicators[key] = 0.0
+                                # Valeur nulle ou vide - garder None pour les niveaux critiques
+                                if key in ['nearest_support', 'nearest_resistance']:
+                                    indicators[key] = None
+                                else:
+                                    indicators[key] = 0.0
                             elif isinstance(value, (int, float)):
                                 # Déjà numérique
                                 indicators[key] = float(value)
@@ -199,12 +202,113 @@ class AnalyzerService:
                                 elif value_stripped.lower() in ['true', 'false']:
                                     indicators[key] = value_stripped.lower() == 'true'
                                 else:
-                                    # Essayer de convertir en float
-                                    try:
-                                        indicators[key] = float(value_stripped)
-                                    except ValueError:
-                                        # Si ça échoue, garder comme string (pour les valeurs comme "bullish", "bearish", etc.)
-                                        indicators[key] = 0.0
+                                    # Gérer les cas spéciaux de conversions string->numérique
+                                    if key in ['support_strength', 'resistance_strength', 'trend_strength', 
+                                              'regime_strength', 'signal_strength']:
+                                        # Convertir les niveaux de force en valeurs numériques
+                                        strength_mapping = {
+                                            # Support/Resistance spécifiques
+                                            'MINOR': 0.3,
+                                            'MAJOR': 0.7,
+                                            'CRITICAL': 0.9,
+                                            # Force générale
+                                            'ABSENT': 0.0,
+                                            'VERY_WEAK': 0.2,
+                                            'WEAK': 0.3,
+                                            'MODERATE': 0.5,
+                                            'STRONG': 0.7,
+                                            'VERY_STRONG': 0.85,
+                                            'EXTREME': 0.95
+                                        }
+                                        indicators[key] = strength_mapping.get(value_stripped.upper(), value_stripped)
+                                    
+                                    elif key == 'volatility_regime':
+                                        # Garder comme string mais normaliser
+                                        vol_regime_mapping = {
+                                            'low': 'low',
+                                            'normal': 'normal', 
+                                            'high': 'high',
+                                            'extreme': 'extreme',
+                                            'expanding': 'expanding',
+                                            'contracting': 'contracting'
+                                        }
+                                        indicators[key] = vol_regime_mapping.get(value_stripped.lower(), value_stripped)
+                                    
+                                    elif key == 'market_regime':
+                                        # Simplifier les régimes de marché
+                                        market_regime_mapping = {
+                                            'TRENDING_BULL': 'trending',
+                                            'TRENDING_BEAR': 'trending',
+                                            'RANGING': 'ranging',
+                                            'CONSOLIDATION': 'ranging',
+                                            'TRANSITION': 'transition',
+                                            'CHAOTIC': 'chaotic',
+                                            'VOLATILE': 'volatile',
+                                            'BREAKOUT_BULL': 'breakout',
+                                            'BREAKOUT_BEAR': 'breakout',
+                                            'UNKNOWN': 'unknown'
+                                        }
+                                        indicators[key] = market_regime_mapping.get(value_stripped.upper(), value_stripped.lower())
+                                    
+                                    elif key in ['macd_trend', 'directional_bias', 'bb_breakout_direction', 'stoch_signal']:
+                                        # Garder comme string mais normaliser en minuscules
+                                        indicators[key] = value_stripped.lower()
+                                    
+                                    elif key == 'volume_pattern':
+                                        # Normaliser les patterns de volume
+                                        vol_pattern_mapping = {
+                                            'NORMAL': 'normal',
+                                            'SUSTAINED_HIGH': 'sustained_high',
+                                            'SUSTAINED_LOW': 'sustained_low',
+                                            'INCREASING': 'increasing',
+                                            'DECREASING': 'decreasing',
+                                            'SPIKE': 'spike'
+                                        }
+                                        indicators[key] = vol_pattern_mapping.get(value_stripped.upper(), value_stripped.lower())
+                                    
+                                    elif key == 'volume_context':
+                                        # Normaliser le contexte de volume
+                                        vol_context_mapping = {
+                                            'LOW_VOLATILITY': 'low_vol',
+                                            'NEUTRAL': 'neutral',
+                                            'HIGH_VOLATILITY': 'high_vol',
+                                            'EXTREME': 'extreme'
+                                        }
+                                        indicators[key] = vol_context_mapping.get(value_stripped.upper(), value_stripped.lower())
+                                    
+                                    elif key == 'pattern_detected':
+                                        # Normaliser les patterns détectés
+                                        pattern_mapping = {
+                                            'NORMAL': 'normal',
+                                            'PRICE_SPIKE_UP': 'spike_up',
+                                            'PRICE_SPIKE_DOWN': 'spike_down',
+                                            'VOLUME_SPIKE': 'volume_spike',
+                                            'BREAKOUT': 'breakout',
+                                            'BREAKDOWN': 'breakdown',
+                                            'REVERSAL': 'reversal',
+                                            'CONSOLIDATION': 'consolidation',
+                                            'ACCUMULATION': 'accumulation',
+                                            'DISTRIBUTION': 'distribution'
+                                        }
+                                        indicators[key] = pattern_mapping.get(value_stripped.upper(), value_stripped.lower())
+                                    
+                                    elif key == 'data_quality':
+                                        # Convertir qualité en score numérique
+                                        quality_mapping = {
+                                            'POOR': 0.25,
+                                            'FAIR': 0.5,
+                                            'GOOD': 0.75,
+                                            'EXCELLENT': 1.0
+                                        }
+                                        indicators[key] = quality_mapping.get(value_stripped.upper(), 0.5)
+                                    
+                                    else:
+                                        # Essayer de convertir en float
+                                        try:
+                                            indicators[key] = float(value_stripped)
+                                        except ValueError:
+                                            # Si ça échoue, garder comme string
+                                            indicators[key] = value_stripped
                             else:
                                 # Autres types (bool, etc.)
                                 indicators[key] = value

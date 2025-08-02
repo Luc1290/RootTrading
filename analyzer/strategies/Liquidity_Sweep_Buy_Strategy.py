@@ -117,6 +117,14 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         assert prev_low_2 is not None
             
         # Détection du sweep : prix a cassé sous support récemment
+        if support_level <= 0:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": "Support level invalide pour calcul sweep",
+                "metadata": {"strategy": self.name}
+            }
         sweep_distance = (support_level - current_low) / support_level
         recent_sweep = False
         sweep_bars_ago = 0

@@ -128,7 +128,7 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         breakout_type = None
         
         # Analyse breakout au-dessus de la résistance (canal haut)
-        if nearest_resistance is not None:
+        if nearest_resistance is not None and nearest_resistance > 0:
             breakout_distance = (current_price - nearest_resistance) / nearest_resistance
             
             # Breakout haussier confirmé
@@ -147,7 +147,7 @@ class Donchian_Breakout_Strategy(BaseStrategy):
                     reason += " - résistance modérée cassée"
                     
         # Analyse breakdown en-dessous du support (canal bas)
-        if signal_side is None and nearest_support is not None:
+        if signal_side is None and nearest_support is not None and nearest_support > 0:
             breakdown_distance = (nearest_support - current_price) / nearest_support
             
             # Breakdown baissier confirmé
@@ -168,10 +168,10 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         # Pas de breakout détecté
         if signal_side is None:
             proximity_info = ""
-            if nearest_resistance is not None:
+            if nearest_resistance is not None and nearest_resistance > 0:
                 dist_res = abs(current_price - nearest_resistance) / nearest_resistance
                 proximity_info += f"rés: {dist_res*100:.1f}%"
-            if nearest_support is not None:
+            if nearest_support is not None and nearest_support > 0:
                 dist_sup = abs(current_price - nearest_support) / nearest_support
                 if proximity_info:
                     proximity_info += ", "
