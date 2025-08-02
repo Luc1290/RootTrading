@@ -410,39 +410,39 @@ class TEMA_Slope_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # CORRECTION: Confirmation avec ROC - seuils directionnels adaptatifs
+        # CORRECTION: Confirmation avec ROC - seuils directionnels adaptatifs (format décimal)
         roc_10 = values.get('roc_10')
         if roc_10 is not None:
             try:
                 roc = float(roc_10)
-                # BUY : ROC positif avec différents niveaux
+                # BUY : ROC positif avec différents niveaux (format décimal)
                 if signal_side == "BUY":
-                    if roc > 3.0:
+                    if roc > 0.03:  # ROC > 3%
                         confidence_boost += 0.15  # ROC très positif = excellent pour BUY
-                        reason += f" + ROC très positif ({roc:.2f}%)"
-                    elif roc > 1.5:
+                        reason += f" + ROC très positif ({roc*100:.2f}%)"
+                    elif roc > 0.015:  # ROC > 1.5%
                         confidence_boost += 0.12  # ROC positif fort
-                        reason += f" + ROC positif fort ({roc:.2f}%)"
-                    elif roc > 0.5:
+                        reason += f" + ROC positif fort ({roc*100:.2f}%)"
+                    elif roc > 0.005:  # ROC > 0.5%
                         confidence_boost += 0.08  # ROC positif modéré
-                        reason += f" + ROC positif ({roc:.2f}%)"
-                    elif roc < -1.0:
+                        reason += f" + ROC positif ({roc*100:.2f}%)"
+                    elif roc < -0.01:  # ROC < -1%
                         confidence_boost -= 0.08  # ROC négatif = défavorable pour BUY
-                        reason += f" mais ROC négatif ({roc:.2f}%)"
-                # SELL : ROC négatif avec différents niveaux
+                        reason += f" mais ROC négatif ({roc*100:.2f}%)"
+                # SELL : ROC négatif avec différents niveaux (format décimal)
                 elif signal_side == "SELL":
-                    if roc < -3.0:
+                    if roc < -0.03:  # ROC < -3%
                         confidence_boost += 0.15  # ROC très négatif = excellent pour SELL
-                        reason += f" + ROC très négatif ({roc:.2f}%)"
-                    elif roc < -1.5:
+                        reason += f" + ROC très négatif ({roc*100:.2f}%)"
+                    elif roc < -0.015:  # ROC < -1.5%
                         confidence_boost += 0.12  # ROC négatif fort
-                        reason += f" + ROC négatif fort ({roc:.2f}%)"
-                    elif roc < -0.5:
+                        reason += f" + ROC négatif fort ({roc*100:.2f}%)"
+                    elif roc < -0.005:  # ROC < -0.5%
                         confidence_boost += 0.08  # ROC négatif modéré
-                        reason += f" + ROC négatif ({roc:.2f}%)"
-                    elif roc > 1.0:
+                        reason += f" + ROC négatif ({roc*100:.2f}%)"
+                    elif roc > 0.01:  # ROC > 1%
                         confidence_boost -= 0.08  # ROC positif = défavorable pour SELL
-                        reason += f" mais ROC positif ({roc:.2f}%)"
+                        reason += f" mais ROC positif ({roc*100:.2f}%)"
             except (ValueError, TypeError):
                 pass
                 
@@ -465,8 +465,8 @@ class TEMA_Slope_Strategy(BaseStrategy):
         # Confirmation avec directional bias
         directional_bias = values.get('directional_bias')
         if directional_bias is not None:
-            if (signal_side == "BUY" and directional_bias == "bullish") or \
-               (signal_side == "SELL" and directional_bias == "bearish"):
+            if (signal_side == "BUY" and directional_bias.upper() == "BULLISH") or \
+               (signal_side == "SELL" and directional_bias.upper() == "BEARISH"):
                 confidence_boost += 0.12
                 reason += f" + bias {directional_bias}"
                 
@@ -588,10 +588,10 @@ class TEMA_Slope_Strategy(BaseStrategy):
                     
         # Market regime
         market_regime = values.get('market_regime')
-        if market_regime == "trending":
+        if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
             confidence_boost += 0.10
             reason += " (marché trending)"
-        elif market_regime == "ranging":
+        elif market_regime == "RANGING":
             confidence_boost -= 0.05  # TEMA slope moins fiable en ranging
             reason += " (marché ranging)"
             

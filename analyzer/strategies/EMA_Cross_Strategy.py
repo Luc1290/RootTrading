@@ -205,34 +205,31 @@ class EMA_Cross_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation avec trend_strength
+        # Confirmation avec trend_strength (VARCHAR: absent/weak/moderate/strong/very_strong)
         trend_strength = values.get('trend_strength')
         if trend_strength is not None:
-            try:
-                trend_str = float(trend_strength)
-                if trend_str > 0.6:
-                    confidence_boost += 0.10
-                    reason += f" + tendance forte ({trend_str:.2f})"
-                elif trend_str > 0.4:
-                    confidence_boost += 0.05
-                    reason += f" + tendance modérée ({trend_str:.2f})"
-            except (ValueError, TypeError):
-                pass
+            trend_str = str(trend_strength).lower()
+            if trend_str in ['strong', 'very_strong']:
+                confidence_boost += 0.12
+                reason += f" + tendance {trend_str}"
+            elif trend_str == 'moderate':
+                confidence_boost += 0.08
+                reason += f" + tendance {trend_str}"
                 
         # Confirmation avec directional_bias
         directional_bias = values.get('directional_bias')
         if directional_bias:
-            if (signal_side == "BUY" and directional_bias == "bullish") or \
-               (signal_side == "SELL" and directional_bias == "bearish"):
+            if (signal_side == "BUY" and directional_bias == "BULLISH") or \
+               (signal_side == "SELL" and directional_bias == "BEARISH"):
                 confidence_boost += 0.10
                 reason += f" + bias {directional_bias}"
                 
-        # Confirmation avec trend_alignment (toutes les EMA alignées)
+        # Confirmation avec trend_alignment (toutes les EMA alignées) - format décimal
         trend_alignment = values.get('trend_alignment')
         if trend_alignment is not None:
             try:
                 alignment = float(trend_alignment)
-                if alignment > 0.7:
+                if abs(alignment) > 0.3:  # Format décimal : 0.3 = strong alignment (était 0.7 dans l'ancien format)
                     confidence_boost += 0.10
                     reason += " + EMA alignées"
             except (ValueError, TypeError):
@@ -268,34 +265,41 @@ class EMA_Cross_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Volume quality
+        # Volume quality (champ DB: volume_quality_score - format 0-100)
         volume_quality_score = values.get('volume_quality_score')
         if volume_quality_score is not None:
             try:
                 vol_quality = float(volume_quality_score)
-                if vol_quality > 0.7:
+                if vol_quality > 70:
+                    confidence_boost += 0.08
+                    reason += f" + volume qualité ({vol_quality:.0f})"
+                elif vol_quality > 50:
                     confidence_boost += 0.05
-                    reason += " + volume qualité"
+                    reason += f" + volume correct ({vol_quality:.0f})"
             except (ValueError, TypeError):
                 pass
                 
-        # Signal strength et confluence
+        # Signal strength (VARCHAR: WEAK/MODERATE/STRONG)
         signal_strength_calc = values.get('signal_strength')
         if signal_strength_calc is not None:
-            try:
-                sig_str = float(signal_strength_calc)
-                if sig_str > 0.7:
-                    confidence_boost += 0.05
-            except (ValueError, TypeError):
-                pass
+            sig_str = str(signal_strength_calc).upper()
+            if sig_str == 'STRONG':
+                confidence_boost += 0.10
+                reason += " + signal fort"
+            elif sig_str == 'MODERATE':
+                confidence_boost += 0.05
+                reason += " + signal modéré"
                 
         confluence_score = values.get('confluence_score')
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
-                if confluence > 0.6:
-                    confidence_boost += 0.10
-                    reason += " + confluence"
+                if confluence > 60:
+                    confidence_boost += 0.12
+                    reason += f" + confluence élevée ({confluence:.0f})"
+                elif confluence > 45:
+                    confidence_boost += 0.08
+                    reason += f" + confluence modérée ({confluence:.0f})"
             except (ValueError, TypeError):
                 pass
                 

@@ -25,11 +25,11 @@ class ROC_Threshold_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres ROC
-        self.bullish_threshold = 2.0  # ROC > +2% pour signal haussier
-        self.bearish_threshold = -2.0  # ROC < -2% pour signal baissier
-        self.extreme_bullish_threshold = 5.0  # ROC > +5% = momentum extrême
-        self.extreme_bearish_threshold = -5.0  # ROC < -5% = momentum extrême
+        # Paramètres ROC (format décimal : 0.02 = 2%)
+        self.bullish_threshold = 0.02  # ROC > +2% pour signal haussier
+        self.bearish_threshold = -0.02  # ROC < -2% pour signal baissier
+        self.extreme_bullish_threshold = 0.05  # ROC > +5% = momentum extrême
+        self.extreme_bearish_threshold = -0.05  # ROC < -5% = momentum extrême
         self.momentum_confirmation_threshold = 60  # Seuil momentum_score pour confirmation (format 0-100)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
@@ -146,10 +146,10 @@ class ROC_Threshold_Strategy(BaseStrategy):
         roc_data = {}
         
         # Collecter les valeurs ROC disponibles
-        # Utiliser roc comme indicateur principal (existe dans analyzer_data)
-        roc_value = values.get('roc_10')  # Chercher d'abord roc_10 mais utiliser 'roc' 
+        # ROC_10 est le principal indicateur disponible dans analyzer_data
+        roc_value = values.get('roc_10')  # ROC sur 10 périodes
         if roc_value is None:
-            roc_value = self.indicators.get('roc')  # Fallback vers 'roc' standard
+            roc_value = values.get('roc_20')  # Fallback vers ROC 20 périodes
         
         if roc_value is not None:
             try:
@@ -161,9 +161,9 @@ class ROC_Threshold_Strategy(BaseStrategy):
         momentum_score = values.get('momentum_score')
         if momentum_score is not None:
             try:
-                # momentum_score est déjà en format 0-100, convertir en ROC-like (-100 à +100)
-                # Normaliser de 0-100 vers -100 à +100 (50 = neutre = 0)
-                mom_val = (float(momentum_score) - 50) * 2
+                # momentum_score est en format 0-100, convertir en format ROC décimal équivalent
+                # Normaliser de 0-100 vers -1 à +1 (50 = neutre = 0)
+                mom_val = (float(momentum_score) - 50) / 50
                 roc_data['momentum_score'] = mom_val
             except (ValueError, TypeError):
                 pass
@@ -243,7 +243,7 @@ class ROC_Threshold_Strategy(BaseStrategy):
         # Construction de la raison
         direction = "haussier" if signal_type == "bullish" else "baissier"
         level_text = "extrême" if threshold_result['is_extreme'] else "normal"
-        reason = f"ROC {direction} {level_text}: {roc_value:.2f}%"
+        reason = f"ROC {direction} {level_text}: {roc_value*100:.2f}%"
         
         # Bonus selon le niveau de seuil
         if threshold_result['is_extreme']:
@@ -253,17 +253,17 @@ class ROC_Threshold_Strategy(BaseStrategy):
             confidence_boost += 0.15  # Momentum normal
             reason += " (momentum significatif)"
             
-        # Bonus selon l'excès par rapport au seuil
+        # Bonus selon l'excès par rapport au seuil (convertir en pourcentage pour affichage)
         exceeded_by = threshold_result['exceeded_by']
-        if exceeded_by > 2.0:  # Dépasse largement le seuil
+        if exceeded_by > 0.02:  # Dépasse largement le seuil (>2%)
             confidence_boost += 0.15
-            reason += f" + excès important ({exceeded_by:.1f}%)"
-        elif exceeded_by > 1.0:
+            reason += f" + excès important ({exceeded_by*100:.1f}%)"
+        elif exceeded_by > 0.01:  # Excès modéré (>1%)
             confidence_boost += 0.10
-            reason += f" + excès modéré ({exceeded_by:.1f}%)"
+            reason += f" + excès modéré ({exceeded_by*100:.1f}%)"
         else:
             confidence_boost += 0.05
-            reason += f" + excès faible ({exceeded_by:.1f}%)"
+            reason += f" + excès faible ({exceeded_by*100:.1f}%)"
             
         # CORRECTION: Momentum confirmation directionnelle stricte
         momentum_score = values.get('momentum_score')
@@ -492,10 +492,10 @@ class ROC_Threshold_Strategy(BaseStrategy):
                 
         # Market regime
         market_regime = values.get('market_regime')
-        if market_regime == "trending":
+        if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
             confidence_boost += 0.10
             reason += " (marché trending)"
-        elif market_regime == "ranging":
+        elif market_regime == "RANGING":
             confidence_boost -= 0.05  # Momentum moins fiable en ranging
             reason += " (marché ranging)"
             

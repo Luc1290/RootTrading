@@ -151,8 +151,8 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         try:
             # Vérifier directional_bias d'abord
             directional_bias = values.get('directional_bias')
-            if directional_bias in ["bullish", "bearish"]:
-                return directional_bias
+            if directional_bias in ["BULLISH", "BEARISH"]:
+                return directional_bias.lower()
                 
             # Utiliser les EMA comme fallback
             ema_12 = values.get('ema_12')
@@ -484,7 +484,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                 
                 if signal_side == "BUY":
                     # Rebond haussier : trend fort > ranging > trend faible
-                    if market_regime == "trending":
+                    if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
                         if regime_str > 0.8 and trend_str > 0.7:  # Trend très fort = rebond puissant
                             boost += 0.20
                             reason_additions += f" + trend très fort rebond ({regime_str:.2f})"
@@ -497,20 +497,20 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                         else:  # Trend faible = rebond incertain
                             boost += 0.05
                             reason_additions += f" + trend faible rebond ({regime_str:.2f})"
-                    elif market_regime == "ranging":
+                    elif market_regime == "RANGING":
                         if regime_str > 0.7:  # Range bien défini = rebonds prévisibles
                             boost += 0.12
                             reason_additions += f" + range fort rebond support ({regime_str:.2f})"
                         else:  # Range faible
                             boost += 0.08
                             reason_additions += f" + range rebond ({regime_str:.2f})"
-                    elif market_regime == "choppy":
+                    elif market_regime == "VOLATILE":
                         boost -= 0.05  # Marché chaotique = faux rebonds fréquents
                         reason_additions += " mais marché chaotique"
                         
                 else:  # SELL
                     # Rebond baissier : ranging > trend baissier > trend haussier
-                    if market_regime == "ranging":
+                    if market_regime == "RANGING":
                         if regime_str > 0.8:  # Range très défini = résistances solides
                             boost += 0.18
                             reason_additions += f" + range parfait résistance ({regime_str:.2f})"
@@ -520,7 +520,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                         else:  # Range modéré
                             boost += 0.10
                             reason_additions += f" + range rebond résistance ({regime_str:.2f})"
-                    elif market_regime == "trending":
+                    elif market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
                         if regime_str > 0.7 and trend_str < -0.5:  # Trend baissier fort
                             boost += 0.15
                             reason_additions += f" + trend baissier fort rebond ({regime_str:.2f})"
@@ -530,7 +530,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                         else:  # Trend faible ou haussier
                             boost += 0.06
                             reason_additions += f" + trend contre-rebond ({regime_str:.2f})"
-                    elif market_regime == "choppy":
+                    elif market_regime == "VOLATILE":
                         boost += 0.08  # Chaos moins défavorable aux rebonds baissiers
                         reason_additions += " + chaos neutre rebond baissier"
                         
@@ -543,45 +543,45 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         
         if volatility_regime is not None:
             try:
-                atr_pct = float(atr_percentile) if atr_percentile is not None else 50
+                atr_percentile = float(atr_percentile) if atr_percentile is not None else 50
                 
                 if signal_side == "BUY":
                     # Rebonds haussiers : volatilité faible à normale idéale
-                    if volatility_regime == "low" and atr_pct < 30:
+                    if volatility_regime == "low" and atr_percentile < 30:
                         boost += 0.12
-                        reason_additions += f" + volatilité faible rebond parfait ({atr_pct:.0f}%)"
-                    elif volatility_regime == "normal" and 30 <= atr_pct <= 60:
+                        reason_additions += f" + volatilité faible rebond parfait ({atr_percentile:.0f}%)"
+                    elif volatility_regime == "normal" and 30 <= atr_percentile <= 60:
                         boost += 0.10
-                        reason_additions += f" + volatilité idéale rebond ({atr_pct:.0f}%)"
+                        reason_additions += f" + volatilité idéale rebond ({atr_percentile:.0f}%)"
                     elif volatility_regime == "high":
-                        if atr_pct > 85:  # Volatilité extrême = faux rebonds
+                        if atr_percentile > 85:  # Volatilité extrême = faux rebonds
                             boost -= 0.12
-                            reason_additions += f" mais volatilité extrême faux rebonds ({atr_pct:.0f}%)"
+                            reason_additions += f" mais volatilité extrême faux rebonds ({atr_percentile:.0f}%)"
                         else:  # Volatilité modérément élevée
                             boost -= 0.06
-                            reason_additions += f" mais volatilité élevée rebonds ({atr_pct:.0f}%)"
-                    elif volatility_regime == "expanding":
-                        boost -= 0.08  # Expansion = instabilité défavorable rebonds
-                        reason_additions += " mais expansion défavorable rebonds"
+                            reason_additions += f" mais volatilité élevée rebonds ({atr_percentile:.0f}%)"
+                    elif volatility_regime == "extreme":
+                        boost -= 0.08  # Volatilité extrême = instabilité défavorable rebonds
+                        reason_additions += " mais volatilité extrême défavorable rebonds"
                         
                 else:  # SELL
                     # Rebonds baissiers : volatilité normale à élevée acceptable
-                    if volatility_regime == "low" and atr_pct < 25:
+                    if volatility_regime == "low" and atr_percentile < 25:
                         boost += 0.08
-                        reason_additions += f" + volatilité faible rebond contrôlé ({atr_pct:.0f}%)"
-                    elif volatility_regime == "normal" and 25 <= atr_pct <= 70:
+                        reason_additions += f" + volatilité faible rebond contrôlé ({atr_percentile:.0f}%)"
+                    elif volatility_regime == "normal" and 25 <= atr_percentile <= 70:
                         boost += 0.10
-                        reason_additions += f" + volatilité normale rebond ({atr_pct:.0f}%)"
+                        reason_additions += f" + volatilité normale rebond ({atr_percentile:.0f}%)"
                     elif volatility_regime == "high":
-                        if atr_pct > 80:  # Volatilité élevée = continuation baissière après rebond
+                        if atr_percentile > 80:  # Volatilité élevée = continuation baissière après rebond
                             boost += 0.12
-                            reason_additions += f" + volatilité élevée continuation ({atr_pct:.0f}%)"
+                            reason_additions += f" + volatilité élevée continuation ({atr_percentile:.0f}%)"
                         else:
                             boost += 0.08
-                            reason_additions += f" + volatilité rebond baissier ({atr_pct:.0f}%)"
-                    elif volatility_regime == "expanding":
-                        boost += 0.06  # Expansion moins défavorable aux rebonds baissiers
-                        reason_additions += " + expansion neutre rebond baissier"
+                            reason_additions += f" + volatilité rebond baissier ({atr_percentile:.0f}%)"
+                    elif volatility_regime == "extreme":
+                        boost += 0.06  # Volatilité extrême moins défavorable aux rebonds baissiers
+                        reason_additions += " + volatilité extrême neutre rebond baissier"
                         
             except (ValueError, TypeError):
                 pass

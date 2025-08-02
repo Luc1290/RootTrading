@@ -264,14 +264,14 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         if current_price > resistance and resistance > 0:
             breakout_distance = (current_price - resistance) / resistance
             if breakout_distance >= self.breakout_threshold:
-                breakout_type = "bullish"
+                breakout_type = "BULLISH"
                 breakout_level = resistance
                 
         # Breakout baissier (en-dessous support)  
         elif current_price < support:
             breakout_distance = (support - current_price) / current_price
             if breakout_distance >= self.breakout_threshold:
-                breakout_type = "bearish"
+                breakout_type = "BEARISH"
                 breakout_level = support
                 
         if breakout_type is None:
@@ -328,9 +328,9 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         if rsi_14 is not None and not confirmations['momentum_confirmed']:
             try:
                 rsi = float(rsi_14)
-                if breakout_type == "bullish" and rsi > 55:
+                if breakout_type == "BULLISH" and rsi > 55:
                     confirmations['momentum_confirmed'] = True
-                elif breakout_type == "bearish" and rsi < 45:
+                elif breakout_type == "BEARISH" and rsi < 45:
                     confirmations['momentum_confirmed'] = True
             except (ValueError, TypeError):
                 pass
@@ -347,9 +347,9 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
                 minus_val = float(minus_di) if minus_di is not None else 0.0
                 
                 if adx > 20:  # Tendance en formation
-                    if breakout_type == "bullish" and plus_val > minus_val:
+                    if breakout_type == "BULLISH" and plus_val > minus_val:
                         confirmations['trend_confirmed'] = True
-                    elif breakout_type == "bearish" and minus_val > plus_val:
+                    elif breakout_type == "BEARISH" and minus_val > plus_val:
                         confirmations['trend_confirmed'] = True
             except (ValueError, TypeError):
                 pass
@@ -357,8 +357,8 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         # Pattern confirmation
         bb_breakout_direction = values.get('bb_breakout_direction')
         if bb_breakout_direction is not None:
-            if (breakout_type == "bullish" and bb_breakout_direction == "up") or \
-               (breakout_type == "bearish" and bb_breakout_direction == "down"):
+            if (breakout_type == "BULLISH" and bb_breakout_direction == "UP") or \
+               (breakout_type == "BEARISH" and bb_breakout_direction == "DOWN"):
                 confirmations['pattern_confirmed'] = True
                 
         return confirmations
@@ -371,12 +371,12 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         breakout_level = breakout_analysis['level']
         confirmations = breakout_analysis['confirmations']
         
-        signal_side = "BUY" if breakout_type == "bullish" else "SELL"
+        signal_side = "BUY" if breakout_type == "BULLISH" else "SELL"
         base_confidence = 0.6  # Base plus élevée pour breakouts
         confidence_boost = 0.0
         
         # Construction de la raison
-        direction = "au-dessus résistance" if breakout_type == "bullish" else "en-dessous support"
+        direction = "au-dessus résistance" if breakout_type == "BULLISH" else "en-dessous support"
         reason = f"Breakout {direction} {breakout_level:.4f} - distance {breakout_analysis['distance']:.3f}"
         
         # Bonus selon les confirmations
@@ -422,40 +422,40 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         
         if atr_percentile is not None:
             try:
-                atr_pct = float(atr_percentile)
+                atr_percentile = float(atr_percentile)
                 
                 if signal_side == "BUY":
                     # Breakout haussier : volatilité contrôlée idéale, haute volatilité = piège
-                    if atr_pct < 20:  # Volatilité très faible = compression
+                    if atr_percentile < 20:  # Volatilité très faible = compression
                         confidence_boost += 0.18
-                        reason += f" + compression extrême breakout ({atr_pct:.0f}%)"
-                    elif 20 <= atr_pct <= 50:  # Volatilité idéale pour breakout haussier
+                        reason += f" + compression extrême breakout ({atr_percentile:.0f}%)"
+                    elif 20 <= atr_percentile <= 50:  # Volatilité idéale pour breakout haussier
                         confidence_boost += 0.15
-                        reason += f" + volatilité idéale breakout ({atr_pct:.0f}%)"
-                    elif 50 < atr_pct <= 75:  # Volatilité modérée à élevée
+                        reason += f" + volatilité idéale breakout ({atr_percentile:.0f}%)"
+                    elif 50 < atr_percentile <= 75:  # Volatilité modérée à élevée
                         confidence_boost += 0.08
-                        reason += f" + volatilité modérée breakout ({atr_pct:.0f}%)"
-                    elif 75 < atr_pct <= 90:  # Volatilité très élevée = risque faux breakout
+                        reason += f" + volatilité modérée breakout ({atr_percentile:.0f}%)"
+                    elif 75 < atr_percentile <= 90:  # Volatilité très élevée = risque faux breakout
                         confidence_boost -= 0.10
-                        reason += f" mais volatilité élevée risque ({atr_pct:.0f}%)"
-                    else:  # atr_pct > 90 : Volatilité extrême = piège probable
+                        reason += f" mais volatilité élevée risque ({atr_percentile:.0f}%)"
+                    else:  # atr_percentile > 90 : Volatilité extrême = piège probable
                         confidence_boost -= 0.18
-                        reason += f" mais volatilité extrême piège ({atr_pct:.0f}%)"
+                        reason += f" mais volatilité extrême piège ({atr_percentile:.0f}%)"
                         
                 else:  # SELL
                     # Breakdown baissier : peut profiter de volatilité élevée (panique)
-                    if atr_pct < 25:  # Volatilité très faible = breakdown faible
+                    if atr_percentile < 25:  # Volatilité très faible = breakdown faible
                         confidence_boost += 0.10
-                        reason += f" + breakdown contrôlé ({atr_pct:.0f}%)"
-                    elif 25 <= atr_pct <= 60:  # Volatilité normale à modérée
+                        reason += f" + breakdown contrôlé ({atr_percentile:.0f}%)"
+                    elif 25 <= atr_percentile <= 60:  # Volatilité normale à modérée
                         confidence_boost += 0.12
-                        reason += f" + volatilité favorable breakdown ({atr_pct:.0f}%)"
-                    elif 60 < atr_pct <= 85:  # Volatilité élevée = panique favorable
+                        reason += f" + volatilité favorable breakdown ({atr_percentile:.0f}%)"
+                    elif 60 < atr_percentile <= 85:  # Volatilité élevée = panique favorable
                         confidence_boost += 0.16
-                        reason += f" + volatilité élevée panique ({atr_pct:.0f}%)"
-                    else:  # atr_pct > 85 : Volatilité extrême = continuation baissière forte
+                        reason += f" + volatilité élevée panique ({atr_percentile:.0f}%)"
+                    else:  # atr_percentile > 85 : Volatilité extrême = continuation baissière forte
                         confidence_boost += 0.20
-                        reason += f" + volatilité extrême continuation ({atr_pct:.0f}%)"
+                        reason += f" + volatilité extrême continuation ({atr_percentile:.0f}%)"
                         
             except (ValueError, TypeError):
                 pass
@@ -468,12 +468,12 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         if market_regime is not None:
             try:
                 regime_str = float(regime_strength) if regime_strength is not None else 0.5
-                squeeze_val = float(bb_squeeze) if bb_squeeze is not None else 0.0
+                squeeze_val = bb_squeeze if bb_squeeze is not None else False
                 
                 if signal_side == "BUY":
                     # Breakout haussier : plus la consolidation est forte/longue, plus le breakout est puissant
-                    if market_regime == "ranging":
-                        if regime_str > 0.8 and squeeze_val > 0.7:  # Range parfait + squeeze
+                    if market_regime == "RANGING":
+                        if regime_str > 0.8 and squeeze_val:  # Range parfait + squeeze
                             confidence_boost += 0.25
                             reason += f" + consolidation parfaite breakout ({regime_str:.2f})"
                         elif regime_str > 0.6:  # Range fort
@@ -485,21 +485,21 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
                         else:  # Range faible = breakout moins fiable
                             confidence_boost += 0.08
                             reason += f" + consolidation faible ({regime_str:.2f})"
-                    elif market_regime == "trending":
+                    elif market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
                         if regime_str > 0.7:  # Trend fort = continuation puissante
                             confidence_boost += 0.18
                             reason += f" + continuation trend forte ({regime_str:.2f})"
                         else:  # Trend faible = continuation incertaine
                             confidence_boost += 0.10
                             reason += f" + continuation trend faible ({regime_str:.2f})"
-                    elif market_regime == "choppy":
+                    elif market_regime == "VOLATILE":
                         confidence_boost -= 0.08  # Chaos = faux breakouts fréquents
                         reason += " mais marché chaotique défavorable"
                         
                 else:  # SELL
                     # Breakdown baissier : efficace en ranging et continuation trend baissier
-                    if market_regime == "ranging":
-                        if regime_str > 0.7 and squeeze_val > 0.6:  # Range + squeeze = breakdown puissant
+                    if market_regime == "RANGING":
+                        if regime_str > 0.7 and squeeze_val:  # Range + squeeze = breakdown puissant
                             confidence_boost += 0.22
                             reason += f" + consolidation parfaite breakdown ({regime_str:.2f})"
                         elif regime_str > 0.5:  # Range modéré à fort
@@ -508,14 +508,14 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
                         else:  # Range faible
                             confidence_boost += 0.12
                             reason += f" + consolidation breakdown ({regime_str:.2f})"
-                    elif market_regime == "trending":
+                    elif market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
                         if regime_str > 0.6:  # Trend fort = continuation baissière
                             confidence_boost += 0.15
                             reason += f" + continuation baissière forte ({regime_str:.2f})"
                         else:  # Trend faible
                             confidence_boost += 0.08
                             reason += f" + continuation baissière ({regime_str:.2f})"
-                    elif market_regime == "choppy":
+                    elif market_regime == "VOLATILE":
                         confidence_boost += 0.05  # Chaos moins défavorable aux breakdowns
                         reason += " + marché chaotique neutre breakdown"
                         

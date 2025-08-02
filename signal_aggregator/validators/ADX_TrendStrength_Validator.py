@@ -95,10 +95,10 @@ class ADX_TrendStrength_Validator(BaseValidator):
                     
             # 3. Vérification cohérence avec directional_bias
             if directional_bias:
-                if signal_side == "BUY" and directional_bias == "bearish":
+                if signal_side == "BUY" and directional_bias.upper() == "BEARISH":
                     logger.debug(f"{self.name}: BUY signal mais bias bearish pour {self.symbol}")
                     return False
-                elif signal_side == "SELL" and directional_bias == "bullish":
+                elif signal_side == "SELL" and directional_bias.upper() == "BULLISH":
                     logger.debug(f"{self.name}: SELL signal mais bias bullish pour {self.symbol}")
                     return False
                     
@@ -174,8 +174,8 @@ class ADX_TrendStrength_Validator(BaseValidator):
             directional_bias = self.context.get('directional_bias')
             signal_side = signal.get('side')
             if directional_bias and signal_side:
-                if (signal_side == "BUY" and directional_bias == "bullish") or \
-                   (signal_side == "SELL" and directional_bias == "bearish"):
+                if (signal_side == "BUY" and directional_bias.upper() == "BULLISH") or \
+                   (signal_side == "SELL" and directional_bias.upper() == "BEARISH"):
                     base_score += self.trend_consistency_bonus
                     
             return min(1.0, base_score)

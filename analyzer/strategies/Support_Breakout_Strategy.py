@@ -47,8 +47,8 @@ class Support_Breakout_Strategy(BaseStrategy):
         self.volume_quality_threshold = 0.6     # Qualité volume minimum
         
         # Paramètres momentum (continuation baissière)
-        self.momentum_bearish_threshold = -0.2  # Momentum négatif requis
-        self.roc_bearish_threshold = -1.0       # ROC négatif minimum
+        self.momentum_bearish_threshold = 40    # Momentum baissier requis (format 0-100, 50=neutre)
+        self.roc_bearish_threshold = -0.01      # ROC négatif minimum (format décimal)
         
         # Paramètres de support
         self.min_support_strength = 0.4         # Force minimum du support
@@ -223,14 +223,14 @@ class Support_Breakout_Strategy(BaseStrategy):
         momentum_score = 0
         momentum_indicators = []
         
-        # Momentum score général
+        # Momentum score général (format 0-100, 50=neutre)
         momentum_val = values.get('momentum_score')
         if momentum_val is not None:
             try:
                 momentum_float = float(momentum_val)
-                if momentum_float <= self.momentum_bearish_threshold:
+                if momentum_float <= self.momentum_bearish_threshold:  # <=40
                     momentum_score += 25
-                    momentum_indicators.append(f"Momentum baissier ({momentum_float:.2f})")
+                    momentum_indicators.append(f"Momentum baissier ({momentum_float:.1f})")
             except (ValueError, TypeError):
                 pass
                 
@@ -239,15 +239,15 @@ class Support_Breakout_Strategy(BaseStrategy):
         if roc_10 is not None:
             try:
                 roc_val = float(roc_10)
-                if roc_val <= self.roc_bearish_threshold:
+                if roc_val <= self.roc_bearish_threshold:  # <=-0.01
                     momentum_score += 20
-                    momentum_indicators.append(f"ROC baissier ({roc_val:.1f}%)")
+                    momentum_indicators.append(f"ROC baissier ({roc_val*100:.1f}%)")
             except (ValueError, TypeError):
                 pass
                 
         # Directional bias baissier
         directional_bias = values.get('directional_bias')
-        if directional_bias == 'bearish':
+        if directional_bias and directional_bias.upper() == 'BEARISH':
             momentum_score += 15
             momentum_indicators.append("Bias directionnel baissier")
             
@@ -266,14 +266,14 @@ class Support_Breakout_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Trend alignment baissier
+        # Trend alignment baissier (format décimal)
         trend_alignment = values.get('trend_alignment')
         if trend_alignment is not None:
             try:
                 trend_align = float(trend_alignment)
-                if trend_align < -20:  # Alignment baissier fort
+                if trend_align < -0.5:  # Alignment baissier fort (format décimal)
                     momentum_score += 10
-                    momentum_indicators.append(f"Trend alignment baissier ({trend_align:.0f})")
+                    momentum_indicators.append(f"Trend alignment baissier ({trend_align:.2f})")
             except (ValueError, TypeError):
                 pass
                 
@@ -306,13 +306,13 @@ class Support_Breakout_Strategy(BaseStrategy):
         volume_quality = values.get('volume_quality_score')
         if volume_quality is not None:
             try:
-                vol_quality = float(volume_quality)
-                if vol_quality >= 0.8:
+                volume_quality_score = float(volume_quality)
+                if volume_quality_score >= 0.8:
                     volume_score += 0.2
-                    volume_indicators.append(f"Volume qualité élevée ({vol_quality:.2f})")
-                elif vol_quality >= self.volume_quality_threshold:
+                    volume_indicators.append(f"Volume qualité élevée ({volume_quality_score:.2f})")
+                elif volume_quality_score >= self.volume_quality_threshold:
                     volume_score += 0.1
-                    volume_indicators.append(f"Volume qualité correcte ({vol_quality:.2f})")
+                    volume_indicators.append(f"Volume qualité correcte ({volume_quality_score:.2f})")
             except (ValueError, TypeError):
                 pass
                 

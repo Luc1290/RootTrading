@@ -36,7 +36,8 @@
       "Bash(docker ps:*)",
       "Bash(mypy:*)",
       "Bash(ruff check:*)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "Bash(/mnt/e/RootTrading/RootTrading/debug/complete_analysis_compact.sh:*)"
     ],
     "deny": [
       "Bash(docker-compose restart *)",

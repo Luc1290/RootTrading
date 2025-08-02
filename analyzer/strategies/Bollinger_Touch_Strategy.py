@@ -244,27 +244,22 @@ class Bollinger_Touch_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # BB expansion/squeeze pour contexte
+        # BB expansion/squeeze pour contexte (boolean)
         bb_expansion = values.get('bb_expansion')
         bb_squeeze = values.get('bb_squeeze')
         
         if bb_expansion is not None:
-            try:
-                expansion = float(bb_expansion)
-                if expansion > 0.6:  # Bandes en expansion
-                    confidence_boost += 0.05
-                    reason += " (BB expansion)"
-            except (ValueError, TypeError):
-                pass
+            if bb_expansion:  # Boolean: True = expansion
+                confidence_boost += 0.05
+                reason += " (BB expansion)"
                 
         if bb_squeeze is not None:
-            try:
-                squeeze = float(bb_squeeze)
-                if squeeze > 0.7:  # Sortie de squeeze
-                    confidence_boost += 0.10
-                    reason += " (sortie squeeze)"
-            except (ValueError, TypeError):
-                pass
+            if not bb_squeeze:  # Boolean: False = sortie de squeeze
+                confidence_boost += 0.10
+                reason += " (sortie squeeze)"
+            elif bb_squeeze:  # True = encore en squeeze
+                confidence_boost -= 0.05  # Pénalité légère
+                reason += " (squeeze actif)"
                 
         # Volatility regime pour contexte
         volatility_regime = values.get('volatility_regime')
@@ -274,41 +269,42 @@ class Bollinger_Touch_Strategy(BaseStrategy):
         elif volatility_regime == "normal":
             confidence_boost += 0.03
             
-        # Signal strength et confluence
+        # Signal strength (varchar: WEAK/MODERATE/STRONG)
         signal_strength_calc = values.get('signal_strength')
         if signal_strength_calc is not None:
-            try:
-                sig_str = float(signal_strength_calc)
-                if sig_str > 0.7:
-                    confidence_boost += 0.05
-            except (ValueError, TypeError):
-                pass
+            sig_str = str(signal_strength_calc).upper()
+            if sig_str == 'STRONG':
+                confidence_boost += 0.10
+                reason += " + signal fort"
+            elif sig_str == 'MODERATE':
+                confidence_boost += 0.05
+                reason += " + signal modéré"
                 
-        # CORRECTION: Confluence score avec logique directionnelle asymétrique
+        # CORRECTION: Confluence score (format 0-100)
         confluence_score = values.get('confluence_score')
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
                 if signal_side == "BUY":
                     # BUY (lower band touch) : confluence modérée suffisante (oversold confluence)
-                    if confluence > 0.75:
+                    if confluence > 75:
                         confidence_boost += 0.15
                         reason += " + confluence très élevée BUY"
-                    elif confluence > 0.65:
+                    elif confluence > 65:
                         confidence_boost += 0.12
                         reason += " + confluence élevée"
-                    elif confluence > 0.55:
+                    elif confluence > 55:
                         confidence_boost += 0.08
                         reason += " + confluence modérée"
                 elif signal_side == "SELL":
                     # SELL (upper band touch) : confluence élevée requise (overbought confirmation)
-                    if confluence > 0.8:
+                    if confluence > 80:
                         confidence_boost += 0.18  # Bonus supérieur pour SELL
                         reason += " + confluence très élevée SELL"
-                    elif confluence > 0.7:  
+                    elif confluence > 70:  
                         confidence_boost += 0.14
                         reason += " + confluence élevée"
-                    elif confluence > 0.6:
+                    elif confluence > 60:
                         confidence_boost += 0.09
                         reason += " + confluence modérée"
             except (ValueError, TypeError):

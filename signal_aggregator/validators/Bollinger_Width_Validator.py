@@ -103,15 +103,11 @@ class Bollinger_Width_Validator(BaseValidator):
                 logger.warning(f"{self.name}: Signal side ou BB width manquant pour {self.symbol}")
                 return False
                 
-            # Calculer bb_width en pourcentage du prix actuel
-            bb_width_pct = None
-            if bb_width is not None and current_price is not None and current_price > 0:
-                bb_width_pct = bb_width / current_price
-            elif bb_width is not None and bb_middle is not None and bb_middle > 0:
-                bb_width_pct = bb_width / bb_middle
+            # bb_width est déjà en format relatif (% du prix moyen)
+            bb_width_pct = bb_width
             
             if bb_width_pct is None:
-                logger.warning(f"{self.name}: Impossible de calculer bb_width en % pour {self.symbol}")
+                logger.warning(f"{self.name}: BB width manquant pour {self.symbol}")
                 return False
             
             # 1. Vérification largeur BB minimum
@@ -191,7 +187,7 @@ class Bollinger_Width_Validator(BaseValidator):
             # 8. Validation spécifique selon stratégie
             if self._is_bollinger_strategy(signal_strategy):
                 # Stratégies spécifiquement basées sur Bollinger
-                if bb_width < self.min_bb_width * 2:  # Critères plus stricts
+                if bb_width_pct < self.min_bb_width * 2:  # Critères plus stricts
                     logger.debug(f"{self.name}: Stratégie Bollinger mais width insuffisante pour {self.symbol}")
                     return False
                     
@@ -247,7 +243,7 @@ class Bollinger_Width_Validator(BaseValidator):
             
             base_score = 0.5  # Score de base si validé
             
-            # Ajustement selon largeur BB
+            # Ajustement selon largeur BB (bb_width déjà en format relatif)
             if self.squeeze_threshold <= bb_width <= self.expansion_threshold:
                 # Zone optimale de largeur
                 optimal_center = (self.squeeze_threshold + self.expansion_threshold) / 2

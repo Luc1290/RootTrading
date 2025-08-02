@@ -155,25 +155,25 @@ class ADX_Direction_Strategy(BaseStrategy):
         
         # Trend strength pré-calculé
         trend_strength = values.get('trend_strength')
-        if trend_strength and str(trend_strength) in ['STRONG', 'VERY_STRONG']:
+        if trend_strength and str(trend_strength).lower() in ['strong', 'very_strong']:
             confidence_boost += 0.10
             reason += f" avec trend_strength {str(trend_strength).lower()}"
                 
         # Directional bias confirmation
         directional_bias = values.get('directional_bias')
         if directional_bias:
-            if (signal_side == "BUY" and directional_bias == "bullish") or \
-               (signal_side == "SELL" and directional_bias == "bearish"):
+            if (signal_side == "BUY" and str(directional_bias).upper() == "BULLISH") or \
+               (signal_side == "SELL" and str(directional_bias).upper() == "BEARISH"):
                 confidence_boost += 0.10
                 reason += " confirmé par bias directionnel"
                 
-        # Momentum score
+        # Momentum score (format 0-100)
         momentum_score = values.get('momentum_score')
         if momentum_score:
             try:
                 momentum_val = float(momentum_score)
-                if (signal_side == "BUY" and momentum_val > 0.3) or \
-                   (signal_side == "SELL" and momentum_val < -0.3):
+                if (signal_side == "BUY" and momentum_val > 60) or \
+                   (signal_side == "SELL" and momentum_val < 40):
                     confidence_boost += 0.10
                     reason += " avec momentum favorable"
             except (ValueError, TypeError):
@@ -190,41 +190,42 @@ class ADX_Direction_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Signal strength et confluence
+        # Signal strength (varchar: WEAK/MODERATE/STRONG)
         signal_strength_calc = values.get('signal_strength')
         if signal_strength_calc:
-            try:
-                signal_str = float(signal_strength_calc)
-                if signal_str > 0.7:
-                    confidence_boost += 0.05
-            except (ValueError, TypeError):
-                pass
+            signal_str = str(signal_strength_calc).upper()
+            if signal_str == 'STRONG':
+                confidence_boost += 0.10
+                reason += " + signal fort"
+            elif signal_str == 'MODERATE':
+                confidence_boost += 0.05
+                reason += " + signal modéré"
                 
-        # CORRECTION: Confluence score avec logique directionnelle asymétrique
+        # CORRECTION: Confluence score (format 0-100)
         confluence_score = values.get('confluence_score')
         if confluence_score:
             try:
                 confluence = float(confluence_score)
                 if signal_side == "BUY":
                     # BUY : confluence élevée = signaux haussiers multiples
-                    if confluence > 0.8:
+                    if confluence > 80:
                         confidence_boost += 0.18
                         reason += " + confluence très élevée BUY"
-                    elif confluence > 0.7:
+                    elif confluence > 70:
                         confidence_boost += 0.14
                         reason += " + confluence élevée BUY"
-                    elif confluence > 0.6:
+                    elif confluence > 60:
                         confidence_boost += 0.10
                         reason += " + confluence modérée"
                 elif signal_side == "SELL":
                     # SELL : confluence + ADX baissier = momentum très fort
-                    if confluence > 0.75:
+                    if confluence > 75:
                         confidence_boost += 0.20  # Bonus supérieur SELL
                         reason += " + confluence très élevée SELL"
-                    elif confluence > 0.65:
+                    elif confluence > 65:
                         confidence_boost += 0.16
                         reason += " + confluence élevée SELL"
-                    elif confluence > 0.55:
+                    elif confluence > 55:
                         confidence_boost += 0.12
                         reason += " + confluence modérée"
             except (ValueError, TypeError):

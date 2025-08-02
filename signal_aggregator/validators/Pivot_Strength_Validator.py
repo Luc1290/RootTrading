@@ -284,15 +284,27 @@ class Pivot_Strength_Validator(BaseValidator):
         strategy_lower = strategy.lower()
         
         # Stratégies qui bénéficient particulièrement des pivots forts
-        pivot_friendly = ['breakout', 'support', 'resistance', 'pivot', 'level', 'bounce']
+        pivot_friendly = ['breakout', 'support', 'resistance', 'pivot', 'level', 'bounce', 
+                         'reversal', 'rebound', 'oversold', 'overbought', 'touch', 'rejection']
         
-        # Stratégies moins dépendantes des pivots
-        pivot_neutral = ['macd', 'rsi', 'moving_average', 'cross', 'slope']
+        # Stratégies moins dépendantes des pivots  
+        pivot_neutral = ['macd_crossover', 'ema_cross', 'slope', 'tema', 'hull', 'trix',
+                        'adx', 'trend_following', 'moving_average']
         
-        # Si stratégie pivot-friendly, critères plus stricts déjà appliqués
-        # Si stratégie neutre, être plus permissif
-        if any(kw in strategy_lower for kw in pivot_neutral):
-            return True  # Stratégies neutres acceptées plus facilement
+        # Stratégies oscillateurs (pivot-friendly via niveaux psychologiques)
+        oscillator_strategies = ['rsi', 'stoch', 'williams', 'cci', 'bollinger', 'zscore']
+        
+        # Classification des stratégies selon leur rapport aux pivots
+        if any(kw in strategy_lower for kw in pivot_friendly):
+            # Pivot-friendly : critères stricts déjà appliqués dans validate()
+            return True
+        elif any(kw in strategy_lower for kw in oscillator_strategies):
+            # Oscillateurs : pivot-friendly via niveaux psychologiques (30/70, etc.)
+            # Appliquer critères similaires aux pivot-friendly mais moins stricts
+            return True
+        elif any(kw in strategy_lower for kw in pivot_neutral):
+            # Neutres : accepter plus facilement
+            return True
             
         return True  # Par défaut accepter
         

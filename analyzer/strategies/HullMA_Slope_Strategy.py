@@ -285,33 +285,40 @@ class HullMA_Slope_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation avec trend_strength
+        # Confirmation avec trend_strength (VARCHAR: weak/absent/strong/very_strong/extreme)
         trend_strength = values.get('trend_strength')
         if trend_strength is not None:
-            try:
-                trend_str = float(trend_strength)
-                if trend_str > 0.6:
-                    confidence_boost += 0.10
-                    reason += f" + tendance forte ({trend_str:.2f})"
-            except (ValueError, TypeError):
-                pass
+            trend_str = str(trend_strength).lower()
+            if trend_str in ['extreme', 'very_strong']:
+                confidence_boost += 0.15
+                reason += f" + tendance {trend_str}"
+            elif trend_str == 'strong':
+                confidence_boost += 0.10
+                reason += f" + tendance {trend_str}"
+            elif trend_str in ['moderate', 'present']:
+                confidence_boost += 0.05
+                reason += f" + tendance {trend_str}"
                 
-        # Confirmation avec directional_bias
+        # Confirmation avec directional_bias (VARCHAR: BULLISH/BEARISH/NEUTRAL)
         directional_bias = values.get('directional_bias')
         if directional_bias:
-            if (signal_side == "BUY" and directional_bias == "bullish") or \
-               (signal_side == "SELL" and directional_bias == "bearish"):
+            bias_str = str(directional_bias).upper()
+            if (signal_side == "BUY" and bias_str == "BULLISH") or \
+               (signal_side == "SELL" and bias_str == "BEARISH"):
                 confidence_boost += 0.10
-                reason += f" + bias {directional_bias}"
+                reason += f" + bias {bias_str.lower()}"
                 
-        # Confirmation avec trend_alignment
+        # Confirmation avec trend_alignment (format décimal)
         trend_alignment = values.get('trend_alignment')
         if trend_alignment is not None:
             try:
                 alignment = float(trend_alignment)
-                if alignment > 0.7:
+                if abs(alignment) > 0.3:  # Format décimal : 0.3 = strong alignment
                     confidence_boost += 0.10
                     reason += " + MA alignées"
+                elif abs(alignment) > 0.2:
+                    confidence_boost += 0.05
+                    reason += " + MA partiellement alignées"
             except (ValueError, TypeError):
                 pass
                 
@@ -351,38 +358,60 @@ class HullMA_Slope_Strategy(BaseStrategy):
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio >= 1.2:
-                    confidence_boost += 0.08
+                if vol_ratio >= 1.5:
+                    confidence_boost += 0.12
                     reason += f" + volume élevé ({vol_ratio:.1f}x)"
+                elif vol_ratio >= 1.2:
+                    confidence_boost += 0.08
+                    reason += f" + volume modéré ({vol_ratio:.1f}x)"
+            except (ValueError, TypeError):
+                pass
+                
+        # Volume quality (format 0-100)
+        volume_quality_score = values.get('volume_quality_score')
+        if volume_quality_score is not None:
+            try:
+                vol_quality = float(volume_quality_score)
+                if vol_quality > 70:
+                    confidence_boost += 0.08
+                    reason += f" + volume qualité ({vol_quality:.0f})"
+                elif vol_quality > 50:
+                    confidence_boost += 0.05
+                    reason += f" + volume correct ({vol_quality:.0f})"
             except (ValueError, TypeError):
                 pass
                 
         # Contexte marché
         market_regime = values.get('market_regime')
-        if market_regime == "trending":
+        if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
             confidence_boost += 0.08
             reason += " (marché trending)"
-        elif market_regime == "ranging":
+        elif market_regime == "RANGING":
             confidence_boost -= 0.05
             reason += " (marché ranging)"
             
-        # Signal strength et confluence
+        # Signal strength (VARCHAR: WEAK/MODERATE/STRONG/VERY_WEAK)
         signal_strength_calc = values.get('signal_strength')
         if signal_strength_calc is not None:
-            try:
-                sig_str = float(signal_strength_calc)
-                if sig_str > 0.7:
-                    confidence_boost += 0.05
-            except (ValueError, TypeError):
-                pass
+            sig_str = str(signal_strength_calc).upper()
+            if sig_str == 'STRONG':
+                confidence_boost += 0.10
+                reason += " + signal fort"
+            elif sig_str == 'MODERATE':
+                confidence_boost += 0.05
+                reason += " + signal modéré"
                 
+        # Confluence score (format 0-100)
         confluence_score = values.get('confluence_score')
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
-                if confluence > 0.6:
-                    confidence_boost += 0.10
-                    reason += " + confluence"
+                if confluence > 60:
+                    confidence_boost += 0.12
+                    reason += f" + confluence élevée ({confluence:.0f})"
+                elif confluence > 45:
+                    confidence_boost += 0.08
+                    reason += f" + confluence modérée ({confluence:.0f})"
             except (ValueError, TypeError):
                 pass
                 

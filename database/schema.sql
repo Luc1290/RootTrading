@@ -127,7 +127,7 @@ CREATE TABLE IF NOT EXISTS analyzer_data (
     atr_14 DECIMAL(20,8),          -- ATR standard
     atr_percentile DECIMAL(5,2),   -- ATR percentile (0-100)
     natr DECIMAL(20,8),            -- Normalized ATR
-    volatility_regime VARCHAR(15), -- LOW/NORMAL/HIGH/EXTREME
+    volatility_regime VARCHAR(15), -- low/normal/high/extreme
     atr_stop_long DECIMAL(20,8),   -- ATR-based stop loss (long)
     atr_stop_short DECIMAL(20,8),  -- ATR-based stop loss (short)
     

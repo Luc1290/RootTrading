@@ -110,8 +110,9 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         try:
             nearest_resistance = float(values['nearest_resistance']) if values['nearest_resistance'] is not None else None
             nearest_support = float(values['nearest_support']) if values['nearest_support'] is not None else None
-            resistance_strength = float(values['resistance_strength']) if values['resistance_strength'] is not None else None
-            support_strength = float(values['support_strength']) if values['support_strength'] is not None else None
+            # Support/resistance strength sont des VARCHAR (MAJOR, STRONG, MODERATE, WEAK)
+            resistance_strength = values.get('resistance_strength')
+            support_strength = values.get('support_strength')
         except (ValueError, TypeError) as e:
             return {
                 "side": None,
@@ -139,12 +140,17 @@ class Donchian_Breakout_Strategy(BaseStrategy):
                 confidence_boost += 0.20
                 
                 # Bonus si résistance était forte = breakout plus significatif
-                if resistance_strength is not None and resistance_strength > 0.7:
-                    confidence_boost += 0.15
-                    reason += " - résistance forte cassée"
-                elif resistance_strength is not None and resistance_strength > 0.5:
-                    confidence_boost += 0.10
-                    reason += " - résistance modérée cassée"
+                if resistance_strength is not None:
+                    res_str = str(resistance_strength).upper()
+                    if res_str == 'MAJOR':
+                        confidence_boost += 0.20
+                        reason += " - résistance majeure cassée"
+                    elif res_str == 'STRONG':
+                        confidence_boost += 0.15
+                        reason += " - résistance forte cassée"
+                    elif res_str == 'MODERATE':
+                        confidence_boost += 0.10
+                        reason += " - résistance modérée cassée"
                     
         # Analyse breakdown en-dessous du support (canal bas)
         if signal_side is None and nearest_support is not None and nearest_support > 0:
@@ -158,12 +164,17 @@ class Donchian_Breakout_Strategy(BaseStrategy):
                 confidence_boost += 0.20
                 
                 # Bonus si support était fort = breakdown plus significatif
-                if support_strength is not None and support_strength > 0.7:
-                    confidence_boost += 0.15
-                    reason += " - support fort cassé"
-                elif support_strength is not None and support_strength > 0.5:
-                    confidence_boost += 0.10
-                    reason += " - support modéré cassé"
+                if support_strength is not None:
+                    sup_str = str(support_strength).upper()
+                    if sup_str == 'MAJOR':
+                        confidence_boost += 0.20
+                        reason += " - support majeur cassé"
+                    elif sup_str == 'STRONG':
+                        confidence_boost += 0.15
+                        reason += " - support fort cassé"
+                    elif sup_str == 'MODERATE':
+                        confidence_boost += 0.10
+                        reason += " - support modéré cassé"
                     
         # Pas de breakout détecté
         if signal_side is None:
@@ -220,23 +231,27 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation avec trend_strength et directional_bias
+        # Confirmation avec trend_strength (VARCHAR: weak/absent/strong/very_strong/extreme)
         trend_strength = values.get('trend_strength')
         if trend_strength is not None:
-            try:
-                trend_str = float(trend_strength)
-                if trend_str > 0.6:
-                    confidence_boost += 0.08
-                    reason += f" (trend: {trend_str:.2f})"
-            except (ValueError, TypeError):
-                pass
+            trend_str = str(trend_strength).lower()
+            if trend_str in ['extreme', 'very_strong']:
+                confidence_boost += 0.15
+                reason += f" + trend {trend_str}"
+            elif trend_str == 'strong':
+                confidence_boost += 0.10
+                reason += f" + trend {trend_str}"
+            elif trend_str in ['moderate', 'present']:
+                confidence_boost += 0.05
+                reason += f" + trend {trend_str}"
                 
         directional_bias = values.get('directional_bias')
         if directional_bias:
-            if (signal_side == "BUY" and directional_bias == "bullish") or \
-               (signal_side == "SELL" and directional_bias == "bearish"):
+            bias_str = str(directional_bias).upper()
+            if (signal_side == "BUY" and bias_str == "BULLISH") or \
+               (signal_side == "SELL" and bias_str == "BEARISH"):
                 confidence_boost += 0.10
-                reason += f" + bias {directional_bias}"
+                reason += f" + bias {bias_str.lower()}"
                 
         # Confirmation avec momentum
         momentum_score = values.get('momentum_score')
@@ -295,8 +310,8 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         volume_quality_score = values.get('volume_quality_score')
         if volume_quality_score is not None:
             try:
-                vol_quality = float(volume_quality_score)
-                if vol_quality > 0.7:
+                volume_quality_score = float(volume_quality_score)
+                if volume_quality_score > 0.7:
                     confidence_boost += 0.08
                     reason += " + volume qualité"
             except (ValueError, TypeError):
@@ -313,14 +328,17 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Contexte volatilité
+        # Contexte volatilité (format 0-100)
         atr_percentile = values.get('atr_percentile')
         if atr_percentile is not None:
             try:
                 atr_perc = float(atr_percentile)
-                if atr_perc > 0.7:  # Volatilité élevée favorable aux breakouts
+                if atr_perc > 70:  # Volatilité élevée favorable aux breakouts (format 0-100)
                     confidence_boost += 0.08
-                    reason += " + volatilité élevée"
+                    reason += f" + volatilité élevée ({atr_perc:.0f}%)"
+                elif atr_perc > 50:
+                    confidence_boost += 0.05
+                    reason += f" + volatilité modérée ({atr_perc:.0f}%)"
             except (ValueError, TypeError):
                 pass
                 
@@ -331,43 +349,44 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         elif volatility_regime == "high":
             confidence_boost += 0.05
             
-        # Signal strength et confluence
+        # Signal strength (VARCHAR: WEAK/MODERATE/STRONG/VERY_WEAK)
         signal_strength_calc = values.get('signal_strength')
         if signal_strength_calc is not None:
-            try:
-                sig_str = float(signal_strength_calc)
-                if sig_str > 0.7:
-                    confidence_boost += 0.05
-            except (ValueError, TypeError):
-                pass
+            sig_str = str(signal_strength_calc).upper()
+            if sig_str == 'STRONG':
+                confidence_boost += 0.10
+                reason += " + signal fort"
+            elif sig_str == 'MODERATE':
+                confidence_boost += 0.05
+                reason += " + signal modéré"
                 
-        # CORRECTION: Confluence score avec logique directionnelle asymétrique
+        # CORRECTION: Confluence score avec logique directionnelle asymétrique (format 0-100)
         confluence_score = values.get('confluence_score')
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
                 if signal_side == "BUY":
                     # BUY (resistance breakout) : confluence élevée = multiples confirmations haussières
-                    if confluence > 0.8:
+                    if confluence > 80:
                         confidence_boost += 0.16
-                        reason += " + confluence très élevée BUY"
-                    elif confluence > 0.7:
+                        reason += f" + confluence très élevée BUY ({confluence:.0f})"
+                    elif confluence > 70:
                         confidence_boost += 0.13
-                        reason += " + confluence élevée"
-                    elif confluence > 0.6:
+                        reason += f" + confluence élevée ({confluence:.0f})"
+                    elif confluence > 60:
                         confidence_boost += 0.10
-                        reason += " + confluence modérée"
+                        reason += f" + confluence modérée ({confluence:.0f})"
                 elif signal_side == "SELL":
                     # SELL (support breakdown) : confluence forte = confirmations baissières multiples
-                    if confluence > 0.75:
+                    if confluence > 75:
                         confidence_boost += 0.18  # Bonus supérieur pour breakdown
-                        reason += " + confluence très élevée SELL"
-                    elif confluence > 0.65:
+                        reason += f" + confluence très élevée SELL ({confluence:.0f})"
+                    elif confluence > 65:
                         confidence_boost += 0.14
-                        reason += " + confluence élevée"
-                    elif confluence > 0.55:
+                        reason += f" + confluence élevée ({confluence:.0f})"
+                    elif confluence > 55:
                         confidence_boost += 0.11
-                        reason += " + confluence modérée"
+                        reason += f" + confluence modérée ({confluence:.0f})"
             except (ValueError, TypeError):
                 pass
                 

@@ -23,11 +23,11 @@ class Global_Trend_Validator(BaseValidator):
     def __init__(self, symbol: str, data: Dict[str, Any], context: Dict[str, Any]):
         super().__init__(symbol, data, context)
         
-        # Seuils de validation
-        self.min_trend_alignment_bull = 20   # Trend alignment minimum pour tendance haussière
-        self.min_trend_alignment_bear = -20  # Trend alignment minimum pour tendance baissière
-        self.min_adx_trend = 25             # ADX minimum pour considérer une tendance forte
-        self.min_regime_confidence = 60     # Confiance minimum du régime
+        # Seuils de validation (plus stricts)
+        self.min_trend_alignment_bull = 0.5   # Trend alignment minimum pour tendance haussière  
+        self.min_trend_alignment_bear = -0.5  # Trend alignment minimum pour tendance baissière
+        self.min_adx_trend = 25              # ADX minimum pour considérer une tendance forte
+        self.min_regime_confidence = 60      # Confiance minimum du régime
         # Nouveaux filtres EMA
         self.use_ema_filter = True          # Activer le filtre EMA50/EMA99
         self.ema_divergence_penalty = 0.5   # Pénalité forte pour signal contra-EMA
@@ -65,7 +65,7 @@ class Global_Trend_Validator(BaseValidator):
                 is_strong_trend = True
             elif regime_confidence and regime_confidence >= self.min_regime_confidence:
                 is_strong_trend = True
-            elif trend_strength and trend_strength in ['strong', 'very_strong']:
+            elif trend_strength and trend_strength in ['STRONG', 'VERY_STRONG']:
                 is_strong_trend = True
                 
             # Si pas de tendance forte, on accepte le signal
@@ -106,14 +106,17 @@ class Global_Trend_Validator(BaseValidator):
                     pass
             
             # Vérification stricte en tendance forte (gardée en complément)
-            if market_regime == 'BULLISH' or trend_alignment > self.min_trend_alignment_bull:
+            bullish_regimes = ['TRENDING_BULL', 'BREAKOUT_BULL', 'BULLISH']
+            bearish_regimes = ['TRENDING_BEAR', 'BREAKOUT_BEAR', 'BEARISH']
+            
+            if market_regime in bullish_regimes or trend_alignment > (self.min_trend_alignment_bull / 100):
                 # Tendance haussière forte : rejeter les SELL
                 if signal_side == 'SELL':
                     logger.debug(f"Signal SELL rejeté en tendance haussière forte "
                                f"(regime={market_regime}, alignment={trend_alignment:.1f})")
                     return False
                     
-            elif market_regime == 'BEARISH' or trend_alignment < self.min_trend_alignment_bear:
+            elif market_regime in bearish_regimes or trend_alignment < (self.min_trend_alignment_bear / 100):
                 # Tendance baissière forte : rejeter les BUY
                 if signal_side == 'BUY':
                     logger.debug(f"Signal BUY rejeté en tendance baissière forte "
@@ -140,7 +143,7 @@ class Global_Trend_Validator(BaseValidator):
                 
             market_regime = self.context.get('market_regime')
             trend_alignment = self.context.get('trend_alignment', 0)
-            regime_confidence = self.context.get('regime_confidence', 50)
+            regime_confidence = self.context.get('regime_conf', 50)
             adx_value = self.context.get('adx_14', 20)
             
             # Filtre EMA pour le score
@@ -169,24 +172,28 @@ class Global_Trend_Validator(BaseValidator):
                     pass
             
             # Score basé sur l'alignement
+            bullish_regimes = ['TRENDING_BULL', 'BREAKOUT_BULL', 'BULLISH']
+            bearish_regimes = ['TRENDING_BEAR', 'BREAKOUT_BEAR', 'BEARISH']
+            
             if market_regime == 'RANGING':
                 # En range, score neutre
                 base_score = 0.6
-            elif (market_regime == 'BULLISH' and signal_side == 'BUY') or \
-                 (market_regime == 'BEARISH' and signal_side == 'SELL'):
+            elif (market_regime in bullish_regimes and signal_side == 'BUY') or \
+                 (market_regime in bearish_regimes and signal_side == 'SELL'):
                 # Parfaitement aligné
                 base_score = 1.0
                 
-                # Bonus selon la force de l'alignement
-                if abs(trend_alignment) > 50:
+                # Bonus selon la force de l'alignement (format décimal)
+                alignment_abs = abs(trend_alignment)
+                if alignment_abs > 0.5:
                     base_score = 1.0
-                elif abs(trend_alignment) > 30:
+                elif alignment_abs > 0.3:
                     base_score = 0.9
                 else:
                     base_score = 0.8
                     
-            elif (market_regime == 'BULLISH' and signal_side == 'SELL') or \
-                 (market_regime == 'BEARISH' and signal_side == 'BUY'):
+            elif (market_regime in bullish_regimes and signal_side == 'SELL') or \
+                 (market_regime in bearish_regimes and signal_side == 'BUY'):
                 # Contra-trend
                 base_score = 0.0
                 
@@ -229,11 +236,14 @@ class Global_Trend_Validator(BaseValidator):
             adx_value = self.context.get('adx_14', 0)
             regime_confidence = self.context.get('regime_confidence', 0)
             
+            bullish_regimes = ['TRENDING_BULL', 'BREAKOUT_BULL', 'BULLISH']
+            bearish_regimes = ['TRENDING_BEAR', 'BREAKOUT_BEAR', 'BEARISH']
+            
             if is_valid:
                 if market_regime == 'RANGING':
                     return f"Signal {signal_side} accepté en marché en range"
-                elif (market_regime == 'BULLISH' and signal_side == 'BUY') or \
-                     (market_regime == 'BEARISH' and signal_side == 'SELL'):
+                elif (market_regime in bullish_regimes and signal_side == 'BUY') or \
+                     (market_regime in bearish_regimes and signal_side == 'SELL'):
                     return f"Signal {signal_side} aligné avec tendance {market_regime} " \
                            f"(alignment={trend_alignment:.1f}, ADX={adx_value:.1f})"
                 else:

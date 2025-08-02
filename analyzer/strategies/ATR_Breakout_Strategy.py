@@ -156,16 +156,20 @@ class ATR_Breakout_Strategy(BaseStrategy):
             elif market_regime == 'BEARISH':
                 is_downtrend = True
                 trend_confirmed = True
-            elif market_regime == 'RANGING':
+            elif market_regime in ['RANGING', 'TRANSITION']:
                 # En range, on peut trader les deux côtés des niveaux
                 trend_confirmed = False
         
-        # Vérification supplémentaire avec trend_alignment
+        # Vérification supplémentaire avec trend_alignment (format décimal)
         if trend_alignment is not None:
-            if trend_alignment > 20:  # Tendance haussière
-                is_uptrend = True
-            elif trend_alignment < -20:  # Tendance baissière
-                is_downtrend = True
+            try:
+                align_val = float(trend_alignment)
+                if align_val > 0.2:  # Tendance haussière (format décimal)
+                    is_uptrend = True
+                elif align_val < -0.2:  # Tendance baissière (format décimal)
+                    is_downtrend = True
+            except (ValueError, TypeError):
+                pass
         
         # Analyse de proximité aux niveaux clés avec logique adaptée à la tendance
         if nearest_resistance is not None:
@@ -196,13 +200,13 @@ class ATR_Breakout_Strategy(BaseStrategy):
                     
                     # Bonus si résistance forte
                     if resistance_strength is not None and signal_side:
-                        try:
-                            res_str = float(resistance_strength)
-                            if res_str > 0.7:
-                                confidence_boost += 0.1
-                                reason += " - résistance forte"
-                        except (ValueError, TypeError):
-                            pass
+                        res_str = str(resistance_strength).upper()
+                        if res_str == 'MAJOR':
+                            confidence_boost += 0.15
+                            reason += " - résistance majeure"
+                        elif res_str == 'STRONG':
+                            confidence_boost += 0.10
+                            reason += " - résistance forte"
             except (ValueError, TypeError):
                 pass
                 
@@ -234,13 +238,13 @@ class ATR_Breakout_Strategy(BaseStrategy):
                     
                     # Bonus si support fort
                     if support_strength is not None and signal_side:
-                        try:
-                            sup_str = float(support_strength)
-                            if sup_str > 0.7:
-                                confidence_boost += 0.1
-                                reason += " - support fort"
-                        except (ValueError, TypeError):
-                            pass
+                        sup_str = str(support_strength).upper()
+                        if sup_str == 'MAJOR':
+                            confidence_boost += 0.15
+                            reason += " - support majeur"
+                        elif sup_str == 'STRONG':
+                            confidence_boost += 0.10
+                            reason += " - support fort"
             except (ValueError, TypeError):
                 pass
                 
@@ -255,8 +259,8 @@ class ATR_Breakout_Strategy(BaseStrategy):
                     "strategy": self.name,
                     "symbol": self.symbol,
                     "current_price": current_price,
-                    "nearest_resistance": nearest_resistance,
-                    "nearest_support": nearest_support,
+                    "resistance": nearest_resistance,
+                    "support": nearest_support,
                     "atr": atr
                 }
             }
@@ -276,63 +280,63 @@ class ATR_Breakout_Strategy(BaseStrategy):
         # CORRECTION MAGISTRALE: Régime volatilité ATR avec seuils adaptatifs
         if volatility_regime is not None and atr_percentile is not None:
             try:
-                atr_pct = float(atr_percentile)
+                atr_percentile = float(atr_percentile)
                 
                 if signal_side == "BUY":
                     # BUY breakout ATR : volatilité expansion + proximité résistance = explosion haussière
                     if volatility_regime == "expanding":
-                        if atr_pct > 85:  # Expansion extrême + résistance
+                        if atr_percentile > 85:  # Expansion extrême + résistance
                             confidence_boost += 0.25
-                            reason += f" + expansion extrême résistance ({atr_pct:.0f}%)"
-                        elif atr_pct > 70:  # Expansion forte
+                            reason += f" + expansion extrême résistance ({atr_percentile:.0f}%)"
+                        elif atr_percentile > 70:  # Expansion forte
                             confidence_boost += 0.20
-                            reason += f" + expansion forte breakout ({atr_pct:.0f}%)"
+                            reason += f" + expansion forte breakout ({atr_percentile:.0f}%)"
                         else:  # Expansion modérée
                             confidence_boost += 0.15
-                            reason += f" + expansion modérée ({atr_pct:.0f}%)"
+                            reason += f" + expansion modérée ({atr_percentile:.0f}%)"
                     elif volatility_regime == "high":
-                        if atr_pct > 90:  # Volatilité extrême = continuation explosive
+                        if atr_percentile > 90:  # Volatilité extrême = continuation explosive
                             confidence_boost += 0.18
-                            reason += f" + volatilité extrême explosion ({atr_pct:.0f}%)"
-                        elif atr_pct > 75:  # Volatilité élevée favorable
+                            reason += f" + volatilité extrême explosion ({atr_percentile:.0f}%)"
+                        elif atr_percentile > 75:  # Volatilité élevée favorable
                             confidence_boost += 0.15
-                            reason += f" + volatilité élevée breakout ({atr_pct:.0f}%)"
+                            reason += f" + volatilité élevée breakout ({atr_percentile:.0f}%)"
                         else:  # Volatilité modérément élevée
                             confidence_boost += 0.10
-                            reason += f" + volatilité favorable ({atr_pct:.0f}%)"
+                            reason += f" + volatilité favorable ({atr_percentile:.0f}%)"
                     elif volatility_regime == "normal":
-                        if 40 <= atr_pct <= 60:  # Volatilité idéale pour breakout contrôlé
+                        if 40 <= atr_percentile <= 60:  # Volatilité idéale pour breakout contrôlé
                             confidence_boost += 0.12
-                            reason += f" + volatilité idéale contrôlée ({atr_pct:.0f}%)"
+                            reason += f" + volatilité idéale contrôlée ({atr_percentile:.0f}%)"
                         else:
                             confidence_boost += 0.08
-                            reason += f" + volatilité normale ({atr_pct:.0f}%)"
+                            reason += f" + volatilité normale ({atr_percentile:.0f}%)"
                     elif volatility_regime == "low":
                         confidence_boost += 0.05  # Faible volatilité = breakout moins puissant
-                        reason += f" + volatilité faible limitée ({atr_pct:.0f}%)"
+                        reason += f" + volatilité faible limitée ({atr_percentile:.0f}%)"
                         
                 else:  # SELL
                     # SELL breakdown ATR : volatilité élevée + proximité support = chute violente
                     if volatility_regime == "expanding":
-                        if atr_pct > 80:  # Expansion + support = cascade baissière
+                        if atr_percentile > 80:  # Expansion + support = cascade baissière
                             confidence_boost += 0.22
-                            reason += f" + expansion cascade support ({atr_pct:.0f}%)"
+                            reason += f" + expansion cascade support ({atr_percentile:.0f}%)"
                         else:  # Expansion modérée
                             confidence_boost += 0.18
-                            reason += f" + expansion breakdown ({atr_pct:.0f}%)"
+                            reason += f" + expansion breakdown ({atr_percentile:.0f}%)"
                     elif volatility_regime == "high":
-                        if atr_pct > 85:  # Volatilité extrême = panique/liquidation
+                        if atr_percentile > 85:  # Volatilité extrême = panique/liquidation
                             confidence_boost += 0.20
-                            reason += f" + volatilité extrême panique ({atr_pct:.0f}%)"
+                            reason += f" + volatilité extrême panique ({atr_percentile:.0f}%)"
                         else:  # Volatilité élevée
                             confidence_boost += 0.15
-                            reason += f" + volatilité élevée breakdown ({atr_pct:.0f}%)"
+                            reason += f" + volatilité élevée breakdown ({atr_percentile:.0f}%)"
                     elif volatility_regime == "normal":
                         confidence_boost += 0.10
-                        reason += f" + volatilité normale breakdown ({atr_pct:.0f}%)"
+                        reason += f" + volatilité normale breakdown ({atr_percentile:.0f}%)"
                     elif volatility_regime == "low":
                         confidence_boost += 0.08  # Volatilité faible = breakdown contrôlé
-                        reason += f" + volatilité faible contrôlée ({atr_pct:.0f}%)"
+                        reason += f" + volatilité faible contrôlée ({atr_percentile:.0f}%)"
                         
             except (ValueError, TypeError):
                 pass
@@ -394,23 +398,27 @@ class ATR_Breakout_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Signal strength et confluence  
+        # Signal strength (VARCHAR: WEAK/MODERATE/STRONG)
         signal_strength_calc = values.get('signal_strength')
         if signal_strength_calc is not None:
-            try:
-                sig_str = float(signal_strength_calc)
-                if sig_str > 0.7:
-                    confidence_boost += 0.05
-            except (ValueError, TypeError):
-                pass
+            sig_str = str(signal_strength_calc).upper()
+            if sig_str == 'STRONG':
+                confidence_boost += 0.10
+                reason += " + signal fort"
+            elif sig_str == 'MODERATE':
+                confidence_boost += 0.05
+                reason += " + signal modéré"
                 
         confluence_score = values.get('confluence_score')
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
-                if confluence > 0.6:
-                    confidence_boost += 0.1
-                    reason += " avec confluence"
+                if confluence > 60:
+                    confidence_boost += 0.15
+                    reason += f" + confluence élevée ({confluence:.0f})"
+                elif confluence > 45:
+                    confidence_boost += 0.10
+                    reason += f" + confluence modérée ({confluence:.0f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -430,8 +438,8 @@ class ATR_Breakout_Strategy(BaseStrategy):
                 "atr_percentile": atr_percentile,
                 "volatility_regime": volatility_regime,
                 "proximity_type": proximity_type,
-                "nearest_resistance": nearest_resistance,
-                "nearest_support": nearest_support,
+                "resistance": nearest_resistance,
+                "support": nearest_support,
                 "resistance_strength": resistance_strength,
                 "support_strength": support_strength,
                 "break_probability": break_probability,

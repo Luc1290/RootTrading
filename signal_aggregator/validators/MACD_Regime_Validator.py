@@ -127,10 +127,10 @@ class MACD_Regime_Validator(BaseValidator):
                             
             # 4. Validation macd_trend coherence
             if macd_trend:
-                if signal_side == "BUY" and macd_trend == "bearish":
+                if signal_side == "BUY" and macd_trend == "BEARISH":
                     logger.debug(f"{self.name}: BUY signal mais MACD trend bearish pour {self.symbol}")
                     return False
-                elif signal_side == "SELL" and macd_trend == "bullish":
+                elif signal_side == "SELL" and macd_trend == "BULLISH":
                     logger.debug(f"{self.name}: SELL signal mais MACD trend bullish pour {self.symbol}")
                     return False
                     
@@ -259,8 +259,8 @@ class MACD_Regime_Validator(BaseValidator):
                     
             # Bonus macd_trend coherent
             if macd_trend:
-                if (signal_side == "BUY" and macd_trend == "bullish") or \
-                   (signal_side == "SELL" and macd_trend == "bearish"):
+                if (signal_side == "BUY" and macd_trend == "BULLISH") or \
+                   (signal_side == "SELL" and macd_trend == "BEARISH"):
                     base_score += 0.15  # Trend MACD confirme signal
                     
             # Bonus PPO coherent
@@ -337,8 +337,8 @@ class MACD_Regime_Validator(BaseValidator):
                         return f"{self.name}: Rejeté - SELL mais MACD ({self._safe_format(macd_line, '.5f')}) >= Signal ({self._safe_format(macd_signal, '.5f')})"
                         
                 if macd_trend:
-                    if (signal_side == "BUY" and macd_trend == "bearish") or \
-                       (signal_side == "SELL" and macd_trend == "bullish"):
+                    if (signal_side == "BUY" and macd_trend == "BEARISH") or \
+                       (signal_side == "SELL" and macd_trend == "BULLISH"):
                         return f"{self.name}: Rejeté - Signal {signal_side} contradictoire avec trend MACD {macd_trend}"
                         
                 if macd_histogram is not None:

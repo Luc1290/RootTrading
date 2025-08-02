@@ -134,11 +134,11 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                     confidence_boost += 0.1
                     reason += " confirmé par RSI"
                     
-            # Utilisation du momentum_score
-            momentum_score = values.get('momentum_score', 0)
+            # Utilisation du momentum_score (format 0-100, 50=neutre)
+            momentum_score = values.get('momentum_score', 50)
             if momentum_score:
-                if (signal_side == "BUY" and momentum_score > 0) or \
-                   (signal_side == "SELL" and momentum_score < 0):
+                if (signal_side == "BUY" and momentum_score > 55) or \
+                   (signal_side == "SELL" and momentum_score < 45):
                     confidence_boost += 0.1
                     reason += " avec momentum favorable"
                     
@@ -155,8 +155,8 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
             # Utilisation du directional_bias
             directional_bias = values.get('directional_bias')
             if directional_bias:
-                if (signal_side == "BUY" and directional_bias == "bullish") or \
-                   (signal_side == "SELL" and directional_bias == "bearish"):
+                if (signal_side == "BUY" and directional_bias.upper() == "BULLISH") or \
+                   (signal_side == "SELL" and directional_bias.upper() == "BEARISH"):
                     confidence_boost += 0.1
                     reason += " aligné avec bias directionnel"
                     

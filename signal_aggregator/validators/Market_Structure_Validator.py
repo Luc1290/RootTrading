@@ -133,9 +133,9 @@ class Market_Structure_Validator(BaseValidator):
                 if signal_confidence < 0.9:  # Très strict pour volatilité extrême
                     return False
                     
-            # 4. Validation alignement tendance
-            if trend_alignment is not None and trend_alignment < self.min_trend_alignment:
-                logger.debug(f"{self.name}: Alignement tendance insuffisant ({self._safe_format(trend_alignment, '.2f')}) pour {self.symbol}")
+            # 4. Validation alignement tendance (format décimal)
+            if trend_alignment is not None and abs(trend_alignment) < (self.min_trend_alignment / 100):
+                logger.debug(f"{self.name}: Alignement tendance insuffisant ({self._safe_format(abs(trend_alignment), '.3f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
@@ -217,13 +217,13 @@ class Market_Structure_Validator(BaseValidator):
         conflicts = 0
         
         # Conflit market vs volatility
-        if market_regime == "trending" and volatility_regime == "low":
+        if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"] and volatility_regime == "low":
             conflicts += 1  # Trending avec volatilité faible = conflit
-        elif market_regime == "ranging" and volatility_regime == "extreme":
+        elif market_regime == "RANGING" and volatility_regime == "extreme":
             conflicts += 1  # Ranging avec volatilité extrême = conflit
             
         # Conflit directional bias vs market regime
-        if market_regime == "trending" and directional_bias == "neutral":
+        if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"] and directional_bias == "neutral":
             conflicts += 1  # Trending mais bias neutre = conflit
             
         return conflicts >= 2  # Conflit si 2+ incohérences
@@ -233,24 +233,34 @@ class Market_Structure_Validator(BaseValidator):
         """Valide l'adéquation stratégie/régime."""
         strategy_lower = strategy.lower()
         
-        # Stratégies de trend following
-        if any(kw in strategy_lower for kw in ['cross', 'macd', 'trend', 'slope', 'adx']):
-            return market_regime in ["trending", "expansion", "normal"]
-            
-        # Stratégies de mean reversion
-        elif any(kw in strategy_lower for kw in ['bollinger', 'rsi', 'reversal', 'touch']):
+        # MEAN REVERSION - Vérifier en PREMIER pour éviter conflits
+        if any(kw in strategy_lower for kw in ['reversal', 'rebound', 'oversold', 'overbought', 'touch', 'rejection']):
+            return market_regime in ["ranging", "normal", "compression"]
+        elif any(kw in strategy_lower for kw in ['bollinger', 'zscore', 'stoch', 'williams', 'cci']):
             return market_regime in ["ranging", "normal", "compression"]
             
-        # Stratégies de breakout
-        elif any(kw in strategy_lower for kw in ['breakout', 'donchian', 'atr']):
+        # TREND FOLLOWING - Exclure les stratégies de reversal
+        elif (any(kw in strategy_lower for kw in ['macd', 'slope', 'adx', 'hull', 'tema', 'trix', 'ema_cross']) 
+              and 'reversal' not in strategy_lower):
+            return market_regime in ["trending", "expansion", "normal"]
+        elif (any(kw in strategy_lower for kw in ['cross', 'crossover']) 
+              and not any(rev in strategy_lower for rev in ['rsi', 'stoch', 'williams', 'reversal'])):
+            return market_regime in ["trending", "expansion", "normal"]
+            
+        # BREAKOUT - Volatilité élevée requise
+        elif any(kw in strategy_lower for kw in ['breakout', 'donchian', 'atr', 'range_break']):
             return volatility_regime not in ["low", "compression"]
             
-        # Stratégies de liquidity sweep
+        # MOMENTUM/THRESHOLD - Adaptables mais préfèrent volatilité
+        elif any(kw in strategy_lower for kw in ['roc_threshold', 'spike', 'pump_dump']):
+            return volatility_regime in ["normal", "high", "expanding"]
+            
+        # LIQUIDITY SWEEP - Haute volatilité
         elif any(kw in strategy_lower for kw in ['sweep', 'liquidity']):
             return volatility_regime in ["normal", "high", "expanding"]
             
-        # Stratégies de confluence (adaptables)
-        elif any(kw in strategy_lower for kw in ['confluence', 'multi']):
+        # CONFLUENCE/MULTI-TF - Adaptables à tous régimes
+        elif any(kw in strategy_lower for kw in ['confluence', 'multi', 'vwap']):
             return True  # Adaptable à tous régimes
             
         return True  # Par défaut, accepter
@@ -295,7 +305,7 @@ class Market_Structure_Validator(BaseValidator):
             # Bonus régime favorable
             if market_regime in self.favorable_regimes:
                 base_score += 0.15
-                if market_regime == "trending":
+                if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
                     base_score += 0.05  # Bonus supplémentaire trending
             elif market_regime in self.unfavorable_regimes:
                 base_score -= 0.10  # Pénalité régime défavorable
@@ -313,12 +323,13 @@ class Market_Structure_Validator(BaseValidator):
                 if volatility_regime == "normal":
                     base_score += 0.04  # Bonus supplémentaire normal
                     
-            # Bonus alignement tendance
-            if trend_alignment >= 80:
+            # Bonus alignement tendance (format décimal)
+            alignment_abs = abs(trend_alignment)
+            if alignment_abs >= 0.8:
                 base_score += self.perfect_alignment_bonus
-            elif trend_alignment >= 70:
+            elif alignment_abs >= 0.7:
                 base_score += 0.15
-            elif trend_alignment >= 60:
+            elif alignment_abs >= 0.6:
                 base_score += 0.10
                 
             # Bonus force signal
@@ -413,8 +424,8 @@ class Market_Structure_Validator(BaseValidator):
                     if (signal_side == "BUY" and directional_bias == "bearish") or \
                        (signal_side == "SELL" and directional_bias == "bullish"):
                         return f"{self.name}: Rejeté - Signal {signal_side} contradictoire avec bias {directional_bias or 'N/A'}"
-                elif trend_alignment and trend_alignment < self.min_trend_alignment:
-                    return f"{self.name}: Rejeté - Alignement tendance insuffisant ({self._safe_format(trend_alignment, '.2f')})"
+                elif trend_alignment and abs(trend_alignment) < (self.min_trend_alignment / 100):
+                    return f"{self.name}: Rejeté - Alignement tendance insuffisant ({self._safe_format(abs(trend_alignment), '.3f')})"
                 elif confluence_score and confluence_score < self.min_confluence_score:
                     return f"{self.name}: Rejeté - Confluence insuffisante ({self._safe_format(confluence_score, '.2f')})"
                     

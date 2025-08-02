@@ -120,28 +120,30 @@ class CCI_Reversal_Strategy(BaseStrategy):
                     momentum_score = 0
             
             if momentum_score != 0:
-                if (signal_side == "BUY" and momentum_score > 0) or \
-                   (signal_side == "SELL" and momentum_score < 0):
+                # Momentum score format 0-100, 50 = neutre
+                if (signal_side == "BUY" and momentum_score > 60) or \
+                   (signal_side == "SELL" and momentum_score < 40):
                     confidence_boost += 0.15
                     reason += " avec momentum favorable"
-                elif abs(momentum_score) < 10:
-                    confidence_boost -= 0.05  # Momentum faible
+                elif 45 <= momentum_score <= 55:
+                    confidence_boost -= 0.05  # Momentum neutre/faible
                     
             # Utilisation du trend_strength
             trend_strength_raw = values.get('trend_strength')
-            if trend_strength_raw and str(trend_strength_raw) in ['STRONG', 'VERY_STRONG']:
+            if trend_strength_raw and str(trend_strength_raw).lower() in ['strong']:
                 confidence_boost += 0.1
                 reason += f" et tendance {str(trend_strength_raw).lower()}"
                 
             # Utilisation du directional_bias
             directional_bias = values.get('directional_bias')
             if directional_bias:
-                if (signal_side == "BUY" and directional_bias == "bullish") or \
-                   (signal_side == "SELL" and directional_bias == "bearish"):
+                bias_upper = str(directional_bias).upper()
+                if (signal_side == "BUY" and bias_upper == "BULLISH") or \
+                   (signal_side == "SELL" and bias_upper == "BEARISH"):
                     confidence_boost += 0.1
                     reason += " confirmé par bias directionnel"
-                elif (signal_side == "BUY" and directional_bias == "bearish") or \
-                     (signal_side == "SELL" and directional_bias == "bullish"):
+                elif (signal_side == "BUY" and bias_upper == "BEARISH") or \
+                     (signal_side == "SELL" and bias_upper == "BULLISH"):
                     confidence_boost -= 0.1  # Contradictoire
                     
             # Utilisation du confluence_score avec conversion sécurisée
@@ -175,7 +177,7 @@ class CCI_Reversal_Strategy(BaseStrategy):
             market_regime = values.get('market_regime')
             regime_strength_raw = values.get('regime_strength')
             
-            if market_regime and regime_strength_raw and regime_strength_raw in ['MODERATE', 'STRONG', 'EXTREME']:
+            if market_regime and regime_strength_raw and str(regime_strength_raw).upper() in ['STRONG']:
                 if (signal_side == "BUY" and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]) or \
                    (signal_side == "SELL" and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]):
                     confidence_boost += 0.1
@@ -191,10 +193,16 @@ class CCI_Reversal_Strategy(BaseStrategy):
                     
             # Utilisation du signal_strength pré-calculé
             signal_strength_calc_raw = values.get('signal_strength')
-            if signal_strength_calc_raw and signal_strength_calc_raw in ['STRONG', 'VERY_STRONG']:
-                confidence_boost += 0.1
+            if signal_strength_calc_raw:
+                strength_upper = str(signal_strength_calc_raw).upper()
+                if strength_upper == 'STRONG':
+                    confidence_boost += 0.1
+                    reason += " + signal fort"
+                elif strength_upper == 'MODERATE':
+                    confidence_boost += 0.05
+                    reason += " + signal modéré"
                 
-            confidence = self.calculate_confidence(base_confidence, confidence_boost)
+            confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
             strength = self.get_strength_from_confidence(confidence)
             
             return {

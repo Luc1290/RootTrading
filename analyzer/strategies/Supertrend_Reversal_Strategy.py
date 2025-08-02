@@ -161,21 +161,21 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         trend_strength = values.get('trend_strength')
         
         if directional_bias and trend_strength is not None:
-            try:
-                trend_val = float(trend_strength)
-                
-                # Trend strength faible = potentiel reversal
-                if trend_val < 0.3:
-                    reversal_score += 0.2
-                    reversal_indicators.append(f"Trend faible ({trend_val:.2f})")
+            # trend_strength selon schéma: WEAK, MODERATE, STRONG, VERY_STRONG
+            if trend_strength in ['WEAK']:
+                reversal_score += 0.2
+                reversal_indicators.append(f"Trend faible ({trend_strength})")
+            elif trend_strength in ['MODERATE']:
+                reversal_score += 0.1
+                reversal_indicators.append(f"Trend modéré ({trend_strength})")
                     
                 # Directional bias donne la direction attendue du reversal
-                if directional_bias == 'bullish':
+                if directional_bias == 'BULLISH':
                     reversal_direction = 'bullish'
                     reversal_indicators.append("Bias haussier")
-                elif directional_bias == 'bearish':
+                elif directional_bias == 'BEARISH':
                     reversal_direction = 'bearish'
-                    reversal_indicators.append("Bias baissier")
+                    reversal_indicators.append("Bias baissier"
                     
             except (ValueError, TypeError):
                 pass
@@ -466,9 +466,9 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                     try:
                         trend_align_val = float(trend_alignment)
                         # Vérifier cohérence entre confluence, trend alignment et direction
-                        if signal_side == "BUY" and directional_bias == "bullish":
+                        if signal_side == "BUY" and directional_bias == "BULLISH":
                             confluence_coherent = trend_align_val > 0.5  # Alignement haussier requis
-                        elif signal_side == "SELL" and directional_bias == "bearish":
+                        elif signal_side == "SELL" and directional_bias == "BEARISH":
                             confluence_coherent = trend_align_val < 0.5  # Alignement baissier requis
                         else:
                             confluence_coherent = False  # Incohérence direction
@@ -620,25 +620,24 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         return True
     
     def _convert_volatility_to_score(self, volatility_regime: str) -> float:
-        """Convertit un régime de volatilité en score numérique."""
+        """Convertit un régime de volatilité en score numérique selon schéma."""
         try:
             if not volatility_regime:
                 return 1.0
                 
             vol_lower = volatility_regime.lower()
             
-            if vol_lower in ['high', 'very_high', 'extreme']:
-                return 3.0  # Haute volatilité
-            elif vol_lower in ['normal', 'moderate', 'average']:
-                return 2.0  # Volatilité normale
-            elif vol_lower in ['low', 'very_low', 'minimal']:
-                return 1.0  # Faible volatilité
+            # Conversion selon schéma enum: LOW, NORMAL, HIGH, EXTREME
+            if vol_lower == 'extreme':
+                return 3.0  # Volatilité extrême
+            elif vol_lower == 'high':
+                return 2.5  # Haute volatilité
+            elif vol_lower == 'normal':
+                return 1.5  # Volatilité normale
+            elif vol_lower == 'low':
+                return 0.5  # Faible volatilité
             else:
-                # Essayer de convertir directement en float
-                try:
-                    return float(volatility_regime)
-                except (ValueError, TypeError):
-                    return 2.0  # Valeur par défaut
+                return 1.5  # Valeur par défaut (normal)
                     
         except Exception:
-            return 2.0
+            return 1.5

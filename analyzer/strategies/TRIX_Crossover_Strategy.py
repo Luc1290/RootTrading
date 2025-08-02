@@ -44,10 +44,10 @@ class TRIX_Crossover_Strategy(BaseStrategy):
         
         # Paramètres momentum confirmation
         self.momentum_alignment_required = True  # Momentum doit être aligné
-        self.min_roc_confirmation = 0.5         # ROC minimum pour confirmation
+        self.min_roc_confirmation = 0.005       # ROC minimum pour confirmation (format décimal)
         
-        # Paramètres filtrage
-        self.min_trend_strength = 0.3           # Trend strength minimum
+        # Paramètres filtrage  
+        self.min_trend_strength = 'WEAK'        # Trend strength minimum (STRING format schéma DB)
         self.volume_confirmation_threshold = 1.1 # Volume confirmation
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
@@ -111,8 +111,8 @@ class TRIX_Crossover_Strategy(BaseStrategy):
             # Approximation TRIX avec ROC sur TEMA
             if roc_10 is not None:
                 roc_val = float(roc_10)
-                # Convertir ROC en approximation TRIX (normalisé)
-                trix_proxy = roc_val / 100  # ROC en décimal
+                # ROC déjà en format décimal, utiliser directement
+                trix_proxy = roc_val  # ROC en format décimal
             elif momentum_10 is not None:
                 # Alternative avec momentum
                 momentum_val = float(momentum_10)
@@ -199,33 +199,40 @@ class TRIX_Crossover_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum_val = float(momentum_score)
-                if trix_direction in ['bullish', 'strong_bullish'] and momentum_val > 0:
+                # momentum_score format 0-100, 50=neutre
+                if trix_direction in ['bullish', 'strong_bullish'] and momentum_val > 50:
                     alignment_score += 0.3
-                    alignment_indicators.append(f"Momentum haussier ({momentum_val:.2f})")
-                elif trix_direction in ['bearish', 'strong_bearish'] and momentum_val < 0:
+                    alignment_indicators.append(f"Momentum haussier ({momentum_val:.1f})")
+                elif trix_direction in ['bearish', 'strong_bearish'] and momentum_val < 50:
                     alignment_score += 0.3
-                    alignment_indicators.append(f"Momentum baissier ({momentum_val:.2f})")
+                    alignment_indicators.append(f"Momentum baissier ({momentum_val:.1f})")
             except (ValueError, TypeError):
                 pass
                 
         # Directional bias alignment
         if directional_bias:
-            if trix_direction in ['bullish', 'strong_bullish'] and directional_bias == 'bullish':
+            if trix_direction in ['bullish', 'strong_bullish'] and directional_bias == 'BULLISH':
                 alignment_score += 0.25
                 alignment_indicators.append("Bias directionnel haussier")
-            elif trix_direction in ['bearish', 'strong_bearish'] and directional_bias == 'bearish':
+            elif trix_direction in ['bearish', 'strong_bearish'] and directional_bias == 'BEARISH':
                 alignment_score += 0.25
                 alignment_indicators.append("Bias directionnel baissier")
                 
-        # Trend strength confirmation
+        # Trend strength confirmation (format STRING selon schéma DB)
         if trend_strength is not None:
-            try:
-                trend_val = float(trend_strength)
-                if trend_val >= self.min_trend_strength:
-                    alignment_score += 0.2
-                    alignment_indicators.append(f"Trend forte ({trend_val:.2f})")
-            except (ValueError, TypeError):
-                pass
+            # trend_strength: WEAK/MODERATE/STRONG/VERY_STRONG
+            if trend_strength == 'VERY_STRONG':
+                alignment_score += 0.25
+                alignment_indicators.append(f"Trend très forte ({trend_strength})")
+            elif trend_strength == 'STRONG':
+                alignment_score += 0.2
+                alignment_indicators.append(f"Trend forte ({trend_strength})")
+            elif trend_strength == 'MODERATE':
+                alignment_score += 0.15
+                alignment_indicators.append(f"Trend modérée ({trend_strength})")
+            elif trend_strength == 'WEAK':
+                alignment_score += 0.1
+                alignment_indicators.append(f"Trend faible ({trend_strength})")
                 
         # ROC confirmation
         roc_10 = values.get('roc_10')
@@ -234,10 +241,10 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                 roc_val = float(roc_10)
                 if trix_direction in ['bullish', 'strong_bullish'] and roc_val > self.min_roc_confirmation:
                     alignment_score += 0.15
-                    alignment_indicators.append(f"ROC haussier ({roc_val:.1f}%)")
+                    alignment_indicators.append(f"ROC haussier ({roc_val*100:.1f}%)")
                 elif trix_direction in ['bearish', 'strong_bearish'] and roc_val < -self.min_roc_confirmation:
                     alignment_score += 0.15
-                    alignment_indicators.append(f"ROC baissier ({roc_val:.1f}%)")
+                    alignment_indicators.append(f"ROC baissier ({roc_val*100:.1f}%)")
             except (ValueError, TypeError):
                 pass
                 

@@ -28,7 +28,7 @@ class OBV_Crossover_Strategy(BaseStrategy):
         # Paramètres OBV
         self.min_obv_ma_distance = 0.001  # Distance minimum OBV/MA pour éviter bruit
         self.volume_confirmation_threshold = 1.2  # Seuil volume ratio pour confirmation
-        self.trend_alignment_bonus = 15  # Bonus si aligné avec tendance prix
+        self.trend_alignment_bonus = 0.15  # Bonus si aligné avec tendance prix
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs OBV et volume."""
@@ -264,39 +264,36 @@ class OBV_Crossover_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation avec trend_strength
+        # Confirmation avec trend_strength (VARCHAR: absent/weak/moderate/strong/very_strong)
         trend_strength = values.get('trend_strength')
         if trend_strength is not None:
-            try:
-                trend_str = float(trend_strength)
-                if trend_str > 0.6:
-                    confidence_boost += 0.12
-                    reason += f" + tendance forte ({trend_str:.2f})"
-                elif trend_str > 0.4:
-                    confidence_boost += 0.08
-                    reason += f" + tendance modérée ({trend_str:.2f})"
-            except (ValueError, TypeError):
-                pass
+            trend_str = str(trend_strength).lower()
+            if trend_str in ['strong', 'very_strong']:
+                confidence_boost += 0.12
+                reason += f" + tendance {trend_str}"
+            elif trend_str == 'moderate':
+                confidence_boost += 0.08
+                reason += f" + tendance {trend_str}"
                 
         # Confirmation avec directional_bias
         directional_bias = values.get('directional_bias')
         if directional_bias:
-            if (signal_side == "BUY" and directional_bias == "bullish") or \
-               (signal_side == "SELL" and directional_bias == "bearish"):
+            if (signal_side == "BUY" and directional_bias == "BULLISH") or \
+               (signal_side == "SELL" and directional_bias == "BEARISH"):
                 confidence_boost += 0.10
                 reason += f" + bias {directional_bias}"
                 
-        # Confirmation avec qualité du volume
+        # Confirmation avec qualité du volume (format 0-100)
         volume_quality_score = values.get('volume_quality_score')
         if volume_quality_score is not None:
             try:
                 vol_quality = float(volume_quality_score)
-                if vol_quality > 0.7:
+                if vol_quality > 70:
                     confidence_boost += 0.10
-                    reason += " + volume de qualité"
-                elif vol_quality < 0.3:
+                    reason += f" + volume qualité ({vol_quality:.0f})"
+                elif vol_quality < 30:
                     confidence_boost -= 0.05
-                    reason += " mais volume de faible qualité"
+                    reason += f" mais volume faible qualité ({vol_quality:.0f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -334,14 +331,17 @@ class OBV_Crossover_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Market regime
+        # Market regime (valeurs DB réelles: BULLISH/BEARISH/RANGING/TRANSITION)
         market_regime = values.get('market_regime')
-        if market_regime == "trending":
+        if market_regime in ["BULLISH", "BEARISH"]:
             confidence_boost += 0.10
-            reason += " (marché trending)"
-        elif market_regime == "ranging":
+            reason += f" (marché {market_regime.lower()})"
+        elif market_regime == "RANGING":
             confidence_boost -= 0.05
             reason += " (marché ranging)"
+        elif market_regime == "TRANSITION":
+            confidence_boost += 0.02
+            reason += " (marché en transition)"
             
         # Support/Resistance pour contexte
         if signal_side == "BUY":
@@ -363,24 +363,27 @@ class OBV_Crossover_Strategy(BaseStrategy):
                 except (ValueError, TypeError):
                     pass
                     
-        # Signal strength et confluence
+        # Signal strength (VARCHAR: WEAK/MODERATE/STRONG)
         signal_strength_calc = values.get('signal_strength')
         if signal_strength_calc is not None:
-            try:
-                sig_str = float(signal_strength_calc)
-                if sig_str > 0.7:
-                    confidence_boost += 0.08
-                    reason += " + signal fort"
-            except (ValueError, TypeError):
-                pass
+            sig_str = str(signal_strength_calc).upper()
+            if sig_str == 'STRONG':
+                confidence_boost += 0.10
+                reason += " + signal fort"
+            elif sig_str == 'MODERATE':
+                confidence_boost += 0.05
+                reason += " + signal modéré"
                 
         confluence_score = values.get('confluence_score')
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
-                if confluence > 0.6:
+                if confluence > 60:
                     confidence_boost += 0.12
-                    reason += " + confluence"
+                    reason += f" + confluence élevée ({confluence:.0f})"
+                elif confluence > 45:
+                    confidence_boost += 0.08
+                    reason += f" + confluence modérée ({confluence:.0f})"
             except (ValueError, TypeError):
                 pass
                 

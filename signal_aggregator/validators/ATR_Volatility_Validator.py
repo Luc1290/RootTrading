@@ -238,23 +238,23 @@ class ATR_Volatility_Validator(BaseValidator):
                 else:
                     base_score -= 0.05
                 
-            # CORRECTION: Ajustement selon régime de volatilité avec logique directionnelle
+            # Ajustement selon régime de volatilité (selon schéma: low/normal/high/extreme)
             if volatility_regime == "normal":
                 base_score += 0.1  # Régime normal favorable pour tous
-            elif volatility_regime == "expanding":
-                # Expansion de volatilité favorise les mouvements directionnels
-                if signal_side in ["BUY", "SELL"]:
-                    base_score += 0.15  # Expansion favorable pour signaux directionnels
-                else:
-                    base_score += 0.10
-            elif volatility_regime == "contracting":
-                # Contraction peut précéder breakout
+            elif volatility_regime == "low":
+                # Volatilité faible - signaux moins favorables
                 if signal_side == "BUY":
-                    base_score += 0.08  # Compression avant hausse potentielle
+                    base_score += 0.03  # BUY légèrement favorisé en faible vol
                 elif signal_side == "SELL":
-                    base_score += 0.08  # Compression avant baisse potentielle
+                    base_score -= 0.05  # SELL moins favorisé en faible vol
                 else:
-                    base_score += 0.05
+                    base_score += 0.02
+            elif volatility_regime == "high":
+                # Volatilité élevée - signaux directionnels favorisés
+                if signal_side in ["BUY", "SELL"]:
+                    base_score += 0.12  # Signaux directionnels favorisés
+                else:
+                    base_score += 0.08
             elif volatility_regime == "extreme":
                 # Volatilité extrême = risque mais opportunités
                 if signal_side == "BUY":

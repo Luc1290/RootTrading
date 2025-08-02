@@ -105,7 +105,7 @@ class RSI_Cross_Strategy(BaseStrategy):
                    (signal_side == "SELL" and momentum_score < 0):
                     confidence_boost += 0.15
                     reason += " avec momentum favorable"
-                elif (signal_side == "BUY" and momentum_score < -0.3) or \
+                elif (signal_side == "BUY" and momentum_score < -30) or \
                      (signal_side == "SELL" and momentum_score > 30):
                     confidence_boost -= 0.1
                     
@@ -118,8 +118,8 @@ class RSI_Cross_Strategy(BaseStrategy):
             # Ajustement avec directional_bias
             directional_bias = values.get('directional_bias')
             if directional_bias:
-                if (signal_side == "BUY" and directional_bias == "bullish") or \
-                   (signal_side == "SELL" and directional_bias == "bearish"):
+                if (signal_side == "BUY" and directional_bias == "BULLISH") or \
+                   (signal_side == "SELL" and directional_bias == "BEARISH"):
                     confidence_boost += 0.1
                     reason += " confirmé par bias directionnel"
                     

@@ -180,10 +180,10 @@ class Volatility_Regime_Validator(BaseValidator):
                         return False
                         
                 # Cohérence signal/régime
-                if market_regime == "trending":
+                if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
                     # En trending, favoriser signaux dans le sens
                     pass  # Validation OK
-                elif market_regime == "ranging":
+                elif market_regime == "RANGING":
                     # En ranging, attention aux breakouts
                     if signal_strength not in ['strong', 'very_strong'] and atr_percentile < 30:
                         logger.debug(f"{self.name}: Range + faible volatilité nécessite signal fort pour {self.symbol}")

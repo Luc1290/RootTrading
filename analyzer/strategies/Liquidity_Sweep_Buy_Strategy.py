@@ -31,6 +31,16 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         self.min_volume_spike = 1.5      # Volume 50% au-dessus moyenne
         self.support_strength_min = 0.4  # Force minimum du support
         
+    def _convert_support_strength_to_score(self, strength_str: str) -> float:
+        """Convertit support_strength string en score numérique."""
+        strength_map = {
+            'WEAK': 0.2,
+            'MODERATE': 0.5, 
+            'STRONG': 0.8,
+            'MAJOR': 1.0
+        }
+        return strength_map.get(str(strength_str).upper(), 0.3)
+        
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs."""
         return {
@@ -39,7 +49,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             'nearest_resistance': self.indicators.get('nearest_resistance'),
             'support_strength': self.indicators.get('support_strength'),
             'resistance_strength': self.indicators.get('resistance_strength'),
-            'break_probability': self.indicators.get('break_probability'),
+            'break_prob': self.indicators.get('break_prob'),
             'pivot_count': self.indicators.get('pivot_count'),
             # Volume (crucial pour détecter les sweeps)
             'volume_ratio': self.indicators.get('volume_ratio'),
@@ -118,13 +128,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             
         # Détection du sweep : prix a cassé sous support récemment
         if support_level <= 0:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Support level invalide pour calcul sweep",
-                "metadata": {"strategy": self.name}
-            }
+            return {'is_sweep': False, 'reason': 'Support level invalide pour calcul sweep'}
         sweep_distance = (support_level - current_low) / support_level
         recent_sweep = False
         sweep_bars_ago = 0
@@ -176,7 +180,9 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         # Vérification support level
         try:
             nearest_support = float(values['nearest_support']) if values['nearest_support'] is not None else None
-            support_strength = float(values['support_strength']) if values['support_strength'] is not None else None
+            support_strength_raw = values['support_strength']
+            # support_strength est en format string : WEAK/MODERATE/STRONG/MAJOR
+            support_strength_score = self._convert_support_strength_to_score(support_strength_raw) if support_strength_raw is not None else None
         except (ValueError, TypeError) as e:
             return {
                 "side": None,
@@ -198,16 +204,17 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             }
             
         # Vérification force du support
-        if support_strength is not None and support_strength < self.support_strength_min:
+        if support_strength_score is not None and support_strength_score < self.support_strength_min:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Support trop faible ({support_strength:.2f}) pour liquidity sweep",
+                "reason": f"Support trop faible ({support_strength_raw}) pour liquidity sweep",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
-                    "support_strength": support_strength,
+                    "support_strength": support_strength_raw,
+                    "support_strength_score": support_strength_score,
                     "nearest_support": nearest_support
                 }
             }
@@ -337,10 +344,10 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
                 
         # Confirmation avec directional bias
         directional_bias = values.get('directional_bias')
-        if directional_bias == "bullish":
+        if directional_bias == "BULLISH":
             confidence_boost += 0.10
             reason += " + bias haussier"
-        elif directional_bias == "bearish":
+        elif directional_bias == "BEARISH":
             confidence_boost -= 0.10
             reason += " mais bias baissier"
             
@@ -350,38 +357,48 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         if pattern_detected and pattern_confidence is not None:
             try:
                 pattern_conf = float(pattern_confidence)
-                if pattern_conf > 0.7:
-                    confidence_boost += 0.08
+                if pattern_conf > 70:
+                    confidence_boost += 0.10
                     reason += f" + pattern {pattern_detected}"
+                elif pattern_conf > 50:
+                    confidence_boost += 0.05
+                    reason += f" + pattern faible {pattern_detected}"
             except (ValueError, TypeError):
                 pass
                 
-        # Market regime
+        # Market regime (valeurs DB réelles: BULLISH/BEARISH/RANGING/TRANSITION)
         market_regime = values.get('market_regime')
-        if market_regime == "trending":
-            confidence_boost += 0.05
-            reason += " (marché trending)"
-        elif market_regime == "volatile":
+        if market_regime in ["BULLISH", "BEARISH"]:
             confidence_boost += 0.08
-            reason += " (marché volatil - favorable aux sweeps)"
+            reason += f" (marché {market_regime.lower()})"
+        elif market_regime == "RANGING":
+            confidence_boost += 0.10
+            reason += " (marché en range - favorable aux sweeps)"
+        elif market_regime == "TRANSITION":
+            confidence_boost += 0.05
+            reason += " (marché en transition)"
             
-        # Signal strength et confluence
+        # Signal strength (VARCHAR: WEAK/MODERATE/STRONG)
         signal_strength_calc = values.get('signal_strength')
         if signal_strength_calc is not None:
-            try:
-                sig_str = float(signal_strength_calc)
-                if sig_str > 0.7:
-                    confidence_boost += 0.05
-            except (ValueError, TypeError):
-                pass
+            sig_str = str(signal_strength_calc).upper()
+            if sig_str == 'STRONG':
+                confidence_boost += 0.10
+                reason += " + signal fort"
+            elif sig_str == 'MODERATE':
+                confidence_boost += 0.05
+                reason += " + signal modéré"
                 
         confluence_score = values.get('confluence_score')
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
-                if confluence > 0.6:
-                    confidence_boost += 0.10
-                    reason += " + confluence"
+                if confluence > 60:
+                    confidence_boost += 0.12
+                    reason += f" + confluence élevée ({confluence:.0f})"
+                elif confluence > 45:
+                    confidence_boost += 0.08
+                    reason += f" + confluence modérée ({confluence:.0f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -398,7 +415,8 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
                 "symbol": self.symbol,
                 "current_price": current_price,
                 "nearest_support": nearest_support,
-                "support_strength": support_strength,
+                "support_strength": support_strength_raw,
+                "support_strength_score": support_strength_score,
                 "sweep_bars_ago": sweep_analysis['sweep_bars_ago'],
                 "max_sweep_distance_pct": sweep_analysis['max_sweep_distance'] * 100,
                 "recovery_distance_pct": sweep_analysis['recovery_distance'] * 100,

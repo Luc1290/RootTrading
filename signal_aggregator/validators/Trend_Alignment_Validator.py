@@ -101,26 +101,30 @@ class Trend_Alignment_Validator(BaseValidator):
                 macd_trend_coherence = self._convert_macd_trend_to_score(str(macd_trend_raw)) if macd_trend_raw is not None else None
                 # macd_histogram_strength → macd_histogram
                 macd_histogram_strength = float(self.context.get('macd_histogram', 0)) if self.context.get('macd_histogram') is not None else None
-                # macd_signal_alignment → macd_signal_cross
-                macd_signal_alignment = float(self.context.get('macd_signal_cross', 0)) if self.context.get('macd_signal_cross') is not None else None
+                # macd_signal_alignment → macd_signal_cross (boolean)
+                macd_signal_cross_bool = self.context.get('macd_signal_cross')
+                macd_signal_alignment = 1.0 if macd_signal_cross_bool else 0.0 if macd_signal_cross_bool is not None else None
                 
                 # Multi-timeframe consensus
                 # timeframe_consensus_score → confluence_score
                 timeframe_consensus_score = float(self.context.get('confluence_score', 60.0)) if self.context.get('confluence_score') is not None else None
-                # aligned_timeframes_count → trend_alignment
-                aligned_timeframes_count = int(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None
+                # aligned_timeframes_count → pivot_count (utiliser comme proxy)
+                aligned_timeframes_count = int(self.context.get('pivot_count', 2)) if self.context.get('pivot_count') is not None else None
                 
                 # Transitions et momentum
-                # trend_transition_probability → pattern_confidence
-                trend_transition_probability = float(self.context.get('pattern_confidence', 0)) if self.context.get('pattern_confidence') is not None else None
+                # trend_transition_probability → pattern_confidence (convertir % vers probabilité)
+                pattern_conf_raw = self.context.get('pattern_confidence')
+                trend_transition_probability = (100.0 - float(pattern_conf_raw)) / 100.0 if pattern_conf_raw is not None else None
                 # momentum_trend_alignment → momentum_score
                 momentum_trend_alignment = float(self.context.get('momentum_score', 0)) if self.context.get('momentum_score') is not None else None
                 
-                # Tendances par timeframe (si disponibles)
-                # trend_1h/4h/1d → trend_strength (utiliser même indicateur)
-                trend_1h = self.context.get('trend_strength')
-                trend_4h = self.context.get('trend_strength') 
-                trend_1d = self.context.get('trend_strength')
+                # Tendances par timeframe (utiliser différents indicateurs comme proxy)
+                # trend_1h → directional_bias (court terme)
+                trend_1h = self.context.get('directional_bias')
+                # trend_4h → trend_strength (moyen terme)
+                trend_4h = self.context.get('trend_strength')
+                # trend_1d → market_regime (long terme)
+                trend_1d = self.context.get('market_regime')
                 
             except (ValueError, TypeError) as e:
                 logger.warning(f"{self.name}: Erreur conversion indicateurs pour {self.symbol}: {e}")
@@ -346,8 +350,8 @@ class Trend_Alignment_Validator(BaseValidator):
             macd_trend_coherence = self._convert_macd_trend_to_score(str(macd_trend_raw))
             # timeframe_consensus_score → confluence_score
             timeframe_consensus_score = float(self.context.get('confluence_score', 60.0)) if self.context.get('confluence_score') is not None else 60.0
-            # aligned_timeframes_count → trend_alignment
-            aligned_timeframes_count = int(self.context.get('trend_alignment', 2)) if self.context.get('trend_alignment') is not None else 2
+            # aligned_timeframes_count → pivot_count (utiliser comme proxy)
+            aligned_timeframes_count = int(self.context.get('pivot_count', 2)) if self.context.get('pivot_count') is not None else 2
             # momentum_trend_alignment → momentum_score
             momentum_trend_alignment = float(self.context.get('momentum_score', 0.5)) if self.context.get('momentum_score') is not None else 0.5
             
@@ -457,8 +461,8 @@ class Trend_Alignment_Validator(BaseValidator):
             ema_alignment_score = float(self.context.get('trend_alignment', 50.0)) if self.context.get('trend_alignment') is not None else None
             # timeframe_consensus_score → confluence_score
             timeframe_consensus_score = float(self.context.get('confluence_score', 60.0)) if self.context.get('confluence_score') is not None else None
-            # aligned_timeframes_count → trend_alignment
-            aligned_timeframes_count = int(self.context.get('trend_alignment', 0)) if self.context.get('trend_alignment') is not None else None
+            # aligned_timeframes_count → pivot_count (utiliser comme proxy)
+            aligned_timeframes_count = int(self.context.get('pivot_count', 0)) if self.context.get('pivot_count') is not None else None
             
             if is_valid:
                 reason = f"Alignement de tendance favorable"

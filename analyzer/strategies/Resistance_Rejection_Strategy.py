@@ -224,14 +224,14 @@ class Resistance_Rejection_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Momentum score devient négatif
+        # Momentum score devient négatif (format 0-100, 50=neutre)
         momentum_score = values.get('momentum_score')
         if momentum_score is not None:
             try:
                 momentum_val = float(momentum_score)
-                if momentum_val <= self.momentum_reversal_threshold:
+                if momentum_val <= 40:  # Momentum négatif (sous 40 sur échelle 0-100)
                     exhaustion_score += 0.2
-                    exhaustion_indicators.append(f"Momentum reversal ({momentum_val:.2f})")
+                    exhaustion_indicators.append(f"Momentum reversal ({momentum_val:.1f})")
             except (ValueError, TypeError):
                 pass
                 

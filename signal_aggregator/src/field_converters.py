@@ -116,7 +116,7 @@ class FieldConverter:
         # Log pour debug
         logger.debug(f"FieldConverter: Conversion de {len(indicators)} indicateurs")
         
-        # Étape 1: Appliquer le mapping de noms de champs
+        # Étape 1: Appliquer le mapping de noms de champs (bidirectionnel)
         mapped_indicators = {}
         for key, value in indicators.items():
             # Ajouter le champ original
@@ -126,6 +126,14 @@ class FieldConverter:
                 mapped_key = cls.FIELD_NAME_MAPPING[key]
                 mapped_indicators[mapped_key] = value
                 logger.debug(f"FieldConverter: Mapped {key} -> {mapped_key}")
+        
+        # Mapping inverse pour vol_quality / volume_quality_score
+        if 'volume_quality_score' in mapped_indicators and 'vol_quality' not in mapped_indicators:
+            mapped_indicators['vol_quality'] = mapped_indicators['volume_quality_score']
+            logger.debug(f"FieldConverter: Added reverse mapping volume_quality_score -> vol_quality")
+        elif 'vol_quality' in mapped_indicators and 'volume_quality_score' not in mapped_indicators:
+            mapped_indicators['volume_quality_score'] = mapped_indicators['vol_quality']
+            logger.debug(f"FieldConverter: Added reverse mapping vol_quality -> volume_quality_score")
         
         # Étape 2: Création de Z-Scores synthétiques
         cls._add_synthetic_zscores(mapped_indicators)

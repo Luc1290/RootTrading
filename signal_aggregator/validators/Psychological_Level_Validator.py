@@ -310,19 +310,28 @@ class Psychological_Level_Validator(BaseValidator):
         """Valide l'adéquation stratégie/niveaux psychologiques."""
         strategy_lower = strategy.lower()
         
-        # Stratégies qui bénéficient des niveaux psychologiques
-        psych_friendly = ['breakout', 'reversal', 'bounce', 'support', 'resistance', 'psychological']
+        # Stratégies qui bénéficient fortement des niveaux psychologiques
+        psych_friendly = ['breakout', 'reversal', 'bounce', 'support', 'resistance', 'psychological',
+                         'rebound', 'oversold', 'overbought', 'touch', 'rejection', 'sweep']
         
-        # Stratégies moins sensibles aux niveaux psychologiques
-        psych_neutral = ['macd', 'rsi', 'moving_average', 'cross', 'trend']
+        # Stratégies oscillateurs (utilisent niveaux psychologiques intégrés)
+        oscillator_psych = ['rsi', 'stoch', 'williams', 'cci', 'bollinger', 'zscore']
         
-        # Si stratégie sensible aux niveaux, critères plus stricts
+        # Stratégies moins sensibles aux niveaux psychologiques de prix
+        psych_neutral = ['macd_crossover', 'ema_cross', 'slope', 'tema', 'hull', 'trix', 
+                        'adx', 'moving_average', 'ppo']
+        
+        # Classification selon sensibilité aux niveaux psychologiques
         if any(kw in strategy_lower for kw in psych_friendly):
+            # Psych-friendly : critères stricts sur distance aux niveaux de prix
             if distance_to_level and distance_to_level > self.proximity_threshold_major:
-                return False  # Stratégie psych-friendly mais trop loin
-                
-        # Stratégies neutres acceptées plus facilement
-        if any(kw in strategy_lower for kw in psych_neutral):
+                return False  # Trop loin des niveaux psychologiques de prix
+        elif any(kw in strategy_lower for kw in oscillator_psych):
+            # Oscillateurs : utilisent leurs propres niveaux psychologiques (30/70, etc.)
+            # Moins dépendants des niveaux de prix, critères plus permissifs
+            return True
+        elif any(kw in strategy_lower for kw in psych_neutral):
+            # Neutres : acceptées facilement
             return True
             
         return True  # Par défaut accepter
@@ -416,20 +425,20 @@ class Psychological_Level_Validator(BaseValidator):
                             base_score += self.major_level_bonus * 0.5  # Bonus réduit
                         elif psychological_level_type == "minor":
                             base_score += self.minor_level_bonus * 0.5
+                            
+                # Bonus force du niveau (seulement si position favorable)
+                if ((signal_side == "BUY" and level_role in ["support", "pivot"]) or 
+                    (signal_side == "SELL" and level_role in ["resistance", "pivot"])):
+                    if psychological_level_strength >= self.strong_psychological_threshold:
+                        base_score += 0.15  # Niveau très fort en position favorable
+                    elif psychological_level_strength >= self.min_psychological_strength + 0.2:
+                        base_score += 0.10  # Niveau fort en position favorable
             else:
                 # Pas de niveau identifié, appliquer bonus standard
                 if psychological_level_type == "major":
                     base_score += self.major_level_bonus * 0.7
                 elif psychological_level_type == "minor":
                     base_score += self.minor_level_bonus * 0.7
-                
-            # Bonus force du niveau (seulement si position favorable)
-            if ((signal_side == "BUY" and level_role in ["support", "pivot"]) or 
-                (signal_side == "SELL" and level_role in ["resistance", "pivot"])):
-                if psychological_level_strength >= self.strong_psychological_threshold:
-                    base_score += 0.15  # Niveau très fort en position favorable
-                elif psychological_level_strength >= self.min_psychological_strength + 0.2:
-                    base_score += 0.10  # Niveau fort en position favorable
                 
             # Bonus réactions historiques
             if level_reaction_count >= self.optimal_reaction_count:

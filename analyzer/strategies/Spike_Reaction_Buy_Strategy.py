@@ -56,8 +56,8 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
         self.min_volatility_ratio = 0.3          # Volatilité réduite après spike
         
         # Paramètres momentum reversal
-        self.momentum_reversal_threshold = 0.1   # Momentum redevient positif
-        self.min_roc_improvement = -1.0          # ROC amélioration minimum
+        self.momentum_reversal_threshold = 60    # Momentum redevient positif (format 0-100)
+        self.min_roc_improvement = -0.01         # ROC amélioration minimum (format décimal)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
@@ -115,15 +115,15 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
         if roc_10 is not None:
             try:
                 roc_val = float(roc_10)
-                if roc_val <= self.extreme_price_drop * 100:  # ROC en %
+                if roc_val <= self.extreme_price_drop:  # ROC en format décimal
                     spike_score += 0.4
-                    spike_indicators.append(f"ROC10 chute extrême ({roc_val:.1f}%)")
-                elif roc_val <= self.severe_price_drop * 100:
+                    spike_indicators.append(f"ROC10 chute extrême ({roc_val*100:.1f}%)")
+                elif roc_val <= self.severe_price_drop:
                     spike_score += 0.3
-                    spike_indicators.append(f"ROC10 chute sévère ({roc_val:.1f}%)")
-                elif roc_val <= self.min_price_drop * 100:
+                    spike_indicators.append(f"ROC10 chute sévère ({roc_val*100:.1f}%)")
+                elif roc_val <= self.min_price_drop:
                     spike_score += 0.2
-                    spike_indicators.append(f"ROC10 chute ({roc_val:.1f}%)")
+                    spike_indicators.append(f"ROC10 chute ({roc_val*100:.1f}%)")
             except (ValueError, TypeError):
                 pass
                 
@@ -132,9 +132,9 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
         if roc_20 is not None:
             try:
                 roc_20_val = float(roc_20)
-                if roc_20_val <= self.min_price_drop * 100:
+                if roc_20_val <= self.min_price_drop:
                     spike_score += 0.1
-                    spike_indicators.append(f"ROC20 confirme chute ({roc_20_val:.1f}%)")
+                    spike_indicators.append(f"ROC20 confirme chute ({roc_20_val*100:.1f}%)")
             except (ValueError, TypeError):
                 pass
                 
@@ -281,23 +281,23 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
         stabilization_score = 0.0
         stabilization_indicators = []
         
-        # Momentum score amélioration
+        # Momentum score amélioration (format 0-100, 50=neutre)
         momentum_score = values.get('momentum_score')
         if momentum_score is not None:
             try:
                 momentum_val = float(momentum_score)
-                if momentum_val >= self.momentum_reversal_threshold:
+                if momentum_val >= self.momentum_reversal_threshold:  # >=60
                     stabilization_score += 0.3
-                    stabilization_indicators.append(f"Momentum reversal ({momentum_val:.2f})")
-                elif momentum_val >= 0:  # Au moins neutre
+                    stabilization_indicators.append(f"Momentum reversal ({momentum_val:.1f})")
+                elif momentum_val >= 50:  # Au moins neutre
                     stabilization_score += 0.15
-                    stabilization_indicators.append(f"Momentum neutre ({momentum_val:.2f})")
+                    stabilization_indicators.append(f"Momentum neutre ({momentum_val:.1f})")
             except (ValueError, TypeError):
                 pass
                 
         # Volume pattern (décroissance après spike)
         volume_pattern = values.get('volume_pattern')
-        if volume_pattern == 'decreasing' or volume_pattern == 'normal':
+        if volume_pattern in ['DECLINING', 'BUILDUP']:
             stabilization_score += 0.2
             stabilization_indicators.append(f"Volume pattern: {volume_pattern}")
             
@@ -306,9 +306,9 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
         if roc_10 is not None:
             try:
                 roc_val = float(roc_10)
-                if roc_val >= self.min_roc_improvement:  # ROC > -1%
+                if roc_val >= self.min_roc_improvement:  # ROC > -0.01
                     stabilization_score += 0.2
-                    stabilization_indicators.append(f"ROC amélioration ({roc_val:.1f}%)")
+                    stabilization_indicators.append(f"ROC amélioration ({roc_val*100:.1f}%)")
             except (ValueError, TypeError):
                 pass
                 

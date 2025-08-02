@@ -82,53 +82,24 @@ class Volume_Spike_Validator(BaseValidator):
                 logger.warning(f"{self.name}: Données insuffisantes pour {self.symbol}")
                 return False
                 
-            # Extraction des indicateurs spike depuis le contexte
+            # Extraction des indicateurs spike depuis le contexte (noms DB réels)
             try:
-                # Spike de base
+                # Indicateurs de base
                 volume_spike_multiplier = float(self.context.get('volume_spike_multiplier', 1.0)) if self.context.get('volume_spike_multiplier') is not None else None
-                # current_volume_spike → volume_spike_multiplier
-                current_volume_spike = float(self.context.get('volume_spike_multiplier', 1.0)) if self.context.get('volume_spike_multiplier') is not None else None
-                # volume_spike_strength → volume_spike_multiplier
-                volume_spike_strength = float(self.context.get('volume_spike_multiplier', 0)) if self.context.get('volume_spike_multiplier') is not None else None
+                volume_buildup_periods = int(self.context.get('volume_buildup_periods', 0)) if self.context.get('volume_buildup_periods') is not None else None
+                volume_quality_score = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else None
+                relative_volume = float(self.context.get('relative_volume', 1.0)) if self.context.get('relative_volume') is not None else None
+                trade_intensity = float(self.context.get('trade_intensity', 0.5)) if self.context.get('trade_intensity') is not None else None
                 
-                # Durée et persistance
-                # spike_duration_bars → volume_buildup_periods
-                spike_duration_bars = int(self.context.get('volume_buildup_periods', 0)) if self.context.get('volume_buildup_periods') is not None else None
-                # spike_decay_rate → momentum_score
-                spike_decay_rate = float(self.context.get('momentum_score', 0)) if self.context.get('momentum_score') is not None else None
-                # spike_persistence_score → signal_strength
-                spike_persistence_score = float(self.context.get('signal_strength', 0)) if self.context.get('signal_strength') is not None else None
+                # Contexte et confirmation
+                momentum_score = float(self.context.get('momentum_score', 50)) if self.context.get('momentum_score') is not None else None
+                signal_strength = self.context.get('signal_strength')  # STRING format
+                pattern_confidence = float(self.context.get('pattern_confidence', 0.5)) if self.context.get('pattern_confidence') is not None else None
+                regime_duration = int(self.context.get('regime_duration', 5)) if self.context.get('regime_duration') is not None else None
                 
-                # Qualité spike
-                # spike_quality_score → volume_quality_score
-                spike_quality_score = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else None
-                # spike_consistency → volume_quality_score
-                spike_consistency = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else None
-                # spike_legitimacy_score → pattern_confidence
-                spike_legitimacy_score = float(self.context.get('pattern_confidence', 0.5)) if self.context.get('pattern_confidence') is not None else None
-                
-                # Timing
-                # time_since_spike → regime_duration
-                time_since_spike = int(self.context.get('regime_duration', 0)) if self.context.get('regime_duration') is not None else None
-                # recent_spike_count → volume_spike_multiplier
-                recent_spike_count = int(self.context.get('volume_spike_multiplier', 0)) if self.context.get('volume_spike_multiplier') is not None else None
-                # last_spike_bars_ago → regime_duration
-                last_spike_bars_ago = int(self.context.get('regime_duration', 999)) if self.context.get('regime_duration') is not None else None
-                
-                # Contexte marché
-                # relative_spike_strength → relative_volume
-                relative_spike_strength = float(self.context.get('relative_volume', 1.0)) if self.context.get('relative_volume') is not None else None
-                # market_activity_level → trade_intensity
-                market_activity_level = float(self.context.get('trade_intensity', 0.5)) if self.context.get('trade_intensity') is not None else None
+                # Indicateurs marché
+                directional_bias = self.context.get('directional_bias', 'neutral')
                 unusual_activity_detected = self.context.get('unusual_activity_detected', False)
-                
-                # Divergences et confirmations
-                # price_volume_divergence → signal_strength
-                price_volume_divergence = float(self.context.get('signal_strength', 0)) if self.context.get('signal_strength') is not None else None
-                # spike_price_confirmation → pattern_confidence
-                spike_price_confirmation = float(self.context.get('pattern_confidence', 0.5)) if self.context.get('pattern_confidence') is not None else None
-                # volume_trend_coherence → volume_quality_score
-                volume_trend_coherence = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else None
                 
             except (ValueError, TypeError) as e:
                 logger.warning(f"{self.name}: Erreur conversion indicateurs pour {self.symbol}: {e}")
@@ -154,89 +125,48 @@ class Volume_Spike_Validator(BaseValidator):
                 if signal_confidence < 0.9:
                     return False
                     
-            # 2. Validation force spike actuel
-            if current_volume_spike is not None and current_volume_spike < self.min_spike_multiplier:
-                logger.debug(f"{self.name}: Spike actuel insuffisant ({self._safe_format(current_volume_spike, '.2f')}x) pour {self.symbol}")
-                if signal_confidence < 0.7:
-                    return False
-                    
-            # 3. Validation durée spike
-            if spike_duration_bars is not None:
-                if spike_duration_bars < self.min_spike_duration:
-                    logger.debug(f"{self.name}: Durée spike insuffisante ({spike_duration_bars} barres) pour {self.symbol}")
+            # 2. Validation durée spike
+            if volume_buildup_periods is not None:
+                if volume_buildup_periods < self.min_spike_duration:
+                    logger.debug(f"{self.name}: Durée spike insuffisante ({volume_buildup_periods} barres) pour {self.symbol}")
                     if signal_confidence < 0.7:
                         return False
-                elif spike_duration_bars > self.max_spike_duration:
-                    logger.debug(f"{self.name}: Durée spike excessive ({spike_duration_bars} barres) pour {self.symbol}")
+                elif volume_buildup_periods > self.max_spike_duration:
+                    logger.debug(f"{self.name}: Durée spike excessive ({volume_buildup_periods} barres) pour {self.symbol}")
                     if signal_confidence < 0.6:
                         return False
                         
-            # 4. Validation décroissance spike
-            if spike_decay_rate is not None and spike_decay_rate > (1 - self.spike_decay_threshold):
-                logger.debug(f"{self.name}: Décroissance spike trop rapide ({self._safe_format(spike_decay_rate, '.2f')}) pour {self.symbol}")
+            # 3. Validation qualité spike
+            if volume_quality_score is not None and volume_quality_score < self.min_spike_quality:
+                logger.debug(f"{self.name}: Qualité spike insuffisante ({self._safe_format(volume_quality_score, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
-            # 5. Validation qualité spike
-            if spike_quality_score is not None and spike_quality_score < self.min_spike_quality:
-                logger.debug(f"{self.name}: Qualité spike insuffisante ({self._safe_format(spike_quality_score, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.6:
-                    return False
-                    
-            if spike_consistency is not None and spike_consistency < self.spike_consistency_threshold:
-                logger.debug(f"{self.name}: Consistance spike insuffisante ({self._safe_format(spike_consistency, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.6:
-                    return False
-                    
-            # 6. Validation légitimité spike
-            if spike_legitimacy_score is not None and spike_legitimacy_score < self.min_spike_legitimacy:
-                logger.debug(f"{self.name}: Légitimité spike douteuse ({self._safe_format(spike_legitimacy_score, '.2f')}) pour {self.symbol}")
+            # 4. Validation légitimité spike
+            if pattern_confidence is not None and pattern_confidence < (self.min_spike_legitimacy / 100):
+                logger.debug(f"{self.name}: Légitimité spike douteuse ({self._safe_format(pattern_confidence, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
-            # 7. Validation timing spike
-            if time_since_spike is not None and time_since_spike > self.max_time_since_spike:
-                logger.debug(f"{self.name}: Spike trop ancien ({time_since_spike} barres) pour {self.symbol}")
+            # 5. Validation timing spike (regime_duration)
+            if regime_duration is not None and regime_duration > self.max_time_since_spike:
+                logger.debug(f"{self.name}: Spike trop ancien ({regime_duration} barres) pour {self.symbol}")
                 if signal_confidence < 0.5:
                     return False
                     
-            # Validation cooldown entre spikes
-            if last_spike_bars_ago is not None and last_spike_bars_ago < self.spike_cooldown_period:
-                logger.debug(f"{self.name}: Spike trop récent ({last_spike_bars_ago} barres) - cooldown pour {self.symbol}")
-                if signal_confidence < 0.7:
-                    return False
-                    
-            # 8. Validation spike relatif au contexte
-            if relative_spike_strength is not None and relative_spike_strength < self.min_relative_spike:
-                logger.debug(f"{self.name}: Spike relatif insuffisant ({self._safe_format(relative_spike_strength, '.2f')}) pour {self.symbol}")
+            # 6. Validation spike relatif au contexte
+            if relative_volume is not None and relative_volume < self.min_relative_spike:
+                logger.debug(f"{self.name}: Spike relatif insuffisant ({self._safe_format(relative_volume, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
-            # 9. Validation activité inhabituelle
-            if market_activity_level is not None and market_activity_level < 0.3:
-                logger.debug(f"{self.name}: Activité marché faible ({self._safe_format(market_activity_level, '.2f')}) pour {self.symbol}")
+            # 7. Validation activité marché
+            if trade_intensity is not None and trade_intensity < 0.3:
+                logger.debug(f"{self.name}: Activité marché faible ({self._safe_format(trade_intensity, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.5:
                     return False
                     
-            # 10. Validation divergence prix/volume
-            if price_volume_divergence is not None and abs(price_volume_divergence) > self.max_price_volume_divergence:
-                logger.debug(f"{self.name}: Divergence prix/volume excessive ({self._safe_format(price_volume_divergence, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.7:
-                    return False
-                    
-            # 11. Validation confirmation prix
-            if spike_price_confirmation is not None and spike_price_confirmation < self.spike_confirmation_threshold:
-                logger.debug(f"{self.name}: Confirmation prix insuffisante ({self._safe_format(spike_price_confirmation, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.6:
-                    return False
-                    
-            # 12. Validation cohérence spike/tendance
-            if volume_trend_coherence is not None and volume_trend_coherence < self.spike_vs_trend_coherence:
-                logger.debug(f"{self.name}: Cohérence spike/tendance insuffisante ({self._safe_format(volume_trend_coherence, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.6:
-                    return False
-                    
-            # 13. Validation spécifique selon stratégie
+            # 8. Validation spécifique selon stratégie
             if volume_spike_multiplier is not None:
                 strategy_spike_match = self._validate_strategy_spike_match(signal_strategy, volume_spike_multiplier)
             else:
@@ -248,9 +178,9 @@ class Volume_Spike_Validator(BaseValidator):
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
                         f"Spike: {self._safe_format(volume_spike_multiplier, '.2f')}x, "
-                        f"Qualité: {self._safe_format(spike_quality_score, '.2f') if spike_quality_score is not None else 'N/A'}, "
-                        f"Durée: {spike_duration_bars or 'N/A'} barres, "
-                        f"Timing: {time_since_spike or 'N/A'} barres ago")
+                        f"Qualité: {self._safe_format(volume_quality_score, '.2f') if volume_quality_score is not None else 'N/A'}, "
+                        f"Durée: {volume_buildup_periods or 'N/A'} barres, "
+                        f"Timing: {regime_duration or 'N/A'} barres ago")
             
             return True
             

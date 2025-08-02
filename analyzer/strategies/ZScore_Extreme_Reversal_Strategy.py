@@ -279,13 +279,15 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
             try:
                 momentum_val = float(momentum_score)
                 
-                # Divergence momentum/prix favorable au reversal
-                if reversal_direction == 'bullish' and momentum_val > -10:  # Momentum moins négatif = divergence
+                # Divergence momentum/prix favorable au reversal (format 0-100, 50=neutre)
+                # Reversal bullish : prix en survente mais momentum pas trop négatif (divergence)
+                if reversal_direction == 'bullish' and momentum_val > 40:  # Momentum > 40 = moins bearish que prix
                     reversal_score += 0.15
-                    reversal_indicators.append(f"Divergence momentum haussière ({momentum_val:.2f})")
-                elif reversal_direction == 'bearish' and momentum_val < 10:  # Momentum moins positif = divergence
+                    reversal_indicators.append(f"Divergence momentum haussière ({momentum_val:.1f})")
+                # Reversal bearish : prix en surachat mais momentum pas trop positif (divergence)
+                elif reversal_direction == 'bearish' and momentum_val < 60:  # Momentum < 60 = moins bullish que prix
                     reversal_score += 0.15
-                    reversal_indicators.append(f"Divergence momentum baissière ({momentum_val:.2f})")
+                    reversal_indicators.append(f"Divergence momentum baissière ({momentum_val:.1f})")
                     
             except (ValueError, TypeError):
                 pass
@@ -557,10 +559,10 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
                 
         # Market regime context
         market_regime = values.get('market_regime')
-        if market_regime == "ranging":
+        if market_regime == "RANGING":
             confidence_boost += 0.08  # Z-Score excellent en ranging
             reason += " (marché ranging)"
-        elif market_regime == "trending":
+        elif market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
             confidence_boost -= 0.05  # Z-Score moins fiable en trending fort
             reason += " (marché trending)"
             

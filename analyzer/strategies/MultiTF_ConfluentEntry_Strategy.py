@@ -396,7 +396,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         market_regime = values.get('market_regime')
         regime_strength = values.get('regime_strength')
         
-        if market_regime == "trending":
+        if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
             confidence_boost += 0.10
             reason += " (marché trending)"
             
@@ -425,8 +425,8 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                 
         if volume_quality_score is not None:
             try:
-                vol_quality = float(volume_quality_score)
-                if vol_quality > 0.8:
+                volume_quality_score = float(volume_quality_score)
+                if volume_quality_score > 0.8:
                     confidence_boost += 0.08
                     reason += " + volume de qualité"
             except (ValueError, TypeError):

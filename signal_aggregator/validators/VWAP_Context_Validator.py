@@ -106,15 +106,16 @@ class VWAP_Context_Validator(BaseValidator):
             
             # 1. Validation position vs VWAP selon signal
             if signal_side == "BUY":
-                # BUY bien au-dessus VWAP = risqué sauf momentum fort
+                # BUY bien au-dessus VWAP = risqué sauf momentum fort haussier
                 if price_above_vwap and vwap_distance_pct >= self.far_from_vwap_threshold:
-                    if momentum_score is None or momentum_score < self.min_momentum_for_distance:
-                        logger.debug(f"{self.name}: BUY trop au-dessus VWAP ({vwap_distance_pct:.2%}) sans momentum pour {self.symbol}")
+                    # momentum_score 0-100 : >50 = haussier, >65 = fort haussier
+                    if momentum_score is None or momentum_score < (50 + self.min_momentum_for_distance * 50):  # <65
+                        logger.debug(f"{self.name}: BUY trop au-dessus VWAP ({vwap_distance_pct:.2%}) sans momentum haussier pour {self.symbol}")
                         return False
                         
-                    # Distance extrême nécessite momentum très fort
+                    # Distance extrême nécessite momentum très fort haussier
                     if vwap_distance_pct >= self.extreme_distance_threshold:
-                        if momentum_score < self.strong_momentum_threshold:
+                        if momentum_score < (50 + self.strong_momentum_threshold * 50):  # <85
                             logger.debug(f"{self.name}: BUY extrêmement au-dessus VWAP ({vwap_distance_pct:.2%}) pour {self.symbol}")
                             return False
                             
@@ -123,15 +124,16 @@ class VWAP_Context_Validator(BaseValidator):
                     logger.debug(f"{self.name}: BUY favorable vs VWAP ({vwap_distance_pct:.2%}) pour {self.symbol}")
                     
             elif signal_side == "SELL":
-                # SELL bien en-dessous VWAP = risqué sauf momentum fort
+                # SELL bien en-dessous VWAP = risqué sauf momentum fort baissier
                 if not price_above_vwap and vwap_distance_pct >= self.far_from_vwap_threshold:
-                    if momentum_score is None or momentum_score > -self.min_momentum_for_distance:
-                        logger.debug(f"{self.name}: SELL trop en-dessous VWAP ({vwap_distance_pct:.2%}) sans momentum pour {self.symbol}")
+                    # momentum_score 0-100 : <50 = baissier, <30 = fort baissier
+                    if momentum_score is None or momentum_score > (50 - self.min_momentum_for_distance * 50):  # >35
+                        logger.debug(f"{self.name}: SELL trop en-dessous VWAP ({vwap_distance_pct:.2%}) sans momentum baissier pour {self.symbol}")
                         return False
                         
-                    # Distance extrême nécessite momentum très fort
+                    # Distance extrême nécessite momentum très fort baissier
                     if vwap_distance_pct >= self.extreme_distance_threshold:
-                        if momentum_score > -self.strong_momentum_threshold:
+                        if momentum_score > (50 - self.strong_momentum_threshold * 50):  # >15
                             logger.debug(f"{self.name}: SELL extrêmement en-dessous VWAP ({vwap_distance_pct:.2%}) pour {self.symbol}")
                             return False
                             
@@ -272,8 +274,8 @@ class VWAP_Context_Validator(BaseValidator):
                     # BUY modérément au-dessus VWAP = légèrement défavorable
                     base_score += 0.05  # Réduit de 0.15 à 0.05
                 else:
-                    # BUY loin VWAP au-dessus = défavorable sauf momentum très fort
-                    if momentum_score >= self.strong_momentum_threshold:
+                    # BUY loin VWAP au-dessus = défavorable sauf momentum très fort haussier
+                    if momentum_score >= (50 + self.strong_momentum_threshold * 50):  # >=85
                         base_score += 0.05  # Réduit de 0.1 à 0.05
                     else:
                         base_score -= 0.05  # Malus pour position défavorable
@@ -289,8 +291,8 @@ class VWAP_Context_Validator(BaseValidator):
                     # SELL modérément en-dessous VWAP = légèrement défavorable
                     base_score += 0.05  # Réduit de 0.15 à 0.05
                 else:
-                    # SELL loin VWAP en-dessous = défavorable sauf momentum très fort
-                    if momentum_score <= -self.strong_momentum_threshold:
+                    # SELL loin VWAP en-dessous = défavorable sauf momentum très fort baissier
+                    if momentum_score <= (50 - self.strong_momentum_threshold * 50):  # <=15
                         base_score += 0.05  # Réduit de 0.1 à 0.05
                     else:
                         base_score -= 0.05  # Malus pour position défavorable

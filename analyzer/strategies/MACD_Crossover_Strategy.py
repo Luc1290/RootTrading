@@ -155,18 +155,19 @@ class MACD_Crossover_Strategy(BaseStrategy):
         trend_confirmed = False
         
         if self.trend_filter_enabled and market_regime:
-            if market_regime == 'BULLISH':
+            market_regime_upper = str(market_regime).upper()
+            if market_regime_upper in ['TRENDING_BULL', 'BREAKOUT_BULL']:
                 is_strong_uptrend = True
                 trend_confirmed = True
-            elif market_regime == 'BEARISH':
+            elif market_regime_upper in ['TRENDING_BEAR', 'BREAKOUT_BEAR']:
                 is_strong_downtrend = True
                 trend_confirmed = True
         
-        # Vérification supplémentaire avec trend_alignment
+        # Vérification supplémentaire avec trend_alignment (format décimal)
         if trend_alignment is not None:
-            if trend_alignment > 30:  # Forte tendance haussière
+            if trend_alignment > 0.3:  # Forte tendance haussière (format décimal)
                 is_strong_uptrend = True
-            elif trend_alignment < -30:  # Forte tendance baissière
+            elif trend_alignment < -0.3:  # Forte tendance baissière (format décimal)
                 is_strong_downtrend = True
         
         # Logique de croisement MACD adaptée à la tendance
@@ -270,8 +271,8 @@ class MACD_Crossover_Strategy(BaseStrategy):
         # Confirmation avec macd_trend pré-calculé
         macd_trend = values.get('macd_trend')
         if macd_trend:
-            if (signal_side == "BUY" and macd_trend == "bullish") or \
-               (signal_side == "SELL" and macd_trend == "bearish"):
+            if (signal_side == "BUY" and macd_trend == "BULLISH") or \
+               (signal_side == "SELL" and macd_trend == "BEARISH"):
                 confidence_boost += 0.10
                 reason += f" + trend MACD {macd_trend}"
                 
@@ -309,25 +310,22 @@ class MACD_Crossover_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation avec trend_strength
+        # Confirmation avec trend_strength (VARCHAR: absent/weak/moderate/strong/very_strong)
         trend_strength = values.get('trend_strength')
         if trend_strength is not None:
-            try:
-                trend_str = float(trend_strength)
-                if trend_str > 0.6:
-                    confidence_boost += 0.10
-                    reason += f" + tendance forte ({trend_str:.2f})"
-                elif trend_str > 0.4:
-                    confidence_boost += 0.05
-                    reason += f" + tendance modérée ({trend_str:.2f})"
-            except (ValueError, TypeError):
-                pass
+            trend_str = str(trend_strength).lower()
+            if trend_str in ['strong', 'very_strong']:
+                confidence_boost += 0.12
+                reason += f" + tendance {trend_str}"
+            elif trend_str == 'moderate':
+                confidence_boost += 0.08
+                reason += f" + tendance {trend_str}"
                 
         # Confirmation avec directional_bias
         directional_bias = values.get('directional_bias')
         if directional_bias:
-            if (signal_side == "BUY" and directional_bias == "bullish") or \
-               (signal_side == "SELL" and directional_bias == "bearish"):
+            if (signal_side == "BUY" and directional_bias == "BULLISH") or \
+               (signal_side == "SELL" and directional_bias == "BEARISH"):
                 confidence_boost += 0.10
                 reason += f" + bias {directional_bias}"
                 
@@ -396,14 +394,22 @@ class MACD_Crossover_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Market regime
-        market_regime = values.get('market_regime')
-        if market_regime == "trending":
-            confidence_boost += 0.08
-            reason += " (marché trending)"
-        elif market_regime == "ranging":
-            confidence_boost -= 0.05
-            reason += " (marché ranging)"
+        # Market regime (valeurs réelles: TRENDING_BULL/BEAR, BREAKOUT_BULL/BEAR, RANGING, TRANSITION, VOLATILE)
+        market_regime_val = values.get('market_regime')
+        if market_regime_val:
+            regime_upper = str(market_regime_val).upper()
+            if regime_upper in ['TRENDING_BULL', 'TRENDING_BEAR', 'BREAKOUT_BULL', 'BREAKOUT_BEAR']:
+                confidence_boost += 0.10
+                reason += f" (marché {regime_upper.lower()})"
+            elif regime_upper == "RANGING":
+                confidence_boost -= 0.05
+                reason += " (marché ranging)"
+            elif regime_upper == "TRANSITION":
+                confidence_boost += 0.02
+                reason += " (marché en transition)"
+            elif regime_upper == "VOLATILE":
+                confidence_boost -= 0.03
+                reason += " (marché volatil)"
             
         # PPO pour confirmation (MACD normalisé)
         ppo = values.get('ppo')
@@ -417,23 +423,27 @@ class MACD_Crossover_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Signal strength et confluence
+        # Signal strength (VARCHAR: WEAK/MODERATE/STRONG)
         signal_strength_calc = values.get('signal_strength')
         if signal_strength_calc is not None:
-            try:
-                sig_str = float(signal_strength_calc)
-                if sig_str > 0.7:
-                    confidence_boost += 0.05
-            except (ValueError, TypeError):
-                pass
+            sig_str = str(signal_strength_calc).upper()
+            if sig_str == 'STRONG':
+                confidence_boost += 0.10
+                reason += " + signal fort"
+            elif sig_str == 'MODERATE':
+                confidence_boost += 0.05
+                reason += " + signal modéré"
                 
         confluence_score = values.get('confluence_score')
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
-                if confluence > 0.6:
-                    confidence_boost += 0.10
-                    reason += " + confluence"
+                if confluence > 60:
+                    confidence_boost += 0.12
+                    reason += f" + confluence élevée ({confluence:.0f})"
+                elif confluence > 45:
+                    confidence_boost += 0.08
+                    reason += f" + confluence modérée ({confluence:.0f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -465,7 +475,7 @@ class MACD_Crossover_Strategy(BaseStrategy):
                 "stoch_k": stoch_k,
                 "stoch_d": stoch_d,
                 "volume_ratio": volume_ratio,
-                "market_regime": market_regime,
+                "market_regime": market_regime_val,
                 "ppo": ppo,
                 "confluence_score": confluence_score,
                 "trend_alignment": trend_alignment,

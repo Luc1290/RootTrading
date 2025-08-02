@@ -331,24 +331,24 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         directional_bias = values.get('directional_bias')
         trend_strength = values.get('trend_strength')
         
-        if directional_bias == "bullish":
+        if directional_bias == "BULLISH":
             confidence_boost += 0.15
             reason += " + bias haussier"
-        elif directional_bias == "bearish":
+        elif directional_bias == "BEARISH":
             confidence_boost -= 0.08  # Contre-tendance mais oversold peut rebondir
             reason += " mais bias baissier"
             
         if trend_strength is not None:
-            try:
-                trend_strength_val = float(trend_strength)
-                if trend_strength_val > 0.6:
-                    confidence_boost += 0.08
-                    reason += f" + tendance forte ({trend_strength_val:.2f})"
-                elif trend_strength_val > 0.4:
-                    confidence_boost += 0.05
-                    reason += f" + tendance modérée ({trend_strength_val:.2f})"
-            except (ValueError, TypeError):
-                pass
+            # trend_strength selon schéma: WEAK, MODERATE, STRONG, VERY_STRONG
+            if trend_strength in ['VERY_STRONG']:
+                confidence_boost += 0.12
+                reason += f" + tendance très forte ({trend_strength})"
+            elif trend_strength == 'STRONG':
+                confidence_boost += 0.08
+                reason += f" + tendance forte ({trend_strength})"
+            elif trend_strength in ['MODERATE', 'WEAK']:
+                confidence_boost += 0.03
+                reason += f" + tendance modérée ({trend_strength})"
                 
         # Support proche pour confluence
         nearest_support = values.get('nearest_support')
@@ -414,19 +414,19 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
                 
         # Market regime
         market_regime = values.get('market_regime')
-        if market_regime == "ranging":
+        if market_regime == "RANGING":
             confidence_boost += 0.10  # Oversold plus fiable en ranging
             reason += " (marché ranging)"
-        elif market_regime == "trending":
+        elif market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
             confidence_boost += 0.05  # Oversold peut fonctionner en trending
             reason += " (marché trending)"
             
         # Volatilité
         volatility_regime = values.get('volatility_regime')
-        if volatility_regime == "high":
+        if volatility_regime in ["HIGH", "EXTREME"]:
             confidence_boost += 0.05  # Haute volatilité = rebonds plus forts
             reason += " + volatilité élevée"
-        elif volatility_regime == "normal":
+        elif volatility_regime == "NORMAL":
             confidence_boost += 0.03
             reason += " + volatilité normale"
             

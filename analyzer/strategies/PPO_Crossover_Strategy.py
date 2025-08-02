@@ -145,19 +145,15 @@ class PPO_Crossover_Strategy(BaseStrategy):
             # Ajustement avec trend_strength
             trend_strength = values.get('trend_strength')
             if trend_strength is not None:
-                try:
-                    trend_val = float(trend_strength)
-                    if trend_val > 0.6:  # Tendance forte
-                        confidence_boost += 0.1
-                        reason += " et tendance forte"
-                except (ValueError, TypeError):
-                    pass
+                if trend_strength in ['STRONG', 'VERY_STRONG']:  # Tendance forte selon schéma
+                    confidence_boost += 0.1
+                    reason += " et tendance forte"
                     
             # Ajustement avec directional_bias
             directional_bias = values.get('directional_bias')
             if directional_bias:
-                if (signal_side == "BUY" and directional_bias == "bullish") or \
-                   (signal_side == "SELL" and directional_bias == "bearish"):
+                if (signal_side == "BUY" and directional_bias == "BULLISH") or \
+                   (signal_side == "SELL" and directional_bias == "BEARISH"):
                     confidence_boost += 0.1
                     reason += " confirmé par bias directionnel"
                     
@@ -175,12 +171,8 @@ class PPO_Crossover_Strategy(BaseStrategy):
             # Ajustement avec signal_strength pré-calculé
             signal_strength_calc = values.get('signal_strength')
             if signal_strength_calc is not None:
-                try:
-                    strength_val = float(signal_strength_calc)
-                    if strength_val > 0.8:
-                        confidence_boost += 0.1
-                except (ValueError, TypeError):
-                    pass
+                if signal_strength_calc in ['STRONG', 'VERY_STRONG']:  # Signal fort selon schéma
+                    confidence_boost += 0.1
                     
             # Confirmation avec MACD line trend
             macd_line = values.get('macd_line')

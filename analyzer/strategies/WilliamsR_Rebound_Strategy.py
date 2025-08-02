@@ -638,8 +638,8 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
         # Trend alignment
         directional_bias = values.get('directional_bias')
         if directional_bias:
-            if (signal_side == "BUY" and directional_bias == 'bullish') or \
-               (signal_side == "SELL" and directional_bias == 'bearish'):
+            if (signal_side == "BUY" and directional_bias == 'BULLISH') or \
+               (signal_side == "SELL" and directional_bias == 'BEARISH'):
                 confidence_boost += 0.08
                 reason += f" + bias {directional_bias}"
                 
@@ -716,10 +716,10 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
                 
         # Market regime context
         market_regime = values.get('market_regime')
-        if market_regime == "ranging":
+        if market_regime == "RANGING":
             confidence_boost += 0.08  # Williams %R excellent en ranging
             reason += " (marché ranging)"
-        elif market_regime == "trending":
+        elif market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
             confidence_boost += 0.03  # Rebonds possibles mais plus risqués
             reason += " (marché trending)"
             
@@ -728,7 +728,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
         if volatility_regime == "normal":
             confidence_boost += 0.05
             reason += " + volatilité normale"
-        elif volatility_regime == "high":
+        elif volatility_regime in ["high", "extreme"]:
             confidence_boost += 0.03  # Haute volatilité = rebonds plus forts mais plus risqués
             reason += " (volatilité élevée)"
             

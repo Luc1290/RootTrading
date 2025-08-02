@@ -93,7 +93,8 @@ class Range_Validator(BaseValidator):
                 # range_age_bars → regime_duration (durée du régime)
                 range_age_bars = int(self.context.get('regime_duration', 0)) if self.context.get('regime_duration') is not None else None
                 # range_strength → regime_strength (force du régime)
-                range_strength = float(self.context.get('regime_strength', 0)) if self.context.get('regime_strength') is not None else None
+                range_strength_raw = self.context.get('regime_strength')
+                range_strength = self._convert_strength_to_score(range_strength_raw) if range_strength_raw is not None else None
                 # boundary_test_count → volume_buildup_periods
                 boundary_test_count = int(self.context.get('volume_buildup_periods', 0)) if self.context.get('volume_buildup_periods') is not None else None
                 
@@ -112,12 +113,14 @@ class Range_Validator(BaseValidator):
                 range_volatility_raw = self.context.get('volatility_regime')
                 range_volatility = self._convert_volatility_to_score(str(range_volatility_raw)) if range_volatility_raw is not None else 0.02
                 # range_compression → bb_squeeze (compression = squeeze)
-                range_compression = float(self.context.get('bb_squeeze', 0.5)) if self.context.get('bb_squeeze') is not None else None
+                bb_squeeze_bool = self.context.get('bb_squeeze')
+                range_compression = 1.0 if bb_squeeze_bool else 0.0 if bb_squeeze_bool is not None else None
                 
                 # Tests et respect des bornes
-                # upper/lower_boundary_tests → volume_spike_multiplier
-                upper_boundary_tests = int(self.context.get('volume_spike_multiplier', 0)) if self.context.get('volume_spike_multiplier') is not None else None
-                lower_boundary_tests = int(self.context.get('volume_spike_multiplier', 0)) if self.context.get('volume_spike_multiplier') is not None else None
+                # boundary_tests → pivot_count (nombre de pivots = tests des bornes)
+                boundary_test_count = int(self.context.get('pivot_count', 0)) if self.context.get('pivot_count') is not None else None
+                upper_boundary_tests = boundary_test_count
+                lower_boundary_tests = boundary_test_count
                 # boundary_respect_rate → pattern_confidence
                 boundary_respect_rate = float(self.context.get('pattern_confidence', 0.7)) if self.context.get('pattern_confidence') is not None else None
                 
@@ -426,11 +429,12 @@ class Range_Validator(BaseValidator):
             # range_position → bb_position (position dans Bollinger)
             range_position = float(self.context.get('bb_position', 0.5)) if self.context.get('bb_position') is not None else 0.5
             # range_strength → regime_strength (force du régime)
-            range_strength = float(self.context.get('regime_strength', 0.5)) if self.context.get('regime_strength') is not None else 0.5
+            range_strength_raw = self.context.get('regime_strength')
+            range_strength = self._convert_strength_to_score(range_strength_raw) if range_strength_raw is not None else 0.5
             # range_age_bars → regime_duration (durée du régime)
             range_age_bars = int(self.context.get('regime_duration', 20)) if self.context.get('regime_duration') is not None else 20
-            # boundary_test_count → volume_buildup_periods
-            boundary_test_count = int(self.context.get('volume_buildup_periods', 2)) if self.context.get('volume_buildup_periods') is not None else 2
+            # boundary_test_count → pivot_count (nombre de pivots = tests des bornes)
+            boundary_test_count = int(self.context.get('pivot_count', 2)) if self.context.get('pivot_count') is not None else 2
             # boundary_respect_rate → pattern_confidence
             boundary_respect_rate = float(self.context.get('pattern_confidence', 0.7)) if self.context.get('pattern_confidence') is not None else 0.7
             # breakout_probability → break_probability (existe déjà!)
@@ -682,3 +686,31 @@ class Range_Validator(BaseValidator):
                     
         except Exception:
             return 0.02
+            
+    def _convert_strength_to_score(self, strength_regime: str) -> float:
+        """Convertit un régime de force en score numérique."""
+        try:
+            if not strength_regime:
+                return 0.5
+                
+            strength_lower = strength_regime.lower()
+            
+            if strength_lower in ['extreme', 'very_strong']:
+                return 1.0  # Force extrême
+            elif strength_lower in ['strong', 'high']:
+                return 0.8  # Force élevée
+            elif strength_lower in ['moderate', 'medium', 'normal']:
+                return 0.6  # Force modérée
+            elif strength_lower in ['weak', 'low']:
+                return 0.3  # Force faible
+            elif strength_lower in ['very_weak', 'absent']:
+                return 0.1  # Force très faible
+            else:
+                # Essayer de convertir directement en float
+                try:
+                    return max(0.0, min(1.0, float(strength_regime)))
+                except (ValueError, TypeError):
+                    return 0.5  # Valeur par défaut
+                    
+        except Exception:
+            return 0.5

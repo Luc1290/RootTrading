@@ -324,26 +324,26 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
         momentum_score = 0
         momentum_indicators = []
         
-        # Momentum score général
+        # Momentum score général (format 0-100, 50=neutre)
         momentum_val = values.get('momentum_score')
         if momentum_val is not None:
             try:
                 momentum = float(momentum_val)
                 
-                if signal_direction == "BUY" and momentum >= self.min_momentum_threshold:
+                if signal_direction == "BUY" and momentum >= (50 + self.min_momentum_threshold * 50):  # >=57.5
                     momentum_score += 25
-                    momentum_indicators.append(f"Momentum haussier ({momentum:.2f})")
-                elif signal_direction == "SELL" and momentum <= -self.min_momentum_threshold:
+                    momentum_indicators.append(f"Momentum haussier ({momentum:.1f})")
+                elif signal_direction == "SELL" and momentum <= (50 - self.min_momentum_threshold * 50):  # <=42.5
                     momentum_score += 25
-                    momentum_indicators.append(f"Momentum baissier ({momentum:.2f})")
+                    momentum_indicators.append(f"Momentum baissier ({momentum:.1f})")
             except (ValueError, TypeError):
                 pass
                 
         # Directional bias alignment
         directional_bias = values.get('directional_bias')
         if directional_bias:
-            if (signal_direction == "BUY" and directional_bias == 'bullish') or \
-               (signal_direction == "SELL" and directional_bias == 'bearish'):
+            if (signal_direction == "BUY" and directional_bias.upper() == 'BULLISH') or \
+               (signal_direction == "SELL" and directional_bias.upper() == 'BEARISH'):
                 momentum_score += 20
                 momentum_indicators.append(f"Bias directionnel {directional_bias}")
                 
@@ -534,15 +534,15 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
             
         # Bonus confluences et confirmations supplémentaires
         
-        # Trend alignment
+        # Trend alignment (format décimal)
         trend_alignment = values.get('trend_alignment')
         if trend_alignment is not None:
             try:
                 trend_align = float(trend_alignment)
-                if signal_side == "BUY" and trend_align >= 20:
+                if signal_side == "BUY" and trend_align >= 0.2:  # Format décimal : 0.2 = 20% dans l'ancien format
                     confidence_boost += 0.1
                     reason += " + trend haussier"
-                elif signal_side == "SELL" and trend_align <= -20:
+                elif signal_side == "SELL" and trend_align <= -0.2:  # Format décimal : -0.2 = -20% dans l'ancien format
                     confidence_boost += 0.1
                     reason += " + trend baissier"
             except (ValueError, TypeError):
@@ -585,42 +585,42 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
         
         if volatility_regime is not None:
             try:
-                atr_pct = float(atr_percentile) if atr_percentile is not None else 50
+                atr_percentile = float(atr_percentile) if atr_percentile is not None else 50
                 
                 if signal_side == "BUY":
                     # BUY sur VWAP support nécessite volatilité contrôlée pour éviter faux rebonds
-                    if volatility_regime == "low" and atr_pct < 30:
+                    if volatility_regime == "low" and atr_percentile < 30:
                         confidence_boost += 0.12
-                        reason += f" + volatilité très faible idéale support ({atr_pct:.0f}%)"
-                    elif volatility_regime == "normal" and 30 <= atr_pct <= 60:
+                        reason += f" + volatilité très faible idéale support ({atr_percentile:.0f}%)"
+                    elif volatility_regime == "normal" and 30 <= atr_percentile <= 60:
                         confidence_boost += 0.08
-                        reason += f" + volatilité normale support ({atr_pct:.0f}%)"
-                    elif volatility_regime == "high" and atr_pct > 70:
-                        if atr_pct > 90:  # Volatilité extrême
+                        reason += f" + volatilité normale support ({atr_percentile:.0f}%)"
+                    elif volatility_regime == "high" and atr_percentile > 70:
+                        if atr_percentile > 90:  # Volatilité extrême
                             confidence_boost -= 0.12
-                            reason += f" mais volatilité extrême support ({atr_pct:.0f}%)"
+                            reason += f" mais volatilité extrême support ({atr_percentile:.0f}%)"
                         else:  # Volatilité élevée mais gérable
                             confidence_boost -= 0.06
-                            reason += f" mais volatilité élevée support ({atr_pct:.0f}%)"
+                            reason += f" mais volatilité élevée support ({atr_percentile:.0f}%)"
                     elif volatility_regime == "expanding":
                         confidence_boost -= 0.08  # Expansion défavorable aux supports
                         reason += " mais volatilité en expansion défavorable"
                         
                 else:  # SELL
                     # SELL sur VWAP résistance peut bénéficier de volatilité modérée à élevée
-                    if volatility_regime == "low" and atr_pct < 25:
+                    if volatility_regime == "low" and atr_percentile < 25:
                         confidence_boost += 0.06  # Résistance solide en low vol
-                        reason += f" + volatilité faible résistance solide ({atr_pct:.0f}%)"
-                    elif volatility_regime == "normal" and 25 <= atr_pct <= 70:
+                        reason += f" + volatilité faible résistance solide ({atr_percentile:.0f}%)"
+                    elif volatility_regime == "normal" and 25 <= atr_percentile <= 70:
                         confidence_boost += 0.10
-                        reason += f" + volatilité optimale résistance ({atr_pct:.0f}%)"
-                    elif volatility_regime == "high" and atr_pct > 70:
-                        if atr_pct > 85:  # Volatilité très élevée = continuation baissière
+                        reason += f" + volatilité optimale résistance ({atr_percentile:.0f}%)"
+                    elif volatility_regime == "high" and atr_percentile > 70:
+                        if atr_percentile > 85:  # Volatilité très élevée = continuation baissière
                             confidence_boost += 0.15
-                            reason += f" + volatilité très élevée continuation ({atr_pct:.0f}%)"
+                            reason += f" + volatilité très élevée continuation ({atr_percentile:.0f}%)"
                         else:  # Volatilité élevée favorable
                             confidence_boost += 0.12
-                            reason += f" + volatilité élevée résistance ({atr_pct:.0f}%)"
+                            reason += f" + volatilité élevée résistance ({atr_percentile:.0f}%)"
                     elif volatility_regime == "expanding":
                         confidence_boost += 0.08  # Expansion favorable aux résistances
                         reason += " + volatilité expansion favorable résistance"
@@ -638,7 +638,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                 
                 if signal_side == "BUY":
                     # BUY sur VWAP support : trending haussier > ranging > trending baissier
-                    if market_regime == "trending":
+                    if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
                         if regime_str > 0.7:  # Trend très fort
                             confidence_boost += 0.18
                             reason += f" + trend très fort support VWAP ({regime_str:.2f})"
@@ -648,20 +648,20 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                         else:  # Trend faible
                             confidence_boost += 0.08
                             reason += f" + trend faible support VWAP ({regime_str:.2f})"
-                    elif market_regime == "ranging":
+                    elif market_regime == "RANGING":
                         if regime_str > 0.6:  # Range bien défini
                             confidence_boost += 0.15
                             reason += f" + range fort rebond support ({regime_str:.2f})"
                         else:  # Range faible
                             confidence_boost += 0.10
                             reason += f" + range modéré support ({regime_str:.2f})"
-                    elif market_regime == "choppy":
+                    elif market_regime == "VOLATILE":
                         confidence_boost -= 0.05  # Marché chaotique défavorable
                         reason += " mais marché chaotique"
                         
                 else:  # SELL
                     # SELL sur VWAP résistance : ranging > trending baissier > trending haussier
-                    if market_regime == "ranging":
+                    if market_regime == "RANGING":
                         if regime_str > 0.7:  # Range très défini
                             confidence_boost += 0.20  # VWAP résistance excellent en ranging
                             reason += f" + range très fort rejet résistance ({regime_str:.2f})"
@@ -671,14 +671,14 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                         else:  # Range faible
                             confidence_boost += 0.12
                             reason += f" + range modéré résistance ({regime_str:.2f})"
-                    elif market_regime == "trending":
+                    elif market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
                         if regime_str > 0.6:  # Trend fort - résistance peut tenir
                             confidence_boost += 0.12
                             reason += f" + trend fort résistance VWAP ({regime_str:.2f})"
                         else:  # Trend faible
                             confidence_boost += 0.06
                             reason += f" + trend faible résistance ({regime_str:.2f})"
-                    elif market_regime == "choppy":
+                    elif market_regime == "VOLATILE":
                         confidence_boost += 0.08  # Chaos favorable aux résistances
                         reason += " + marché chaotique favorable résistance"
                         
