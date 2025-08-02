@@ -243,8 +243,9 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                if (signal_side == "BUY" and momentum > 0.3) or \
-                   (signal_side == "SELL" and momentum < -0.3):
+                # Format 0-100, 50=neutre
+                if (signal_side == "BUY" and momentum > 60) or \
+                   (signal_side == "SELL" and momentum < 40):
                     confidence_boost += 0.10
                     reason += " + momentum favorable"
             except (ValueError, TypeError):

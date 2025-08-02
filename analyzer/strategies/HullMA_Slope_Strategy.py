@@ -320,8 +320,9 @@ class HullMA_Slope_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                if (signal_side == "BUY" and momentum > 0.2) or \
-                   (signal_side == "SELL" and momentum < -0.2):
+                # Format 0-100, 50=neutre
+                if (signal_side == "BUY" and momentum > 55) or \
+                   (signal_side == "SELL" and momentum < 45):
                     confidence_boost += 0.08
                     reason += " + momentum favorable"
             except (ValueError, TypeError):

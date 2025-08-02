@@ -273,13 +273,13 @@ class MACD_Regime_Validator(BaseValidator):
             if self._is_macd_strategy(signal_strategy):
                 base_score += 0.10  # Bonus spécialisation
                 
-            # Bonus momentum fort
+            # Bonus momentum fort (momentum_score est 0-100, 50=neutre)
             momentum_score = self.context.get('momentum_score')
             if momentum_score is not None:
                 try:
                     momentum = float(momentum_score)
-                    if (signal_side == "BUY" and momentum > 0.2) or \
-                       (signal_side == "SELL" and momentum < -0.2):
+                    if (signal_side == "BUY" and momentum > 60) or \
+                       (signal_side == "SELL" and momentum < 40):
                         base_score += 0.08  # Momentum favorable
                 except (ValueError, TypeError):
                     pass

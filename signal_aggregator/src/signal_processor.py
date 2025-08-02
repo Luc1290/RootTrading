@@ -34,18 +34,18 @@ class SignalProcessor:
         self.min_validation_score = 0.75    # Réduit de 0.86 à 0.75 (75%) 
         self.min_validators_passed = 3       # Réduit de 5 à 3 validators minimum
         self.max_validators_failed = 8       # Augmenté de 6 à 8 failures maximum
-        self.min_strategies_consensus = 3    # Au moins 3 stratégies dans le même sens
+        self.min_strategies_consensus = 2    # Réduit à 2 stratégies minimum pour plus de signaux
         
         # Fast-track supprimé - validation stricte uniquement
         
         # Pondération des validators par catégorie (optimisée pour timing)
         self.validator_weights = {
-            'trend': 1.8,      # Validators de tendance encore plus importants
+            'trend': 2.5,      # Validators de tendance TRÈS importants (Global_Trend ici)
             'volume': 1.6,     # Volume augmenté - signal précoce important
             'structure': 1.5,   # Structure de marché légèrement réduite
             'regime': 1.7,     # Régime de marché critique
             'volatility': 1.4,  # Volatilité augmentée - détecte les mouvements tôt
-            'technical': 1.3,   # Indicateurs techniques renforcés
+            'technical': 2.0,   # Indicateurs techniques renforcés (Adaptive_Threshold ici)
             'momentum': 1.5     # Momentum ajouté pour capturer les changements rapides
         }
         
@@ -588,8 +588,63 @@ class SignalProcessor:
             logger.info(f"Score calculation for {signal['symbol']} {signal.get('timeframe', 'N/A')}: "
                        f"{score_calculation} → final={final_score:.3f}")
             
+            # Hard reject ciblé pour Global_Trend_Validator (seulement si tendance TRÈS forte)
+            global_trend_reject = False
+            for result in validation_results:
+                if result['validator_name'] == 'Global_Trend_Validator' and not result['is_valid']:
+                    # Récupérer la force de la tendance depuis le contexte
+                    adx_value = summary.get('context', {}).get('adx_14', 0) if hasattr(summary, 'get') else 0
+                    regime_confidence = summary.get('context', {}).get('regime_confidence', 0) if hasattr(summary, 'get') else 0
+                    
+                    # Essayer de récupérer depuis les metadata du signal
+                    if not adx_value:
+                        adx_value = signal.get('metadata', {}).get('adx_14', 0)
+                    if not regime_confidence:
+                        regime_confidence = signal.get('metadata', {}).get('regime_confidence', 0)
+                    
+                    # Hard reject seulement si tendance VRAIMENT forte ET dans la direction opposée
+                    try:
+                        adx_val = float(adx_value) if adx_value else 0
+                        regime_conf = float(regime_confidence) if regime_confidence else 0
+                        
+                        # Récupérer la direction de la tendance
+                        market_regime = signal.get('metadata', {}).get('market_regime', 'UNKNOWN')
+                        trend_alignment = signal.get('metadata', {}).get('trend_alignment', 0)
+                        signal_side = signal.get('side')
+                        
+                        # Vérifier si c'est VRAIMENT contra-trend
+                        strong_contra_trend = False
+                        
+                        if adx_val > 35 or regime_conf > 80:
+                            # Tendance forte - vérifier la direction
+                            if market_regime == 'BULLISH' and signal_side == 'SELL':
+                                strong_contra_trend = True  # SELL en forte tendance haussière
+                            elif market_regime == 'BEARISH' and signal_side == 'BUY':
+                                strong_contra_trend = True  # BUY en forte tendance baissière
+                            elif trend_alignment and abs(float(trend_alignment)) > 40:
+                                # Double vérification avec trend_alignment
+                                if float(trend_alignment) > 40 and signal_side == 'SELL':
+                                    strong_contra_trend = True  # SELL en forte hausse
+                                elif float(trend_alignment) < -40 and signal_side == 'BUY':
+                                    strong_contra_trend = True  # BUY en forte baisse
+                        
+                        if strong_contra_trend:
+                            global_trend_reject = True
+                            logger.info(f"Signal REJETÉ par Global_Trend_Validator (forte tendance contraire): {signal['strategy']} "
+                                      f"{signal['symbol']} {signal['side']} - ADX={adx_val:.1f}, Regime={market_regime}, "
+                                      f"Alignment={trend_alignment}, Confidence={regime_conf:.0f}% - {result['reason']}")
+                            break
+                        else:
+                            logger.debug(f"Global_Trend_Validator rejette mais pas de forte contra-tendance - laissé au scoring normal: "
+                                       f"ADX={adx_val:.1f}, Regime={market_regime}, Signal={signal_side}")
+                    except (ValueError, TypeError):
+                        # En cas d'erreur, pas de hard reject
+                        logger.debug("Erreur lecture force tendance - pas de hard reject")
+                        pass
+                    break
+            
             # Décision finale
-            is_valid = meets_min_validators and meets_min_score and meets_min_strategies
+            is_valid = meets_min_validators and meets_min_score and meets_min_strategies and not global_trend_reject
             
             # Log détaillé de la décision
             strategy_count = signal.get('metadata', {}).get('strategy_count', 1)

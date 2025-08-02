@@ -238,17 +238,17 @@ class EMA_Cross_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Momentum pour éviter signaux contre-tendance
+        # Momentum pour éviter signaux contre-tendance (format 0-100, 50=neutre)
         momentum_score = values.get('momentum_score')
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                if (signal_side == "BUY" and momentum > 0.2) or \
-                   (signal_side == "SELL" and momentum < -0.2):
+                if (signal_side == "BUY" and momentum > 55) or \
+                   (signal_side == "SELL" and momentum < 45):
                     confidence_boost += 0.08
                     reason += " + momentum favorable"
-                elif (signal_side == "BUY" and momentum < -0.3) or \
-                     (signal_side == "SELL" and momentum > 0.3):
+                elif (signal_side == "BUY" and momentum < 35) or \
+                     (signal_side == "SELL" and momentum > 65):
                     confidence_boost -= 0.10
                     reason += " mais momentum défavorable"
             except (ValueError, TypeError):

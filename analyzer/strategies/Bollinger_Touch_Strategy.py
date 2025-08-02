@@ -228,17 +228,17 @@ class Bollinger_Touch_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                # Pour touch lower (BUY), on veut un momentum qui commence à remonter
-                if signal_side == "BUY" and momentum > -0.5:
+                # Pour touch lower (BUY), on veut un momentum qui commence à remonter (format 0-100)
+                if signal_side == "BUY" and momentum > 35:
                     confidence_boost += 0.08
                     reason += " avec momentum stabilisé"
                 # Pour touch upper (SELL), on veut un momentum qui commence à baisser  
-                elif signal_side == "SELL" and momentum < 0.5:
+                elif signal_side == "SELL" and momentum < 65:
                     confidence_boost += 0.08
                     reason += " avec momentum affaibli"
                 # Pénalité si momentum trop fort dans la direction opposée
-                elif (signal_side == "BUY" and momentum < -0.7) or \
-                     (signal_side == "SELL" and momentum > 0.7):
+                elif (signal_side == "BUY" and momentum < 25) or \
+                     (signal_side == "SELL" and momentum > 75):
                     confidence_boost -= 0.10
                     reason += " mais momentum défavorable"
             except (ValueError, TypeError):

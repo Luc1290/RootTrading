@@ -379,34 +379,34 @@ class TEMA_Slope_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                # BUY : momentum positif requis
+                # BUY : momentum positif requis (format 0-100, 50=neutre)
                 if signal_side == "BUY":
-                    if momentum > 0.3:
+                    if momentum > 65:
                         confidence_boost += 0.18  # Momentum très positif = excellent pour BUY
-                        reason += f" + momentum très positif ({momentum:.2f})"
-                    elif momentum > 0.15:
+                        reason += f" + momentum très positif ({momentum:.1f})"
+                    elif momentum > 58:
                         confidence_boost += 0.12  # Momentum positif modéré
-                        reason += f" + momentum positif ({momentum:.2f})"
-                    elif momentum > 0.05:
+                        reason += f" + momentum positif ({momentum:.1f})"
+                    elif momentum > 52:
                         confidence_boost += 0.06  # Momentum légèrement positif
-                        reason += f" + momentum faible positif ({momentum:.2f})"
-                    elif momentum < -0.1:
+                        reason += f" + momentum faible positif ({momentum:.1f})"
+                    elif momentum < 45:
                         confidence_boost -= 0.10  # Momentum négatif = mauvais pour BUY
-                        reason += f" mais momentum négatif ({momentum:.2f})"
+                        reason += f" mais momentum négatif ({momentum:.1f})"
                 # SELL : momentum négatif requis
                 elif signal_side == "SELL":
-                    if momentum < -0.3:
+                    if momentum < 35:
                         confidence_boost += 0.18  # Momentum très négatif = excellent pour SELL
-                        reason += f" + momentum très négatif ({momentum:.2f})"
-                    elif momentum < -0.15:
+                        reason += f" + momentum très négatif ({momentum:.1f})"
+                    elif momentum < 42:
                         confidence_boost += 0.12  # Momentum négatif modéré
-                        reason += f" + momentum négatif ({momentum:.2f})"
-                    elif momentum < -0.05:
+                        reason += f" + momentum négatif ({momentum:.1f})"
+                    elif momentum < 48:
                         confidence_boost += 0.06  # Momentum légèrement négatif
-                        reason += f" + momentum faible négatif ({momentum:.2f})"
-                    elif momentum > 0.1:
+                        reason += f" + momentum faible négatif ({momentum:.1f})"
+                    elif momentum > 55:
                         confidence_boost -= 0.10  # Momentum positif = mauvais pour SELL
-                        reason += f" mais momentum positif ({momentum:.2f})"
+                        reason += f" mais momentum positif ({momentum:.1f})"
             except (ValueError, TypeError):
                 pass
                 

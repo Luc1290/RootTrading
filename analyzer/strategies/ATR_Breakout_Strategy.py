@@ -25,6 +25,9 @@ class ATR_Breakout_Strategy(BaseStrategy):
         self.volatility_threshold = 0.6 # Seuil volatilité (percentile)
         self.resistance_proximity = 0.02 # 2% de proximité aux niveaux
         self.support_proximity = 0.02   # 2% de proximité aux niveaux
+        # Paramètres de tendance
+        self.trend_filter_enabled = True  # Activer le filtre de tendance
+        self.min_trend_strength = 0.3    # Force minimum de tendance ADX
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs ATR."""
@@ -47,7 +50,16 @@ class ATR_Breakout_Strategy(BaseStrategy):
             'bb_expansion': self.indicators.get('bb_expansion'),
             'momentum_score': self.indicators.get('momentum_score'),
             'signal_strength': self.indicators.get('signal_strength'),
-            'confluence_score': self.indicators.get('confluence_score')
+            'confluence_score': self.indicators.get('confluence_score'),
+            # Indicateurs de tendance
+            'market_regime': self.indicators.get('market_regime'),
+            'regime_strength': self.indicators.get('regime_strength'),
+            'trend_strength': self.indicators.get('trend_strength'),
+            'trend_alignment': self.indicators.get('trend_alignment'),
+            'adx_14': self.indicators.get('adx_14'),
+            'ema_26': self.indicators.get('ema_26'),
+            'ema_50': self.indicators.get('ema_50'),
+            'macd_trend': self.indicators.get('macd_trend')
         }
         
     def _get_current_price(self) -> Optional[float]:
@@ -126,21 +138,64 @@ class ATR_Breakout_Strategy(BaseStrategy):
         confidence_boost = 0.0
         proximity_type = None
         
-        # Analyse de proximité aux niveaux clés
+        # Filtre de tendance global
+        market_regime = values.get('market_regime')
+        trend_strength = values.get('trend_strength')
+        trend_alignment = values.get('trend_alignment')
+        adx_value = values.get('adx_14')
+        
+        # Déterminer la tendance principale
+        is_uptrend = False
+        is_downtrend = False
+        trend_confirmed = False
+        
+        if self.trend_filter_enabled and market_regime:
+            if market_regime == 'BULLISH':
+                is_uptrend = True
+                trend_confirmed = True
+            elif market_regime == 'BEARISH':
+                is_downtrend = True
+                trend_confirmed = True
+            elif market_regime == 'RANGING':
+                # En range, on peut trader les deux côtés des niveaux
+                trend_confirmed = False
+        
+        # Vérification supplémentaire avec trend_alignment
+        if trend_alignment is not None:
+            if trend_alignment > 20:  # Tendance haussière
+                is_uptrend = True
+            elif trend_alignment < -20:  # Tendance baissière
+                is_downtrend = True
+        
+        # Analyse de proximité aux niveaux clés avec logique adaptée à la tendance
         if nearest_resistance is not None:
             try:
                 resistance_level = float(nearest_resistance)
                 distance_to_resistance = abs(current_price - resistance_level) / current_price
                 
-                # Prix proche de la résistance = potentiel breakout haussier
                 if distance_to_resistance <= self.resistance_proximity:
-                    signal_side = "BUY"
-                    proximity_type = "resistance"
-                    reason = f"Breakout setup près résistance {resistance_level:.2f} (ATR: {atr:.4f})"
-                    confidence_boost += 0.15
+                    # Logique adaptée selon la tendance
+                    if is_downtrend or (not trend_confirmed and trend_alignment and trend_alignment < 0):
+                        # En tendance baissière : résistance = opportunité de VENTE
+                        signal_side = "SELL"
+                        proximity_type = "resistance"
+                        reason = f"Rejet de résistance {resistance_level:.2f} en tendance baissière (ATR: {atr:.4f})"
+                        confidence_boost += 0.20  # Plus de confiance car aligné avec la tendance
+                    elif is_uptrend and (adx_value is None or adx_value >= self.min_trend_strength):
+                        # En tendance haussière forte : possibilité de breakout
+                        signal_side = "BUY"
+                        proximity_type = "resistance"
+                        reason = f"Breakout potentiel de résistance {resistance_level:.2f} en tendance haussière (ATR: {atr:.4f})"
+                        confidence_boost += 0.10  # Moins de confiance car contre le niveau
+                    elif not trend_confirmed:
+                        # En range : privilégier le rejet
+                        signal_side = "SELL"
+                        proximity_type = "resistance"
+                        reason = f"Rejet de résistance {resistance_level:.2f} en marché en range (ATR: {atr:.4f})"
+                        confidence_boost += 0.15
                     
-                    # Bonus si résistance forte = breakout plus significatif
-                    if resistance_strength is not None:
+                    # Bonus si résistance forte
+                    if resistance_strength is not None and signal_side:
                         try:
                             res_str = float(resistance_strength)
                             if res_str > 0.7:
@@ -156,15 +211,29 @@ class ATR_Breakout_Strategy(BaseStrategy):
                 support_level = float(nearest_support)
                 distance_to_support = abs(current_price - support_level) / current_price
                 
-                # Prix proche du support = potentiel breakdown baissier  
                 if distance_to_support <= self.support_proximity:
-                    signal_side = "SELL"
-                    proximity_type = "support"
-                    reason = f"Breakdown setup près support {support_level:.2f} (ATR: {atr:.4f})"
-                    confidence_boost += 0.15
+                    # Logique adaptée selon la tendance
+                    if is_uptrend or (not trend_confirmed and trend_alignment and trend_alignment > 0):
+                        # En tendance haussière : support = opportunité d'ACHAT
+                        signal_side = "BUY"
+                        proximity_type = "support"
+                        reason = f"Rebond sur support {support_level:.2f} en tendance haussière (ATR: {atr:.4f})"
+                        confidence_boost += 0.20  # Plus de confiance car aligné avec la tendance
+                    elif is_downtrend and (adx_value is None or adx_value >= self.min_trend_strength):
+                        # En tendance baissière forte : possibilité de breakdown
+                        signal_side = "SELL"
+                        proximity_type = "support"
+                        reason = f"Breakdown potentiel de support {support_level:.2f} en tendance baissière (ATR: {atr:.4f})"
+                        confidence_boost += 0.10  # Moins de confiance car contre le niveau
+                    elif not trend_confirmed:
+                        # En range : privilégier le rebond
+                        signal_side = "BUY"
+                        proximity_type = "support"
+                        reason = f"Rebond sur support {support_level:.2f} en marché en range (ATR: {atr:.4f})"
+                        confidence_boost += 0.15
                     
-                    # Bonus si support fort = breakdown plus significatif
-                    if support_strength is not None:
+                    # Bonus si support fort
+                    if support_strength is not None and signal_side:
                         try:
                             sup_str = float(support_strength)
                             if sup_str > 0.7:
@@ -313,13 +382,13 @@ class ATR_Breakout_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Momentum pour confirmation de direction
+        # Momentum pour confirmation de direction (format 0-100, 50=neutre)
         momentum_score = values.get('momentum_score')
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                if (signal_side == "BUY" and momentum > 0.2) or \
-                   (signal_side == "SELL" and momentum < -0.2):
+                if (signal_side == "BUY" and momentum > 55) or \
+                   (signal_side == "SELL" and momentum < 45):
                     confidence_boost += 0.1
                     reason += " avec momentum favorable"
             except (ValueError, TypeError):
@@ -368,7 +437,10 @@ class ATR_Breakout_Strategy(BaseStrategy):
                 "break_probability": break_probability,
                 "bb_squeeze": bb_squeeze,
                 "momentum_score": momentum_score,
-                "confluence_score": confluence_score
+                "confluence_score": confluence_score,
+                "market_regime": market_regime,
+                "trend_alignment": trend_alignment,
+                "trend_strength": trend_strength
             }
         }
         

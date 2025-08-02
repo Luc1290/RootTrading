@@ -361,15 +361,15 @@ class Regime_Strength_Validator(BaseValidator):
             if regime_momentum is None:
                 return True
                 
-            # Seuils momentum
-            strong_positive = 0.3
-            strong_negative = -0.3
+            # Seuils momentum (format 0-100, 50=neutre)
+            strong_positive = 70  # Momentum haussier fort
+            strong_negative = 30  # Momentum baissier fort
             
             # Vérifier cohérence
             if signal_side == "BUY" and regime_momentum < strong_negative:
-                return False  # BUY avec momentum très négatif
+                return False  # BUY avec momentum très baissier
             elif signal_side == "SELL" and regime_momentum > strong_positive:
-                return False  # SELL avec momentum très positif
+                return False  # SELL avec momentum très haussier
                 
             return True
             
@@ -525,11 +525,11 @@ class Regime_Strength_Validator(BaseValidator):
             if regime_momentum is not None:
                 momentum_coherence = self._validate_momentum_coherence(signal_side, regime_momentum)
                 if momentum_coherence:
-                    # Bonus pour cohérence momentum + direction
-                    if signal_side == "BUY" and regime_momentum > 0.2:
-                        base_score += 0.10  # BUY avec momentum positif
-                    elif signal_side == "SELL" and regime_momentum < -0.2:
-                        base_score += 0.10  # SELL avec momentum négatif
+                    # Bonus pour cohérence momentum + direction (format 0-100)
+                    if signal_side == "BUY" and regime_momentum > 60:
+                        base_score += 0.10  # BUY avec momentum haussier
+                    elif signal_side == "SELL" and regime_momentum < 40:
+                        base_score += 0.10  # SELL avec momentum baissier
                 else:
                     # Malus pour incohérence momentum
                     base_score -= 0.08

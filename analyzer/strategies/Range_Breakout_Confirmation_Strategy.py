@@ -316,9 +316,10 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                if breakout_type == "bullish" and momentum > 0.2:
+                # Format 0-100, 50=neutre
+                if breakout_type == "bullish" and momentum > 55:
                     confirmations['momentum_confirmed'] = True
-                elif breakout_type == "bearish" and momentum < -0.2:
+                elif breakout_type == "bearish" and momentum < 45:
                     confirmations['momentum_confirmed'] = True
             except (ValueError, TypeError):
                 pass

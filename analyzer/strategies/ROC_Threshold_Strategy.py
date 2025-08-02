@@ -30,7 +30,7 @@ class ROC_Threshold_Strategy(BaseStrategy):
         self.bearish_threshold = -2.0  # ROC < -2% pour signal baissier
         self.extreme_bullish_threshold = 5.0  # ROC > +5% = momentum extrême
         self.extreme_bearish_threshold = -5.0  # ROC < -5% = momentum extrême
-        self.momentum_confirmation_threshold = 0.3  # Seuil momentum_score pour confirmation
+        self.momentum_confirmation_threshold = 60  # Seuil momentum_score pour confirmation (format 0-100)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs ROC et momentum."""
@@ -271,35 +271,35 @@ class ROC_Threshold_Strategy(BaseStrategy):
             try:
                 momentum = float(momentum_score)
                 
-                # BUY : momentum fortement positif requis
+                # BUY : momentum fortement positif requis (format 0-100, 50=neutre)
                 if signal_side == "BUY":
-                    if momentum > 0.5:  # Momentum très positif
+                    if momentum > 70:  # Momentum très positif
                         confidence_boost += 0.18
-                        reason += f" + momentum très positif ({momentum:.2f})"
-                    elif momentum > self.momentum_confirmation_threshold:  # 0.3
+                        reason += f" + momentum très positif ({momentum:.1f})"
+                    elif momentum > 60:  # Momentum confirmé (équivalent à 0.3)
                         confidence_boost += 0.15
-                        reason += f" + momentum confirmé ({momentum:.2f})"
-                    elif momentum > 0.1:  # Momentum faible mais positif
+                        reason += f" + momentum confirmé ({momentum:.1f})"
+                    elif momentum > 55:  # Momentum faible mais positif
                         confidence_boost += 0.06
-                        reason += f" + momentum aligné ({momentum:.2f})"
-                    elif momentum < -0.1:  # Momentum négatif = contradictoire
+                        reason += f" + momentum aligné ({momentum:.1f})"
+                    elif momentum < 45:  # Momentum négatif = contradictoire
                         confidence_boost -= 0.10
-                        reason += f" mais momentum négatif ({momentum:.2f})"
+                        reason += f" mais momentum négatif ({momentum:.1f})"
                         
                 # SELL : momentum fortement négatif requis  
                 elif signal_side == "SELL":
-                    if momentum < -0.5:  # Momentum très négatif
+                    if momentum < 30:  # Momentum très négatif
                         confidence_boost += 0.18
-                        reason += f" + momentum très négatif ({momentum:.2f})"
-                    elif momentum < -self.momentum_confirmation_threshold:  # -0.3
+                        reason += f" + momentum très négatif ({momentum:.1f})"
+                    elif momentum < 40:  # Momentum confirmé (équivalent à -0.3)
                         confidence_boost += 0.15
-                        reason += f" + momentum confirmé ({momentum:.2f})"
-                    elif momentum < -0.1:  # Momentum faible mais négatif
+                        reason += f" + momentum confirmé ({momentum:.1f})"
+                    elif momentum < 45:  # Momentum faible mais négatif
                         confidence_boost += 0.06
-                        reason += f" + momentum aligné ({momentum:.2f})"
-                    elif momentum > 0.1:  # Momentum positif = contradictoire
+                        reason += f" + momentum aligné ({momentum:.1f})"
+                    elif momentum > 55:  # Momentum positif = contradictoire
                         confidence_boost -= 0.10
-                        reason += f" mais momentum positif ({momentum:.2f})"
+                        reason += f" mais momentum positif ({momentum:.1f})"
             except (ValueError, TypeError):
                 pass
                 

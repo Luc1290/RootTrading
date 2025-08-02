@@ -43,7 +43,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
         
         # Paramètres momentum et volume
         self.momentum_alignment_required = True  # Momentum doit confirmer
-        self.min_momentum_threshold = 0.1        # Momentum minimum
+        self.min_momentum_threshold = 52        # Momentum minimum (format 0-100)
         self.min_volume_confirmation = 1.2       # Volume ≥20% au-dessus normal
         
         # Paramètres confluence
@@ -575,35 +575,35 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
             try:
                 momentum = float(momentum_score_val)
                 
-                # BUY : momentum en récupération (pas forcément très positif pour un rebound)
+                # BUY : momentum en récupération (pas forcément très positif pour un rebound, format 0-100)
                 if signal_side == "BUY":
-                    if momentum >= 0.2:
+                    if momentum >= 60:
                         confidence_boost += 0.12  # Momentum franchement positif = excellent
-                        reason += f" + momentum positif ({momentum:.2f})"
-                    elif momentum >= 0.05:
+                        reason += f" + momentum positif ({momentum:.1f})"
+                    elif momentum >= 53:
                         confidence_boost += 0.08  # Momentum légèrement positif = bon signe
-                        reason += f" + momentum récupération ({momentum:.2f})"
-                    elif momentum >= -0.1:
+                        reason += f" + momentum récupération ({momentum:.1f})"
+                    elif momentum >= 45:
                         confidence_boost += 0.05  # Momentum neutre acceptable pour rebound
-                        reason += f" + momentum neutre ({momentum:.2f})"
+                        reason += f" + momentum neutre ({momentum:.1f})"
                     else:
                         confidence_boost -= 0.05  # Momentum trop négatif = rebound difficile
-                        reason += f" mais momentum négatif ({momentum:.2f})"
+                        reason += f" mais momentum négatif ({momentum:.1f})"
                         
-                # SELL : momentum en détérioration (pas forcément très négatif pour un rebound)
+                # SELL : momentum en détérioration (pas forcément très négatif pour un rebound, format 0-100)
                 elif signal_side == "SELL":
-                    if momentum <= -0.2:
+                    if momentum <= 40:
                         confidence_boost += 0.12  # Momentum franchement négatif = excellent
-                        reason += f" + momentum négatif ({momentum:.2f})"
-                    elif momentum <= -0.05:
+                        reason += f" + momentum négatif ({momentum:.1f})"
+                    elif momentum <= 47:
                         confidence_boost += 0.08  # Momentum légèrement négatif = bon signe
-                        reason += f" + momentum détérioration ({momentum:.2f})"
-                    elif momentum <= 0.1:
+                        reason += f" + momentum détérioration ({momentum:.1f})"
+                    elif momentum <= 55:
                         confidence_boost += 0.05  # Momentum neutre acceptable pour rebound
-                        reason += f" + momentum neutre ({momentum:.2f})"
+                        reason += f" + momentum neutre ({momentum:.1f})"
                     else:
                         confidence_boost -= 0.05  # Momentum trop positif = rebound difficile
-                        reason += f" mais momentum positif ({momentum:.2f})"
+                        reason += f" mais momentum positif ({momentum:.1f})"
             except (ValueError, TypeError):
                 pass
                 

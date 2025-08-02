@@ -26,6 +26,9 @@ class MACD_Crossover_Strategy(BaseStrategy):
         self.min_macd_distance = 0.001   # Distance minimum MACD/Signal pour éviter bruit
         self.histogram_threshold = 0.0005  # Seuil histogram pour confirmation
         self.zero_line_bonus = 0.1       # Bonus si MACD au-dessus/dessous zéro
+        # Paramètres de filtre de tendance
+        self.trend_filter_enabled = True  # Activer le filtre de tendance globale
+        self.contra_trend_penalty = 0.3   # Pénalité pour signaux contra-trend
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs MACD."""
@@ -59,7 +62,11 @@ class MACD_Crossover_Strategy(BaseStrategy):
             'volatility_regime': self.indicators.get('volatility_regime'),
             # Confluence
             'signal_strength': self.indicators.get('signal_strength'),
-            'confluence_score': self.indicators.get('confluence_score')
+            'confluence_score': self.indicators.get('confluence_score'),
+            # Indicateurs de tendance globale
+            'regime_strength': self.indicators.get('regime_strength'),
+            'trend_alignment': self.indicators.get('trend_alignment'),
+            'adx_14': self.indicators.get('adx_14')
         }
         
     def _get_current_price(self) -> Optional[float]:
@@ -136,17 +143,85 @@ class MACD_Crossover_Strategy(BaseStrategy):
         confidence_boost = 0.0
         cross_type = None
         
-        # Logique de croisement MACD
+        # Filtre de tendance global AVANT de décider du signal
+        market_regime = values.get('market_regime')
+        trend_alignment = values.get('trend_alignment')
+        regime_strength = values.get('regime_strength')
+        adx_value = values.get('adx_14')
+        
+        # Déterminer la tendance principale
+        is_strong_uptrend = False
+        is_strong_downtrend = False
+        trend_confirmed = False
+        
+        if self.trend_filter_enabled and market_regime:
+            if market_regime == 'BULLISH':
+                is_strong_uptrend = True
+                trend_confirmed = True
+            elif market_regime == 'BEARISH':
+                is_strong_downtrend = True
+                trend_confirmed = True
+        
+        # Vérification supplémentaire avec trend_alignment
+        if trend_alignment is not None:
+            if trend_alignment > 30:  # Forte tendance haussière
+                is_strong_uptrend = True
+            elif trend_alignment < -30:  # Forte tendance baissière
+                is_strong_downtrend = True
+        
+        # Logique de croisement MACD adaptée à la tendance
         if macd_above_signal:
-            signal_side = "BUY"
-            cross_type = "bullish_cross"
-            reason = f"MACD ({macd_line:.4f}) > Signal ({macd_signal:.4f})"
-            confidence_boost += 0.15
+            # MACD au-dessus du signal
+            if not self.trend_filter_enabled or not is_strong_downtrend:
+                # OK pour BUY si pas en forte tendance baissière
+                signal_side = "BUY"
+                cross_type = "bullish_cross"
+                reason = f"MACD ({macd_line:.4f}) > Signal ({macd_signal:.4f})"
+                confidence_boost += 0.15
+                
+                if is_strong_uptrend:
+                    confidence_boost += 0.20  # Bonus si aligné avec tendance
+                    reason += " - aligné tendance haussière"
+            else:
+                # En forte tendance baissière, ignorer les signaux BUY
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": "Signal BUY ignoré en forte tendance baissière",
+                    "metadata": {
+                        "strategy": self.name,
+                        "symbol": self.symbol,
+                        "market_regime": market_regime,
+                        "trend_alignment": trend_alignment
+                    }
+                }
         else:
-            signal_side = "SELL"
-            cross_type = "bearish_cross"
-            reason = f"MACD ({macd_line:.4f}) < Signal ({macd_signal:.4f})"
-            confidence_boost += 0.15
+            # MACD en-dessous du signal
+            if not self.trend_filter_enabled or not is_strong_uptrend:
+                # OK pour SELL si pas en forte tendance haussière
+                signal_side = "SELL"
+                cross_type = "bearish_cross"
+                reason = f"MACD ({macd_line:.4f}) < Signal ({macd_signal:.4f})"
+                confidence_boost += 0.15
+                
+                if is_strong_downtrend:
+                    confidence_boost += 0.20  # Bonus si aligné avec tendance
+                    reason += " - aligné tendance baissière"
+            else:
+                # En forte tendance haussière, ignorer les signaux SELL
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": "Signal SELL ignoré en forte tendance haussière",
+                    "metadata": {
+                        "strategy": self.name,
+                        "symbol": self.symbol,
+                        "market_regime": market_regime,
+                        "trend_alignment": trend_alignment
+                    }
+                }
             
         # Bonus selon la force de la séparation
         separation_strength = abs(macd_line - macd_signal)
@@ -261,12 +336,13 @@ class MACD_Crossover_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                if (signal_side == "BUY" and momentum > 0.2) or \
-                   (signal_side == "SELL" and momentum < -0.2):
+                # Format 0-100, 50=neutre
+                if (signal_side == "BUY" and momentum > 55) or \
+                   (signal_side == "SELL" and momentum < 45):
                     confidence_boost += 0.08
                     reason += " + momentum favorable"
-                elif (signal_side == "BUY" and momentum < -0.3) or \
-                     (signal_side == "SELL" and momentum > 0.3):
+                elif (signal_side == "BUY" and momentum < 35) or \
+                     (signal_side == "SELL" and momentum > 65):
                     confidence_boost -= 0.10
                     reason += " mais momentum défavorable"
             except (ValueError, TypeError):
@@ -391,7 +467,10 @@ class MACD_Crossover_Strategy(BaseStrategy):
                 "volume_ratio": volume_ratio,
                 "market_regime": market_regime,
                 "ppo": ppo,
-                "confluence_score": confluence_score
+                "confluence_score": confluence_score,
+                "trend_alignment": trend_alignment,
+                "regime_strength": regime_strength,
+                "adx_14": adx_value
             }
         }
         
