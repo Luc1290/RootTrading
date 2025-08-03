@@ -53,7 +53,7 @@ class Support_Breakout_Strategy(BaseStrategy):
         # Paramètres de support
         self.min_support_strength = 0.4         # Force minimum du support
         self.strong_support_bonus = 0.15        # Bonus si support fort (cassure plus significative)
-        self.min_break_probability = 30        # Probabilité cassure minimum
+        self.min_break_probability = 0.30       # Probabilité cassure minimum (format décimal 0-1)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
@@ -179,17 +179,17 @@ class Support_Breakout_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Probabilité de cassure
+        # Probabilité de cassure (format décimal 0-1 depuis DB)
         break_probability = values.get('break_probability')
         if break_probability is not None:
             try:
                 break_prob = float(break_probability)
-                if break_prob >= 70:  # Haute probabilité
+                if break_prob >= 0.70:  # Haute probabilité (70%)
                     breakdown_score += 0.15
-                    breakdown_indicators.append(f"Haute probabilité cassure ({break_prob:.0f}%)")
-                elif break_prob >= self.min_break_probability:
+                    breakdown_indicators.append(f"Haute probabilité cassure ({break_prob*100:.0f}%)")
+                elif break_prob >= self.min_break_probability:  # >= 0.30 (30%)
                     breakdown_score += 0.1
-                    breakdown_indicators.append(f"Probabilité cassure modérée ({break_prob:.0f}%)")
+                    breakdown_indicators.append(f"Probabilité cassure modérée ({break_prob*100:.0f}%)")
             except (ValueError, TypeError):
                 pass
                 
