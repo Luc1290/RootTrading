@@ -65,7 +65,7 @@ class Global_Trend_Validator(BaseValidator):
                 is_strong_trend = True
             elif regime_confidence and regime_confidence >= self.min_regime_confidence:
                 is_strong_trend = True
-            elif trend_strength and trend_strength.lower() in ['strong', 'very_strong']:
+            elif trend_strength and str(trend_strength).lower() in ['strong', 'very_strong']:
                 is_strong_trend = True
                 
             # Si pas de tendance forte, on accepte le signal
