@@ -34,7 +34,7 @@ class SignalProcessor:
         # Initialisation du système hiérarchique
         self.hierarchical_validator = HierarchicalValidator()
         
-        # Configuration des seuils de base (assouplis pour le nouveau système)
+        # Configuration des seuils de base
         self.min_strategies_consensus = 2    # Minimum de stratégies pour consensus
         
         # Statistiques de validation
@@ -42,11 +42,11 @@ class SignalProcessor:
             'signals_processed': 0,
             'signals_validated': 0,
             'signals_rejected': 0,
-            'signals_vetoed': 0,           # Nouveau : signaux rejetés par veto
+            'signals_vetoed': 0,
             'validation_errors': 0,
             'avg_validation_score': 0.0,
             'validator_performance': {},
-            'veto_reasons': {}             # Nouveau : raisons des vetos
+            'veto_reasons': {}
         }
         
     async def process_signal(self, signal_data: str) -> Optional[Union[Dict[str, Any], List[Dict[str, Any]]]]:
@@ -57,15 +57,15 @@ class SignalProcessor:
             signal_data: Données du signal au format JSON
             
         Returns:
-            Signal validé et scoré ou None si rejeté
+            Signal validé et scoré ou liste de signaux validés, ou None si rejeté
         """
         try:
             # Parsing du message
             message = json.loads(signal_data)
             
-            # Vérifier si c'est un batch de signaux ou un signal individuel
+            # Router vers la logique appropriée
             if isinstance(message, dict) and message.get('type') == 'signal_batch':
-                # Traitement d'un batch de signaux
+                # Traitement d'un batch de signaux avec consensus intelligent
                 return await self._process_signal_batch(message)
             else:
                 # Traitement d'un signal individuel
@@ -82,7 +82,7 @@ class SignalProcessor:
             
     async def _process_individual_signal(self, signal: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
-        Traite un signal individuel.
+        Traite un signal individuel sans logique de consensus.
         
         Args:
             signal: Signal à traiter
@@ -101,21 +101,14 @@ class SignalProcessor:
                 logger.warning("Signal rejeté: structure invalide")
                 return None
                 
+            # Marquer comme signal individuel (pas de consensus requis)
+            if 'metadata' not in signal:
+                signal['metadata'] = {}
+            signal['metadata']['is_individual'] = True
+            signal['metadata']['strategy_count'] = 1
+                
             # Validation complète avec contexte
-            validated_signal = await self._validate_with_context(signal)
-            
-            # Log du résultat de validation (DEBUG)
-            if logger.isEnabledFor(logging.DEBUG):
-                strategy = signal.get('strategy', 'N/A')
-                symbol = signal.get('symbol', 'N/A')
-                side = signal.get('side', 'N/A')
-                if validated_signal:
-                    final_score = validated_signal.get('metadata', {}).get('final_score', 0.0)
-                    validators_passed = validated_signal.get('metadata', {}).get('validators_passed', 0)
-                    logger.debug(f"Signal individuel VALIDÉ: {strategy} {symbol} {side} "
-                               f"(final={final_score:.2f}, validators={validators_passed})")
-                else:
-                    logger.debug(f"Signal individuel REJETÉ: {strategy} {symbol} {side}")
+            validated_signal = await self._validate_signal_core(signal)
             
             return validated_signal
             
@@ -126,7 +119,7 @@ class SignalProcessor:
             
     async def _process_signal_batch(self, batch_message: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
         """
-        Traite un batch de signaux.
+        Traite un batch de signaux avec logique de consensus intelligente.
         
         Args:
             batch_message: Message contenant le batch de signaux
@@ -142,32 +135,21 @@ class SignalProcessor:
                 
             logger.info(f"Traitement batch de {len(signals)} signaux")
             
-            # Compter les stratégies par symbole et side pour consensus
-            strategy_consensus = {}
-            for sig in signals:
-                key = f"{sig.get('symbol')}_{sig.get('side')}"
-                if key not in strategy_consensus:
-                    strategy_consensus[key] = set()
-                strategy_consensus[key].add(sig.get('strategy'))
+            # Étape 1: Grouper les signaux par symbole et direction
+            groups = self._group_signals_by_symbol_and_side(signals)
             
+            # Étape 2: Analyser les consensus et conflits
+            consensus_analysis = self._analyze_consensus_and_conflicts(groups)
+            
+            # Étape 3: Sélectionner les signaux à traiter selon la stratégie de résolution
+            selected_signals = self._select_signals_from_analysis(consensus_analysis)
+            
+            # Étape 4: Valider les signaux sélectionnés
             validated_signals = []
-            
-            # Traiter chaque signal du batch avec info de consensus
-            for signal in signals:
-                try:
-                    # Ajouter le compte de stratégies dans les métadonnées
-                    key = f"{signal.get('symbol')}_{signal.get('side')}"
-                    strategy_count = len(strategy_consensus.get(key, set()))
-                    
-                    if 'metadata' not in signal:
-                        signal['metadata'] = {}
-                    signal['metadata']['strategy_count'] = strategy_count
-                    
-                    validated_signal = await self._process_individual_signal(signal)
-                    if validated_signal:
-                        validated_signals.append(validated_signal)
-                except Exception as e:
-                    logger.error(f"Erreur traitement signal dans batch: {e}")
+            for signal in selected_signals:
+                validated_signal = await self._validate_signal_core(signal)
+                if validated_signal:
+                    validated_signals.append(validated_signal)
                     
             logger.info(f"Batch traité: {len(validated_signals)}/{len(signals)} signaux validés")
             
@@ -178,40 +160,145 @@ class SignalProcessor:
             self.stats['validation_errors'] += 1
             return None
             
-    def _validate_signal_structure(self, signal: Dict[str, Any]) -> bool:
+    def _group_signals_by_symbol_and_side(self, signals: List[Dict[str, Any]]) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
         """
-        Valide la structure de base du signal.
+        Groupe les signaux par symbole et par direction (BUY/SELL).
         
         Args:
-            signal: Signal à valider
+            signals: Liste des signaux à grouper
             
         Returns:
-            True si la structure est valide, False sinon
+            Structure: {symbol: {side: [signals]}}
         """
-        required_fields = ['symbol', 'timeframe', 'strategy', 'side', 'confidence', 'timestamp']
+        groups = {}
         
-        for field in required_fields:
-            if field not in signal:
-                logger.warning(f"Champ manquant dans le signal: {field}")
-                return False
+        for signal in signals:
+            symbol = signal.get('symbol')
+            side = signal.get('side')
+            
+            if symbol not in groups:
+                groups[symbol] = {}
+            if side not in groups[symbol]:
+                groups[symbol][side] = []
                 
-        # Validation des valeurs
-        if signal['side'] not in ['BUY', 'SELL']:
-            logger.warning(f"Side invalide: {signal['side']}")
-            return False
+            groups[symbol][side].append(signal)
             
-        if not 0 <= signal['confidence'] <= 1:
-            logger.warning(f"Confidence invalide: {signal['confidence']}")
-            return False
-            
-        return True
+        return groups
         
-    async def _validate_with_context(self, signal: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _analyze_consensus_and_conflicts(self, groups: Dict[str, Dict[str, List[Dict[str, Any]]]]) -> Dict[str, Dict]:
         """
-        Valide le signal avec le contexte de marché complet en utilisant le système hiérarchique.
+        Analyse les consensus et les conflits BUY/SELL pour chaque symbole.
         
         Args:
-            signal: Signal à valider
+            groups: Groupes de signaux par symbole et direction
+            
+        Returns:
+            Analyse des consensus avec stratégie de résolution pour chaque symbole
+        """
+        analysis = {}
+        
+        for symbol, sides in groups.items():
+            buy_signals = sides.get('BUY', [])
+            sell_signals = sides.get('SELL', [])
+            
+            buy_count = len(buy_signals)
+            sell_count = len(sell_signals)
+            
+            buy_consensus = buy_count >= self.min_strategies_consensus
+            sell_consensus = sell_count >= self.min_strategies_consensus
+            
+            analysis[symbol] = {
+                'buy_signals': buy_signals,
+                'sell_signals': sell_signals,
+                'buy_count': buy_count,
+                'sell_count': sell_count,
+                'buy_consensus': buy_consensus,
+                'sell_consensus': sell_consensus,
+                'conflict': buy_consensus and sell_consensus,
+                'resolution_strategy': None,
+                'selected_signals': []
+            }
+            
+            # Déterminer la stratégie de résolution
+            if buy_consensus and sell_consensus:
+                # Conflit : choisir le groupe avec la meilleure confidence moyenne
+                buy_avg_conf = sum(s.get('confidence', 0) for s in buy_signals) / buy_count
+                sell_avg_conf = sum(s.get('confidence', 0) for s in sell_signals) / sell_count
+                
+                if buy_avg_conf > sell_avg_conf:
+                    analysis[symbol]['resolution_strategy'] = 'prioritize_buy'
+                    analysis[symbol]['selected_signals'] = buy_signals
+                    logger.warning(f"Conflit {symbol}: Priorité BUY (conf={buy_avg_conf:.2f}) > SELL (conf={sell_avg_conf:.2f})")
+                else:
+                    analysis[symbol]['resolution_strategy'] = 'prioritize_sell'
+                    analysis[symbol]['selected_signals'] = sell_signals
+                    logger.warning(f"Conflit {symbol}: Priorité SELL (conf={sell_avg_conf:.2f}) > BUY (conf={buy_avg_conf:.2f})")
+                    
+            elif buy_consensus:
+                analysis[symbol]['resolution_strategy'] = 'buy_only'
+                analysis[symbol]['selected_signals'] = buy_signals
+                logger.debug(f"Consensus BUY uniquement pour {symbol}: {buy_count} stratégies")
+                
+            elif sell_consensus:
+                analysis[symbol]['resolution_strategy'] = 'sell_only'
+                analysis[symbol]['selected_signals'] = sell_signals
+                logger.debug(f"Consensus SELL uniquement pour {symbol}: {sell_count} stratégies")
+                
+            else:
+                analysis[symbol]['resolution_strategy'] = 'no_consensus'
+                analysis[symbol]['selected_signals'] = []
+                logger.debug(f"Aucun consensus pour {symbol}: BUY={buy_count}, SELL={sell_count}")
+                
+        return analysis
+        
+    def _select_signals_from_analysis(self, analysis: Dict[str, Dict]) -> List[Dict[str, Any]]:
+        """
+        Sélectionne et prépare les signaux à valider selon l'analyse de consensus.
+        
+        Args:
+            analysis: Analyse des consensus par symbole
+            
+        Returns:
+            Liste des signaux préparés pour validation
+        """
+        selected_signals = []
+        
+        for symbol, data in analysis.items():
+            strategy = data['resolution_strategy']
+            signals = data['selected_signals']
+            
+            if strategy == 'no_consensus':
+                # Pas de consensus : ne pas traiter les signaux
+                continue
+                
+            # Préparer les signaux sélectionnés avec les métadonnées appropriées
+            for signal in signals:
+                if 'metadata' not in signal:
+                    signal['metadata'] = {}
+                    
+                # Métadonnées de consensus
+                signal['metadata']['is_individual'] = False
+                signal['metadata']['has_consensus'] = True
+                signal['metadata']['strategy_count'] = len(signals)
+                signal['metadata']['consensus_group'] = f"{symbol}_{signal.get('side')}"
+                signal['metadata']['resolution_strategy'] = strategy
+                signal['metadata']['symbol_analysis'] = {
+                    'buy_count': data['buy_count'],
+                    'sell_count': data['sell_count'],
+                    'conflict_detected': data['conflict']
+                }
+                
+                selected_signals.append(signal)
+                
+        return selected_signals
+        
+    async def _validate_signal_core(self, signal: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Fonction de validation centrale sans duplication.
+        Gère à la fois les signaux individuels et les signaux de consensus.
+        
+        Args:
+            signal: Signal à valider (avec métadonnées de consensus si applicable)
             
         Returns:
             Signal validé et scoré ou None si rejeté
@@ -219,6 +306,20 @@ class SignalProcessor:
         try:
             symbol = signal['symbol']
             timeframe = signal['timeframe']
+            
+            # Vérification du consensus si requis
+            is_individual = signal.get('metadata', {}).get('is_individual', False)
+            has_consensus = signal.get('metadata', {}).get('has_consensus', False)
+            strategy_count = signal.get('metadata', {}).get('strategy_count', 1)
+            
+            # Logique de consensus unifié
+            if not is_individual:  # Signal de batch
+                if not has_consensus:
+                    logger.info(f"Signal REJETÉ pour manque de consensus: {signal['strategy']} {symbol} "
+                              f"{signal['side']} - {strategy_count} stratégies < {self.min_strategies_consensus} requis")
+                    self.stats['signals_rejected'] += 1
+                    return None
+            # Les signaux individuels passent toujours cette étape
             
             # Récupération du contexte de marché
             context = self.context_manager.get_market_context(symbol, timeframe)
@@ -237,20 +338,10 @@ class SignalProcessor:
             # Validation avec chaque validator
             validation_results = await self._run_all_validators(signal, context, validators)
             
-            # Validation hiérarchique (remplace l'ancien système)
+            # Validation hiérarchique
             is_valid, final_score, detailed_analysis = self.hierarchical_validator.validate_with_hierarchy(
                 validation_results, signal
             )
-            
-            # Vérifier les consensus de stratégies
-            strategy_count = signal.get('metadata', {}).get('strategy_count', 1)
-            meets_strategy_consensus = strategy_count >= self.min_strategies_consensus
-            
-            if not meets_strategy_consensus:
-                logger.info(f"Signal REJETÉ pour manque de consensus: {signal['strategy']} {signal['symbol']} "
-                          f"{signal['side']} - {strategy_count} stratégies < {self.min_strategies_consensus} requis")
-                self.stats['signals_rejected'] += 1
-                return None
             
             # Gestion du veto
             if detailed_analysis.get('veto', False):
@@ -258,7 +349,6 @@ class SignalProcessor:
                 logger.warning(f"Signal REJETÉ par VETO: {signal['strategy']} {symbol} {timeframe} "
                              f"{signal['side']} - {veto_reason}")
                 
-                # Statistiques des vetos
                 self.stats['signals_vetoed'] += 1
                 if veto_reason not in self.stats['veto_reasons']:
                     self.stats['veto_reasons'][veto_reason] = 0
@@ -267,12 +357,12 @@ class SignalProcessor:
                 return None
             
             if is_valid:
-                # Construction du signal validé avec les nouvelles métadonnées
+                # Construction du signal validé
                 validated_signal = self._build_validated_signal_hierarchical(
                     signal, detailed_analysis, validation_results, final_score
                 )
                 
-                # FILTRE FINAL : Vérifier aggregator_confidence >= 70%
+                # Filtre final : aggregator_confidence >= 70%
                 aggregator_confidence = validated_signal['metadata'].get('aggregator_confidence', 0.0)
                 min_aggregator_confidence = 0.7
                 
@@ -308,10 +398,38 @@ class SignalProcessor:
                 return None
                 
         except Exception as e:
-            logger.error(f"Erreur validation avec contexte: {e}")
+            logger.error(f"Erreur validation signal: {e}")
             self.stats['validation_errors'] += 1
             return None
+        
+    def _validate_signal_structure(self, signal: Dict[str, Any]) -> bool:
+        """
+        Valide la structure de base du signal.
+        
+        Args:
+            signal: Signal à valider
             
+        Returns:
+            True si la structure est valide, False sinon
+        """
+        required_fields = ['symbol', 'timeframe', 'strategy', 'side', 'confidence', 'timestamp']
+        
+        for field in required_fields:
+            if field not in signal:
+                logger.warning(f"Champ manquant dans le signal: {field}")
+                return False
+                
+        # Validation des valeurs
+        if signal['side'] not in ['BUY', 'SELL']:
+            logger.warning(f"Side invalide: {signal['side']}")
+            return False
+            
+        if not 0 <= signal['confidence'] <= 1:
+            logger.warning(f"Confidence invalide: {signal['confidence']}")
+            return False
+            
+        return True
+        
     async def _run_all_validators(self, signal: Dict[str, Any], context: Dict[str, Any], 
                                  validators: Dict) -> List[Dict[str, Any]]:
         """

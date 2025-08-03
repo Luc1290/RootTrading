@@ -476,7 +476,8 @@ class Coordinator:
     
     def _check_trailing_sell(self, signal: StrategySignal) -> tuple[bool, str]:
         """
-        Vérifie si on doit exécuter le SELL selon la logique de trailing sell.
+        Vérifie si on doit exécuter le SELL selon la logique de trailing sell intelligent.
+        Utilise maintenant un stop-loss adaptatif basé sur les données d'analyse de marché.
         
         Args:
             signal: Signal SELL à vérifier
@@ -499,18 +500,40 @@ class Coordinator:
             logger.info(f"🔍 Position active trouvée: {active_positions[0]}")
             position = active_positions[0]
             entry_price = float(position.get('entry_price', 0))
+            entry_time = position.get('timestamp')  # Format ISO string
             current_price = signal.price
-            # Adapter la précision selon le prix
+            
+            # Convertir timestamp ISO en epoch si nécessaire
+            if isinstance(entry_time, str):
+                from datetime import datetime
+                entry_time_dt = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
+                entry_time_epoch = entry_time_dt.timestamp()
+            else:
+                entry_time_epoch = float(entry_time) if entry_time else time.time()
+            
             precision = self._get_price_precision(current_price)
             logger.info(f"🔍 Prix entrée: {entry_price:.{precision}f}, Prix actuel: {current_price:.{precision}f}")
             
-            # Si position perdante, vendre immédiatement
+            # Calculer la perte actuelle en pourcentage
+            loss_percent = (entry_price - current_price) / entry_price
+            
+            # === NOUVEAU: STOP-LOSS ADAPTATIF INTELLIGENT ===
+            adaptive_threshold = self._calculate_adaptive_threshold(signal.symbol, entry_price, entry_time_epoch)
+            
+            logger.info(f"🧠 Stop-loss adaptatif pour {signal.symbol}: {adaptive_threshold*100:.2f}% (perte actuelle: {loss_percent*100:.2f}%)")
+            
+            # Si perte dépasse le seuil adaptatif : SELL immédiat
+            if loss_percent >= adaptive_threshold:
+                logger.info(f"📉 Stop-loss adaptatif déclenché pour {signal.symbol}: perte {loss_percent*100:.2f}% ≥ seuil {adaptive_threshold*100:.2f}%")
+                return True, f"Stop-loss adaptatif déclenché (perte {loss_percent*100:.2f}% ≥ {adaptive_threshold*100:.2f}%)"
+            
+            # Si position perdante mais dans la tolérance adaptative : garder
             if current_price <= entry_price:
-                logger.info(f"📉 Position perdante pour {signal.symbol}: {current_price:.{precision}f} ≤ {entry_price:.{precision}f}, SELL immédiat")
-                return True, "Position perdante, SELL immédiat"
+                logger.info(f"🟡 Position perdante mais dans tolérance adaptative pour {signal.symbol}: perte {loss_percent*100:.2f}% < seuil {adaptive_threshold*100:.2f}%")
+                return False, f"Position perdante mais dans tolérance adaptative (perte {loss_percent*100:.2f}% < {adaptive_threshold*100:.2f}%)"
             
             logger.info(f"🔍 Position gagnante détectée, vérification trailing sell")
-            # Position gagnante : appliquer logique trailing sell
+            # === LOGIQUE TRAILING SELL INCHANGÉE POUR POSITIONS GAGNANTES ===
             previous_sell_price = self._get_previous_sell_price(signal.symbol)
             logger.info(f"🔍 Prix SELL précédent: {previous_sell_price}")
             
@@ -518,16 +541,11 @@ class Coordinator:
                 # Premier SELL gagnant : stocker comme référence, ne pas vendre
                 logger.info(f"🔍 Premier SELL gagnant, stockage référence")
                 self._update_sell_reference(signal.symbol, current_price)
-                precision = self._get_price_precision(current_price)
                 logger.info(f"🎯 Premier SELL gagnant pour {signal.symbol} @ {current_price:.{precision}f}, stocké comme référence")
                 return False, f"Position gagnante, premier SELL @ {current_price:.{precision}f} stocké comme référence"
             
             # Comparer avec le SELL précédent (avec marge de tolérance)
             sell_threshold = previous_sell_price * (1 - self.sell_margin)
-            
-            # Adapter la précision d'affichage selon le niveau de prix
-            precision = self._get_price_precision(current_price)
-            
             logger.info(f"🔍 Seuil de vente calculé: {sell_threshold:.{precision}f} (marge {self.sell_margin*100:.1f}%)")
             
             if current_price > previous_sell_price:
@@ -701,6 +719,257 @@ class Coordinator:
             logger.error(f"Erreur analyse tendance {symbol}: {e}")
             return "NEUTRAL"
     
+    def _calculate_adaptive_threshold(self, symbol: str, entry_price: float, entry_time: float) -> float:
+        """
+        Calcule le seuil de stop-loss adaptatif basé sur les données d'analyse de marché.
+        
+        Args:
+            symbol: Symbole à analyser (ex: 'ETHUSDC')
+            entry_price: Prix d'entrée de la position
+            entry_time: Timestamp d'entrée (epoch)
+            
+        Returns:
+            Seuil de perte acceptable avant stop-loss (ex: 0.015 = 1.5%)
+        """
+        try:
+            # Récupérer les données d'analyse les plus récentes
+            analysis = self._get_latest_analysis_data(symbol)
+            if not analysis:
+                logger.warning(f"⚠️ Pas de données d'analyse pour {symbol}, utilisation seuil par défaut")
+                return 0.010  # 1% par défaut si pas de données
+                
+            # === FACTEUR 1: RÉGIME DE MARCHÉ ===
+            regime_factor = self._calculate_regime_factor(analysis)
+            
+            # === FACTEUR 2: VOLATILITÉ ===
+            volatility_factor = self._calculate_volatility_factor(analysis)
+            
+            # === FACTEUR 3: SUPPORT TECHNIQUE ===
+            support_factor = self._calculate_support_factor(analysis, entry_price)
+            
+            # === FACTEUR 4: TEMPS ÉCOULÉ ===
+            time_factor = self._calculate_time_factor(entry_time)
+            
+            # === CALCUL DU SEUIL FINAL ===
+            base_threshold = 0.008  # 0.8% de base
+            
+            # Application des facteurs (conversion explicite en float)
+            adaptive_threshold = float(base_threshold) * float(regime_factor) * float(volatility_factor) * float(support_factor) * float(time_factor)
+            
+            # Contraintes min/max
+            adaptive_threshold = max(0.003, min(0.025, adaptive_threshold))  # Entre 0.3% et 2.5%
+            
+            logger.debug(f"🧠 Stop-loss adaptatif {symbol}: {adaptive_threshold*100:.2f}% "
+                        f"(régime:{regime_factor:.2f}, vol:{volatility_factor:.2f}, "
+                        f"support:{support_factor:.2f}, temps:{time_factor:.2f})")
+            
+            return adaptive_threshold
+            
+        except Exception as e:
+            logger.error(f"Erreur calcul stop-loss adaptatif {symbol}: {e}")
+            return 0.010  # Fallback sécurisé
+    
+    def _get_latest_analysis_data(self, symbol: str) -> Optional[Dict]:
+        """
+        Récupère les données d'analyse les plus récentes depuis analyzer_data.
+        
+        Args:
+            symbol: Symbole à analyser
+            
+        Returns:
+            Dictionnaire avec les données d'analyse ou None
+        """
+        try:
+            if not self.db_connection:
+                return None
+                
+            with self.db_connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT 
+                        market_regime, regime_strength, regime_confidence,
+                        volatility_regime, atr_percentile,
+                        nearest_support, support_strength,
+                        trend_alignment, directional_bias
+                    FROM analyzer_data 
+                    WHERE symbol = %s AND timeframe = '1m'
+                    ORDER BY time DESC 
+                    LIMIT 1
+                """, (symbol,))
+                
+                result = cursor.fetchone()
+                if result:
+                    # Conversion explicite de tous les types Decimal en float
+                    return {
+                        'market_regime': result[0],
+                        'regime_strength': result[1], 
+                        'regime_confidence': float(result[2]) if result[2] is not None else 50.0,
+                        'volatility_regime': result[3],
+                        'atr_percentile': float(result[4]) if result[4] is not None else 50.0,
+                        'nearest_support': float(result[5]) if result[5] is not None else None,
+                        'support_strength': result[6],
+                        'trend_alignment': result[7],
+                        'directional_bias': result[8]
+                    }
+                return None
+        except Exception as e:
+            logger.error(f"Erreur récupération données analyse {symbol}: {e}")
+            return None
+    
+    def _calculate_regime_factor(self, analysis: Dict) -> float:
+        """
+        Calcule le facteur d'ajustement basé sur le régime de marché.
+        
+        Args:
+            analysis: Données d'analyse de marché
+            
+        Returns:
+            Facteur multiplicateur (0.5 à 2.0)
+        """
+        regime = analysis.get('market_regime', 'UNKNOWN')
+        strength = analysis.get('regime_strength', 'WEAK')
+        
+        # Conversion sécurisée en float pour éviter les erreurs Decimal
+        try:
+            confidence = float(analysis.get('regime_confidence', 50))
+        except (ValueError, TypeError):
+            confidence = 50.0
+        
+        # Base selon le régime
+        regime_multipliers = {
+            'TRENDING_BULL': 1.8,      # Plus patient en tendance haussière
+            'BREAKOUT_BULL': 1.6,      # Patient sur les breakouts haussiers
+            'RANGING': 1.2,            # Légèrement plus patient en range
+            'TRANSITION': 0.9,         # Plus strict en transition
+            'TRENDING_BEAR': 0.7,      # Plus strict en baisse
+            'VOLATILE': 0.8,           # Plus strict en volatilité
+            'BREAKOUT_BEAR': 0.6       # Très strict sur breakouts baissiers
+        }
+        
+        base_factor = regime_multipliers.get(regime, 1.0)
+        
+        # Ajustement selon la force
+        strength_multipliers = {
+            'EXTREME': 1.3,
+            'STRONG': 1.1, 
+            'MODERATE': 1.0,
+            'WEAK': 0.8
+        }
+        
+        strength_factor = strength_multipliers.get(strength, 1.0)
+        
+        # Ajustement selon la confiance (conversion float sécurisée)
+        confidence_factor = 0.7 + (float(confidence) / 100.0) * 0.6  # 0.7 à 1.3
+        
+        return float(base_factor * strength_factor * confidence_factor)
+    
+    def _calculate_volatility_factor(self, analysis: Dict) -> float:
+        """
+        Calcule le facteur d'ajustement basé sur la volatilité.
+        
+        Args:
+            analysis: Données d'analyse de marché
+            
+        Returns:
+            Facteur multiplicateur (0.6 à 2.0)
+        """
+        volatility_regime = analysis.get('volatility_regime', 'normal')
+        
+        # Conversion sécurisée en float pour éviter les erreurs Decimal
+        try:
+            atr_percentile = float(analysis.get('atr_percentile', 50))
+        except (ValueError, TypeError):
+            atr_percentile = 50.0
+        
+        # Base selon régime de volatilité
+        volatility_multipliers = {
+            'low': 0.7,        # Plus strict si volatilité faible
+            'normal': 1.0,     # Standard
+            'high': 1.4,       # Plus patient si volatilité élevée
+            'extreme': 1.8     # Très patient si volatilité extrême
+        }
+        
+        base_factor = volatility_multipliers.get(volatility_regime, 1.0)
+        
+        # Ajustement fin selon percentile ATR (conversion float sécurisée)
+        percentile_factor = 0.6 + (float(atr_percentile) / 100.0) * 0.8  # 0.6 à 1.4
+        
+        return float(base_factor * percentile_factor)
+    
+    def _calculate_support_factor(self, analysis: Dict, entry_price: float) -> float:
+        """
+        Calcule le facteur d'ajustement basé sur la proximité des supports.
+        
+        Args:
+            analysis: Données d'analyse de marché
+            entry_price: Prix d'entrée de la position
+            
+        Returns:
+            Facteur multiplicateur (0.8 à 2.0)
+        """
+        nearest_support = analysis.get('nearest_support')
+        support_strength = analysis.get('support_strength', 'WEAK')
+        
+        if not nearest_support:
+            return 1.0
+            
+        # Conversion sécurisée en float pour éviter les erreurs Decimal
+        try:
+            support_price = float(nearest_support)
+            entry_price_float = float(entry_price)
+        except (ValueError, TypeError):
+            return 1.0
+            
+        # Distance au support (en %)
+        support_distance = abs(entry_price_float - support_price) / entry_price_float
+        
+        # Plus on est proche d'un support fort, plus on est patient
+        strength_multipliers = {
+            'MAJOR': 1.6,      # Support majeur = très patient
+            'STRONG': 1.3,     # Support fort = patient
+            'MODERATE': 1.1,   # Support modéré = légèrement patient
+            'WEAK': 0.9        # Support faible = légèrement strict
+        }
+        
+        strength_factor = strength_multipliers.get(support_strength, 1.0)
+        
+        # Facteur de distance (plus proche = plus patient)
+        if support_distance < 0.01:      # < 1%
+            distance_factor = 1.4
+        elif support_distance < 0.02:    # < 2%
+            distance_factor = 1.2
+        elif support_distance < 0.05:    # < 5%
+            distance_factor = 1.0
+        else:                            # > 5%
+            distance_factor = 0.8
+            
+        return float(strength_factor * distance_factor)
+    
+    def _calculate_time_factor(self, entry_time: float) -> float:
+        """
+        Calcule le facteur d'ajustement basé sur le temps écoulé.
+        
+        Args:
+            entry_time: Timestamp d'entrée (epoch)
+            
+        Returns:
+            Facteur multiplicateur (0.8 à 1.3)
+        """
+        time_elapsed = float(time.time() - float(entry_time))
+        minutes_elapsed = time_elapsed / 60.0
+        
+        # Plus patient sur les trades récents (bruit de marché)
+        # Plus strict sur les trades anciens
+        if minutes_elapsed < 5:      # < 5 min
+            return 1.3               # Très patient
+        elif minutes_elapsed < 15:   # < 15 min
+            return 1.1               # Patient
+        elif minutes_elapsed < 60:   # < 1h
+            return 1.0               # Standard
+        elif minutes_elapsed < 240:  # < 4h
+            return 0.9               # Légèrement strict
+        else:                        # > 4h
+            return 0.8               # Plus strict
+    
     def _get_price_precision(self, price: float) -> int:
         """
         Détermine la précision d'affichage selon le niveau de prix.
@@ -782,6 +1051,7 @@ class Coordinator:
         """
         Vérifie une position spécifique et déclenche un stop-loss si nécessaire.
         Met aussi à jour la référence trailing automatiquement.
+        Utilise maintenant le système de stop-loss adaptatif intelligent.
         
         Args:
             cycle: Données du cycle de trading
@@ -789,11 +1059,20 @@ class Coordinator:
         try:
             symbol = cycle.get('symbol')
             entry_price = float(cycle.get('entry_price', 0))
+            entry_time = cycle.get('timestamp')
             cycle_id = cycle.get('id')
             
             if not symbol or not entry_price:
                 logger.warning(f"⚠️ Données cycle incomplètes: {cycle}")
                 return
+            
+            # Convertir timestamp en epoch si nécessaire
+            if isinstance(entry_time, str):
+                from datetime import datetime
+                entry_time_dt = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
+                entry_time_epoch = entry_time_dt.timestamp()
+            else:
+                entry_time_epoch = float(entry_time) if entry_time else time.time()
             
             # Récupérer le prix actuel depuis Redis
             current_price = self._get_current_price(symbol)
@@ -801,30 +1080,21 @@ class Coordinator:
                 logger.warning(f"⚠️ Prix actuel indisponible pour {symbol}")
                 return
             
-            # 1. VÉRIFICATION STOP-LOSS ADAPTATIF
-            # Analyser la tendance pour adapter le stop-loss
-            trend_direction = self._analyze_symbol_trend(symbol, current_price, entry_price)
+            # 1. VÉRIFICATION STOP-LOSS ADAPTATIF INTELLIGENT
+            loss_percent = (entry_price - current_price) / entry_price
+            adaptive_threshold = self._calculate_adaptive_threshold(symbol, entry_price, entry_time_epoch)
             
-            # Choisir le bon pourcentage de stop selon la tendance
-            if trend_direction == "STRONG_BULLISH":
-                stop_loss_percent = self.stop_loss_percent_strong_bullish
-            elif trend_direction == "BULLISH":
-                stop_loss_percent = self.stop_loss_percent_bullish
-            else:
-                stop_loss_percent = self.stop_loss_percent_base
+            precision = self._get_price_precision(current_price)
             
-            stop_loss_threshold = entry_price * (1 - stop_loss_percent)
-            
-            if current_price <= stop_loss_threshold:
-                precision = self._get_price_precision(current_price)
-                logger.warning(f"🚨 STOP-LOSS DÉCLENCHÉ pour {symbol} (Tendance: {trend_direction})!")
+            if loss_percent >= adaptive_threshold:
+                logger.warning(f"🚨 STOP-LOSS ADAPTATIF DÉCLENCHÉ pour {symbol}!")
                 logger.warning(f"📉 Prix entrée: {entry_price:.{precision}f}")
                 logger.warning(f"📉 Prix actuel: {current_price:.{precision}f}")
-                logger.warning(f"📉 Seuil stop-loss: {stop_loss_threshold:.{precision}f} ({stop_loss_percent*100:.1f}%)")
-                logger.warning(f"📉 Perte: {((current_price - entry_price) / entry_price * 100):.2f}%")
+                logger.warning(f"📉 Seuil adaptatif: {adaptive_threshold*100:.2f}%")
+                logger.warning(f"📉 Perte: {loss_percent*100:.2f}%")
                 
-                # Déclencher vente d'urgence
-                self._execute_emergency_sell(symbol, current_price, str(cycle_id) if cycle_id else "unknown", "STOP_LOSS_AUTO")
+                # Déclencher vente d'urgence avec mention du système adaptatif
+                self._execute_emergency_sell(symbol, current_price, str(cycle_id) if cycle_id else "unknown", "ADAPTIVE_STOP_LOSS_AUTO")
                 return
             
             # 2. MISE À JOUR AUTOMATIQUE DU TRAILING SELL

@@ -140,10 +140,11 @@ class Pivot_Strength_Validator(BaseValidator):
                 
                 # Fallback: essayer current_price dans le contexte
                 if current_price is None:
-                    # current_price n'est pas dans analyzer_data, utiliser self.data['close']
-                    if current_price is not None:
+                    # current_price n'est pas dans analyzer_data mais peut être passé dans le contexte
+                    context_price = self.context.get('current_price')
+                    if context_price is not None:
                         try:
-                            current_price = float(current_price)
+                            current_price = float(context_price)
                         except (ValueError, TypeError):
                             current_price = None
                     
@@ -571,10 +572,11 @@ class Pivot_Strength_Validator(BaseValidator):
                     pass
             
             # Fallback: essayer current_price dans le contexte
-            # current_price n'est pas dans analyzer_data, utiliser self.data['close']
-            if current_price is not None:
+            # current_price n'est pas dans analyzer_data mais peut être passé dans le contexte
+            context_price = self.context.get('current_price')
+            if context_price is not None:
                 try:
-                    return float(current_price)
+                    return float(context_price)
                 except (ValueError, TypeError):
                     pass
         return None
