@@ -396,17 +396,19 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         boost = 0.0
         reason_additions = ""
         
-        # Confirmation avec trend_strength
+        # Confirmation avec trend_strength (VARCHAR: weak/moderate/strong/very_strong/extreme)
         trend_strength = values.get('trend_strength')
         if trend_strength is not None:
-            try:
-                strength = float(trend_strength)
-                if strength > 0.6:
-                    boost += 0.15
-                elif strength > 0.4:
-                    boost += 0.10
-            except (ValueError, TypeError):
-                pass
+            trend_str = str(trend_strength).lower()
+            if trend_str in ['extreme', 'very_strong']:
+                boost += 0.15
+                reason_additions += f" + trend {trend_str}"
+            elif trend_str == 'strong':
+                boost += 0.12
+                reason_additions += f" + trend {trend_str}"
+            elif trend_str == 'moderate':
+                boost += 0.08
+                reason_additions += f" + trend {trend_str}"
                 
         # Confirmation avec ADX (force de tendance)
         adx_14 = values.get('adx_14')
@@ -478,64 +480,60 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         trend_strength = values.get('trend_strength')
         
         if market_regime is not None:
-            try:
-                regime_str = float(regime_strength) if regime_strength is not None else 0.5
-                trend_str = float(trend_strength) if trend_strength is not None else 0.5
+            regime_str = str(regime_strength).upper() if regime_strength else "WEAK"
+            trend_str = str(trend_strength).lower() if trend_strength else "weak"
                 
-                if signal_side == "BUY":
-                    # Rebond haussier : trend fort > ranging > trend faible
-                    if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
-                        if regime_str > 0.8 and trend_str > 0.7:  # Trend très fort = rebond puissant
-                            boost += 0.20
-                            reason_additions += f" + trend très fort rebond ({regime_str:.2f})"
-                        elif regime_str > 0.6:  # Trend fort
-                            boost += 0.15
-                            reason_additions += f" + trend fort rebond haussier ({regime_str:.2f})"
-                        elif regime_str > 0.4:  # Trend modéré
-                            boost += 0.10
-                            reason_additions += f" + trend modéré rebond ({regime_str:.2f})"
-                        else:  # Trend faible = rebond incertain
-                            boost += 0.05
-                            reason_additions += f" + trend faible rebond ({regime_str:.2f})"
-                    elif market_regime == "RANGING":
-                        if regime_str > 0.7:  # Range bien défini = rebonds prévisibles
-                            boost += 0.12
-                            reason_additions += f" + range fort rebond support ({regime_str:.2f})"
-                        else:  # Range faible
-                            boost += 0.08
-                            reason_additions += f" + range rebond ({regime_str:.2f})"
-                    elif market_regime == "VOLATILE":
-                        boost -= 0.05  # Marché chaotique = faux rebonds fréquents
-                        reason_additions += " mais marché chaotique"
-                        
-                else:  # SELL
-                    # Rebond baissier : ranging > trend baissier > trend haussier
-                    if market_regime == "RANGING":
-                        if regime_str > 0.8:  # Range très défini = résistances solides
-                            boost += 0.18
-                            reason_additions += f" + range parfait résistance ({regime_str:.2f})"
-                        elif regime_str > 0.6:  # Range fort
-                            boost += 0.14
-                            reason_additions += f" + range fort rebond résistance ({regime_str:.2f})"
-                        else:  # Range modéré
-                            boost += 0.10
-                            reason_additions += f" + range rebond résistance ({regime_str:.2f})"
-                    elif market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
-                        if regime_str > 0.7 and trend_str < -0.5:  # Trend baissier fort
-                            boost += 0.15
-                            reason_additions += f" + trend baissier fort rebond ({regime_str:.2f})"
-                        elif regime_str > 0.5:  # Trend modéré
-                            boost += 0.10
-                            reason_additions += f" + trend rebond baissier ({regime_str:.2f})"
-                        else:  # Trend faible ou haussier
-                            boost += 0.06
-                            reason_additions += f" + trend contre-rebond ({regime_str:.2f})"
-                    elif market_regime == "VOLATILE":
-                        boost += 0.08  # Chaos moins défavorable aux rebonds baissiers
-                        reason_additions += " + chaos neutre rebond baissier"
-                        
-            except (ValueError, TypeError):
-                pass
+            if signal_side == "BUY":
+                # Rebond haussier : trend fort > ranging > trend faible
+                if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
+                    if regime_str == "EXTREME" and trend_str in ["extreme", "very_strong"]:
+                        boost += 0.20
+                        reason_additions += f" + trend très fort rebond ({regime_str})"
+                    elif regime_str == "STRONG":
+                        boost += 0.15
+                        reason_additions += f" + trend fort rebond haussier ({regime_str})"
+                    elif regime_str == "MODERATE":
+                        boost += 0.10
+                        reason_additions += f" + trend modéré rebond ({regime_str})"
+                    else:  # WEAK
+                        boost += 0.05
+                        reason_additions += f" + trend faible rebond ({regime_str})"
+                elif market_regime == "RANGING":
+                    if regime_str in ["EXTREME", "STRONG"]:
+                        boost += 0.12
+                        reason_additions += f" + range fort rebond support ({regime_str})"
+                    else:
+                        boost += 0.08
+                        reason_additions += f" + range rebond ({regime_str})"
+                elif market_regime == "VOLATILE":
+                    boost -= 0.05
+                    reason_additions += " mais marché chaotique"
+                    
+            else:  # SELL
+                # Rebond baissier : ranging > trend baissier > trend haussier
+                if market_regime == "RANGING":
+                    if regime_str == "EXTREME":
+                        boost += 0.18
+                        reason_additions += f" + range parfait résistance ({regime_str})"
+                    elif regime_str == "STRONG":
+                        boost += 0.14
+                        reason_additions += f" + range fort rebond résistance ({regime_str})"
+                    else:
+                        boost += 0.10
+                        reason_additions += f" + range rebond résistance ({regime_str})"
+                elif market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
+                    if regime_str in ["EXTREME", "STRONG"] and market_regime == "TRENDING_BEAR":
+                        boost += 0.15
+                        reason_additions += f" + trend baissier fort rebond ({regime_str})"
+                    elif regime_str in ["MODERATE", "STRONG"]:
+                        boost += 0.10
+                        reason_additions += f" + trend rebond baissier ({regime_str})"
+                    else:
+                        boost += 0.06
+                        reason_additions += f" + trend contre-rebond ({regime_str})"
+                elif market_regime == "VOLATILE":
+                    boost += 0.08
+                    reason_additions += " + chaos neutre rebond baissier"
             
         # CORRECTION MAGISTRALE: Volatilité avec timing des rebonds
         volatility_regime = values.get('volatility_regime')
@@ -586,24 +584,32 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
             
-        # Pattern detected
+        # Pattern detected (format 0-100)
         pattern_detected = values.get('pattern_detected')
         pattern_confidence = values.get('pattern_confidence')
         if pattern_detected and pattern_confidence is not None:
             try:
                 confidence = float(pattern_confidence)
-                if confidence > 0.7:
+                if confidence > 70:
                     boost += 0.08
+                    reason_additions += f" + pattern {pattern_detected} ({confidence:.0f}%)"
+                elif confidence > 50:
+                    boost += 0.05
+                    reason_additions += f" + pattern faible ({confidence:.0f}%)"
             except (ValueError, TypeError):
                 pass
                 
-        # Confluence score
+        # Confluence score (format 0-100)
         confluence_score = values.get('confluence_score')
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
-                if confluence > 0.6:
+                if confluence > 60:
                     boost += 0.12
+                    reason_additions += f" + confluence élevée ({confluence:.0f})"
+                elif confluence > 45:
+                    boost += 0.08
+                    reason_additions += f" + confluence modérée ({confluence:.0f})"
             except (ValueError, TypeError):
                 pass
                 

@@ -310,8 +310,8 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         volume_quality_score = values.get('volume_quality_score')
         if volume_quality_score is not None:
             try:
-                volume_quality_score = float(volume_quality_score)
-                if volume_quality_score > 0.7:
+                volume_quality = float(volume_quality_score)
+                if volume_quality > 70:  # Format 0-100
                     confidence_boost += 0.08
                     reason += " + volume qualité"
             except (ValueError, TypeError):
@@ -343,11 +343,12 @@ class Donchian_Breakout_Strategy(BaseStrategy):
                 pass
                 
         volatility_regime = values.get('volatility_regime')
-        if volatility_regime == "expanding":
+        if volatility_regime == "extreme":
             confidence_boost += 0.10
-            reason += " (vol. expansion)"
+            reason += " (vol. extreme)"
         elif volatility_regime == "high":
             confidence_boost += 0.05
+            reason += " (vol. high)"
             
         # Signal strength (VARCHAR: WEAK/MODERATE/STRONG/VERY_WEAK)
         signal_strength_calc = values.get('signal_strength')

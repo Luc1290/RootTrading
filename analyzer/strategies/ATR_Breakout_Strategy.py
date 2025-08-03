@@ -150,10 +150,10 @@ class ATR_Breakout_Strategy(BaseStrategy):
         trend_confirmed = False
         
         if self.trend_filter_enabled and market_regime:
-            if market_regime == 'BULLISH':
+            if market_regime == 'TRENDING_BULL':
                 is_uptrend = True
                 trend_confirmed = True
-            elif market_regime == 'BEARISH':
+            elif market_regime == 'TRENDING_BEAR':
                 is_downtrend = True
                 trend_confirmed = True
             elif market_regime in ['RANGING', 'TRANSITION']:

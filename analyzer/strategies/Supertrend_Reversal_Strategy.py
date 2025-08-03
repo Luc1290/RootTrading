@@ -175,9 +175,8 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                     reversal_indicators.append("Bias haussier")
                 elif directional_bias == 'BEARISH':
                     reversal_direction = 'bearish'
-                    reversal_indicators.append("Bias baissier"
-                    
-            except (ValueError, TypeError):
+                    reversal_indicators.append("Bias baissier")
+            else:
                 pass
                 
         # ADX pour confirmer changement de tendance

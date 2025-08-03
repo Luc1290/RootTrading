@@ -331,9 +331,12 @@ class OBV_Crossover_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Market regime (valeurs DB réelles: BULLISH/BEARISH/RANGING/TRANSITION)
+        # Market regime (valeurs DB réelles: TRENDING_BULL/TRENDING_BEAR/RANGING/TRANSITION/etc.)
         market_regime = values.get('market_regime')
-        if market_regime in ["BULLISH", "BEARISH"]:
+        if market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]:
+            confidence_boost += 0.10
+            reason += f" (marché {market_regime.lower()})"
+        elif market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]:
             confidence_boost += 0.10
             reason += f" (marché {market_regime.lower()})"
         elif market_regime == "RANGING":

@@ -49,7 +49,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             'nearest_resistance': self.indicators.get('nearest_resistance'),
             'support_strength': self.indicators.get('support_strength'),
             'resistance_strength': self.indicators.get('resistance_strength'),
-            'break_prob': self.indicators.get('break_prob'),
+            'break_probability': self.indicators.get('break_probability'),
             'pivot_count': self.indicators.get('pivot_count'),
             # Volume (crucial pour détecter les sweeps)
             'volume_ratio': self.indicators.get('volume_ratio'),
@@ -366,11 +366,11 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Market regime (valeurs DB réelles: BULLISH/BEARISH/RANGING/TRANSITION)
+        # Market regime (valeurs DB réelles: TRENDING_BULL/TRENDING_BEAR/RANGING/TRANSITION)
         market_regime = values.get('market_regime')
-        if market_regime in ["BULLISH", "BEARISH"]:
+        if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
             confidence_boost += 0.08
-            reason += f" (marché {market_regime.lower()})"
+            reason += f" (marché {market_regime.lower().replace('trending_', '')})"
         elif market_regime == "RANGING":
             confidence_boost += 0.10
             reason += " (marché en range - favorable aux sweeps)"

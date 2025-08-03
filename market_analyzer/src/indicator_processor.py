@@ -599,7 +599,7 @@ class IndicatorProcessor:
                             'nearest_resistance': resistances[0].price if resistances else None,
                             'support_strength': str(supports[0].strength.value).upper() if supports else 'MODERATE',
                             'resistance_strength': str(resistances[0].strength.value).upper() if resistances else 'MODERATE',
-                            'break_probability': float(supports[0].break_probability if supports else 50.0),
+                            'break_probability': float(supports[0].break_probability if supports else 0.5),
                             'pivot_count': len(sr_levels)
                         })
                 except Exception as e:

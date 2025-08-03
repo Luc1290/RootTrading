@@ -185,7 +185,7 @@ CREATE TABLE IF NOT EXISTS analyzer_data (
     nearest_resistance DECIMAL(20,8), -- Résistance la plus proche
     support_strength VARCHAR(15),  -- WEAK/MODERATE/STRONG/MAJOR
     resistance_strength VARCHAR(15),
-    break_probability DECIMAL(5,2), -- Probabilité de cassure (0-100%)
+    break_probability DECIMAL(5,2), -- Probabilité de cassure (0-1)
     pivot_count INTEGER,           -- Nombre de pivots détectés
     
     -- === CONTEXTE VOLUME ===

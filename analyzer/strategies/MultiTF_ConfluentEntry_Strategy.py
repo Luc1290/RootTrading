@@ -300,7 +300,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         # Analyse de l'alignement des moyennes mobiles
         ma_analysis = self._analyze_ma_alignment(values, current_price)
         
-        if ma_analysis['alignment_score'] < self.min_trend_alignment:
+        if ma_analysis['alignment_score'] < (self.min_trend_alignment / 100):
             return {
                 "side": None,
                 "confidence": 0.0,
@@ -387,8 +387,8 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         # Confirmation avec directional bias
         directional_bias = values.get('directional_bias')
         if directional_bias:
-            if (signal_side == "BUY" and directional_bias == "bullish") or \
-               (signal_side == "SELL" and directional_bias == "bearish"):
+            if (signal_side == "BUY" and directional_bias == "BULLISH") or \
+               (signal_side == "SELL" and directional_bias == "BEARISH"):
                 confidence_boost += 0.10
                 reason += f" + bias {directional_bias}"
                 
@@ -426,7 +426,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         if volume_quality_score is not None:
             try:
                 volume_quality_score = float(volume_quality_score)
-                if volume_quality_score > 0.8:
+                if volume_quality_score > 80:
                     confidence_boost += 0.08
                     reason += " + volume de qualité"
             except (ValueError, TypeError):
@@ -450,7 +450,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         if pattern_detected and pattern_confidence is not None:
             try:
                 pattern_conf = float(pattern_confidence)
-                if pattern_conf > 0.7:
+                if pattern_conf > 70:
                     confidence_boost += 0.10
                     reason += f" + pattern {pattern_detected}"
             except (ValueError, TypeError):
