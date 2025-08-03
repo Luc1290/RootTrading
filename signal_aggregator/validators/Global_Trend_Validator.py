@@ -55,9 +55,35 @@ class Global_Trend_Validator(BaseValidator):
             adx_value = self.context.get('adx_14', 0)
             trend_strength = self.context.get('trend_strength')
             
-            # En marché en range, on accepte tous les signaux
+            # En marché en range, appliquer une logique directionnelle stricte
             if market_regime == 'RANGING':
-                return True
+                # Récupérer les EMA AVANT de vérifier la condition
+                ema_50 = self.context.get('ema_50')
+                ema_99 = self.context.get('ema_99')
+                current_price = self.context.get('current_price')
+                
+                # Même en range, utiliser les EMA pour déterminer la direction autorisée
+                if self.use_ema_filter and ema_50 and ema_99 and current_price:
+                    try:
+                        ema50_val = float(ema_50)
+                        ema99_val = float(ema_99)
+                        price_val = float(current_price)
+                        
+                        # En range : autoriser seulement la direction de la tendance EMA
+                        if ema50_val > ema99_val:
+                            # Tendance EMA haussière en range : seulement BUY
+                            if signal_side == 'SELL':
+                                logger.debug(f"Signal SELL rejeté en RANGING: tendance EMA haussière (EMA50={ema50_val:.2f} > EMA99={ema99_val:.2f})")
+                                return False
+                        elif ema50_val < ema99_val:
+                            # Tendance EMA baissière en range : seulement SELL
+                            if signal_side == 'BUY':
+                                logger.debug(f"Signal BUY rejeté en RANGING: tendance EMA baissière (EMA50={ema50_val:.2f} < EMA99={ema99_val:.2f})")
+                                return False
+                        # Si EMA50 ≈ EMA99, accepter les deux (vrai range)
+                        
+                    except (ValueError, TypeError):
+                        pass
                 
             # Vérifier la force de la tendance
             is_strong_trend = False
@@ -68,8 +94,30 @@ class Global_Trend_Validator(BaseValidator):
             elif trend_strength and str(trend_strength).lower() in ['strong', 'very_strong']:
                 is_strong_trend = True
                 
-            # Si pas de tendance forte, on accepte le signal
+            # Si pas de tendance forte, appliquer quand même une logique directionnelle
             if not is_strong_trend:
+                # Récupérer les EMA même sans tendance forte
+                ema_50 = self.context.get('ema_50')
+                ema_99 = self.context.get('ema_99')
+                current_price = self.context.get('current_price')
+                
+                if self.use_ema_filter and ema_50 and ema_99 and current_price:
+                    try:
+                        ema50_val = float(ema_50)
+                        ema99_val = float(ema_99)
+                        price_val = float(current_price)
+                        
+                        # Même sans tendance forte, respecter la direction EMA
+                        if ema50_val > ema99_val and signal_side == 'SELL':
+                            logger.debug(f"Signal SELL rejeté sans tendance forte: direction EMA haussière (EMA50={ema50_val:.2f} > EMA99={ema99_val:.2f})")
+                            return False
+                        elif ema50_val < ema99_val and signal_side == 'BUY':
+                            logger.debug(f"Signal BUY rejeté sans tendance forte: direction EMA baissière (EMA50={ema50_val:.2f} < EMA99={ema99_val:.2f})")
+                            return False
+                            
+                    except (ValueError, TypeError):
+                        pass
+                        
                 return True
                 
             # Filtre EMA 50/99 pour tendance de fond
@@ -127,7 +175,7 @@ class Global_Trend_Validator(BaseValidator):
             
         except Exception as e:
             logger.error(f"Erreur validation tendance globale: {e}")
-            return True  # En cas d'erreur, on laisse passer
+            return False  # En cas d'erreur, on rejette par sécurité
             
     def get_validation_score(self, signal: Dict[str, Any]) -> float:
         """

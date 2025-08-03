@@ -366,14 +366,14 @@ class ATR_Breakout_Strategy(BaseStrategy):
                 pass
                 
         # Bollinger Squeeze = compression avant expansion
-        if bb_squeeze is not None:
-            try:
-                squeeze = float(bb_squeeze)
-                if squeeze > 0.7:  # BB compressés
-                    confidence_boost += 0.15
-                    reason += " avec BB squeeze"
-            except (ValueError, TypeError):
-                pass
+        if bb_squeeze is not None and bb_squeeze == True:
+            confidence_boost += 0.15
+            reason += " avec BB squeeze"
+            
+        # Bollinger Expansion = expansion après compression
+        if bb_expansion is not None and bb_expansion == True:
+            confidence_boost += 0.10
+            reason += " avec BB expansion"
                 
         # Break probability
         break_probability = values.get('break_probability')

@@ -1,5 +1,5 @@
 """
-Module de traitement et validation des signaux.
+Module de traitement et validation des signaux avec système hiérarchique.
 Contient la logique principale de validation, scoring et filtrage des signaux.
 """
 
@@ -7,6 +7,7 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple, Union
 import json
+from hierarchical_validator import HierarchicalValidator
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,7 @@ validation_logger = logging.getLogger('signal_aggregator.validation')
 
 
 class SignalProcessor:
-    """Processeur principal pour la validation et le scoring des signaux."""
+    """Processeur principal pour la validation et le scoring des signaux avec hiérarchie."""
     
     def __init__(self, validator_loader, context_manager, database_manager=None):
         """
@@ -30,33 +31,22 @@ class SignalProcessor:
         self.context_manager = context_manager
         self.database_manager = database_manager
         
-        # Configuration des seuils de validation (assouplis pour capturer plus de signaux SELL)
-        self.min_validation_score = 0.75    # Réduit de 0.86 à 0.75 (75%) 
-        self.min_validators_passed = 3       # Réduit de 5 à 3 validators minimum
-        self.max_validators_failed = 8       # Augmenté de 6 à 8 failures maximum
-        self.min_strategies_consensus = 2    # Réduit à 2 stratégies minimum pour plus de signaux
+        # Initialisation du système hiérarchique
+        self.hierarchical_validator = HierarchicalValidator()
         
-        # Fast-track supprimé - validation stricte uniquement
-        
-        # Pondération des validators par catégorie (optimisée pour timing)
-        self.validator_weights = {
-            'trend': 2.5,      # Validators de tendance TRÈS importants (Global_Trend ici)
-            'volume': 1.6,     # Volume augmenté - signal précoce important
-            'structure': 1.5,   # Structure de marché légèrement réduite
-            'regime': 1.7,     # Régime de marché critique
-            'volatility': 1.4,  # Volatilité augmentée - détecte les mouvements tôt
-            'technical': 2.0,   # Indicateurs techniques renforcés (Adaptive_Threshold ici)
-            'momentum': 1.5     # Momentum ajouté pour capturer les changements rapides
-        }
+        # Configuration des seuils de base (assouplis pour le nouveau système)
+        self.min_strategies_consensus = 2    # Minimum de stratégies pour consensus
         
         # Statistiques de validation
         self.stats = {
             'signals_processed': 0,
             'signals_validated': 0,
             'signals_rejected': 0,
+            'signals_vetoed': 0,           # Nouveau : signaux rejetés par veto
             'validation_errors': 0,
             'avg_validation_score': 0.0,
-            'validator_performance': {}
+            'validator_performance': {},
+            'veto_reasons': {}             # Nouveau : raisons des vetos
         }
         
     async def process_signal(self, signal_data: str) -> Optional[Union[Dict[str, Any], List[Dict[str, Any]]]]:
@@ -218,7 +208,7 @@ class SignalProcessor:
         
     async def _validate_with_context(self, signal: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
-        Valide le signal avec le contexte de marché complet.
+        Valide le signal avec le contexte de marché complet en utilisant le système hiérarchique.
         
         Args:
             signal: Signal à valider
@@ -247,37 +237,66 @@ class SignalProcessor:
             # Validation avec chaque validator
             validation_results = await self._run_all_validators(signal, context, validators)
             
-            # Analyse des résultats de validation
-            validation_summary = self._analyze_validation_results(validation_results)
-            
-            # Décision finale de validation
-            is_valid, final_score = self._make_validation_decision(
-                signal, validation_summary, validation_results
+            # Validation hiérarchique (remplace l'ancien système)
+            is_valid, final_score, detailed_analysis = self.hierarchical_validator.validate_with_hierarchy(
+                validation_results, signal
             )
             
+            # Vérifier les consensus de stratégies
+            strategy_count = signal.get('metadata', {}).get('strategy_count', 1)
+            meets_strategy_consensus = strategy_count >= self.min_strategies_consensus
+            
+            if not meets_strategy_consensus:
+                logger.info(f"Signal REJETÉ pour manque de consensus: {signal['strategy']} {signal['symbol']} "
+                          f"{signal['side']} - {strategy_count} stratégies < {self.min_strategies_consensus} requis")
+                self.stats['signals_rejected'] += 1
+                return None
+            
+            # Gestion du veto
+            if detailed_analysis.get('veto', False):
+                veto_reason = detailed_analysis.get('veto_reason', 'Veto sans raison')
+                logger.warning(f"Signal REJETÉ par VETO: {signal['strategy']} {symbol} {timeframe} "
+                             f"{signal['side']} - {veto_reason}")
+                
+                # Statistiques des vetos
+                self.stats['signals_vetoed'] += 1
+                if veto_reason not in self.stats['veto_reasons']:
+                    self.stats['veto_reasons'][veto_reason] = 0
+                self.stats['veto_reasons'][veto_reason] += 1
+                
+                return None
+            
             if is_valid:
-                # Construction du signal validé
-                validated_signal = self._build_validated_signal(
-                    signal, validation_summary, validation_results, final_score
+                # Construction du signal validé avec les nouvelles métadonnées
+                validated_signal = self._build_validated_signal_hierarchical(
+                    signal, detailed_analysis, validation_results, final_score
                 )
+                
+                # FILTRE FINAL : Vérifier aggregator_confidence >= 70%
+                aggregator_confidence = validated_signal['metadata'].get('aggregator_confidence', 0.0)
+                min_aggregator_confidence = 0.7
+                
+                if aggregator_confidence < min_aggregator_confidence:
+                    logger.info(f"Signal REJETÉ pour aggregator_confidence insuffisante: {signal['strategy']} {symbol} "
+                              f"{signal['side']} - confidence={aggregator_confidence:.1%} < {min_aggregator_confidence:.1%}")
+                    self.stats['signals_rejected'] += 1
+                    return None
                 
                 # Stockage en base de données si disponible
                 if self.database_manager:
                     try:
                         signal_id = self.database_manager.store_validated_signal(validated_signal)
                         if signal_id:
-                            # Ajouter l'ID en tant que métadonnée pour le coordinator
                             validated_signal['metadata']['db_id'] = signal_id
-                            logger.info(f"Signal stocké en DB avec ID: {signal_id}, métadonnées: {validated_signal['metadata'].get('db_id', 'MANQUANT')}")
+                            logger.info(f"Signal stocké en DB avec ID: {signal_id}")
                     except Exception as e:
                         logger.error(f"Erreur stockage signal en DB: {e}")
-                        # Continuer même si le stockage échoue
                 
                 self.stats['signals_validated'] += 1
-                self._update_validation_stats(validation_results, final_score)
+                self._update_validation_stats_hierarchical(validation_results, final_score, detailed_analysis)
                 
                 logger.info(f"Signal VALIDÉ: {signal['strategy']} {symbol} {timeframe} "
-                          f"{signal['side']} (score={final_score:.2f})")
+                          f"{signal['side']} (score={final_score:.2f}, agg_conf={aggregator_confidence:.1%})")
                 
                 return validated_signal
             else:
@@ -363,17 +382,10 @@ class SignalProcessor:
                 score = validator.get_validation_score(signal)
                 reason = validator.get_validation_reason(signal, is_valid)
                 
-                # Détermination de la catégorie du validator
-                category = self._get_validator_category(validator_name)
-                weight = self.validator_weights.get(category, 1.0)
-                
                 result = {
                     'validator_name': validator_name,
-                    'category': category,
                     'is_valid': is_valid,
                     'score': score,
-                    'weighted_score': score * weight,
-                    'weight': weight,
                     'reason': reason,
                     'execution_time': 0  # TODO: Mesurer le temps d'exécution
                 }
@@ -382,9 +394,10 @@ class SignalProcessor:
                 
                 # Log détaillé par validator (DEBUG uniquement)
                 if logger.isEnabledFor(logging.DEBUG):
+                    importance = self.hierarchical_validator.get_validator_importance(validator_name)
                     validation_logger.debug(f"{signal['symbol']} {signal.get('timeframe', 'N/A')} - "
-                                          f"Validator {validator_name}: {'PASS' if is_valid else 'FAIL'} "
-                                          f"(score={score:.2f}, weighted={result['weighted_score']:.2f}) - {reason[:50]}")
+                                          f"{importance} {validator_name}: {'PASS' if is_valid else 'FAIL'} "
+                                          f"(score={score:.2f}) - {reason[:50]}")
                 
             except Exception as e:
                 logger.error(f"Erreur validator {validator_name}: {e}")
@@ -392,288 +405,28 @@ class SignalProcessor:
                 # Ajouter un résultat d'erreur
                 validation_results.append({
                     'validator_name': validator_name,
-                    'category': 'error',
                     'is_valid': False,
                     'score': 0.0,
-                    'weighted_score': 0.0,
-                    'weight': 1.0,
                     'reason': f"ERREUR: {str(e)}",
                     'execution_time': 0
                 })
                 
         return validation_results
         
-    def _get_validator_category(self, validator_name: str) -> str:
+    def _build_validated_signal_hierarchical(self, signal: Dict[str, Any], detailed_analysis: Dict[str, Any], 
+                                           validation_results: List[Dict[str, Any]], final_score: float) -> Dict[str, Any]:
         """
-        Détermine la catégorie d'un validator basée sur son nom.
-        
-        Args:
-            validator_name: Nom du validator
-            
-        Returns:
-            Catégorie du validator
-        """
-        name_lower = validator_name.lower()
-        
-        if 'trend' in name_lower or 'adx' in name_lower or 'macd' in name_lower:
-            return 'trend'
-        elif 'volume' in name_lower or 'vwap' in name_lower or 'obv' in name_lower:
-            return 'volume'
-        elif 'structure' in name_lower or 'pivot' in name_lower or 'level' in name_lower:
-            return 'structure'
-        elif 'regime' in name_lower or 'market' in name_lower:
-            return 'regime'
-        elif 'volatility' in name_lower or 'atr' in name_lower or 'bollinger' in name_lower:
-            return 'volatility'
-        elif 'momentum' in name_lower or 'rsi' in name_lower or 'stoch' in name_lower or 'roc' in name_lower:
-            return 'momentum'
-        else:
-            return 'technical'
-            
-    def _analyze_validation_results(self, validation_results: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        Analyse les résultats de validation pour créer un résumé.
-        
-        Args:
-            validation_results: Liste des résultats de validation
-            
-        Returns:
-            Résumé des résultats de validation
-        """
-        total_validators = len(validation_results)
-        validators_passed = sum(1 for result in validation_results if result['is_valid'])
-        validators_failed = total_validators - validators_passed
-        
-        # Calcul des scores avec détails pour logs
-        raw_scores = [result['score'] for result in validation_results]
-        weighted_scores = [result['weighted_score'] for result in validation_results]
-        total_weights = sum(result['weight'] for result in validation_results)
-        
-        avg_raw_score = sum(raw_scores) / len(raw_scores) if raw_scores else 0.0
-        avg_weighted_score = sum(weighted_scores) / total_weights if total_weights > 0 else 0.0
-        
-        # Log détaillé des scores par validator (INFO level)
-        if validation_results:
-            symbol = validation_results[0].get('symbol', 'N/A') if hasattr(validation_results[0], 'get') else 'N/A'
-            validator_scores = []
-            for result in validation_results:
-                validator_scores.append(f"{result['validator_name']}={result['score']:.2f}*{result['weight']:.1f}={result['weighted_score']:.2f}")
-            
-            scores_detail = ", ".join(validator_scores)
-            logger.info(f"Validator scores: {scores_detail} → avg_weighted={avg_weighted_score:.3f}")
-        
-        # Analyse par catégorie
-        category_results = {}
-        for result in validation_results:
-            category = result['category']
-            if category not in category_results:
-                category_results[category] = {
-                    'passed': 0,
-                    'total': 0,
-                    'scores': [],
-                    'weight': result['weight']
-                }
-            
-            category_results[category]['total'] += 1
-            category_results[category]['scores'].append(result['score'])
-            if result['is_valid']:
-                category_results[category]['passed'] += 1
-                
-        # Calcul du score par catégorie
-        for category, data in category_results.items():
-            data['pass_rate'] = data['passed'] / data['total'] if data['total'] > 0 else 0
-            data['avg_score'] = sum(data['scores']) / len(data['scores']) if data['scores'] else 0
-            
-        summary = {
-            'total_validators': total_validators,
-            'validators_passed': validators_passed,
-            'validators_failed': validators_failed,
-            'pass_rate': validators_passed / total_validators if total_validators > 0 else 0,
-            'avg_raw_score': avg_raw_score,
-            'avg_weighted_score': avg_weighted_score,
-            'category_results': category_results,
-            'validation_strength': self._calculate_validation_strength(category_results)
-        }
-        
-        return summary
-        
-    def _calculate_validation_strength(self, category_results: Dict[str, Any]) -> str:
-        """
-        Calcule la force de validation basée sur les catégories.
-        
-        Args:
-            category_results: Résultats par catégorie
-            
-        Returns:
-            Force de validation ('strong', 'moderate', 'weak')
-        """
-        try:
-            # Critères pour une validation forte (assouplis pour capturer signaux SELL)
-            critical_categories = ['trend', 'regime', 'volume', 'structure']
-            strong_validation = True
-            
-            for category in critical_categories:
-                if category in category_results:
-                    pass_rate = category_results[category]['pass_rate']
-                    if pass_rate < 0.60:  # Réduit de 72% à 60% de réussite minimum
-                        strong_validation = False
-                        break
-                        
-            if strong_validation and len(category_results) >= 3:  # Réduit de 5 à 3 catégories
-                return 'strong'
-            elif len([cat for cat, data in category_results.items() if data['pass_rate'] > 0.50]) >= 3:  # Plus permissif
-                return 'moderate'
-            else:
-                return 'weak'
-                
-        except Exception as e:
-            logger.error(f"Erreur calcul force validation: {e}")
-            return 'weak'
-            
-    def _make_validation_decision(self, signal: Dict[str, Any], summary: Dict[str, Any], 
-                                 validation_results: List[Dict[str, Any]]) -> Tuple[bool, float]:
-        """
-        Prend la décision finale de validation.
+        Construit le signal validé final avec les métadonnées hiérarchiques.
         
         Args:
             signal: Signal original
-            summary: Résumé de validation
-            validation_results: Résultats détaillés
-            
-        Returns:
-            Tuple (is_valid, final_score)
-        """
-        try:
-            # Critères de validation stricts (fast-track supprimé)
-            meets_min_validators = summary['validators_passed'] >= self.min_validators_passed
-            meets_min_score = summary['avg_weighted_score'] >= self.min_validation_score
-            meets_min_strategies = signal.get('metadata', {}).get('strategy_count', 1) >= self.min_strategies_consensus
-            
-            # Critères additionnels
-            strong_validation = summary['validation_strength'] == 'strong'
-            high_confidence_signal = signal['confidence'] > 0.7
-            
-            # Calcul détaillé du score final avec logs
-            base_score = summary['avg_weighted_score']
-            final_score = base_score
-            
-            # Collecte des détails pour les logs
-            score_details = []
-            score_details.append(f"base_weighted={base_score:.3f}")
-            
-            if strong_validation:
-                bonus_strong = final_score * 0.1
-                final_score *= 1.1  # Bonus 10% pour validation forte
-                score_details.append(f"bonus_strong=+{bonus_strong:.3f}")
-                
-            if high_confidence_signal:
-                bonus_confidence = final_score * 0.05
-                final_score *= 1.05  # Bonus 5% pour signal haute confiance
-                score_details.append(f"bonus_confidence=+{bonus_confidence:.3f}")
-                
-            # Pénalité pour trop d'échecs
-            if summary['validators_failed'] > self.max_validators_failed:
-                penalty = final_score * 0.1
-                final_score *= 0.9  # Pénalité 10%
-                score_details.append(f"penalty_failures=-{penalty:.3f}")
-                
-            # Limiter le score à 1.0
-            capped_score = final_score
-            final_score = min(1.0, final_score)
-            if capped_score > 1.0:
-                score_details.append(f"capped_at_1.0")
-            
-            # Log du détail du calcul du score
-            score_calculation = " | ".join(score_details)
-            logger.info(f"Score calculation for {signal['symbol']} {signal.get('timeframe', 'N/A')}: "
-                       f"{score_calculation} → final={final_score:.3f}")
-            
-            # Hard reject ciblé pour Global_Trend_Validator (seulement si tendance TRÈS forte)
-            global_trend_reject = False
-            for result in validation_results:
-                if result['validator_name'] == 'Global_Trend_Validator' and not result['is_valid']:
-                    # Récupérer la force de la tendance depuis le contexte
-                    adx_value = summary.get('context', {}).get('adx_14', 0) if hasattr(summary, 'get') else 0
-                    regime_confidence = summary.get('context', {}).get('regime_confidence', 0) if hasattr(summary, 'get') else 0
-                    
-                    # Essayer de récupérer depuis les metadata du signal
-                    if not adx_value:
-                        adx_value = signal.get('metadata', {}).get('adx_14', 0)
-                    if not regime_confidence:
-                        regime_confidence = signal.get('metadata', {}).get('regime_confidence', 0)
-                    
-                    # Hard reject seulement si tendance VRAIMENT forte ET dans la direction opposée
-                    try:
-                        adx_val = float(adx_value) if adx_value else 0
-                        regime_conf = float(regime_confidence) if regime_confidence else 0
-                        
-                        # Récupérer la direction de la tendance
-                        market_regime = signal.get('metadata', {}).get('market_regime', 'UNKNOWN')
-                        trend_alignment = signal.get('metadata', {}).get('trend_alignment', 0)
-                        signal_side = signal.get('side')
-                        
-                        # Vérifier si c'est VRAIMENT contra-trend
-                        strong_contra_trend = False
-                        
-                        if adx_val > 35 or regime_conf > 80:
-                            # Tendance forte - vérifier la direction
-                            if market_regime == 'BULLISH' and signal_side == 'SELL':
-                                strong_contra_trend = True  # SELL en forte tendance haussière
-                            elif market_regime == 'BEARISH' and signal_side == 'BUY':
-                                strong_contra_trend = True  # BUY en forte tendance baissière
-                            elif trend_alignment and abs(float(trend_alignment)) > 40:
-                                # Double vérification avec trend_alignment
-                                if float(trend_alignment) > 40 and signal_side == 'SELL':
-                                    strong_contra_trend = True  # SELL en forte hausse
-                                elif float(trend_alignment) < -40 and signal_side == 'BUY':
-                                    strong_contra_trend = True  # BUY en forte baisse
-                        
-                        if strong_contra_trend:
-                            global_trend_reject = True
-                            logger.info(f"Signal REJETÉ par Global_Trend_Validator (forte tendance contraire): {signal['strategy']} "
-                                      f"{signal['symbol']} {signal['side']} - ADX={adx_val:.1f}, Regime={market_regime}, "
-                                      f"Alignment={trend_alignment}, Confidence={regime_conf:.0f}% - {result['reason']}")
-                            break
-                        else:
-                            logger.debug(f"Global_Trend_Validator rejette mais pas de forte contra-tendance - laissé au scoring normal: "
-                                       f"ADX={adx_val:.1f}, Regime={market_regime}, Signal={signal_side}")
-                    except (ValueError, TypeError):
-                        # En cas d'erreur, pas de hard reject
-                        logger.debug("Erreur lecture force tendance - pas de hard reject")
-                        pass
-                    break
-            
-            # Décision finale
-            is_valid = meets_min_validators and meets_min_score and meets_min_strategies and not global_trend_reject
-            
-            # Log détaillé de la décision
-            strategy_count = signal.get('metadata', {}).get('strategy_count', 1)
-            if not meets_min_strategies:
-                logger.info(f"Signal REJETÉ pour manque de consensus: {signal['strategy']} {signal['symbol']} "
-                          f"{signal['side']} - {strategy_count} stratégies < {self.min_strategies_consensus} requis")
-            
-            return is_valid, final_score
-            
-        except Exception as e:
-            logger.error(f"Erreur décision validation: {e}")
-            return False, 0.0
-            
-    def _build_validated_signal(self, signal: Dict[str, Any], summary: Dict[str, Any], 
-                               validation_results: List[Dict[str, Any]], final_score: float) -> Dict[str, Any]:
-        """
-        Construit le signal validé final.
-        
-        Args:
-            signal: Signal original
-            summary: Résumé de validation
+            detailed_analysis: Analyse hiérarchique détaillée
             validation_results: Résultats détaillés
             final_score: Score final
             
         Returns:
             Signal validé complet
         """
-        validated_signal = signal.copy()
-        
         # Extraction et ajout du prix (requis par le coordinator)
         price = self._extract_signal_price(signal)
         
@@ -689,14 +442,18 @@ class SignalProcessor:
         original_strength = signal.get('strength', 'moderate')
         mapped_strength = strength_mapping.get(original_strength, 'moderate')
         
+        # Extraction des informations hiérarchiques
+        level_analysis = detailed_analysis.get('level_analysis', {})
+        combination_bonuses = detailed_analysis.get('combination_bonuses', [])
+        
         # Construction du signal conforme au schéma StrategySignal
         validated_signal = {
             # Champs obligatoires pour StrategySignal
             'strategy': signal['strategy'],
             'symbol': signal['symbol'],
-            'side': signal['side'],  # Déjà en format "BUY"/"SELL"
-            'timestamp': signal['timestamp'],  # Format ISO string
-            'price': price,  # Champ requis par le coordinator
+            'side': signal['side'],
+            'timestamp': signal['timestamp'],
+            'price': price,
             
             # Champs optionnels pour StrategySignal
             'confidence': min(1.0, signal.get('confidence', 0) * final_score),
@@ -705,29 +462,32 @@ class SignalProcessor:
                 # Métadonnées originales
                 **signal.get('metadata', {}),
                 
-                # Métadonnées de validation ajoutées
+                # Métadonnées de validation hiérarchiques
                 'timeframe': signal.get('timeframe'),
                 'reason': signal.get('reason'),
                 'validation_timestamp': datetime.utcnow().isoformat(),
                 'validation_score': final_score,
-                'raw_validation_score': summary['avg_raw_score'],
-                'weighted_validation_score': summary['avg_weighted_score'],
-                'validators_passed': summary['validators_passed'],
-                'total_validators': summary['total_validators'],
-                'validation_strength': summary['validation_strength'],
-                'pass_rate': summary['pass_rate'],
-                'aggregator_confidence': min(1.0, signal.get('confidence', 0) * final_score),
                 'final_score': final_score * signal.get('confidence', 0),
-                'category_scores': {
-                    cat: data['avg_score'] 
-                    for cat, data in summary['category_results'].items()
+                'aggregator_confidence': min(1.0, signal.get('confidence', 0) * final_score),
+                
+                # Nouvelle analyse hiérarchique
+                'hierarchical_analysis': {
+                    'critical_validators': level_analysis.get('critical', {}),
+                    'important_validators': level_analysis.get('important', {}),
+                    'standard_validators': level_analysis.get('standard', {}),
+                    'combination_bonuses': combination_bonuses,
+                    'veto_triggered': detailed_analysis.get('veto', False)
                 },
+                
+                # Détails des validators pour compatibilité
+                'validators_passed': sum(1 for r in validation_results if r['is_valid']),
+                'total_validators': len(validation_results),
                 'validation_details': [
                     {
                         'validator': result['validator_name'],
                         'valid': result['is_valid'],
                         'score': result['score'],
-                        'category': result['category']
+                        'importance': self.hierarchical_validator.get_validator_importance(result['validator_name'])
                     }
                     for result in validation_results
                 ]
@@ -819,13 +579,15 @@ class SignalProcessor:
             logger.error(f"Erreur extraction prix signal: {e}")
             return 0.0
         
-    def _update_validation_stats(self, validation_results: List[Dict[str, Any]], final_score: float):
+    def _update_validation_stats_hierarchical(self, validation_results: List[Dict[str, Any]], 
+                                            final_score: float, detailed_analysis: Dict[str, Any]):
         """
-        Met à jour les statistiques de validation.
+        Met à jour les statistiques de validation avec les nouvelles métriques hiérarchiques.
         
         Args:
             validation_results: Résultats de validation
             final_score: Score final
+            detailed_analysis: Analyse hiérarchique détaillée
         """
         try:
             # Mise à jour de la moyenne des scores
@@ -836,14 +598,15 @@ class SignalProcessor:
                 (current_avg * (total_processed - 1) + final_score) / total_processed
             )
             
-            # Mise à jour des performances par validator
+            # Mise à jour des performances par validator avec importance
             for result in validation_results:
                 validator_name = result['validator_name']
                 if validator_name not in self.stats['validator_performance']:
                     self.stats['validator_performance'][validator_name] = {
                         'total_runs': 0,
                         'successful_validations': 0,
-                        'avg_score': 0.0
+                        'avg_score': 0.0,
+                        'importance': self.hierarchical_validator.get_validator_importance(validator_name)
                     }
                     
                 perf = self.stats['validator_performance'][validator_name]
@@ -863,8 +626,16 @@ class SignalProcessor:
             logger.error(f"Erreur mise à jour stats: {e}")
             
     def get_stats(self) -> Dict[str, Any]:
-        """Retourne les statistiques de validation."""
-        return self.stats.copy()
+        """Retourne les statistiques de validation avec métriques hiérarchiques."""
+        stats = self.stats.copy()
+        
+        # Ajouter des métriques hiérarchiques
+        if stats['signals_processed'] > 0:
+            stats['veto_rate'] = stats['signals_vetoed'] / stats['signals_processed']
+            stats['validation_rate'] = stats['signals_validated'] / stats['signals_processed']
+            stats['rejection_rate'] = stats['signals_rejected'] / stats['signals_processed']
+        
+        return stats
         
     def reset_stats(self):
         """Remet à zéro les statistiques."""
@@ -872,8 +643,10 @@ class SignalProcessor:
             'signals_processed': 0,
             'signals_validated': 0,
             'signals_rejected': 0,
+            'signals_vetoed': 0,
             'validation_errors': 0,
             'avg_validation_score': 0.0,
-            'validator_performance': {}
+            'validator_performance': {},
+            'veto_reasons': {}
         }
-        logger.info("Statistiques de validation remises à zéro")
+        logger.info("Statistiques de validation hiérarchiques remises à zéro")
