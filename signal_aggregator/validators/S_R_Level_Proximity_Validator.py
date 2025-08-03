@@ -38,9 +38,9 @@ class S_R_Level_Proximity_Validator(BaseValidator):
         self.strong_level_threshold = 0.7    # Seuil niveau fort
         self.very_strong_level_threshold = 0.9 # Seuil niveau très fort
         
-        # Paramètres de cassure
-        self.min_break_probability = 60     # Probabilité min de cassure
-        self.high_break_probability = 80    # Probabilité haute de cassure
+        # Paramètres de cassure (format décimal 0-1 depuis DB)
+        self.min_break_probability = 0.60   # Probabilité min de cassure (60%)
+        self.high_break_probability = 0.80  # Probabilité haute de cassure (80%)
         
     def validate_signal(self, signal: Dict[str, Any]) -> bool:
         """
@@ -100,7 +100,7 @@ class S_R_Level_Proximity_Validator(BaseValidator):
                                 logger.debug(f"{self.name}: BUY rejeté - trop proche résistance forte ({self._safe_format(resistance_distance_pct, '.3f')}%) pour {self.symbol}")
                                 return False
                             else:
-                                logger.debug(f"{self.name}: BUY accepté - proche résistance mais forte probabilité cassure ({self._safe_format(break_probability, '.2f')}) pour {self.symbol}")
+                                logger.debug(f"{self.name}: BUY accepté - proche résistance mais forte probabilité cassure ({self._safe_format(break_probability*100, '.0f')}%) pour {self.symbol}")
                                 
                     # Zone de proximité modérée - besoin de conditions favorables
                     elif resistance_distance_pct <= self.close_proximity_threshold:
@@ -134,7 +134,7 @@ class S_R_Level_Proximity_Validator(BaseValidator):
                                 logger.debug(f"{self.name}: SELL rejeté - trop proche support fort ({self._safe_format(support_distance_pct, '.3f')}%) pour {self.symbol}")
                                 return False
                             else:
-                                logger.debug(f"{self.name}: SELL accepté - proche support mais forte probabilité cassure ({self._safe_format(break_probability, '.2f')}) pour {self.symbol}")
+                                logger.debug(f"{self.name}: SELL accepté - proche support mais forte probabilité cassure ({self._safe_format(break_probability*100, '.0f')}%) pour {self.symbol}")
                                 
                     # Zone de proximité modérée - besoin de conditions favorables
                     elif support_distance_pct <= self.close_proximity_threshold:
