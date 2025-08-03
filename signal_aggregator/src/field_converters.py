@@ -75,12 +75,12 @@ class FieldConverter:
     
     # Mapping des noms de champs de la DB vers les noms attendus par les validators
     FIELD_NAME_MAPPING = {
-        # Pivot points (corrections basées sur l'analyse DB avec noms réels)
-        'nearest_support': 'pivot_support',
-        'nearest_resistance': 'pivot_resistance', 
-        'support_strength': 'pivot_support_strength',
-        'resistance_strength': 'pivot_resistance_strength',
-        'pivot_count': 'pivot_strength',
+        # DÉSACTIVÉ : Pivot points - les validators utilisent maintenant directement les noms DB
+        # 'nearest_support': 'pivot_support',
+        # 'nearest_resistance': 'pivot_resistance', 
+        # 'support_strength': 'pivot_support_strength',
+        # 'resistance_strength': 'pivot_resistance_strength',
+        # 'pivot_count': 'pivot_strength',
         
         # Volume spikes (corrections basées sur l'analyse DB)
         # Note: volume_spike_multiplier existe déjà dans la DB, pas besoin de mapping

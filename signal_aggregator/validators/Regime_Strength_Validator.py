@@ -45,10 +45,10 @@ class Regime_Strength_Validator(BaseValidator):
         self.max_transition_volatility = 0.6      # Volatilité max en transition
         self.regime_change_cooldown = 3           # Cooldown après changement
         
-        # Régimes favorables/défavorables
-        self.favorable_regimes = ["trending", "bullish", "bearish", "expansion", "momentum", "stable"]
-        self.unfavorable_regimes = ["chaotic", "whipsaw", "noise", "compression", "uncertain"]
-        self.neutral_regimes = ["ranging", "consolidation", "sideways", "neutral"]
+        # Régimes favorables/défavorables (selon schema analyzer_data)
+        self.favorable_regimes = ["TRENDING_BULL", "TRENDING_BEAR", "BREAKOUT_BULL", "BREAKOUT_BEAR"]
+        self.unfavorable_regimes = ["VOLATILE", "UNKNOWN"]
+        self.neutral_regimes = ["RANGING", "TRANSITION"]
         
         # Paramètres cohérence multi-indicateurs
         self.min_regime_consensus = 60.0         # Consensus minimum entre indicateurs (format 0-100)
@@ -56,7 +56,7 @@ class Regime_Strength_Validator(BaseValidator):
         
         # Bonus/malus
         self.strong_regime_bonus = 0.25          # Bonus régime fort
-        self.persistence_bonus = 20            # Bonus persistance
+        self.persistence_bonus = 0.20          # Bonus persistance
         self.consensus_bonus = 0.18              # Bonus consensus régimes
         self.transition_penalty = -0.30          # Pénalité transition
         self.weak_regime_penalty = -0.25         # Pénalité régime faible
@@ -304,10 +304,11 @@ class Regime_Strength_Validator(BaseValidator):
             if not transition_direction:
                 return True
                 
-            # Extraire direction de transition
-            if "bullish" in transition_direction.lower() or "up" in transition_direction.lower():
+            # Extraire direction de transition (format: BULLISH/BEARISH/NEUTRAL)
+            direction_upper = str(transition_direction).upper()
+            if direction_upper == "BULLISH":
                 transition_bias = "bullish"
-            elif "bearish" in transition_direction.lower() or "down" in transition_direction.lower():
+            elif direction_upper == "BEARISH":
                 transition_bias = "bearish"
             else:
                 return True  # Transition neutre, accepter
@@ -437,7 +438,7 @@ class Regime_Strength_Validator(BaseValidator):
             # last_regime_change_bars → regime_duration
             last_regime_change_bars = int(self.context.get('regime_duration', 10)) if self.context.get('regime_duration') is not None else 10
             
-            current_regime = self.context.get('current_regime', 'neutral')
+            current_regime = self.context.get('market_regime', 'RANGING')
             signal_strategy = signal.get('strategy', '')
             signal_side = signal.get('side')
             
@@ -478,29 +479,29 @@ class Regime_Strength_Validator(BaseValidator):
             elif self.min_regime_duration <= regime_duration_bars <= self.max_regime_duration:
                 base_score += 0.08  # Durée acceptable
                 
-            # CORRECTION: Bonus type de régime avec logique directionnelle
+            # CORRECTION: Bonus type de régime avec logique directionnelle (format: market_regime)
             if current_regime in self.favorable_regimes:
                 # Bonus additionnel pour cohérence directionnelle
-                if signal_side == "BUY" and current_regime in ["bullish", "trending", "momentum"]:
+                if signal_side == "BUY" and current_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]:
                     base_score += 0.20  # Excellent pour BUY
-                elif signal_side == "SELL" and current_regime in ["bearish", "trending", "momentum"]:
+                elif signal_side == "SELL" and current_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]:
                     base_score += 0.20  # Excellent pour SELL  
                 else:
                     base_score += 0.15  # Régime favorable général
             elif current_regime in self.neutral_regimes:
                 base_score += 0.05  # Régime neutre
-            elif current_regime in ["bullish"]:
-                # Régime bullish : favoriser BUY, pénaliser SELL
+            elif current_regime == "TRENDING_BULL":
+                # Régime trending bull : favoriser BUY, pénaliser SELL
                 if signal_side == "BUY":
-                    base_score += 0.15  # Bonus BUY en régime bullish
+                    base_score += 0.15  # Bonus BUY en régime trending bull
                 elif signal_side == "SELL":
-                    base_score -= 0.05  # Malus SELL en régime bullish
-            elif current_regime in ["bearish"]:
-                # Régime bearish : favoriser SELL, pénaliser BUY
+                    base_score -= 0.05  # Malus SELL en régime trending bull
+            elif current_regime == "TRENDING_BEAR":
+                # Régime trending bear : favoriser SELL, pénaliser BUY
                 if signal_side == "SELL":
-                    base_score += 0.15  # Bonus SELL en régime bearish
+                    base_score += 0.15  # Bonus SELL en régime trending bear
                 elif signal_side == "BUY":
-                    base_score -= 0.05  # Malus BUY en régime bearish
+                    base_score -= 0.05  # Malus BUY en régime trending bear
                 
             # Bonus consensus élevé
             if regime_consensus_score >= 80.0:
@@ -534,15 +535,16 @@ class Regime_Strength_Validator(BaseValidator):
                     # Malus pour incohérence momentum
                     base_score -= 0.08
                 
-            # CORRECTION: Validation transitions avec bonus directionnel  
+            # CORRECTION: Validation transitions avec bonus directionnel (format: BULLISH/BEARISH/NEUTRAL)
             transition_direction = self.context.get('directional_bias')
             if transition_direction and signal_side:
                 transition_coherence = self._validate_transition_coherence(signal_side, transition_direction)
                 if transition_coherence:
                     # Bonus pour transition cohérente
-                    if signal_side == "BUY" and "bullish" in str(transition_direction).lower():
+                    direction_upper = str(transition_direction).upper()
+                    if signal_side == "BUY" and direction_upper == "BULLISH":
                         base_score += 0.08  # BUY avec transition bullish
-                    elif signal_side == "SELL" and "bearish" in str(transition_direction).lower():
+                    elif signal_side == "SELL" and direction_upper == "BEARISH":
                         base_score += 0.08  # SELL avec transition bearish
                 
             # Validation régimes multiples
@@ -577,7 +579,7 @@ class Regime_Strength_Validator(BaseValidator):
             signal_side = signal.get('side', 'N/A')
             signal_strategy = signal.get('strategy', 'N/A')
             
-            current_regime = self.context.get('current_regime', 'N/A')
+            current_regime = self.context.get('market_regime', 'N/A')
             regime_strength_raw = self.context.get('regime_strength')
             regime_strength = self._convert_regime_strength_to_score(regime_strength_raw) if regime_strength_raw else None
             regime_confidence = float(self.context.get('regime_confidence', 50.0)) if self.context.get('regime_confidence') is not None else None

@@ -31,7 +31,7 @@ class Market_Structure_Validator(BaseValidator):
         self.favorable_regimes = ["trending", "expansion", "normal"]
         self.unfavorable_regimes = ["ranging", "compression", "chaotic"]
         self.regime_strength_min = 0.4      # Force minimum régime
-        self.regime_confidence_min = 0.5    # Confidence minimum régime
+        self.regime_confidence_min = 50     # Confidence minimum régime (format 0-100)
         
         # Paramètres alignement
         self.min_trend_alignment = 60      # Alignement minimum tendance
@@ -123,7 +123,7 @@ class Market_Structure_Validator(BaseValidator):
                     return False
                     
             if regime_confidence is not None and regime_confidence < self.regime_confidence_min:
-                logger.debug(f"{self.name}: Confidence régime insuffisante ({self._safe_format(regime_confidence, '.2f')}) pour {self.symbol}")
+                logger.debug(f"{self.name}: Confidence régime insuffisante ({self._safe_format(regime_confidence, '.0f')}%) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     
@@ -153,11 +153,11 @@ class Market_Structure_Validator(BaseValidator):
                     
             # 7. Validation cohérence bias directionnel
             if directional_bias:
-                if signal_side == "BUY" and directional_bias == "bearish":
+                if signal_side == "BUY" and directional_bias.upper() == "BEARISH":
                     logger.debug(f"{self.name}: BUY signal mais bias bearish pour {self.symbol}")
                     if signal_confidence < 0.8:  # Tolérer seulement si très confiant
                         return False
-                elif signal_side == "SELL" and directional_bias == "bullish":
+                elif signal_side == "SELL" and directional_bias.upper() == "BULLISH":
                     logger.debug(f"{self.name}: SELL signal mais bias bullish pour {self.symbol}")
                     if signal_confidence < 0.8:
                         return False
@@ -310,8 +310,8 @@ class Market_Structure_Validator(BaseValidator):
             elif market_regime in self.unfavorable_regimes:
                 base_score -= 0.10  # Pénalité régime défavorable
                 
-            # Bonus force et confidence régime
-            regime_quality = (regime_strength + regime_confidence) / 2
+            # Bonus force et confidence régime (normaliser regime_confidence 0-100 vers 0-1)
+            regime_quality = (regime_strength + (regime_confidence / 100)) / 2
             if regime_quality >= 0.8:
                 base_score += 0.12
             elif regime_quality >= 0.6:
@@ -346,13 +346,13 @@ class Market_Structure_Validator(BaseValidator):
                 
             # CORRECTION: Bonus/Malus bias directionnel selon cohérence
             if directional_bias:
-                if (signal_side == "BUY" and directional_bias == "bullish") or \
-                   (signal_side == "SELL" and directional_bias == "bearish"):
+                if (signal_side == "BUY" and directional_bias.upper() == "BULLISH") or \
+                   (signal_side == "SELL" and directional_bias.upper() == "BEARISH"):
                     base_score += 0.15  # Bonus cohérence directionnelle
-                elif (signal_side == "BUY" and directional_bias == "bearish") or \
-                     (signal_side == "SELL" and directional_bias == "bullish"):
+                elif (signal_side == "BUY" and directional_bias.upper() == "BEARISH") or \
+                     (signal_side == "SELL" and directional_bias.upper() == "BULLISH"):
                     base_score -= 0.25  # Malus fort pour incohérence directionnelle
-                # Si directional_bias == "neutral", pas de bonus ni malus
+                # Si directional_bias == "NEUTRAL", pas de bonus ni malus
                     
             # Bonus adéquation stratégie/régime
             strategy_match = self._validate_strategy_regime_match(
@@ -421,8 +421,8 @@ class Market_Structure_Validator(BaseValidator):
                 elif volatility_regime in self.max_volatility_regime_risk:
                     return f"{self.name}: Rejeté - Volatilité risquée ({volatility_regime or 'N/A'})"
                 elif directional_bias and signal_side:
-                    if (signal_side == "BUY" and directional_bias == "bearish") or \
-                       (signal_side == "SELL" and directional_bias == "bullish"):
+                    if (signal_side == "BUY" and directional_bias.upper() == "BEARISH") or \
+                       (signal_side == "SELL" and directional_bias.upper() == "BULLISH"):
                         return f"{self.name}: Rejeté - Signal {signal_side} contradictoire avec bias {directional_bias or 'N/A'}"
                 elif trend_alignment and abs(trend_alignment) < (self.min_trend_alignment / 100):
                     return f"{self.name}: Rejeté - Alignement tendance insuffisant ({self._safe_format(abs(trend_alignment), '.3f')})"

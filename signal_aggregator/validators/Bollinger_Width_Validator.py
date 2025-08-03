@@ -157,12 +157,13 @@ class Bollinger_Width_Validator(BaseValidator):
                         if signal_confidence < 0.8:
                             return False
                             
-            # 6. Validation breakout direction
+            # 6. Validation breakout direction (format: UP/DOWN/NONE)
             if bb_breakout_direction:
-                if signal_side == "BUY" and bb_breakout_direction == "down":
+                bb_direction = str(bb_breakout_direction).upper()
+                if signal_side == "BUY" and bb_direction == "DOWN":
                     logger.debug(f"{self.name}: BUY signal mais breakout direction DOWN pour {self.symbol}")
                     return False
-                elif signal_side == "SELL" and bb_breakout_direction == "up":
+                elif signal_side == "SELL" and bb_direction == "UP":
                     logger.debug(f"{self.name}: SELL signal mais breakout direction UP pour {self.symbol}")
                     return False
                     
@@ -265,11 +266,12 @@ class Bollinger_Width_Validator(BaseValidator):
                 else:
                     base_score += self.squeeze_penalty  # Pénalité squeeze pour autres
                     
-            # Bonus breakout direction cohérente
+            # Bonus breakout direction cohérente (format: UP/DOWN/NONE)
             if bb_breakout_direction:
                 signal_side = signal.get('side')
-                if (signal_side == "BUY" and bb_breakout_direction == "up") or \
-                   (signal_side == "SELL" and bb_breakout_direction == "down"):
+                bb_direction = str(bb_breakout_direction).upper()
+                if (signal_side == "BUY" and bb_direction == "UP") or \
+                   (signal_side == "SELL" and bb_direction == "DOWN"):
                     base_score += self.breakout_bonus
                     
             # CORRECTION: Ajustement selon position prix dans BB + direction signal
@@ -353,9 +355,10 @@ class Bollinger_Width_Validator(BaseValidator):
                 elif bb_squeeze and signal.get('confidence', 0) < 0.7:
                     return f"{self.name}: Rejeté - Squeeze BB + confidence insuffisante"
                 elif bb_breakout_direction:
-                    if (signal_side == "BUY" and bb_breakout_direction == "down") or \
-                       (signal_side == "SELL" and bb_breakout_direction == "up"):
-                        return f"{self.name}: Rejeté - Signal {signal_side} contradictoire avec breakout {bb_breakout_direction}"
+                    bb_direction = str(bb_breakout_direction).upper()
+                    if (signal_side == "BUY" and bb_direction == "DOWN") or \
+                       (signal_side == "SELL" and bb_direction == "UP"):
+                        return f"{self.name}: Rejeté - Signal {signal_side} contradictoire avec breakout {bb_direction}"
                 elif bb_position and bb_position > self.extreme_position_threshold:
                     return f"{self.name}: Rejeté - Position extrême BB supérieure ({self._safe_format(bb_position, '.2f')})"
                 elif bb_position and bb_position < (1 - self.extreme_position_threshold):

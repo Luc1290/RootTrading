@@ -98,22 +98,35 @@ class RSI_Cross_Strategy(BaseStrategy):
             # Utilisation des indicateurs pré-calculés pour ajuster la confiance
             base_confidence = 0.5
             
-            # Ajustement avec momentum_score
-            momentum_score = values.get('momentum_score', 0)
+            # Ajustement avec momentum_score (format 0-100, 50=neutre)
+            momentum_score = values.get('momentum_score', 50)
             if momentum_score:
-                if (signal_side == "BUY" and momentum_score > 0) or \
-                   (signal_side == "SELL" and momentum_score < 0):
-                    confidence_boost += 0.15
-                    reason += " avec momentum favorable"
-                elif (signal_side == "BUY" and momentum_score < -30) or \
-                     (signal_side == "SELL" and momentum_score > 30):
-                    confidence_boost -= 0.1
+                try:
+                    momentum_val = float(momentum_score)
+                    if (signal_side == "BUY" and momentum_val > 55) or \
+                       (signal_side == "SELL" and momentum_val < 45):
+                        confidence_boost += 0.15
+                        reason += f" avec momentum favorable ({momentum_val:.0f})"
+                    elif (signal_side == "BUY" and momentum_val < 35) or \
+                         (signal_side == "SELL" and momentum_val > 65):
+                        confidence_boost -= 0.1
+                        reason += f" mais momentum défavorable ({momentum_val:.0f})"
+                except (ValueError, TypeError):
+                    pass
                     
-            # Ajustement avec trend_strength
+            # Ajustement avec trend_strength (VARCHAR: weak/moderate/strong/very_strong/extreme)
             trend_strength = values.get('trend_strength')
-            if trend_strength and isinstance(trend_strength, str) and trend_strength in ['STRONG', 'VERY_STRONG']:
-                confidence_boost += 0.1
-                reason += f" et tendance {trend_strength.lower()}"
+            if trend_strength:
+                trend_str = str(trend_strength).lower()
+                if trend_str in ['extreme', 'very_strong']:
+                    confidence_boost += 0.15
+                    reason += f" et tendance {trend_str}"
+                elif trend_str == 'strong':
+                    confidence_boost += 0.10
+                    reason += f" et tendance {trend_str}"
+                elif trend_str == 'moderate':
+                    confidence_boost += 0.05
+                    reason += f" et tendance {trend_str}"
                 
             # Ajustement avec directional_bias
             directional_bias = values.get('directional_bias')
@@ -123,16 +136,30 @@ class RSI_Cross_Strategy(BaseStrategy):
                     confidence_boost += 0.1
                     reason += " confirmé par bias directionnel"
                     
-            # Ajustement avec confluence_score
+            # Ajustement avec confluence_score (format 0-100)
             confluence_score = values.get('confluence_score', 0)
-            if confluence_score and confluence_score > 60:
-                confidence_boost += 0.15
-                reason += " avec haute confluence"
+            if confluence_score:
+                try:
+                    confluence_val = float(confluence_score)
+                    if confluence_val > 70:
+                        confidence_boost += 0.15
+                        reason += f" avec haute confluence ({confluence_val:.0f})"
+                    elif confluence_val > 55:
+                        confidence_boost += 0.10
+                        reason += f" avec confluence modérée ({confluence_val:.0f})"
+                except (ValueError, TypeError):
+                    pass
                 
-            # Ajustement avec signal_strength pré-calculé
+            # Ajustement avec signal_strength pré-calculé (VARCHAR: WEAK/MODERATE/STRONG)
             signal_strength_calc = values.get('signal_strength')
-            if signal_strength_calc and signal_strength_calc in ['STRONG', 'VERY_STRONG']:
-                confidence_boost += 0.1
+            if signal_strength_calc:
+                sig_str = str(signal_strength_calc).upper()
+                if sig_str == 'STRONG':
+                    confidence_boost += 0.1
+                    reason += " + signal fort"
+                elif sig_str == 'MODERATE':
+                    confidence_boost += 0.05
+                    reason += " + signal modéré"
                 
             # Confirmation avec RSI 21 pour multi-timeframe
             rsi_21 = values.get('rsi_21')
@@ -142,7 +169,7 @@ class RSI_Cross_Strategy(BaseStrategy):
                     confidence_boost += 0.1
                     reason += " confirmé sur RSI 21"
                     
-            confidence = self.calculate_confidence(base_confidence, confidence_boost)
+            confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
             strength = self.get_strength_from_confidence(confidence)
             
             return {

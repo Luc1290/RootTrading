@@ -39,7 +39,7 @@ class Trend_Smoothness_Validator(BaseValidator):
         self.steep_trend_angle = 45.0         # Angle raide
         
         # Paramètres d'alignement
-        self.min_trend_alignment = 60        # Alignement minimum des MAs
+        self.min_trend_alignment = 0.60      # Alignement minimum des MAs (format 0-1)
         self.strong_alignment_threshold = 0.8 # Alignement fort
         
         # Paramètres de volatilité
@@ -152,10 +152,10 @@ class Trend_Smoothness_Validator(BaseValidator):
                     
             # 5. Vérification cohérence directional_bias
             if directional_bias:
-                if signal_side == "BUY" and directional_bias == "bearish":
+                if signal_side == "BUY" and directional_bias.upper() == "BEARISH":
                     logger.debug(f"{self.name}: BUY signal mais bias bearish pour {self.symbol}")
                     return False
-                elif signal_side == "SELL" and directional_bias == "bullish":
+                elif signal_side == "SELL" and directional_bias.upper() == "BULLISH":
                     logger.debug(f"{self.name}: SELL signal mais bias bullish pour {self.symbol}")
                     return False
                     

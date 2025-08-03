@@ -344,15 +344,15 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
         if atr_percentile is not None:
             try:
                 atr_perc = float(atr_percentile)
-                if atr_perc >= 0.8:  # 80ème percentile et plus
+                if atr_perc >= 80:  # 80ème percentile et plus
                     volatility_score += 0.2
-                    volatility_indicators.append(f"Volatilité très élevée ({atr_perc:.2f})")
+                    volatility_indicators.append(f"Volatilité très élevée ({atr_perc:.0f})")
                 elif atr_perc >= self.min_volatility_percentile:
                     volatility_score += 0.15
-                    volatility_indicators.append(f"Volatilité élevée ({atr_perc:.2f})")
-                elif atr_perc < 0.3:  # Volatilité trop faible
+                    volatility_indicators.append(f"Volatilité élevée ({atr_perc:.0f})")
+                elif atr_perc < 30:  # Volatilité trop faible
                     volatility_score -= 0.1
-                    volatility_indicators.append(f"Volatilité faible ({atr_perc:.2f})")
+                    volatility_indicators.append(f"Volatilité faible ({atr_perc:.0f})")
             except (ValueError, TypeError):
                 pass
                 

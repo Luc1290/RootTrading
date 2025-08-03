@@ -192,11 +192,13 @@ class Trend_Alignment_Validator(BaseValidator):
                 if signal_confidence < 0.8:
                     return False
                     
-            # 7. Validation alignement momentum
-            if momentum_trend_alignment is not None and momentum_trend_alignment < self.min_momentum_alignment:
-                logger.debug(f"{self.name}: Alignement momentum insuffisant ({self._safe_format(momentum_trend_alignment, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.6:
-                    return False
+            # 7. Validation alignement momentum (format 0-100, convertir vers 0-1)
+            if momentum_trend_alignment is not None:
+                momentum_norm = momentum_trend_alignment / 100.0 if momentum_trend_alignment > 1 else momentum_trend_alignment
+                if momentum_norm < self.min_momentum_alignment:
+                    logger.debug(f"{self.name}: Alignement momentum insuffisant ({self._safe_format(momentum_norm, '.2f')}) pour {self.symbol}")
+                    if signal_confidence < 0.6:
+                        return False
                     
             # 8. Validation maturité de la tendance
             if primary_trend_age is not None and primary_trend_age < self.trend_maturity_threshold:
@@ -238,16 +240,16 @@ class Trend_Alignment_Validator(BaseValidator):
             if not trend_direction:
                 return True
                 
-            trend_lower = trend_direction.lower()
+            trend_upper = str(trend_direction).upper()
             
-            # BUY signals cohérents avec tendances haussières
+            # BUY signals cohérents avec tendances haussières (format: BULLISH/BEARISH/NEUTRAL)
             if signal_side == "BUY":
-                if trend_lower in ["bearish", "down", "downtrend"]:
+                if trend_upper == "BEARISH":
                     return False
                     
-            # SELL signals cohérents avec tendances baissières
+            # SELL signals cohérents avec tendances baissières (format: BULLISH/BEARISH/NEUTRAL)
             elif signal_side == "SELL":
-                if trend_lower in ["bullish", "up", "uptrend"]:
+                if trend_upper == "BULLISH":
                     return False
                     
             return True
@@ -269,19 +271,24 @@ class Trend_Alignment_Validator(BaseValidator):
             total_count = len(valid_trends)
             
             for trend in valid_trends:
-                trend_lower = trend.lower() if trend else ""
+                trend_upper = str(trend).upper() if trend else ""
                 
                 if signal_side == "BUY":
-                    if trend_lower in ["bullish", "up", "uptrend", "strong_bullish"]:
+                    # Gérer différents formats selon l'indicateur source
+                    if trend_upper in ["BULLISH", "TRENDING_BULL", "BREAKOUT_BULL"]:
                         favorable_count += 1
-                    elif trend_lower in ["bearish", "down", "downtrend", "strong_bearish"]:
+                    elif trend_upper in ["BEARISH", "TRENDING_BEAR", "BREAKOUT_BEAR"]:
                         favorable_count -= 1  # Comptage négatif pour opposition
+                    elif trend_upper in ["STRONG", "VERY_STRONG", "EXTREME"]:  # trend_strength
+                        favorable_count += 1
                         
                 elif signal_side == "SELL":
-                    if trend_lower in ["bearish", "down", "downtrend", "strong_bearish"]:
+                    if trend_upper in ["BEARISH", "TRENDING_BEAR", "BREAKOUT_BEAR"]:
                         favorable_count += 1
-                    elif trend_lower in ["bullish", "up", "uptrend", "strong_bullish"]:
+                    elif trend_upper in ["BULLISH", "TRENDING_BULL", "BREAKOUT_BULL"]:
                         favorable_count -= 1
+                    elif trend_upper in ["STRONG", "VERY_STRONG", "EXTREME"]:  # trend_strength
+                        favorable_count += 1
                         
             # Au moins 60% des timeframes doivent être favorables ou neutres
             coherence_ratio = favorable_count / total_count
@@ -300,8 +307,8 @@ class Trend_Alignment_Validator(BaseValidator):
             
             # Stratégies trend following
             if any(kw in strategy_lower for kw in ['trend', 'macd', 'ema', 'cross', 'slope', 'momentum']):
-                # Nécessitent une tendance claire
-                if trend_direction and trend_direction.lower() == "neutral":
+                # Nécessitent une tendance claire (format: BULLISH/BEARISH/NEUTRAL)
+                if trend_direction and str(trend_direction).upper() == "NEUTRAL":
                     return False
                 if trend_strength is not None and trend_strength < 0.3:
                     return False
@@ -352,8 +359,9 @@ class Trend_Alignment_Validator(BaseValidator):
             timeframe_consensus_score = float(self.context.get('confluence_score', 60.0)) if self.context.get('confluence_score') is not None else 60.0
             # aligned_timeframes_count → pivot_count (utiliser comme proxy)
             aligned_timeframes_count = int(self.context.get('pivot_count', 2)) if self.context.get('pivot_count') is not None else 2
-            # momentum_trend_alignment → momentum_score
-            momentum_trend_alignment = float(self.context.get('momentum_score', 0.5)) if self.context.get('momentum_score') is not None else 0.5
+            # momentum_trend_alignment → momentum_score (format 0-100)
+            momentum_score_raw = self.context.get('momentum_score')
+            momentum_trend_alignment = float(momentum_score_raw) if momentum_score_raw is not None else 50.0
             
             # primary_trend_direction → directional_bias
             primary_trend_direction = self.context.get('directional_bias', 'neutral')
@@ -394,10 +402,11 @@ class Trend_Alignment_Validator(BaseValidator):
             elif macd_trend_coherence >= 0.8:
                 base_score += 0.10  # Bonne cohérence
                 
-            # Bonus consensus multi-timeframe
-            if timeframe_consensus_score >= 0.9:
+            # Bonus consensus multi-timeframe (format 0-100)
+            consensus_norm = timeframe_consensus_score / 100.0 if timeframe_consensus_score > 1 else timeframe_consensus_score
+            if consensus_norm >= 0.9:
                 base_score += self.multi_tf_consensus_bonus
-            elif timeframe_consensus_score >= 0.7:
+            elif consensus_norm >= 0.7:
                 base_score += 0.12
                 
             # Bonus nombre timeframes alignés
@@ -413,8 +422,8 @@ class Trend_Alignment_Validator(BaseValidator):
                 base_score += 0.08  # Momentum aligné
                 
             # Bonus cohérence parfaite signal/tendance 
-            if signal_side and self._validate_trend_signal_coherence(signal_side, str(primary_trend_direction) if primary_trend_direction is not None else 'neutral'):
-                if primary_trend_direction and primary_trend_direction.lower() != "neutral":
+            if signal_side and self._validate_trend_signal_coherence(signal_side, str(primary_trend_direction) if primary_trend_direction is not None else 'NEUTRAL'):
+                if primary_trend_direction and str(primary_trend_direction).upper() != "NEUTRAL":
                     base_score += 0.10  # Cohérence avec tendance claire
                     
             # Bonus stratégie adaptée

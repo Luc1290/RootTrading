@@ -191,8 +191,8 @@ class Volume_Quality_Score_Validator(BaseValidator):
                     
             # 9. Vérification cohérence quote/base volume
             if quote_volume_ratio is not None:
-                # Ratio anormal peut indiquer manipulation
-                if quote_volume_ratio < 50 or quote_volume_ratio > 2.0:
+                # Ratio anormal peut indiquer manipulation (ratio normal autour de 0.5-5.0)
+                if quote_volume_ratio < 0.1 or quote_volume_ratio > 10.0:
                     if signal_confidence < 0.7:
                         logger.debug(f"{self.name}: Ratio quote/base volume anormal ({self._safe_format(quote_volume_ratio, '.2f')}) pour {self.symbol}")
                         return False

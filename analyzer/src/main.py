@@ -223,36 +223,45 @@ class AnalyzerService:
                                         indicators[key] = strength_mapping.get(value_stripped.upper(), value_stripped)
                                     
                                     elif key == 'volatility_regime':
-                                        # Garder comme string mais normaliser
+                                        # Garder comme string mais normaliser selon le schema
                                         vol_regime_mapping = {
                                             'low': 'low',
                                             'normal': 'normal', 
                                             'high': 'high',
-                                            'extreme': 'extreme',
-                                            'expanding': 'expanding',
-                                            'contracting': 'contracting'
+                                            'extreme': 'extreme'
                                         }
                                         indicators[key] = vol_regime_mapping.get(value_stripped.lower(), value_stripped)
                                     
                                     elif key == 'market_regime':
-                                        # Simplifier les régimes de marché
+                                        # Garder les valeurs exactes du schema
                                         market_regime_mapping = {
-                                            'TRENDING_BULL': 'trending',
-                                            'TRENDING_BEAR': 'trending',
-                                            'RANGING': 'ranging',
-                                            'CONSOLIDATION': 'ranging',
-                                            'TRANSITION': 'transition',
-                                            'CHAOTIC': 'chaotic',
-                                            'VOLATILE': 'volatile',
-                                            'BREAKOUT_BULL': 'breakout',
-                                            'BREAKOUT_BEAR': 'breakout',
-                                            'UNKNOWN': 'unknown'
+                                            'TRENDING_BULL': 'TRENDING_BULL',
+                                            'TRENDING_BEAR': 'TRENDING_BEAR',
+                                            'RANGING': 'RANGING',
+                                            'VOLATILE': 'VOLATILE',
+                                            'BREAKOUT_BULL': 'BREAKOUT_BULL',
+                                            'BREAKOUT_BEAR': 'BREAKOUT_BEAR',
+                                            'TRANSITION': 'TRANSITION',
+                                            'UNKNOWN': 'UNKNOWN'
                                         }
-                                        indicators[key] = market_regime_mapping.get(value_stripped.upper(), value_stripped.lower())
+                                        indicators[key] = market_regime_mapping.get(value_stripped.upper(), value_stripped)
                                     
                                     elif key in ['macd_trend', 'directional_bias', 'bb_breakout_direction', 'stoch_signal']:
-                                        # Garder comme string mais normaliser en minuscules
-                                        indicators[key] = value_stripped.lower()
+                                        # Garder comme string mais normaliser selon le schema
+                                        if key == 'macd_trend':
+                                            # BULLISH/BEARISH/NEUTRAL
+                                            indicators[key] = value_stripped.upper()
+                                        elif key == 'directional_bias':
+                                            # BULLISH/BEARISH/NEUTRAL
+                                            indicators[key] = value_stripped.upper()
+                                        elif key == 'bb_breakout_direction':
+                                            # UP/DOWN/NONE
+                                            indicators[key] = value_stripped.upper()
+                                        elif key == 'stoch_signal':
+                                            # OVERBOUGHT/OVERSOLD/NEUTRAL
+                                            indicators[key] = value_stripped.upper()
+                                        else:
+                                            indicators[key] = value_stripped
                                     
                                     elif key == 'volume_pattern':
                                         # Normaliser les patterns de volume

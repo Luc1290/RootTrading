@@ -275,15 +275,15 @@ class MultiTF_Consensus_Validator(BaseValidator):
                 # BUY favorisé si MA bullish alignment
                 if ma_bullish_alignment:
                     directional_coherence = True
-                # Bonus supplémentaire si bias confirme
-                if directional_bias == "bullish":
+                # Bonus supplémentaire si bias confirme (format: BULLISH/BEARISH/NEUTRAL)
+                if directional_bias.upper() == "BULLISH":
                     base_ma_alignment *= 1.2  # Bonus 20%
             elif signal_side == "SELL":
                 # SELL favorisé si MA bearish alignment
                 if not ma_bullish_alignment:
                     directional_coherence = True
-                # Bonus supplémentaire si bias confirme
-                if directional_bias == "bearish":
+                # Bonus supplémentaire si bias confirme (format: BULLISH/BEARISH/NEUTRAL)
+                if directional_bias.upper() == "BEARISH":
                     base_ma_alignment *= 1.2  # Bonus 20%
                     
             # Ajustement selon cohérence directionnelle
@@ -301,11 +301,12 @@ class MultiTF_Consensus_Validator(BaseValidator):
         consensus_factors = 0
         total_factors = 0
         
-        # Facteur 1: directional_bias
+        # Facteur 1: directional_bias (format: BULLISH/BEARISH/NEUTRAL)
         if directional_bias:
             total_factors += 1
-            if (signal_side == "BUY" and directional_bias == "bullish") or \
-               (signal_side == "SELL" and directional_bias == "bearish"):
+            bias_upper = str(directional_bias).upper()
+            if (signal_side == "BUY" and bias_upper == "BULLISH") or \
+               (signal_side == "SELL" and bias_upper == "BEARISH"):
                 consensus_factors += 1
                 
         # Facteur 2: trend_strength
@@ -423,7 +424,7 @@ class MultiTF_Consensus_Validator(BaseValidator):
                     base_score += 0.04
                 
             # CORRECTION: Bonus alignement MA avec logique directionnelle
-            ma_alignment_score = self._calculate_ma_alignment_directional(signal_side, directional_bias)
+            ma_alignment_score = self._calculate_ma_alignment_directional(signal_side, str(directional_bias) if directional_bias else "NEUTRAL")
             if ma_alignment_score >= 0.9:
                 base_score += self.ma_confluence_bonus
             elif ma_alignment_score >= 0.8:
@@ -562,7 +563,7 @@ class MultiTF_Consensus_Validator(BaseValidator):
             
         # Indicateurs multi-TF requis (au moins 2 sur 4)
         multitf_indicators = [
-            'confluence_score', 'trend_alignment', 'trend_alignment', 'signal_strength'
+            'confluence_score', 'trend_alignment', 'trend_strength', 'signal_strength'
         ]
         
         available_indicators = sum(1 for ind in multitf_indicators 

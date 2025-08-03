@@ -65,7 +65,7 @@ class Global_Trend_Validator(BaseValidator):
                 is_strong_trend = True
             elif regime_confidence and regime_confidence >= self.min_regime_confidence:
                 is_strong_trend = True
-            elif trend_strength and trend_strength in ['STRONG', 'VERY_STRONG']:
+            elif trend_strength and trend_strength.lower() in ['strong', 'very_strong']:
                 is_strong_trend = True
                 
             # Si pas de tendance forte, on accepte le signal
@@ -109,14 +109,14 @@ class Global_Trend_Validator(BaseValidator):
             bullish_regimes = ['TRENDING_BULL', 'BREAKOUT_BULL', 'BULLISH']
             bearish_regimes = ['TRENDING_BEAR', 'BREAKOUT_BEAR', 'BEARISH']
             
-            if market_regime in bullish_regimes or trend_alignment > (self.min_trend_alignment_bull / 100):
+            if market_regime in bullish_regimes or trend_alignment > self.min_trend_alignment_bull:
                 # Tendance haussière forte : rejeter les SELL
                 if signal_side == 'SELL':
                     logger.debug(f"Signal SELL rejeté en tendance haussière forte "
                                f"(regime={market_regime}, alignment={trend_alignment:.1f})")
                     return False
                     
-            elif market_regime in bearish_regimes or trend_alignment < (self.min_trend_alignment_bear / 100):
+            elif market_regime in bearish_regimes or trend_alignment < self.min_trend_alignment_bear:
                 # Tendance baissière forte : rejeter les BUY
                 if signal_side == 'BUY':
                     logger.debug(f"Signal BUY rejeté en tendance baissière forte "
@@ -143,7 +143,7 @@ class Global_Trend_Validator(BaseValidator):
                 
             market_regime = self.context.get('market_regime')
             trend_alignment = self.context.get('trend_alignment', 0)
-            regime_confidence = self.context.get('regime_conf', 50)
+            regime_confidence = self.context.get('regime_confidence', 50)
             adx_value = self.context.get('adx_14', 20)
             
             # Filtre EMA pour le score

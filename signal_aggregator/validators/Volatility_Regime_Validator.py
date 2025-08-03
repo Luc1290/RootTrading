@@ -248,7 +248,7 @@ class Volatility_Regime_Validator(BaseValidator):
             base_score = 0.5  # Score de base si validé
             
             # CORRECTION: Scoring selon régime de volatilité avec logique directionnelle
-            if volatility_regime == "medium" or volatility_regime == "normal":
+            if volatility_regime == "normal":
                 base_score += 0.2  # Régime optimal pour tous
             elif volatility_regime == "low":
                 if bb_expansion:
@@ -399,7 +399,7 @@ class Volatility_Regime_Validator(BaseValidator):
                 
                 if bb_squeeze and bb_expansion:
                     condition = "breakout de compression"
-                elif volatility_regime == "medium":
+                elif volatility_regime == "normal":
                     condition = "volatilité optimale"
                 elif atr_percentile >= self.extreme_atr_percentile:
                     condition = "haute volatilité maîtrisée"

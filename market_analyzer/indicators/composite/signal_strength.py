@@ -84,10 +84,11 @@ def calculate_signal_strength(indicators: Dict) -> str:
 def _trend_strength_to_score(trend_strength: str) -> float:
     """Convertit trend_strength string en score 0-1."""
     strength_map = {
-        'VERY_STRONG': 1.0,
-        'STRONG': 0.8,
-        'MODERATE': 0.6,
-        'WEAK': 0.3,
-        'VERY_WEAK': 0.1
+        'very_strong': 1.0,
+        'strong': 0.8,
+        'moderate': 0.6,
+        'weak': 0.3,
+        'very_weak': 0.1,
+        'absent': 0.1  # Valeur spéciale pour trend_strength absent
     }
-    return strength_map.get(str(trend_strength).upper(), 0.5)
+    return strength_map.get(str(trend_strength).lower(), 0.5)

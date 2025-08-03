@@ -203,9 +203,9 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
                 rel_vol = float(relative_volume)
                 vol_qual = float(volume_quality)
                 # Volume élevé mais qualité moyenne = distribution
-                if rel_vol >= 2.0 and vol_qual <= 0.6:
+                if rel_vol >= 2.0 and vol_qual <= 60:
                     dump_score += 0.15
-                    dump_indicators.append(f"Volume distribution ({rel_vol:.1f}x, qualité {vol_qual:.1f})")
+                    dump_indicators.append(f"Volume distribution ({rel_vol:.1f}x, qualité {vol_qual:.0f})")
             except (ValueError, TypeError):
                 pass
                 
@@ -302,7 +302,7 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
             if pattern_confidence is not None:
                 try:
                     pat_conf = float(pattern_confidence)
-                    if pat_conf > 0.7:
+                    if pat_conf > 70:
                         confidence_boost += 0.1
                         reason += " + pattern confirmé"
                 except (ValueError, TypeError):
@@ -319,7 +319,7 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
             if confluence_score is not None:
                 try:
                     conf_score = float(confluence_score)
-                    if conf_score > 0.6:
+                    if conf_score > 60:
                         confidence_boost += 0.1
                 except (ValueError, TypeError):
                     pass

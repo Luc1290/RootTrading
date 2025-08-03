@@ -161,13 +161,14 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         trend_strength = values.get('trend_strength')
         
         if directional_bias and trend_strength is not None:
-            # trend_strength selon schéma: WEAK, MODERATE, STRONG, VERY_STRONG
-            if trend_strength in ['WEAK']:
+            # trend_strength selon schéma: weak/moderate/strong/very_strong/extreme
+            trend_str = str(trend_strength).lower()
+            if trend_str in ['weak', 'absent']:
                 reversal_score += 0.2
-                reversal_indicators.append(f"Trend faible ({trend_strength})")
-            elif trend_strength in ['MODERATE']:
+                reversal_indicators.append(f"Trend faible ({trend_str})")
+            elif trend_str == 'moderate':
                 reversal_score += 0.1
-                reversal_indicators.append(f"Trend modéré ({trend_strength})")
+                reversal_indicators.append(f"Trend modéré ({trend_str})")
                     
                 # Directional bias donne la direction attendue du reversal
                 if directional_bias == 'BULLISH':
@@ -213,13 +214,13 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
             try:
                 momentum_val = float(momentum_score)
                 
-                # Momentum change significatif
-                if reversal_direction == 'bullish' and momentum_val > self.momentum_reversal_threshold:
+                # Momentum change significatif (format 0-100, 50=neutre)
+                if reversal_direction == 'bullish' and momentum_val > 55:
                     reversal_score += 0.2
-                    reversal_indicators.append(f"Momentum haussier ({momentum_val:.2f})")
-                elif reversal_direction == 'bearish' and momentum_val < -self.momentum_reversal_threshold:
+                    reversal_indicators.append(f"Momentum haussier ({momentum_val:.0f})")
+                elif reversal_direction == 'bearish' and momentum_val < 45:
                     reversal_score += 0.2
-                    reversal_indicators.append(f"Momentum baissier ({momentum_val:.2f})")
+                    reversal_indicators.append(f"Momentum baissier ({momentum_val:.0f})")
                     
             except (ValueError, TypeError):
                 pass
@@ -466,27 +467,27 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                         trend_align_val = float(trend_alignment)
                         # Vérifier cohérence entre confluence, trend alignment et direction
                         if signal_side == "BUY" and directional_bias == "BULLISH":
-                            confluence_coherent = trend_align_val > 0.5  # Alignement haussier requis
+                            confluence_coherent = trend_align_val > 0.2  # Alignement haussier requis (format décimal)
                         elif signal_side == "SELL" and directional_bias == "BEARISH":
-                            confluence_coherent = trend_align_val < 0.5  # Alignement baissier requis
+                            confluence_coherent = trend_align_val < -0.2  # Alignement baissier requis (format décimal)
                         else:
                             confluence_coherent = False  # Incohérence direction
                     except (ValueError, TypeError):
                         pass
                 
-                # Bonus confluence adapté selon cohérence
-                if conf_val > 0.8 and confluence_coherent:
+                # Bonus confluence adapté selon cohérence (format 0-100)
+                if conf_val > 80 and confluence_coherent:
                     confidence_boost += 0.12  # Confluence très élevée et cohérente
-                    reason += " + très haute confluence cohérente"
-                elif conf_val > 0.7 and confluence_coherent:
+                    reason += f" + très haute confluence cohérente ({conf_val:.0f})"
+                elif conf_val > 70 and confluence_coherent:
                     confidence_boost += 0.10  # Confluence élevée et cohérente
-                    reason += " + haute confluence cohérente"
-                elif conf_val > 0.6 and confluence_coherent:
+                    reason += f" + haute confluence cohérente ({conf_val:.0f})"
+                elif conf_val > 60 and confluence_coherent:
                     confidence_boost += 0.06  # Confluence modérée et cohérente
-                    reason += " + confluence modérée"
-                elif conf_val > 0.7 and not confluence_coherent:
+                    reason += f" + confluence modérée ({conf_val:.0f})"
+                elif conf_val > 70 and not confluence_coherent:
                     confidence_boost += 0.05  # Confluence élevée mais incohérente
-                    reason += " + confluence élevée (partielle)"
+                    reason += f" + confluence élevée (partielle) ({conf_val:.0f})"
                 # Pas de bonus si confluence faible ou très incohérente
                     
             except (ValueError, TypeError):

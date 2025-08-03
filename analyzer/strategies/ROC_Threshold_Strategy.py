@@ -517,10 +517,10 @@ class ROC_Threshold_Strategy(BaseStrategy):
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
-                if confluence > 0.7:
+                if confluence > 70:
                     confidence_boost += 0.10
                     reason += " + confluence élevée"
-                elif confluence > 0.5:
+                elif confluence > 50:
                     confidence_boost += 0.05
                     reason += " + confluence modérée"
             except (ValueError, TypeError):

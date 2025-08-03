@@ -41,7 +41,7 @@ class Range_Validator(BaseValidator):
         self.safe_range_zone_max = 0.75      # 75% zone sûre maximum
         
         # Paramètres breakout
-        self.breakout_probability_max = 0.7  # Probabilité breakout max
+        self.breakout_probability_max = 70  # Probabilité breakout max (format 0-100)
         self.breakout_strength_threshold = 0.6  # Force breakout seuil
         self.false_breakout_ratio = 0.3      # Ratio faux breakouts
         
@@ -53,7 +53,7 @@ class Range_Validator(BaseValidator):
         # Paramètres tests des bornes
         self.min_boundary_tests = 2          # Tests minimum des bornes
         self.optimal_boundary_tests = 4      # Tests optimaux des bornes
-        self.boundary_respect_ratio = 0.7    # Ratio respect des bornes
+        self.boundary_respect_ratio = 70     # Ratio respect des bornes (format 0-100)
         
         # Bonus/malus
         self.optimal_range_bonus = 0.20      # Bonus range optimal
@@ -214,7 +214,7 @@ class Range_Validator(BaseValidator):
                     if signal_confidence < 0.6:
                         return False
                         
-            # 5. Validation probabilité de breakout
+            # 5. Validation probabilité de breakout (format 0-100)
             if breakout_probability is not None and breakout_probability > self.breakout_probability_max:
                 logger.debug(f"{self.name}: Probabilité breakout élevée ({self._safe_format(breakout_probability, '.2f')}) pour {self.symbol}")
                 if not self._is_breakout_strategy(signal_strategy):
@@ -254,8 +254,8 @@ class Range_Validator(BaseValidator):
                 if signal_confidence < 0.6:
                     return False
                     
-            # 9. Validation respect des bornes
-            if boundary_respect_rate is not None and boundary_respect_rate < self.boundary_respect_ratio:
+            # 9. Validation respect des bornes (format 0-100)
+            if boundary_respect_rate is not None and (boundary_respect_rate / 100) < (self.boundary_respect_ratio / 100):
                 logger.debug(f"{self.name}: Faible respect des bornes ({self._safe_format(boundary_respect_rate, '.2f')}) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
@@ -435,8 +435,8 @@ class Range_Validator(BaseValidator):
             range_age_bars = int(self.context.get('regime_duration', 20)) if self.context.get('regime_duration') is not None else 20
             # boundary_test_count → pivot_count (nombre de pivots = tests des bornes)
             boundary_test_count = int(self.context.get('pivot_count', 2)) if self.context.get('pivot_count') is not None else 2
-            # boundary_respect_rate → pattern_confidence
-            boundary_respect_rate = float(self.context.get('pattern_confidence', 0.7)) if self.context.get('pattern_confidence') is not None else 0.7
+            # boundary_respect_rate → pattern_confidence (format 0-100)
+            boundary_respect_rate = float(self.context.get('pattern_confidence', 70)) if self.context.get('pattern_confidence') is not None else 70
             # breakout_probability → break_probability (existe déjà!)
             breakout_probability = float(self.context.get('break_probability', 0.5)) if self.context.get('break_probability') is not None else 0.5
             # range_volatility → volatility_regime (catégoriel: 'low', 'normal', 'high')
@@ -492,10 +492,10 @@ class Range_Validator(BaseValidator):
                 elif 0.25 <= range_position <= 0.75:  # Zone sûre
                     base_score += 0.08
                     
-            # Bonus force et tests des bornes
-            if boundary_respect_rate >= 0.8:
+            # Bonus force et tests des bornes (format 0-100)
+            if boundary_respect_rate >= 80:
                 base_score += self.strong_boundaries_bonus
-            elif boundary_respect_rate >= 0.7:
+            elif boundary_respect_rate >= 70:
                 base_score += 0.12
                 
             if boundary_test_count >= self.optimal_boundary_tests:
@@ -548,9 +548,9 @@ class Range_Validator(BaseValidator):
                 )
                 if movement_coherence:
                     # Bonus pour cohérence directionnelle du mouvement
-                    if signal_side == "BUY" and range_movement_direction in ["bullish", "up"]:
+                    if signal_side == "BUY" and range_movement_direction.upper() in ["BULLISH", "UP"]:
                         base_score += 0.08  # BUY avec mouvement haussier
-                    elif signal_side == "SELL" and range_movement_direction in ["bearish", "down"]:
+                    elif signal_side == "SELL" and range_movement_direction.upper() in ["BEARISH", "DOWN"]:
                         base_score += 0.08  # SELL avec mouvement baissier
                 else:
                     # Malus pour incohérence directionnelle

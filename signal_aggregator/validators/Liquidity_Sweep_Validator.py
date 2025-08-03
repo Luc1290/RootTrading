@@ -29,8 +29,8 @@ class Liquidity_Sweep_Validator(BaseValidator):
         
         # Paramètres support/résistance
         self.min_support_strength = 0.3     # Force minimum support/résistance
-        self.min_break_probability = 20    # Probabilité cassure minimum
-        self.max_break_probability = 80    # Maximum (au-delà = vraie cassure)
+        self.min_break_probability = 0.20    # Probabilité cassure minimum
+        self.max_break_probability = 0.80    # Maximum (au-delà = vraie cassure)
         
         # Paramètres volume
         self.min_volume_spike = 1.5         # Volume 50% au-dessus normale
@@ -341,7 +341,7 @@ class Liquidity_Sweep_Validator(BaseValidator):
                 base_score += 0.10  # Support/résistance fort
                 
             # Bonus probabilité cassure dans zone optimale
-            if 30 <= break_probability <= 70:
+            if 0.30 <= break_probability <= 0.70:
                 # Zone optimale pour sweep (ni trop sûr, ni trop risqué)
                 optimal_center = 0.5
                 distance_from_optimal = abs(break_probability - optimal_center)

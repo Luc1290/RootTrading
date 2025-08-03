@@ -130,24 +130,31 @@ class PPO_Crossover_Strategy(BaseStrategy):
                 except (ValueError, TypeError):
                     pass
                     
-            # Ajustement avec momentum_score
+            # Ajustement avec momentum_score (format 0-100, 50=neutre)
             momentum_score = values.get('momentum_score')
             if momentum_score is not None:
                 try:
                     momentum_val = float(momentum_score)
-                    if (signal_side == "BUY" and momentum_val > 0) or \
-                       (signal_side == "SELL" and momentum_val < 0):
+                    if (signal_side == "BUY" and momentum_val > 55) or \
+                       (signal_side == "SELL" and momentum_val < 45):
                         confidence_boost += 0.1
                         reason += " avec momentum favorable"
                 except (ValueError, TypeError):
                     pass
                     
-            # Ajustement avec trend_strength
+            # Ajustement avec trend_strength (VARCHAR: weak/moderate/strong/very_strong/extreme)
             trend_strength = values.get('trend_strength')
             if trend_strength is not None:
-                if trend_strength in ['STRONG', 'VERY_STRONG']:  # Tendance forte selon schéma
+                trend_str = str(trend_strength).lower()
+                if trend_str in ['extreme', 'very_strong']:
+                    confidence_boost += 0.15
+                    reason += f" et tendance {trend_str}"
+                elif trend_str == 'strong':
                     confidence_boost += 0.1
-                    reason += " et tendance forte"
+                    reason += f" et tendance {trend_str}"
+                elif trend_str == 'moderate':
+                    confidence_boost += 0.05
+                    reason += f" et tendance {trend_str}"
                     
             # Ajustement avec directional_bias
             directional_bias = values.get('directional_bias')
@@ -157,22 +164,30 @@ class PPO_Crossover_Strategy(BaseStrategy):
                     confidence_boost += 0.1
                     reason += " confirmé par bias directionnel"
                     
-            # Ajustement avec confluence_score
+            # Ajustement avec confluence_score (format 0-100)
             confluence_score = values.get('confluence_score')
             if confluence_score is not None:
                 try:
                     confluence_val = float(confluence_score)
-                    if confluence_val > 0.7:
+                    if confluence_val > 70:
                         confidence_boost += 0.15
-                        reason += " avec haute confluence"
+                        reason += f" avec haute confluence ({confluence_val:.0f})"
+                    elif confluence_val > 55:
+                        confidence_boost += 0.10
+                        reason += f" avec confluence modérée ({confluence_val:.0f})"
                 except (ValueError, TypeError):
                     pass
                     
-            # Ajustement avec signal_strength pré-calculé
+            # Ajustement avec signal_strength pré-calculé (VARCHAR: WEAK/MODERATE/STRONG)
             signal_strength_calc = values.get('signal_strength')
             if signal_strength_calc is not None:
-                if signal_strength_calc in ['STRONG', 'VERY_STRONG']:  # Signal fort selon schéma
+                sig_str = str(signal_strength_calc).upper()
+                if sig_str == 'STRONG':
                     confidence_boost += 0.1
+                    reason += " + signal fort"
+                elif sig_str == 'MODERATE':
+                    confidence_boost += 0.05
+                    reason += " + signal modéré"
                     
             # Confirmation avec MACD line trend
             macd_line = values.get('macd_line')

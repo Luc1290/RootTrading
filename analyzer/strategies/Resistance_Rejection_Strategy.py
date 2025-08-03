@@ -335,7 +335,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
             if confluence_score is not None:
                 try:
                     conf_val = float(confluence_score)
-                    if conf_val > 0.7:
+                    if conf_val > 70:
                         confidence_boost += 0.1
                         reason += " + haute confluence"
                 except (ValueError, TypeError):

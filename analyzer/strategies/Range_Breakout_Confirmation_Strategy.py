@@ -527,7 +527,7 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
-                if confluence > 0.7:
+                if confluence > 70:
                     confidence_boost += 0.10
                     reason += " + confluence élevée"
             except (ValueError, TypeError):

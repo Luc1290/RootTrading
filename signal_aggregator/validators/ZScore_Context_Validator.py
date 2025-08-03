@@ -63,7 +63,7 @@ class ZScore_Context_Validator(BaseValidator):
         # Bonus/malus
         self.optimal_zscore_bonus = 0.25        # Bonus Z-Score optimal
         self.statistical_confluence_bonus = 0.20 # Bonus confluence statistique
-        self.context_persistence_bonus = 15   # Bonus persistance contexte
+        self.context_persistence_bonus = 0.15   # Bonus persistance contexte
         self.normality_bonus = 0.12             # Bonus normalité distribution
         self.extreme_zscore_penalty = -0.30     # Pénalité Z-Score extrême
         self.poor_context_penalty = -0.25       # Pénalité contexte défavorable
@@ -201,9 +201,9 @@ class ZScore_Context_Validator(BaseValidator):
                     if signal_confidence < 0.7:
                         return False
                         
-            # 4. Validation significativité statistique
-            if statistical_significance is not None and statistical_significance < 0.05:
-                logger.debug(f"{self.name}: Significativité statistique insuffisante ({self._safe_format(statistical_significance, '.3f')}) pour {self.symbol}")
+            # 4. Validation significativité statistique (pattern_confidence en format 0-100)
+            if statistical_significance is not None and statistical_significance < 5.0:
+                logger.debug(f"{self.name}: Significativité statistique insuffisante ({self._safe_format(statistical_significance, '.1f')}%) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
@@ -254,9 +254,9 @@ class ZScore_Context_Validator(BaseValidator):
                 if signal_confidence < 0.6:
                     return False
                     
-            # 12. Validation fiabilité données
-            if data_reliability_score is not None and data_reliability_score < self.context_reliability_min:
-                logger.debug(f"{self.name}: Fiabilité données insuffisante ({self._safe_format(data_reliability_score, '.2f')}) pour {self.symbol}")
+            # 12. Validation fiabilité données (volume_quality_score en format 0-100)
+            if data_reliability_score is not None and data_reliability_score < (self.context_reliability_min * 100):
+                logger.debug(f"{self.name}: Fiabilité données insuffisante ({self._safe_format(data_reliability_score, '.0f')}%) pour {self.symbol}")
                 if signal_confidence < 0.7:
                     return False
                     

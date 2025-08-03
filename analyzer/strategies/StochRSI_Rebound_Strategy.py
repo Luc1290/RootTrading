@@ -142,15 +142,23 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                     confidence_boost += 0.1
                     reason += " avec momentum favorable"
                     
-            # CORRECTION: Utilisation du trend_strength directionnel
+            # Utilisation du trend_strength (VARCHAR: weak/moderate/strong/very_strong/extreme)
             trend_strength = values.get('trend_strength')
-            if trend_strength and trend_strength in ['STRONG', 'VERY_STRONG']:
-                if signal_side == "BUY":
-                    confidence_boost += 0.12  # Rebond oversold + trend fort = excellent
-                    reason += " et tendance forte haussière"
-                else:  # SELL
-                    confidence_boost += 0.08  # Rebond overbought + trend fort = bon
-                    reason += " et tendance forte baissière"
+            if trend_strength:
+                trend_str = str(trend_strength).lower()
+                if trend_str in ['extreme', 'very_strong']:
+                    if signal_side == "BUY":
+                        confidence_boost += 0.15  # Rebond oversold + trend très fort = excellent
+                        reason += f" et tendance {trend_str} haussière"
+                    else:  # SELL
+                        confidence_boost += 0.10  # Rebond overbought + trend très fort = bon
+                        reason += f" et tendance {trend_str} baissière"
+                elif trend_str == 'strong':
+                    confidence_boost += 0.12 if signal_side == "BUY" else 0.08
+                    reason += f" et tendance {trend_str}"
+                elif trend_str == 'moderate':
+                    confidence_boost += 0.08 if signal_side == "BUY" else 0.05
+                    reason += f" et tendance {trend_str}"
                 
             # Utilisation du directional_bias
             directional_bias = values.get('directional_bias')
@@ -160,18 +168,28 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                     confidence_boost += 0.1
                     reason += " aligné avec bias directionnel"
                     
-            # Utilisation du confluence_score
+            # Utilisation du confluence_score (format 0-100)
             confluence_score = values.get('confluence_score', 0)
-            if confluence_score and confluence_score > 70:
-                confidence_boost += 0.15
-                reason += " avec haute confluence"
+            if confluence_score:
+                if confluence_score > 70:
+                    confidence_boost += 0.15
+                    reason += f" avec haute confluence ({confluence_score:.0f})"
+                elif confluence_score > 55:
+                    confidence_boost += 0.10
+                    reason += f" avec confluence modérée ({confluence_score:.0f})"
                 
-            # Utilisation du signal_strength pré-calculé
+            # Utilisation du signal_strength pré-calculé (VARCHAR: WEAK/MODERATE/STRONG)
             signal_strength_calc = values.get('signal_strength')
-            if signal_strength_calc and signal_strength_calc in ['STRONG', 'VERY_STRONG']:
-                confidence_boost += 0.1
+            if signal_strength_calc:
+                sig_str = str(signal_strength_calc).upper()
+                if sig_str == 'STRONG':
+                    confidence_boost += 0.1
+                    reason += " + signal fort"
+                elif sig_str == 'MODERATE':
+                    confidence_boost += 0.05
+                    reason += " + signal modéré"
                 
-            confidence = self.calculate_confidence(base_confidence, confidence_boost)
+            confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
             strength = self.get_strength_from_confidence(confidence)
             
             return {

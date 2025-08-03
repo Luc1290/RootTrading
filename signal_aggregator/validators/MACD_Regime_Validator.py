@@ -134,17 +134,21 @@ class MACD_Regime_Validator(BaseValidator):
                     logger.debug(f"{self.name}: SELL signal mais MACD trend bullish pour {self.symbol}")
                     return False
                     
-            # 5. Validation croisements récents
-            if macd_signal_cross:
-                # Si croisement récent dans direction opposée, être prudent
-                if signal_side == "BUY" and macd_signal_cross == "bearish":
-                    logger.debug(f"{self.name}: BUY signal mais croisement MACD bearish récent pour {self.symbol}")
-                    if signal_confidence < 0.8:
-                        return False
-                elif signal_side == "SELL" and macd_signal_cross == "bullish":
-                    logger.debug(f"{self.name}: SELL signal mais croisement MACD bullish récent pour {self.symbol}")
-                    if signal_confidence < 0.8:
-                        return False
+            # 5. Validation croisements récents (macd_signal_cross est BOOLEAN)
+            if macd_signal_cross is not None:
+                # macd_signal_cross = True indique un croisement récent
+                # La direction doit être déduite de macd_line vs macd_signal
+                if macd_signal_cross:
+                    # Croisement récent détecté - vérifier cohérence avec signal
+                    macd_above_signal = macd_line > macd_signal
+                    if signal_side == "BUY" and not macd_above_signal:
+                        logger.debug(f"{self.name}: BUY signal mais croisement MACD vers le bas récent pour {self.symbol}")
+                        if signal_confidence < 0.8:
+                            return False
+                    elif signal_side == "SELL" and macd_above_signal:
+                        logger.debug(f"{self.name}: SELL signal mais croisement MACD vers le haut récent pour {self.symbol}")
+                        if signal_confidence < 0.8:
+                            return False
                         
             # 6. Validation position zéro line
             zero_line_favorable = self._check_zero_line_position(signal_side, macd_line)

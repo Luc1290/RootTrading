@@ -152,9 +152,9 @@ class Psychological_Level_Validator(BaseValidator):
                 if signal_confidence < 0.6:
                     return False
                     
-            # 5. Validation force des rebonds
-            if level_bounce_strength is not None and level_bounce_strength < 0.3:
-                logger.debug(f"{self.name}: Rebonds historiques faibles ({self._safe_format(level_bounce_strength, '.2f')}) pour {self.symbol}")
+            # 5. Validation force des rebonds (format 0-100)
+            if level_bounce_strength is not None and level_bounce_strength < 30:
+                logger.debug(f"{self.name}: Rebonds historiques faibles ({self._safe_format(level_bounce_strength, '.0f')}) pour {self.symbol}")
                 if signal_confidence < 0.6:
                     return False
                     
@@ -357,8 +357,8 @@ class Psychological_Level_Validator(BaseValidator):
             psychological_level_type = self.context.get('pattern_detected', 'minor')
             # level_reaction_count → volume_buildup_periods
             level_reaction_count = int(self.context.get('volume_buildup_periods', 2)) if self.context.get('volume_buildup_periods') is not None else 2
-            # level_bounce_strength → momentum_score
-            level_bounce_strength = float(self.context.get('momentum_score', 0.5)) if self.context.get('momentum_score') is not None else 0.5
+            # level_bounce_strength → momentum_score (format 0-100)
+            level_bounce_strength = float(self.context.get('momentum_score', 50)) if self.context.get('momentum_score') is not None else 50
             # distance_to_level -> calculé dynamiquement depuis nearest_support
             current_price = self._get_current_price() or 1.0
             nearest_psychological_level = float(self.context.get('nearest_support', 0)) if self.context.get('nearest_support') is not None else None
@@ -366,8 +366,8 @@ class Psychological_Level_Validator(BaseValidator):
                 distance_to_level = abs(current_price - nearest_psychological_level) / current_price
             else:
                 distance_to_level = 0.01
-            # psychological_confluence_score → confluence_score
-            psychological_confluence_score = float(self.context.get('confluence_score', 0.5)) if self.context.get('confluence_score') is not None else 0.5
+            # psychological_confluence_score → confluence_score (format 0-100)
+            psychological_confluence_score = float(self.context.get('confluence_score', 50)) if self.context.get('confluence_score') is not None else 50
             # last_reaction_bars → regime_duration
             last_reaction_bars = int(self.context.get('regime_duration', 50)) if self.context.get('regime_duration') is not None else 50
             
@@ -446,10 +446,10 @@ class Psychological_Level_Validator(BaseValidator):
             elif level_reaction_count >= self.min_reaction_count + 1:
                 base_score += 0.10
                 
-            # Bonus force rebonds
-            if level_bounce_strength >= 0.7:
+            # Bonus force rebonds (format 0-100)
+            if level_bounce_strength >= 70:
                 base_score += 0.12  # Rebonds très forts
-            elif level_bounce_strength >= 0.5:
+            elif level_bounce_strength >= 50:
                 base_score += 0.08  # Rebonds forts
                 
             # Bonus proximité optimale

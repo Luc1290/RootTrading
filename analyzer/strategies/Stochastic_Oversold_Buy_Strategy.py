@@ -423,10 +423,10 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
             
         # Volatilité
         volatility_regime = values.get('volatility_regime')
-        if volatility_regime in ["HIGH", "EXTREME"]:
+        if volatility_regime == "high":
             confidence_boost += 0.05  # Haute volatilité = rebonds plus forts
             reason += " + volatilité élevée"
-        elif volatility_regime == "NORMAL":
+        elif volatility_regime == "normal":
             confidence_boost += 0.03
             reason += " + volatilité normale"
             
@@ -436,7 +436,7 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         if pattern_detected and pattern_confidence is not None:
             try:
                 confidence = float(pattern_confidence)
-                if confidence > 0.7:
+                if confidence > 70:
                     confidence_boost += 0.08
                     reason += " + pattern détecté"
             except (ValueError, TypeError):
@@ -447,10 +447,10 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
-                if confluence > 0.7:
+                if confluence > 70:
                     confidence_boost += 0.10
                     reason += " + confluence élevée"
-                elif confluence > 0.5:
+                elif confluence > 50:
                     confidence_boost += 0.05
                     reason += " + confluence modérée"
             except (ValueError, TypeError):

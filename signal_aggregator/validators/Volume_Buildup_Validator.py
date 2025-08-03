@@ -110,8 +110,9 @@ class Volume_Buildup_Validator(BaseValidator):
                 volume_buildup_bars = int(self.context.get('volume_buildup_periods', 0)) if self.context.get('volume_buildup_periods') is not None else None
                 # volume_buildup_slope → trend_angle
                 volume_buildup_slope = float(self.context.get('trend_angle', 0)) if self.context.get('trend_angle') is not None else None
-                # volume_buildup_consistency → volume_quality_score
-                volume_buildup_consistency = float(self.context.get('volume_quality_score', 0)) if self.context.get('volume_quality_score') is not None else None
+                # volume_buildup_consistency → volume_quality_score (format 0-100, normaliser vers 0-1)
+                volume_quality_raw = self.context.get('volume_quality_score')
+                volume_buildup_consistency = float(volume_quality_raw) / 100.0 if volume_quality_raw is not None and volume_quality_raw > 1 else float(volume_quality_raw) if volume_quality_raw is not None else None
                 
                 # Liquidité
                 # liquidity_score → trade_intensity
@@ -165,14 +166,15 @@ class Volume_Buildup_Validator(BaseValidator):
                 if signal_confidence < 0.7:
                     return False
                     
-            # 3. Validation accumulation/distribution selon signal
+            # 3. Validation accumulation/distribution selon signal (ad_line peut être positif/négatif)
             if accumulation_distribution_score is not None:
-                if signal_side == "BUY" and accumulation_distribution_score < self.min_accumulation_score:
-                    logger.debug(f"{self.name}: Score accumulation insuffisant ({self._safe_format(accumulation_distribution_score, '.2f')}) pour BUY {self.symbol}")
+                # ad_line: valeurs positives = accumulation, négatives = distribution
+                if signal_side == "BUY" and accumulation_distribution_score < 0:
+                    logger.debug(f"{self.name}: A/D Line négative ({self._safe_format(accumulation_distribution_score, '.2f')}) défavorable pour BUY {self.symbol}")
                     if signal_confidence < 0.7:
                         return False
-                elif signal_side == "SELL" and accumulation_distribution_score > -self.min_accumulation_score:
-                    logger.debug(f"{self.name}: Score distribution insuffisant ({self._safe_format(accumulation_distribution_score, '.2f')}) pour SELL {self.symbol}")
+                elif signal_side == "SELL" and accumulation_distribution_score > 0:
+                    logger.debug(f"{self.name}: A/D Line positive ({self._safe_format(accumulation_distribution_score, '.2f')}) défavorable pour SELL {self.symbol}")
                     if signal_confidence < 0.7:
                         return False
                         
@@ -236,22 +238,26 @@ class Volume_Buildup_Validator(BaseValidator):
                 if signal_confidence < 0.6:
                     return False
                     
-            # 9. Validation money flow
+            # 9. Validation money flow (mfi_14: format 0-100, 50=neutre)
             if money_flow_index is not None:
-                if signal_side == "BUY" and money_flow_index < self.min_money_flow:
-                    logger.debug(f"{self.name}: Money flow insuffisant ({self._safe_format(money_flow_index, '.2f')}) pour BUY {self.symbol}")
+                # Conversion si nécessaire: MFI peut être 0-100 ou 0-1
+                mfi_norm = money_flow_index / 100.0 if money_flow_index > 1 else money_flow_index
+                if signal_side == "BUY" and mfi_norm < self.min_money_flow:
+                    logger.debug(f"{self.name}: Money flow insuffisant ({self._safe_format(mfi_norm, '.2f')}) pour BUY {self.symbol}")
                     if signal_confidence < 0.6:
                         return False
-                elif signal_side == "SELL" and money_flow_index > (1 - self.min_money_flow):
-                    logger.debug(f"{self.name}: Money flow excessif ({self._safe_format(money_flow_index, '.2f')}) pour SELL {self.symbol}")
+                elif signal_side == "SELL" and mfi_norm > (1 - self.min_money_flow):
+                    logger.debug(f"{self.name}: Money flow excessif ({self._safe_format(mfi_norm, '.2f')}) pour SELL {self.symbol}")
                     if signal_confidence < 0.6:
                         return False
                         
-            # 10. Validation qualité volume
-            if volume_quality_score is not None and volume_quality_score < self.min_volume_quality:
-                logger.debug(f"{self.name}: Qualité volume insuffisante ({self._safe_format(volume_quality_score, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.5:
-                    return False
+            # 10. Validation qualité volume (format 0-100)
+            if volume_quality_score is not None:
+                quality_norm = volume_quality_score / 100.0 if volume_quality_score > 1 else volume_quality_score
+                if quality_norm < self.min_volume_quality:
+                    logger.debug(f"{self.name}: Qualité volume insuffisante ({self._safe_format(quality_norm, '.2f')}) pour {self.symbol}")
+                    if signal_confidence < 0.5:
+                        return False
                     
             # 11. Validation volatilité volume
             if volume_volatility is not None and volume_volatility > self.max_volume_volatility:
@@ -333,8 +339,9 @@ class Volume_Buildup_Validator(BaseValidator):
             buy_sell_pressure_raw = self.context.get('volume_pattern', 'NORMAL')
             buy_sell_pressure = self._convert_volume_pattern_to_pressure(str(buy_sell_pressure_raw))
             volume_buildup_bars = int(self.context.get('volume_buildup_periods', 0)) if self.context.get('volume_buildup_periods') is not None else 0
-            # volume_buildup_consistency → volume_quality_score
-            volume_buildup_consistency = float(self.context.get('volume_quality_score', 0.5)) if self.context.get('volume_quality_score') is not None else 0.5
+            # volume_buildup_consistency → volume_quality_score (format 0-100, normaliser vers 0-1)
+            volume_quality_raw = self.context.get('volume_quality_score')
+            volume_buildup_consistency = float(volume_quality_raw) / 100.0 if volume_quality_raw is not None and volume_quality_raw > 1 else float(volume_quality_raw) if volume_quality_raw is not None else 0.5
             # liquidity_score → trade_intensity
             liquidity_score = float(self.context.get('trade_intensity', 50.0)) if self.context.get('trade_intensity') is not None else 50.0
             # money_flow_index → mfi_14 (existe déjà!)
@@ -359,16 +366,16 @@ class Volume_Buildup_Validator(BaseValidator):
             elif volume_trend and volume_trend.upper() in ['NORMAL', 'STABLE', 'MODERATE']:
                 base_score += 0.10  # Trend volume positif
                 
-            # Bonus accumulation/distribution selon signal
+            # Bonus accumulation/distribution selon signal (ad_line: positif=accumulation, négatif=distribution)
             if signal_side == "BUY":
-                if accumulation_distribution_score >= self.strong_accumulation_threshold:
+                if accumulation_distribution_score > 100:  # Forte accumulation
                     base_score += self.strong_accumulation_bonus
-                elif accumulation_distribution_score >= self.min_accumulation_score + 0.2:
+                elif accumulation_distribution_score > 0:  # Accumulation modérée
                     base_score += 0.15
             elif signal_side == "SELL":
-                if accumulation_distribution_score <= -self.strong_accumulation_threshold:
+                if accumulation_distribution_score < -100:  # Forte distribution
                     base_score += self.strong_accumulation_bonus
-                elif accumulation_distribution_score <= -self.min_accumulation_score - 0.2:
+                elif accumulation_distribution_score < 0:  # Distribution modérée
                     base_score += 0.15
                     
             # Bonus buy/sell pressure
@@ -395,16 +402,18 @@ class Volume_Buildup_Validator(BaseValidator):
             elif liquidity_score >= 50.0:
                 base_score += 0.08
                 
-            # Bonus money flow
-            if signal_side == "BUY" and money_flow_index >= self.strong_money_flow:
+            # Bonus money flow (mfi_14: format 0-100, normaliser)
+            mfi_norm = money_flow_index / 100.0 if money_flow_index > 1 else money_flow_index
+            if signal_side == "BUY" and mfi_norm >= self.strong_money_flow:
                 base_score += 0.12  # Money flow très favorable
-            elif signal_side == "SELL" and money_flow_index <= (1 - self.strong_money_flow):
+            elif signal_side == "SELL" and mfi_norm <= (1 - self.strong_money_flow):
                 base_score += 0.12
                 
-            # Bonus qualité volume
-            if volume_quality_score >= 0.8:
+            # Bonus qualité volume (format 0-100, normaliser)
+            quality_norm = volume_quality_score / 100.0 if volume_quality_score > 1 else volume_quality_score
+            if quality_norm >= 0.8:
                 base_score += 0.10  # Volume de très haute qualité
-            elif volume_quality_score >= 0.6:
+            elif quality_norm >= 0.6:
                 base_score += 0.06
                 
             return max(0.0, min(1.0, base_score))

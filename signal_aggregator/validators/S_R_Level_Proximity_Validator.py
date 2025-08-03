@@ -286,8 +286,10 @@ class S_R_Level_Proximity_Validator(BaseValidator):
             current_price = float(self.data.get('close', signal.get('price', 0)))
             nearest_support = float(self.context.get('nearest_support', 0)) if self.context.get('nearest_support') is not None else None
             nearest_resistance = float(self.context.get('nearest_resistance', 0)) if self.context.get('nearest_resistance') is not None else None
-            support_strength = float(self.context.get('support_strength', 0)) if self.context.get('support_strength') is not None else None
-            resistance_strength = float(self.context.get('resistance_strength', 0)) if self.context.get('resistance_strength') is not None else None
+            support_strength_value = self.context.get('support_strength')
+            support_strength = self._convert_strength_to_score(str(support_strength_value)) if support_strength_value is not None else None
+            resistance_strength_value = self.context.get('resistance_strength')
+            resistance_strength = self._convert_strength_to_score(str(resistance_strength_value)) if resistance_strength_value is not None else None
             
             if is_valid:
                 if signal_side == "BUY" and nearest_support is not None:

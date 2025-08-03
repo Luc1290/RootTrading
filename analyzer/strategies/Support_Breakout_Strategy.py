@@ -307,12 +307,12 @@ class Support_Breakout_Strategy(BaseStrategy):
         if volume_quality is not None:
             try:
                 volume_quality_score = float(volume_quality)
-                if volume_quality_score >= 0.8:
+                if volume_quality_score >= 80:
                     volume_score += 0.2
-                    volume_indicators.append(f"Volume qualité élevée ({volume_quality_score:.2f})")
-                elif volume_quality_score >= self.volume_quality_threshold:
+                    volume_indicators.append(f"Volume qualité élevée ({volume_quality_score:.0f})")
+                elif volume_quality_score >= 60:  # Ajuster le seuil pour format 0-100
                     volume_score += 0.1
-                    volume_indicators.append(f"Volume qualité correcte ({volume_quality_score:.2f})")
+                    volume_indicators.append(f"Volume qualité correcte ({volume_quality_score:.0f})")
             except (ValueError, TypeError):
                 pass
                 

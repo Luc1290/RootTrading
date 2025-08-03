@@ -406,7 +406,7 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
             if confluence_score is not None:
                 try:
                     conf_val = float(confluence_score)
-                    if conf_val > 0.6:
+                    if conf_val > 60:
                         confidence_boost += 0.1
                         reason += " + haute confluence"
                 except (ValueError, TypeError):

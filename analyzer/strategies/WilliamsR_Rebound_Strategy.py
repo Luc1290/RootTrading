@@ -326,7 +326,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_confluent': confluence_score >= 15,
+            'is_confluent': confluence_score >= 15,  # Score confluence oscillateurs en format 0-100
             'score': confluence_score,
             'indicators': confluence_indicators
         }
