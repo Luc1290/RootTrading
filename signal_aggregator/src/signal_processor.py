@@ -34,8 +34,8 @@ class SignalProcessor:
         # Initialisation du système hiérarchique
         self.hierarchical_validator = HierarchicalValidator()
         
-        # Configuration des seuils de base
-        self.min_strategies_consensus = 2    # Minimum de stratégies pour consensus
+        # Configuration des seuils de base - ANTI-SURTRADING
+        self.min_strategies_consensus = 4    # Minimum de 4 stratégies pour consensus (augmenté de 2)
         
         # Statistiques de validation
         self.stats = {
@@ -312,14 +312,21 @@ class SignalProcessor:
             has_consensus = signal.get('metadata', {}).get('has_consensus', False)
             strategy_count = signal.get('metadata', {}).get('strategy_count', 1)
             
-            # Logique de consensus unifié
+            # Logique de consensus unifié RENFORCÉE - Plus de signaux individuels libres
             if not is_individual:  # Signal de batch
                 if not has_consensus:
                     logger.info(f"Signal REJETÉ pour manque de consensus: {signal['strategy']} {symbol} "
                               f"{signal['side']} - {strategy_count} stratégies < {self.min_strategies_consensus} requis")
                     self.stats['signals_rejected'] += 1
                     return None
-            # Les signaux individuels passent toujours cette étape
+            else:  # Signal individuel - NOUVEAU FILTRE
+                # NOUVEAU: Les signaux individuels doivent avoir une confiance minimum
+                individual_min_confidence = 0.6  # 60% minimum pour signal individuel
+                if signal.get('confidence', 0) < individual_min_confidence:
+                    logger.info(f"Signal individuel REJETÉ pour confiance insuffisante: {signal['strategy']} {symbol} "
+                              f"{signal['side']} - confidence={signal.get('confidence', 0):.1%} < {individual_min_confidence:.1%}")
+                    self.stats['signals_rejected'] += 1
+                    return None
             
             # Récupération du contexte de marché
             context = self.context_manager.get_market_context(symbol, timeframe)
@@ -362,9 +369,9 @@ class SignalProcessor:
                     signal, detailed_analysis, validation_results, final_score
                 )
                 
-                # Filtre final : aggregator_confidence >= 70%
+                # Filtre final RENFORCÉ : aggregator_confidence >= 80% (augmenté de 70%)
                 aggregator_confidence = validated_signal['metadata'].get('aggregator_confidence', 0.0)
-                min_aggregator_confidence = 0.7
+                min_aggregator_confidence = 0.8
                 
                 if aggregator_confidence < min_aggregator_confidence:
                     logger.info(f"Signal REJETÉ pour aggregator_confidence insuffisante: {signal['strategy']} {symbol} "

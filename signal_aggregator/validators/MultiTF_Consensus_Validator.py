@@ -27,26 +27,26 @@ class MultiTF_Consensus_Validator(BaseValidator):
         self.name = "MultiTF_Consensus_Validator"
         self.category = "technical"
         
-        # Paramètres consensus multi-TF
-        self.min_consensus_score = 0.6      # Score consensus minimum
-        self.min_tf_alignment = 0.65        # Alignement TF minimum
-        self.min_ma_alignment = 0.7         # Alignement MA minimum
-        self.min_signal_strength = 0.55     # Force signal minimum
+        # Paramètres consensus multi-TF DURCIS
+        self.min_consensus_score = 0.75     # Score consensus minimum relevé (75%)
+        self.min_tf_alignment = 0.70        # Alignement TF minimum relevé (70%)
+        self.min_ma_alignment = 0.75        # Alignement MA minimum relevé (75%)
+        self.min_signal_strength = 0.65     # Force signal minimum relevé (65%)
         
-        # Paramètres directionnels
+        # Paramètres directionnels DURCIS
         self.directional_consensus_weight = 0.3   # Poids consensus directionnel
-        self.trend_consistency_min = 0.6          # Cohérence tendance minimum
+        self.trend_consistency_min = 0.7          # Cohérence tendance minimum relevé (70%)
         
-        # Seuils critiques
-        self.critical_divergence_threshold = 0.3  # Seuil divergence crítica
-        self.strong_consensus_threshold = 0.8     # Consensus très fort
-        self.perfect_alignment_threshold = 0.9    # Alignement parfait
+        # Seuils critiques DURCIS
+        self.critical_divergence_threshold = 0.25 # Seuil divergence critique réduit
+        self.strong_consensus_threshold = 0.85    # Consensus très fort relevé (85%)
+        self.perfect_alignment_threshold = 0.92   # Alignement parfait relevé (92%)
         
-        # Bonus/malus
-        self.perfect_consensus_bonus = 0.30       # Bonus consensus parfait
-        self.strong_alignment_bonus = 0.20        # Bonus alignement fort
-        self.divergence_penalty = -0.25           # Pénalité divergence
-        self.ma_confluence_bonus = 0.15           # Bonus confluence MA
+        # Bonus/malus RÉDUITS
+        self.perfect_consensus_bonus = 0.18       # Bonus consensus parfait réduit (18%)
+        self.strong_alignment_bonus = 0.12        # Bonus alignement fort réduit (12%)
+        self.divergence_penalty = -0.15           # Pénalité divergence réduite (-15%)
+        self.ma_confluence_bonus = 0.09           # Bonus confluence MA réduit (9%)
         
     def validate_signal(self, signal: Dict[str, Any]) -> bool:
         """
@@ -104,31 +104,31 @@ class MultiTF_Consensus_Validator(BaseValidator):
             # 1. Validation score consensus principal
             if consensus_score is not None and consensus_score < self.min_consensus_score:
                 logger.debug(f"{self.name}: Consensus score insuffisant ({self._safe_format(consensus_score, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.8:  # Accepter seulement si très confiant
+                if signal_confidence < 0.85:  # Plus strict - accepter seulement si très très confiant
                     return False
                     
             # 2. Validation alignement timeframes
             if tf_alignment is not None and tf_alignment < self.min_tf_alignment:
                 logger.debug(f"{self.name}: Alignement TF insuffisant ({self._safe_format(tf_alignment, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.7:
+                if signal_confidence < 0.80:  # Plus strict
                     return False
                     
             # 3. Validation alignement tendance
             if trend_alignment is not None and trend_alignment < self.min_ma_alignment:
                 logger.debug(f"{self.name}: Alignement tendance insuffisant ({self._safe_format(trend_alignment, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.6:
+                if signal_confidence < 0.75:  # Plus strict - aligné avec signal_aggregator
                     return False
                     
             # 4. Validation force signal multi-TF
             if signal_strength is not None and signal_strength < self.min_signal_strength:
                 logger.debug(f"{self.name}: Force signal insuffisante ({self._safe_format(signal_strength, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.7:
+                if signal_confidence < 0.75:  # Plus strict
                     return False
                     
             # 5. Validation alignement moyennes mobiles calculé
             if ma_alignment_score < self.min_ma_alignment:
                 logger.debug(f"{self.name}: Alignement MA calculé insuffisant ({self._safe_format(ma_alignment_score, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.6:
+                if signal_confidence < 0.75:  # Plus strict
                     return False
                     
             # 6. Validation consensus directionnel
@@ -138,7 +138,7 @@ class MultiTF_Consensus_Validator(BaseValidator):
             )
             if not directional_consensus:
                 logger.debug(f"{self.name}: Consensus directionnel insuffisant pour {self.symbol}")
-                if signal_confidence < 0.8:
+                if signal_confidence < 0.85:  # Plus strict
                     return False
                     
             # 7. Détection divergences critiques
@@ -148,16 +148,16 @@ class MultiTF_Consensus_Validator(BaseValidator):
             )
             if critical_divergence:
                 logger.debug(f"{self.name}: Divergence critique détectée pour {self.symbol}")
-                if signal_confidence < 0.9:  # Très strict pour divergences
+                if signal_confidence < 0.90:  # Maintenu très strict pour divergences
                     return False
                     
             # 8. Validation spécifique pour stratégies multi-TF
             if self._is_multitf_strategy(signal_strategy):
                 # Critères plus stricts pour stratégies multi-TF
                 min_scores = [
-                    (consensus_score, self.min_consensus_score + 0.1, "consensus"),
-                    (tf_alignment, self.min_tf_alignment + 0.05, "tf_alignment"), 
-                    (trend_alignment, self.min_ma_alignment + 0.05, "trend_alignment")
+                    (consensus_score, self.min_consensus_score + 0.05, "consensus"),  # Réduit de +0.1 à +0.05
+                    (tf_alignment, self.min_tf_alignment + 0.03, "tf_alignment"),    # Réduit de +0.05 à +0.03
+                    (trend_alignment, self.min_ma_alignment + 0.03, "trend_alignment") # Réduit de +0.05 à +0.03
                 ]
                 
                 for score, min_val, name in min_scores:
@@ -166,15 +166,15 @@ class MultiTF_Consensus_Validator(BaseValidator):
                         return False
                         
             # 9. Validation confluence si disponible
-            if confluence_score is not None and confluence_score < 50.0:
+            if confluence_score is not None and confluence_score < 60.0:  # Seuil relevé de 50 à 60
                 logger.debug(f"{self.name}: Confluence générale faible ({self._safe_format(confluence_score, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.6:
+                if signal_confidence < 0.70:  # Plus strict
                     return False
                     
             # 10. Validation pattern confidence
-            if pattern_confidence is not None and pattern_confidence < 40:
+            if pattern_confidence is not None and pattern_confidence < 50:  # Seuil relevé de 40 à 50
                 logger.debug(f"{self.name}: Pattern confidence faible ({self._safe_format(pattern_confidence, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.7:
+                if signal_confidence < 0.75:  # Plus strict
                     return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
@@ -327,6 +327,40 @@ class MultiTF_Consensus_Validator(BaseValidator):
         consensus_ratio = consensus_factors / total_factors
         return consensus_ratio >= 0.6  # 60% de consensus minimum
         
+    def _convert_signal_strength_to_score(self, signal_strength: str) -> float:
+        """Convertit signal_strength (VARCHAR) en score numérique."""
+        if not signal_strength:
+            return 0.5
+        strength_str = str(signal_strength).upper()
+        if strength_str == 'VERY_STRONG':
+            return 0.9
+        elif strength_str == 'STRONG':
+            return 0.75
+        elif strength_str == 'MODERATE':
+            return 0.6
+        elif strength_str == 'WEAK':
+            return 0.4
+        else:
+            return 0.5  # Défaut
+            
+    def _convert_trend_strength_to_score(self, trend_strength) -> float:
+        """Convertit trend_strength en score numérique."""
+        if trend_strength is None:
+            return 0.5
+        if isinstance(trend_strength, (int, float)):
+            return float(trend_strength)
+        strength_str = str(trend_strength).upper()
+        if strength_str == 'VERY_STRONG':
+            return 0.9
+        elif strength_str == 'STRONG':
+            return 0.75
+        elif strength_str == 'MODERATE':
+            return 0.6
+        elif strength_str == 'WEAK':
+            return 0.4
+        else:
+            return 0.5  # Défaut
+        
     def _detect_critical_divergences(self, consensus_score: float, tf_alignment: float,
                                     trend_alignment: float, signal_strength: float) -> bool:
         """Détecte les divergences critiques entre indicateurs."""
@@ -382,89 +416,89 @@ class MultiTF_Consensus_Validator(BaseValidator):
             trend_strength_raw = self.context.get('trend_strength')
             trend_strength = self._convert_trend_strength_to_score(trend_strength_raw) if trend_strength_raw is not None else 0.5
             
-            base_score = 0.5  # Score de base si validé
+            base_score = 0.3  # Score de base réduit (0.3 au lieu de 0.5)
             
             # CORRECTION: Bonus consensus selon cohérence directionnelle
             directional_consensus = self._validate_directional_consensus(
                 str(signal_side) if signal_side is not None else "UNKNOWN", str(directional_bias) if directional_bias is not None else "neutral", trend_strength
             )
             
-            # Bonus consensus score (réduit si pas de cohérence directionnelle)
-            consensus_bonus_multiplier = 1.0 if directional_consensus else 0.6
+            # Bonus consensus score (réduit si pas de cohérence directionnelle) - TOUS RÉDUITS
+            consensus_bonus_multiplier = 1.0 if directional_consensus else 0.5  # Plus strict
             if consensus_score >= self.perfect_alignment_threshold:
                 base_score += self.perfect_consensus_bonus * consensus_bonus_multiplier
             elif consensus_score >= self.strong_consensus_threshold:
-                base_score += 0.20 * consensus_bonus_multiplier
+                base_score += 0.12 * consensus_bonus_multiplier  # Réduit de 0.20 à 0.12
             elif consensus_score >= self.min_consensus_score:
-                base_score += 0.10 * consensus_bonus_multiplier
+                base_score += 0.06 * consensus_bonus_multiplier  # Réduit de 0.10 à 0.06
                 
-            # Bonus alignement TF (réduit si pas de cohérence directionnelle)
+            # Bonus alignement TF (réduit si pas de cohérence directionnelle) - TOUS RÉDUITS
             if tf_alignment >= self.perfect_alignment_threshold:
                 base_score += self.strong_alignment_bonus * consensus_bonus_multiplier
             elif tf_alignment >= self.strong_consensus_threshold:
-                base_score += 0.15 * consensus_bonus_multiplier
+                base_score += 0.09 * consensus_bonus_multiplier  # Réduit de 0.15 à 0.09
             elif tf_alignment >= self.min_tf_alignment:
-                base_score += 0.08 * consensus_bonus_multiplier
+                base_score += 0.05 * consensus_bonus_multiplier  # Réduit de 0.08 à 0.05
                 
-            # Bonus alignement tendance (plus strict selon direction)
+            # Bonus alignement tendance (plus strict selon direction) - TOUS RÉDUITS
             if trend_alignment >= self.perfect_alignment_threshold:
                 if directional_consensus:
-                    base_score += 0.18  # Plein bonus si cohérent
+                    base_score += 0.11  # Réduit de 0.18 à 0.11
                 else:
-                    base_score += 0.09  # Bonus réduit si incohérent
+                    base_score += 0.06  # Réduit de 0.09 à 0.06
             elif trend_alignment >= self.strong_consensus_threshold:
                 if directional_consensus:
-                    base_score += 0.12
+                    base_score += 0.08  # Réduit de 0.12 à 0.08
                 else:
-                    base_score += 0.06
+                    base_score += 0.04  # Réduit de 0.06 à 0.04
             elif trend_alignment >= self.min_ma_alignment:
                 if directional_consensus:
-                    base_score += 0.08
+                    base_score += 0.05  # Réduit de 0.08 à 0.05
                 else:
-                    base_score += 0.04
+                    base_score += 0.03  # Réduit de 0.04 à 0.03
                 
-            # CORRECTION: Bonus alignement MA avec logique directionnelle
+            # CORRECTION: Bonus alignement MA avec logique directionnelle - TOUS RÉDUITS
             ma_alignment_score = self._calculate_ma_alignment_directional(signal_side, str(directional_bias) if directional_bias else "NEUTRAL")
             if ma_alignment_score >= 0.9:
-                base_score += self.ma_confluence_bonus
+                base_score += self.ma_confluence_bonus  # Déjà réduit à 0.09
             elif ma_alignment_score >= 0.8:
-                base_score += 0.10
+                base_score += 0.06  # Réduit de 0.10 à 0.06
             elif ma_alignment_score >= 0.7:
-                base_score += 0.05
+                base_score += 0.03  # Réduit de 0.05 à 0.03
                 
-            # Bonus force signal (cohérence directionnelle)
+            # Bonus force signal (cohérence directionnelle) - TOUS RÉDUITS
             if signal_strength >= 0.8:
                 if directional_consensus:
-                    base_score += 0.12
+                    base_score += 0.07  # Réduit de 0.12 à 0.07
                 else:
-                    base_score += 0.06  # Réduit si incohérent
+                    base_score += 0.04  # Réduit de 0.06 à 0.04
             elif signal_strength >= 0.65:
                 if directional_consensus:
-                    base_score += 0.08  
+                    base_score += 0.05  # Réduit de 0.08 à 0.05
                 else:
-                    base_score += 0.04
+                    base_score += 0.03  # Réduit de 0.04 à 0.03
                 
-            # Bonus consensus directionnel (principal facteur de différenciation)
+            # Bonus consensus directionnel (principal facteur de différenciation) - RÉDUIT
             if directional_consensus:
-                base_score += 0.15  # Bonus fort pour cohérence directionnelle
+                base_score += 0.09  # Réduit de 0.15 à 0.09
             else:
-                base_score -= 0.05  # Malus pour incohérence
+                base_score -= 0.03  # Malus réduit de 0.05 à 0.03
                 
-            # Bonus confluence générale (avec cohérence directionnelle)
+            # Bonus confluence générale (avec cohérence directionnelle) - TOUS RÉDUITS
             if confluence_score >= 80.0:
                 if directional_consensus:
-                    base_score += 0.10
+                    base_score += 0.06  # Réduit de 0.10 à 0.06
                 else:
-                    base_score += 0.05
+                    base_score += 0.03  # Réduit de 0.05 à 0.03
             elif confluence_score >= 60.0:
                 if directional_consensus:
-                    base_score += 0.05
+                    base_score += 0.03  # Réduit de 0.05 à 0.03
                 else:
-                    base_score += 0.025
+                    base_score += 0.02  # Réduit de 0.025 à 0.02
                 
-            # Bonus stratégie spécialisée multi-TF
+            # Bonus stratégie spécialisée multi-TF - RÉDUIT
             if self._is_multitf_strategy(signal_strategy):
-                base_score += 0.12  # Bonus spécialisation
+                base_score += 0.07  # Réduit de 0.12 à 0.07
                 
             # Malus divergences critiques
             critical_divergence = self._detect_critical_divergences(
@@ -473,7 +507,13 @@ class MultiTF_Consensus_Validator(BaseValidator):
             if critical_divergence:
                 base_score += self.divergence_penalty
                 
-            return max(0.0, min(1.0, base_score))
+            # NOUVEAU: Filtre final - rejeter si score trop faible
+            if base_score < 0.35:  # Score minimum 35% pour validator MultiTF
+                return 0.0
+                
+            # NOUVEAU: Cap final pour éviter les scores excessifs
+            final_score = max(0.0, min(0.85, base_score))  # Limité à 85% maximum
+            return final_score
             
         except Exception as e:
             logger.error(f"{self.name}: Erreur calcul score pour {self.symbol}: {e}")

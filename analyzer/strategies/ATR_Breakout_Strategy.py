@@ -22,9 +22,9 @@ class ATR_Breakout_Strategy(BaseStrategy):
         super().__init__(symbol, data, indicators)
         # Paramètres ATR et volatilité
         self.atr_multiplier = 1.5      # Multiplicateur ATR pour breakout  
-        self.volatility_threshold = 0.6 # Seuil volatilité (percentile)
-        self.resistance_proximity = 0.02 # 2% de proximité aux niveaux
-        self.support_proximity = 0.02   # 2% de proximité aux niveaux
+        self.volatility_threshold = 0.35 # Seuil volatilité (percentile) - 35% pour plus de signaux
+        self.resistance_proximity = 0.03 # 3% de proximité aux niveaux - zone élargie
+        self.support_proximity = 0.03   # 3% de proximité aux niveaux - zone élargie
         # Paramètres de tendance
         self.trend_filter_enabled = True  # Activer le filtre de tendance
         self.min_trend_strength = 0.3    # Force minimum de tendance ADX
@@ -110,13 +110,13 @@ class ATR_Breakout_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
-        # Vérification de la volatilité - on veut une volatilité élevée pour les breakouts
+        # Vérification de la volatilité - on veut une volatilité suffisante pour les breakouts
         if atr_percentile is not None and atr_percentile < self.volatility_threshold:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Volatilité trop faible ({atr_percentile:.2f}) - pas de setup breakout",
+                "reason": f"Volatilité insuffisante ({atr_percentile:.2f}) - pas de setup breakout",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
@@ -134,7 +134,7 @@ class ATR_Breakout_Strategy(BaseStrategy):
         
         signal_side = None
         reason = ""
-        base_confidence = 0.5
+        base_confidence = 0.4  # Stratégie breakout - conf modérée
         confidence_boost = 0.0
         proximity_type = None
         
@@ -160,13 +160,13 @@ class ATR_Breakout_Strategy(BaseStrategy):
                 # En range, on peut trader les deux côtés des niveaux
                 trend_confirmed = False
         
-        # Vérification supplémentaire avec trend_alignment (format décimal)
+        # Vérification supplémentaire avec trend_alignment (format DÉCIMAL DB: -1.0 à 1.0)
         if trend_alignment is not None:
             try:
                 align_val = float(trend_alignment)
-                if align_val > 0.2:  # Tendance haussière (format décimal)
+                if align_val > 0.2:  # Tendance haussière (>0.2 = 20%)
                     is_uptrend = True
-                elif align_val < -0.2:  # Tendance baissière (format décimal)
+                elif align_val < -0.2:  # Tendance baissière (<-0.2 = -20%)
                     is_downtrend = True
             except (ValueError, TypeError):
                 pass
@@ -178,34 +178,28 @@ class ATR_Breakout_Strategy(BaseStrategy):
                 distance_to_resistance = abs(current_price - resistance_level) / current_price
                 
                 if distance_to_resistance <= self.resistance_proximity:
-                    # Logique adaptée selon la tendance
-                    if is_downtrend or (not trend_confirmed and trend_alignment and trend_alignment < 0):
-                        # En tendance baissière : résistance = opportunité de VENTE
-                        signal_side = "SELL"
-                        proximity_type = "resistance"
-                        reason = f"Rejet de résistance {resistance_level:.2f} en tendance baissière (ATR: {atr:.4f})"
-                        confidence_boost += 0.20  # Plus de confiance car aligné avec la tendance
-                    elif is_uptrend and (adx_value is None or adx_value >= self.min_trend_strength):
-                        # En tendance haussière forte : possibilité de breakout
+                    # Logique adaptée selon la tendance et la volatilité
+                    if is_uptrend and atr_percentile and atr_percentile > 50:
+                        # En tendance haussière + volatilité élevée : breakout haussier probable
                         signal_side = "BUY"
                         proximity_type = "resistance"
-                        reason = f"Breakout potentiel de résistance {resistance_level:.2f} en tendance haussière (ATR: {atr:.4f})"
-                        confidence_boost += 0.10  # Moins de confiance car contre le niveau
-                    elif not trend_confirmed:
-                        # En range : privilégier le rejet
+                        reason = f"Breakout haussier de résistance {resistance_level:.2f} (ATR: {atr:.4f})"
+                        confidence_boost += 0.15  # Confiance modérée pour breakout
+                    elif is_downtrend or (not trend_confirmed):
+                        # En tendance baissière ou range : rejet de résistance
                         signal_side = "SELL"
                         proximity_type = "resistance"
-                        reason = f"Rejet de résistance {resistance_level:.2f} en marché en range (ATR: {atr:.4f})"
-                        confidence_boost += 0.15
+                        reason = f"Rejet de résistance {resistance_level:.2f} (ATR: {atr:.4f})"
+                        confidence_boost += 0.12  # Confiance pour rejet
                     
                     # Bonus si résistance forte
                     if resistance_strength is not None and signal_side:
                         res_str = str(resistance_strength).upper()
                         if res_str == 'MAJOR':
-                            confidence_boost += 0.15
+                            confidence_boost += 0.08
                             reason += " - résistance majeure"
                         elif res_str == 'STRONG':
-                            confidence_boost += 0.10
+                            confidence_boost += 0.05
                             reason += " - résistance forte"
             except (ValueError, TypeError):
                 pass
@@ -216,34 +210,28 @@ class ATR_Breakout_Strategy(BaseStrategy):
                 distance_to_support = abs(current_price - support_level) / current_price
                 
                 if distance_to_support <= self.support_proximity:
-                    # Logique adaptée selon la tendance
-                    if is_uptrend or (not trend_confirmed and trend_alignment and trend_alignment > 0):
-                        # En tendance haussière : support = opportunité d'ACHAT
-                        signal_side = "BUY"
-                        proximity_type = "support"
-                        reason = f"Rebond sur support {support_level:.2f} en tendance haussière (ATR: {atr:.4f})"
-                        confidence_boost += 0.20  # Plus de confiance car aligné avec la tendance
-                    elif is_downtrend and (adx_value is None or adx_value >= self.min_trend_strength):
-                        # En tendance baissière forte : possibilité de breakdown
+                    # Logique adaptée selon la tendance et la volatilité
+                    if is_downtrend and atr_percentile and atr_percentile > 50:
+                        # En tendance baissière + volatilité élevée : breakdown baissier probable
                         signal_side = "SELL"
                         proximity_type = "support"
-                        reason = f"Breakdown potentiel de support {support_level:.2f} en tendance baissière (ATR: {atr:.4f})"
-                        confidence_boost += 0.10  # Moins de confiance car contre le niveau
-                    elif not trend_confirmed:
-                        # En range : privilégier le rebond
+                        reason = f"Breakdown baissier de support {support_level:.2f} (ATR: {atr:.4f})"
+                        confidence_boost += 0.15  # Confiance modérée pour breakdown
+                    elif is_uptrend or (not trend_confirmed):
+                        # En tendance haussière ou range : rebond sur support
                         signal_side = "BUY"
                         proximity_type = "support"
-                        reason = f"Rebond sur support {support_level:.2f} en marché en range (ATR: {atr:.4f})"
-                        confidence_boost += 0.15
+                        reason = f"Rebond sur support {support_level:.2f} (ATR: {atr:.4f})"
+                        confidence_boost += 0.12  # Confiance pour rebond
                     
                     # Bonus si support fort
                     if support_strength is not None and signal_side:
                         sup_str = str(support_strength).upper()
                         if sup_str == 'MAJOR':
-                            confidence_boost += 0.15
+                            confidence_boost += 0.08
                             reason += " - support majeur"
                         elif sup_str == 'STRONG':
-                            confidence_boost += 0.10
+                            confidence_boost += 0.05
                             reason += " - support fort"
             except (ValueError, TypeError):
                 pass
@@ -268,13 +256,13 @@ class ATR_Breakout_Strategy(BaseStrategy):
         # Ajustements de confiance selon l'ATR
         if atr_percentile is not None:
             if atr_percentile >= 80:
-                confidence_boost += 0.2
+                confidence_boost += 0.12
                 reason += " - volatilité extrême"
-            elif atr_percentile >= 70:
-                confidence_boost += 0.15
+            elif atr_percentile >= 60:
+                confidence_boost += 0.08
                 reason += " - volatilité élevée"
             else:
-                confidence_boost += 0.1
+                confidence_boost += 0.05
                 reason += " - volatilité modérée"
                 
         # CORRECTION MAGISTRALE: Régime volatilité ATR avec seuils adaptatifs
@@ -286,23 +274,23 @@ class ATR_Breakout_Strategy(BaseStrategy):
                     # BUY breakout ATR : volatilité expansion + proximité résistance = explosion haussière
                     if volatility_regime == "expanding":
                         if atr_percentile > 85:  # Expansion extrême + résistance
-                            confidence_boost += 0.25
-                            reason += f" + expansion extrême résistance ({atr_percentile:.0f}%)"
-                        elif atr_percentile > 70:  # Expansion forte
-                            confidence_boost += 0.20
-                            reason += f" + expansion forte breakout ({atr_percentile:.0f}%)"
-                        else:  # Expansion modérée
                             confidence_boost += 0.15
+                            reason += f" + expansion extrême ({atr_percentile:.0f}%)"
+                        elif atr_percentile > 70:  # Expansion forte
+                            confidence_boost += 0.12
+                            reason += f" + expansion forte ({atr_percentile:.0f}%)"
+                        else:  # Expansion modérée
+                            confidence_boost += 0.08
                             reason += f" + expansion modérée ({atr_percentile:.0f}%)"
                     elif volatility_regime == "high":
                         if atr_percentile > 90:  # Volatilité extrême = continuation explosive
-                            confidence_boost += 0.18
-                            reason += f" + volatilité extrême explosion ({atr_percentile:.0f}%)"
+                            confidence_boost += 0.12
+                            reason += f" + volatilité extrême ({atr_percentile:.0f}%)"
                         elif atr_percentile > 75:  # Volatilité élevée favorable
-                            confidence_boost += 0.15
-                            reason += f" + volatilité élevée breakout ({atr_percentile:.0f}%)"
-                        else:  # Volatilité modérément élevée
                             confidence_boost += 0.10
+                            reason += f" + volatilité élevée ({atr_percentile:.0f}%)"
+                        else:  # Volatilité modérément élevée
+                            confidence_boost += 0.06
                             reason += f" + volatilité favorable ({atr_percentile:.0f}%)"
                     elif volatility_regime == "normal":
                         if 40 <= atr_percentile <= 60:  # Volatilité idéale pour breakout contrôlé
@@ -319,18 +307,18 @@ class ATR_Breakout_Strategy(BaseStrategy):
                     # SELL breakdown ATR : volatilité élevée + proximité support = chute violente
                     if volatility_regime == "expanding":
                         if atr_percentile > 80:  # Expansion + support = cascade baissière
-                            confidence_boost += 0.22
-                            reason += f" + expansion cascade support ({atr_percentile:.0f}%)"
+                            confidence_boost += 0.14
+                            reason += f" + expansion cascade ({atr_percentile:.0f}%)"
                         else:  # Expansion modérée
-                            confidence_boost += 0.18
+                            confidence_boost += 0.10
                             reason += f" + expansion breakdown ({atr_percentile:.0f}%)"
                     elif volatility_regime == "high":
                         if atr_percentile > 85:  # Volatilité extrême = panique/liquidation
-                            confidence_boost += 0.20
-                            reason += f" + volatilité extrême panique ({atr_percentile:.0f}%)"
+                            confidence_boost += 0.12
+                            reason += f" + volatilité extrême ({atr_percentile:.0f}%)"
                         else:  # Volatilité élevée
-                            confidence_boost += 0.15
-                            reason += f" + volatilité élevée breakdown ({atr_percentile:.0f}%)"
+                            confidence_boost += 0.08
+                            reason += f" + volatilité élevée ({atr_percentile:.0f}%)"
                     elif volatility_regime == "normal":
                         confidence_boost += 0.10
                         reason += f" + volatilité normale breakdown ({atr_percentile:.0f}%)"
@@ -367,12 +355,12 @@ class ATR_Breakout_Strategy(BaseStrategy):
                 
         # Bollinger Squeeze = compression avant expansion
         if bb_squeeze is not None and bb_squeeze == True:
-            confidence_boost += 0.15
+            confidence_boost += 0.08
             reason += " avec BB squeeze"
             
         # Bollinger Expansion = expansion après compression
         if bb_expansion is not None and bb_expansion == True:
-            confidence_boost += 0.10
+            confidence_boost += 0.06
             reason += " avec BB expansion"
                 
         # Break probability
@@ -403,10 +391,10 @@ class ATR_Breakout_Strategy(BaseStrategy):
         if signal_strength_calc is not None:
             sig_str = str(signal_strength_calc).upper()
             if sig_str == 'STRONG':
-                confidence_boost += 0.10
+                confidence_boost += 0.06
                 reason += " + signal fort"
             elif sig_str == 'MODERATE':
-                confidence_boost += 0.05
+                confidence_boost += 0.03
                 reason += " + signal modéré"
                 
         confluence_score = values.get('confluence_score')
@@ -414,10 +402,10 @@ class ATR_Breakout_Strategy(BaseStrategy):
             try:
                 confluence = float(confluence_score)
                 if confluence > 60:
-                    confidence_boost += 0.15
+                    confidence_boost += 0.08
                     reason += f" + confluence élevée ({confluence:.0f})"
                 elif confluence > 45:
-                    confidence_boost += 0.10
+                    confidence_boost += 0.05
                     reason += f" + confluence modérée ({confluence:.0f})"
             except (ValueError, TypeError):
                 pass

@@ -22,11 +22,11 @@ class HullMA_Slope_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres HullMA
+        # Paramètres HullMA - OPTIMISÉS
         self.hullma_period = 20        # Période par défaut
-        self.min_slope_threshold = 0.001  # Pente minimum pour signal (0.1%)
-        self.strong_slope_threshold = 0.005  # Pente forte (0.5%)
-        self.price_distance_max = 0.02    # Distance max prix/HullMA (2%)
+        self.min_slope_threshold = 0.002  # Pente minimum AUGMENTÉE (0.2% au lieu de 0.1%)
+        self.strong_slope_threshold = 0.008  # Pente forte AUGMENTÉE (0.8% au lieu de 0.5%)
+        self.price_distance_max = 0.015   # Distance max RÉDUITE (1.5% au lieu de 2%)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs."""
@@ -190,7 +190,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
             
         signal_side = None
         reason = ""
-        base_confidence = 0.5
+        base_confidence = 0.3  # RÉDUIT de 0.5 à 0.3 - plus conservateur
         confidence_boost = 0.0
         slope_strength = "flat"
         
@@ -218,7 +218,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
             if price_above_hull:
                 signal_side = "BUY"
                 reason = f"Hull MA pente haussière ({slope_approx*100:.2f}%) + prix au-dessus"
-                confidence_boost += 0.15
+                confidence_boost += 0.18  # AUGMENTÉ car c'est un signal de qualité
             else:
                 # Prix sous Hull MA haussière = attendre confirmation
                 return {
@@ -240,7 +240,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
             if not price_above_hull:
                 signal_side = "SELL"
                 reason = f"Hull MA pente baissière ({slope_approx*100:.2f}%) + prix en-dessous"
-                confidence_boost += 0.15
+                confidence_boost += 0.18  # AUGMENTÉ car c'est un signal de qualité
             else:
                 # Prix au-dessus Hull MA baissière = attendre confirmation
                 return {
@@ -260,15 +260,15 @@ class HullMA_Slope_Strategy(BaseStrategy):
         # Classification de la force de la pente
         if slope_abs >= self.strong_slope_threshold:
             slope_strength = "strong"
-            confidence_boost += 0.15
-            reason += " - pente forte"
-        elif slope_abs >= self.min_slope_threshold * 2:
+            confidence_boost += 0.20  # AUGMENTÉ - pente forte = excellent signal
+            reason += " - pente FORTE"
+        elif slope_abs >= self.min_slope_threshold * 2.5:  # Seuil augmenté
             slope_strength = "moderate"
-            confidence_boost += 0.10
+            confidence_boost += 0.12  # Légèrement augmenté
             reason += " - pente modérée"
         else:
             slope_strength = "weak"
-            confidence_boost += 0.05
+            confidence_boost += 0.03  # RÉDUIT - pente faible moins valorisée
             reason += " - pente faible"
             
         # Confirmation avec autres moyennes mobiles
@@ -290,14 +290,17 @@ class HullMA_Slope_Strategy(BaseStrategy):
         if trend_strength is not None:
             trend_str = str(trend_strength).lower()
             if trend_str in ['extreme', 'very_strong']:
-                confidence_boost += 0.15
+                confidence_boost += 0.18  # AUGMENTÉ
                 reason += f" + tendance {trend_str}"
             elif trend_str == 'strong':
-                confidence_boost += 0.10
+                confidence_boost += 0.12  # AUGMENTÉ
                 reason += f" + tendance {trend_str}"
             elif trend_str in ['moderate', 'present']:
-                confidence_boost += 0.05
+                confidence_boost += 0.06  # Légèrement augmenté
                 reason += f" + tendance {trend_str}"
+            elif trend_str in ['weak', 'absent']:  # NOUVEAU: pénalité
+                confidence_boost -= 0.08
+                reason += f" MAIS tendance {trend_str}"
                 
         # Confirmation avec directional_bias (VARCHAR: BULLISH/BEARISH/NEUTRAL)
         directional_bias = values.get('directional_bias')
@@ -327,11 +330,19 @@ class HullMA_Slope_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                # Format 0-100, 50=neutre
-                if (signal_side == "BUY" and momentum > 55) or \
-                   (signal_side == "SELL" and momentum < 45):
-                    confidence_boost += 0.08
+                # MOMENTUM PLUS STRICT (format 0-100, 50=neutre)
+                if (signal_side == "BUY" and momentum > 60) or \
+                   (signal_side == "SELL" and momentum < 40):
+                    confidence_boost += 0.12  # Augmenté
+                    reason += " + momentum FORT"
+                elif (signal_side == "BUY" and momentum > 52) or \
+                     (signal_side == "SELL" and momentum < 48):
+                    confidence_boost += 0.06
                     reason += " + momentum favorable"
+                elif (signal_side == "BUY" and momentum < 45) or \
+                     (signal_side == "SELL" and momentum > 55):  # NOUVEAU: pénalité
+                    confidence_boost -= 0.12
+                    reason += " MAIS momentum CONTRAIRE"
             except (ValueError, TypeError):
                 pass
                 
@@ -340,16 +351,17 @@ class HullMA_Slope_Strategy(BaseStrategy):
         if rsi_14 is not None:
             try:
                 rsi = float(rsi_14)
-                if signal_side == "BUY" and rsi < 70:
-                    confidence_boost += 0.05
-                elif signal_side == "SELL" and rsi > 30:
-                    confidence_boost += 0.05
-                elif signal_side == "BUY" and rsi >= 80:
-                    confidence_boost -= 0.10
-                    reason += " mais RSI surachat"
-                elif signal_side == "SELL" and rsi <= 20:
-                    confidence_boost -= 0.10
-                    reason += " mais RSI survente"
+                # RSI PLUS STRICT
+                if signal_side == "BUY" and rsi < 65:  # Plus strict
+                    confidence_boost += 0.06
+                elif signal_side == "SELL" and rsi > 35:  # Plus strict
+                    confidence_boost += 0.06
+                elif signal_side == "BUY" and rsi >= 75:  # Seuil abaissé
+                    confidence_boost -= 0.15  # Pénalité augmentée
+                    reason += " ATTENTION: RSI surachat ({rsi:.1f})"
+                elif signal_side == "SELL" and rsi <= 25:  # Seuil relevé
+                    confidence_boost -= 0.15  # Pénalité augmentée
+                    reason += " ATTENTION: RSI survente ({rsi:.1f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -358,12 +370,19 @@ class HullMA_Slope_Strategy(BaseStrategy):
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio >= 1.5:
-                    confidence_boost += 0.12
+                # VOLUME PLUS STRICT
+                if vol_ratio >= 2.0:  # Seuil augmenté
+                    confidence_boost += 0.15
+                    reason += f" + volume TRÈS élevé ({vol_ratio:.1f}x)"
+                elif vol_ratio >= 1.5:
+                    confidence_boost += 0.10
                     reason += f" + volume élevé ({vol_ratio:.1f}x)"
                 elif vol_ratio >= 1.2:
-                    confidence_boost += 0.08
+                    confidence_boost += 0.05  # Réduit
                     reason += f" + volume modéré ({vol_ratio:.1f}x)"
+                elif vol_ratio < 0.8:  # NOUVEAU: pénalité volume faible
+                    confidence_boost -= 0.08
+                    reason += f" mais volume FAIBLE ({vol_ratio:.1f}x)"
             except (ValueError, TypeError):
                 pass
                 
@@ -406,15 +425,40 @@ class HullMA_Slope_Strategy(BaseStrategy):
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
-                if confluence > 60:
+                # CONFLUENCE PLUS STRICTE
+                if confluence > 75:  # Seuil augmenté
+                    confidence_boost += 0.18
+                    reason += f" + confluence EXCELLENTE ({confluence:.0f})"
+                elif confluence > 65:  # Seuil augmenté
                     confidence_boost += 0.12
                     reason += f" + confluence élevée ({confluence:.0f})"
-                elif confluence > 45:
-                    confidence_boost += 0.08
-                    reason += f" + confluence modérée ({confluence:.0f})"
+                elif confluence > 55:  # Seuil augmenté
+                    confidence_boost += 0.06
+                    reason += f" + confluence correcte ({confluence:.0f})"
+                elif confluence < 45:  # NOUVEAU: pénalité
+                    confidence_boost -= 0.10
+                    reason += f" mais confluence FAIBLE ({confluence:.0f})"
             except (ValueError, TypeError):
                 pass
                 
+        # NOUVEAU: Filtre final - rejeter si confidence trop faible
+        raw_confidence = base_confidence * (1 + confidence_boost)
+        if raw_confidence < 0.42:  # Seuil minimum 42%
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Signal HullMA rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.42)",
+                "metadata": {
+                    "strategy": self.name,
+                    "symbol": self.symbol,
+                    "rejected_signal": signal_side,
+                    "raw_confidence": raw_confidence,
+                    "hull_slope": slope_approx,
+                    "slope_strength": slope_strength
+                }
+            }
+        
         confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
         

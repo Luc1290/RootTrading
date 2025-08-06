@@ -23,11 +23,12 @@ class PPO_Crossover_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Seuils PPO
-        self.bullish_threshold = 0.0     # Croisement au-dessus de 0
-        self.bearish_threshold = 0.0     # Croisement en-dessous de 0
-        self.strong_signal_threshold = 0.5  # PPO > 0.5% = signal fort
-        self.extreme_threshold = 1.0     # PPO > 1% = signal très fort
+        # Seuils PPO OPTIMISÉS - Zone neutre ajoutée
+        self.bullish_threshold = 0.15     # PPO > 0.15% = signal haussier
+        self.bearish_threshold = -0.15    # PPO < -0.15% = signal baissier
+        self.neutral_zone = 0.15          # Zone neutre ±0.15%
+        self.strong_signal_threshold = 0.6  # PPO > 0.6% = signal fort (relevé)
+        self.extreme_threshold = 1.2     # PPO > 1.2% = signal très fort (relevé)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
@@ -85,38 +86,53 @@ class PPO_Crossover_Strategy(BaseStrategy):
         reason = ""
         confidence_boost = 0.0
         
-        # Logique de signal basée sur PPO crossover
-        if ppo_val > self.bullish_threshold:
-            # PPO au-dessus de 0 - signal haussier
+        # NOUVELLE LOGIQUE avec zone neutre - Évite les faux signaux
+        if abs(ppo_val) < self.neutral_zone:
+            # Zone neutre - pas de signal
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"PPO en zone neutre ({ppo_val:.3f}%) - pas de momentum clair",
+                "metadata": {
+                    "strategy": self.name,
+                    "symbol": self.symbol,
+                    "ppo": ppo_val,
+                    "neutral_zone": self.neutral_zone
+                }
+            }
+            
+        elif ppo_val >= self.bullish_threshold:
+            # PPO haussier significatif
             signal_side = "BUY"
             
             if ppo_val >= self.extreme_threshold:
                 reason = f"PPO très fort ({ppo_val:.3f}%) - momentum haussier extrême"
-                confidence_boost += 0.3
+                confidence_boost += 0.25  # Réduit de 0.3
             elif ppo_val >= self.strong_signal_threshold:
                 reason = f"PPO fort ({ppo_val:.3f}%) - momentum haussier fort"
-                confidence_boost += 0.2
+                confidence_boost += 0.18  # Réduit de 0.2
             else:
                 reason = f"PPO haussier ({ppo_val:.3f}%) - momentum positif"
-                confidence_boost += 0.1
+                confidence_boost += 0.12  # Augmenté de 0.1
                 
-        elif ppo_val < self.bearish_threshold:
-            # PPO en-dessous de 0 - signal baissier
+        elif ppo_val <= self.bearish_threshold:
+            # PPO baissier significatif
             signal_side = "SELL"
             
             if ppo_val <= -self.extreme_threshold:
                 reason = f"PPO très faible ({ppo_val:.3f}%) - momentum baissier extrême"
-                confidence_boost += 0.3
+                confidence_boost += 0.25  # Réduit de 0.3
             elif ppo_val <= -self.strong_signal_threshold:
                 reason = f"PPO faible ({ppo_val:.3f}%) - momentum baissier fort"
-                confidence_boost += 0.2
+                confidence_boost += 0.18  # Réduit de 0.2
             else:
                 reason = f"PPO baissier ({ppo_val:.3f}%) - momentum négatif"
-                confidence_boost += 0.1
+                confidence_boost += 0.12  # Augmenté de 0.1
                 
         if signal_side:
-            # Utilisation des indicateurs pré-calculés pour renforcer le signal
-            base_confidence = 0.5
+            # Base confidence RÉDUITE pour stratégie momentum
+            base_confidence = 0.25  # Réduit de 0.5 - plus conservateur
             
             # Confirmation avec MACD histogram (dérivée du momentum)
             macd_histogram = values.get('macd_histogram')
@@ -135,10 +151,19 @@ class PPO_Crossover_Strategy(BaseStrategy):
             if momentum_score is not None:
                 try:
                     momentum_val = float(momentum_score)
-                    if (signal_side == "BUY" and momentum_val > 55) or \
-                       (signal_side == "SELL" and momentum_val < 45):
-                        confidence_boost += 0.1
+                    # MOMENTUM plus strict pour PPO
+                    if (signal_side == "BUY" and momentum_val > 60) or \
+                       (signal_side == "SELL" and momentum_val < 40):
+                        confidence_boost += 0.12
+                        reason += " avec momentum FORT"
+                    elif (signal_side == "BUY" and momentum_val > 52) or \
+                         (signal_side == "SELL" and momentum_val < 48):
+                        confidence_boost += 0.06
                         reason += " avec momentum favorable"
+                    elif (signal_side == "BUY" and momentum_val < 40) or \
+                         (signal_side == "SELL" and momentum_val > 60):
+                        confidence_boost -= 0.15  # Pénalité si momentum contraire
+                        reason += " MAIS momentum contraire"
                 except (ValueError, TypeError):
                     pass
                     
@@ -169,12 +194,19 @@ class PPO_Crossover_Strategy(BaseStrategy):
             if confluence_score is not None:
                 try:
                     confluence_val = float(confluence_score)
-                    if confluence_val > 70:
-                        confidence_boost += 0.15
-                        reason += f" avec haute confluence ({confluence_val:.0f})"
+                    # CONFLUENCE plus stricte
+                    if confluence_val > 75:  # Seuil relevé
+                        confidence_boost += 0.18
+                        reason += f" avec confluence EXCELLENTE ({confluence_val:.0f})"
+                    elif confluence_val > 65:  # Seuil relevé
+                        confidence_boost += 0.12
+                        reason += f" avec confluence élevée ({confluence_val:.0f})"
                     elif confluence_val > 55:
-                        confidence_boost += 0.10
+                        confidence_boost += 0.06
                         reason += f" avec confluence modérée ({confluence_val:.0f})"
+                    elif confluence_val < 50:  # Pénalité si faible
+                        confidence_boost -= 0.08
+                        reason += f" mais confluence FAIBLE ({confluence_val:.0f})"
                 except (ValueError, TypeError):
                     pass
                     
@@ -201,6 +233,23 @@ class PPO_Crossover_Strategy(BaseStrategy):
                 except (ValueError, TypeError):
                     pass
                     
+            # NOUVEAU: Filtre final - rejeter si confidence trop faible
+            raw_confidence = base_confidence * (1.0 + confidence_boost)
+            if raw_confidence < 0.35:  # Seuil minimum 35% pour PPO
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Signal PPO rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.35)",
+                    "metadata": {
+                        "strategy": self.name,
+                        "symbol": self.symbol,
+                        "rejected_signal": signal_side,
+                        "raw_confidence": raw_confidence,
+                        "ppo": ppo_val
+                    }
+                }
+            
             confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
             strength = self.get_strength_from_confidence(confidence)
             

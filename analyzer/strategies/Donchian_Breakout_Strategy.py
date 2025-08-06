@@ -23,10 +23,12 @@ class Donchian_Breakout_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres Donchian (via support/résistance)
-        self.breakout_threshold = 0.005   # 0.5% au-dessus/en-dessous pour confirmer breakout
-        self.min_distance_threshold = 0.01  # Distance minimum aux niveaux (1%)
-        self.volume_confirmation = 1.2    # Volume 20% au-dessus de la moyenne
+        # Paramètres Donchian optimisés pour crypto
+        self.breakout_threshold = 0.015   # 1.5% au-dessus/en-dessous pour confirmer breakout (évite faux signaux)
+        self.min_distance_threshold = 0.02  # Distance minimum aux niveaux (2%) pour éviter le bruit
+        self.volume_confirmation = 1.5    # Volume 50% au-dessus de la moyenne pour valider
+        self.min_adx_strength = 20        # ADX minimum pour confirmer tendance
+        self.momentum_threshold = 55      # Seuil momentum pour confirmation directionnelle
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs."""
@@ -124,7 +126,7 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             
         signal_side = None
         reason = ""
-        base_confidence = 0.5
+        base_confidence = 0.12  # Réduit drastiquement - breakouts nécessitent plus de confirmations
         confidence_boost = 0.0
         breakout_type = None
         
@@ -176,7 +178,15 @@ class Donchian_Breakout_Strategy(BaseStrategy):
                         confidence_boost += 0.10
                         reason += " - support modéré cassé"
                     
-        # Pas de breakout détecté
+        # Filtre anti-faux signaux : vérifier que le breakout est net
+        if signal_side is not None:
+            # Vérification volume minimum OBLIGATOIRE
+            volume_ratio = values.get('volume_ratio')
+            if volume_ratio is None or float(volume_ratio) < 1.2:
+                signal_side = None
+                reason = f"Breakout rejeté : volume insuffisant ({float(volume_ratio):.2f}x < 1.2x)"
+                
+        # Pas de breakout détecté ou filtré
         if signal_side is None:
             proximity_info = ""
             if nearest_resistance is not None and nearest_resistance > 0:
@@ -210,9 +220,19 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         if adx is not None:
             try:
                 adx_val = float(adx)
-                if adx_val > 25:  # Tendance forte
-                    confidence_boost += 0.10
+                if adx_val > 30:  # Tendance très forte requise pour breakout
+                    confidence_boost += 0.12
+                    reason += f" avec ADX très fort ({adx_val:.1f})"
+                elif adx_val > 25:
+                    confidence_boost += 0.08
                     reason += f" avec ADX fort ({adx_val:.1f})"
+                elif adx_val > 20:
+                    confidence_boost += 0.04
+                    reason += f" avec ADX modéré ({adx_val:.1f})"
+                else:
+                    # ADX faible = pas de tendance = breakout suspect
+                    confidence_boost -= 0.05
+                    reason += f" mais ADX faible ({adx_val:.1f})"
                     
                     # Confirmation directionnelle
                     if plus_di is not None and minus_di is not None:
@@ -275,34 +295,30 @@ class Donchian_Breakout_Strategy(BaseStrategy):
                 vol_ratio = float(volume_ratio)
                 
                 if signal_side == "BUY":
-                    # BUY (resistance breakout) : volume élevé crucial (buying pressure)
-                    if vol_ratio >= 2.0:
-                        confidence_boost += 0.20  # Volume très élevé = breakout fort
-                        reason += f" + volume très élevé BUY ({vol_ratio:.1f}x)"
+                    # BUY : confirmation volume progressive et réaliste
+                    if vol_ratio >= 1.8:
+                        confidence_boost += 0.15  # Volume fort = breakout confirmé
+                        reason += f" + volume fort BUY ({vol_ratio:.1f}x)"
                     elif vol_ratio >= 1.5:
-                        confidence_boost += 0.16
-                        reason += f" + volume élevé BUY ({vol_ratio:.1f}x)"
+                        confidence_boost += 0.12
+                        reason += f" + volume élevé ({vol_ratio:.1f}x)"
                     elif vol_ratio >= 1.2:
-                        confidence_boost += 0.10
-                        reason += f" + volume modéré ({vol_ratio:.1f}x)"
-                    else:
-                        confidence_boost -= 0.10  # Pénalité forte pour breakout sans volume
-                        reason += f" mais volume insuffisant BUY ({vol_ratio:.1f}x)"
+                        confidence_boost += 0.08
+                        reason += f" + volume confirmé ({vol_ratio:.1f}x)"
+                    # Pas de pénalité si > 1.2x (déjà filtré avant)
                         
                 elif signal_side == "SELL":
-                    # SELL (support breakdown) : volume fort requis mais naturellement plus bas
-                    if vol_ratio >= 1.8:
-                        confidence_boost += 0.18  # Volume élevé confirme breakdown
-                        reason += f" + volume élevé SELL ({vol_ratio:.1f}x)"
+                    # SELL : seuils adaptés pour breakdown
+                    if vol_ratio >= 1.6:
+                        confidence_boost += 0.14  # Volume élevé confirme breakdown
+                        reason += f" + volume fort SELL ({vol_ratio:.1f}x)"
                     elif vol_ratio >= 1.3:
-                        confidence_boost += 0.14
-                        reason += f" + volume confirmé SELL ({vol_ratio:.1f}x)"
-                    elif vol_ratio >= 1.0:
-                        confidence_boost += 0.08  # Volume normal acceptable pour SELL
-                        reason += f" + volume normal ({vol_ratio:.1f}x)"
-                    else:
-                        confidence_boost -= 0.08  # Pénalité modérée pour SELL
-                        reason += f" mais volume faible ({vol_ratio:.1f}x)"
+                        confidence_boost += 0.11
+                        reason += f" + volume élevé ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= 1.2:
+                        confidence_boost += 0.07  # Volume minimum acceptable
+                        reason += f" + volume confirmé ({vol_ratio:.1f}x)"
+                    # Pas de pénalité si > 1.2x (déjà filtré avant)
             except (ValueError, TypeError):
                 pass
                 
@@ -391,7 +407,29 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
+        # Calcul optimisé : additionnel au lieu de multiplicatif pour éviter l'écrasement
+        confidence = min(base_confidence + confidence_boost, 0.95)  # Cap à 95% max
+        
+        # Ajustement final basé sur la force du breakout
+        if breakout_type == "resistance_breakout":
+            breakout_strength = (current_price - nearest_resistance) / nearest_resistance
+            if breakout_strength > 0.03:  # Breakout > 3%
+                confidence = min(confidence * 1.15, 0.95)
+        elif breakout_type == "support_breakdown":
+            breakdown_strength = (nearest_support - current_price) / nearest_support  
+            if breakdown_strength > 0.03:  # Breakdown > 3%
+                confidence = min(confidence * 1.15, 0.95)
+                
+        # Vérification finale : au moins 40% de confidence pour émettre un signal
+        if confidence < 0.40:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Signal trop faible (conf: {confidence:.2f} < 0.40)",
+                "metadata": {"strategy": self.name, "symbol": self.symbol}
+            }
+            
         strength = self.get_strength_from_confidence(confidence)
         
         return {

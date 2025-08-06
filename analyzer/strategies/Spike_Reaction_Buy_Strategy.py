@@ -35,29 +35,30 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres de détection spike baissier
-        self.min_price_drop = -0.02              # 2% chute minimum
-        self.severe_price_drop = -0.04           # 4% chute sévère  
-        self.extreme_price_drop = -0.08          # 8% chute extrême
+        # Paramètres de détection spike baissier - OPTIMISÉS
+        self.min_price_drop = -0.025             # 2.5% chute minimum (plus strict)
+        self.severe_price_drop = -0.05           # 5% chute sévère (plus strict)
+        self.extreme_price_drop = -0.10          # 10% chute extrême (plus strict)
         
-        # Paramètres volume (confirmation spike)
-        self.min_spike_volume = 2.0              # Volume 2x normal minimum
-        self.strong_spike_volume = 3.5           # Volume 3.5x pour spike fort
-        self.extreme_spike_volume = 5.0          # Volume 5x pour spike extrême
+        # Paramètres volume (confirmation spike) - PLUS STRICTS
+        self.min_spike_volume = 2.5              # Volume 2.5x normal minimum (au lieu de 2.0x)
+        self.strong_spike_volume = 4.0           # Volume 4.0x pour spike fort (au lieu de 3.5x)
+        self.extreme_spike_volume = 6.0          # Volume 6.0x pour spike extrême (au lieu de 5.0x)
         
-        # Paramètres RSI (survente extrême)
-        self.oversold_rsi_threshold = 30         # RSI survente
-        self.extreme_oversold_threshold = 20     # RSI survente extrême
-        self.williams_r_oversold = -80           # Williams %R survente
+        # Paramètres RSI (survente extrême) - PLUS STRICTS
+        self.oversold_rsi_threshold = 28         # RSI survente (plus strict: 28 au lieu de 30)
+        self.extreme_oversold_threshold = 18     # RSI survente extrême (plus strict: 18 au lieu de 20)
+        self.williams_r_oversold = -85           # Williams %R survente (plus strict: -85 au lieu de -80)
         
         # Paramètres stabilisation
         self.stabilization_bars = 3              # Barres pour confirmer stabilisation
         self.max_continued_drop = -0.005         # Chute max après spike (0.5%)
         self.min_volatility_ratio = 0.3          # Volatilité réduite après spike
         
-        # Paramètres momentum reversal
-        self.momentum_reversal_threshold = 60    # Momentum redevient positif (format 0-100)
-        self.min_roc_improvement = -0.01         # ROC amélioration minimum (format décimal)
+        # Paramètres momentum reversal - OPTIMISÉS
+        self.momentum_reversal_threshold = 55    # Momentum redevient positif (moins strict: 55 au lieu de 60)
+        self.min_roc_improvement = -0.005        # ROC amélioration minimum (plus strict: -0.5% au lieu de -1%)
+        self.min_volume_quality = 40             # Volume quality minimum pour bottom fishing
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
@@ -150,7 +151,7 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_price_spike': spike_score >= 0.3,
+            'is_price_spike': spike_score >= 0.35,  # Plus strict: 0.35 au lieu de 0.3
             'score': spike_score,
             'indicators': spike_indicators
         }
@@ -200,7 +201,7 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_volume_spike': volume_score >= 0.25,
+            'is_volume_spike': volume_score >= 0.30,  # Plus strict: 0.30 au lieu de 0.25
             'score': volume_score,
             'indicators': volume_indicators
         }
@@ -271,7 +272,7 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_oversold': oversold_score >= 0.4,
+            'is_oversold': oversold_score >= 0.45,  # Plus strict: 0.45 au lieu de 0.4
             'score': oversold_score,
             'indicators': oversold_indicators
         }
@@ -319,7 +320,7 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
             stabilization_indicators.append(f"Pattern reversal détecté")
             
         return {
-            'is_stabilized': stabilization_score >= 0.3,
+            'is_stabilized': stabilization_score >= 0.35,  # Plus strict: 0.35 au lieu de 0.3
             'score': stabilization_score,
             'indicators': stabilization_indicators
         }
@@ -351,12 +352,23 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
         # Étape 4: Confirmer stabilisation
         stabilization_analysis = self._detect_stabilization(values)
         
-        # Signal BUY si: spike détecté + survente + stabilisation
+        # NOUVEAU: Vérifier volume quality pour éviter bottom fishing sur faible qualité
+        volume_quality_score = values.get('volume_quality_score')
+        volume_quality_ok = True
+        if volume_quality_score is not None:
+            try:
+                vol_quality = float(volume_quality_score)
+                volume_quality_ok = vol_quality >= self.min_volume_quality
+            except (ValueError, TypeError):
+                pass
+        
+        # Signal BUY si: spike détecté + survente + stabilisation + volume quality
         if (price_spike_analysis['is_price_spike'] and 
             oversold_analysis['is_oversold'] and
-            stabilization_analysis['is_stabilized']):
+            stabilization_analysis['is_stabilized'] and
+            volume_quality_ok):
             
-            base_confidence = 0.4
+            base_confidence = 0.35  # Réduit de 0.4 à 0.35 - plus conservateur
             confidence_boost = 0.0
             
             # Score cumulé des analyses

@@ -27,29 +27,29 @@ class Market_Structure_Validator(BaseValidator):
         self.name = "Market_Structure_Validator"
         self.category = "regime"
         
-        # Paramètres régimes de marché
+        # Paramètres régimes de marché - OPTIMISÉS
         self.favorable_regimes = ["trending", "expansion", "normal"]
         self.unfavorable_regimes = ["ranging", "compression", "chaotic"]
-        self.regime_strength_min = 0.4      # Force minimum régime
-        self.regime_confidence_min = 50     # Confidence minimum régime (format 0-100)
+        self.regime_strength_min = 0.55     # Force minimum régime AUGMENTÉE (55% au lieu de 40%)
+        self.regime_confidence_min = 65     # Confidence minimum régime AUGMENTÉE (65% au lieu de 50%)
         
-        # Paramètres alignement
-        self.min_trend_alignment = 60      # Alignement minimum tendance
-        self.min_signal_strength = 0.5      # Force signal minimum
-        self.min_confluence_score = 40.0    # Score confluence minimum (format 0-100)
+        # Paramètres alignement - OPTIMISÉS
+        self.min_trend_alignment = 70      # Alignement minimum tendance AUGMENTÉ (70% au lieu de 60%)
+        self.min_signal_strength = 0.6      # Force signal minimum AUGMENTÉE (60% au lieu de 50%)
+        self.min_confluence_score = 55.0    # Score confluence minimum AUGMENTÉ (55 au lieu de 40)
         
-        # Paramètres volatilité
+        # Paramètres volatilité - OPTIMISÉS
         self.max_volatility_regime_risk = ["extreme", "chaotic"]
         self.acceptable_volatility = ["low", "normal", "high", "expanding"]
         
-        # Seuils directionnels
-        self.directional_bias_weight = 0.3  # Poids bias directionnel
-        self.trend_angle_min = 5.0          # Angle tendance minimum (degrés)
+        # Seuils directionnels - OPTIMISÉS
+        self.directional_bias_weight = 0.4  # Poids bias directionnel AUGMENTÉ (40% au lieu de 30%)
+        self.trend_angle_min = 8.0          # Angle tendance minimum AUGMENTÉ (8° au lieu de 5°)
         
-        # Bonus/malus
-        self.perfect_alignment_bonus = 0.25  # Bonus alignement parfait
-        self.regime_mismatch_penalty = -0.30 # Pénalité régime inadapté
-        self.confluence_bonus = 0.20         # Bonus confluence élevée
+        # Bonus/malus - OPTIMISÉS
+        self.perfect_alignment_bonus = 0.30  # Bonus alignement parfait AUGMENTÉ (30% au lieu de 25%)
+        self.regime_mismatch_penalty = -0.35 # Pénalité régime inadapté AUGMENTÉE (-35% au lieu de -30%)
+        self.confluence_bonus = 0.25         # Bonus confluence élevée AUGMENTÉ (25% au lieu de 20%)
         
     def validate_signal(self, signal: Dict[str, Any]) -> bool:
         """
@@ -103,101 +103,117 @@ class Market_Structure_Validator(BaseValidator):
                 logger.warning(f"{self.name}: Signal side manquant pour {self.symbol}")
                 return False
                 
-            # 1. Validation régime de marché principal
+            # 1. Validation régime de marché principal - PLUS STRICT
             if market_regime:
                 if market_regime in self.unfavorable_regimes:
                     logger.debug(f"{self.name}: Régime défavorable ({market_regime or 'N/A'}) pour {self.symbol}")
-                    # Accepter seulement avec confidence très élevée
-                    if signal_confidence < 0.8:
+                    # Accepter seulement avec confidence TRÈS élevée
+                    if signal_confidence < 0.85:  # AUGMENTÉ de 80% à 85%
                         return False
                 elif market_regime not in self.favorable_regimes:
-                    # Régime neutre/inconnu
-                    if signal_confidence < 0.6:
+                    # Régime neutre/inconnu - PLUS STRICT
+                    if signal_confidence < 0.70:  # AUGMENTÉ de 60% à 70%
                         logger.debug(f"{self.name}: Régime neutre ({market_regime or 'N/A'}) + confidence faible pour {self.symbol}")
                         return False
                         
-            # 2. Validation force et confidence du régime
+            # 2. Validation force et confidence du régime - PLUS STRICT
             if regime_strength is not None and regime_strength < self.regime_strength_min:
                 logger.debug(f"{self.name}: Force régime insuffisante ({self._safe_format(regime_strength, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.7:
+                if signal_confidence < 0.75:  # AUGMENTÉ de 70% à 75%
                     return False
                     
             if regime_confidence is not None and regime_confidence < self.regime_confidence_min:
                 logger.debug(f"{self.name}: Confidence régime insuffisante ({self._safe_format(regime_confidence, '.0f')}%) pour {self.symbol}")
-                if signal_confidence < 0.7:
+                if signal_confidence < 0.75:  # AUGMENTÉ de 70% à 75%
                     return False
                     
-            # 3. Validation régime de volatilité
+            # 3. Validation régime de volatilité - RENFORCÉ
             if volatility_regime in self.max_volatility_regime_risk:
                 logger.debug(f"{self.name}: Régime volatilité risqué ({volatility_regime or 'N/A'}) pour {self.symbol}")
-                if signal_confidence < 0.9:  # Très strict pour volatilité extrême
+                if signal_confidence < 0.90:  # Maintenu très strict pour volatilité extrême
+                    return False
+            # NOUVEAU: Pénalité si volatilité trop faible
+            elif volatility_regime == "low":
+                if signal_confidence < 0.60:  # Seuil modéré pour volatilité faible
+                    logger.debug(f"{self.name}: Volatilité trop faible ({volatility_regime}) pour signal faible pour {self.symbol}")
                     return False
                     
-            # 4. Validation alignement tendance (format décimal)
+            # 4. Validation alignement tendance (format décimal) - PLUS STRICT
             if trend_alignment is not None and abs(trend_alignment) < (self.min_trend_alignment / 100):
                 logger.debug(f"{self.name}: Alignement tendance insuffisant ({self._safe_format(abs(trend_alignment), '.3f')}) pour {self.symbol}")
-                if signal_confidence < 0.6:
+                if signal_confidence < 0.65:  # AUGMENTÉ de 60% à 65%
                     return False
                     
-            # 5. Validation force signal globale
+            # 5. Validation force signal globale - PLUS STRICT
             if signal_strength is not None and signal_strength < self.min_signal_strength:
                 logger.debug(f"{self.name}: Force signal insuffisante ({self._safe_format(signal_strength, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.7:
+                if signal_confidence < 0.75:  # AUGMENTÉ de 70% à 75%
                     return False
                     
-            # 6. Validation score confluence
+            # 6. Validation score confluence - PLUS STRICT
             if confluence_score is not None and confluence_score < self.min_confluence_score:
                 logger.debug(f"{self.name}: Score confluence insuffisant ({self._safe_format(confluence_score, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.6:
+                if signal_confidence < 0.65:  # AUGMENTÉ de 60% à 65%
                     return False
                     
-            # 7. Validation cohérence bias directionnel
+            # 7. Validation cohérence bias directionnel - RENFORCÉ
             if directional_bias:
                 if signal_side == "BUY" and directional_bias.upper() == "BEARISH":
                     logger.debug(f"{self.name}: BUY signal mais bias bearish pour {self.symbol}")
-                    if signal_confidence < 0.8:  # Tolérer seulement si très confiant
+                    if signal_confidence < 0.85:  # AUGMENTÉ de 80% à 85%
                         return False
                 elif signal_side == "SELL" and directional_bias.upper() == "BULLISH":
                     logger.debug(f"{self.name}: SELL signal mais bias bullish pour {self.symbol}")
-                    if signal_confidence < 0.8:
+                    if signal_confidence < 0.85:  # AUGMENTÉ de 80% à 85%
                         return False
                         
-            # 8. Validation force tendance générale
-            if trend_strength is not None and trend_strength < 0.3:
+            # 8. Validation force tendance générale - PLUS STRICT
+            if trend_strength is not None and trend_strength < 0.4:  # AUGMENTÉ de 0.3 à 0.4
                 logger.debug(f"{self.name}: Tendance générale faible ({self._safe_format(trend_strength, '.2f')}) pour {self.symbol}")
                 # En tendance faible, favoriser stratégies de mean reversion
                 if not self._is_meanreversion_strategy(signal_strategy):
-                    if signal_confidence < 0.6:
+                    if signal_confidence < 0.70:  # AUGMENTÉ de 60% à 70%
                         return False
+            # NOUVEAU: Rejet si tendance très faible pour toutes stratégies
+            if trend_strength is not None and trend_strength < 0.2:
+                logger.debug(f"{self.name}: Tendance très faible ({self._safe_format(trend_strength, '.2f')}) - signal trop risqué pour {self.symbol}")
+                if signal_confidence < 0.8:
+                    return False
                         
-            # 9. Validation angle tendance
+            # 9. Validation angle tendance - PLUS STRICT
             if trend_angle is not None and abs(trend_angle) < self.trend_angle_min:
                 logger.debug(f"{self.name}: Angle tendance faible ({self._safe_format(trend_angle, '.1f')}°) pour {self.symbol}")
-                if signal_confidence < 0.5:
+                if signal_confidence < 0.60:  # AUGMENTÉ de 50% à 60%
                     return False
                     
-            # 10. Validation pattern si détecté
+            # 10. Validation pattern si détecté - PLUS STRICT
             if pattern_detected and pattern_confidence is not None:
-                if pattern_confidence < 50:
+                if pattern_confidence < 60:  # AUGMENTÉ de 50% à 60%
                     logger.debug(f"{self.name}: Pattern {pattern_detected} confidence faible ({self._safe_format(pattern_confidence, '.2f')}) pour {self.symbol}")
-                    if signal_confidence < 0.7:
+                    if signal_confidence < 0.75:  # AUGMENTÉ de 70% à 75%
                         return False
                         
-            # 11. Validation croisée régimes
+            # 11. Validation croisée régimes - PLUS STRICT
             regime_conflict = self._detect_regime_conflicts(str(market_regime) if market_regime is not None else '', str(volatility_regime) if volatility_regime is not None else '', str(directional_bias) if directional_bias is not None else '')
             if regime_conflict:
                 logger.debug(f"{self.name}: Conflit entre régimes détecté pour {self.symbol}")
-                if signal_confidence < 0.8:
+                if signal_confidence < 0.85:  # AUGMENTÉ de 80% à 85%
                     return False
                     
-            # 12. Validation spécifique selon type stratégie
+            # 12. Validation spécifique selon type stratégie - PLUS STRICT
             strategy_regime_match = self._validate_strategy_regime_match(
                 signal_strategy, str(market_regime) if market_regime is not None else '', str(volatility_regime) if volatility_regime is not None else ''
             )
             if not strategy_regime_match:
                 logger.debug(f"{self.name}: Stratégie {signal_strategy} inadaptée au régime pour {self.symbol}")
-                if signal_confidence < 0.7:
+                if signal_confidence < 0.75:  # AUGMENTÉ de 70% à 75%
                     return False
+                    
+            # NOUVEAU: Validation finale - rejet des signaux moyennement confiants avec structure médiocre
+            overall_structure_quality = self._calculate_structure_quality(regime_strength, regime_confidence, trend_alignment, confluence_score)
+            if overall_structure_quality < 0.5 and signal_confidence < 0.70:
+                logger.debug(f"{self.name}: Structure médiocre ({overall_structure_quality:.2f}) + signal confidence insuffisante pour {self.symbol}")
+                return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
                         f"Régime: {market_regime or 'N/A'}, "
@@ -300,7 +316,7 @@ class Market_Structure_Validator(BaseValidator):
             signal_side = signal.get('side')
             signal_strategy = signal.get('strategy', '')
             
-            base_score = 0.5  # Score de base si validé
+            base_score = 0.45  # Score de base réduit (45% au lieu de 50%)
             
             # Bonus régime favorable
             if market_regime in self.favorable_regimes:
@@ -439,6 +455,33 @@ class Market_Structure_Validator(BaseValidator):
                 
         except Exception as e:
             return f"{self.name}: Erreur évaluation - {e}"
+            
+    def _calculate_structure_quality(self, regime_strength: float, regime_confidence: float, 
+                                   trend_alignment: float, confluence_score: float) -> float:
+        """Calcule la qualité globale de la structure de marché."""
+        try:
+            quality_score = 0.0
+            components = 0
+            
+            if regime_strength is not None:
+                quality_score += regime_strength
+                components += 1
+                
+            if regime_confidence is not None:
+                quality_score += (regime_confidence / 100)  # Normaliser 0-100 vers 0-1
+                components += 1
+                
+            if trend_alignment is not None:
+                quality_score += abs(trend_alignment)  # Alignement absolu
+                components += 1
+                
+            if confluence_score is not None:
+                quality_score += (confluence_score / 100)  # Normaliser 0-100 vers 0-1
+                components += 1
+                
+            return quality_score / max(1, components)  # Moyenne des composants disponibles
+        except:
+            return 0.5  # Valeur par défaut
             
     def validate_data(self) -> bool:
         """

@@ -30,25 +30,27 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres Williams %R
-        self.oversold_threshold = -80.0        # Seuil survente
-        self.overbought_threshold = -20.0      # Seuil surachat
-        self.extreme_oversold_threshold = -90.0  # Survente extrême
-        self.extreme_overbought_threshold = -10.0 # Surachat extrême
+        # Paramètres Williams %R - OPTIMISÉS
+        self.oversold_threshold = -75.0        # Seuil survente (moins strict: -75 au lieu de -80)
+        self.overbought_threshold = -25.0      # Seuil surachat (moins strict: -25 au lieu de -20)
+        self.extreme_oversold_threshold = -88.0  # Survente extrême (plus strict: -88 au lieu de -90)
+        self.extreme_overbought_threshold = -12.0 # Surachat extrême (plus strict: -12 au lieu de -10)
         
-        # Paramètres rebond
-        self.min_rebound_strength = 5.0        # Williams %R doit bouger ≥5 points
-        self.rebound_confirmation_threshold = 10.0  # 10 points pour confirmation
-        self.max_time_in_extreme = 5           # Max barres en zone extrême
+        # Paramètres rebond - PLUS STRICTS
+        self.min_rebound_strength = 8.0        # Williams %R doit bouger ≥8 points (au lieu de 5)
+        self.rebound_confirmation_threshold = 12.0  # 12 points pour confirmation (au lieu de 10)
+        self.max_time_in_extreme = 3           # Max 3 barres en zone extrême (au lieu de 5)
         
-        # Paramètres momentum et volume
+        # Paramètres momentum et volume - OPTIMISÉS
         self.momentum_alignment_required = True  # Momentum doit confirmer
-        self.min_momentum_threshold = 52        # Momentum minimum (format 0-100)
-        self.min_volume_confirmation = 1.2       # Volume ≥20% au-dessus normal
+        self.min_momentum_threshold = 48        # Momentum minimum (moins strict: 48 au lieu de 52)
+        self.min_volume_confirmation = 1.3       # Volume ≥30% au-dessus normal (plus strict)
         
-        # Paramètres confluence
+        # Paramètres confluence - PLUS STRICTS
         self.support_resistance_confluence = True  # Confluence S/R requise
-        self.confluence_distance_threshold = 0.02  # 2% max du S/R pour confluence
+        self.confluence_distance_threshold = 0.015  # 1.5% max du S/R (plus strict: 1.5% au lieu de 2%)
+        self.min_oscillator_confluence = 0.12   # Confluence oscillateurs minimum
+        self.min_sr_confluence = 0.18           # Confluence S/R minimum
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
@@ -186,7 +188,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
             }
             
         return {
-            'is_rebound': rebound_score >= 0.2,
+            'is_rebound': rebound_score >= 0.25,  # Plus strict: 0.25 au lieu de 0.2
             'score': rebound_score,
             'indicators': rebound_indicators,
             'williams_value': williams_val,
@@ -247,7 +249,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
             }
             
         return {
-            'is_rebound': rebound_score >= 0.2,
+            'is_rebound': rebound_score >= 0.25,  # Plus strict: 0.25 au lieu de 0.2
             'score': rebound_score,
             'indicators': rebound_indicators,
             'williams_value': williams_val,
@@ -326,7 +328,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_confluent': confluence_score >= 15,  # Score confluence oscillateurs en format 0-100
+            'is_confluent': confluence_score >= self.min_oscillator_confluence,  # Score confluence optimisé
             'score': confluence_score,
             'indicators': confluence_indicators
         }
@@ -420,7 +422,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_confluent': sr_score >= 0.15,
+            'is_confluent': sr_score >= self.min_sr_confluence,  # Score confluence S/R optimisé
             'score': sr_score,
             'indicators': sr_indicators
         }
@@ -528,12 +530,28 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
                 }
             }
             
-        # Vérifier confluences
+        # Vérifier confluences - NOUVEAU: OBLIGATOIRES pour signal
         oscillator_confluence = self._detect_oscillator_confluence(values, signal_side)
         sr_confluence = self._detect_support_resistance_confluence(values, current_price, signal_side)
         
+        # NOUVEAU: Exiger au moins une confluence pour émettre signal
+        if not oscillator_confluence['is_confluent'] and not sr_confluence['is_confluent']:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Rebound Williams %R détecté mais aucune confluence (osc: {oscillator_confluence['score']:.2f}, sr: {sr_confluence['score']:.2f})",
+                "metadata": {
+                    "strategy": self.name,
+                    "williams_r": williams_val,
+                    "missing_confluence": True,
+                    "oscillator_score": oscillator_confluence['score'],
+                    "sr_score": sr_confluence['score']
+                }
+            }
+        
         # Construire signal final
-        base_confidence = 0.5
+        base_confidence = 0.32  # Réduit de 0.5 à 0.32 - plus conservateur pour mean reversion
         confidence_boost = 0.0
         
         # Vérification de sécurité pour primary_rebound

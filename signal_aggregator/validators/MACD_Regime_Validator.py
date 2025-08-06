@@ -27,18 +27,19 @@ class MACD_Regime_Validator(BaseValidator):
         self.name = "MACD_Regime_Validator"
         self.category = "technical"
         
-        # Paramètres MACD
-        self.min_macd_separation = 0.0001    # Séparation minimum MACD/Signal
-        self.histogram_threshold = 0.0001    # Seuil histogram significatif
-        self.zero_line_bonus_threshold = 0.001  # Bonus zone favorable
+        # Paramètres MACD - OPTIMISÉS POUR RÉDUIRE SURTRADING
+        self.min_macd_separation = 0.0005    # Séparation minimum MACD/Signal (5x plus permissif)
+        self.histogram_threshold = 0.0003    # Seuil histogram significatif (3x plus permissif)
+        self.zero_line_bonus_threshold = 0.003  # Bonus zone favorable (3x plus permissif)
         
-        # Paramètres croisements
-        self.recent_cross_penalty_bars = 3   # Pénalité croisement récent opposé
-        self.cross_confirmation_strength = 0.002  # Force minimum croisement
+        # Paramètres croisements - ALLÉGÉS
+        self.recent_cross_penalty_bars = 2   # Pénalité croisement récent réduite
+        self.cross_confirmation_strength = 0.001  # Force minimum croisement réduite
         
-        # Seuils momentum
-        self.strong_momentum_threshold = 0.01    # MACD momentum fort
-        self.weak_momentum_threshold = 0.0005   # MACD momentum faible
+        # Seuils momentum - PLUS PERMISSIFS
+        self.strong_momentum_threshold = 0.005    # MACD momentum fort (2x plus permissif)
+        self.weak_momentum_threshold = 0.0002   # MACD momentum faible plus permissif
+        self.permissive_mode = True              # NOUVEAU: Mode permissif activé
         
         # Bonus/malus
         self.zero_line_bonus = 0.15          # Bonus position favorable MACD
@@ -88,42 +89,58 @@ class MACD_Regime_Validator(BaseValidator):
                 logger.warning(f"{self.name}: Signal side ou MACD manquant pour {self.symbol}")
                 return False
                 
-            # 1. Vérification séparation MACD/Signal suffisante
+            # 1. Vérification séparation MACD/Signal - MODE PERMISSIF
             macd_separation = abs(macd_line - macd_signal)
-            if macd_separation < self.min_macd_separation:
-                logger.debug(f"{self.name}: MACD trop proche Signal ({self._safe_format(macd_separation, '.5f')}) pour {self.symbol} - signal peu fiable")
-                if signal_confidence < 0.8:  # Accepter seulement si très confiant
-                    return False
+            if self.permissive_mode:
+                # Mode permissif : accepter même si MACD très proche de Signal
+                if macd_separation < self.min_macd_separation and signal_confidence < 0.5:
+                    logger.debug(f"{self.name}: MACD très proche Signal mais accepté en mode permissif ({self._safe_format(macd_separation, '.5f')}) pour {self.symbol}")
+                    # Ne pas rejeter - laisser passer
+            else:
+                # Mode strict (ancienne logique)
+                if macd_separation < self.min_macd_separation:
+                    logger.debug(f"{self.name}: MACD trop proche Signal ({self._safe_format(macd_separation, '.5f')}) pour {self.symbol} - signal peu fiable")
+                    if signal_confidence < 0.8:
+                        return False
                     
             # 2. Validation direction MACD vs Signal
             macd_above_signal = macd_line > macd_signal
             
-            if signal_side == "BUY" and not macd_above_signal:
-                logger.debug(f"{self.name}: BUY signal mais MACD sous Signal pour {self.symbol}")
-                # Vérifier si c'est un croisement imminent (tolérance)
-                if macd_separation > self.cross_confirmation_strength:
-                    return False  # Trop loin pour être un croisement imminent
+            if self.permissive_mode:
+                # Mode permissif : accepter divergences MACD/Signal mineures
+                if signal_side == "BUY" and not macd_above_signal:
+                    # MACD sous Signal mais BUY demandé - peut être anticipation
+                    if macd_separation > self.cross_confirmation_strength * 2:  # Seulement si très éloigné
+                        logger.debug(f"{self.name}: BUY signal mais MACD très sous Signal pour {self.symbol}")
+                        return False
+                elif signal_side == "SELL" and macd_above_signal:
+                    # MACD au-dessus Signal mais SELL demandé - peut être anticipation
+                    if macd_separation > self.cross_confirmation_strength * 2:  # Seulement si très éloigné
+                        logger.debug(f"{self.name}: SELL signal mais MACD très au-dessus Signal pour {self.symbol}")
+                        return False
+            else:
+                # Mode strict (ancienne logique)
+                if signal_side == "BUY" and not macd_above_signal:
+                    logger.debug(f"{self.name}: BUY signal mais MACD sous Signal pour {self.symbol}")
+                    if macd_separation > self.cross_confirmation_strength:
+                        return False
+                elif signal_side == "SELL" and macd_above_signal:
+                    logger.debug(f"{self.name}: SELL signal mais MACD au-dessus Signal pour {self.symbol}")
+                    if macd_separation > self.cross_confirmation_strength:
+                        return False
                     
-            elif signal_side == "SELL" and macd_above_signal:
-                logger.debug(f"{self.name}: SELL signal mais MACD au-dessus Signal pour {self.symbol}")
-                if macd_separation > self.cross_confirmation_strength:
-                    return False
-                    
-            # 3. Validation histogram coherence
-            if macd_histogram is not None:
+            # 3. Validation histogram coherence - MODE PERMISSIF
+            if macd_histogram is not None and not self.permissive_mode:
+                # Seulement en mode strict
                 if signal_side == "BUY":
-                    # Pour BUY, histogram devrait être positif ou en amélioration
-                    if macd_histogram < -self.histogram_threshold:
-                        logger.debug(f"{self.name}: BUY signal mais histogram négatif ({self._safe_format(macd_histogram, '.5f')}) pour {self.symbol}")
-                        if signal_confidence < 0.7:
-                            return False
-                            
+                    if macd_histogram < -self.histogram_threshold and signal_confidence < 0.5:
+                        logger.debug(f"{self.name}: BUY signal mais histogram très négatif ({self._safe_format(macd_histogram, '.5f')}) pour {self.symbol}")
+                        return False
                 elif signal_side == "SELL":
-                    # Pour SELL, histogram devrait être négatif ou en détérioration
-                    if macd_histogram > self.histogram_threshold:
-                        logger.debug(f"{self.name}: SELL signal mais histogram positif ({self._safe_format(macd_histogram, '.5f')}) pour {self.symbol}")
-                        if signal_confidence < 0.7:
-                            return False
+                    if macd_histogram > self.histogram_threshold and signal_confidence < 0.5:
+                        logger.debug(f"{self.name}: SELL signal mais histogram très positif ({self._safe_format(macd_histogram, '.5f')}) pour {self.symbol}")
+                        return False
+            # En mode permissif, ignorer histogram (trop volatile)
                             
             # 4. Validation macd_trend coherence
             if macd_trend:
@@ -158,24 +175,24 @@ class MACD_Regime_Validator(BaseValidator):
                 if signal_confidence < 0.6:
                     return False
                     
-            # 7. Validation avec PPO si disponible
+            # 7. Validation avec PPO - SEUILS PLUS PERMISSIFS
             if ppo is not None:
-                if signal_side == "BUY" and ppo < -0.005:
-                    logger.debug(f"{self.name}: BUY signal mais PPO très négatif ({self._safe_format(ppo, '.4f')}) pour {self.symbol}")
-                    if signal_confidence < 0.7:
+                if signal_side == "BUY" and ppo < -0.02:  # Seuil 4x plus permissif (-2% au lieu de -0.5%)
+                    logger.debug(f"{self.name}: BUY signal mais PPO extrêmement négatif ({self._safe_format(ppo, '.4f')}) pour {self.symbol}")
+                    if signal_confidence < 0.4:  # Seuil confidence plus permissif
                         return False
-                elif signal_side == "SELL" and ppo > 0.005:
-                    logger.debug(f"{self.name}: SELL signal mais PPO très positif ({self._safe_format(ppo, '.4f')}) pour {self.symbol}")
-                    if signal_confidence < 0.7:
+                elif signal_side == "SELL" and ppo > 0.02:  # Seuil 4x plus permissif (+2% au lieu de +0.5%)
+                    logger.debug(f"{self.name}: SELL signal mais PPO extrêmement positif ({self._safe_format(ppo, '.4f')}) pour {self.symbol}")
+                    if signal_confidence < 0.4:  # Seuil confidence plus permissif
                         return False
                         
-            # 8. Validation momentum score coherence (momentum_score est 0-100, 50 = neutre)
+            # 8. Validation momentum score coherence - SEUILS PLUS PERMISSIFS
             if momentum_score is not None:
-                if signal_side == "BUY" and momentum_score < 20.0:  # Momentum très bearish
-                    logger.debug(f"{self.name}: BUY signal mais momentum très bearish ({self._safe_format(momentum_score, '.1f')}) pour {self.symbol}")
+                if signal_side == "BUY" and momentum_score < 10.0:  # Seulement momentum extrêmement bearish (10 au lieu de 20)
+                    logger.debug(f"{self.name}: BUY signal mais momentum extrêmement bearish ({self._safe_format(momentum_score, '.1f')}) pour {self.symbol}")
                     return False
-                elif signal_side == "SELL" and momentum_score > 80.0:  # Momentum très bullish
-                    logger.debug(f"{self.name}: SELL signal mais momentum très bullish ({self._safe_format(momentum_score, '.1f')}) pour {self.symbol}")
+                elif signal_side == "SELL" and momentum_score > 90.0:  # Seulement momentum extrêmement bullish (90 au lieu de 80)
+                    logger.debug(f"{self.name}: SELL signal mais momentum extrêmement bullish ({self._safe_format(momentum_score, '.1f')}) pour {self.symbol}")
                     return False
                     
             # 9. Validation spécifique pour stratégies MACD

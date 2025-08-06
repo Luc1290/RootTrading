@@ -27,15 +27,15 @@ class ATR_Volatility_Validator(BaseValidator):
         self.name = "ATR_Volatility_Validator"
         self.category = "volatility"
         
-        # Paramètres ATR (en percentiles)
-        self.min_atr_percentile = 20.0     # ATR minimum (éviter marchés dormants)
-        self.max_atr_percentile = 90.0     # ATR maximum (éviter volatilité extrême)
-        self.optimal_atr_min = 30.0        # Zone optimale minimum
-        self.optimal_atr_max = 80.0        # Zone optimale maximum
+        # Paramètres ATR DURCIS (en percentiles)
+        self.min_atr_percentile = 30.0     # ATR minimum relevé (30% au lieu de 20%)
+        self.max_atr_percentile = 85.0     # ATR maximum réduit (85% au lieu de 90%)
+        self.optimal_atr_min = 40.0        # Zone optimale relevée (40% au lieu de 30%)
+        self.optimal_atr_max = 75.0        # Zone optimale réduite (75% au lieu de 80%)
         
-        # Seuils absolus ATR
-        self.min_atr_absolute = 0.001      # 0.1% minimum de volatilité
-        self.extreme_atr_threshold = 0.05  # 5% volatilité extrême
+        # Seuils absolus ATR DURCIS
+        self.min_atr_absolute = 0.002      # 0.2% minimum (doublé)
+        self.extreme_atr_threshold = 0.04  # 4% volatilité extrême (réduit)
         
         # Bonus/malus
         self.volatility_bonus = 0.2        # Bonus zone optimale
@@ -87,8 +87,8 @@ class ATR_Volatility_Validator(BaseValidator):
             # 2. Vérification volatilité extrême
             if atr_14 > self.extreme_atr_threshold:
                 logger.debug(f"{self.name}: ATR extrême ({self._safe_format(atr_14, '.4f')}) pour {self.symbol} - risque trop élevé")
-                # Ne pas rejeter automatiquement, mais appliquer des critères plus stricts
-                if signal_confidence < 0.7:
+                # Critères ALIGNÉS avec signal_aggregator (seuil critical 75%)
+                if signal_confidence < 0.75:  # Aligné avec nouveaux seuils
                     logger.debug(f"{self.name}: Signal confidence insuffisante ({self._safe_format(signal_confidence, '.2f')}) pour volatilité extrême")
                     return False
                     
@@ -100,27 +100,27 @@ class ATR_Volatility_Validator(BaseValidator):
                     
                 if atr_percentile > self.max_atr_percentile:
                     logger.debug(f"{self.name}: ATR percentile trop élevé ({self._safe_format(atr_percentile, '.1f')}) pour {self.symbol}")
-                    # Critères plus stricts pour volatilité très élevée
-                    if signal_confidence < 0.8:
+                    # Critères ALIGNÉS - volatilité très élevée
+                    if signal_confidence < 0.80:  # Maintenu à 80% (très strict)
                         return False
                         
             # 4. Validation selon le régime de volatilité
             if volatility_regime:
                 if volatility_regime == "low":
-                    # Volatilité faible - accepter seulement signaux très confiants
-                    if signal_confidence < 0.6:
+                    # Volatilité faible - ALIGNÉ avec seuils
+                    if signal_confidence < 0.65:  # Aligné avec seuil important (65%)
                         logger.debug(f"{self.name}: Régime volatilité faible mais confidence insuffisante ({self._safe_format(signal_confidence, '.2f')}) pour {self.symbol}")
                         return False
                         
                 elif volatility_regime == "extreme":
-                    # Volatilité extrême - très sélectif
-                    if signal_confidence < 0.8:
+                    # Volatilité extrême - TRÈS sélectif
+                    if signal_confidence < 0.80:  # Maintenu strict
                         logger.debug(f"{self.name}: Régime volatilité extrême mais confidence insuffisante ({self._safe_format(signal_confidence, '.2f')}) pour {self.symbol}")
                         return False
                         
                 elif volatility_regime == "high":
-                    # Volatilité élevée - moyennement sélectif
-                    if signal_confidence < 0.5:
+                    # Volatilité élevée - ALIGNÉ avec seuils
+                    if signal_confidence < 0.55:  # Aligné avec seuil standard (55%)
                         logger.debug(f"{self.name}: Régime volatilité élevée mais confidence très faible ({self._safe_format(signal_confidence, '.2f')}) pour {self.symbol}")
                         return False
                         
@@ -190,7 +190,7 @@ class ATR_Volatility_Validator(BaseValidator):
             atr_percentile = float(self.context.get('atr_percentile', 50)) if self.context.get('atr_percentile') is not None else 50
             volatility_regime = self.context.get('volatility_regime')
             
-            base_score = 0.5  # Score de base si validé
+            base_score = 0.3  # Score de base réduit (0.3 au lieu de 0.5)
             
             # CORRECTION: Bonus selon percentile ATR avec logique directionnelle
             signal_side = signal.get('side')
@@ -204,115 +204,117 @@ class ATR_Volatility_Validator(BaseValidator):
                 # Score de base pour zone optimale
                 optimal_bonus = self.volatility_bonus * (1 - distance_from_center / max_distance)
                 
-                # Ajustement directionnel dans la zone optimale
+                # Ajustement directionnel dans la zone optimale - RÉDUIT
                 if signal_side == "BUY":
                     # BUY préfère le bas de la zone optimale (volatilité en expansion)
                     if atr_percentile < optimal_center:
-                        base_score += optimal_bonus * 1.2  # Bonus augmenté
+                        base_score += optimal_bonus * 0.9  # Réduit de 1.2 à 0.9
                     else:
-                        base_score += optimal_bonus * 0.8  # Bonus réduit
+                        base_score += optimal_bonus * 0.6  # Réduit de 0.8 à 0.6
                 elif signal_side == "SELL":
                     # SELL préfère le haut de la zone optimale (volatilité élevée)
                     if atr_percentile > optimal_center:
-                        base_score += optimal_bonus * 1.2  # Bonus augmenté
+                        base_score += optimal_bonus * 0.9  # Réduit de 1.2 à 0.9
                     else:
-                        base_score += optimal_bonus * 0.8  # Bonus réduit
+                        base_score += optimal_bonus * 0.6  # Réduit de 0.8 à 0.6
                 else:
-                    base_score += optimal_bonus  # Pas de direction
+                    base_score += optimal_bonus * 0.7  # Réduit pour pas de direction
                 
             elif atr_percentile > self.optimal_atr_max:
-                # Volatilité élevée - ajustement directionnel
+                # Volatilité élevée - ajustement directionnel RÉDUIT
                 if signal_side == "SELL":
-                    base_score += 0.10  # SELL favorisé en haute volatilité
+                    base_score += 0.06  # Réduit de 0.10 à 0.06
                 elif signal_side == "BUY":
-                    base_score += 0.02  # BUY moins favorisé
+                    base_score += 0.01  # Réduit de 0.02 à 0.01
                 else:
-                    base_score += 0.05
+                    base_score += 0.03  # Réduit de 0.05 à 0.03
                     
             elif atr_percentile < self.optimal_atr_min:
-                # Volatilité faible - ajustement directionnel
+                # Volatilité faible - ajustement directionnel RÉDUIT
                 if signal_side == "BUY":
-                    base_score -= 0.03  # BUY légèrement pénalisé
+                    base_score -= 0.02  # Réduit la pénalité de 0.03 à 0.02
                 elif signal_side == "SELL":
-                    base_score -= 0.08  # SELL plus pénalisé en faible vol
+                    base_score -= 0.05  # Réduit la pénalité de 0.08 à 0.05
                 else:
-                    base_score -= 0.05
+                    base_score -= 0.03  # Réduit la pénalité de 0.05 à 0.03
                 
-            # Ajustement selon régime de volatilité (selon schéma: low/normal/high/extreme)
+            # Ajustement selon régime de volatilité (selon schéma: low/normal/high/extreme) - RÉDUIT
             if volatility_regime == "normal":
-                base_score += 0.1  # Régime normal favorable pour tous
+                base_score += 0.06  # Réduit de 0.1 à 0.06
             elif volatility_regime == "low":
-                # Volatilité faible - signaux moins favorables
+                # Volatilité faible - signaux moins favorables RÉDUIT
                 if signal_side == "BUY":
-                    base_score += 0.03  # BUY légèrement favorisé en faible vol
+                    base_score += 0.02  # Réduit de 0.03 à 0.02
                 elif signal_side == "SELL":
-                    base_score -= 0.05  # SELL moins favorisé en faible vol
+                    base_score -= 0.03  # Réduit la pénalité de 0.05 à 0.03
                 else:
-                    base_score += 0.02
+                    base_score += 0.01  # Réduit de 0.02 à 0.01
             elif volatility_regime == "high":
-                # Volatilité élevée - signaux directionnels favorisés
+                # Volatilité élevée - signaux directionnels favorisés RÉDUIT
                 if signal_side in ["BUY", "SELL"]:
-                    base_score += 0.12  # Signaux directionnels favorisés
+                    base_score += 0.08  # Réduit de 0.12 à 0.08
                 else:
-                    base_score += 0.08
+                    base_score += 0.05  # Réduit de 0.08 à 0.05
             elif volatility_regime == "extreme":
-                # Volatilité extrême = risque mais opportunités
+                # Volatilité extrême = risque mais opportunités RÉDUIT
                 if signal_side == "BUY":
                     # BUY en volatilité extrême = risqué mais potentiel si confidence élevée
                     if signal.get('confidence', 0) >= 0.8:
-                        base_score += 0.05  # Accepter si très confiant
+                        base_score += 0.03  # Réduit de 0.05 à 0.03
                     else:
-                        base_score += self.extreme_penalty
+                        base_score += self.extreme_penalty * 0.7  # Réduire la pénalité
                 elif signal_side == "SELL":
                     # SELL en volatilité extrême = souvent panic selling
                     if signal.get('confidence', 0) >= 0.8:
-                        base_score += 0.10  # SELL peut profiter de la panique
+                        base_score += 0.06  # Réduit de 0.10 à 0.06
                     else:
-                        base_score += self.extreme_penalty
+                        base_score += self.extreme_penalty * 0.7  # Réduire la pénalité
                 
             # CORRECTION: Bonus cohérence stratégie/volatilité avec logique directionnelle
             signal_strategy = signal.get('strategy', '')
             
-            # Logique directionnelle pour ATR selon le type de signal
+            # Logique directionnelle pour ATR selon le type de signal - RÉDUIT
             if signal_side == "BUY":
-                # BUY : Favoriser volatilité croissante ou normale
+                # BUY : Favoriser volatilité croissante ou normale RÉDUIT
                 if atr_percentile >= 50 and atr_percentile <= 80:
-                    base_score += 0.12  # Volatilité suffisante pour mouvement haussier
+                    base_score += 0.07  # Réduit de 0.12 à 0.07
                 elif atr_percentile > 80:
                     # Très haute volatilité pour BUY
                     if self._is_breakout_strategy(signal_strategy):
-                        base_score += 0.15  # Breakout BUY en haute volatilité
+                        base_score += 0.09  # Réduit de 0.15 à 0.09
                     else:
-                        base_score += 0.05  # Autres stratégies BUY moins favorables
+                        base_score += 0.03  # Réduit de 0.05 à 0.03
                 elif atr_percentile < 30:
                     # Faible volatilité pour BUY
                     if self._is_meanreversion_strategy(signal_strategy):
-                        base_score += 0.08  # Mean reversion BUY ok en faible vol
+                        base_score += 0.05  # Réduit de 0.08 à 0.05
                     else:
-                        base_score -= 0.05  # Autres stratégies BUY défavorables
+                        base_score -= 0.03  # Réduit la pénalité de 0.05 à 0.03
                         
             elif signal_side == "SELL":
-                # SELL : Favoriser volatilité élevée (panic) ou expansion
+                # SELL : Favoriser volatilité élevée (panic) ou expansion RÉDUIT
                 if atr_percentile >= 70:
-                    base_score += 0.15  # SELL en haute volatilité (panic selling)
+                    base_score += 0.09  # Réduit de 0.15 à 0.09
                 elif atr_percentile >= 50:
-                    base_score += 0.10  # SELL en volatilité normale-haute
+                    base_score += 0.06  # Réduit de 0.10 à 0.06
                 elif atr_percentile < 30:
                     # Faible volatilité pour SELL
                     if self._is_meanreversion_strategy(signal_strategy):
-                        base_score += 0.08  # Mean reversion SELL ok en faible vol
+                        base_score += 0.05  # Réduit de 0.08 à 0.05
                     else:
-                        base_score -= 0.08  # SELL en faible vol défavorable
+                        base_score -= 0.05  # Réduit la pénalité de 0.08 à 0.05
                         
-            # Bonus spécifiques stratégie
+            # Bonus spécifiques stratégie RÉDUIT
             if self._is_breakout_strategy(signal_strategy):
                 if atr_percentile >= 50:
-                    base_score += 0.05  # Breakout nécessite volatilité
+                    base_score += 0.03  # Réduit de 0.05 à 0.03
             elif self._is_meanreversion_strategy(signal_strategy):
                 if 30 <= atr_percentile <= 70:
-                    base_score += 0.05  # Mean reversion préfère volatilité modérée
+                    base_score += 0.03  # Réduit de 0.05 à 0.03
                 
-            return max(0.0, min(1.0, base_score))
+            # NOUVEAU: Cap final pour éviter les scores excessifs
+            final_score = max(0.0, min(0.85, base_score))  # Limité à 85% maximum
+            return final_score
             
         except Exception as e:
             logger.error(f"{self.name}: Erreur calcul score pour {self.symbol}: {e}")

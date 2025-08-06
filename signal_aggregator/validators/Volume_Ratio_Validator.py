@@ -28,12 +28,12 @@ class Volume_Ratio_Validator(BaseValidator):
         self.name = "Volume_Ratio_Validator"
         self.category = "volume"
         
-        # Paramètres ratios volume
-        self.min_volume_ratio = 0.3           # Ratio volume minimum vs moyenne (30%)
-        self.low_volume_ratio = 0.5           # Ratio volume faible (50%)
-        self.normal_volume_ratio = 1.0        # Ratio volume normal
-        self.high_volume_ratio = 2.0          # Ratio volume élevé
-        self.extreme_volume_ratio = 5.0       # Ratio volume extrême
+        # Paramètres ratios volume - DRASTIQUEMENT DURCIS
+        self.min_volume_ratio = 0.6           # Ratio volume minimum vs moyenne (60% vs 30%)
+        self.low_volume_ratio = 0.8           # Ratio volume faible (80% vs 50%)
+        self.normal_volume_ratio = 1.0        # Ratio volume normal (inchangé)
+        self.high_volume_ratio = 2.5          # Ratio volume élevé (augmenté)
+        self.extreme_volume_ratio = 3.5       # Ratio volume extrême (réduit de 5.0)
         
         # Paramètres quote/base volume
         self.min_quote_volume_ratio = 0.3     # Ratio quote/base minimum (30%)
@@ -46,9 +46,9 @@ class Volume_Ratio_Validator(BaseValidator):
         self.large_trade_multiplier = 2.0     # Multiplicateur gros trades
         self.whale_trade_multiplier = 5.0     # Multiplicateur trades baleine
         
-        # Paramètres intensité
-        self.min_trade_intensity = 0.2        # Intensité trading minimum
-        self.high_intensity_threshold = 1.5   # Seuil haute intensité
+        # Paramètres intensité - PLUS STRICTS
+        self.min_trade_intensity = 0.4        # Intensité trading minimum (doublé)
+        self.high_intensity_threshold = 2.0   # Seuil haute intensité (augmenté)
         
     def validate_signal(self, signal: Dict[str, Any]) -> bool:
         """
@@ -105,9 +105,9 @@ class Volume_Ratio_Validator(BaseValidator):
                 logger.debug(f"{self.name}: Volume ratio trop faible ({self._safe_format(volume_ratio, '.2f')}) pour {self.symbol}")
                 return False
                 
-            # Volume extrêmement élevé - suspicion manipulation
+            # Volume extrêmement élevé - suspicion manipulation - PLUS STRICT
             if volume_ratio >= self.extreme_volume_ratio:
-                if signal_confidence < 0.85:
+                if signal_confidence < 0.9:  # Augmenté de 0.85
                     logger.debug(f"{self.name}: Volume ratio extrême ({self._safe_format(volume_ratio, '.2f')}) nécessite confidence très élevée pour {self.symbol}")
                     return False
                     
@@ -122,9 +122,9 @@ class Volume_Ratio_Validator(BaseValidator):
                     logger.debug(f"{self.name}: Volume vs moyenne historique trop faible ({self._safe_format(volume_vs_avg_ratio, '.2f')}) pour {self.symbol}")
                     return False
                     
-                # Volume très élevé vs historique
+                # Volume très élevé vs historique - PLUS STRICT
                 if volume_vs_avg_ratio >= self.extreme_volume_ratio:
-                    if signal_confidence < 0.8:
+                    if signal_confidence < 0.9:  # Cohérence avec volume_ratio
                         logger.debug(f"{self.name}: Volume vs historique extrême ({self._safe_format(volume_vs_avg_ratio, '.2f')}) pour {self.symbol}")
                         return False
                         
@@ -142,7 +142,7 @@ class Volume_Ratio_Validator(BaseValidator):
                         logger.debug(f"{self.name}: Quote/base ratio élevé favorable pour BUY ({self._safe_format(quote_volume_ratio, '.2f')}) pour {self.symbol}")
                     elif quote_volume_ratio < 0.8:
                         logger.debug(f"{self.name}: Quote/base ratio faible défavorable pour BUY ({self._safe_format(quote_volume_ratio, '.2f')}) pour {self.symbol}")
-                        if signal_confidence < 0.7:
+                        if signal_confidence < 0.8:  # Augmenté de 0.7
                             return False
                             
                 elif signal_side == "SELL":
@@ -151,7 +151,7 @@ class Volume_Ratio_Validator(BaseValidator):
                         logger.debug(f"{self.name}: Quote/base ratio faible cohérent avec SELL ({self._safe_format(quote_volume_ratio, '.2f')}) pour {self.symbol}")
                     elif quote_volume_ratio > 1.5:
                         logger.debug(f"{self.name}: Quote/base ratio élevé incohérent avec SELL ({self._safe_format(quote_volume_ratio, '.2f')}) pour {self.symbol}")
-                        if signal_confidence < 0.75:
+                        if signal_confidence < 0.85:  # Augmenté de 0.75
                             return False
                     
                 # Ratio idéal - signal favorisé
@@ -168,9 +168,9 @@ class Volume_Ratio_Validator(BaseValidator):
                     if avg_trade_size >= self.large_trade_multiplier:
                         logger.debug(f"{self.name}: Gros trades favorables pour BUY ({self._safe_format(avg_trade_size, '.2f')}) - accumulation institutionnelle possible pour {self.symbol}")
                     elif avg_trade_size < self.min_avg_trade_multiplier:
-                        # Petits trades pour BUY = retail FOMO (défavorable)
+                        # Petits trades pour BUY = retail FOMO (défavorable) - PLUS STRICT
                         logger.debug(f"{self.name}: Petits trades défavorables pour BUY ({self._safe_format(avg_trade_size, '.2f')}) - possible retail FOMO pour {self.symbol}")
-                        if signal_confidence < 0.75:
+                        if signal_confidence < 0.85:  # Augmenté de 0.75
                             return False
                             
                 elif signal_side == "SELL":
@@ -195,8 +195,8 @@ class Volume_Ratio_Validator(BaseValidator):
                     # Pour BUY: haute intensité = FOMO/momentum (nécessite prudence)
                     if trade_intensity >= self.high_intensity_threshold:
                         logger.debug(f"{self.name}: Haute intensité pour BUY ({self._safe_format(trade_intensity, '.2f')}) - possible FOMO pour {self.symbol}")
-                        if signal_confidence < 0.8:  # Plus strict pour BUY avec haute intensité
-                            logger.debug(f"{self.name}: Haute intensité BUY nécessite confidence élevée pour {self.symbol}")
+                        if signal_confidence < 0.9:  # Encore plus strict - augmenté de 0.8
+                            logger.debug(f"{self.name}: Haute intensité BUY nécessite confidence très élevée pour {self.symbol}")
                             return False
                     elif trade_intensity >= 1.0:
                         # Intensité modérée favorable pour BUY
@@ -208,15 +208,17 @@ class Volume_Ratio_Validator(BaseValidator):
                         logger.debug(f"{self.name}: Haute intensité pour SELL ({self._safe_format(trade_intensity, '.2f')}) - possible panique pour {self.symbol}")
                         if signal_strength in ['strong', 'very_strong']:
                             logger.debug(f"{self.name}: Haute intensité + signal fort = opportunité SELL pour {self.symbol}")
-                        elif signal_confidence < 0.75:
+                        elif signal_confidence < 0.85:  # Augmenté de 0.75
                             return False
                         
-            # 7. Logique spécifique selon type de signal
+            # 7. Logique spécifique selon type de signal - EARLY RETURN SUPPRIMÉ
+            # IMPORTANT: Suppression des early returns pour forcer toutes les validations
+            validation_passed_early = False
             if signal_side == "BUY":
-                # Pour BUY, volume élevé est généralement favorable
-                if volume_ratio >= self.high_volume_ratio and signal_confidence >= 0.6:
+                # Pour BUY, volume élevé est favorable mais ne bypass plus les autres tests
+                if volume_ratio >= self.high_volume_ratio and signal_confidence >= 0.75:  # Seuil augmenté
                     logger.debug(f"{self.name}: Volume élevé favorable pour BUY ({self._safe_format(volume_ratio, '.2f')}) pour {self.symbol}")
-                    return True
+                    validation_passed_early = True
                     
             elif signal_side == "SELL":
                 # Pour SELL, volume élevé peut indiquer panique ou distribution
@@ -224,7 +226,7 @@ class Volume_Ratio_Validator(BaseValidator):
                     # Volume élevé pour SELL est OK si signal fort
                     if signal_strength in ['strong', 'very_strong']:
                         logger.debug(f"{self.name}: Volume élevé + signal fort favorable pour SELL pour {self.symbol}")
-                    elif signal_confidence < 0.7:
+                    elif signal_confidence < 0.8:  # Augmenté de 0.7
                         logger.debug(f"{self.name}: Volume élevé pour SELL nécessite confidence pour {self.symbol}")
                         return False
                         
@@ -234,21 +236,21 @@ class Volume_Ratio_Validator(BaseValidator):
             # Vérifier cohérence entre différents ratios
             if quote_volume_ratio is not None and volume_ratio > 0:
                 ratio_difference = abs(quote_volume_ratio - volume_ratio) / volume_ratio
-                if ratio_difference > 0.5:  # 50% d'écart
-                    if signal_confidence < 0.6:
+                if ratio_difference > 0.4:  # 40% d'écart (plus strict)
+                    if signal_confidence < 0.75:  # Augmenté de 0.6
                         logger.debug(f"{self.name}: Incohérence ratios volume ({self._safe_format(ratio_difference, '.2f')}) pour {self.symbol}")
                         ratios_consistent = False
                         
             # Validation croisée relative_volume avec signal direction
             if relative_volume is not None:
                 if signal_side == "BUY":
-                    # Pour BUY: volume relatif très faible est suspect
-                    if relative_volume < 0.5 and signal_confidence < 0.7:
+                    # Pour BUY: volume relatif très faible est suspect - PLUS STRICT
+                    if relative_volume < 0.7 and signal_confidence < 0.8:  # Seuils augmentés
                         logger.debug(f"{self.name}: Volume relatif très faible pour BUY ({self._safe_format(relative_volume, '.2f')}) pour {self.symbol}")
                         return False
                 elif signal_side == "SELL":
-                    # Pour SELL: volume relatif peut être plus faible (distribution discrète)
-                    if relative_volume < 0.3 and signal_confidence < 0.6:
+                    # Pour SELL: volume relatif peut être plus faible - PLUS STRICT
+                    if relative_volume < 0.4 and signal_confidence < 0.75:  # Seuils augmentés
                         logger.debug(f"{self.name}: Volume relatif extrêmement faible même pour SELL ({self._safe_format(relative_volume, '.2f')}) pour {self.symbol}")
                         return False
                         
@@ -289,89 +291,90 @@ class Volume_Ratio_Validator(BaseValidator):
             avg_trade_size = float(self.context.get('avg_trade_size', 1.0)) if self.context.get('avg_trade_size') is not None else 1.0
             
             signal_side = signal.get('side')
-            base_score = 0.5  # Score de base si validé
+            base_score = 0.35  # Score de base réduit pour cohérence
             
-            # Bonus volume ratio
+            # Bonus volume ratio - RÉDUITS
             if volume_ratio >= self.high_volume_ratio:
                 if signal_side == "BUY":
-                    base_score += 0.2  # Volume élevé favorable pour BUY
+                    base_score += 0.15  # Réduit de 0.2
                 else:
-                    base_score += 0.1  # Volume élevé neutre pour SELL
+                    base_score += 0.08  # Réduit de 0.1
             elif volume_ratio >= self.normal_volume_ratio:
-                base_score += 0.15  # Volume normal bon
+                base_score += 0.10  # Réduit de 0.15
             elif volume_ratio >= self.low_volume_ratio:
-                base_score += 0.05  # Volume faible acceptable
+                base_score += 0.04  # Réduit de 0.05
                 
             # Bonus ratio quote/base avec logique directionnelle
             if quote_volume_ratio is not None:
                 if signal_side == "BUY":
-                    # Pour BUY: favoriser ratio > 1.0
+                    # Pour BUY: favoriser ratio > 1.0 - BONUS RÉDUITS
                     if quote_volume_ratio > 1.2:
-                        base_score += 0.20  # Forte demande quote
+                        base_score += 0.15  # Réduit de 0.20
                     elif quote_volume_ratio >= 1.0:
-                        base_score += 0.10  # Demande normale
+                        base_score += 0.08  # Réduit de 0.10
                     elif quote_volume_ratio < 0.8:
-                        base_score -= 0.10  # Faible demande
+                        base_score -= 0.12  # Pénalité augmentée
                         
                 elif signal_side == "SELL":
-                    # Pour SELL: ratio < 1.0 peut être favorable
+                    # Pour SELL: ratio < 1.0 peut être favorable - COHÉRENCE
                     if quote_volume_ratio < 0.8:
-                        base_score += 0.15  # Distribution active
+                        base_score += 0.12  # Réduit de 0.15
                     elif quote_volume_ratio <= 1.0:
-                        base_score += 0.08  # Distribution normale
+                        base_score += 0.06  # Réduit de 0.08
                     elif quote_volume_ratio > 1.5:
-                        base_score -= 0.10  # Incohérent avec SELL
+                        base_score -= 0.12  # Pénalité augmentée
                     
             # Bonus volume relatif avec logique directionnelle
             if relative_volume is not None:
                 if signal_side == "BUY":
                     if relative_volume >= 2.0:
-                        base_score += 0.15  # Volume relatif élevé favorable pour BUY
+                        base_score += 0.12  # Réduit de 0.15
                     elif relative_volume >= 1.0:
-                        base_score += 0.08  # Volume relatif normal OK pour BUY
-                    elif relative_volume < 0.5:
-                        base_score -= 0.15  # Volume relatif très faible défavorable pour BUY
+                        base_score += 0.06  # Réduit de 0.08
+                    elif relative_volume < 0.7:  # Seuil plus strict
+                        base_score -= 0.18  # Pénalité augmentée
                         
                 elif signal_side == "SELL":
                     if relative_volume >= 2.0:
-                        base_score += 0.10  # Volume élevé peut indiquer capitulation
-                    elif relative_volume >= 0.7:
-                        base_score += 0.05  # Volume modéré OK pour SELL
-                    # Pour SELL, volume faible peut être OK (distribution discrète)
+                        base_score += 0.08  # Réduit de 0.10
+                    elif relative_volume >= 0.8:  # Seuil plus strict
+                        base_score += 0.04  # Réduit de 0.05
+                    elif relative_volume < 0.4:  # NOUVEAU: Pénalité si trop faible
+                        base_score -= 0.10  # Volume trop faible même pour SELL
                 
             # Bonus trade intensity avec logique directionnelle
             if trade_intensity is not None:
                 if signal_side == "BUY":
                     if trade_intensity >= self.high_intensity_threshold:
-                        base_score += 0.05  # Haute intensité = FOMO potentiel, bonus modéré
+                        base_score += 0.03  # Réduit de 0.05 - FOMO risqué
                     elif trade_intensity >= 1.0:
-                        base_score += 0.10  # Intensité modérée idéale pour BUY
-                    elif trade_intensity >= 0.5:
-                        base_score += 0.05  # Intensité normale acceptable
+                        base_score += 0.08  # Réduit de 0.10
+                    elif trade_intensity >= self.min_trade_intensity:
+                        base_score += 0.04  # Ajusté selon nouveau min
                         
                 elif signal_side == "SELL":
                     if trade_intensity >= self.high_intensity_threshold:
-                        base_score += 0.15  # Haute intensité = panique, bon pour SELL fort
-                    elif trade_intensity >= 0.5:
-                        base_score += 0.08  # Intensité normale OK pour SELL
+                        base_score += 0.12  # Réduit de 0.15
+                    elif trade_intensity >= self.min_trade_intensity:
+                        base_score += 0.06  # Réduit et ajusté
                     
             # Bonus taille trades avec logique directionnelle
             if avg_trade_size is not None:
                 if signal_side == "BUY":
                     if avg_trade_size >= self.large_trade_multiplier:
-                        base_score += 0.15  # Gros trades = accumulation institutionnelle
+                        base_score += 0.12  # Réduit de 0.15
                     elif avg_trade_size >= 1.0:
-                        base_score += 0.08  # Taille normale favorable
+                        base_score += 0.06  # Réduit de 0.08
                     elif avg_trade_size < self.min_avg_trade_multiplier:
-                        base_score -= 0.10  # Petits trades = retail FOMO
+                        base_score -= 0.15  # Pénalité augmentée - retail FOMO plus risqué
                         
                 elif signal_side == "SELL":
                     if avg_trade_size < self.min_avg_trade_multiplier:
-                        base_score += 0.10  # Petits trades = distribution discrète
+                        base_score += 0.08  # Réduit de 0.10
                     elif avg_trade_size <= 1.0:
-                        base_score += 0.05  # Taille normale OK
+                        base_score += 0.04  # Réduit de 0.05
                     elif avg_trade_size >= self.whale_trade_multiplier:
-                        base_score += 0.08  # Whale dump peut créer opportunité
+                        base_score += 0.06  # Réduit de 0.08
                 
             return min(1.0, max(0.0, base_score))
             

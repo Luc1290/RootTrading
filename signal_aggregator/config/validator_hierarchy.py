@@ -64,16 +64,16 @@ VALIDATOR_HIERARCHY = {
 # Configuration des seuils de validation par niveau
 VALIDATION_THRESHOLDS = {
     'critical': {
-        'min_score': 0.4,  # Score minimum pour un validator critique
+        'min_score': 0.75,  # Score minimum 75% pour validators critiques (DURCI)
         'rejection_message': "Signal rejeté par validator critique : {validator_name} - {reason}"
     },
     'important': {
-        'min_score': 0.3,  # Score minimum pour un validator important
-        'low_score_penalty': 0.2  # Pénalité si score trop bas
+        'min_score': 0.65,  # Score minimum 65% pour validators importants (DURCI)
+        'low_score_penalty': 0.3  # Pénalité augmentée
     },
     'standard': {
-        'min_score': 0.2,  # Score minimum pour un validator standard
-        'low_score_penalty': 0.1  # Pénalité si score trop bas
+        'min_score': 0.55,  # Score minimum 55% pour validators standards (DURCI)
+        'low_score_penalty': 0.2  # Pénalité augmentée
     }
 }
 

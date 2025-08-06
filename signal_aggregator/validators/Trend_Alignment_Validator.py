@@ -27,38 +27,38 @@ class Trend_Alignment_Validator(BaseValidator):
         self.name = "Trend_Alignment_Validator"
         self.category = "trend"
         
-        # Paramètres alignement tendance
-        self.min_trend_strength = 0.4         # Force minimum tendance
-        self.strong_trend_threshold = 0.7     # Tendance considérée forte
-        self.min_trend_consensus = 0.6        # Consensus minimum entre TF
-        self.min_aligned_timeframes = 2       # Minimum timeframes alignés
+        # Paramètres alignement tendance DURCIS
+        self.min_trend_strength = 0.55        # Force minimum tendance relevé (55%)
+        self.strong_trend_threshold = 0.75    # Tendance considérée forte relevé (75%)
+        self.min_trend_consensus = 0.70       # Consensus minimum entre TF relevé (70%)
+        self.min_aligned_timeframes = 3       # Minimum timeframes alignés relevé (3)
         
-        # Paramètres EMA alignment
-        self.min_ema_separation = 0.005       # 0.5% séparation minimum EMA
-        self.optimal_ema_separation = 0.02    # 2% séparation optimale EMA
-        self.ema_slope_threshold = 0.001      # Seuil pente EMA significative
+        # Paramètres EMA alignment DURCIS
+        self.min_ema_separation = 0.008       # 0.8% séparation minimum EMA relevé
+        self.optimal_ema_separation = 0.025   # 2.5% séparation optimale EMA relevé
+        self.ema_slope_threshold = 0.002      # Seuil pente EMA significative relevé
         
-        # Paramètres MACD alignment
-        self.min_macd_histogram_strength = 0.1 # Force minimum histogramme MACD
-        self.macd_signal_coherence_threshold = 0.8 # Cohérence MACD/signal
+        # Paramètres MACD alignment DURCIS
+        self.min_macd_histogram_strength = 0.15 # Force minimum histogramme MACD relevé
+        self.macd_signal_coherence_threshold = 0.85 # Cohérence MACD/signal relevé
         
-        # Paramètres multi-timeframe
+        # Paramètres multi-timeframe DURCIS
         self.timeframe_weights = {            # Poids par timeframe
             '1m': 0.1, '5m': 0.15, '15m': 0.2, '1h': 0.25, '4h': 0.2, '1d': 0.1
         }
-        self.min_weighted_consensus = 0.65    # Consensus pondéré minimum
+        self.min_weighted_consensus = 0.75    # Consensus pondéré minimum relevé (75%)
         
-        # Paramètres transition et momentum
-        self.max_trend_transition_probability = 0.3  # Max probabilité transition
-        self.min_momentum_alignment = 0.5     # Alignement momentum minimum
-        self.trend_maturity_threshold = 10    # Barres maturité trend minimum
+        # Paramètres transition et momentum DURCIS
+        self.max_trend_transition_probability = 0.25 # Max probabilité transition réduite
+        self.min_momentum_alignment = 0.6     # Alignement momentum minimum relevé (60%)
+        self.trend_maturity_threshold = 15    # Barres maturité trend minimum relevé
         
-        # Bonus/malus
-        self.perfect_alignment_bonus = 0.30   # Bonus alignement parfait
-        self.strong_trend_bonus = 0.25        # Bonus tendance forte
-        self.multi_tf_consensus_bonus = 0.20  # Bonus consensus multi-TF
-        self.weak_trend_penalty = -0.25       # Pénalité tendance faible
-        self.misalignment_penalty = -0.30     # Pénalité désalignement
+        # Bonus/malus RÉDUITS
+        self.perfect_alignment_bonus = 0.18   # Bonus alignement parfait réduit (18%)
+        self.strong_trend_bonus = 0.15        # Bonus tendance forte réduit (15%)
+        self.multi_tf_consensus_bonus = 0.12  # Bonus consensus multi-TF réduit (12%)
+        self.weak_trend_penalty = -0.15       # Pénalité tendance faible réduite (-15%)
+        self.misalignment_penalty = -0.18     # Pénalité désalignement réduite (-18%)
         
     def validate_signal(self, signal: Dict[str, Any]) -> bool:
         """
@@ -141,7 +141,7 @@ class Trend_Alignment_Validator(BaseValidator):
             # 1. Validation force de la tendance principale
             if primary_trend_strength is not None and primary_trend_strength < self.min_trend_strength:
                 logger.debug(f"{self.name}: Tendance principale faible ({self._safe_format(primary_trend_strength, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.8:
+                if signal_confidence < 0.85:  # Plus strict
                     return False
                     
             # 2. Validation cohérence direction tendance/signal
@@ -149,47 +149,47 @@ class Trend_Alignment_Validator(BaseValidator):
                 direction_coherence = self._validate_trend_signal_coherence(signal_side, primary_trend_direction)
                 if not direction_coherence:
                     logger.debug(f"{self.name}: Incohérence tendance {primary_trend_direction} / signal {signal_side} pour {self.symbol}")
-                    if signal_confidence < 0.7:
+                    if signal_confidence < 0.80:  # Plus strict
                         return False
                         
             # 3. Validation alignement EMA
-            if ema_alignment_score is not None and ema_alignment_score < 40.0:
+            if ema_alignment_score is not None and ema_alignment_score < 50.0:  # Seuil relevé de 40 à 50
                 logger.debug(f"{self.name}: Alignement EMA insuffisant ({self._safe_format(ema_alignment_score, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.7:
+                if signal_confidence < 0.75:  # Plus strict
                     return False
                     
             # Validation séparation EMA
             if ema_separation_ratio is not None and ema_separation_ratio < self.min_ema_separation:
                 logger.debug(f"{self.name}: Séparation EMA insuffisante ({self._safe_format(ema_separation_ratio*100, '.2f')}%) pour {self.symbol}")
-                if signal_confidence < 0.6:
+                if signal_confidence < 0.70:  # Plus strict
                     return False
                     
             # 4. Validation cohérence MACD
             if macd_trend_coherence is not None and macd_trend_coherence < self.macd_signal_coherence_threshold:
                 logger.debug(f"{self.name}: Cohérence MACD/tendance insuffisante ({self._safe_format(macd_trend_coherence, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.7:
+                if signal_confidence < 0.75:  # Plus strict
                     return False
                     
             if macd_histogram_strength is not None and macd_histogram_strength < self.min_macd_histogram_strength:
                 logger.debug(f"{self.name}: Force histogramme MACD insuffisante ({self._safe_format(macd_histogram_strength, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.6:
+                if signal_confidence < 0.70:  # Plus strict
                     return False
                     
             # 5. Validation consensus multi-timeframe
             if timeframe_consensus_score is not None and timeframe_consensus_score < self.min_trend_consensus:
                 logger.debug(f"{self.name}: Consensus timeframes insuffisant ({self._safe_format(timeframe_consensus_score, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.6:
+                if signal_confidence < 0.70:  # Plus strict
                     return False
                     
             if aligned_timeframes_count is not None and aligned_timeframes_count < self.min_aligned_timeframes:
                 logger.debug(f"{self.name}: Pas assez de timeframes alignés ({aligned_timeframes_count}) pour {self.symbol}")
-                if signal_confidence < 0.7:
+                if signal_confidence < 0.75:  # Plus strict
                     return False
                     
             # 6. Validation probabilité transition
             if trend_transition_probability is not None and trend_transition_probability > self.max_trend_transition_probability:
                 logger.debug(f"{self.name}: Probabilité transition élevée ({self._safe_format(trend_transition_probability, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.8:
+                if signal_confidence < 0.85:  # Plus strict
                     return False
                     
             # 7. Validation alignement momentum (format 0-100, convertir vers 0-1)
@@ -197,33 +197,33 @@ class Trend_Alignment_Validator(BaseValidator):
                 momentum_norm = momentum_trend_alignment / 100.0 if momentum_trend_alignment > 1 else momentum_trend_alignment
                 if momentum_norm < self.min_momentum_alignment:
                     logger.debug(f"{self.name}: Alignement momentum insuffisant ({self._safe_format(momentum_norm, '.2f')}) pour {self.symbol}")
-                    if signal_confidence < 0.6:
+                    if signal_confidence < 0.70:  # Plus strict
                         return False
                     
             # 8. Validation maturité de la tendance
             if primary_trend_age is not None and primary_trend_age < self.trend_maturity_threshold:
                 logger.debug(f"{self.name}: Tendance trop jeune ({primary_trend_age} barres) pour {self.symbol}")
-                if signal_confidence < 0.7:
+                if signal_confidence < 0.75:  # Plus strict
                     return False
                     
             # 9. Validation cohérence timeframes spécifiques
             tf_coherence = self._validate_timeframe_coherence(signal_side, str(trend_1h) if trend_1h is not None else '', str(trend_4h) if trend_4h is not None else '', str(trend_1d) if trend_1d is not None else '')
             if not tf_coherence:
                 logger.debug(f"{self.name}: Incohérence entre timeframes pour {self.symbol}")
-                if signal_confidence < 0.6:
+                if signal_confidence < 0.70:  # Plus strict
                     return False
                     
             # 10. Validation adéquation stratégie/trend
             strategy_trend_match = self._validate_strategy_trend_match(signal_strategy, str(primary_trend_direction) if primary_trend_direction is not None else '', primary_trend_strength if primary_trend_strength is not None else 0.0)
             if not strategy_trend_match:
                 logger.debug(f"{self.name}: Stratégie {signal_strategy} inadaptée à la tendance pour {self.symbol}")
-                if signal_confidence < 0.6:
+                if signal_confidence < 0.70:  # Plus strict
                     return False
                     
             # 11. Validation pente EMA significative
             if ema_slope_strength is not None and ema_slope_strength < self.ema_slope_threshold:
                 logger.debug(f"{self.name}: Pente EMA insignifiante ({self._safe_format(ema_slope_strength, '.4f')}) pour {self.symbol}")
-                if signal_confidence < 0.5:
+                if signal_confidence < 0.65:  # Plus strict
                     return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol}")
@@ -368,67 +368,66 @@ class Trend_Alignment_Validator(BaseValidator):
             signal_strategy = signal.get('strategy', '')
             signal_side = signal.get('side')
             
-            base_score = 0.5  # Score de base si validé
+            base_score = 0.3  # Score de base réduit (0.3 au lieu de 0.5)
             
             # CORRECTION: Adapter le score selon la cohérence directionnelle
             direction_coherence = self._validate_trend_signal_coherence(signal_side, str(primary_trend_direction) if primary_trend_direction is not None else 'neutral')
             
             if not direction_coherence:
-                # Signal contraire à la tendance = score très faible
-                base_score = 0.1
-                return max(0.0, min(1.0, base_score))
+                # Signal contraire à la tendance = rejet total
+                return 0.0  # Rejet complet si incohérent
             
-            # Bonus force tendance principale (seulement si cohérent avec signal)
+            # Bonus force tendance principale (seulement si cohérent avec signal) - RÉDUIT
             if primary_trend_strength >= self.strong_trend_threshold:
-                base_score += self.strong_trend_bonus
-            elif primary_trend_strength >= self.min_trend_strength + 0.2:
-                base_score += 0.15
+                base_score += self.strong_trend_bonus  # Déjà réduit à 0.15
+            elif primary_trend_strength >= self.min_trend_strength + 0.15:  # Seuil relevé
+                base_score += 0.09  # Réduit de 0.15 à 0.09
                 
-            # Bonus alignement EMA (adapté selon direction)
+            # Bonus alignement EMA (adapté selon direction) - RÉDUIT
             if ema_alignment_score >= 90.0:
                 # Alignement parfait + direction cohérente = bonus maximal
-                base_score += 0.20
-            elif ema_alignment_score >= 70.0:
+                base_score += 0.12  # Réduit de 0.20 à 0.12
+            elif ema_alignment_score >= 75.0:  # Seuil relevé de 70 à 75
                 # Bon alignement + direction cohérente = bonus modéré
-                base_score += 0.12
+                base_score += 0.07  # Réduit de 0.12 à 0.07
                 
-            # Bonus séparation EMA optimale
+            # Bonus séparation EMA optimale - RÉDUIT
             if self.min_ema_separation <= ema_separation_ratio <= self.optimal_ema_separation:
-                base_score += 0.10  # Séparation dans zone optimale
+                base_score += 0.06  # Réduit de 0.10 à 0.06
                 
-            # Bonus cohérence MACD excellente
+            # Bonus cohérence MACD excellente - RÉDUIT
             if macd_trend_coherence >= 0.9:
-                base_score += 0.15  # Cohérence parfaite
-            elif macd_trend_coherence >= 0.8:
-                base_score += 0.10  # Bonne cohérence
+                base_score += 0.09  # Réduit de 0.15 à 0.09
+            elif macd_trend_coherence >= 0.85:  # Seuil relevé
+                base_score += 0.06  # Réduit de 0.10 à 0.06
                 
-            # Bonus consensus multi-timeframe (format 0-100)
+            # Bonus consensus multi-timeframe (format 0-100) - RÉDUIT
             consensus_norm = timeframe_consensus_score / 100.0 if timeframe_consensus_score > 1 else timeframe_consensus_score
             if consensus_norm >= 0.9:
-                base_score += self.multi_tf_consensus_bonus
-            elif consensus_norm >= 0.7:
-                base_score += 0.12
+                base_score += self.multi_tf_consensus_bonus  # Déjà réduit à 0.12
+            elif consensus_norm >= 0.75:  # Seuil relevé
+                base_score += 0.07  # Réduit de 0.12 à 0.07
                 
-            # Bonus nombre timeframes alignés
-            if aligned_timeframes_count >= 4:
-                base_score += 0.15  # Très nombreux timeframes alignés
-            elif aligned_timeframes_count >= 3:
-                base_score += 0.10  # Nombreux timeframes alignés
+            # Bonus nombre timeframes alignés - RÉDUIT
+            if aligned_timeframes_count >= 5:  # Seuil relevé
+                base_score += 0.09  # Réduit de 0.15 à 0.09
+            elif aligned_timeframes_count >= 4:  # Seuil relevé
+                base_score += 0.06  # Réduit de 0.10 à 0.06
                 
-            # Bonus alignement momentum
-            if momentum_trend_alignment >= 80:
-                base_score += 0.12  # Momentum très aligné
-            elif momentum_trend_alignment >= 60:
-                base_score += 0.08  # Momentum aligné
+            # Bonus alignement momentum - RÉDUIT
+            if momentum_trend_alignment >= 85:  # Seuil relevé
+                base_score += 0.07  # Réduit de 0.12 à 0.07
+            elif momentum_trend_alignment >= 70:  # Seuil relevé
+                base_score += 0.05  # Réduit de 0.08 à 0.05
                 
-            # Bonus cohérence parfaite signal/tendance 
+            # Bonus cohérence parfaite signal/tendance - RÉDUIT
             if signal_side and self._validate_trend_signal_coherence(signal_side, str(primary_trend_direction) if primary_trend_direction is not None else 'NEUTRAL'):
                 if primary_trend_direction and str(primary_trend_direction).upper() != "NEUTRAL":
-                    base_score += 0.10  # Cohérence avec tendance claire
+                    base_score += 0.06  # Réduit de 0.10 à 0.06
                     
-            # Bonus stratégie adaptée
+            # Bonus stratégie adaptée - RÉDUIT
             if self._validate_strategy_trend_match(signal_strategy, primary_trend_direction, primary_trend_strength):
-                base_score += 0.08  # Stratégie bien adaptée
+                base_score += 0.05  # Réduit de 0.08 à 0.05
                 
             # Bonus alignement global exceptionnel
             alignment_factors = [
@@ -437,10 +436,16 @@ class Trend_Alignment_Validator(BaseValidator):
             ]
             avg_alignment = sum(f for f in alignment_factors if f is not None) / len([f for f in alignment_factors if f is not None])
             
-            if avg_alignment >= 0.85:
-                base_score += self.perfect_alignment_bonus  # Alignement exceptionnel
+            if avg_alignment >= 0.90:  # Seuil plus strict
+                base_score += self.perfect_alignment_bonus  # Déjà réduit à 0.18
                 
-            return max(0.0, min(1.0, base_score))
+            # NOUVEAU: Filtre final - rejeter si score trop faible
+            if base_score < 0.35:  # Score minimum 35% pour trend alignment
+                return 0.0
+                
+            # NOUVEAU: Cap final pour éviter les scores excessifs
+            final_score = max(0.0, min(0.85, base_score))  # Limité à 85% maximum
+            return final_score
             
         except Exception as e:
             logger.error(f"{self.name}: Erreur calcul score pour {self.symbol}: {e}")

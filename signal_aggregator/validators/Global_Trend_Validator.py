@@ -23,14 +23,15 @@ class Global_Trend_Validator(BaseValidator):
     def __init__(self, symbol: str, data: Dict[str, Any], context: Dict[str, Any]):
         super().__init__(symbol, data, context)
         
-        # Seuils de validation (plus stricts)
-        self.min_trend_alignment_bull = 0.5   # Trend alignment minimum pour tendance haussière  
-        self.min_trend_alignment_bear = -0.5  # Trend alignment minimum pour tendance baissière
-        self.min_adx_trend = 25              # ADX minimum pour considérer une tendance forte
-        self.min_regime_confidence = 60      # Confiance minimum du régime
-        # Nouveaux filtres EMA
+        # Seuils de validation - OPTIMISÉS POUR RÉDUIRE SURTRADING
+        self.min_trend_alignment_bull = 0.3   # Moins strict: 0.3 au lieu de 0.5  
+        self.min_trend_alignment_bear = -0.3  # Moins strict: -0.3 au lieu de -0.5
+        self.min_adx_trend = 30              # Plus strict: 30 au lieu de 25 (tendance vraiment forte)
+        self.min_regime_confidence = 75      # Plus strict: 75% au lieu de 60% (confiance vraiment élevée)
+        # Filtres EMA adaptés
         self.use_ema_filter = True          # Activer le filtre EMA50/EMA99
-        self.ema_divergence_penalty = 0.5   # Pénalité forte pour signal contra-EMA
+        self.ema_divergence_penalty = 0.3   # Pénalité réduite: 0.3 au lieu de 0.5
+        self.ranging_mode_permissive = True  # NOUVEAU: Mode permissif en ranging
         
     def validate_signal(self, signal: Dict[str, Any]) -> bool:
         """
@@ -55,35 +56,42 @@ class Global_Trend_Validator(BaseValidator):
             adx_value = self.context.get('adx_14', 0)
             trend_strength = self.context.get('trend_strength')
             
-            # En marché en range, appliquer une logique directionnelle stricte
+            # En marché en range - LOGIQUE OPTIMISÉE
             if market_regime == 'RANGING':
-                # Récupérer les EMA AVANT de vérifier la condition
-                ema_50 = self.context.get('ema_50')
-                ema_99 = self.context.get('ema_99')
-                current_price = self.context.get('current_price')
-                
-                # Même en range, utiliser les EMA pour déterminer la direction autorisée
-                if self.use_ema_filter and ema_50 and ema_99 and current_price:
-                    try:
-                        ema50_val = float(ema_50)
-                        ema99_val = float(ema_99)
-                        price_val = float(current_price)
-                        
-                        # En range : autoriser seulement la direction de la tendance EMA
-                        if ema50_val > ema99_val:
-                            # Tendance EMA haussière en range : seulement BUY
-                            if signal_side == 'SELL':
-                                logger.debug(f"Signal SELL rejeté en RANGING: tendance EMA haussière (EMA50={ema50_val:.2f} > EMA99={ema99_val:.2f})")
+                if self.ranging_mode_permissive:
+                    # NOUVEAU: Mode permissif en ranging - accepter BUY et SELL
+                    # C'est l'essence du trading en range !
+                    logger.debug(f"Signal {signal_side} accepté en mode RANGING permissif")
+                    return True
+                else:
+                    # Ancienne logique strict (gardée pour compatibilité)
+                    ema_50 = self.context.get('ema_50')
+                    ema_99 = self.context.get('ema_99')
+                    current_price = self.context.get('current_price')
+                    
+                    if self.use_ema_filter and ema_50 and ema_99 and current_price:
+                        try:
+                            ema50_val = float(ema_50)
+                            ema99_val = float(ema_99)
+                            price_val = float(current_price)
+                            
+                            # Seuil de séparation EMA pour éviter les faux signaux
+                            ema_separation = abs(ema50_val - ema99_val) / max(ema50_val, ema99_val)
+                            
+                            # Si EMA trop proches = vrai range, accepter les deux
+                            if ema_separation < 0.01:  # EMA à moins de 1% l'une de l'autre
+                                return True
+                            
+                            # Sinon logique directionnelle soft
+                            if ema50_val > ema99_val and signal_side == 'SELL':
+                                logger.debug(f"Signal SELL rejeté en RANGING: tendance EMA haussière (sep: {ema_separation*100:.1f}%)")
                                 return False
-                        elif ema50_val < ema99_val:
-                            # Tendance EMA baissière en range : seulement SELL
-                            if signal_side == 'BUY':
-                                logger.debug(f"Signal BUY rejeté en RANGING: tendance EMA baissière (EMA50={ema50_val:.2f} < EMA99={ema99_val:.2f})")
+                            elif ema50_val < ema99_val and signal_side == 'BUY':
+                                logger.debug(f"Signal BUY rejeté en RANGING: tendance EMA baissière (sep: {ema_separation*100:.1f}%)")
                                 return False
-                        # Si EMA50 ≈ EMA99, accepter les deux (vrai range)
-                        
-                    except (ValueError, TypeError):
-                        pass
+                                
+                        except (ValueError, TypeError):
+                            pass
                 
             # Vérifier la force de la tendance
             is_strong_trend = False
@@ -94,9 +102,10 @@ class Global_Trend_Validator(BaseValidator):
             elif trend_strength and str(trend_strength).lower() in ['strong', 'very_strong']:
                 is_strong_trend = True
                 
-            # Si pas de tendance forte, appliquer quand même une logique directionnelle
+            # Si pas de tendance forte - LOGIQUE ALLÉGÉE
             if not is_strong_trend:
-                # Récupérer les EMA même sans tendance forte
+                # NOUVEAU: Sans tendance forte, être plus permissif
+                # Les stratégies ont déjà leurs propres filtres
                 ema_50 = self.context.get('ema_50')
                 ema_99 = self.context.get('ema_99')
                 current_price = self.context.get('current_price')
@@ -107,12 +116,14 @@ class Global_Trend_Validator(BaseValidator):
                         ema99_val = float(ema_99)
                         price_val = float(current_price)
                         
-                        # Même sans tendance forte, respecter la direction EMA
-                        if ema50_val > ema99_val and signal_side == 'SELL':
-                            logger.debug(f"Signal SELL rejeté sans tendance forte: direction EMA haussière (EMA50={ema50_val:.2f} > EMA99={ema99_val:.2f})")
-                            return False
-                        elif ema50_val < ema99_val and signal_side == 'BUY':
-                            logger.debug(f"Signal BUY rejeté sans tendance forte: direction EMA baissière (EMA50={ema50_val:.2f} < EMA99={ema99_val:.2f})")
+                        # Seuil de divergence extrême pour rejeter
+                        price_ema50_distance = abs(price_val - ema50_val) / ema50_val
+                        
+                        # Rejeter seulement les signaux VRAIMENT contra-trend
+                        if (price_val < ema50_val * 0.98 and ema50_val < ema99_val * 0.995 and signal_side == 'BUY') or \
+                           (price_val > ema50_val * 1.02 and ema50_val > ema99_val * 1.005 and signal_side == 'SELL'):
+                            # Prix très éloigné de l'EMA dans le mauvais sens
+                            logger.debug(f"Signal {signal_side} rejeté: divergence EMA extrême (prix: {price_val:.2f}, EMA50: {ema50_val:.2f})")
                             return False
                             
                     except (ValueError, TypeError):
@@ -224,8 +235,8 @@ class Global_Trend_Validator(BaseValidator):
             bearish_regimes = ['TRENDING_BEAR', 'BREAKOUT_BEAR', 'BEARISH']
             
             if market_regime == 'RANGING':
-                # En range, score neutre
-                base_score = 0.6
+                # En range, score plus élevé - c'est l'environnement idéal pour oscillateurs
+                base_score = 0.75  # Augmenté de 0.6 à 0.75
             elif (market_regime in bullish_regimes and signal_side == 'BUY') or \
                  (market_regime in bearish_regimes and signal_side == 'SELL'):
                 # Parfaitement aligné

@@ -25,10 +25,14 @@ class OBV_Crossover_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres OBV
-        self.min_obv_ma_distance = 0.001  # Distance minimum OBV/MA pour éviter bruit
-        self.volume_confirmation_threshold = 1.2  # Seuil volume ratio pour confirmation
-        self.trend_alignment_bonus = 0.15  # Bonus si aligné avec tendance prix
+        # Paramètres OBV optimisés pour éviter surtrading
+        self.min_obv_ma_distance = 0.02  # Distance minimum OBV/MA (20x plus strict)
+        self.volume_confirmation_threshold = 1.5  # Volume minimum requis (plus strict)
+        self.trend_alignment_bonus = 0.12  # Bonus réduit
+        # Nouveaux filtres anti-bruit
+        self.min_confidence_threshold = 0.60  # Confidence minimum pour valider
+        self.strong_separation_threshold = 0.05  # Séparation forte OBV/MA
+        self.require_volume_confirmation = True  # Exiger confirmation volume
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs OBV et volume."""
@@ -135,32 +139,156 @@ class OBV_Crossover_Strategy(BaseStrategy):
             
         signal_side = None
         reason = ""
-        base_confidence = 0.5
+        base_confidence = 0.35  # Base plus conservatrice
         confidence_boost = 0.0
         cross_type = None
         
-        # Logique de croisement OBV
+        # NOUVEAU: Filtres anti-surtrading préliminaires
+        market_regime = values.get('market_regime')
+        if market_regime in ['TRANSITION', 'VOLATILE']:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"OBV ignoré en marché {market_regime}",
+                "metadata": {
+                    "strategy": self.name,
+                    "symbol": self.symbol,
+                    "market_regime": market_regime,
+                    "filter": "regime_filter"
+                }
+            }
+            
+        # Filtre volume obligatoire si activé
+        if self.require_volume_confirmation:
+            volume_ratio = values.get('volume_ratio')
+            if volume_ratio is None or float(volume_ratio) < self.volume_confirmation_threshold:
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Volume insuffisant pour OBV ({volume_ratio:.1f}x < {self.volume_confirmation_threshold}x)",
+                    "metadata": {
+                        "strategy": self.name,
+                        "symbol": self.symbol,
+                        "volume_ratio": volume_ratio,
+                        "filter": "volume_filter"
+                    }
+                }
+        
+        # NOUVEAU: Logique OBV avec conditions strictes
+        strong_signal_conditions = 0
+        weak_signal_penalty = 0
+        
+        # Vérification de la tendance globale AVANT signal
+        trend_strength = values.get('trend_strength')
+        if trend_strength and str(trend_strength).lower() in ['absent', 'weak']:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Tendance trop faible ({trend_strength}) pour OBV",
+                "metadata": {
+                    "strategy": self.name,
+                    "symbol": self.symbol,
+                    "trend_strength": trend_strength,
+                    "filter": "trend_filter"
+                }
+            }
+        
+        # Logique de croisement OBV avec validation
         if obv_above_ma:
+            # Potentiel BUY - mais vérifier conditions
+            directional_bias = values.get('directional_bias')
+            if directional_bias == 'BEARISH':
+                # Rejeté : OBV haussier mais bias baissier
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": "OBV BUY rejeté - bias baissier dominant",
+                    "metadata": {
+                        "strategy": self.name,
+                        "symbol": self.symbol,
+                        "directional_bias": directional_bias,
+                        "filter": "bias_filter"
+                    }
+                }
+            
             signal_side = "BUY"
             cross_type = "bullish_cross"
             reason = f"OBV ({obv:.0f}) > MA ({obv_ma:.0f})"
-            confidence_boost += 0.15
+            confidence_boost += 0.10  # Réduit de 0.15
+            
+            # Compter conditions favorables
+            if directional_bias == 'BULLISH':
+                strong_signal_conditions += 1
+                confidence_boost += 0.12
+                reason += " + bias haussier"
+            else:
+                weak_signal_penalty += 1
+                
         else:
+            # Potentiel SELL - mais vérifier conditions  
+            directional_bias = values.get('directional_bias')
+            if directional_bias == 'BULLISH':
+                # Rejeté : OBV baissier mais bias haussier
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": "OBV SELL rejeté - bias haussier dominant",
+                    "metadata": {
+                        "strategy": self.name,
+                        "symbol": self.symbol,
+                        "directional_bias": directional_bias,
+                        "filter": "bias_filter"
+                    }
+                }
+            
             signal_side = "SELL"
             cross_type = "bearish_cross"
             reason = f"OBV ({obv:.0f}) < MA ({obv_ma:.0f})"
-            confidence_boost += 0.15
+            confidence_boost += 0.10  # Réduit de 0.15
             
-        # Bonus selon la force de la séparation
-        if obv_distance >= 0.05:
-            confidence_boost += 0.15
+            # Compter conditions favorables
+            if directional_bias == 'BEARISH':
+                strong_signal_conditions += 1
+                confidence_boost += 0.12
+                reason += " + bias baissier"
+            else:
+                weak_signal_penalty += 1
+        
+        # NOUVEAU: Exiger au moins 1 condition forte
+        if strong_signal_conditions == 0:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Signal OBV {signal_side} trop faible - manque confirmations",
+                "metadata": {
+                    "strategy": self.name,
+                    "symbol": self.symbol,
+                    "strong_conditions": strong_signal_conditions,
+                    "weak_penalties": weak_signal_penalty,
+                    "filter": "insufficient_confirmation"
+                }
+            }
+            
+        # Bonus selon la force de la séparation - SEUILS PLUS STRICTS
+        if obv_distance >= self.strong_separation_threshold:  # 0.05
+            confidence_boost += 0.18
+            reason += f" - séparation TRÈS forte ({obv_distance:.3f})"
+        elif obv_distance >= 0.03:
+            confidence_boost += 0.12
             reason += f" - séparation forte ({obv_distance:.3f})"
-        elif obv_distance >= 0.02:
-            confidence_boost += 0.10
+        elif obv_distance >= 0.025:
+            confidence_boost += 0.06
             reason += f" - séparation modérée ({obv_distance:.3f})"
         else:
-            confidence_boost += 0.05
-            reason += f" - séparation faible ({obv_distance:.3f})"
+            # Séparation trop faible - pénalité
+            confidence_boost -= 0.05
+            reason += f" ATTENTION: séparation faible ({obv_distance:.3f})"
             
         # Confirmation avec OBV Oscillator
         obv_oscillator = values.get('obv_oscillator')
@@ -179,20 +307,23 @@ class OBV_Crossover_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation avec Volume Ratio (force du mouvement)
+        # Volume Ratio - SEUILS PLUS STRICTS
         volume_ratio = values.get('volume_ratio')
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio >= self.volume_confirmation_threshold:
+                if vol_ratio >= self.volume_confirmation_threshold * 1.5:  # 2.25x
+                    confidence_boost += 0.20
+                    reason += f" + volume EXCEPTIONNEL ({vol_ratio:.1f}x)"
+                elif vol_ratio >= self.volume_confirmation_threshold:  # 1.5x
                     confidence_boost += 0.15
                     reason += f" + volume élevé ({vol_ratio:.1f}x)"
-                elif vol_ratio >= 1.1:
-                    confidence_boost += 0.10
+                elif vol_ratio >= 1.2:
+                    confidence_boost += 0.08
                     reason += f" + volume modéré ({vol_ratio:.1f}x)"
                 else:
-                    confidence_boost -= 0.05
-                    reason += f" mais volume faible ({vol_ratio:.1f}x)"
+                    confidence_boost -= 0.10  # Pénalité augmentée
+                    reason += f" MAIS volume trop faible ({vol_ratio:.1f}x)"
             except (ValueError, TypeError):
                 pass
                 
@@ -264,24 +395,17 @@ class OBV_Crossover_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation avec trend_strength (VARCHAR: absent/weak/moderate/strong/very_strong)
-        trend_strength = values.get('trend_strength')
+        # Trend strength déjà vérifié plus haut, bonus supplémentaire
         if trend_strength is not None:
             trend_str = str(trend_strength).lower()
             if trend_str in ['strong', 'very_strong']:
-                confidence_boost += 0.12
+                confidence_boost += 0.10  # Réduit de 0.12
                 reason += f" + tendance {trend_str}"
             elif trend_str == 'moderate':
-                confidence_boost += 0.08
+                confidence_boost += 0.06  # Réduit de 0.08
                 reason += f" + tendance {trend_str}"
                 
-        # Confirmation avec directional_bias
-        directional_bias = values.get('directional_bias')
-        if directional_bias:
-            if (signal_side == "BUY" and directional_bias == "BULLISH") or \
-               (signal_side == "SELL" and directional_bias == "BEARISH"):
-                confidence_boost += 0.10
-                reason += f" + bias {directional_bias}"
+        # Directional bias déjà vérifié plus haut, pas de double bonus
                 
         # Confirmation avec qualité du volume (format 0-100)
         volume_quality_score = values.get('volume_quality_score')
@@ -331,20 +455,21 @@ class OBV_Crossover_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Market regime (valeurs DB réelles: TRENDING_BULL/TRENDING_BEAR/RANGING/TRANSITION/etc.)
-        market_regime = values.get('market_regime')
-        if market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]:
-            confidence_boost += 0.10
-            reason += f" (marché {market_regime.lower()})"
-        elif market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]:
-            confidence_boost += 0.10
-            reason += f" (marché {market_regime.lower()})"
-        elif market_regime == "RANGING":
-            confidence_boost -= 0.05
-            reason += " (marché ranging)"
-        elif market_regime == "TRANSITION":
-            confidence_boost += 0.02
-            reason += " (marché en transition)"
+        # Market regime - FILTRES PLUS STRICTS
+        if market_regime:
+            regime_str = str(market_regime).upper()
+            # Bonus si aligné avec la tendance
+            if (signal_side == "BUY" and regime_str in ["TRENDING_BULL", "BREAKOUT_BULL"]) or \
+               (signal_side == "SELL" and regime_str in ["TRENDING_BEAR", "BREAKOUT_BEAR"]):
+                confidence_boost += 0.15
+                reason += f" (aligné {regime_str.lower()})"
+            elif regime_str == "RANGING":
+                confidence_boost -= 0.15  # Pénalité augmentée
+                reason += " (marché ranging défavorable)"
+            elif (signal_side == "BUY" and regime_str in ["TRENDING_BEAR", "BREAKOUT_BEAR"]) or \
+                 (signal_side == "SELL" and regime_str in ["TRENDING_BULL", "BREAKOUT_BULL"]):
+                confidence_boost -= 0.12
+                reason += f" MAIS contre-tendance ({regime_str.lower()})"
             
         # Support/Resistance pour contexte
         if signal_side == "BUY":
@@ -377,18 +502,43 @@ class OBV_Crossover_Strategy(BaseStrategy):
                 confidence_boost += 0.05
                 reason += " + signal modéré"
                 
+        # Confluence - SEUILS PLUS STRICTS
         confluence_score = values.get('confluence_score')
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
-                if confluence > 60:
-                    confidence_boost += 0.12
+                if confluence > 70:  # Augmenté de 60
+                    confidence_boost += 0.15
+                    reason += f" + confluence EXCELLENTE ({confluence:.0f})"
+                elif confluence > 55:  # Augmenté de 45
+                    confidence_boost += 0.10
                     reason += f" + confluence élevée ({confluence:.0f})"
-                elif confluence > 45:
-                    confidence_boost += 0.08
-                    reason += f" + confluence modérée ({confluence:.0f})"
+                elif confluence > 40:
+                    confidence_boost += 0.05
+                    reason += f" + confluence correcte ({confluence:.0f})"
+                elif confluence < 35:  # NOUVEAU: Pénalité si faible
+                    confidence_boost -= 0.08
+                    reason += f" mais confluence FAIBLE ({confluence:.0f})"
             except (ValueError, TypeError):
                 pass
+        
+        # NOUVEAU: Filtre final OBLIGATOIRE - confidence minimum
+        raw_confidence = base_confidence * (1 + confidence_boost)
+        if raw_confidence < self.min_confidence_threshold:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Signal OBV {signal_side} rejeté - confidence insuffisante ({raw_confidence:.2f} < {self.min_confidence_threshold})",
+                "metadata": {
+                    "strategy": self.name,
+                    "symbol": self.symbol,
+                    "rejected_signal": signal_side,
+                    "raw_confidence": raw_confidence,
+                    "min_required": self.min_confidence_threshold,
+                    "obv_distance": obv_distance
+                }
+            }
                 
         confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)

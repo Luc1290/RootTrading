@@ -26,11 +26,11 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres Stochastic
-        self.oversold_threshold = 20  # Seuil de survente
-        self.exit_oversold_threshold = 25  # Seuil de sortie de survente
+        # Paramètres Stochastic OPTIMISÉS - Plus stricts
+        self.oversold_threshold = 15  # Seuil de survente plus strict (15 au lieu de 20)
+        self.exit_oversold_threshold = 22  # Seuil de sortie réduit (22 au lieu de 25)
         self.overbought_threshold = 80  # Seuil de surachat (pour éviter les entrées)
-        self.min_crossover_separation = 2  # Distance minimum entre %K et %D pour croisement valide
+        self.min_crossover_separation = 4  # Distance minimum relevée (4 au lieu de 2) - évite le bruit
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs Stochastic et confirmation."""
@@ -237,7 +237,7 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
                                    stoch_analysis: Dict[str, Any], buy_condition: Dict[str, Any]) -> Dict[str, Any]:
         """Crée le signal d'achat oversold avec confirmations."""
         signal_side = "BUY"  # Stratégie uniquement orientée achat
-        base_confidence = 0.6  # Base élevée pour signaux oversold
+        base_confidence = 0.35  # Base réduite - oversold ne garantit pas le rebond
         confidence_boost = 0.0
         
         stoch_k = stoch_analysis['stoch_k']
@@ -248,34 +248,37 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         # Construction de la raison
         reason = f"Stochastic oversold: K={stoch_k:.1f}, D={stoch_d:.1f}"
         
-        # Bonus selon le type de signal
+        # Bonus selon le type de signal - RÉDUITS
         if signal_quality == "strong":
-            confidence_boost += 0.20  # Signal fort en survente
+            confidence_boost += 0.15  # Réduit de 0.20 - survente profonde
             reason += " (survente profonde)"
         else:
-            confidence_boost += 0.15  # Signal modéré en sortie de survente
+            confidence_boost += 0.10  # Réduit de 0.15 - sortie de survente
             reason += " (sortie survente)"
             
-        # Bonus selon la force du croisement
+        # Bonus selon la force du croisement - SEUILS RELEVÉS
         crossover_strength = buy_condition['crossover_strength']
-        if crossover_strength > 10:
-            confidence_boost += 0.15
+        if crossover_strength > 15:  # Seuil relevé de 10 à 15
+            confidence_boost += 0.12  # Réduit de 0.15
             reason += f" + croisement fort (Δ{crossover_strength:.1f})"
-        elif crossover_strength > 5:
-            confidence_boost += 0.10
+        elif crossover_strength > 8:  # Seuil relevé de 5 à 8
+            confidence_boost += 0.08  # Réduit de 0.10
             reason += f" + croisement modéré (Δ{crossover_strength:.1f})"
+        elif crossover_strength >= 4:  # Nouveau seuil minimum
+            confidence_boost += 0.04  # Réduit de 0.05
+            reason += f" + croisement acceptable (Δ{crossover_strength:.1f})"
         else:
-            confidence_boost += 0.05
-            reason += f" + croisement faible (Δ{crossover_strength:.1f})"
+            confidence_boost -= 0.05  # PÉNALITÉ si croisement trop faible
+            reason += f" ATTENTION: croisement trop faible (Δ{crossover_strength:.1f})"
             
         # Confirmation avec Stochastic Fast
         fast_analysis = stoch_analysis.get('fast_analysis')
         if fast_analysis is not None:
             if fast_analysis['fast_oversold'] and fast_analysis['fast_crossover']:
-                confidence_boost += 0.15
+                confidence_boost += 0.10  # Réduit de 0.15
                 reason += " + Stoch Fast confirme"
             elif fast_analysis['fast_crossover']:
-                confidence_boost += 0.08
+                confidence_boost += 0.05  # Réduit de 0.08
                 reason += " + Stoch Fast aligné"
                 
         # Confirmation avec RSI
@@ -283,15 +286,16 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         if rsi_14 is not None:
             try:
                 rsi = float(rsi_14)
-                if rsi <= 30:  # RSI aussi en survente
-                    confidence_boost += 0.15
-                    reason += f" + RSI survente ({rsi:.1f})"
-                elif rsi <= 40:  # RSI supportive
-                    confidence_boost += 0.10
+                # RSI plus strict pour oversold
+                if rsi <= 25:  # Seuil RSI plus strict (25 au lieu de 30)
+                    confidence_boost += 0.12  # Réduit de 0.15
+                    reason += f" + RSI survente forte ({rsi:.1f})"
+                elif rsi <= 35:  # Seuil réduit (35 au lieu de 40)
+                    confidence_boost += 0.06  # Réduit de 0.10
                     reason += f" + RSI favorable ({rsi:.1f})"
-                elif rsi >= 70:  # RSI diverge
-                    confidence_boost -= 0.10
-                    reason += f" mais RSI élevé ({rsi:.1f})"
+                elif rsi >= 65:  # Seuil plus strict (65 au lieu de 70)
+                    confidence_boost -= 0.12  # Pénalité augmentée
+                    reason += f" ATTENTION: RSI élevé ({rsi:.1f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -300,11 +304,11 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         if williams_r is not None:
             try:
                 wr = float(williams_r)
-                if wr <= -80:  # Williams R aussi en survente
-                    confidence_boost += 0.12
-                    reason += f" + Williams R survente ({wr:.1f})"
-                elif wr <= -60:
-                    confidence_boost += 0.08
+                if wr <= -85:  # Seuil plus strict (-85 au lieu de -80)
+                    confidence_boost += 0.08  # Réduit de 0.12
+                    reason += f" + Williams R survente forte ({wr:.1f})"
+                elif wr <= -70:  # Seuil plus strict (-70 au lieu de -60)
+                    confidence_boost += 0.05  # Réduit de 0.08
                     reason += f" + Williams R favorable ({wr:.1f})"
             except (ValueError, TypeError):
                 pass
@@ -319,10 +323,10 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
                 macd_bullish = macd_val > macd_sig
                 
                 if macd_bullish:
-                    confidence_boost += 0.12
+                    confidence_boost += 0.08  # Réduit de 0.12
                     reason += " + MACD haussier"
                 elif macd_val > macd_sig - 0.0001:  # MACD proche du croisement
-                    confidence_boost += 0.05
+                    confidence_boost += 0.03  # Réduit de 0.05
                     reason += " + MACD proche croisement"
             except (ValueError, TypeError):
                 pass
@@ -332,11 +336,11 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         trend_strength = values.get('trend_strength')
         
         if directional_bias == "BULLISH":
-            confidence_boost += 0.15
+            confidence_boost += 0.10  # Réduit de 0.15
             reason += " + bias haussier"
         elif directional_bias == "BEARISH":
-            confidence_boost -= 0.08  # Contre-tendance mais oversold peut rebondir
-            reason += " mais bias baissier"
+            confidence_boost -= 0.12  # Pénalité augmentée (contre-tendance plus risqué)
+            reason += " ATTENTION: bias baissier"
             
         if trend_strength is not None:
             # trend_strength selon schéma: WEAK, MODERATE, STRONG, VERY_STRONG
@@ -357,11 +361,11 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
                 support = float(nearest_support)
                 distance_to_support = abs(current_price - support) / current_price
                 
-                if distance_to_support <= 0.02:  # Proche du support (2%)
-                    confidence_boost += 0.15
-                    reason += " + près support"
-                elif distance_to_support <= 0.05:  # Support modéré (5%)
-                    confidence_boost += 0.08
+                if distance_to_support <= 0.015:  # Seuil plus strict (1.5% au lieu de 2%)
+                    confidence_boost += 0.10  # Réduit de 0.15
+                    reason += " + très proche support"
+                elif distance_to_support <= 0.03:  # Seuil réduit (3% au lieu de 5%)
+                    confidence_boost += 0.05  # Réduit de 0.08
                     reason += " + support proche"
             except (ValueError, TypeError):
                 pass
@@ -456,7 +460,26 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
+        # NOUVEAU: Filtre final - rejeter si confidence insuffisante ou excessive
+        raw_confidence = base_confidence * (1 + confidence_boost)
+        if raw_confidence < 0.40:  # Seuil minimum 40% pour signaux oversold
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Signal oversold rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.40)",
+                "metadata": {
+                    "strategy": self.name,
+                    "symbol": self.symbol,
+                    "rejected_signal": "BUY",
+                    "raw_confidence": raw_confidence,
+                    "stoch_k": stoch_k,
+                    "stoch_d": stoch_d
+                }
+            }
+        
+        # Limiter la confiance maximale pour éviter les sur-confiances
+        confidence = min(self.calculate_confidence(base_confidence, 1 + confidence_boost), 0.85)
         strength: str = self.get_strength_from_confidence(confidence)
         
         return {

@@ -33,14 +33,14 @@ class S_R_Level_Proximity_Validator(BaseValidator):
         self.close_proximity_threshold = 0.01 # 1.0% de proximité proche
         self.safe_distance_threshold = 0.02   # 2.0% de distance sûre
         
-        # Paramètres de force des niveaux
-        self.min_level_strength = 0.3        # Force minimum d'un niveau
-        self.strong_level_threshold = 0.7    # Seuil niveau fort
-        self.very_strong_level_threshold = 0.9 # Seuil niveau très fort
+        # Paramètres de force des niveaux - LÉGÈREMENT DURCIS
+        self.min_level_strength = 0.4        # Force minimum d'un niveau (augmenté)
+        self.strong_level_threshold = 0.75   # Seuil niveau fort (augmenté)
+        self.very_strong_level_threshold = 0.9 # Seuil niveau très fort (inchangé)
         
-        # Paramètres de cassure (format décimal 0-1 depuis DB)
-        self.min_break_probability = 0.60   # Probabilité min de cassure (60%)
-        self.high_break_probability = 0.80  # Probabilité haute de cassure (80%)
+        # Paramètres de cassure - PLUS STRICTS
+        self.min_break_probability = 0.65   # Probabilité min de cassure (65% vs 60%)
+        self.high_break_probability = 0.85  # Probabilité haute de cassure (85% vs 80%)
         
     def validate_signal(self, signal: Dict[str, Any]) -> bool:
         """
@@ -105,8 +105,8 @@ class S_R_Level_Proximity_Validator(BaseValidator):
                     # Zone de proximité modérée - besoin de conditions favorables
                     elif resistance_distance_pct <= self.close_proximity_threshold:
                         if resistance_strength is not None and resistance_strength >= self.very_strong_level_threshold:
-                            # Résistance très forte - besoin de signal très confiant
-                            if signal_confidence < 0.8 or signal_strength != 'very_strong':
+                            # Résistance très forte - besoin de signal TRÈS confiant
+                            if signal_confidence < 0.85 or signal_strength not in ['very_strong', 'strong']:  # Plus permissif sur strength
                                 logger.debug(f"{self.name}: BUY rejeté - résistance très forte proche sans signal fort pour {self.symbol}")
                                 return False
                                 
@@ -139,8 +139,8 @@ class S_R_Level_Proximity_Validator(BaseValidator):
                     # Zone de proximité modérée - besoin de conditions favorables
                     elif support_distance_pct <= self.close_proximity_threshold:
                         if support_strength is not None and support_strength >= self.very_strong_level_threshold:
-                            # Support très fort - besoin de signal très confiant
-                            if signal_confidence < 0.8 or signal_strength != 'very_strong':
+                            # Support très fort - besoin de signal TRÈS confiant
+                            if signal_confidence < 0.85 or signal_strength not in ['very_strong', 'strong']:  # Cohérence avec BUY
                                 logger.debug(f"{self.name}: SELL rejeté - support très fort proche sans signal fort pour {self.symbol}")
                                 return False
                                 
@@ -158,9 +158,9 @@ class S_R_Level_Proximity_Validator(BaseValidator):
             if nearest_support is not None and nearest_resistance is not None:
                 sr_range_pct = abs(nearest_resistance - nearest_support) / current_price
                 
-                # Range très étroit - signaux moins fiables
+                # Range très étroit - signaux moins fiables - PLUS STRICT
                 if sr_range_pct <= 0.01:  # 1% de range
-                    if signal_confidence < 0.7:
+                    if signal_confidence < 0.75:  # Augmenté de 0.7 à 0.75
                         logger.debug(f"{self.name}: Signal rejeté - range S/R trop étroit ({self._safe_format(sr_range_pct, '.3f')}%) + confidence faible pour {self.symbol}")
                         return False
                         
@@ -212,57 +212,57 @@ class S_R_Level_Proximity_Validator(BaseValidator):
             current_price = float(self.data.get('close', signal.get('price', 0)))
             signal_side = signal.get('side')
             
-            base_score = 0.5  # Score de base si validé
+            base_score = 0.4  # Score de base réduit pour cohérence
             
             # Scoring selon position par rapport aux niveaux
             if signal_side == "BUY" and nearest_support is not None:
                 support_distance_pct = abs(current_price - nearest_support) / current_price
                 
-                # Bonus proximité support fort
+                # Bonus proximité support fort - LÉGÈREMENT RÉDUITS
                 if support_distance_pct <= self.close_proximity_threshold:
                     if support_strength >= self.very_strong_level_threshold:
-                        base_score += 0.3  # Excellent
+                        base_score += 0.25  # Réduit de 0.3
                     elif support_strength >= self.strong_level_threshold:
-                        base_score += 0.2  # Très bon
+                        base_score += 0.16  # Réduit de 0.2
                     else:
-                        base_score += 0.1  # Bon
+                        base_score += 0.08  # Réduit de 0.1
                         
-                # Bonus éloignement de résistance
+                # Bonus éloignement de résistance - RÉDUIT
                 if nearest_resistance is not None:
                     resistance_distance_pct = abs(nearest_resistance - current_price) / current_price
                     if resistance_distance_pct >= self.safe_distance_threshold:
-                        base_score += 0.1
+                        base_score += 0.08  # Réduit de 0.1
                         
             elif signal_side == "SELL" and nearest_resistance is not None:
                 resistance_distance_pct = abs(nearest_resistance - current_price) / current_price
                 
-                # Bonus proximité résistance forte
+                # Bonus proximité résistance forte - COHÉRENCE avec support
                 if resistance_distance_pct <= self.close_proximity_threshold:
                     if resistance_strength >= self.very_strong_level_threshold:
-                        base_score += 0.3  # Excellent
+                        base_score += 0.25  # Réduit de 0.3
                     elif resistance_strength >= self.strong_level_threshold:
-                        base_score += 0.2  # Très bon
+                        base_score += 0.16  # Réduit de 0.2
                     else:
-                        base_score += 0.1  # Bon
+                        base_score += 0.08  # Réduit de 0.1
                         
-                # Bonus éloignement de support
+                # Bonus éloignement de support - COHÉRENCE
                 if nearest_support is not None:
                     support_distance_pct = abs(current_price - nearest_support) / current_price
                     if support_distance_pct >= self.safe_distance_threshold:
-                        base_score += 0.1
+                        base_score += 0.08  # Réduit de 0.1
                         
-            # Bonus probabilité de cassure élevée
+            # Bonus probabilité de cassure élevée - RÉDUITS
             if break_probability is not None:
                 if break_probability >= self.high_break_probability:
-                    base_score += 0.2  # Forte probabilité cassure
+                    base_score += 0.15  # Réduit de 0.2
                 elif break_probability >= self.min_break_probability:
-                    base_score += 0.1  # Probabilité modérée
+                    base_score += 0.08  # Réduit de 0.1
                     
-            # Bonus range large (évite consolidation)
+            # Bonus range large (évite consolidation) - PLUS STRICT
             if nearest_support is not None and nearest_resistance is not None:
                 sr_range_pct = abs(nearest_resistance - nearest_support) / current_price
-                if sr_range_pct >= 0.03:  # 3% de range ou plus
-                    base_score += 0.05
+                if sr_range_pct >= 0.04:  # Seuil plus strict 4% vs 3%
+                    base_score += 0.04  # Légèrement réduit
                     
             return min(1.0, max(0.0, base_score))
             

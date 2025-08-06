@@ -22,13 +22,17 @@ class MACD_Crossover_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres MACD
-        self.min_macd_distance = 0.001   # Distance minimum MACD/Signal pour éviter bruit
-        self.histogram_threshold = 0.0005  # Seuil histogram pour confirmation
-        self.zero_line_bonus = 0.1       # Bonus si MACD au-dessus/dessous zéro
+        # Paramètres MACD - OPTIMISÉS
+        self.min_macd_distance = 0.005   # Distance minimum MACD/Signal AUGMENTÉE (x5)
+        self.histogram_threshold = 0.002  # Seuil histogram AUGMENTÉ (x4)
+        self.zero_line_bonus = 0.08      # Bonus réduit de 0.1 à 0.08
         # Paramètres de filtre de tendance
         self.trend_filter_enabled = True  # Activer le filtre de tendance globale
         self.contra_trend_penalty = 0.3   # Pénalité pour signaux contra-trend
+        # NOUVEAU: Filtres anti-bruit
+        self.min_confidence_threshold = 0.55  # Confidence minimum pour valider
+        self.strong_separation_threshold = 0.02   # Séparation forte MACD/Signal
+        self.require_histogram_confirmation = True  # Exiger confirmation histogram
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs MACD."""
@@ -139,7 +143,7 @@ class MACD_Crossover_Strategy(BaseStrategy):
             
         signal_side = None
         reason = ""
-        base_confidence = 0.5
+        base_confidence = 0.3  # RÉDUIT de 0.5 à 0.3 - plus conservateur
         confidence_boost = 0.0
         cross_type = None
         
@@ -170,89 +174,162 @@ class MACD_Crossover_Strategy(BaseStrategy):
             elif trend_alignment < -0.3:  # Forte tendance baissière (format décimal)
                 is_strong_downtrend = True
         
-        # Logique de croisement MACD adaptée à la tendance
-        if macd_above_signal:
-            # MACD au-dessus du signal
-            if not self.trend_filter_enabled or not is_strong_downtrend:
-                # OK pour BUY si pas en forte tendance baissière
-                signal_side = "BUY"
-                cross_type = "bullish_cross"
-                reason = f"MACD ({macd_line:.4f}) > Signal ({macd_signal:.4f})"
-                confidence_boost += 0.15
-                
-                if is_strong_uptrend:
-                    confidence_boost += 0.20  # Bonus si aligné avec tendance
-                    reason += " - aligné tendance haussière"
-            else:
-                # En forte tendance baissière, ignorer les signaux BUY
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": "Signal BUY ignoré en forte tendance baissière",
-                    "metadata": {
-                        "strategy": self.name,
-                        "symbol": self.symbol,
-                        "market_regime": market_regime,
-                        "trend_alignment": trend_alignment
-                    }
+        # NOUVEAU: Validation Histogram OBLIGATOIRE si activée
+        histogram_valid = True
+        if self.require_histogram_confirmation and macd_histogram is not None:
+            if macd_above_signal and macd_histogram <= 0:
+                histogram_valid = False
+                reason_histogram = "Histogram négatif contredit signal BUY"
+            elif not macd_above_signal and macd_histogram >= 0:
+                histogram_valid = False
+                reason_histogram = "Histogram positif contredit signal SELL"
+        
+        if not histogram_valid:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": reason_histogram,
+                "metadata": {
+                    "strategy": self.name,
+                    "symbol": self.symbol,
+                    "macd_histogram": macd_histogram,
+                    "rejected": "histogram_contradiction"
                 }
-        else:
-            # MACD en-dessous du signal
-            if not self.trend_filter_enabled or not is_strong_uptrend:
-                # OK pour SELL si pas en forte tendance haussière
-                signal_side = "SELL"
-                cross_type = "bearish_cross"
-                reason = f"MACD ({macd_line:.4f}) < Signal ({macd_signal:.4f})"
-                confidence_boost += 0.15
-                
-                if is_strong_downtrend:
-                    confidence_boost += 0.20  # Bonus si aligné avec tendance
-                    reason += " - aligné tendance baissière"
-            else:
-                # En forte tendance haussière, ignorer les signaux SELL
+            }
+        
+        # NOUVEAU: Logique PLUS STRICTE - exiger conditions fortes
+        strong_signal_conditions = 0
+        weak_signal_penalty = 0
+        
+        # Logique de croisement MACD avec validation stricte
+        if macd_above_signal:
+            # MACD au-dessus du signal - potentiel BUY
+            if is_strong_downtrend:
+                # REJETÉ: forte tendance baissière
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": "Signal SELL ignoré en forte tendance haussière",
+                    "reason": "Signal BUY rejeté - forte tendance baissière confirmée",
                     "metadata": {
                         "strategy": self.name,
                         "symbol": self.symbol,
                         "market_regime": market_regime,
-                        "trend_alignment": trend_alignment
+                        "trend_alignment": trend_alignment,
+                        "rejected": "contra_trend"
                     }
                 }
             
-        # Bonus selon la force de la séparation
+            # Conditions pour BUY valide
+            signal_side = "BUY"
+            cross_type = "bullish_cross"
+            reason = f"MACD ({macd_line:.4f}) > Signal ({macd_signal:.4f})"
+            confidence_boost += 0.10  # Réduit de 0.15
+            
+            # Compter les conditions favorables
+            if is_strong_uptrend:
+                strong_signal_conditions += 1
+                confidence_boost += 0.15  # Réduit de 0.20
+                reason += " + tendance haussière forte"
+            elif macd_line > 0:
+                strong_signal_conditions += 1
+                confidence_boost += 0.08
+                reason += " + MACD positif"
+            else:
+                weak_signal_penalty += 1
+                
+        else:
+            # MACD en-dessous du signal - potentiel SELL
+            if is_strong_uptrend:
+                # REJETÉ: forte tendance haussière
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": "Signal SELL rejeté - forte tendance haussière confirmée",
+                    "metadata": {
+                        "strategy": self.name,
+                        "symbol": self.symbol,
+                        "market_regime": market_regime,
+                        "trend_alignment": trend_alignment,
+                        "rejected": "contra_trend"
+                    }
+                }
+            
+            # Conditions pour SELL valide
+            signal_side = "SELL"
+            cross_type = "bearish_cross"
+            reason = f"MACD ({macd_line:.4f}) < Signal ({macd_signal:.4f})"
+            confidence_boost += 0.10  # Réduit de 0.15
+            
+            # Compter les conditions favorables
+            if is_strong_downtrend:
+                strong_signal_conditions += 1
+                confidence_boost += 0.15  # Réduit de 0.20
+                reason += " + tendance baissière forte"
+            elif macd_line < 0:
+                strong_signal_conditions += 1
+                confidence_boost += 0.08
+                reason += " + MACD négatif"
+            else:
+                weak_signal_penalty += 1
+        
+        # NOUVEAU: Exiger au moins 1 condition forte OU 0 pénalité
+        if strong_signal_conditions == 0 and weak_signal_penalty > 0:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Signal MACD {signal_side} trop faible - manque conditions de confirmation",
+                "metadata": {
+                    "strategy": self.name,
+                    "symbol": self.symbol,
+                    "strong_conditions": strong_signal_conditions,
+                    "weak_penalties": weak_signal_penalty,
+                    "rejected": "insufficient_confirmation"
+                }
+            }
+            
+        # Bonus selon la force de la séparation - SEUILS PLUS STRICTS
         separation_strength = abs(macd_line - macd_signal)
-        if separation_strength >= 0.01:
-            confidence_boost += 0.15
+        if separation_strength >= self.strong_separation_threshold:  # 0.02
+            confidence_boost += 0.18
+            reason += f" - séparation TRÈS forte ({separation_strength:.4f})"
+        elif separation_strength >= 0.01:
+            confidence_boost += 0.12
             reason += f" - séparation forte ({separation_strength:.4f})"
-        elif separation_strength >= 0.005:
-            confidence_boost += 0.10
+        elif separation_strength >= 0.007:
+            confidence_boost += 0.06
             reason += f" - séparation modérée ({separation_strength:.4f})"
         else:
-            confidence_boost += 0.05
-            reason += f" - séparation faible ({separation_strength:.4f})"
+            # Séparation trop faible - pénalité
+            confidence_boost -= 0.05
+            reason += f" ATTENTION: séparation faible ({separation_strength:.4f})"
             
-        # Confirmation avec Histogram MACD
+        # Confirmation avec Histogram MACD - SEUILS PLUS STRICTS
         if macd_histogram is not None:
-            if signal_side == "BUY" and macd_histogram > self.histogram_threshold:
-                confidence_boost += 0.15
+            if signal_side == "BUY" and macd_histogram > self.histogram_threshold * 2:  # Double seuil
+                confidence_boost += 0.18
+                reason += f" + histogram TRÈS positif ({macd_histogram:.4f})"
+            elif signal_side == "SELL" and macd_histogram < -self.histogram_threshold * 2:  # Double seuil
+                confidence_boost += 0.18
+                reason += f" + histogram TRÈS négatif ({macd_histogram:.4f})"
+            elif signal_side == "BUY" and macd_histogram > self.histogram_threshold:
+                confidence_boost += 0.12
                 reason += f" + histogram positif ({macd_histogram:.4f})"
             elif signal_side == "SELL" and macd_histogram < -self.histogram_threshold:
-                confidence_boost += 0.15
+                confidence_boost += 0.12
                 reason += f" + histogram négatif ({macd_histogram:.4f})"
             elif signal_side == "BUY" and macd_histogram > 0:
-                confidence_boost += 0.10
+                confidence_boost += 0.06  # Réduit de 0.10
                 reason += f" + histogram favorable ({macd_histogram:.4f})"
             elif signal_side == "SELL" and macd_histogram < 0:
-                confidence_boost += 0.10
+                confidence_boost += 0.06  # Réduit de 0.10
                 reason += f" + histogram favorable ({macd_histogram:.4f})"
             else:
-                confidence_boost -= 0.05
-                reason += f" mais histogram défavorable ({macd_histogram:.4f})"
+                confidence_boost -= 0.10  # Pénalité augmentée
+                reason += f" MAIS histogram CONTRADICTOIRE ({macd_histogram:.4f})"
                 
         # Bonus si MACD dans la bonne zone par rapport à zéro
         if signal_side == "BUY" and macd_line > 0:
@@ -438,14 +515,39 @@ class MACD_Crossover_Strategy(BaseStrategy):
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
-                if confluence > 60:
-                    confidence_boost += 0.12
+                # SEUILS CONFLUENCE PLUS STRICTS
+                if confluence > 75:  # Augmenté de 60
+                    confidence_boost += 0.15
+                    reason += f" + confluence EXCELLENTE ({confluence:.0f})"
+                elif confluence > 65:  # Augmenté de 45
+                    confidence_boost += 0.10
                     reason += f" + confluence élevée ({confluence:.0f})"
-                elif confluence > 45:
-                    confidence_boost += 0.08
-                    reason += f" + confluence modérée ({confluence:.0f})"
+                elif confluence > 50:
+                    confidence_boost += 0.05
+                    reason += f" + confluence correcte ({confluence:.0f})"
+                elif confluence < 40:  # NOUVEAU: Pénalité si faible
+                    confidence_boost -= 0.08
+                    reason += f" mais confluence FAIBLE ({confluence:.0f})"
             except (ValueError, TypeError):
                 pass
+        
+        # NOUVEAU: Filtre final OBLIGATOIRE - confidence minimum
+        raw_confidence = base_confidence * (1 + confidence_boost)
+        if raw_confidence < self.min_confidence_threshold:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Signal MACD {signal_side} rejeté - confidence insuffisante ({raw_confidence:.2f} < {self.min_confidence_threshold})",
+                "metadata": {
+                    "strategy": self.name,
+                    "symbol": self.symbol,
+                    "rejected_signal": signal_side,
+                    "raw_confidence": raw_confidence,
+                    "min_required": self.min_confidence_threshold,
+                    "separation_strength": separation_strength
+                }
+            }
                 
         confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)

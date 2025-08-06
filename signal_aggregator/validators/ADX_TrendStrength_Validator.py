@@ -27,12 +27,14 @@ class ADX_TrendStrength_Validator(BaseValidator):
         self.name = "ADX_TrendStrength_Validator"
         self.category = "trend"
         
-        # Paramètres ADX
-        self.min_adx_strength = 20.0      # ADX minimum pour tendance
-        self.strong_adx_threshold = 30.0  # ADX fort
-        self.extreme_adx_threshold = 50.0 # ADX extrême
-        self.di_separation_min = 5.0      # Séparation min +DI/-DI
-        self.trend_consistency_bonus = 0.2 # Bonus cohérence
+        # Paramètres ADX - OPTIMISÉS
+        self.min_adx_strength = 25.0      # ADX minimum augmenté (25 au lieu de 20)
+        self.strong_adx_threshold = 35.0  # ADX fort augmenté (35 au lieu de 30)
+        self.extreme_adx_threshold = 55.0 # ADX extrême augmenté (55 au lieu de 50)
+        self.di_separation_min = 8.0      # Séparation min DI augmentée (8 au lieu de 5)
+        self.strong_di_separation = 15.0  # Séparation forte DI
+        self.trend_consistency_bonus = 0.25 # Bonus cohérence augmenté
+        self.weak_signal_adx_threshold = 40.0  # ADX requis pour signaux faibles
         
     def validate_signal(self, signal: Dict[str, Any]) -> bool:
         """
@@ -67,9 +69,9 @@ class ADX_TrendStrength_Validator(BaseValidator):
                 logger.warning(f"{self.name}: Signal side ou ADX manquant pour {self.symbol}")
                 return False
                 
-            # 1. Vérification force tendance ADX
+            # 1. Vérification force tendance ADX - PLUS STRICT
             if adx_14 < self.min_adx_strength:
-                logger.debug(f"{self.name}: ADX trop faible ({self._safe_format(adx_14, '.1f')}) pour {self.symbol} - tendance insuffisante")
+                logger.debug(f"{self.name}: ADX trop faible ({self._safe_format(adx_14, '.1f')} < {self.min_adx_strength}) pour {self.symbol} - tendance insuffisante")
                 return False
                 
             # 2. Vérification cohérence directionnelle avec DI
@@ -88,9 +90,14 @@ class ADX_TrendStrength_Validator(BaseValidator):
                         logger.debug(f"{self.name}: SELL signal mais -DI ({self._safe_format(minus_di, '.1f')}) <= +DI ({self._safe_format(plus_di, '.1f')}) pour {self.symbol}")
                         return False
                         
-                # Vérification séparation suffisante des DI
+                # Vérification séparation suffisante des DI - PLUS STRICT
                 if di_separation < self.di_separation_min:
-                    logger.debug(f"{self.name}: Séparation DI insuffisante ({self._safe_format(di_separation, '.1f')}) pour {self.symbol}")
+                    logger.debug(f"{self.name}: Séparation DI insuffisante ({self._safe_format(di_separation, '.1f')} < {self.di_separation_min}) pour {self.symbol}")
+                    return False
+                    
+                # NOUVEAU: Vérification séparation forte pour signaux faibles
+                if signal_confidence < 0.5 and di_separation < self.strong_di_separation:
+                    logger.debug(f"{self.name}: Signal faible ({self._safe_format(signal_confidence, '.2f')}) nécessite DI séparation forte ({self._safe_format(di_separation, '.1f')} < {self.strong_di_separation}) pour {self.symbol}")
                     return False
                     
             # 3. Vérification cohérence avec directional_bias
@@ -110,16 +117,24 @@ class ADX_TrendStrength_Validator(BaseValidator):
                 if adx_14 >= self.extreme_adx_threshold:
                     logger.debug(f"{self.name}: Tendance extrême ADX ({self._safe_format(adx_14, '.1f')}) pour {self.symbol}")
                     
-            # 5. Vérification trend_strength pour cohérence
+            # 5. Vérification trend_strength pour cohérence - PLUS STRICT
             if trend_strength is not None:
-                if trend_strength < 0.3:  # Tendance très faible selon autre mesure
-                    logger.debug(f"{self.name}: Trend strength faible ({self._safe_format(trend_strength, '.2f')}) malgré ADX pour {self.symbol}")
-                    # Ne pas rejeter mais noter l'incohérence
+                if trend_strength < 0.2:  # Seuil abaissé mais avec rejet
+                    logger.debug(f"{self.name}: Trend strength très faible ({self._safe_format(trend_strength, '.2f')}) incohérent avec ADX pour {self.symbol}")
+                    return False  # NOUVEAU: Rejeter les incohérences fortes
+                elif trend_strength < 0.35 and signal_confidence < 0.5:
+                    logger.debug(f"{self.name}: Trend strength faible ({self._safe_format(trend_strength, '.2f')}) + signal faible pour {self.symbol}")
+                    return False  # NOUVEAU: Rejeter si double faiblesse
                     
-            # 6. Validation finale selon confidence du signal
-            if signal_confidence < 0.3 and adx_14 < self.strong_adx_threshold:
-                # Signal faible + tendance modérée = rejet
-                logger.debug(f"{self.name}: Signal confidence faible ({self._safe_format(signal_confidence, '.2f')}) + ADX modéré ({self._safe_format(adx_14, '.1f')}) pour {self.symbol}")
+            # 6. Validation finale selon confidence du signal - CRITÈRES DURCIS
+            if signal_confidence < 0.4:  # Seuil augmenté (40% au lieu de 30%)
+                if adx_14 < self.weak_signal_adx_threshold:  # ADX fort requis pour signaux faibles
+                    logger.debug(f"{self.name}: Signal confidence faible ({self._safe_format(signal_confidence, '.2f')}) nécessite ADX fort (ADX: {self._safe_format(adx_14, '.1f')} < {self.weak_signal_adx_threshold}) pour {self.symbol}")
+                    return False
+                    
+            # NOUVEAU: Rejet signaux très faibles même avec ADX correct
+            if signal_confidence < 0.25:
+                logger.debug(f"{self.name}: Signal confidence trop faible ({self._safe_format(signal_confidence, '.2f')} < 0.25) pour {self.symbol}")
                 return False
                 
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - ADX: {self._safe_format(adx_14, '.1f')}, "
@@ -152,31 +167,40 @@ class ADX_TrendStrength_Validator(BaseValidator):
             plus_di = float(self.context.get('plus_di', 0)) if self.context.get('plus_di') is not None else None
             minus_di = float(self.context.get('minus_di', 0)) if self.context.get('minus_di') is not None else None
             
-            base_score = 0.5  # Score de base si validé
+            base_score = 0.4  # Score de base réduit (40% au lieu de 50%)
             
-            # Bonus selon force ADX
+            # Bonus selon force ADX - VALORISATION AUGMENTÉE
             if adx_14 >= self.extreme_adx_threshold:
-                base_score += 0.4  # Tendance extrême
+                base_score += 0.5  # AUGMENTÉ - Tendance extrême
             elif adx_14 >= self.strong_adx_threshold:
-                base_score += 0.3  # Tendance forte
+                base_score += 0.35  # AUGMENTÉ - Tendance forte
             else:
-                base_score += 0.1  # Tendance modérée
+                base_score += 0.05  # RÉDUIT - Tendance modérée moins valorisée
                 
-            # Bonus séparation DI
+            # Bonus séparation DI - VALORISATION AUGMENTÉE
             if plus_di is not None and minus_di is not None:
                 di_separation = abs(plus_di - minus_di)
-                if di_separation >= 15.0:
-                    base_score += 0.1  # Excellente séparation
+                if di_separation >= 20.0:  # Seuil augmenté
+                    base_score += 0.15  # AUGMENTÉ - Excellente séparation
+                elif di_separation >= self.strong_di_separation:  # 15.0
+                    base_score += 0.10  # AUGMENTÉ - Très bonne séparation
                 elif di_separation >= 10.0:
                     base_score += 0.05  # Bonne séparation
+                # NOUVEAU: Pénalité si séparation très faible
+                elif di_separation < self.di_separation_min:
+                    base_score -= 0.1  # Pénalité séparation insuffisante
                     
-            # Bonus cohérence directional_bias
+            # Bonus cohérence directional_bias - PLUS VALORISÉ
             directional_bias = self.context.get('directional_bias')
             signal_side = signal.get('side')
             if directional_bias and signal_side:
                 if (signal_side == "BUY" and directional_bias.upper() == "BULLISH") or \
                    (signal_side == "SELL" and directional_bias.upper() == "BEARISH"):
-                    base_score += self.trend_consistency_bonus
+                    base_score += self.trend_consistency_bonus  # 0.25
+                # NOUVEAU: Pénalité si bias contradictoire (ne devrait pas arriver car déjà rejeté)
+                elif (signal_side == "BUY" and directional_bias.upper() == "BEARISH") or \
+                     (signal_side == "SELL" and directional_bias.upper() == "BULLISH"):
+                    base_score -= 0.2  # Pénalité contradiction
                     
             return min(1.0, base_score)
             
@@ -214,7 +238,7 @@ class ADX_TrendStrength_Validator(BaseValidator):
                 return f"{self.name}: Validé - {reason} pour signal {signal_side}"
             else:
                 if adx_14 < self.min_adx_strength:
-                    return f"{self.name}: Rejeté - Tendance trop faible (ADX: {self._safe_format(adx_14, '.1f')})"
+                    return f"{self.name}: Rejeté - Tendance trop faible (ADX: {self._safe_format(adx_14, '.1f')} < {self.min_adx_strength})"
                 elif plus_di is not None and minus_di is not None:
                     if signal_side == "BUY" and plus_di <= minus_di:
                         return f"{self.name}: Rejeté - BUY mais +DI ({self._safe_format(plus_di, '.1f')}) <= -DI ({self._safe_format(minus_di, '.1f')})"

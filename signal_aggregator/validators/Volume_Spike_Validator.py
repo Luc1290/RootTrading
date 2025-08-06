@@ -27,23 +27,25 @@ class Volume_Spike_Validator(BaseValidator):
         self.name = "Volume_Spike_Validator"
         self.category = "technical"
         
-        # Paramètres spike de base
-        self.min_spike_multiplier = 1.5      # Spike minimum 50% au-dessus moyenne
-        self.strong_spike_multiplier = 2.5   # Spike considéré fort
-        self.exceptional_spike_multiplier = 4.0  # Spike exceptionnel
-        self.max_spike_multiplier = 10.0     # Spike maximum acceptable
+        # Paramètres spike CRYPTO - RÉVOLUTION COMPLÈTE
+        self.min_spike_multiplier = 1.2      # 20% mini (crypto très permissif)
+        self.strong_spike_multiplier = 2.0   # 2x = fort pour crypto
+        self.exceptional_spike_multiplier = 5.0  # 5x = exceptionnel crypto
+        self.max_spike_multiplier = 50.0     # 50x acceptable crypto (pump/dump)
         
-        # Paramètres durée et persistance
-        self.min_spike_duration = 1          # Durée minimum spike (barres)
-        self.optimal_spike_duration = 3      # Durée optimale spike
-        self.max_spike_duration = 8          # Durée maximum spike
-        self.spike_decay_threshold = 0.7     # Seuil décroissance spike
+        # Durée simplifiée CRYPTO
+        self.min_spike_duration = 1          # 1 barre mini (crypto = rapide)
+        self.optimal_spike_duration = 1      # 1 barre optimal (crypto burst)
+        self.max_spike_duration = 3          # 3 barres max (crypto court)
         
-        # Paramètres qualité spike
-        self.min_spike_quality = 40.0        # Qualité minimum spike (format 0-100)
-        self.spike_consistency_threshold = 0.6  # Consistance spike minimum
-        self.max_spike_volatility = 3.0      # Volatilité spike maximum
-        self.min_spike_legitimacy = 50.0     # Légitimité spike minimum (format 0-100)
+        # Qualité CRYPTO - TRÈS PERMISSIF
+        self.min_spike_quality = 15.0        # 15% mini (crypto bruyant)
+        self.spike_consistency_threshold = 0.3  # 30% consistance (crypto chaotique)
+        self.min_spike_legitimacy = 20.0     # 20% légitimité (crypto volatil)
+        
+        # MODE CRYPTO activé
+        self.crypto_mode = True              # NOUVEAU: Mode spécial crypto
+        self.simplified_validation = True     # Validation ultra-simplifiée
         
         # Paramètres timing
         self.recent_spike_window = 5         # Fenêtre spike récent (barres)
@@ -121,73 +123,34 @@ class Volume_Spike_Validator(BaseValidator):
                 logger.warning(f"{self.name}: Signal side manquant pour {self.symbol}")
                 return False
                 
-            # 1. Validation multiplier spike minimum
-            if volume_spike_multiplier is not None and volume_spike_multiplier < self.min_spike_multiplier:
-                logger.debug(f"{self.name}: Spike volume insuffisant ({self._safe_format(volume_spike_multiplier, '.2f')}x) pour {self.symbol}")
-                if signal_confidence < 0.8:
-                    return False
-                    
-            # Validation spike maximum (éviter manipulation)
-            if volume_spike_multiplier is not None and volume_spike_multiplier > self.max_spike_multiplier:
-                logger.debug(f"{self.name}: Spike volume excessif ({self._safe_format(volume_spike_multiplier, '.2f')}x) - possible manipulation pour {self.symbol}")
-                if signal_confidence < 0.9:
-                    return False
-                    
-            # 2. Validation durée spike (utilise champ synthétique FieldConverter)
-            if spike_duration_bars is not None:
-                if spike_duration_bars < self.min_spike_duration:
-                    logger.debug(f"{self.name}: Durée spike insuffisante ({spike_duration_bars} barres) pour {self.symbol}")
-                    if signal_confidence < 0.7:
-                        return False
-                elif spike_duration_bars > self.max_spike_duration:
-                    logger.debug(f"{self.name}: Durée spike excessive ({spike_duration_bars} barres) pour {self.symbol}")
-                    if signal_confidence < 0.6:
+            # MODE CRYPTO ULTRA-PERMISSIF
+            if self.simplified_validation:
+                # SEULEMENT 1 validation critique : spike minimum très permissif
+                if volume_spike_multiplier is not None and volume_spike_multiplier < 1.1:  # Seulement 10% mini
+                    logger.debug(f"{self.name}: Volume très faible ({self._safe_format(volume_spike_multiplier, '.2f')}x) pour {self.symbol}")
+                    if signal_confidence < 0.3:  # Confidence très permissive
                         return False
                         
-            # 3. Validation qualité spike (utilise champ synthétique FieldConverter)
-            if spike_quality_score is not None and spike_quality_score < self.min_spike_quality:
-                logger.debug(f"{self.name}: Qualité spike insuffisante ({self._safe_format(spike_quality_score, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.6:
-                    return False
-                    
-            # 4. Validation légitimité spike
-            if pattern_confidence is not None and pattern_confidence < (self.min_spike_legitimacy / 100):
-                logger.debug(f"{self.name}: Légitimité spike douteuse ({self._safe_format(pattern_confidence, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.7:
-                    return False
-                    
-            # 5. Validation timing spike (utilise champ synthétique FieldConverter)
-            if time_since_spike is not None and time_since_spike > self.max_time_since_spike:
-                logger.debug(f"{self.name}: Spike trop ancien ({time_since_spike} barres) pour {self.symbol}")
-                if signal_confidence < 0.5:
-                    return False
-                    
-            # 6. Validation spike relatif au contexte (utilise champ synthétique FieldConverter)
-            if relative_spike_strength is not None and relative_spike_strength < (self.min_relative_spike - 1.0):
-                logger.debug(f"{self.name}: Force spike relative insuffisante ({self._safe_format(relative_spike_strength, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.6:
-                    return False
-            # Backup avec relative_volume si relative_spike_strength pas disponible
-            elif relative_spike_strength is None and relative_volume is not None and relative_volume < self.min_relative_spike:
-                logger.debug(f"{self.name}: Spike relatif insuffisant ({self._safe_format(relative_volume, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.6:
-                    return False
-                    
-            # 7. Validation activité marché
-            if trade_intensity is not None and trade_intensity < 0.3:
-                logger.debug(f"{self.name}: Activité marché faible ({self._safe_format(trade_intensity, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.5:
-                    return False
-                    
-            # 8. Validation spécifique selon stratégie
-            if volume_spike_multiplier is not None:
-                strategy_spike_match = self._validate_strategy_spike_match(signal_strategy, volume_spike_multiplier)
+                # Pas de limite max en crypto (pumps légitimes peuvent être énormes)
+                
+                # CRYPTO MODE : Accepter le signal (pas de sur-filtrage)
+                logger.debug(f"{self.name}: Signal accepté en mode crypto simplifié pour {self.symbol}")
+                return True
+            
+            # MODE COMPLEXE (désactivé par défaut)
             else:
-                strategy_spike_match = True
-            if not strategy_spike_match:
-                logger.debug(f"{self.name}: Stratégie {signal_strategy} inadaptée aux spikes pour {self.symbol}")
-                if signal_confidence < 0.6:
-                    return False
+                # Ancienne logique stricte (gardée pour compatibilité)
+                if volume_spike_multiplier is not None and volume_spike_multiplier < self.min_spike_multiplier:
+                    if signal_confidence < 0.5:  # Plus permissif
+                        return False
+                        
+                # Spike max permissif pour crypto
+                if volume_spike_multiplier is not None and volume_spike_multiplier > self.max_spike_multiplier:
+                    if signal_confidence < 0.6:  # Plus permissif
+                        return False
+                    
+                # Toutes les autres validations désactivées en mode simplifié
+                # (durée, qualité, légitimité, timing, etc. sont inadaptées au crypto)
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
                         f"Spike: {self._safe_format(volume_spike_multiplier, '.2f')}x, "
@@ -327,22 +290,13 @@ class Volume_Spike_Validator(BaseValidator):
                 signal_side, directional_bias, price_momentum, spike_price_confirmation
             )
             
-            # Bonus multiplier spike (réduit si incohérent)
+            # CRYPTO: Bonus volume simplifié (ignorer cohérence directionnelle complexe)
             if volume_spike_multiplier >= self.exceptional_spike_multiplier:
-                if spike_coherent:
-                    base_score += self.exceptional_spike_bonus  # Plein bonus si cohérent
-                else:
-                    base_score += self.exceptional_spike_bonus * 0.5  # Bonus réduit si incohérent
+                base_score += 0.25  # Bonus élevé pour gros spike
             elif volume_spike_multiplier >= self.strong_spike_multiplier:
-                if spike_coherent:
-                    base_score += 0.20
-                else:
-                    base_score += 0.10  # Bonus réduit
-            elif volume_spike_multiplier >= self.min_spike_multiplier + 0.5:
-                if spike_coherent:
-                    base_score += 0.10
-                else:
-                    base_score += 0.05  # Bonus réduit
+                base_score += 0.15  # Bonus modéré
+            elif volume_spike_multiplier >= self.min_spike_multiplier:
+                base_score += 0.08  # Bonus léger
                 
             # Bonus durée spike optimale
             if spike_duration_bars == self.optimal_spike_duration:

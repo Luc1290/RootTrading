@@ -27,32 +27,32 @@ class Regime_Strength_Validator(BaseValidator):
         self.name = "Regime_Strength_Validator"
         self.category = "regime"
         
-        # Paramètres force de régime
-        self.min_regime_strength = 0.4           # Force minimum régime
-        self.strong_regime_threshold = 0.7       # Régime considéré fort
-        self.very_strong_regime_threshold = 0.85 # Régime très fort
-        self.min_regime_confidence = 50.0        # Confidence minimum régime (format 0-100)
-        self.high_regime_confidence = 80.0       # Confidence élevée régime (format 0-100)
+        # Paramètres force de régime - OPTIMISÉS
+        self.min_regime_strength = 0.55          # Force minimum régime AUGMENTÉE (55% au lieu de 40%)
+        self.strong_regime_threshold = 0.75      # Régime considéré fort AUGMENTÉ (75% au lieu de 70%)
+        self.very_strong_regime_threshold = 0.88 # Régime très fort AUGMENTÉ (88% au lieu de 85%)
+        self.min_regime_confidence = 65.0        # Confidence minimum régime AUGMENTÉE (65% au lieu de 50%)
+        self.high_regime_confidence = 85.0       # Confidence élevée régime AUGMENTÉE (85% au lieu de 80%)
         
-        # Paramètres persistance et durée
-        self.min_regime_duration = 5             # Durée minimum régime (barres)
-        self.optimal_regime_duration = 20        # Durée optimale régime (barres)
-        self.max_regime_duration = 150           # Durée maximum avant staleness
-        self.stability_lookback = 10             # Lookback stabilité régime
+        # Paramètres persistance et durée - OPTIMISÉS
+        self.min_regime_duration = 8             # Durée minimum régime AUGMENTÉE (8 au lieu de 5 barres)
+        self.optimal_regime_duration = 25        # Durée optimale régime AUGMENTÉE (25 au lieu de 20 barres)
+        self.max_regime_duration = 120           # Durée maximum RÉDUITE (120 au lieu de 150 barres)
+        self.stability_lookback = 12             # Lookback stabilité régime AUGMENTÉ (12 au lieu de 10)
         
-        # Paramètres transitions
-        self.transition_detection_threshold = 0.3  # Seuil détection transition
-        self.max_transition_volatility = 0.6      # Volatilité max en transition
-        self.regime_change_cooldown = 3           # Cooldown après changement
+        # Paramètres transitions - OPTIMISÉS
+        self.transition_detection_threshold = 0.25  # Seuil détection transition PLUS STRICT (25% au lieu de 30%)
+        self.max_transition_volatility = 0.55      # Volatilité max en transition PLUS STRICTE (55% au lieu de 60%)
+        self.regime_change_cooldown = 5           # Cooldown après changement AUGMENTÉ (5 au lieu de 3 barres)
         
         # Régimes favorables/défavorables (selon schema analyzer_data)
         self.favorable_regimes = ["TRENDING_BULL", "TRENDING_BEAR", "BREAKOUT_BULL", "BREAKOUT_BEAR"]
         self.unfavorable_regimes = ["VOLATILE", "UNKNOWN"]
         self.neutral_regimes = ["RANGING", "TRANSITION"]
         
-        # Paramètres cohérence multi-indicateurs
-        self.min_regime_consensus = 60.0         # Consensus minimum entre indicateurs (format 0-100)
-        self.regime_divergence_threshold = 0.4   # Seuil divergence régimes
+        # Paramètres cohérence multi-indicateurs - OPTIMISÉS
+        self.min_regime_consensus = 70.0         # Consensus minimum AUGMENTÉ (70% au lieu de 60%)
+        self.regime_divergence_threshold = 0.35   # Seuil divergence régimes PLUS STRICT (35% au lieu de 40%)
         
         # Bonus/malus
         self.strong_regime_bonus = 0.25          # Bonus régime fort
@@ -140,64 +140,64 @@ class Regime_Strength_Validator(BaseValidator):
                 logger.warning(f"{self.name}: Signal side manquant pour {self.symbol}")
                 return False
                 
-            # 1. Validation force du régime principal
+            # 1. Validation force du régime principal - PLUS STRICT
             if regime_strength is not None and regime_strength < self.min_regime_strength:
                 logger.debug(f"{self.name}: Force régime insuffisante ({self._safe_format(regime_strength, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.8:
+                if signal_confidence < 0.85:  # AUGMENTÉ de 80% à 85%
                     return False
                     
-            # 2. Validation confidence du régime
+            # 2. Validation confidence du régime - PLUS STRICT
             if regime_confidence is not None and regime_confidence < self.min_regime_confidence:
                 logger.debug(f"{self.name}: Confidence régime insuffisante ({self._safe_format(regime_confidence, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.7:
+                if signal_confidence < 0.75:  # AUGMENTÉ de 70% à 75%
                     return False
                     
-            # 3. Validation type de régime
+            # 3. Validation type de régime - RENFORCÉ
             if current_regime:
                 if current_regime in self.unfavorable_regimes:
                     logger.debug(f"{self.name}: Régime défavorable ({current_regime}) pour {self.symbol}")
-                    if signal_confidence < 0.9:  # Très strict pour régimes défavorables
+                    if signal_confidence < 0.92:  # AUGMENTÉ de 90% à 92% - très strict
                         return False
                 elif current_regime in self.neutral_regimes:
                     logger.debug(f"{self.name}: Régime neutre ({current_regime}) pour {self.symbol}")
-                    if signal_confidence < 0.6:
+                    if signal_confidence < 0.70:  # AUGMENTÉ de 60% à 70%
                         return False
                         
-            # 4. Validation durée du régime
+            # 4. Validation durée du régime - PLUS STRICT
             if regime_duration_bars is not None:
                 if regime_duration_bars < self.min_regime_duration:
                     logger.debug(f"{self.name}: Régime trop récent ({regime_duration_bars or 'N/A'} barres) pour {self.symbol}")
-                    if signal_confidence < 0.7:
+                    if signal_confidence < 0.78:  # AUGMENTÉ de 70% à 78%
                         return False
                 elif regime_duration_bars > self.max_regime_duration:
                     logger.debug(f"{self.name}: Régime trop ancien ({regime_duration_bars or 'N/A'} barres) pour {self.symbol}")
-                    if signal_confidence < 0.5:
+                    if signal_confidence < 0.60:  # AUGMENTÉ de 50% à 60%
                         return False
                         
-            # 5. Validation stabilité du régime
-            if regime_stability is not None and regime_stability < 40.0:
+            # 5. Validation stabilité du régime - PLUS STRICT
+            if regime_stability is not None and regime_stability < 50.0:  # AUGMENTÉ de 40% à 50%
                 logger.debug(f"{self.name}: Régime instable ({self._safe_format(regime_stability, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.7:
+                if signal_confidence < 0.75:  # AUGMENTÉ de 70% à 75%
                     return False
                     
-            # 6. Validation transitions de régime
+            # 6. Validation transitions de régime - RENFORCÉ
             if regime_in_transition:
                 logger.debug(f"{self.name}: Régime en transition pour {self.symbol}")
-                if signal_confidence < 0.8:  # Très prudent en transition
+                if signal_confidence < 0.85:  # AUGMENTÉ de 80% à 85% - très prudent en transition
                     return False
                     
             if regime_transition_probability is not None and regime_transition_probability > self.transition_detection_threshold:
                 logger.debug(f"{self.name}: Probabilité transition élevée ({self._safe_format(regime_transition_probability, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.7:
+                if signal_confidence < 0.75:  # AUGMENTÉ de 70% à 75%
                     return False
                     
-            # 7. Validation cooldown après changement de régime
+            # 7. Validation cooldown après changement de régime - PLUS STRICT
             if last_regime_change_bars is not None and last_regime_change_bars < self.regime_change_cooldown:
                 logger.debug(f"{self.name}: Changement régime récent ({last_regime_change_bars} barres) pour {self.symbol}")
-                if signal_confidence < 0.8:
+                if signal_confidence < 0.83:  # AUGMENTÉ de 80% à 83%
                     return False
                     
-            # 8. Validation consensus entre régimes multiples
+            # 8. Validation consensus entre régimes multiples - PLUS STRICT
             if (current_regime and volatility_regime and trend_regime and momentum_regime):
                 regime_coherence = self._validate_regime_coherence(
                     current_regime, volatility_regime, trend_regime, momentum_regime
@@ -206,52 +206,60 @@ class Regime_Strength_Validator(BaseValidator):
                 regime_coherence = True
             if not regime_coherence:
                 logger.debug(f"{self.name}: Incohérence entre régimes pour {self.symbol}")
-                if signal_confidence < 0.7:
+                if signal_confidence < 0.78:  # AUGMENTÉ de 70% à 78%
                     return False
                     
-            # 9. Validation consensus score
+            # 9. Validation consensus score - PLUS STRICT
             if regime_consensus_score is not None and regime_consensus_score < self.min_regime_consensus:
                 logger.debug(f"{self.name}: Consensus régimes insuffisant ({self._safe_format(regime_consensus_score, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.6:
+                if signal_confidence < 0.68:  # AUGMENTÉ de 60% à 68%
                     return False
                     
-            # 10. Validation divergence entre régimes
+            # 10. Validation divergence entre régimes - PLUS STRICT
             if regime_divergence_score is not None and regime_divergence_score > self.regime_divergence_threshold:
                 logger.debug(f"{self.name}: Divergence régimes excessive ({self._safe_format(regime_divergence_score, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.7:
+                if signal_confidence < 0.75:  # AUGMENTÉ de 70% à 75%
                     return False
                     
-            # 11. Validation direction de transition vs signal
+            # 11. Validation direction de transition vs signal - PLUS STRICT
             if transition_direction:
                 transition_coherence = self._validate_transition_coherence(signal_side, transition_direction)
                 if not transition_coherence:
                     logger.debug(f"{self.name}: Transition {transition_direction} incohérente avec signal {signal_side} pour {self.symbol}")
-                    if signal_confidence < 0.8:
+                    if signal_confidence < 0.83:  # AUGMENTÉ de 80% à 83%
                         return False
                         
-            # 12. Validation persistance du régime
-            if regime_persistence is not None and regime_persistence < 30.0:
+            # 12. Validation persistance du régime - PLUS STRICT
+            if regime_persistence is not None and regime_persistence < 40.0:  # AUGMENTÉ de 30% à 40%
                 logger.debug(f"{self.name}: Persistance régime faible ({self._safe_format(regime_persistence, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.6:
+                if signal_confidence < 0.68:  # AUGMENTÉ de 60% à 68%
                     return False
                     
-            # 13. Validation cohérence stratégie/régime
+            # 13. Validation cohérence stratégie/régime - PLUS STRICT
             if current_regime:
                 strategy_regime_match = self._validate_strategy_regime_match(signal_strategy, current_regime)
             else:
                 strategy_regime_match = True
             if not strategy_regime_match:
                 logger.debug(f"{self.name}: Stratégie {signal_strategy} inadaptée au régime {current_regime} pour {self.symbol}")
-                if signal_confidence < 0.6:
+                if signal_confidence < 0.68:  # AUGMENTÉ de 60% à 68%
                     return False
                     
-            # 14. Validation momentum du régime
+            # 14. Validation momentum du régime - PLUS STRICT
             if regime_momentum is not None:
                 momentum_coherence = self._validate_momentum_coherence(signal_side, regime_momentum)
                 if not momentum_coherence:
                     logger.debug(f"{self.name}: Momentum régime incohérent avec signal pour {self.symbol}")
-                    if signal_confidence < 0.7:
+                    if signal_confidence < 0.75:  # AUGMENTÉ de 70% à 75%
                         return False
+                        
+            # NOUVEAU: Validation finale - rejet des signaux moyennement confiants avec régime fragile
+            overall_regime_quality = self._calculate_overall_regime_quality(
+                regime_strength, regime_confidence, regime_persistence, regime_stability
+            )
+            if overall_regime_quality < 0.6 and signal_confidence < 0.75:
+                logger.debug(f"{self.name}: Régime fragile ({overall_regime_quality:.2f}) + signal confidence insuffisante pour {self.symbol}")
+                return False
                         
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
                         f"Régime: {current_regime or 'N/A'}, "
@@ -442,7 +450,7 @@ class Regime_Strength_Validator(BaseValidator):
             signal_strategy = signal.get('strategy', '')
             signal_side = signal.get('side')
             
-            base_score = 0.5  # Score de base si validé
+            base_score = 0.48  # Score de base réduit (48% au lieu de 50%)
             
             # CORRECTION: Bonus force du régime avec logique directionnelle
             force_bonus_multiplier = self._get_directional_regime_multiplier(signal_side, current_regime)
@@ -623,6 +631,33 @@ class Regime_Strength_Validator(BaseValidator):
                 
         except Exception as e:
             return f"{self.name}: Erreur évaluation - {e}"
+            
+    def _calculate_overall_regime_quality(self, regime_strength: float, regime_confidence: float,
+                                          regime_persistence: float, regime_stability: float) -> float:
+        """Calcule la qualité globale du régime."""
+        try:
+            quality_score = 0.0
+            components = 0
+            
+            if regime_strength is not None:
+                quality_score += regime_strength
+                components += 1
+                
+            if regime_confidence is not None:
+                quality_score += (regime_confidence / 100)  # Normaliser 0-100 vers 0-1
+                components += 1
+                
+            if regime_persistence is not None:
+                quality_score += (regime_persistence / 100)  # Normaliser 0-100 vers 0-1
+                components += 1
+                
+            if regime_stability is not None:
+                quality_score += (regime_stability / 100)  # Normaliser 0-100 vers 0-1
+                components += 1
+                
+            return quality_score / max(1, components)  # Moyenne des composants disponibles
+        except:
+            return 0.5  # Valeur par défaut
             
     def validate_data(self) -> bool:
         """

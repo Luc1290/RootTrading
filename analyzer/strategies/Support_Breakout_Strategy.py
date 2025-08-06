@@ -32,28 +32,28 @@ class Support_Breakout_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres de cassure support
-        self.breakdown_threshold = 0.005         # 0.5% sous support pour confirmer cassure
-        self.strong_breakdown_threshold = 0.01   # 1% pour cassure forte
-        self.extreme_breakdown_threshold = 0.02  # 2% pour cassure extrême
+        # Paramètres de cassure support - OPTIMISÉS
+        self.breakdown_threshold = 0.008         # 0.8% sous support (plus strict)
+        self.strong_breakdown_threshold = 0.015  # 1.5% pour cassure forte (plus strict)
+        self.extreme_breakdown_threshold = 0.025 # 2.5% pour cassure extrême (plus strict)
         
         # Paramètres temporels
         self.max_time_near_support = 5          # Max barres près support avant cassure
         self.confirmation_bars = 2              # Barres pour confirmer cassure
         
-        # Paramètres volume (confirmation cassure)
-        self.min_breakdown_volume = 1.3         # Volume 30% au-dessus normal
-        self.strong_breakdown_volume = 2.0      # Volume 2x pour cassure forte
-        self.volume_quality_threshold = 0.6     # Qualité volume minimum
+        # Paramètres volume (confirmation cassure) - OPTIMISÉS
+        self.min_breakdown_volume = 1.5         # Volume 50% au-dessus normal (plus strict)
+        self.strong_breakdown_volume = 2.5      # Volume 2.5x pour cassure forte (plus strict)
+        self.volume_quality_threshold = 0.70    # Qualité volume minimum 70% (plus strict)
         
-        # Paramètres momentum (continuation baissière)
-        self.momentum_bearish_threshold = 40    # Momentum baissier requis (format 0-100, 50=neutre)
-        self.roc_bearish_threshold = -0.01      # ROC négatif minimum (format décimal)
+        # Paramètres momentum (continuation baissière) - OPTIMISÉS
+        self.momentum_bearish_threshold = 35    # Momentum plus strict (35 au lieu de 40)
+        self.roc_bearish_threshold = -0.015     # ROC plus strict (-1.5% au lieu de -1%)
         
-        # Paramètres de support
-        self.min_support_strength = 0.4         # Force minimum du support
-        self.strong_support_bonus = 0.15        # Bonus si support fort (cassure plus significative)
-        self.min_break_probability = 0.30       # Probabilité cassure minimum (format décimal 0-1)
+        # Paramètres de support - OPTIMISÉS
+        self.min_support_strength = 0.5         # Force minimum augmentée (50% au lieu de 40%)
+        self.strong_support_bonus = 0.20        # Bonus augmenté (20% au lieu de 15%)
+        self.min_break_probability = 0.40       # Probabilité minimum augmentée (40% au lieu de 30%)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
@@ -402,7 +402,7 @@ class Support_Breakout_Strategy(BaseStrategy):
         # Signal SELL si cassure + momentum baissier (volume optionnel mais bonifie)
         if breakdown_analysis['is_breakdown'] and momentum_analysis['is_bearish_momentum']:
             
-            base_confidence = 0.5
+            base_confidence = 0.35  # RÉDUIT - breakouts = plus risqués
             confidence_boost = 0.0
             
             # Score de cassure

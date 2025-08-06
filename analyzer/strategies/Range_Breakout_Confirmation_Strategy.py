@@ -25,12 +25,13 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres Range Breakout
-        self.min_range_width = 0.01  # Largeur minimum du range (1%)
-        self.max_range_width = 0.08  # Largeur maximum du range (8%)
-        self.breakout_threshold = 0.002  # Distance minimum pour considérer un breakout (0.2%)
-        self.volume_breakout_threshold = 1.5  # Volume minimum pour breakout valide
-        self.retest_tolerance = 0.005  # Tolérance pour retest du niveau cassé (0.5%)
+        # Paramètres Range Breakout - OPTIMISÉS
+        self.min_range_width = 0.015  # Largeur minimum du range (1.5%) - plus strict
+        self.max_range_width = 0.10   # Largeur maximum du range (10%) - élargi
+        self.breakout_threshold = 0.004  # Distance minimum pour breakout (0.4%) - plus strict
+        self.volume_breakout_threshold = 1.8  # Volume minimum pour breakout (1.8x) - plus strict
+        self.retest_tolerance = 0.003   # Tolérance retest (0.3%) - plus strict
+        self.min_confirmations = 2      # Minimum 2 confirmations requises
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pour range breakout."""
@@ -280,12 +281,15 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         # Vérifier les confirmations du breakout
         confirmations = self._check_breakout_confirmations(values, breakout_type, current_price)
         
-        if confirmations['volume_confirmed'] or confirmations['momentum_confirmed']:
+        # OPTIMISÉ: Exiger minimum 2 confirmations au lieu de 1
+        confirmed_count = sum(confirmations.values())
+        if confirmed_count >= self.min_confirmations:
             return {
                 'type': breakout_type,
                 'level': breakout_level,
                 'distance': breakout_distance,
-                'confirmations': confirmations
+                'confirmations': confirmations,
+                'confirmed_count': confirmed_count
             }
             
         return None
@@ -316,10 +320,10 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                # Format 0-100, 50=neutre
-                if breakout_type == "bullish" and momentum > 55:
+                # Format 0-100, 50=neutre - SEUILS PLUS STRICTS
+                if breakout_type == "BULLISH" and momentum > 60:  # Plus strict: 60 au lieu de 55
                     confirmations['momentum_confirmed'] = True
-                elif breakout_type == "bearish" and momentum < 45:
+                elif breakout_type == "BEARISH" and momentum < 40:  # Plus strict: 40 au lieu de 45
                     confirmations['momentum_confirmed'] = True
             except (ValueError, TypeError):
                 pass
@@ -328,9 +332,9 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         if rsi_14 is not None and not confirmations['momentum_confirmed']:
             try:
                 rsi = float(rsi_14)
-                if breakout_type == "BULLISH" and rsi > 55:
+                if breakout_type == "BULLISH" and 50 < rsi < 75:  # Zone favorable sans surachat
                     confirmations['momentum_confirmed'] = True
-                elif breakout_type == "BEARISH" and rsi < 45:
+                elif breakout_type == "BEARISH" and 25 < rsi < 50:  # Zone favorable sans survente
                     confirmations['momentum_confirmed'] = True
             except (ValueError, TypeError):
                 pass
@@ -372,7 +376,7 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         confirmations = breakout_analysis['confirmations']
         
         signal_side = "BUY" if breakout_type == "BULLISH" else "SELL"
-        base_confidence = 0.6  # Base plus élevée pour breakouts
+        base_confidence = 0.45  # Réduit de 0.6 à 0.45 - plus conservateur avec nouvelles règles
         confidence_boost = 0.0
         
         # Construction de la raison

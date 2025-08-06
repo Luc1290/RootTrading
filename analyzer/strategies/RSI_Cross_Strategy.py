@@ -20,11 +20,13 @@ class RSI_Cross_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Seuils RSI
-        self.oversold_level = 30
-        self.overbought_level = 70
-        self.extreme_oversold = 20
-        self.extreme_overbought = 80
+        # Seuils RSI - OPTIMISÉS (plus stricts)
+        self.oversold_level = 25      # Réduit de 30 à 25
+        self.overbought_level = 75    # Augmenté de 70 à 75
+        self.extreme_oversold = 15    # Réduit de 20 à 15
+        self.extreme_overbought = 85  # Augmenté de 80 à 85
+        self.neutral_low = 40         # Zone neutre basse
+        self.neutral_high = 60        # Zone neutre haute
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
@@ -78,9 +80,9 @@ class RSI_Cross_Strategy(BaseStrategy):
             
             # Bonus pour survente extrême
             if rsi_14 <= self.extreme_oversold:
-                confidence_boost += 0.2
+                confidence_boost += 0.25  # Augmenté de 0.2
             else:
-                confidence_boost += 0.1
+                confidence_boost += 0.12  # Légèrement augmenté
                 
         elif rsi_14 >= self.overbought_level:
             # Zone de surachat - chercher signal SELL
@@ -90,27 +92,32 @@ class RSI_Cross_Strategy(BaseStrategy):
             
             # Bonus pour surachat extrême
             if rsi_14 >= self.extreme_overbought:
-                confidence_boost += 0.2
+                confidence_boost += 0.25  # Augmenté de 0.2
             else:
-                confidence_boost += 0.1
+                confidence_boost += 0.12  # Légèrement augmenté
                 
         if signal_side:
             # Utilisation des indicateurs pré-calculés pour ajuster la confiance
-            base_confidence = 0.5
+            base_confidence = 0.45  # Stratégie RSI oscillator - conf élevée car zones extrêmes
             
             # Ajustement avec momentum_score (format 0-100, 50=neutre)
             momentum_score = values.get('momentum_score', 50)
             if momentum_score:
                 try:
                     momentum_val = float(momentum_score)
-                    if (signal_side == "BUY" and momentum_val > 55) or \
-                       (signal_side == "SELL" and momentum_val < 45):
-                        confidence_boost += 0.15
+                    # MOMENTUM PLUS STRICT
+                    if (signal_side == "BUY" and momentum_val > 60) or \
+                       (signal_side == "SELL" and momentum_val < 40):
+                        confidence_boost += 0.18
+                        reason += f" avec momentum FORT ({momentum_val:.0f})"
+                    elif (signal_side == "BUY" and momentum_val > 52) or \
+                         (signal_side == "SELL" and momentum_val < 48):
+                        confidence_boost += 0.10
                         reason += f" avec momentum favorable ({momentum_val:.0f})"
-                    elif (signal_side == "BUY" and momentum_val < 35) or \
-                         (signal_side == "SELL" and momentum_val > 65):
-                        confidence_boost -= 0.1
-                        reason += f" mais momentum défavorable ({momentum_val:.0f})"
+                    elif (signal_side == "BUY" and momentum_val < 40) or \
+                         (signal_side == "SELL" and momentum_val > 60):
+                        confidence_boost -= 0.20  # Pénalité doublée
+                        reason += f" ATTENTION: momentum CONTRAIRE ({momentum_val:.0f})"
                 except (ValueError, TypeError):
                     pass
                     
@@ -141,12 +148,19 @@ class RSI_Cross_Strategy(BaseStrategy):
             if confluence_score:
                 try:
                     confluence_val = float(confluence_score)
-                    if confluence_val > 70:
+                    # CONFLUENCE PLUS STRICTE
+                    if confluence_val > 80:  # Seuil augmenté
+                        confidence_boost += 0.22
+                        reason += f" avec confluence EXCELLENTE ({confluence_val:.0f})"
+                    elif confluence_val > 70:  # Seuil augmenté
                         confidence_boost += 0.15
                         reason += f" avec haute confluence ({confluence_val:.0f})"
-                    elif confluence_val > 55:
-                        confidence_boost += 0.10
-                        reason += f" avec confluence modérée ({confluence_val:.0f})"
+                    elif confluence_val > 60:  # Seuil augmenté
+                        confidence_boost += 0.08
+                        reason += f" avec confluence correcte ({confluence_val:.0f})"
+                    elif confluence_val < 50:  # Pénalité si faible
+                        confidence_boost -= 0.10
+                        reason += f" mais confluence FAIBLE ({confluence_val:.0f})"
                 except (ValueError, TypeError):
                     pass
                 
@@ -169,6 +183,23 @@ class RSI_Cross_Strategy(BaseStrategy):
                     confidence_boost += 0.1
                     reason += " confirmé sur RSI 21"
                     
+            # NOUVEAU: Filtre final - rejeter si confidence trop faible
+            raw_confidence = base_confidence * (1 + confidence_boost)
+            if raw_confidence < 0.45:  # Seuil minimum 45%
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Signal RSI rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.45)",
+                    "metadata": {
+                        "strategy": self.name,
+                        "symbol": self.symbol,
+                        "rejected_signal": signal_side,
+                        "raw_confidence": raw_confidence,
+                        "rsi_14": rsi_14
+                    }
+                }
+            
             confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
             strength = self.get_strength_from_confidence(confidence)
             
@@ -194,7 +225,7 @@ class RSI_Cross_Strategy(BaseStrategy):
             "side": None,
             "confidence": 0.0,
             "strength": "weak",
-            "reason": f"RSI neutre ({rsi_14:.1f}) - pas de zone extrême",
+            "reason": f"RSI en zone neutre ({rsi_14:.1f}) - pas de signal (seuils: {self.oversold_level}/{self.overbought_level})",
             "metadata": {
                 "strategy": self.name,
                 "symbol": self.symbol,

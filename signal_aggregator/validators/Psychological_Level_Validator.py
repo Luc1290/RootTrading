@@ -216,15 +216,19 @@ class Psychological_Level_Validator(BaseValidator):
     def _find_nearest_psychological_level(self, price: float) -> tuple:
         """Trouve le niveau psychologique le plus proche."""
         try:
-            # Déterminer les niveaux appropriés selon le prix
-            if price > 1000:
-                relevant_levels = [l for l in self.crypto_major_levels if l >= 1]
+            # Niveaux psychologiques simplifiés selon prix crypto
+            if price > 10000:
+                relevant_levels = [100000, 50000, 25000, 20000, 15000, 10000]
+            elif price > 1000:
+                relevant_levels = [10000, 5000, 2500, 2000, 1500, 1000]
+            elif price > 100:
+                relevant_levels = [1000, 500, 250, 200, 150, 100]
             elif price > 10:
-                relevant_levels = self.major_round_levels + self.minor_round_levels
+                relevant_levels = [100, 50, 25, 20, 15, 10]
             elif price > 1:
-                relevant_levels = [l for l in self.major_round_levels + self.minor_round_levels if l <= 10]
+                relevant_levels = [10, 5, 2.5, 2, 1.5, 1]
             else:
-                relevant_levels = [l for l in self.major_round_levels + self.minor_round_levels if l <= 1]
+                relevant_levels = [1, 0.5, 0.25, 0.2, 0.15, 0.1, 0.05, 0.01]
                 
             if not relevant_levels:
                 return None, None
@@ -239,8 +243,9 @@ class Psychological_Level_Validator(BaseValidator):
             closest_distance, closest_level = distances[0]
             distance_ratio = closest_distance / price
             
-            # Vérifier si assez proche pour être pertinent
-            if distance_ratio > self.max_distance_ratio:
+            # Vérifier si assez proche - seuil permissif en mode simplifié
+            max_distance_check = 0.1 if self.simplified_mode else self.max_distance_ratio
+            if distance_ratio > max_distance_check:
                 return None, None
                 
             # Déterminer le type de niveau

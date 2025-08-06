@@ -27,21 +27,21 @@ class Pivot_Strength_Validator(BaseValidator):
         self.name = "Pivot_Strength_Validator"
         self.category = "structure"
         
-        # Paramètres force pivots
-        self.min_pivot_strength = 0.3       # Force minimum pivot
-        self.strong_pivot_threshold = 0.7   # Pivot considéré fort
-        self.min_touch_count = 2            # Nombre minimum touches/tests
-        self.optimal_touch_count = 4        # Nombre optimal touches
+        # Paramètres force pivots - DRASTIQUEMENT DURCIS
+        self.min_pivot_strength = 0.5       # Force minimum pivot (augmenté x1.67)
+        self.strong_pivot_threshold = 0.8   # Pivot considéré fort (augmenté)
+        self.min_touch_count = 3            # Nombre minimum touches/tests (augmenté)
+        self.optimal_touch_count = 6        # Nombre optimal touches (augmenté)
         
         # Paramètres distance
         self.min_distance_ratio = 0.002     # 0.2% distance minimum du pivot
         self.max_distance_ratio = 0.05      # 5% distance maximum du pivot
         self.optimal_distance_ratio = 0.01  # 1% distance optimale
         
-        # Paramètres confluence
-        self.min_confluence_pivots = 2      # Minimum pivots en confluence
-        self.confluence_proximity = 0.005   # 0.5% proximité pour confluence
-        self.min_confluence_score = 40.0    # Score confluence minimum (format 0-100)
+        # Paramètres confluence - PLUS STRICTS
+        self.min_confluence_pivots = 3      # Minimum pivots en confluence (augmenté)
+        self.confluence_proximity = 0.003   # 0.3% proximité plus stricte
+        self.min_confluence_score = 55.0    # Score confluence minimum augmenté (format 0-100)
         
         # Paramètres temporels
         self.max_pivot_age_bars = 50        # Age maximum pivot (barres)
@@ -161,26 +161,30 @@ class Pivot_Strength_Validator(BaseValidator):
                 # Pour BUY, vérifier pivot support
                 if pivot_support_strength is not None and pivot_support_strength < self.min_pivot_strength:
                     logger.debug(f"{self.name}: BUY signal mais pivot support faible ({self._safe_format(pivot_support_strength, '.2f')}) pour {self.symbol}")
-                    if signal_confidence < 0.8:
+                    # PLUS STRICT: Rejeter tous les pivots faibles sauf exceptionnels
+                    if signal_confidence < 0.9:  # Augmenté de 0.8
                         return False
                         
                 # Vérification touches support
                 if support_touch_count is not None and support_touch_count < self.min_touch_count:
                     logger.debug(f"{self.name}: BUY signal mais support touches insuffisantes ({support_touch_count}) pour {self.symbol}")
-                    if signal_confidence < 0.7:
+                    # PLUS STRICT: Exiger plus de touches
+                    if signal_confidence < 0.85:  # Augmenté de 0.7
                         return False
                         
             elif signal_side == "SELL":
                 # Pour SELL, vérifier pivot résistance
                 if pivot_resistance_strength is not None and pivot_resistance_strength < self.min_pivot_strength:
                     logger.debug(f"{self.name}: SELL signal mais pivot résistance faible ({self._safe_format(pivot_resistance_strength, '.2f')}) pour {self.symbol}")
-                    if signal_confidence < 0.8:
+                    # COHÉRENCE: Même seuil que support
+                    if signal_confidence < 0.9:  # Augmenté de 0.8
                         return False
                         
                 # Vérification touches résistance
                 if resistance_touch_count is not None and resistance_touch_count < self.min_touch_count:
                     logger.debug(f"{self.name}: SELL signal mais résistance touches insuffisantes ({resistance_touch_count}) pour {self.symbol}")
-                    if signal_confidence < 0.7:
+                    # COHÉRENCE: Même seuil que support
+                    if signal_confidence < 0.85:  # Augmenté de 0.7
                         return False
                         
             # 2. Validation distance par rapport aux pivots
@@ -190,22 +194,26 @@ class Pivot_Strength_Validator(BaseValidator):
                 
                 if distance_ratio < self.min_distance_ratio:
                     logger.debug(f"{self.name}: Trop proche du pivot ({self._safe_format(distance_ratio*100, '.2f')}%) pour {self.symbol}")
-                    if signal_confidence < 0.6:
+                    # PLUS STRICT: Distance trop proche = risqué
+                    if signal_confidence < 0.8:  # Augmenté de 0.6
                         return False
                 elif distance_ratio > self.max_distance_ratio:
                     logger.debug(f"{self.name}: Trop loin du pivot ({self._safe_format(distance_ratio*100, '.2f')}%) pour {self.symbol}")
-                    if signal_confidence < 0.5:
+                    # PLUS STRICT: Distance trop loin = moins fiable
+                    if signal_confidence < 0.75:  # Augmenté de 0.5
                         return False
                         
             # 3. Validation confluence pivots
             if confluence_score is not None and confluence_score < self.min_confluence_score:
                 logger.debug(f"{self.name}: Score confluence pivots insuffisant ({self._safe_format(confluence_score, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.6:
+                # PLUS STRICT: Confluence faible = rejet plus sévère
+                if signal_confidence < 0.8:  # Augmenté de 0.6
                     return False
                     
             if pivot_confluence_count is not None and pivot_confluence_count < self.min_confluence_pivots:
                 logger.debug(f"{self.name}: Pas assez de pivots en confluence ({pivot_confluence_count}) pour {self.symbol}")
-                if signal_confidence < 0.7:
+                # PLUS STRICT: Exiger vraiment plusieurs pivots
+                if signal_confidence < 0.85:  # Augmenté de 0.7
                     return False
                     
             # 4. Validation age des pivots
@@ -257,9 +265,10 @@ class Pivot_Strength_Validator(BaseValidator):
                 )
             else:
                 pivot_quality = 0.5  # valeur neutre
-            if pivot_quality < 0.4:
+            if pivot_quality < 0.6:  # Augmenté de 0.4 à 0.6
                 logger.debug(f"{self.name}: Qualité globale pivots insuffisante ({self._safe_format(pivot_quality, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.7:
+                # PLUS STRICT: Qualité faible = rejet sévère
+                if signal_confidence < 0.8:  # Augmenté de 0.7
                     return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
@@ -297,7 +306,7 @@ class Pivot_Strength_Validator(BaseValidator):
                         
             return True
         except:
-            return True  # En cas d'erreur, ne pas bloquer
+            return False  # En cas d'erreur, être prudent et rejeter
             
     def _validate_strategy_pivot_match(self, strategy: str, signal_side: str) -> bool:
         """Valide l'adéquation stratégie/utilisation pivots."""
@@ -326,7 +335,9 @@ class Pivot_Strength_Validator(BaseValidator):
             # Neutres : accepter plus facilement
             return True
             
-        return True  # Par défaut accepter
+        # NOUVEAU: Plus de fallback permissif - être plus strict
+        # Stratégies non reconnues = pénalité
+        return False  # Par défaut REJETER les stratégies non classées
         
     def _calculate_pivot_quality(self, support_strength: float, resistance_strength: float,
                                 support_touches: int, resistance_touches: int,
@@ -395,57 +406,57 @@ class Pivot_Strength_Validator(BaseValidator):
             signal_side = signal.get('side')
             signal_strategy = signal.get('strategy', '')
             
-            base_score = 0.5  # Score de base si validé
+            base_score = 0.35  # Score de base réduit drastiquement
             
-            # CORRECTION: Bonus/Malus selon cohérence directionnelle pivot
+            # Bonus/Malus selon cohérence directionnelle pivot - BONUS RÉDUITS
             if signal_side == "BUY":
-                # BUY: Fort support = bonus, Forte résistance proche = malus
+                # BUY: Fort support = bonus réduit
                 if pivot_support_strength >= self.strong_pivot_threshold:
-                    base_score += self.strong_pivot_bonus  # Support fort = bon pour BUY
+                    base_score += 0.15  # Réduit de self.strong_pivot_bonus (0.25)
                 elif pivot_support_strength >= self.min_pivot_strength + 0.2:
-                    base_score += 0.15
+                    base_score += 0.08  # Réduit de 0.15
                 
-                # Malus si résistance très forte proche (risque de rejet)
+                # Malus si résistance très forte proche - PÉNALITÉ AUGMENTÉE
                 if pivot_resistance_strength >= self.strong_pivot_threshold:
-                    base_score -= 0.15  # Résistance forte = risque pour BUY
+                    base_score -= 0.20  # Pénalité augmentée
                     
-                # Bonus touches/tests support
+                # Bonus touches/tests support - RÉDUITS
                 if support_touch_count >= self.optimal_touch_count:
-                    base_score += 0.15  # Support très testé = fiable pour BUY
+                    base_score += 0.10  # Réduit de 0.15
                 elif support_touch_count >= self.min_touch_count + 1:
-                    base_score += 0.10
+                    base_score += 0.06  # Réduit de 0.10
                     
             elif signal_side == "SELL":
-                # SELL: Forte résistance = bonus, Fort support proche = malus
+                # SELL: Forte résistance = bonus réduit
                 if pivot_resistance_strength >= self.strong_pivot_threshold:
-                    base_score += self.strong_pivot_bonus  # Résistance forte = bon pour SELL
+                    base_score += 0.15  # Réduit de self.strong_pivot_bonus (0.25)
                 elif pivot_resistance_strength >= self.min_pivot_strength + 0.2:
-                    base_score += 0.15
+                    base_score += 0.08  # Réduit de 0.15
                 
-                # Malus si support très fort proche (risque de rebond)
+                # Malus si support très fort proche - PÉNALITÉ AUGMENTÉE
                 if pivot_support_strength >= self.strong_pivot_threshold:
-                    base_score -= 0.15  # Support fort = risque pour SELL
+                    base_score -= 0.20  # Pénalité augmentée
                     
-                # Bonus touches/tests résistance
+                # Bonus touches/tests résistance - RÉDUITS
                 if resistance_touch_count >= self.optimal_touch_count:
-                    base_score += 0.15  # Résistance très testée = fiable pour SELL
+                    base_score += 0.10  # Réduit de 0.15
                 elif resistance_touch_count >= self.min_touch_count + 1:
-                    base_score += 0.10
+                    base_score += 0.06  # Réduit de 0.10
                 
-            # Bonus confluence
-            if confluence_score >= 70.0:  # Format 0-100
-                base_score += self.confluence_bonus
-            elif confluence_score >= 50.0:  # Format 0-100
-                base_score += 0.10
+            # Bonus confluence - RÉDUITS ET SEUILS PLUS STRICTS
+            if confluence_score >= 80.0:  # Seuil augmenté de 70
+                base_score += 0.12  # Réduit de self.confluence_bonus (0.20)
+            elif confluence_score >= 65.0:  # Seuil augmenté de 50
+                base_score += 0.06  # Réduit de 0.10
                 
-            if pivot_confluence_count >= 3:
-                base_score += 0.12  # Multiple pivots en confluence
+            if pivot_confluence_count >= 4:  # Exiger plus de pivots
+                base_score += 0.08  # Réduit de 0.12
                 
-            # Bonus interaction récente
+            # Bonus interaction récente - RÉDUITS
             if last_interaction_bars <= self.recent_interaction_bars:
-                base_score += self.recent_interaction_bonus
+                base_score += 0.10  # Réduit de self.recent_interaction_bonus (0.15)
             elif last_interaction_bars <= self.recent_interaction_bars * 2:
-                base_score += 0.08
+                base_score += 0.05  # Réduit de 0.08
                 
             # Bonus distance optimale (calculée si pivot disponible)
             try:
@@ -460,16 +471,16 @@ class Pivot_Strength_Validator(BaseValidator):
                     if relevant_pivot:
                         distance_ratio = abs(current_price - relevant_pivot) / current_price
                         if distance_ratio <= self.optimal_distance_ratio:
-                            base_score += 0.12  # Distance parfaite
+                            base_score += 0.08  # Réduit de 0.12
                         elif distance_ratio <= self.optimal_distance_ratio * 2:
-                            base_score += 0.08  # Distance bonne
+                            base_score += 0.05  # Réduit de 0.08
             except:
                 pass
                 
-            # Bonus stratégie adaptée aux pivots
+            # Bonus stratégie adaptée aux pivots - RÉDUIT
             strategy_lower = signal_strategy.lower()
             if any(kw in strategy_lower for kw in ['breakout', 'support', 'resistance', 'pivot', 'bounce']):
-                base_score += 0.10  # Stratégie pivot-friendly
+                base_score += 0.06  # Réduit de 0.10
                 
             return max(0.0, min(1.0, base_score))
             

@@ -25,11 +25,11 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres Parabolic SAR
-        self.min_sar_distance = 0.005  # Distance minimum prix/SAR pour éviter faux rebonds
-        self.max_sar_distance = 0.05   # Distance maximum pour considérer un rebond
-        self.trend_confirmation_bonus = 0.15  # Bonus si aligné avec tendance
-        self.volume_confirmation_threshold = 1.1  # Seuil volume pour confirmation rebond
+        # Paramètres Parabolic SAR - OPTIMISÉS
+        self.min_sar_distance = 0.008  # Distance minimum AUGMENTÉE (0.8% au lieu de 0.5%)
+        self.max_sar_distance = 0.03   # Distance maximum RÉDUITE (3% au lieu de 5%)
+        self.trend_confirmation_bonus = 0.20  # Bonus AUGMENTÉ si aligné avec tendance
+        self.volume_confirmation_threshold = 1.3  # Seuil volume PLUS STRICT (1.3x au lieu de 1.1x)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs SAR et contexte."""
@@ -191,7 +191,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         """Analyse un rebond haussier sur support."""
         signal_side = "BUY"
         reason = ""
-        base_confidence = 0.5
+        base_confidence = 0.35  # RÉDUIT de 0.5 à 0.35 - rebonds plus risqués
         confidence_boost = 0.0
         bounce_level = None
         
@@ -212,11 +212,11 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                     
                     # Vérifier que le prix a effectivement rebondi
                     if self._detect_bounce_pattern(recent_prices, support_val, "bullish"):
-                        confidence_boost += 0.20
-                        reason += " - rebond confirmé"
+                        confidence_boost += 0.25  # AUGMENTÉ - rebond confirmé = excellent
+                        reason += " - rebond CONFIRMÉ"
                     else:
-                        confidence_boost += 0.05
-                        reason += " - proche support"
+                        confidence_boost += 0.03  # RÉDUIT - juste proche ne suffit pas
+                        reason += " - proche support (non confirmé)"
             except (ValueError, TypeError):
                 pass
                 
@@ -234,8 +234,8 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                         confidence_boost += 0.12
                         
                         if self._detect_bounce_pattern(recent_prices, ema50_val, "bullish"):
-                            confidence_boost += 0.15
-                            reason += " - rebond confirmé"
+                            confidence_boost += 0.18  # AUGMENTÉ
+                            reason += " - rebond CONFIRMÉ"
             except (ValueError, TypeError):
                 pass
                 
@@ -256,6 +256,24 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         additional_boost, reason_additions = self._add_confirmations(values, signal_side, current_price)
         confidence_boost += additional_boost
         reason += reason_additions
+        
+        # NOUVEAU: Filtre final - rejeter si confidence trop faible
+        raw_confidence = base_confidence * (1 + confidence_boost)
+        if raw_confidence < 0.48:  # Seuil minimum 48% pour rebonds
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Signal rebond rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.48)",
+                "metadata": {
+                    "strategy": self.name,
+                    "symbol": self.symbol,
+                    "rejected_signal": signal_side,
+                    "raw_confidence": raw_confidence,
+                    "bounce_level": bounce_level,
+                    "trend_direction": "bullish"
+                }
+            }
         
         confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
@@ -282,7 +300,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         """Analyse un rebond baissier sur résistance."""
         signal_side = "SELL"
         reason = ""
-        base_confidence = 0.5
+        base_confidence = 0.35  # RÉDUIT de 0.5 à 0.35 - rebonds plus risqués
         confidence_boost = 0.0
         bounce_level = None
         
@@ -302,11 +320,11 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                     confidence_boost += 0.15
                     
                     if self._detect_bounce_pattern(recent_prices, resistance_val, "bearish"):
-                        confidence_boost += 0.20
-                        reason += " - rebond confirmé"
+                        confidence_boost += 0.25  # AUGMENTÉ
+                        reason += " - rebond CONFIRMÉ"
                     else:
-                        confidence_boost += 0.05
-                        reason += " - proche résistance"
+                        confidence_boost += 0.03  # RÉDUIT
+                        reason += " - proche résistance (non confirmé)"
             except (ValueError, TypeError):
                 pass
                 
@@ -324,8 +342,8 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                         confidence_boost += 0.12
                         
                         if self._detect_bounce_pattern(recent_prices, ema50_val, "bearish"):
-                            confidence_boost += 0.15
-                            reason += " - rebond confirmé"
+                            confidence_boost += 0.18  # AUGMENTÉ
+                            reason += " - rebond CONFIRMÉ"
             except (ValueError, TypeError):
                 pass
                 
@@ -346,6 +364,24 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         additional_boost, reason_additions = self._add_confirmations(values, signal_side, current_price)
         confidence_boost += additional_boost
         reason += reason_additions
+        
+        # NOUVEAU: Filtre final - rejeter si confidence trop faible
+        raw_confidence = base_confidence * (1 + confidence_boost)
+        if raw_confidence < 0.48:  # Seuil minimum 48% pour rebonds
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Signal rebond rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.48)",
+                "metadata": {
+                    "strategy": self.name,
+                    "symbol": self.symbol,
+                    "rejected_signal": signal_side,
+                    "raw_confidence": raw_confidence,
+                    "bounce_level": bounce_level,
+                    "trend_direction": "bearish"
+                }
+            }
         
         confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
@@ -377,17 +413,21 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
             price_1, price_2, price_3 = recent_prices[-3:]
             
             if direction == "bullish":
-                # Pour rebond haussier: prix s'approche du niveau puis remonte
-                # price_1 > level, price_2 proche de level, price_3 > price_2
+                # Pour rebond haussier: prix s'approche du niveau puis remonte - PLUS STRICT
+                proximity_threshold = 0.015  # Plus strict: 1.5% au lieu de 2%
+                rebound_strength = (price_3 - price_2) / price_2  # Force du rebond
                 return (price_1 > level and 
-                        abs(price_2 - level) / level < 0.02 and  # Prix 2 proche du niveau
-                        price_3 > price_2)  # Prix 3 remonte
+                        abs(price_2 - level) / level < proximity_threshold and  # Plus strict
+                        price_3 > price_2 and  # Prix remonte
+                        rebound_strength > 0.003)  # Rebond minimum 0.3%
             else:  # bearish
-                # Pour rebond baissier: prix s'approche du niveau puis redescend
-                # price_1 < level, price_2 proche de level, price_3 < price_2
+                # Pour rebond baissier: prix s'approche du niveau puis redescend - PLUS STRICT
+                proximity_threshold = 0.015  # Plus strict: 1.5% au lieu de 2%
+                rebound_strength = (price_2 - price_3) / price_2  # Force du rebond
                 return (price_1 < level and
-                        abs(price_2 - level) / level < 0.02 and  # Prix 2 proche du niveau
-                        price_3 < price_2)  # Prix 3 redescend
+                        abs(price_2 - level) / level < proximity_threshold and  # Plus strict
+                        price_3 < price_2 and  # Prix redescend
+                        rebound_strength > 0.003)  # Rebond minimum 0.3%
         except (ValueError, TypeError, ZeroDivisionError):
             return False
             
@@ -401,24 +441,36 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         if trend_strength is not None:
             trend_str = str(trend_strength).lower()
             if trend_str in ['extreme', 'very_strong']:
-                boost += 0.15
+                boost += 0.20  # AUGMENTÉ - trend fort = rebonds fiables
                 reason_additions += f" + trend {trend_str}"
             elif trend_str == 'strong':
-                boost += 0.12
+                boost += 0.15  # AUGMENTÉ
                 reason_additions += f" + trend {trend_str}"
             elif trend_str == 'moderate':
-                boost += 0.08
+                boost += 0.10  # AUGMENTÉ
                 reason_additions += f" + trend {trend_str}"
+            elif trend_str in ['weak', 'absent']:  # NOUVEAU: pénalité
+                boost -= 0.10
+                reason_additions += f" MAIS trend {trend_str}"
                 
         # Confirmation avec ADX (force de tendance)
         adx_14 = values.get('adx_14')
         if adx_14 is not None:
             try:
                 adx = float(adx_14)
-                if adx > 25:  # Tendance forte
+                # ADX PLUS STRICT pour rebonds
+                if adx > 30:  # Tendance très forte
+                    boost += 0.18  # AUGMENTÉ
+                    reason_additions += f" + ADX fort ({adx:.0f})"
+                elif adx > 25:  # Tendance forte
                     boost += 0.12
+                    reason_additions += f" + ADX correct ({adx:.0f})"
                 elif adx > 20:  # Tendance modérée
-                    boost += 0.08
+                    boost += 0.06
+                    reason_additions += f" + ADX faible ({adx:.0f})"
+                else:  # ADX faible = pas de tendance
+                    boost -= 0.08
+                    reason_additions += f" MAIS ADX faible ({adx:.0f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -427,12 +479,19 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio >= self.volume_confirmation_threshold:
+                # VOLUME PLUS STRICT - rebonds nécessitent conviction
+                if vol_ratio >= self.volume_confirmation_threshold * 1.5:  # Volume très élevé
+                    boost += 0.20
+                    reason_additions += f" + volume TRÈS élevé ({vol_ratio:.1f}x)"
+                elif vol_ratio >= self.volume_confirmation_threshold:
                     boost += 0.15
-                elif vol_ratio >= 1.05:
+                    reason_additions += f" + volume élevé ({vol_ratio:.1f}x)"
+                elif vol_ratio >= 1.1:
                     boost += 0.08
+                    reason_additions += f" + volume modéré ({vol_ratio:.1f}x)"
                 else:
-                    boost -= 0.05  # Volume faible = moins fiable
+                    boost -= 0.12  # Pénalité augmentée - volume crucial pour rebonds
+                    reason_additions += f" ATTENTION: volume FAIBLE ({vol_ratio:.1f}x)"
             except (ValueError, TypeError):
                 pass
                 
@@ -441,12 +500,16 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         if rsi_14 is not None:
             try:
                 rsi = float(rsi_14)
-                if signal_side == "BUY" and 30 <= rsi <= 65:
-                    boost += 0.10
-                elif signal_side == "SELL" and 35 <= rsi <= 70:
-                    boost += 0.10
-                elif (signal_side == "BUY" and rsi >= 80) or (signal_side == "SELL" and rsi <= 20):
-                    boost -= 0.15  # Zones extrêmes moins favorables pour rebonds
+                # RSI OPTIMISÉ pour rebonds
+                if signal_side == "BUY" and 25 <= rsi <= 60:  # Zone idéale rebond haussier
+                    boost += 0.12
+                    reason_additions += f" + RSI idéal rebond ({rsi:.1f})"
+                elif signal_side == "SELL" and 40 <= rsi <= 75:  # Zone idéale rebond baissier
+                    boost += 0.12
+                    reason_additions += f" + RSI idéal rebond ({rsi:.1f})"
+                elif (signal_side == "BUY" and rsi >= 75) or (signal_side == "SELL" and rsi <= 25):
+                    boost -= 0.18  # Pénalité augmentée - zones extrêmes
+                    reason_additions += f" ATTENTION: RSI zone extrême ({rsi:.1f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -604,12 +667,19 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
-                if confluence > 60:
+                # CONFLUENCE PLUS STRICTE pour rebonds
+                if confluence > 75:  # Seuil augmenté
+                    boost += 0.18
+                    reason_additions += f" + confluence EXCELLENTE ({confluence:.0f})"
+                elif confluence > 65:  # Seuil augmenté
                     boost += 0.12
                     reason_additions += f" + confluence élevée ({confluence:.0f})"
-                elif confluence > 45:
-                    boost += 0.08
-                    reason_additions += f" + confluence modérée ({confluence:.0f})"
+                elif confluence > 55:  # Seuil augmenté
+                    boost += 0.06
+                    reason_additions += f" + confluence correcte ({confluence:.0f})"
+                elif confluence < 45:  # Pénalité
+                    boost -= 0.10
+                    reason_additions += f" mais confluence FAIBLE ({confluence:.0f})"
             except (ValueError, TypeError):
                 pass
                 

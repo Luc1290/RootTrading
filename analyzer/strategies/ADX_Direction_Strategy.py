@@ -20,11 +20,14 @@ class ADX_Direction_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Seuils ADX
-        self.adx_threshold = 25.0  # Tendance forte
-        self.adx_strong = 35.0     # Tendance très forte
-        self.adx_extreme = 50.0    # Tendance extrême
-        self.di_diff_threshold = 5.0  # Différence minimale entre DI
+        # Seuils ADX optimisés pour plus de sensibilité
+        self.adx_threshold = 20.0  # Tendance émergente (plus sensible)
+        self.adx_strong = 30.0     # Tendance forte
+        self.adx_extreme = 40.0    # Tendance très forte
+        self.di_diff_threshold = 3.0  # Différence minimale entre DI (plus sensible)
+        # Gestion des régimes de marché
+        self.ranging_penalty = 0.15  # Pénalité en marché ranging
+        self.volatile_penalty = 0.10  # Pénalité en marché volatil
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs ADX."""
@@ -39,7 +42,8 @@ class ADX_Direction_Strategy(BaseStrategy):
             'trend_angle': self.indicators.get('trend_angle'),
             'momentum_score': self.indicators.get('momentum_score'),
             'signal_strength': self.indicators.get('signal_strength'),
-            'confluence_score': self.indicators.get('confluence_score')
+            'confluence_score': self.indicators.get('confluence_score'),
+            'market_regime': self.indicators.get('market_regime')
         }
         
     def generate_signal(self) -> Dict[str, Any]:
@@ -118,7 +122,7 @@ class ADX_Direction_Strategy(BaseStrategy):
             
         signal_side = None
         reason = ""
-        base_confidence = 0.5
+        base_confidence = 0.45  # Base plus conservatrice
         confidence_boost = 0.0
         
         # Logique de signal basée sur la direction des DI
@@ -131,25 +135,27 @@ class ADX_Direction_Strategy(BaseStrategy):
             signal_side = "SELL"
             reason = f"ADX ({adx:.1f}) avec tendance baissière (-DI > +DI)"
             
-        # Ajustement de confiance selon la force de l'ADX
+        # Ajustement de confiance selon la force de l'ADX (plus modéré)
         if adx >= self.adx_extreme:
-            confidence_boost += 0.25
-            reason += " - tendance EXTRÊME"
-        elif adx >= self.adx_strong:
-            confidence_boost += 0.15
+            confidence_boost += 0.18  # Réduit de 0.25
             reason += " - tendance très forte"
-        else:
-            confidence_boost += 0.05
+        elif adx >= self.adx_strong:
+            confidence_boost += 0.12  # Réduit de 0.15
             reason += " - tendance forte"
-            
-        # Ajustement selon la différence entre DI
-        if di_diff_abs >= 20:
-            confidence_boost += 0.15
-            reason += f" (écart DI: {di_diff_abs:.1f})"
-        elif di_diff_abs >= 10:
-            confidence_boost += 0.10
         else:
-            confidence_boost += 0.05
+            confidence_boost += 0.06  # Légèrement augmenté
+            reason += " - tendance émergente"
+            
+        # Ajustement selon la différence entre DI (plus progressif)
+        if di_diff_abs >= 20:
+            confidence_boost += 0.12  # Réduit de 0.15
+            reason += f" (écart DI fort: {di_diff_abs:.1f})"
+        elif di_diff_abs >= 10:
+            confidence_boost += 0.08  # Réduit de 0.10
+            reason += f" (écart DI modéré: {di_diff_abs:.1f})"
+        else:
+            confidence_boost += 0.04  # Réduit de 0.05
+            reason += f" (écart DI: {di_diff_abs:.1f})"
             
         # Utilisation des indicateurs complémentaires
         
@@ -201,35 +207,46 @@ class ADX_Direction_Strategy(BaseStrategy):
                 confidence_boost += 0.05
                 reason += " + signal modéré"
                 
-        # CORRECTION: Confluence score (format 0-100)
+        # Confluence score corrigé (appliqué uniformément)
         confluence_score = values.get('confluence_score')
         if confluence_score:
             try:
                 confluence = float(confluence_score)
-                if signal_side == "BUY":
-                    # BUY : confluence élevée = signaux haussiers multiples
-                    if confluence > 80:
-                        confidence_boost += 0.18
-                        reason += " + confluence très élevée BUY"
-                    elif confluence > 70:
-                        confidence_boost += 0.14
-                        reason += " + confluence élevée BUY"
-                    elif confluence > 60:
-                        confidence_boost += 0.10
-                        reason += " + confluence modérée"
-                elif signal_side == "SELL":
-                    # SELL : confluence + ADX baissier = momentum très fort
-                    if confluence > 75:
-                        confidence_boost += 0.20  # Bonus supérieur SELL
-                        reason += " + confluence très élevée SELL"
-                    elif confluence > 65:
-                        confidence_boost += 0.16
-                        reason += " + confluence élevée SELL"
-                    elif confluence > 55:
-                        confidence_boost += 0.12
-                        reason += " + confluence modérée"
+                # La confluence booste TOUS les signaux de manière égale
+                if confluence > 75:
+                    confidence_boost += 0.15
+                    reason += f" + confluence très élevée ({confluence:.0f})"
+                elif confluence > 60:
+                    confidence_boost += 0.10
+                    reason += f" + confluence élevée ({confluence:.0f})"
+                elif confluence > 45:
+                    confidence_boost += 0.06
+                    reason += f" + confluence modérée ({confluence:.0f})"
+                elif confluence < 30:
+                    confidence_boost -= 0.05
+                    reason += f" - confluence faible ({confluence:.0f})"
             except (ValueError, TypeError):
                 pass
+        
+        # Gestion des régimes de marché
+        market_regime = values.get('market_regime')
+        if market_regime:
+            regime_str = str(market_regime).upper()
+            if regime_str == 'RANGING':
+                confidence_boost -= self.ranging_penalty
+                reason += " (marché ranging)"
+            elif regime_str == 'VOLATILE':
+                confidence_boost -= self.volatile_penalty  
+                reason += " (marché volatil)"
+            elif regime_str in ['TRENDING_BULL', 'TRENDING_BEAR']:
+                # Bonus si aligné avec la tendance
+                if (signal_side == "BUY" and regime_str == 'TRENDING_BULL') or \
+                   (signal_side == "SELL" and regime_str == 'TRENDING_BEAR'):
+                    confidence_boost += 0.12
+                    reason += f" (aligné {regime_str.lower()})"
+                else:
+                    confidence_boost -= 0.08
+                    reason += f" (contre-tendance {regime_str.lower()})"
                 
         confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
@@ -252,7 +269,8 @@ class ADX_Direction_Strategy(BaseStrategy):
                 "directional_bias": directional_bias,
                 "momentum_score": momentum_score,
                 "signal_strength_calc": signal_strength_calc,
-                "confluence_score": confluence_score
+                "confluence_score": confluence_score,
+                "market_regime": values.get('market_regime')
             }
         }
         

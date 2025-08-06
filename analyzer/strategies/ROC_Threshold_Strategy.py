@@ -25,12 +25,15 @@ class ROC_Threshold_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres ROC (format décimal : 0.02 = 2%)
-        self.bullish_threshold = 0.02  # ROC > +2% pour signal haussier
-        self.bearish_threshold = -0.02  # ROC < -2% pour signal baissier
-        self.extreme_bullish_threshold = 0.05  # ROC > +5% = momentum extrême
-        self.extreme_bearish_threshold = -0.05  # ROC < -5% = momentum extrême
-        self.momentum_confirmation_threshold = 60  # Seuil momentum_score pour confirmation (format 0-100)
+        # Paramètres ROC - DRASTIQUEMENT REHAUSSÉS pour crypto
+        self.bullish_threshold = 0.05   # ROC > +5% pour signal haussier (augmenté x2.5)
+        self.bearish_threshold = -0.05  # ROC < -5% pour signal baissier (augmenté x2.5)
+        self.extreme_bullish_threshold = 0.10  # ROC > +10% = momentum extrême (augmenté x2)
+        self.extreme_bearish_threshold = -0.10  # ROC < -10% = momentum extrême (augmenté x2)
+        self.momentum_confirmation_threshold = 65  # Seuil momentum_score plus strict
+        # NOUVEAUX FILTRES
+        self.min_confidence_threshold = 0.60  # Confidence minimum pour valider
+        self.max_boost_multiplier = 0.40  # Limite les boosts à +40%
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs ROC et momentum."""
@@ -237,7 +240,7 @@ class ROC_Threshold_Strategy(BaseStrategy):
         roc_value = threshold_result['roc_value']
         
         signal_side = "BUY" if signal_type == "bullish" else "SELL"
-        base_confidence = 0.55  # Base modérée pour momentum
+        base_confidence = 0.35  # RÉDUIT de 0.55 à 0.35 - beaucoup plus conservateur
         confidence_boost = 0.0
         
         # Construction de la raison
@@ -245,25 +248,29 @@ class ROC_Threshold_Strategy(BaseStrategy):
         level_text = "extrême" if threshold_result['is_extreme'] else "normal"
         reason = f"ROC {direction} {level_text}: {roc_value*100:.2f}%"
         
-        # Bonus selon le niveau de seuil
+        # Bonus selon le niveau de seuil - REDUIT
         if threshold_result['is_extreme']:
-            confidence_boost += 0.20  # Momentum extrême = signal fort
+            confidence_boost += 0.15  # Réduit de 0.20
             reason += " (momentum extrême)"
         else:
-            confidence_boost += 0.15  # Momentum normal
+            confidence_boost += 0.08  # Réduit de 0.15
             reason += " (momentum significatif)"
             
-        # Bonus selon l'excès par rapport au seuil (convertir en pourcentage pour affichage)
+        # Bonus selon l'excès par rapport au seuil - SEUILS PLUS STRICTS
         exceeded_by = threshold_result['exceeded_by']
-        if exceeded_by > 0.02:  # Dépasse largement le seuil (>2%)
-            confidence_boost += 0.15
+        if exceeded_by > 0.05:  # Dépasse LARGEMENT le seuil (>5%) - augmenté
+            confidence_boost += 0.12  # Réduit de 0.15
+            reason += f" + excès MAJEUR ({exceeded_by*100:.1f}%)"
+        elif exceeded_by > 0.03:  # Excès important (>3%) - augmenté
+            confidence_boost += 0.08  # Réduit de 0.10
             reason += f" + excès important ({exceeded_by*100:.1f}%)"
         elif exceeded_by > 0.01:  # Excès modéré (>1%)
-            confidence_boost += 0.10
+            confidence_boost += 0.04  # Réduit de 0.05
             reason += f" + excès modéré ({exceeded_by*100:.1f}%)"
         else:
-            confidence_boost += 0.05
-            reason += f" + excès faible ({exceeded_by*100:.1f}%)"
+            # Excès trop faible - pénalité
+            confidence_boost -= 0.02
+            reason += f" mais excès FAIBLE ({exceeded_by*100:.1f}%)"
             
         # CORRECTION: Momentum confirmation directionnelle stricte
         momentum_score = values.get('momentum_score')
@@ -271,35 +278,35 @@ class ROC_Threshold_Strategy(BaseStrategy):
             try:
                 momentum = float(momentum_score)
                 
-                # BUY : momentum fortement positif requis (format 0-100, 50=neutre)
+                # MOMENTUM VALIDATION PLUS STRICTE
                 if signal_side == "BUY":
-                    if momentum > 70:  # Momentum très positif
-                        confidence_boost += 0.18
-                        reason += f" + momentum très positif ({momentum:.1f})"
-                    elif momentum > 60:  # Momentum confirmé (équivalent à 0.3)
-                        confidence_boost += 0.15
-                        reason += f" + momentum confirmé ({momentum:.1f})"
-                    elif momentum > 55:  # Momentum faible mais positif
-                        confidence_boost += 0.06
+                    if momentum > 75:  # Momentum EXCEPTIONNELLEMENT positif - seuil augmenté
+                        confidence_boost += 0.12  # Réduit de 0.18
+                        reason += f" + momentum exceptionnel ({momentum:.1f})"
+                    elif momentum > 65:  # Momentum très positif - seuil augmenté
+                        confidence_boost += 0.08  # Réduit de 0.15
+                        reason += f" + momentum fort ({momentum:.1f})"
+                    elif momentum > 60:  # Momentum modéré
+                        confidence_boost += 0.04  # Réduit de 0.06
                         reason += f" + momentum aligné ({momentum:.1f})"
-                    elif momentum < 45:  # Momentum négatif = contradictoire
-                        confidence_boost -= 0.10
-                        reason += f" mais momentum négatif ({momentum:.1f})"
+                    elif momentum < 50:  # Momentum négatif/neutre = REJET
+                        confidence_boost -= 0.15  # Pénalité augmentée
+                        reason += f" ATTENTION: momentum INADÉQUAT ({momentum:.1f})"
                         
-                # SELL : momentum fortement négatif requis  
+                # SELL : validation momentum plus stricte  
                 elif signal_side == "SELL":
-                    if momentum < 30:  # Momentum très négatif
-                        confidence_boost += 0.18
-                        reason += f" + momentum très négatif ({momentum:.1f})"
-                    elif momentum < 40:  # Momentum confirmé (équivalent à -0.3)
-                        confidence_boost += 0.15
-                        reason += f" + momentum confirmé ({momentum:.1f})"
-                    elif momentum < 45:  # Momentum faible mais négatif
-                        confidence_boost += 0.06
+                    if momentum < 25:  # Momentum EXCEPTIONNELLEMENT négatif - seuil abaissé
+                        confidence_boost += 0.12  # Réduit de 0.18
+                        reason += f" + momentum exceptionnel ({momentum:.1f})"
+                    elif momentum < 35:  # Momentum très négatif - seuil augmenté
+                        confidence_boost += 0.08  # Réduit de 0.15
+                        reason += f" + momentum fort ({momentum:.1f})"
+                    elif momentum < 40:  # Momentum modéré
+                        confidence_boost += 0.04  # Réduit de 0.06
                         reason += f" + momentum aligné ({momentum:.1f})"
-                    elif momentum > 55:  # Momentum positif = contradictoire
-                        confidence_boost -= 0.10
-                        reason += f" mais momentum positif ({momentum:.1f})"
+                    elif momentum > 50:  # Momentum positif/neutre = REJET
+                        confidence_boost -= 0.15  # Pénalité augmentée
+                        reason += f" ATTENTION: momentum INADÉQUAT ({momentum:.1f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -526,6 +533,31 @@ class ROC_Threshold_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
+        # NOUVEAU: LIMITATION des boosts et filtre final
+        # Plafonner les boosts pour éviter les confidences excessives
+        confidence_boost = min(confidence_boost, self.max_boost_multiplier)
+        
+        # Calculer confidence provisoire
+        raw_confidence = base_confidence * (1 + confidence_boost)
+        
+        # Filtre final - rejeter si confidence insuffisante
+        if raw_confidence < self.min_confidence_threshold:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Signal ROC {signal_side} rejeté - confidence insuffisante ({raw_confidence:.2f} < {self.min_confidence_threshold})",
+                "metadata": {
+                    "strategy": self.name,
+                    "symbol": self.symbol,
+                    "rejected_signal": signal_side,
+                    "raw_confidence": raw_confidence,
+                    "roc_value": roc_value,
+                    "threshold_level": threshold_level,
+                    "min_required": self.min_confidence_threshold
+                }
+            }
+        
         confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
         

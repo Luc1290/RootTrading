@@ -28,19 +28,22 @@ class Trend_Smoothness_Validator(BaseValidator):
         self.name = "Trend_Smoothness_Validator"
         self.category = "trend"
         
-        # Paramètres de fluidité
-        self.min_trend_strength = 0.4         # Force minimum du trend
-        self.smooth_trend_threshold = 0.7     # Seuil trend fluide
-        self.very_smooth_threshold = 0.85     # Seuil trend très fluide
+        # Paramètres de fluidité - OPTIMISÉS POUR RÉDUIRE SURTRADING
+        self.min_trend_strength = 0.25        # Force minimum réduite (25% au lieu de 40%)
+        self.smooth_trend_threshold = 0.6     # Seuil trend fluide réduit
+        self.very_smooth_threshold = 0.75     # Seuil trend très fluide réduit
         
-        # Paramètres d'angle de tendance
-        self.min_trend_angle = 15.0           # Angle minimum (degrés)
-        self.strong_trend_angle = 30.0        # Angle fort
-        self.steep_trend_angle = 45.0         # Angle raide
+        # Paramètres d'angle - PLUS PERMISSIFS
+        self.min_trend_angle = 8.0            # Angle minimum réduit (8° au lieu de 15°)
+        self.strong_trend_angle = 20.0        # Angle fort réduit
+        self.steep_trend_angle = 35.0         # Angle raide réduit
         
-        # Paramètres d'alignement
-        self.min_trend_alignment = 0.60      # Alignement minimum des MAs (format 0-1)
-        self.strong_alignment_threshold = 0.8 # Alignement fort
+        # Paramètres d'alignement - PLUS PERMISSIFS
+        self.min_trend_alignment = 0.35       # Alignement minimum très réduit (35% au lieu de 60%)
+        self.strong_alignment_threshold = 0.65 # Alignement fort réduit
+        
+        # Mode permissif activé
+        self.permissive_mode = True           # NOUVEAU: Mode permissif pour trending markets
         
         # Paramètres de volatilité
         self.max_volatility_ratio = 2.0       # Ratio volatilité max acceptable
@@ -96,46 +99,61 @@ class Trend_Smoothness_Validator(BaseValidator):
                 logger.warning(f"{self.name}: Signal side manquant pour {self.symbol}")
                 return False
                 
-            # 1. Vérification force de tendance (seulement si disponible)
-            if trend_strength is not None:
-                if trend_strength < self.min_trend_strength:
-                    logger.debug(f"{self.name}: Tendance trop faible ({self._safe_format(trend_strength, '.2f')}) pour {self.symbol}")
+            # 1. Vérification force de tendance - MODE PERMISSIF
+            if self.permissive_mode:
+                # Mode permissif : accepter tendances faibles si autres indicateurs OK
+                if trend_strength is not None and trend_strength < 0.15:  # Seulement si extrêmement faible
+                    logger.debug(f"{self.name}: Tendance extrêmement faible ({self._safe_format(trend_strength, '.2f')}) pour {self.symbol}")
                     return False
             else:
-                # Si trend_strength non disponible, utiliser d'autres indicateurs
-                logger.debug(f"{self.name}: trend_strength non disponible, vérification avec autres indicateurs pour {self.symbol}")
+                # Mode strict (ancienne logique)
+                if trend_strength is not None:
+                    if trend_strength < self.min_trend_strength:
+                        logger.debug(f"{self.name}: Tendance trop faible ({self._safe_format(trend_strength, '.2f')}) pour {self.symbol}")
+                        return False
                     
-            # 2. Vérification angle de tendance (seulement si disponible)
-            if trend_angle is not None:
+            # 2. Vérification angle de tendance - LOGIC ALLÉGÉE
+            if trend_angle is not None and not self.permissive_mode:
+                # Mode strict seulement
                 abs_angle = abs(trend_angle)
                 if abs_angle < self.min_trend_angle:
                     logger.debug(f"{self.name}: Angle de tendance trop faible ({self._safe_format(abs_angle, '.1f')}°) pour {self.symbol}")
                     return False
                     
-                # Vérification cohérence angle/signal
-                if signal_side == "BUY" and trend_angle < -self.min_trend_angle:
-                    logger.debug(f"{self.name}: BUY signal mais angle bearish ({self._safe_format(trend_angle, '.1f')}°) pour {self.symbol}")
+                # Vérification cohérence angle/signal - SEUILS PLUS PERMISSIFS
+                if signal_side == "BUY" and trend_angle < -20:  # Au lieu de -min_trend_angle
+                    logger.debug(f"{self.name}: BUY signal mais angle très bearish ({self._safe_format(trend_angle, '.1f')}°) pour {self.symbol}")
                     return False
-                elif signal_side == "SELL" and trend_angle > self.min_trend_angle:
-                    logger.debug(f"{self.name}: SELL signal mais angle bullish ({self._safe_format(trend_angle, '.1f')}°) pour {self.symbol}")
+                elif signal_side == "SELL" and trend_angle > 20:  # Au lieu de min_trend_angle
+                    logger.debug(f"{self.name}: SELL signal mais angle très bullish ({self._safe_format(trend_angle, '.1f')}°) pour {self.symbol}")
                     return False
+            # En mode permissif, ignorer les vérifications d'angle (trop volatiles)
                     
-            # 3. Vérification alignement des moyennes mobiles
-            if ema_7 is not None and ema_12 is not None and ema_26 is not None and ema_50 is not None:
-                # Pour BUY: EMAs doivent être ordonnées (7 > 12 > 26 > 50)
-                if signal_side == "BUY":
-                    if not (ema_7 > ema_12 > ema_26):
-                        # Permettre un léger désalignement si trend_alignment est bon
-                        if trend_alignment is None or trend_alignment < self.min_trend_alignment:
-                            logger.debug(f"{self.name}: BUY signal mais EMAs mal alignées pour {self.symbol}")
+            # 3. Vérification alignement des moyennes mobiles - BEAUCOUP PLUS PERMISSIF
+            if self.permissive_mode:
+                # Mode permissif : tolérer désalignements EMA (crypto très volatile)
+                if ema_7 is not None and ema_12 is not None and ema_26 is not None:
+                    # Vérifier seulement alignement global approximatif
+                    if signal_side == "BUY":
+                        # Accepter si au moins 2/3 EMAs sont alignées OU si ema_7 > ema_26 (tendance générale)
+                        basic_bullish = ema_7 > ema_26 * 0.995  # 0.5% de tolérance
+                        if not basic_bullish and (trend_alignment is None or trend_alignment < 0.2):
+                            logger.debug(f"{self.name}: BUY signal mais tendance EMA très bearish pour {self.symbol}")
                             return False
-                            
-                # Pour SELL: EMAs doivent être ordonnées (7 < 12 < 26 < 50)
-                elif signal_side == "SELL":
-                    if not (ema_7 < ema_12 < ema_26):
-                        # Permettre un léger désalignement si trend_alignment est bon
+                    elif signal_side == "SELL":
+                        # Accepter si tendance générale baissière
+                        basic_bearish = ema_7 < ema_26 * 1.005  # 0.5% de tolérance
+                        if not basic_bearish and (trend_alignment is None or trend_alignment > -0.2):
+                            logger.debug(f"{self.name}: SELL signal mais tendance EMA très bullish pour {self.symbol}")
+                            return False
+            else:
+                # Mode strict (ancienne logique raccourcie)
+                if ema_7 is not None and ema_12 is not None and ema_26 is not None:
+                    if signal_side == "BUY" and not (ema_7 > ema_12 > ema_26):
                         if trend_alignment is None or trend_alignment < self.min_trend_alignment:
-                            logger.debug(f"{self.name}: SELL signal mais EMAs mal alignées pour {self.symbol}")
+                            return False
+                    elif signal_side == "SELL" and not (ema_7 < ema_12 < ema_26):
+                        if trend_alignment is None or trend_alignment < self.min_trend_alignment:
                             return False
                             
             # 4. Vérification alignement général des tendances
@@ -159,17 +177,18 @@ class Trend_Smoothness_Validator(BaseValidator):
                     logger.debug(f"{self.name}: SELL signal mais bias bullish pour {self.symbol}")
                     return False
                     
-            # 6. Vérification régime de volatilité
-            if volatility_regime == "high" and signal_confidence < 0.8:
-                logger.debug(f"{self.name}: Volatilité élevée nécessite confidence élevée pour {self.symbol}")
-                return False
-                
-            # 7. Vérification percentile ATR (éviter volatilité extrême)
-            if atr_percentile is not None:
-                if atr_percentile > 90.0:  # ATR dans les 10% les plus élevés
-                    if signal_confidence < 0.75:
-                        logger.debug(f"{self.name}: ATR extrême ({self._safe_format(atr_percentile, '.1f')}%) nécessite confidence élevée pour {self.symbol}")
-                        return False
+            # 6. Vérification régime de volatilité - BEAUCOUP PLUS PERMISSIF
+            if not self.permissive_mode:  # Seulement en mode strict
+                if volatility_regime == "extreme" and signal_confidence < 0.6:  # "extreme" au lieu de "high", confidence 0.6 au lieu de 0.8
+                    logger.debug(f"{self.name}: Volatilité extrême nécessite confidence modérée pour {self.symbol}")
+                    return False
+                    
+            # 7. Vérification ATR - BEAUCOUP PLUS PERMISSIF
+            if not self.permissive_mode and atr_percentile is not None:  # Seulement en mode strict
+                if atr_percentile > 95.0 and signal_confidence < 0.5:  # 95% au lieu de 90%, confidence 0.5 au lieu de 0.75
+                    logger.debug(f"{self.name}: ATR très extrême ({self._safe_format(atr_percentile, '.1f')}%) nécessite confidence minimale pour {self.symbol}")
+                    return False
+            # En mode permissif, ignorer complètement les filtres de volatilité (crypto est volatile par nature)
                         
             # 8. Bonus pour tendances très fluides
             smooth_bonus = False

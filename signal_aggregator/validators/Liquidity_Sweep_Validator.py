@@ -27,15 +27,15 @@ class Liquidity_Sweep_Validator(BaseValidator):
         self.name = "Liquidity_Sweep_Validator"
         self.category = "structure"
         
-        # Paramètres support/résistance
-        self.min_support_strength = 0.3     # Force minimum support/résistance
-        self.min_break_probability = 0.20    # Probabilité cassure minimum
-        self.max_break_probability = 0.80    # Maximum (au-delà = vraie cassure)
+        # Paramètres support/résistance - LÉGÈREMENT DURCI
+        self.min_support_strength = 0.35    # Force minimum support/résistance (augmenté)
+        self.min_break_probability = 0.25    # Probabilité cassure minimum (augmenté)
+        self.max_break_probability = 0.75    # Maximum réduit (plus strict)
         
-        # Paramètres volume
-        self.min_volume_spike = 1.5         # Volume 50% au-dessus normale
-        self.optimal_volume_spike = 2.5     # Volume optimal pour sweep
-        self.min_volume_quality = 40.0      # Qualité volume minimum (format 0-100)
+        # Paramètres volume - LÉGÈREMENT RENFORCÉ
+        self.min_volume_spike = 1.8         # Volume 80% au-dessus normale (augmenté)
+        self.optimal_volume_spike = 3.0     # Volume optimal plus élevé
+        self.min_volume_quality = 50.0      # Qualité volume 50% minimum (augmenté)
         
         # Paramètres timing
         self.max_time_since_sweep = 5       # Max barres depuis sweep
@@ -229,9 +229,9 @@ class Liquidity_Sweep_Validator(BaseValidator):
             logger.debug(f"{self.name}: Qualité volume insuffisante ({self._safe_format(volume_quality_score, '.2f')}) pour sweep {self.symbol}")
             return False
             
-        # 5. Confirmation signal confidence pour sweep
+        # 5. Confirmation signal confidence pour sweep - PLUS STRICT
         signal_confidence = signal.get('confidence', 0.0)
-        if signal_confidence < 0.6:  # Sweep nécessite confidence élevée
+        if signal_confidence < 0.65:  # Augmenté de 0.6 à 0.65
             logger.debug(f"{self.name}: Confidence trop faible ({self._safe_format(signal_confidence, '.2f')}) pour sweep {self.symbol}")
             return False
             
@@ -294,7 +294,7 @@ class Liquidity_Sweep_Validator(BaseValidator):
             return False
             
         signal_confidence = signal.get('confidence', 0.0)
-        if signal_confidence < 0.6:
+        if signal_confidence < 0.65:  # Cohérence avec bullish sweep
             logger.debug(f"{self.name}: Confidence trop faible ({self._safe_format(signal_confidence, '.2f')}) pour sweep {self.symbol}")
             return False
             
@@ -331,42 +331,42 @@ class Liquidity_Sweep_Validator(BaseValidator):
             signal_side = signal.get('side')
             signal_strategy = signal.get('strategy', '')
             
-            base_score = 0.5  # Score de base si validé
+            base_score = 0.4  # Score de base réduit pour cohérence
             
-            # Bonus force support/résistance
+            # Bonus force support/résistance - BONUS RÉDUITS
             relevant_strength = support_strength if signal_side == "BUY" else resistance_strength
-            if relevant_strength >= 0.7:
-                base_score += 0.15  # Support/résistance très fort
-            elif relevant_strength >= 0.5:
-                base_score += 0.10  # Support/résistance fort
+            if relevant_strength >= 0.8:  # Seuil plus strict
+                base_score += 0.12  # Réduit de 0.15
+            elif relevant_strength >= 0.6:  # Seuil plus strict
+                base_score += 0.08  # Réduit de 0.10
                 
-            # Bonus probabilité cassure dans zone optimale
-            if 0.30 <= break_probability <= 0.70:
+            # Bonus probabilité cassure dans zone optimale - PLUS STRICT
+            if 0.35 <= break_probability <= 0.65:  # Zone optimale réduite
                 # Zone optimale pour sweep (ni trop sûr, ni trop risqué)
                 optimal_center = 0.5
                 distance_from_optimal = abs(break_probability - optimal_center)
-                max_distance = 0.2
+                max_distance = 0.15  # Distance max réduite
                 
-                probability_bonus = 0.15 * (1 - distance_from_optimal / max_distance)
+                probability_bonus = 0.10 * (1 - distance_from_optimal / max_distance)  # Réduit
                 base_score += probability_bonus
                 
-            # Bonus volume
+            # Bonus volume - RÉDUITS
             if volume_ratio >= self.optimal_volume_spike:
-                base_score += self.volume_confirmation_bonus  # Volume exceptionnel
+                base_score += 0.15  # Réduit de self.volume_confirmation_bonus (0.2)
             elif volume_ratio >= self.min_volume_spike:
-                base_score += 0.10  # Volume suffisant
+                base_score += 0.08  # Réduit de 0.10
                 
-            # Bonus volume spike multiplier
-            if volume_spike_multiplier >= 3.0:
-                base_score += 0.10  # Spike très marqué
+            # Bonus volume spike multiplier - RÉDUIT
+            if volume_spike_multiplier >= 4.0:  # Seuil plus élevé
+                base_score += 0.08  # Réduit de 0.10
                 
             # Bonus qualité volume
             if volume_quality_score >= 80.0:
                 base_score += 0.08  # Volume de très bonne qualité
                 
-            # Bonus stratégie spécialisée
+            # Bonus stratégie spécialisée - RÉDUIT
             if self._is_liquidity_sweep_strategy(signal_strategy):
-                base_score += self.perfect_sweep_bonus  # Stratégie spécialisée
+                base_score += 0.20  # Réduit de self.perfect_sweep_bonus (0.3)
                 
             # Bonus confidence élevée (important pour sweep)
             signal_confidence = signal.get('confidence', 0.0)
@@ -424,8 +424,8 @@ class Liquidity_Sweep_Validator(BaseValidator):
                     return f"{self.name}: Rejeté - Probabilité cassure trop élevée ({self._safe_format(break_probability, '.2f')}) - vraie cassure"
                 elif volume_ratio and volume_ratio < self.min_volume_spike:
                     return f"{self.name}: Rejeté - Volume spike insuffisant ({self._safe_format(volume_ratio, '.1f')}x)"
-                elif signal.get('confidence', 0) < 0.6:
-                    return f"{self.name}: Rejeté - Confidence insuffisante pour sweep"
+                elif signal.get('confidence', 0) < 0.65:
+                    return f"{self.name}: Rejeté - Confidence insuffisante pour sweep (< 0.65)"
                     
                 return f"{self.name}: Rejeté - Critères liquidity sweep non respectés"
                 

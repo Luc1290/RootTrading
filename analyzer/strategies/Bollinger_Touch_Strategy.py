@@ -20,11 +20,12 @@ class Bollinger_Touch_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres Bollinger Bands
-        self.touch_threshold = 0.01    # 1% de proximité pour considérer une "touche"
-        self.bb_position_extreme = 0.95  # Position extrême dans les bandes
-        self.bb_width_min = 0.02       # Largeur minimum des bandes (éviter squeeze)
-        self.reversion_zone = 0.05     # Zone de retournement (5%)
+        # Paramètres Bollinger Bands - OPTIMISÉS
+        self.touch_threshold = 0.005   # 0.5% de proximité (plus strict)
+        self.bb_position_extreme = 0.98  # Position vraiment extrême (98%)
+        self.bb_width_min = 0.03       # Largeur minimum 3% (éviter faux signaux en squeeze)
+        self.reversion_zone = 0.03     # Zone de retournement 3% (plus précis)
+        self.min_bb_width_for_trade = 0.05  # Ne pas trader si bandes < 5%
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs Bollinger."""
@@ -103,7 +104,7 @@ class Bollinger_Touch_Strategy(BaseStrategy):
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Bollinger Bands trop compressées ({bb_width:.3f}) - squeeze actif",
+                "reason": f"Bollinger Bands trop compressées ({bb_width:.3f}) - squeeze actif, min requis: {self.bb_width_min}",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
@@ -118,7 +119,7 @@ class Bollinger_Touch_Strategy(BaseStrategy):
         
         signal_side = None
         reason = ""
-        base_confidence = 0.5
+        base_confidence = 0.35  # Stratégie mean reversion - conf modérée car rebonds
         confidence_boost = 0.0
         touch_type = None
         
@@ -126,33 +127,37 @@ class Bollinger_Touch_Strategy(BaseStrategy):
         is_touching_upper = distance_to_upper <= self.touch_threshold
         is_touching_lower = distance_to_lower <= self.touch_threshold
         
-        # Position dans les bandes pour confirmation
+        # Position dans les bandes pour confirmation - PLUS STRICT
         is_extreme_high = bb_position is not None and bb_position >= self.bb_position_extreme
         is_extreme_low = bb_position is not None and bb_position <= (1 - self.bb_position_extreme)
         
-        # Logique de signal - Touche bande basse = BUY (retournement haussier)
-        if is_touching_lower or is_extreme_low:
+        # NOUVEAU: Vérifier qu'on n'est pas en tendance forte opposée
+        ema_50 = values.get('ema_50')
+        trend_against_signal = False
+        
+        # Logique de signal - Touche bande basse = BUY SEULEMENT si conditions strictes
+        if (is_touching_lower or is_extreme_low) and bb_width > self.min_bb_width_for_trade:
             signal_side = "BUY"
             touch_type = "lower_band"
             
             if is_touching_lower:
                 reason = f"Touche bande basse {bb_lower:.2f} (prix: {current_price:.2f})"
-                confidence_boost += 0.15
+                confidence_boost += 0.10  # Réduit de 0.15
             else:
                 reason = f"Position extrême basse BB ({bb_position:.3f})"
-                confidence_boost += 0.10
+                confidence_boost += 0.05  # Réduit de 0.10
                 
-        # Logique de signal - Touche bande haute = SELL (retournement baissier)
-        elif is_touching_upper or is_extreme_high:
+        # Logique de signal - Touche bande haute = SELL SEULEMENT si conditions strictes
+        elif (is_touching_upper or is_extreme_high) and bb_width > self.min_bb_width_for_trade:
             signal_side = "SELL"
             touch_type = "upper_band"
             
             if is_touching_upper:
                 reason = f"Touche bande haute {bb_upper:.2f} (prix: {current_price:.2f})"
-                confidence_boost += 0.15
+                confidence_boost += 0.10  # Réduit de 0.15
             else:
                 reason = f"Position extrême haute BB ({bb_position:.3f})"
-                confidence_boost += 0.10
+                confidence_boost += 0.05  # Réduit de 0.10
                 
         # Pas de touche détectée
         if signal_side is None:
@@ -178,18 +183,23 @@ class Bollinger_Touch_Strategy(BaseStrategy):
         if rsi_14 is not None:
             try:
                 rsi = float(rsi_14)
-                if signal_side == "BUY" and rsi <= 30:
-                    confidence_boost += 0.15
-                    reason += f" + RSI survente ({rsi:.1f})"
-                elif signal_side == "SELL" and rsi >= 70:
-                    confidence_boost += 0.15
-                    reason += f" + RSI surachat ({rsi:.1f})"
-                elif signal_side == "BUY" and rsi <= 40:
-                    confidence_boost += 0.10
+                # SEUILS RSI PLUS STRICTS
+                if signal_side == "BUY" and rsi <= 25:  # Plus strict: 25 au lieu de 30
+                    confidence_boost += 0.20
+                    reason += f" + RSI survente forte ({rsi:.1f})"
+                elif signal_side == "SELL" and rsi >= 75:  # Plus strict: 75 au lieu de 70
+                    confidence_boost += 0.20
+                    reason += f" + RSI surachat fort ({rsi:.1f})"
+                elif signal_side == "BUY" and rsi <= 35:  # Ajusté
+                    confidence_boost += 0.08
                     reason += f" + RSI favorable ({rsi:.1f})"
-                elif signal_side == "SELL" and rsi >= 60:
-                    confidence_boost += 0.10
+                elif signal_side == "SELL" and rsi >= 65:  # Ajusté
+                    confidence_boost += 0.08
                     reason += f" + RSI favorable ({rsi:.1f})"
+                # NOUVEAU: Pénalité si RSI contradictoire
+                elif (signal_side == "BUY" and rsi > 60) or (signal_side == "SELL" and rsi < 40):
+                    confidence_boost -= 0.15
+                    reason += f" MAIS RSI contradictoire ({rsi:.1f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -200,12 +210,17 @@ class Bollinger_Touch_Strategy(BaseStrategy):
             try:
                 k = float(stoch_k)
                 d = float(stoch_d)
-                if signal_side == "BUY" and k <= 20 and d <= 20:
-                    confidence_boost += 0.10
-                    reason += f" + Stoch survente ({k:.1f},{d:.1f})"
-                elif signal_side == "SELL" and k >= 80 and d >= 80:
-                    confidence_boost += 0.10
-                    reason += f" + Stoch surachat ({k:.1f},{d:.1f})"
+                # SEUILS STOCHASTIC PLUS STRICTS
+                if signal_side == "BUY" and k <= 15 and d <= 15:  # Plus strict: 15 au lieu de 20
+                    confidence_boost += 0.12
+                    reason += f" + Stoch survente forte ({k:.1f},{d:.1f})"
+                elif signal_side == "SELL" and k >= 85 and d >= 85:  # Plus strict: 85 au lieu de 80
+                    confidence_boost += 0.12
+                    reason += f" + Stoch surachat fort ({k:.1f},{d:.1f})"
+                # NOUVEAU: Pénalité si Stoch contradictoire
+                elif (signal_side == "BUY" and k > 70) or (signal_side == "SELL" and k < 30):
+                    confidence_boost -= 0.10
+                    reason += f" MAIS Stoch contradictoire ({k:.1f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -228,19 +243,18 @@ class Bollinger_Touch_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                # Pour touch lower (BUY), on veut un momentum qui commence à remonter (format 0-100)
-                if signal_side == "BUY" and momentum > 35:
-                    confidence_boost += 0.08
-                    reason += " avec momentum stabilisé"
-                # Pour touch upper (SELL), on veut un momentum qui commence à baisser  
-                elif signal_side == "SELL" and momentum < 65:
-                    confidence_boost += 0.08
-                    reason += " avec momentum affaibli"
-                # Pénalité si momentum trop fort dans la direction opposée
-                elif (signal_side == "BUY" and momentum < 25) or \
-                     (signal_side == "SELL" and momentum > 75):
-                    confidence_boost -= 0.10
-                    reason += " mais momentum défavorable"
+                # MOMENTUM PLUS STRICT
+                if signal_side == "BUY" and 40 <= momentum <= 55:  # Zone de retournement haussier
+                    confidence_boost += 0.10
+                    reason += " avec momentum en retournement"
+                elif signal_side == "SELL" and 45 <= momentum <= 60:  # Zone de retournement baissier
+                    confidence_boost += 0.10
+                    reason += " avec momentum en retournement"
+                # Forte pénalité si momentum opposé
+                elif (signal_side == "BUY" and momentum < 30) or \
+                     (signal_side == "SELL" and momentum > 70):
+                    confidence_boost -= 0.20  # Pénalité augmentée
+                    reason += " ATTENTION: momentum très défavorable"
             except (ValueError, TypeError):
                 pass
                 
@@ -285,31 +299,52 @@ class Bollinger_Touch_Strategy(BaseStrategy):
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
+                # CONFLUENCE PLUS STRICTE
                 if signal_side == "BUY":
-                    # BUY (lower band touch) : confluence modérée suffisante (oversold confluence)
-                    if confluence > 75:
-                        confidence_boost += 0.15
-                        reason += " + confluence très élevée BUY"
-                    elif confluence > 65:
+                    if confluence > 80:  # Seuil augmenté
+                        confidence_boost += 0.20
+                        reason += " + confluence EXCELLENTE BUY"
+                    elif confluence > 70:  # Seuil augmenté
                         confidence_boost += 0.12
                         reason += " + confluence élevée"
-                    elif confluence > 55:
-                        confidence_boost += 0.08
-                        reason += " + confluence modérée"
+                    elif confluence > 60:  # Seuil augmenté
+                        confidence_boost += 0.06
+                        reason += " + confluence acceptable"
+                    elif confluence < 50:  # NOUVEAU: Pénalité si faible
+                        confidence_boost -= 0.10
+                        reason += " mais confluence faible"
                 elif signal_side == "SELL":
-                    # SELL (upper band touch) : confluence élevée requise (overbought confirmation)
-                    if confluence > 80:
-                        confidence_boost += 0.18  # Bonus supérieur pour SELL
-                        reason += " + confluence très élevée SELL"
-                    elif confluence > 70:  
+                    if confluence > 85:  # Seuil augmenté
+                        confidence_boost += 0.22
+                        reason += " + confluence EXCELLENTE SELL"
+                    elif confluence > 75:  # Seuil augmenté
                         confidence_boost += 0.14
                         reason += " + confluence élevée"
-                    elif confluence > 60:
-                        confidence_boost += 0.09
-                        reason += " + confluence modérée"
+                    elif confluence > 65:  # Seuil augmenté
+                        confidence_boost += 0.07
+                        reason += " + confluence acceptable"
+                    elif confluence < 55:  # NOUVEAU: Pénalité si faible
+                        confidence_boost -= 0.10
+                        reason += " mais confluence faible"
             except (ValueError, TypeError):
                 pass
                 
+        # NOUVEAU: Filtre final - rejeter si confidence trop faible après tous les calculs
+        raw_confidence = base_confidence * (1 + confidence_boost)
+        if raw_confidence < 0.45:  # Seuil minimum de confiance
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Signal rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.45)",
+                "metadata": {
+                    "strategy": self.name,
+                    "symbol": self.symbol,
+                    "rejected_signal": signal_side,
+                    "raw_confidence": raw_confidence
+                }
+            }
+        
         confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
         

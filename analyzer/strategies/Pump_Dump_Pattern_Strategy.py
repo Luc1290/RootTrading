@@ -145,7 +145,7 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_pump': pump_score >= 0.6,
+            'is_pump': pump_score >= 0.7,  # Augmenté de 0.6 à 0.7 - plus strict
             'pump_score': pump_score,
             'indicators': pump_indicators
         }
@@ -210,7 +210,7 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_dump': dump_score >= 0.5,
+            'is_dump': dump_score >= 0.6,  # Augmenté de 0.5 à 0.6 - plus strict
             'dump_score': dump_score,
             'indicators': dump_indicators
         }
@@ -225,7 +225,7 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": "Données insuffisantes",
-                "metadata": {}
+                "metadata": {"strategy": self.name}
             }
             
         values = self._get_current_values()
@@ -284,7 +284,7 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
             
         if signal_side:
             # Confirmations supplémentaires
-            base_confidence = 0.4
+            base_confidence = 0.3  # Réduit de 0.4 à 0.3 - plus conservateur
             
             # Trade intensity pour confirmer l'activité anormale
             trade_intensity = values.get('trade_intensity')
@@ -324,6 +324,23 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
                 except (ValueError, TypeError):
                     pass
                     
+            # NOUVEAU: Filtre final de confidence minimum
+            raw_confidence = base_confidence * (1.0 + confidence_boost)
+            if raw_confidence < 0.55:  # Seuil minimum 55%
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Signal pump/dump rejeté - confidence insuffisante ({raw_confidence:.2f} < 0.55)",
+                    "metadata": {
+                        "strategy": self.name,
+                        "symbol": self.symbol,
+                        "rejected_signal": signal_side,
+                        "raw_confidence": raw_confidence,
+                        "pattern_type": metadata.get("pattern_type")
+                    }
+                }
+            
             confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
             strength = self.get_strength_from_confidence(confidence)
             

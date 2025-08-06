@@ -27,40 +27,40 @@ class Volume_Buildup_Validator(BaseValidator):
         self.name = "Volume_Buildup_Validator"
         self.category = "technical"
         
-        # Paramètres volume de base
-        self.min_volume_ratio = 1.2          # Volume 20% au-dessus moyenne
-        self.strong_volume_ratio = 2.0       # Volume considéré fort
-        self.exceptional_volume_ratio = 3.0  # Volume exceptionnel
-        self.min_volume_trend = 0.1          # Trend volume croissant minimum
+        # Paramètres volume de base - OPTIMISÉS
+        self.min_volume_ratio = 1.4          # Volume 40% au-dessus moyenne AUGMENTÉ (1.4x au lieu de 1.2x)
+        self.strong_volume_ratio = 2.2       # Volume considéré fort AUGMENTÉ (2.2x au lieu de 2.0x)
+        self.exceptional_volume_ratio = 3.5  # Volume exceptionnel AUGMENTÉ (3.5x au lieu de 3.0x)
+        self.min_volume_trend = 0.15         # Trend volume croissant minimum AUGMENTÉ (15% au lieu de 10%)
         
-        # Paramètres accumulation/distribution
-        self.min_accumulation_score = 40.0   # Score accumulation minimum (format 0-100)
-        self.strong_accumulation_threshold = 0.7  # Accumulation forte
-        self.min_buy_pressure = 0.45         # Pression acheteuse minimum
-        self.optimal_buy_pressure = 0.65     # Pression acheteuse optimale
+        # Paramètres accumulation/distribution - OPTIMISÉS
+        self.min_accumulation_score = 50.0   # Score accumulation minimum AUGMENTÉ (50 au lieu de 40)
+        self.strong_accumulation_threshold = 0.75  # Accumulation forte AUGMENTÉE (75% au lieu de 70%)
+        self.min_buy_pressure = 0.50         # Pression acheteuse minimum AUGMENTÉE (50% au lieu de 45%)
+        self.optimal_buy_pressure = 0.70     # Pression acheteuse optimale AUGMENTÉE (70% au lieu de 65%)
         
-        # Paramètres buildup patterns
-        self.min_buildup_bars = 3            # Barres minimum pour buildup
-        self.optimal_buildup_bars = 5        # Barres optimales buildup
-        self.buildup_slope_threshold = 0.05  # Pente minimum buildup
-        self.buildup_consistency = 0.6       # Consistance buildup minimum
+        # Paramètres buildup patterns - OPTIMISÉS
+        self.min_buildup_bars = 5            # Barres minimum pour buildup AUGMENTÉ (5 au lieu de 3)
+        self.optimal_buildup_bars = 8        # Barres optimales buildup AUGMENTÉ (8 au lieu de 5)
+        self.buildup_slope_threshold = 0.08  # Pente minimum buildup AUGMENTÉE (8% au lieu de 5%)
+        self.buildup_consistency = 0.70      # Consistance buildup minimum AUGMENTÉE (70% au lieu de 60%)
         
-        # Paramètres liquidité et profondeur
-        self.min_liquidity_score = 30.0      # Score liquidité minimum (format 0-100)
-        self.min_bid_ask_ratio = 0.8         # Ratio bid/ask minimum
-        self.max_spread_ratio = 0.002        # 0.2% spread maximum
-        self.min_market_depth = 0.5          # Profondeur marché minimum
+        # Paramètres liquidité et profondeur - OPTIMISÉS
+        self.min_liquidity_score = 40.0      # Score liquidité minimum AUGMENTÉ (40 au lieu de 30)
+        self.min_bid_ask_ratio = 0.85        # Ratio bid/ask minimum AUGMENTÉ (85% au lieu de 80%)
+        self.max_spread_ratio = 0.0015       # Spread maximum RÉDUIT (0.15% au lieu de 0.2%)
+        self.min_market_depth = 0.6          # Profondeur marché minimum AUGMENTÉE (60% au lieu de 50%)
         
-        # Paramètres OBV et flux
-        self.min_obv_trend = 0.0             # OBV trend neutre minimum
-        self.obv_divergence_threshold = 0.3  # Seuil divergence OBV/prix
-        self.min_money_flow = 0.3            # Money flow minimum
-        self.strong_money_flow = 0.7         # Money flow fort
+        # Paramètres OBV et flux - OPTIMISÉS
+        self.min_obv_trend = 0.05            # OBV trend neutre minimum AUGMENTÉ (5% au lieu de 0%)
+        self.obv_divergence_threshold = 0.25  # Seuil divergence OBV/prix PLUS STRICT (25% au lieu de 30%)
+        self.min_money_flow = 0.35           # Money flow minimum AUGMENTÉ (35% au lieu de 30%)
+        self.strong_money_flow = 0.75        # Money flow fort AUGMENTÉ (75% au lieu de 70%)
         
-        # Paramètres qualité volume
-        self.min_volume_quality = 0.4        # Qualité volume minimum
-        self.min_trade_size_ratio = 0.8      # Ratio taille trades minimum
-        self.max_volume_volatility = 2.0     # Volatilité volume maximum
+        # Paramètres qualité volume - OPTIMISÉS
+        self.min_volume_quality = 0.5        # Qualité volume minimum AUGMENTÉE (50% au lieu de 40%)
+        self.min_trade_size_ratio = 0.85     # Ratio taille trades minimum AUGMENTÉ (85% au lieu de 80%)
+        self.max_volume_volatility = 1.8     # Volatilité volume maximum RÉDUITE (1.8x au lieu de 2.0x)
         
         # Bonus/malus
         self.exceptional_volume_bonus = 0.30  # Bonus volume exceptionnel
@@ -154,39 +154,39 @@ class Volume_Buildup_Validator(BaseValidator):
                 logger.warning(f"{self.name}: Signal side manquant pour {self.symbol}")
                 return False
                 
-            # 1. Validation ratio volume minimum
+            # 1. Validation ratio volume minimum - PLUS STRICT
             if volume_ratio is not None and volume_ratio < self.min_volume_ratio:
                 logger.debug(f"{self.name}: Volume insuffisant ({self._safe_format(volume_ratio, '.2f')}x) pour {self.symbol}")
-                if signal_confidence < 0.8:
+                if signal_confidence < 0.85:  # AUGMENTÉ de 80% à 85%
                     return False
                     
-            # 2. Validation trend volume (catégoriel)
+            # 2. Validation trend volume (catégoriel) - PLUS STRICT
             if volume_trend is not None and volume_trend.upper() in ['DECLINING', 'FALLING', 'WEAK']:
                 logger.debug(f"{self.name}: Trend volume décroissant ({volume_trend}) pour {self.symbol}")
-                if signal_confidence < 0.7:
+                if signal_confidence < 0.78:  # AUGMENTÉ de 70% à 78%
                     return False
                     
-            # 3. Validation accumulation/distribution selon signal (ad_line peut être positif/négatif)
+            # 3. Validation accumulation/distribution selon signal - PLUS STRICT
             if accumulation_distribution_score is not None:
                 # ad_line: valeurs positives = accumulation, négatives = distribution
                 if signal_side == "BUY" and accumulation_distribution_score < 0:
                     logger.debug(f"{self.name}: A/D Line négative ({self._safe_format(accumulation_distribution_score, '.2f')}) défavorable pour BUY {self.symbol}")
-                    if signal_confidence < 0.7:
+                    if signal_confidence < 0.75:  # AUGMENTÉ de 70% à 75%
                         return False
                 elif signal_side == "SELL" and accumulation_distribution_score > 0:
                     logger.debug(f"{self.name}: A/D Line positive ({self._safe_format(accumulation_distribution_score, '.2f')}) défavorable pour SELL {self.symbol}")
-                    if signal_confidence < 0.7:
+                    if signal_confidence < 0.75:  # AUGMENTÉ de 70% à 75%
                         return False
                         
-            # 4. Validation buy/sell pressure
+            # 4. Validation buy/sell pressure - PLUS STRICT
             if buy_sell_pressure is not None:
                 if signal_side == "BUY" and buy_sell_pressure < self.min_buy_pressure:
                     logger.debug(f"{self.name}: Pression acheteuse insuffisante ({self._safe_format(buy_sell_pressure, '.2f')}) pour {self.symbol}")
-                    if signal_confidence < 0.6:
+                    if signal_confidence < 0.68:  # AUGMENTÉ de 60% à 68%
                         return False
                 elif signal_side == "SELL" and buy_sell_pressure > (1 - self.min_buy_pressure):
                     logger.debug(f"{self.name}: Pression vendeuse insuffisante ({self._safe_format(1-buy_sell_pressure, '.2f')}) pour {self.symbol}")
-                    if signal_confidence < 0.6:
+                    if signal_confidence < 0.68:  # AUGMENTÉ de 60% à 68%
                         return False
                         
             # 5. Validation buildup pattern
@@ -277,8 +277,17 @@ class Volume_Buildup_Validator(BaseValidator):
                 vwap_coherence = self._validate_vwap_coherence(signal_side, current_price, volume_weighted_price)
                 if not vwap_coherence:
                     logger.debug(f"{self.name}: Incohérence VWAP pour {signal_side} {self.symbol}")
-                    if signal_confidence < 0.6:
+                    if signal_confidence < 0.68:  # AUGMENTÉ de 60% à 68%
                         return False
+                        
+            # NOUVEAU: Validation finale - rejet des signaux moyennement confiants avec volume faible
+            overall_volume_quality = self._calculate_overall_volume_quality(
+                volume_ratio, accumulation_distribution_score, buy_sell_pressure, 
+                volume_buildup_bars, liquidity_score
+            )
+            if overall_volume_quality < 0.55 and signal_confidence < 0.72:
+                logger.debug(f"{self.name}: Volume qualité médiocre ({overall_volume_quality:.2f}) + signal confidence insuffisante pour {self.symbol}")
+                return False
                         
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
                         f"Volume: {self._safe_format(volume_ratio, '.2f')}x, "
@@ -350,7 +359,7 @@ class Volume_Buildup_Validator(BaseValidator):
             
             signal_side = signal.get('side')
             
-            base_score = 0.5  # Score de base si validé
+            base_score = 0.46  # Score de base réduit (46% au lieu de 50%)
             
             # Bonus volume ratio
             if volume_ratio >= self.exceptional_volume_ratio:
@@ -509,6 +518,44 @@ class Volume_Buildup_Validator(BaseValidator):
             return False
             
         return True
+    
+    def _calculate_overall_volume_quality(self, volume_ratio: float, accumulation_score: float,
+                                         buy_sell_pressure: float, buildup_bars: int, 
+                                         liquidity_score: float) -> float:
+        """Calcule la qualité globale du volume."""
+        try:
+            quality_score = 0.0
+            components = 0
+            
+            if volume_ratio is not None:
+                # Normaliser volume_ratio (1.0 = neutre)
+                quality_score += min(1.0, volume_ratio / 2.0)  # Cap à 1.0 pour ratio >= 2.0
+                components += 1
+                
+            if accumulation_score is not None:
+                # Utiliser valeur absolue de l'A/D Line, normaliser vers 0-1
+                quality_score += min(1.0, abs(accumulation_score) / 200.0)
+                components += 1
+                
+            if buy_sell_pressure is not None:
+                # Utiliser distance depuis 0.5 (neutre) comme métrique de force
+                quality_score += abs(buy_sell_pressure - 0.5) * 2  # 0.5 devient 0, 1.0 ou 0.0 devient 1.0
+                components += 1
+                
+            if buildup_bars is not None:
+                # Normaliser buildup bars (8 barres optimales = 1.0)
+                quality_score += min(1.0, buildup_bars / 8.0)
+                components += 1
+                
+            if liquidity_score is not None:
+                # Normaliser score liquidité (format 0-100)
+                score_norm = liquidity_score / 100.0 if liquidity_score > 1 else liquidity_score
+                quality_score += score_norm
+                components += 1
+                
+            return quality_score / max(1, components)  # Moyenne des composants disponibles
+        except:
+            return 0.5  # Valeur par défaut
         
     def _get_current_price(self) -> Optional[float]:
         """Helper method to get current price from data or context."""

@@ -135,62 +135,99 @@ class Adaptive_Threshold_Validator(BaseValidator):
             volume_ratio = self.context.get('volume_ratio')
             atr_14 = self.context.get('atr_14')
             
-            # 1. Validation RSI adaptative
+            # 1. Validation RSI adaptative - LOGIQUE CORRIGÉE (plus de rejet absolu)
+            rsi_penalty = 0.0
             if rsi_14 is not None:
                 try:
                     rsi_val = float(rsi_14)
                     
+                    # NOUVEAU: Logique progressive au lieu de rejet brutal
                     if signal_side == 'BUY':
-                        # Pour BUY, RSI doit être en survente selon le timeframe
-                        if rsi_val > thresholds['rsi_oversold']:
-                            logger.debug(f"Signal BUY rejeté: RSI {rsi_val:.1f} > seuil survente {thresholds['rsi_oversold']} ({timeframe})")
-                            return False
+                        # BUY acceptable si RSI >= seuil neutre minimum
+                        if rsi_val < thresholds['rsi_neutral_min']:
+                            # RSI trop bas même pour BUY = suspect
+                            if rsi_val < 15:  # Extrême dangereux
+                                logger.debug(f"Signal BUY rejeté: RSI extrêmement bas {rsi_val:.1f} < 15 ({timeframe})")
+                                return False
+                            # Sinon, juste une pénalité légère
+                            rsi_penalty = 0.05
+                        # Pas de rejet si RSI dans la zone acceptable
+                        
                     elif signal_side == 'SELL':
-                        # Pour SELL, RSI doit être en surachat selon le timeframe
-                        if rsi_val < thresholds['rsi_overbought']:
-                            logger.debug(f"Signal SELL rejeté: RSI {rsi_val:.1f} < seuil surachat {thresholds['rsi_overbought']} ({timeframe})")
-                            return False
+                        # SELL acceptable si RSI <= seuil neutre maximum  
+                        if rsi_val > thresholds['rsi_neutral_max']:
+                            # RSI trop haut même pour SELL = suspect
+                            if rsi_val > 85:  # Extrême dangereux
+                                logger.debug(f"Signal SELL rejeté: RSI extrêmement haut {rsi_val:.1f} > 85 ({timeframe})")
+                                return False
+                            # Sinon, juste une pénalité légère
+                            rsi_penalty = 0.05
+                        # Pas de rejet si RSI dans la zone acceptable
                             
                 except (ValueError, TypeError):
                     pass
                     
-            # 2. Validation Stochastic K adaptative
+            # 2. Validation Stochastic K adaptative - LOGIQUE CORRIGÉE
+            stoch_penalty = 0.0
             if stoch_k is not None:
                 try:
                     stoch_val = float(stoch_k)
                     
-                    if signal_side == 'BUY' and stoch_val > thresholds['stoch_k_oversold']:
-                        logger.debug(f"Signal BUY rejeté: Stoch K {stoch_val:.1f} > seuil {thresholds['stoch_k_oversold']} ({timeframe})")
-                        return False
-                    elif signal_side == 'SELL' and stoch_val < thresholds['stoch_k_overbought']:
-                        logger.debug(f"Signal SELL rejeté: Stoch K {stoch_val:.1f} < seuil {thresholds['stoch_k_overbought']} ({timeframe})")
-                        return False
+                    # NOUVEAU: Plus de rejet brutal, juste pénalités pour valeurs extrêmes
+                    if signal_side == 'BUY':
+                        if stoch_val > 90:  # Stoch trop haut pour BUY
+                            logger.debug(f"Signal BUY pénalisé: Stoch K très haut {stoch_val:.1f} ({timeframe})")
+                            stoch_penalty = 0.1  # Pénalité au lieu de rejet
+                        elif stoch_val > 80:
+                            stoch_penalty = 0.05  # Pénalité légère
+                    elif signal_side == 'SELL':
+                        if stoch_val < 10:  # Stoch trop bas pour SELL
+                            logger.debug(f"Signal SELL pénalisé: Stoch K très bas {stoch_val:.1f} ({timeframe})")
+                            stoch_penalty = 0.1  # Pénalité au lieu de rejet
+                        elif stoch_val < 20:
+                            stoch_penalty = 0.05  # Pénalité légère
                         
                 except (ValueError, TypeError):
                     pass
                     
-            # 3. Validation MACD distance adaptative
+            # 3. Validation MACD distance adaptative - LOGIQUE ASSOUPLIE
+            macd_penalty = 0.0
             if macd_line is not None and macd_signal is not None:
                 try:
                     macd_distance = abs(float(macd_line) - float(macd_signal))
                     min_distance = thresholds['min_macd_distance']
                     
+                    # NOUVEAU: Pénalité progressive au lieu de rejet brutal
                     if macd_distance < min_distance:
-                        logger.debug(f"Signal rejeté: distance MACD {macd_distance:.4f} < seuil {min_distance} ({timeframe})")
-                        return False
+                        if macd_distance < min_distance * 0.3:  # Très collées
+                            logger.debug(f"Signal rejeté: MACD trop collées {macd_distance:.4f} < {min_distance * 0.3:.4f} ({timeframe})")
+                            return False  # Rejet seulement si extrêmement collées
+                        else:
+                            # Pénalité proportionnelle à la distance
+                            distance_ratio = macd_distance / min_distance
+                            macd_penalty = 0.1 * (1 - distance_ratio)
+                            logger.debug(f"Signal pénalisé: distance MACD faible {macd_distance:.4f} ({timeframe})")
                         
                 except (ValueError, TypeError):
                     pass
                     
-            # 4. Validation volume adaptative
+            # 4. Validation volume adaptative - LOGIQUE ASSOUPLIE
+            volume_penalty = 0.0
             if volume_ratio is not None:
                 try:
                     vol_ratio = float(volume_ratio)
                     min_vol_ratio = thresholds['min_volume_ratio']
                     
+                    # NOUVEAU: Pénalité progressive au lieu de rejet brutal
                     if vol_ratio < min_vol_ratio:
-                        logger.debug(f"Signal rejeté: volume ratio {vol_ratio:.2f} < seuil {min_vol_ratio} ({timeframe})")
-                        return False
+                        if vol_ratio < min_vol_ratio * 0.5:  # Volume très faible
+                            logger.debug(f"Signal rejeté: volume extrêmement faible {vol_ratio:.2f} < {min_vol_ratio * 0.5:.2f} ({timeframe})")
+                            return False  # Rejet seulement si volume dérisoire
+                        else:
+                            # Pénalité proportionnelle au volume
+                            volume_ratio_penalty = (min_vol_ratio - vol_ratio) / min_vol_ratio
+                            volume_penalty = 0.15 * volume_ratio_penalty
+                            logger.debug(f"Signal pénalisé: volume faible {vol_ratio:.2f} < {min_vol_ratio:.2f} ({timeframe})")
                         
                 except (ValueError, TypeError):
                     pass
@@ -213,8 +250,21 @@ class Adaptive_Threshold_Validator(BaseValidator):
                             
                 except (ValueError, TypeError):
                     pass
-                    
-            return True
+            
+            # NOUVEAU: Validation avec pénalités accumulées au lieu de rejets brutaux
+            total_penalty = rsi_penalty + stoch_penalty + macd_penalty + volume_penalty
+            confidence_adjustment = thresholds.get('confidence_penalty', 0.0)
+            
+            # Stocker les pénalités pour usage dans get_validation_score
+            if not hasattr(self, '_current_penalties'):
+                self._current_penalties = {}
+            self._current_penalties[signal.get('strategy', 'unknown')] = {
+                'total_penalty': total_penalty,
+                'confidence_adjustment': confidence_adjustment,
+                'timeframe': timeframe
+            }
+            
+            return True  # Plus de rejets brutaux, tout passe avec pénalités
             
         except Exception as e:
             logger.error(f"Erreur validation seuils adaptatifs: {e}")

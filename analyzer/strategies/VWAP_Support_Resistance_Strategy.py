@@ -212,7 +212,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_bounce': bounce_score >= 0.4,
+            'is_bounce': bounce_score >= 0.5,  # Augmenté de 0.4 à 0.5 - plus strict
             'score': bounce_score,
             'indicators': bounce_indicators,
             'vwap_level': vwap_val,
@@ -312,7 +312,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_rejection': rejection_score >= 0.4,
+            'is_rejection': rejection_score >= 0.5,  # Augmenté de 0.4 à 0.5 - plus strict
             'score': rejection_score,
             'indicators': rejection_indicators,
             'vwap_level': vwap_val,
@@ -404,7 +404,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_aligned': momentum_score >= 30,
+            'is_aligned': momentum_score >= 40,  # Augmenté de 30 à 40 - momentum plus strict
             'score': momentum_score,
             'indicators': momentum_indicators
         }
@@ -419,7 +419,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": "Données insuffisantes",
-                "metadata": {}
+                "metadata": {"strategy": self.name}
             }
             
         values = self._get_current_values()
@@ -506,7 +506,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
             }
             
         # Construire signal final
-        base_confidence = 0.55
+        base_confidence = 0.45  # Réduit de 0.55 à 0.45 pour cohérence avec autres stratégies
         confidence_boost = 0.0
         
         # Score VWAP principal
@@ -720,6 +720,24 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
+        # NOUVEAU: Filtre final de confidence minimum pour cohérence
+        raw_confidence = base_confidence * (1.0 + confidence_boost)
+        if raw_confidence < 0.55:  # Seuil minimum comme autres stratégies
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Signal VWAP {signal_side} rejeté - confidence insuffisante ({raw_confidence:.2f} < 0.55)",
+                "metadata": {
+                    "strategy": self.name,
+                    "symbol": self.symbol,
+                    "rejected_signal": signal_side,
+                    "raw_confidence": raw_confidence,
+                    "vwap_score": primary_analysis['score'] if primary_analysis else 0.0,
+                    "momentum_score": momentum_analysis['score'] if momentum_analysis else 0.0
+                }
+            }
+        
         confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
         
