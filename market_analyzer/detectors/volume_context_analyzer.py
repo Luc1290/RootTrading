@@ -308,8 +308,14 @@ class VolumeContextAnalyzer:
             detected_contexts.append((VolumeContextType.BREAKOUT, 0.8))
         
         # 4. Détection pump/reversal patterns
-        price_change = (closes[-1] - closes[-5]) / closes[-5] * 100 if len(closes) >= 5 else 0
-        volume_increase = volumes[-1] / np.mean(volumes[-5:]) if len(volumes) >= 5 else 1.0
+        price_change = (closes[-1] - closes[-5]) / closes[-5] * 100 if len(closes) >= 5 and closes[-5] != 0 else 0
+        
+        # Calcul sécurisé de l'augmentation du volume
+        if len(volumes) >= 5:
+            mean_volume = np.mean(volumes[-5:])
+            volume_increase = volumes[-1] / mean_volume if mean_volume > 0 and not np.isnan(mean_volume) else 1.0
+        else:
+            volume_increase = 1.0
         
         if price_change > 10 and volume_increase > 3:
             detected_contexts.append((VolumeContextType.PUMP_START, 0.85))
