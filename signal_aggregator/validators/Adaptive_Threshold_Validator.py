@@ -143,8 +143,8 @@ class Adaptive_Threshold_Validator(BaseValidator):
                     
                     # NOUVEAU: Logique progressive au lieu de rejet brutal
                     if signal_side == 'BUY':
-                        # BUY acceptable si RSI >= seuil neutre minimum
-                        if rsi_val < thresholds['rsi_neutral_min']:
+                        # BUY acceptable si RSI >= seuil oversold
+                        if rsi_val < thresholds['rsi_oversold']:
                             # RSI trop bas même pour BUY = suspect
                             if rsi_val < 15:  # Extrême dangereux
                                 logger.debug(f"Signal BUY rejeté: RSI extrêmement bas {rsi_val:.1f} < 15 ({timeframe})")
@@ -154,8 +154,8 @@ class Adaptive_Threshold_Validator(BaseValidator):
                         # Pas de rejet si RSI dans la zone acceptable
                         
                     elif signal_side == 'SELL':
-                        # SELL acceptable si RSI <= seuil neutre maximum  
-                        if rsi_val > thresholds['rsi_neutral_max']:
+                        # SELL acceptable si RSI <= seuil overbought  
+                        if rsi_val > thresholds['rsi_overbought']:
                             # RSI trop haut même pour SELL = suspect
                             if rsi_val > 85:  # Extrême dangereux
                                 logger.debug(f"Signal SELL rejeté: RSI extrêmement haut {rsi_val:.1f} > 85 ({timeframe})")
