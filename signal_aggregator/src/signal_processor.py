@@ -321,7 +321,7 @@ class SignalProcessor:
                     return None
             else:  # Signal individuel - NOUVEAU FILTRE
                 # NOUVEAU: Les signaux individuels doivent avoir une confiance minimum
-                individual_min_confidence = 0.6  # 60% minimum pour signal individuel
+                individual_min_confidence = 0.50  # 50% minimum pour signal individuel (réduit pour crypto)
                 if signal.get('confidence', 0) < individual_min_confidence:
                     logger.info(f"Signal individuel REJETÉ pour confiance insuffisante: {signal['strategy']} {symbol} "
                               f"{signal['side']} - confidence={signal.get('confidence', 0):.1%} < {individual_min_confidence:.1%}")

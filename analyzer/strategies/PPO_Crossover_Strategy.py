@@ -132,7 +132,7 @@ class PPO_Crossover_Strategy(BaseStrategy):
                 
         if signal_side:
             # Base confidence RÉDUITE pour stratégie momentum
-            base_confidence = 0.25  # Réduit de 0.5 - plus conservateur
+            base_confidence = 0.35  # Augmenté pour équilibrage avec autres stratégies
             
             # Confirmation avec MACD histogram (dérivée du momentum)
             macd_histogram = values.get('macd_histogram')

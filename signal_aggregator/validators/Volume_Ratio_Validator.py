@@ -107,7 +107,7 @@ class Volume_Ratio_Validator(BaseValidator):
                 
             # Volume extrêmement élevé - suspicion manipulation - PLUS STRICT
             if volume_ratio >= self.extreme_volume_ratio:
-                if signal_confidence < 0.9:  # Augmenté de 0.85
+                if signal_confidence < 0.65:  # Augmenté de 0.85
                     logger.debug(f"{self.name}: Volume ratio extrême ({self._safe_format(volume_ratio, '.2f')}) nécessite confidence très élevée pour {self.symbol}")
                     return False
                     
@@ -124,7 +124,7 @@ class Volume_Ratio_Validator(BaseValidator):
                     
                 # Volume très élevé vs historique - PLUS STRICT
                 if volume_vs_avg_ratio >= self.extreme_volume_ratio:
-                    if signal_confidence < 0.9:  # Cohérence avec volume_ratio
+                    if signal_confidence < 0.65:  # Cohérence avec volume_ratio
                         logger.debug(f"{self.name}: Volume vs historique extrême ({self._safe_format(volume_vs_avg_ratio, '.2f')}) pour {self.symbol}")
                         return False
                         
@@ -142,7 +142,7 @@ class Volume_Ratio_Validator(BaseValidator):
                         logger.debug(f"{self.name}: Quote/base ratio élevé favorable pour BUY ({self._safe_format(quote_volume_ratio, '.2f')}) pour {self.symbol}")
                     elif quote_volume_ratio < 0.8:
                         logger.debug(f"{self.name}: Quote/base ratio faible défavorable pour BUY ({self._safe_format(quote_volume_ratio, '.2f')}) pour {self.symbol}")
-                        if signal_confidence < 0.8:  # Augmenté de 0.7
+                        if signal_confidence < 0.70:  # Augmenté de 0.7
                             return False
                             
                 elif signal_side == "SELL":
@@ -151,7 +151,7 @@ class Volume_Ratio_Validator(BaseValidator):
                         logger.debug(f"{self.name}: Quote/base ratio faible cohérent avec SELL ({self._safe_format(quote_volume_ratio, '.2f')}) pour {self.symbol}")
                     elif quote_volume_ratio > 1.5:
                         logger.debug(f"{self.name}: Quote/base ratio élevé incohérent avec SELL ({self._safe_format(quote_volume_ratio, '.2f')}) pour {self.symbol}")
-                        if signal_confidence < 0.85:  # Augmenté de 0.75
+                        if signal_confidence < 0.70:  # Augmenté de 0.75
                             return False
                     
                 # Ratio idéal - signal favorisé
@@ -170,7 +170,7 @@ class Volume_Ratio_Validator(BaseValidator):
                     elif avg_trade_size < self.min_avg_trade_multiplier:
                         # Petits trades pour BUY = retail FOMO (défavorable) - PLUS STRICT
                         logger.debug(f"{self.name}: Petits trades défavorables pour BUY ({self._safe_format(avg_trade_size, '.2f')}) - possible retail FOMO pour {self.symbol}")
-                        if signal_confidence < 0.85:  # Augmenté de 0.75
+                        if signal_confidence < 0.70:  # Augmenté de 0.75
                             return False
                             
                 elif signal_side == "SELL":
@@ -195,7 +195,7 @@ class Volume_Ratio_Validator(BaseValidator):
                     # Pour BUY: haute intensité = FOMO/momentum (nécessite prudence)
                     if trade_intensity >= self.high_intensity_threshold:
                         logger.debug(f"{self.name}: Haute intensité pour BUY ({self._safe_format(trade_intensity, '.2f')}) - possible FOMO pour {self.symbol}")
-                        if signal_confidence < 0.9:  # Encore plus strict - augmenté de 0.8
+                        if signal_confidence < 0.65:  # Encore plus strict - augmenté de 0.8
                             logger.debug(f"{self.name}: Haute intensité BUY nécessite confidence très élevée pour {self.symbol}")
                             return False
                     elif trade_intensity >= 1.0:
@@ -208,7 +208,7 @@ class Volume_Ratio_Validator(BaseValidator):
                         logger.debug(f"{self.name}: Haute intensité pour SELL ({self._safe_format(trade_intensity, '.2f')}) - possible panique pour {self.symbol}")
                         if signal_strength in ['strong', 'very_strong']:
                             logger.debug(f"{self.name}: Haute intensité + signal fort = opportunité SELL pour {self.symbol}")
-                        elif signal_confidence < 0.85:  # Augmenté de 0.75
+                        elif signal_confidence < 0.70:  # Augmenté de 0.75
                             return False
                         
             # 7. Logique spécifique selon type de signal - EARLY RETURN SUPPRIMÉ
@@ -226,7 +226,7 @@ class Volume_Ratio_Validator(BaseValidator):
                     # Volume élevé pour SELL est OK si signal fort
                     if signal_strength in ['strong', 'very_strong']:
                         logger.debug(f"{self.name}: Volume élevé + signal fort favorable pour SELL pour {self.symbol}")
-                    elif signal_confidence < 0.8:  # Augmenté de 0.7
+                    elif signal_confidence < 0.70:  # Augmenté de 0.7
                         logger.debug(f"{self.name}: Volume élevé pour SELL nécessite confidence pour {self.symbol}")
                         return False
                         
@@ -237,7 +237,7 @@ class Volume_Ratio_Validator(BaseValidator):
             if quote_volume_ratio is not None and volume_ratio > 0:
                 ratio_difference = abs(quote_volume_ratio - volume_ratio) / volume_ratio
                 if ratio_difference > 0.4:  # 40% d'écart (plus strict)
-                    if signal_confidence < 0.75:  # Augmenté de 0.6
+                    if signal_confidence < 0.65:  # Augmenté de 0.6
                         logger.debug(f"{self.name}: Incohérence ratios volume ({self._safe_format(ratio_difference, '.2f')}) pour {self.symbol}")
                         ratios_consistent = False
                         
@@ -245,12 +245,12 @@ class Volume_Ratio_Validator(BaseValidator):
             if relative_volume is not None:
                 if signal_side == "BUY":
                     # Pour BUY: volume relatif très faible est suspect - PLUS STRICT
-                    if relative_volume < 0.7 and signal_confidence < 0.8:  # Seuils augmentés
+                    if relative_volume < 0.7 and signal_confidence < 0.70:  # Seuils augmentés
                         logger.debug(f"{self.name}: Volume relatif très faible pour BUY ({self._safe_format(relative_volume, '.2f')}) pour {self.symbol}")
                         return False
                 elif signal_side == "SELL":
                     # Pour SELL: volume relatif peut être plus faible - PLUS STRICT
-                    if relative_volume < 0.4 and signal_confidence < 0.75:  # Seuils augmentés
+                    if relative_volume < 0.4 and signal_confidence < 0.65:  # Seuils augmentés
                         logger.debug(f"{self.name}: Volume relatif extrêmement faible même pour SELL ({self._safe_format(relative_volume, '.2f')}) pour {self.symbol}")
                         return False
                         

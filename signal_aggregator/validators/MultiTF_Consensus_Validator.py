@@ -27,15 +27,15 @@ class MultiTF_Consensus_Validator(BaseValidator):
         self.name = "MultiTF_Consensus_Validator"
         self.category = "technical"
         
-        # Paramètres consensus multi-TF DURCIS
-        self.min_consensus_score = 0.75     # Score consensus minimum relevé (75%)
-        self.min_tf_alignment = 0.70        # Alignement TF minimum relevé (70%)
-        self.min_ma_alignment = 0.75        # Alignement MA minimum relevé (75%)
-        self.min_signal_strength = 0.65     # Force signal minimum relevé (65%)
+        # Paramètres consensus multi-TF - AJUSTÉS POUR RANGING
+        self.min_consensus_score = 0.50     # Score consensus minimum RÉDUIT pour ranging (50% au lieu de 75%)
+        self.min_tf_alignment = 0.45        # Alignement TF minimum RÉDUIT pour ranging (45% au lieu de 70%)
+        self.min_ma_alignment = 0.50        # Alignement MA minimum RÉDUIT pour ranging (50% au lieu de 75%)
+        self.min_signal_strength = 0.40     # Force signal minimum RÉDUIT pour ranging (40% au lieu de 65%)
         
-        # Paramètres directionnels DURCIS
-        self.directional_consensus_weight = 0.3   # Poids consensus directionnel
-        self.trend_consistency_min = 0.7          # Cohérence tendance minimum relevé (70%)
+        # Paramètres directionnels - AJUSTÉS POUR RANGING
+        self.directional_consensus_weight = 0.2   # Poids consensus directionnel RÉDUIT pour ranging
+        self.trend_consistency_min = 0.45         # Cohérence tendance minimum RÉDUIT pour ranging (45% au lieu de 70%)
         
         # Seuils critiques DURCIS
         self.critical_divergence_threshold = 0.25 # Seuil divergence critique réduit
@@ -101,34 +101,34 @@ class MultiTF_Consensus_Validator(BaseValidator):
                 logger.warning(f"{self.name}: Signal side manquant pour {self.symbol}")
                 return False
                 
-            # 1. Validation score consensus principal
+            # 1. Validation score consensus principal - AJUSTÉ POUR RANGING
             if consensus_score is not None and consensus_score < self.min_consensus_score:
                 logger.debug(f"{self.name}: Consensus score insuffisant ({self._safe_format(consensus_score, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.85:  # Plus strict - accepter seulement si très très confiant
+                if signal_confidence < 0.50:  # RÉDUIT pour crypto ranging (50% au lieu de 85%)
                     return False
                     
-            # 2. Validation alignement timeframes
+            # 2. Validation alignement timeframes - AJUSTÉ POUR RANGING
             if tf_alignment is not None and tf_alignment < self.min_tf_alignment:
                 logger.debug(f"{self.name}: Alignement TF insuffisant ({self._safe_format(tf_alignment, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.80:  # Plus strict
+                if signal_confidence < 0.45:  # RÉDUIT pour crypto ranging (45% au lieu de 70%)
                     return False
                     
-            # 3. Validation alignement tendance
+            # 3. Validation alignement tendance - AJUSTÉ POUR RANGING
             if trend_alignment is not None and trend_alignment < self.min_ma_alignment:
                 logger.debug(f"{self.name}: Alignement tendance insuffisant ({self._safe_format(trend_alignment, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.75:  # Plus strict - aligné avec signal_aggregator
+                if signal_confidence < 0.45:  # RÉDUIT pour crypto ranging (45% au lieu de 65%)
                     return False
                     
-            # 4. Validation force signal multi-TF
+            # 4. Validation force signal multi-TF - AJUSTÉ POUR RANGING
             if signal_strength is not None and signal_strength < self.min_signal_strength:
                 logger.debug(f"{self.name}: Force signal insuffisante ({self._safe_format(signal_strength, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.75:  # Plus strict
+                if signal_confidence < 0.45:  # RÉDUIT pour crypto ranging (45% au lieu de 75%)
                     return False
                     
-            # 5. Validation alignement moyennes mobiles calculé
+            # 5. Validation alignement moyennes mobiles calculé - AJUSTÉ POUR RANGING
             if ma_alignment_score < self.min_ma_alignment:
                 logger.debug(f"{self.name}: Alignement MA calculé insuffisant ({self._safe_format(ma_alignment_score, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.75:  # Plus strict
+                if signal_confidence < 0.45:  # RÉDUIT pour crypto ranging (45% au lieu de 75%)
                     return False
                     
             # 6. Validation consensus directionnel
@@ -138,7 +138,7 @@ class MultiTF_Consensus_Validator(BaseValidator):
             )
             if not directional_consensus:
                 logger.debug(f"{self.name}: Consensus directionnel insuffisant pour {self.symbol}")
-                if signal_confidence < 0.85:  # Plus strict
+                if signal_confidence < 0.50:  # RÉDUIT pour crypto ranging (50% au lieu de 75%)
                     return False
                     
             # 7. Détection divergences critiques
@@ -148,7 +148,7 @@ class MultiTF_Consensus_Validator(BaseValidator):
             )
             if critical_divergence:
                 logger.debug(f"{self.name}: Divergence critique détectée pour {self.symbol}")
-                if signal_confidence < 0.90:  # Maintenu très strict pour divergences
+                if signal_confidence < 0.70:  # RÉDUIT pour crypto (70% au lieu de 90%)
                     return False
                     
             # 8. Validation spécifique pour stratégies multi-TF
@@ -165,16 +165,16 @@ class MultiTF_Consensus_Validator(BaseValidator):
                         logger.debug(f"{self.name}: Stratégie MultiTF mais {name} insuffisant ({self._safe_format(score, '.2f')}) pour {self.symbol}")
                         return False
                         
-            # 9. Validation confluence si disponible
-            if confluence_score is not None and confluence_score < 60.0:  # Seuil relevé de 50 à 60
+            # 9. Validation confluence si disponible - AJUSTÉ POUR RANGING
+            if confluence_score is not None and confluence_score < 45.0:  # RÉDUIT pour ranging (45% au lieu de 60%)
                 logger.debug(f"{self.name}: Confluence générale faible ({self._safe_format(confluence_score, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.70:  # Plus strict
+                if signal_confidence < 0.45:  # RÉDUIT pour crypto ranging (45% au lieu de 70%)
                     return False
                     
-            # 10. Validation pattern confidence
-            if pattern_confidence is not None and pattern_confidence < 50:  # Seuil relevé de 40 à 50
+            # 10. Validation pattern confidence - AJUSTÉ POUR RANGING
+            if pattern_confidence is not None and pattern_confidence < 35:  # RÉDUIT pour ranging (35% au lieu de 50%)
                 logger.debug(f"{self.name}: Pattern confidence faible ({self._safe_format(pattern_confidence, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.75:  # Plus strict
+                if signal_confidence < 0.45:  # RÉDUIT pour crypto ranging (45% au lieu de 75%)
                     return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "

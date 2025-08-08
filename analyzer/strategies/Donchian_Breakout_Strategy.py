@@ -126,7 +126,7 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             
         signal_side = None
         reason = ""
-        base_confidence = 0.12  # Réduit drastiquement - breakouts nécessitent plus de confirmations
+        base_confidence = 0.38  # Réduit drastiquement - breakouts nécessitent plus de confirmations
         confidence_boost = 0.0
         breakout_type = None
         

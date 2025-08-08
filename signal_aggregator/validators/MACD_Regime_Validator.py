@@ -100,7 +100,7 @@ class MACD_Regime_Validator(BaseValidator):
                 # Mode strict (ancienne logique)
                 if macd_separation < self.min_macd_separation:
                     logger.debug(f"{self.name}: MACD trop proche Signal ({self._safe_format(macd_separation, '.5f')}) pour {self.symbol} - signal peu fiable")
-                    if signal_confidence < 0.8:
+                    if signal_confidence < 0.70:
                         return False
                     
             # 2. Validation direction MACD vs Signal
@@ -160,11 +160,11 @@ class MACD_Regime_Validator(BaseValidator):
                     macd_above_signal = macd_line > macd_signal
                     if signal_side == "BUY" and not macd_above_signal:
                         logger.debug(f"{self.name}: BUY signal mais croisement MACD vers le bas récent pour {self.symbol}")
-                        if signal_confidence < 0.8:
+                        if signal_confidence < 0.70:
                             return False
                     elif signal_side == "SELL" and macd_above_signal:
                         logger.debug(f"{self.name}: SELL signal mais croisement MACD vers le haut récent pour {self.symbol}")
-                        if signal_confidence < 0.8:
+                        if signal_confidence < 0.70:
                             return False
                         
             # 6. Validation position zéro line

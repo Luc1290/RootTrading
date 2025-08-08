@@ -367,8 +367,8 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
             oversold_analysis['is_oversold'] and
             stabilization_analysis['is_stabilized'] and
             volume_quality_ok):
-            
-            base_confidence = 0.35  # Réduit de 0.4 à 0.35 - plus conservateur
+
+            base_confidence = 0.40  # Réduit  - plus conservateur
             confidence_boost = 0.0
             
             # Score cumulé des analyses

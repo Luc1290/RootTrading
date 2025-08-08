@@ -239,7 +239,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         # Si on a un sweep setup, générer signal BUY
         signal_side = "BUY"
         reason = f"Liquidity sweep haussier sur support {nearest_support:.2f}"
-        base_confidence = 0.6  # Base plus élevée pour liquidity sweep
+        base_confidence = 0.50  # Base réduite pour équilibrage avec autres stratégies
         confidence_boost = 0.0
         
         # Bonus selon la qualité du sweep

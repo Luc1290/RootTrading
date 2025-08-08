@@ -143,7 +143,7 @@ class MACD_Crossover_Strategy(BaseStrategy):
             
         signal_side = None
         reason = ""
-        base_confidence = 0.3  # RÉDUIT de 0.5 à 0.3 - plus conservateur
+        base_confidence = 0.40  # Augmenté pour équilibrage avec autres stratégies
         confidence_boost = 0.0
         cross_type = None
         

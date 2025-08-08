@@ -318,7 +318,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         
         signal_side = None
         reason = ""
-        base_confidence = 0.7  # Base élevée car stratégie de confluence
+        base_confidence = 0.55  # Base réduite pour équilibrage avec autres stratégies
         confidence_boost = 0.0
         
         # Détermination du signal selon l'alignement MA et oscillateurs

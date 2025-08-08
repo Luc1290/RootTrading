@@ -340,7 +340,7 @@ class TRIX_Crossover_Strategy(BaseStrategy):
             }
             
         # Calculer confidence - BASE RÉDUITE pour indicateur simulé
-        base_confidence = 0.25  # Réduit de 0.5 - TRIX approximé, pas précis
+        base_confidence = 0.35  # Augmenté pour équilibrage avec autres stratégies
         confidence_boost = 0.0
         
         # Score TRIX strength - RÉDUIT

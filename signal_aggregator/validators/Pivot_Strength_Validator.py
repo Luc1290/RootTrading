@@ -162,14 +162,14 @@ class Pivot_Strength_Validator(BaseValidator):
                 if pivot_support_strength is not None and pivot_support_strength < self.min_pivot_strength:
                     logger.debug(f"{self.name}: BUY signal mais pivot support faible ({self._safe_format(pivot_support_strength, '.2f')}) pour {self.symbol}")
                     # PLUS STRICT: Rejeter tous les pivots faibles sauf exceptionnels
-                    if signal_confidence < 0.9:  # Augmenté de 0.8
+                    if signal_confidence < 0.65:  # Augmenté de 0.8
                         return False
                         
                 # Vérification touches support
                 if support_touch_count is not None and support_touch_count < self.min_touch_count:
                     logger.debug(f"{self.name}: BUY signal mais support touches insuffisantes ({support_touch_count}) pour {self.symbol}")
                     # PLUS STRICT: Exiger plus de touches
-                    if signal_confidence < 0.85:  # Augmenté de 0.7
+                    if signal_confidence < 0.70:  # Augmenté de 0.7
                         return False
                         
             elif signal_side == "SELL":
@@ -177,14 +177,14 @@ class Pivot_Strength_Validator(BaseValidator):
                 if pivot_resistance_strength is not None and pivot_resistance_strength < self.min_pivot_strength:
                     logger.debug(f"{self.name}: SELL signal mais pivot résistance faible ({self._safe_format(pivot_resistance_strength, '.2f')}) pour {self.symbol}")
                     # COHÉRENCE: Même seuil que support
-                    if signal_confidence < 0.9:  # Augmenté de 0.8
+                    if signal_confidence < 0.65:  # Augmenté de 0.8
                         return False
                         
                 # Vérification touches résistance
                 if resistance_touch_count is not None and resistance_touch_count < self.min_touch_count:
                     logger.debug(f"{self.name}: SELL signal mais résistance touches insuffisantes ({resistance_touch_count}) pour {self.symbol}")
                     # COHÉRENCE: Même seuil que support
-                    if signal_confidence < 0.85:  # Augmenté de 0.7
+                    if signal_confidence < 0.70:  # Augmenté de 0.7
                         return False
                         
             # 2. Validation distance par rapport aux pivots
@@ -195,25 +195,25 @@ class Pivot_Strength_Validator(BaseValidator):
                 if distance_ratio < self.min_distance_ratio:
                     logger.debug(f"{self.name}: Trop proche du pivot ({self._safe_format(distance_ratio*100, '.2f')}%) pour {self.symbol}")
                     # PLUS STRICT: Distance trop proche = risqué
-                    if signal_confidence < 0.8:  # Augmenté de 0.6
+                    if signal_confidence < 0.70:  # Augmenté de 0.6
                         return False
                 elif distance_ratio > self.max_distance_ratio:
                     logger.debug(f"{self.name}: Trop loin du pivot ({self._safe_format(distance_ratio*100, '.2f')}%) pour {self.symbol}")
                     # PLUS STRICT: Distance trop loin = moins fiable
-                    if signal_confidence < 0.75:  # Augmenté de 0.5
+                    if signal_confidence < 0.65:  # Augmenté de 0.5
                         return False
                         
             # 3. Validation confluence pivots
             if confluence_score is not None and confluence_score < self.min_confluence_score:
                 logger.debug(f"{self.name}: Score confluence pivots insuffisant ({self._safe_format(confluence_score, '.2f')}) pour {self.symbol}")
                 # PLUS STRICT: Confluence faible = rejet plus sévère
-                if signal_confidence < 0.8:  # Augmenté de 0.6
+                if signal_confidence < 0.70:  # Augmenté de 0.6
                     return False
                     
             if pivot_confluence_count is not None and pivot_confluence_count < self.min_confluence_pivots:
                 logger.debug(f"{self.name}: Pas assez de pivots en confluence ({pivot_confluence_count}) pour {self.symbol}")
                 # PLUS STRICT: Exiger vraiment plusieurs pivots
-                if signal_confidence < 0.85:  # Augmenté de 0.7
+                if signal_confidence < 0.70:  # Augmenté de 0.7
                     return False
                     
             # 4. Validation age des pivots
@@ -268,7 +268,7 @@ class Pivot_Strength_Validator(BaseValidator):
             if pivot_quality < 0.6:  # Augmenté de 0.4 à 0.6
                 logger.debug(f"{self.name}: Qualité globale pivots insuffisante ({self._safe_format(pivot_quality, '.2f')}) pour {self.symbol}")
                 # PLUS STRICT: Qualité faible = rejet sévère
-                if signal_confidence < 0.8:  # Augmenté de 0.7
+                if signal_confidence < 0.70:  # Augmenté de 0.7
                     return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "

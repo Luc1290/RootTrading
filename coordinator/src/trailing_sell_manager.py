@@ -29,15 +29,15 @@ class TrailingSellManager:
         self.service_client = service_client
         self.db_connection = db_connection
         
-        # Configuration trailing sell
-        self.sell_margin = 0.004  # 0.4% de marge pour les pumps
-        self.max_drop_threshold = 0.015  # 1.5% de chute max depuis le pic
-        self.immediate_sell_drop = 0.02  # 2% de chute = vente immédiate
+        # Configuration trailing sell - AJUSTÉE POUR CRYPTO VOLATILE
+        self.sell_margin = 0.012  # 1.2% de marge pour les pumps crypto (3x plus permissif)
+        self.max_drop_threshold = 0.035  # 3.5% de chute max depuis le pic (2.3x plus permissif) 
+        self.immediate_sell_drop = 0.050  # 5% de chute = vente immédiate (2.5x plus permissif)
         
-        # Configuration stop-loss adaptatif
-        self.stop_loss_percent_base = 0.015  # 1.5% de base
-        self.stop_loss_percent_bullish = 0.025  # 2.5% en tendance haussière
-        self.stop_loss_percent_strong_bullish = 0.035  # 3.5% en tendance très haussière
+        # Configuration stop-loss adaptatif - AJUSTÉ POUR CRYPTO
+        self.stop_loss_percent_base = 0.025  # 2.5% de base pour crypto volatil
+        self.stop_loss_percent_bullish = 0.040  # 4% en tendance haussière crypto
+        self.stop_loss_percent_strong_bullish = 0.055  # 5.5% en tendance très haussière crypto
         
         logger.info("✅ TrailingSellManager initialisé")
     
@@ -114,8 +114,8 @@ class TrailingSellManager:
                 return True, f"Chute de {drop_from_max*100:.2f}% depuis max {historical_max:.{precision}f}, SELL immédiat"
             
             if previous_sell_price is None:
-                # Premier SELL gagnant : vérifier si on est loin du max
-                if drop_from_max > 0.005:  # Si déjà chuté de >0.5% depuis le max
+                # Premier SELL gagnant : vérifier si on est loin du max - AJUSTÉ POUR CRYPTO
+                if drop_from_max > 0.020:  # Si déjà chuté de >2% depuis le max (4x plus permissif)
                     logger.info(f"⚠️ Premier SELL mais déjà {drop_from_max*100:.2f}% sous le max historique")
                     
                     # Si chute significative (>1.5%), vendre
@@ -405,12 +405,12 @@ class TrailingSellManager:
             support_factor = self._calculate_support_factor(analysis, entry_price)
             time_factor = self._calculate_time_factor(entry_time)
             
-            # Calcul du seuil final
-            base_threshold = 0.008  # 0.8% de base
+            # Calcul du seuil final - AJUSTÉ POUR CRYPTO
+            base_threshold = 0.015  # 1.5% de base pour crypto (doublé)
             adaptive_threshold = float(base_threshold) * float(regime_factor) * float(volatility_factor) * float(support_factor) * float(time_factor)
             
-            # Contraintes min/max
-            adaptive_threshold = max(0.003, min(0.025, adaptive_threshold))
+            # Contraintes min/max - PLUS PERMISSIVES POUR CRYPTO
+            adaptive_threshold = max(0.010, min(0.060, adaptive_threshold))  # 1%-6% au lieu de 0.3%-2.5%
             
             logger.debug(f"🧠 Stop-loss adaptatif {symbol}: {adaptive_threshold*100:.2f}%")
             
@@ -539,20 +539,23 @@ class TrailingSellManager:
         return float(strength_factor * distance_factor)
     
     def _calculate_time_factor(self, entry_time: float) -> float:
-        """Calcule le facteur basé sur le temps écoulé."""
+        """Calcule le facteur basé sur le temps écoulé - AJUSTÉ POUR CRYPTO RAPIDE."""
         time_elapsed = float(time.time() - float(entry_time))
         minutes_elapsed = time_elapsed / 60.0
         
-        if minutes_elapsed < 5:
-            return 1.3
-        elif minutes_elapsed < 15:
-            return 1.1
-        elif minutes_elapsed < 60:
-            return 1.0
-        elif minutes_elapsed < 240:
-            return 0.9
+        # Crypto peut être très rapide, plus permissif sur le temps
+        if minutes_elapsed < 2:
+            return 1.5  # Très récent = très permissif
+        elif minutes_elapsed < 10:
+            return 1.3  # Récent = permissif
+        elif minutes_elapsed < 30:
+            return 1.1  # Modéré
+        elif minutes_elapsed < 120:
+            return 1.0  # Normal
+        elif minutes_elapsed < 360:
+            return 0.9  # Plus ancien
         else:
-            return 0.8
+            return 0.85  # Très ancien
     
     def get_current_price(self, symbol: str) -> Optional[float]:
         """

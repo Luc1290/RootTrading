@@ -119,7 +119,7 @@ class Bollinger_Touch_Strategy(BaseStrategy):
         
         signal_side = None
         reason = ""
-        base_confidence = 0.35  # Stratégie mean reversion - conf modérée car rebonds
+        base_confidence = 0.40  # Stratégie mean reversion - conf modérée car rebonds
         confidence_boost = 0.0
         touch_type = None
         

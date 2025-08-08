@@ -27,40 +27,40 @@ class Volume_Buildup_Validator(BaseValidator):
         self.name = "Volume_Buildup_Validator"
         self.category = "technical"
         
-        # Paramètres volume de base - OPTIMISÉS
-        self.min_volume_ratio = 1.4          # Volume 40% au-dessus moyenne AUGMENTÉ (1.4x au lieu de 1.2x)
-        self.strong_volume_ratio = 2.2       # Volume considéré fort AUGMENTÉ (2.2x au lieu de 2.0x)
-        self.exceptional_volume_ratio = 3.5  # Volume exceptionnel AUGMENTÉ (3.5x au lieu de 3.0x)
-        self.min_volume_trend = 0.15         # Trend volume croissant minimum AUGMENTÉ (15% au lieu de 10%)
+        # Paramètres volume de base - AJUSTÉS POUR RANGING
+        self.min_volume_ratio = 1.1          # Volume minimum RÉDUIT pour crypto ranging (1.1x au lieu de 1.4x)
+        self.strong_volume_ratio = 1.8       # Volume considéré fort RÉDUIT (1.8x au lieu de 2.2x)
+        self.exceptional_volume_ratio = 2.5  # Volume exceptionnel RÉDUIT (2.5x au lieu de 3.5x)
+        self.min_volume_trend = 0.05         # Trend volume croissant minimum RÉDUIT (5% au lieu de 15%)
         
-        # Paramètres accumulation/distribution - OPTIMISÉS
-        self.min_accumulation_score = 50.0   # Score accumulation minimum AUGMENTÉ (50 au lieu de 40)
-        self.strong_accumulation_threshold = 0.75  # Accumulation forte AUGMENTÉE (75% au lieu de 70%)
-        self.min_buy_pressure = 0.50         # Pression acheteuse minimum AUGMENTÉE (50% au lieu de 45%)
-        self.optimal_buy_pressure = 0.70     # Pression acheteuse optimale AUGMENTÉE (70% au lieu de 65%)
+        # Paramètres accumulation/distribution - AJUSTÉS POUR RANGING
+        self.min_accumulation_score = 35.0   # Score accumulation minimum RÉDUIT pour ranging (35 au lieu de 50)
+        self.strong_accumulation_threshold = 0.60  # Accumulation forte RÉDUITE (60% au lieu de 75%)
+        self.min_buy_pressure = 0.40         # Pression acheteuse minimum RÉDUITE (40% au lieu de 50%)
+        self.optimal_buy_pressure = 0.60     # Pression acheteuse optimale RÉDUITE (60% au lieu de 70%)
         
-        # Paramètres buildup patterns - OPTIMISÉS
-        self.min_buildup_bars = 5            # Barres minimum pour buildup AUGMENTÉ (5 au lieu de 3)
-        self.optimal_buildup_bars = 8        # Barres optimales buildup AUGMENTÉ (8 au lieu de 5)
-        self.buildup_slope_threshold = 0.08  # Pente minimum buildup AUGMENTÉE (8% au lieu de 5%)
-        self.buildup_consistency = 0.70      # Consistance buildup minimum AUGMENTÉE (70% au lieu de 60%)
+        # Paramètres buildup patterns - AJUSTÉS POUR RANGING
+        self.min_buildup_bars = 2            # Barres minimum pour buildup RÉDUIT pour crypto rapide (2 au lieu de 5)
+        self.optimal_buildup_bars = 4        # Barres optimales buildup RÉDUIT (4 au lieu de 8)
+        self.buildup_slope_threshold = 0.03  # Pente minimum buildup RÉDUITE (3% au lieu de 8%)
+        self.buildup_consistency = 0.50      # Consistance buildup minimum RÉDUITE (50% au lieu de 70%)
         
-        # Paramètres liquidité et profondeur - OPTIMISÉS
-        self.min_liquidity_score = 40.0      # Score liquidité minimum AUGMENTÉ (40 au lieu de 30)
-        self.min_bid_ask_ratio = 0.85        # Ratio bid/ask minimum AUGMENTÉ (85% au lieu de 80%)
-        self.max_spread_ratio = 0.0015       # Spread maximum RÉDUIT (0.15% au lieu de 0.2%)
-        self.min_market_depth = 0.6          # Profondeur marché minimum AUGMENTÉE (60% au lieu de 50%)
+        # Paramètres liquidité et profondeur - AJUSTÉS POUR RANGING
+        self.min_liquidity_score = 25.0      # Score liquidité minimum RÉDUIT pour ranging (25 au lieu de 40)
+        self.min_bid_ask_ratio = 0.70        # Ratio bid/ask minimum RÉDUIT (70% au lieu de 85%)
+        self.max_spread_ratio = 0.003        # Spread maximum AUGMENTÉ pour crypto (0.3% au lieu de 0.15%)
+        self.min_market_depth = 0.40         # Profondeur marché minimum RÉDUITE (40% au lieu de 60%)
         
-        # Paramètres OBV et flux - OPTIMISÉS
-        self.min_obv_trend = 0.05            # OBV trend neutre minimum AUGMENTÉ (5% au lieu de 0%)
-        self.obv_divergence_threshold = 0.25  # Seuil divergence OBV/prix PLUS STRICT (25% au lieu de 30%)
-        self.min_money_flow = 0.35           # Money flow minimum AUGMENTÉ (35% au lieu de 30%)
-        self.strong_money_flow = 0.75        # Money flow fort AUGMENTÉ (75% au lieu de 70%)
+        # Paramètres OBV et flux - AJUSTÉS POUR RANGING
+        self.min_obv_trend = 0.02            # OBV trend neutre minimum RÉDUIT pour ranging (2% au lieu de 5%)
+        self.obv_divergence_threshold = 0.40  # Seuil divergence OBV/prix PLUS PERMISSIF (40% au lieu de 25%)
+        self.min_money_flow = 0.25           # Money flow minimum RÉDUIT (25% au lieu de 35%)
+        self.strong_money_flow = 0.65        # Money flow fort RÉDUIT (65% au lieu de 75%)
         
-        # Paramètres qualité volume - OPTIMISÉS
-        self.min_volume_quality = 0.5        # Qualité volume minimum AUGMENTÉE (50% au lieu de 40%)
-        self.min_trade_size_ratio = 0.85     # Ratio taille trades minimum AUGMENTÉ (85% au lieu de 80%)
-        self.max_volume_volatility = 1.8     # Volatilité volume maximum RÉDUITE (1.8x au lieu de 2.0x)
+        # Paramètres qualité volume - AJUSTÉS POUR RANGING
+        self.min_volume_quality = 0.35       # Qualité volume minimum RÉDUITE (35% au lieu de 50%)
+        self.min_trade_size_ratio = 0.70     # Ratio taille trades minimum RÉDUIT (70% au lieu de 85%)
+        self.max_volume_volatility = 2.5     # Volatilité volume maximum AUGMENTÉE pour crypto (2.5x au lieu de 1.8x)
         
         # Bonus/malus
         self.exceptional_volume_bonus = 0.30  # Bonus volume exceptionnel
@@ -157,13 +157,13 @@ class Volume_Buildup_Validator(BaseValidator):
             # 1. Validation ratio volume minimum - PLUS STRICT
             if volume_ratio is not None and volume_ratio < self.min_volume_ratio:
                 logger.debug(f"{self.name}: Volume insuffisant ({self._safe_format(volume_ratio, '.2f')}x) pour {self.symbol}")
-                if signal_confidence < 0.85:  # AUGMENTÉ de 80% à 85%
+                if signal_confidence < 0.75:  # AUGMENTÉ de 80% à 85%
                     return False
                     
             # 2. Validation trend volume (catégoriel) - PLUS STRICT
             if volume_trend is not None and volume_trend.upper() in ['DECLINING', 'FALLING', 'WEAK']:
                 logger.debug(f"{self.name}: Trend volume décroissant ({volume_trend}) pour {self.symbol}")
-                if signal_confidence < 0.78:  # AUGMENTÉ de 70% à 78%
+                if signal_confidence < 0.68:  # AUGMENTÉ de 70% à 78%
                     return False
                     
             # 3. Validation accumulation/distribution selon signal - PLUS STRICT
@@ -171,7 +171,7 @@ class Volume_Buildup_Validator(BaseValidator):
                 # ad_line: valeurs positives = accumulation, négatives = distribution
                 if signal_side == "BUY" and accumulation_distribution_score < 0:
                     logger.debug(f"{self.name}: A/D Line négative ({self._safe_format(accumulation_distribution_score, '.2f')}) défavorable pour BUY {self.symbol}")
-                    if signal_confidence < 0.75:  # AUGMENTÉ de 70% à 75%
+                    if signal_confidence < 0.65:  # AUGMENTÉ de 70% à 75%
                         return False
                 elif signal_side == "SELL" and accumulation_distribution_score > 0:
                     logger.debug(f"{self.name}: A/D Line positive ({self._safe_format(accumulation_distribution_score, '.2f')}) défavorable pour SELL {self.symbol}")
@@ -570,11 +570,11 @@ class Volume_Buildup_Validator(BaseValidator):
                 except (IndexError, ValueError, TypeError):
                     pass
             
-            # Fallback: essayer current_price dans le contexte
-            # current_price n'est pas dans analyzer_data, utiliser self.data['close']
-            if current_price is not None:
+            # Fallback: essayer current_price depuis le contexte
+            context_price = self.context.get('current_price')
+            if context_price is not None:
                 try:
-                    return float(current_price)
+                    return float(context_price)
                 except (ValueError, TypeError):
                     pass
         return None

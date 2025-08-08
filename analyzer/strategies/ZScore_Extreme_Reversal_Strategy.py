@@ -478,7 +478,7 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
             }
             
         # Construire signal final
-        base_confidence = 0.6  # Base élevée pour Z-Score extrême
+        base_confidence = 0.50  # Base réduite pour équilibrage avec autres stratégies
         confidence_boost = 0.0
         
         # Score Z-Score strength

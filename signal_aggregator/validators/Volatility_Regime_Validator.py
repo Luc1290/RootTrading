@@ -151,13 +151,13 @@ class Volatility_Regime_Validator(BaseValidator):
                 elif bb_width >= self.bb_extreme_expansion:
                     if signal_side == "BUY" and bb_position is not None and bb_position > 0.80:
                         # BUY près de la bande supérieure en expansion = dangereux
-                        if signal_confidence < 0.8:
+                        if signal_confidence < 0.70:
                             logger.debug(f"{self.name}: BUY près BB supérieure en expansion nécessite forte confidence pour {self.symbol}")
                             return False
                             
                     elif signal_side == "SELL" and bb_position is not None and bb_position < 0.20:
                         # SELL près de la bande inférieure en expansion = dangereux
-                        if signal_confidence < 0.8:
+                        if signal_confidence < 0.70:
                             logger.debug(f"{self.name}: SELL près BB inférieure en expansion nécessite forte confidence pour {self.symbol}")
                             return False
                             
@@ -193,7 +193,7 @@ class Volatility_Regime_Validator(BaseValidator):
             if natr is not None:
                 # NATR très élevé - prudence
                 if natr > 5.0:  # 5% de NATR = très volatil
-                    if signal_confidence < 0.8:
+                    if signal_confidence < 0.70:
                         logger.debug(f"{self.name}: NATR élevé ({self._safe_format(natr, '.2f')}%) nécessite forte confidence pour {self.symbol}")
                         return False
                         

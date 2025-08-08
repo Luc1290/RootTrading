@@ -88,7 +88,7 @@ class ATR_Volatility_Validator(BaseValidator):
             if atr_14 > self.extreme_atr_threshold:
                 logger.debug(f"{self.name}: ATR extrême ({self._safe_format(atr_14, '.4f')}) pour {self.symbol} - risque trop élevé")
                 # Critères ALIGNÉS avec signal_aggregator (seuil critical 75%)
-                if signal_confidence < 0.75:  # Aligné avec nouveaux seuils
+                if signal_confidence < 0.65:  # Aligné avec nouveaux seuils
                     logger.debug(f"{self.name}: Signal confidence insuffisante ({self._safe_format(signal_confidence, '.2f')}) pour volatilité extrême")
                     return False
                     
@@ -101,7 +101,7 @@ class ATR_Volatility_Validator(BaseValidator):
                 if atr_percentile > self.max_atr_percentile:
                     logger.debug(f"{self.name}: ATR percentile trop élevé ({self._safe_format(atr_percentile, '.1f')}) pour {self.symbol}")
                     # Critères ALIGNÉS - volatilité très élevée
-                    if signal_confidence < 0.80:  # Maintenu à 80% (très strict)
+                    if signal_confidence < 0.700:  # Maintenu à 80% (très strict)
                         return False
                         
             # 4. Validation selon le régime de volatilité
@@ -114,7 +114,7 @@ class ATR_Volatility_Validator(BaseValidator):
                         
                 elif volatility_regime == "extreme":
                     # Volatilité extrême - TRÈS sélectif
-                    if signal_confidence < 0.80:  # Maintenu strict
+                    if signal_confidence < 0.700:  # Maintenu strict
                         logger.debug(f"{self.name}: Régime volatilité extrême mais confidence insuffisante ({self._safe_format(signal_confidence, '.2f')}) pour {self.symbol}")
                         return False
                         
@@ -145,7 +145,7 @@ class ATR_Volatility_Validator(BaseValidator):
                         return False
                 elif natr > 8.0:  # NATR très élevé
                     logger.debug(f"{self.name}: NATR très élevé ({self._safe_format(natr, '.2f')}) pour {self.symbol}")
-                    if signal_confidence < 0.8:
+                    if signal_confidence < 0.70:
                         return False
                         
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - ATR: {self._safe_format(atr_14, '.4f')}, "

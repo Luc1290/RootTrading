@@ -61,19 +61,19 @@ VALIDATOR_HIERARCHY = {
     }
 }
 
-# Configuration des seuils de validation par niveau
+# Configuration des seuils de validation par niveau - AJUSTÉS POUR RANGING
 VALIDATION_THRESHOLDS = {
     'critical': {
-        'min_score': 0.75,  # Score minimum 75% pour validators critiques (DURCI)
+        'min_score': 0.50,  # Score minimum RÉDUIT pour crypto ranging (50% au lieu de 75%)
         'rejection_message': "Signal rejeté par validator critique : {validator_name} - {reason}"
     },
     'important': {
-        'min_score': 0.65,  # Score minimum 65% pour validators importants (DURCI)
-        'low_score_penalty': 0.3  # Pénalité augmentée
+        'min_score': 0.45,  # Score minimum RÉDUIT pour crypto ranging (45% au lieu de 65%)
+        'low_score_penalty': 0.2  # Pénalité réduite pour ranging
     },
     'standard': {
-        'min_score': 0.55,  # Score minimum 55% pour validators standards (DURCI)
-        'low_score_penalty': 0.2  # Pénalité augmentée
+        'min_score': 0.40,  # Score minimum RÉDUIT pour crypto ranging (40% au lieu de 55%)
+        'low_score_penalty': 0.15  # Pénalité réduite pour ranging
     }
 }
 

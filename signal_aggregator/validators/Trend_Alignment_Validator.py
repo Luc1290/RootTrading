@@ -141,7 +141,7 @@ class Trend_Alignment_Validator(BaseValidator):
             # 1. Validation force de la tendance principale
             if primary_trend_strength is not None and primary_trend_strength < self.min_trend_strength:
                 logger.debug(f"{self.name}: Tendance principale faible ({self._safe_format(primary_trend_strength, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.85:  # Plus strict
+                if signal_confidence < 0.75:  # Plus strict
                     return False
                     
             # 2. Validation cohérence direction tendance/signal
@@ -149,25 +149,25 @@ class Trend_Alignment_Validator(BaseValidator):
                 direction_coherence = self._validate_trend_signal_coherence(signal_side, primary_trend_direction)
                 if not direction_coherence:
                     logger.debug(f"{self.name}: Incohérence tendance {primary_trend_direction} / signal {signal_side} pour {self.symbol}")
-                    if signal_confidence < 0.80:  # Plus strict
+                    if signal_confidence < 0.70:  # Plus strict
                         return False
                         
             # 3. Validation alignement EMA
             if ema_alignment_score is not None and ema_alignment_score < 50.0:  # Seuil relevé de 40 à 50
                 logger.debug(f"{self.name}: Alignement EMA insuffisant ({self._safe_format(ema_alignment_score, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.75:  # Plus strict
+                if signal_confidence < 0.65:  # Plus strict
                     return False
                     
             # Validation séparation EMA
             if ema_separation_ratio is not None and ema_separation_ratio < self.min_ema_separation:
                 logger.debug(f"{self.name}: Séparation EMA insuffisante ({self._safe_format(ema_separation_ratio*100, '.2f')}%) pour {self.symbol}")
-                if signal_confidence < 0.70:  # Plus strict
+                if signal_confidence < 0.60:  # Plus strict
                     return False
                     
             # 4. Validation cohérence MACD
             if macd_trend_coherence is not None and macd_trend_coherence < self.macd_signal_coherence_threshold:
                 logger.debug(f"{self.name}: Cohérence MACD/tendance insuffisante ({self._safe_format(macd_trend_coherence, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.75:  # Plus strict
+                if signal_confidence < 0.65:  # Plus strict
                     return False
                     
             if macd_histogram_strength is not None and macd_histogram_strength < self.min_macd_histogram_strength:

@@ -114,7 +114,7 @@ class Bollinger_Width_Validator(BaseValidator):
             if bb_width_pct < self.min_bb_width:
                 logger.debug(f"{self.name}: BB width trop faible ({self._safe_format(bb_width_pct, '.3f')}) pour {self.symbol} - marché compressé")
                 # En squeeze sévère, REJETER tous les signaux sauf exceptionnels
-                if signal_confidence < 0.9:  # Augmenté de 0.8 à 0.9
+                if signal_confidence < 0.65:  # Augmenté de 0.8 à 0.9
                     return False
                     
             # 2. Vérification largeur BB maximum - PLUS STRICT
@@ -128,12 +128,12 @@ class Bollinger_Width_Validator(BaseValidator):
                 logger.debug(f"{self.name}: BB en squeeze pour {self.symbol}")
                 # En squeeze, REJETER la plupart des signaux
                 if not self._is_breakout_strategy(signal_strategy):
-                    if signal_confidence < 0.85:  # Seuil très élevé
+                    if signal_confidence < 0.70:  # Seuil très élevé
                         logger.debug(f"{self.name}: Squeeze - stratégie non-breakout rejetée pour {self.symbol}")
                         return False
                 else:
                     # Même pour breakout, exiger confidence élevée
-                    if signal_confidence < 0.75:  # NOUVEAU
+                    if signal_confidence < 0.65:  # NOUVEAU
                         logger.debug(f"{self.name}: Squeeze - même breakout doit être très confiant pour {self.symbol}")
                         return False
                         
@@ -143,7 +143,7 @@ class Bollinger_Width_Validator(BaseValidator):
                 # En expansion, FORTEMENT pénaliser mean reversion
                 if self._is_meanreversion_strategy(signal_strategy):
                     logger.debug(f"{self.name}: Expansion - mean reversion fortement pénalisée pour {self.symbol}")
-                    if signal_confidence < 0.8:  # Augmenté de 0.6 à 0.8
+                    if signal_confidence < 0.70:  # Augmenté de 0.6 à 0.8
                         return False
                         
             # 5. Validation position prix dans les bandes
@@ -153,14 +153,14 @@ class Bollinger_Width_Validator(BaseValidator):
                     if signal_side == "BUY":
                         logger.debug(f"{self.name}: BUY signal mais prix près BB supérieure ({self._safe_format(bb_position, '.2f')}) pour {self.symbol}")
                         # BUY près du haut = très risqué, même pour breakout
-                        if signal_confidence < 0.9:  # Très strict
+                        if signal_confidence < 0.65:  # Très strict
                             return False
                 elif bb_position < (1 - self.extreme_position_threshold):
                     # Prix très proche BB inférieure
                     if signal_side == "SELL":
                         logger.debug(f"{self.name}: SELL signal mais prix près BB inférieure ({self._safe_format(bb_position, '.2f')}) pour {self.symbol}")
                         # SELL près du bas = très risqué, même pour breakout
-                        if signal_confidence < 0.9:  # Très strict
+                        if signal_confidence < 0.65:  # Très strict
                             return False
                             
             # 6. Validation breakout direction (format: UP/DOWN/NONE)

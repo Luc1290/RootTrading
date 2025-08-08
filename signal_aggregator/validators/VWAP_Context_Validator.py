@@ -148,12 +148,12 @@ class VWAP_Context_Validator(BaseValidator):
                 
                 # Position extrême dans les bandes
                 if signal_side == "BUY" and band_position >= self.extreme_upper_threshold:
-                    if signal_confidence < 0.8:
+                    if signal_confidence < 0.7:
                         logger.debug(f"{self.name}: BUY en position extrême haute bandes VWAP ({self._safe_format(band_position, '.2f')}) pour {self.symbol}")
                         return False
                         
                 elif signal_side == "SELL" and band_position <= self.extreme_lower_threshold:
-                    if signal_confidence < 0.8:
+                    if signal_confidence < 0.7:
                         logger.debug(f"{self.name}: SELL en position extrême basse bandes VWAP ({self._safe_format(band_position, '.2f')}) pour {self.symbol}")
                         return False
                         
@@ -178,7 +178,7 @@ class VWAP_Context_Validator(BaseValidator):
                     if signal_side == "BUY":
                         if current_price < min(vwap_10, anchored_vwap):
                             logger.debug(f"{self.name}: BUY favorable - prix sous les deux VWAPs pour {self.symbol}")
-                        elif current_price > max(vwap_10, anchored_vwap) and signal_confidence < 0.7:
+                        elif current_price > max(vwap_10, anchored_vwap) and signal_confidence < 0.6:
                             logger.debug(f"{self.name}: BUY au-dessus des deux VWAPs nécessite confidence pour {self.symbol}")
                             return False
                             

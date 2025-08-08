@@ -27,24 +27,24 @@ class Market_Structure_Validator(BaseValidator):
         self.name = "Market_Structure_Validator"
         self.category = "regime"
         
-        # Paramètres régimes de marché - OPTIMISÉS
-        self.favorable_regimes = ["trending", "expansion", "normal"]
-        self.unfavorable_regimes = ["ranging", "compression", "chaotic"]
-        self.regime_strength_min = 0.55     # Force minimum régime AUGMENTÉE (55% au lieu de 40%)
-        self.regime_confidence_min = 65     # Confidence minimum régime AUGMENTÉE (65% au lieu de 50%)
+        # Paramètres régimes de marché - AJUSTÉS POUR CRYPTO RANGING
+        self.favorable_regimes = ["trending", "expansion", "normal", "ranging"]  # RANGING ajouté aux favorables
+        self.unfavorable_regimes = ["compression", "chaotic", "extreme_volatility"]  # RANGING retiré
+        self.regime_strength_min = 0.45     # Force minimum régime RÉDUITE pour crypto (45% au lieu de 55%)
+        self.regime_confidence_min = 55     # Confidence minimum régime RÉDUITE pour crypto (55% au lieu de 65%)
         
-        # Paramètres alignement - OPTIMISÉS
-        self.min_trend_alignment = 70      # Alignement minimum tendance AUGMENTÉ (70% au lieu de 60%)
-        self.min_signal_strength = 0.6      # Force signal minimum AUGMENTÉE (60% au lieu de 50%)
-        self.min_confluence_score = 55.0    # Score confluence minimum AUGMENTÉ (55 au lieu de 40)
+        # Paramètres alignement - AJUSTÉS POUR RANGING
+        self.min_trend_alignment = 50      # Alignement minimum tendance RÉDUIT pour ranging (50% au lieu de 70%)
+        self.min_signal_strength = 0.45     # Force signal minimum RÉDUITE pour ranging (45% au lieu de 60%)
+        self.min_confluence_score = 40.0    # Score confluence minimum RÉDUIT pour ranging (40 au lieu de 55)
         
         # Paramètres volatilité - OPTIMISÉS
         self.max_volatility_regime_risk = ["extreme", "chaotic"]
         self.acceptable_volatility = ["low", "normal", "high", "expanding"]
         
-        # Seuils directionnels - OPTIMISÉS
-        self.directional_bias_weight = 0.4  # Poids bias directionnel AUGMENTÉ (40% au lieu de 30%)
-        self.trend_angle_min = 8.0          # Angle tendance minimum AUGMENTÉ (8° au lieu de 5°)
+        # Seuils directionnels - AJUSTÉS POUR RANGING
+        self.directional_bias_weight = 0.3  # Poids bias directionnel RÉDUIT pour ranging (30% au lieu de 40%)
+        self.trend_angle_min = 4.0          # Angle tendance minimum RÉDUIT pour ranging (4° au lieu de 8°)
         
         # Bonus/malus - OPTIMISÉS
         self.perfect_alignment_bonus = 0.30  # Bonus alignement parfait AUGMENTÉ (30% au lieu de 25%)
@@ -103,68 +103,74 @@ class Market_Structure_Validator(BaseValidator):
                 logger.warning(f"{self.name}: Signal side manquant pour {self.symbol}")
                 return False
                 
-            # 1. Validation régime de marché principal - PLUS STRICT
+            # 1. Validation régime de marché principal - AJUSTÉ POUR RANGING
             if market_regime:
                 if market_regime in self.unfavorable_regimes:
                     logger.debug(f"{self.name}: Régime défavorable ({market_regime or 'N/A'}) pour {self.symbol}")
-                    # Accepter seulement avec confidence TRÈS élevée
-                    if signal_confidence < 0.85:  # AUGMENTÉ de 80% à 85%
+                    # Accepter seulement avec confidence élevée
+                    if signal_confidence < 0.65:  # Réduit pour crypto défavorables
+                        return False
+                elif market_regime == "ranging":
+                    # Régime ranging - PERMISSIF pour crypto flat
+                    if signal_confidence < 0.45:  # Très permissif pour ranging
+                        logger.debug(f"{self.name}: Régime ranging + confidence très faible pour {self.symbol}")
                         return False
                 elif market_regime not in self.favorable_regimes:
-                    # Régime neutre/inconnu - PLUS STRICT
-                    if signal_confidence < 0.70:  # AUGMENTÉ de 60% à 70%
+                    # Régime neutre/inconnu
+                    if signal_confidence < 0.55:  # Réduit pour crypto (était 60%)
                         logger.debug(f"{self.name}: Régime neutre ({market_regime or 'N/A'}) + confidence faible pour {self.symbol}")
                         return False
                         
-            # 2. Validation force et confidence du régime - PLUS STRICT
+            # 2. Validation force et confidence du régime - AJUSTÉ POUR CRYPTO
             if regime_strength is not None and regime_strength < self.regime_strength_min:
                 logger.debug(f"{self.name}: Force régime insuffisante ({self._safe_format(regime_strength, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.75:  # AUGMENTÉ de 70% à 75%
+                if signal_confidence < 0.55:  # Réduit pour crypto (était 65%)
                     return False
                     
             if regime_confidence is not None and regime_confidence < self.regime_confidence_min:
                 logger.debug(f"{self.name}: Confidence régime insuffisante ({self._safe_format(regime_confidence, '.0f')}%) pour {self.symbol}")
-                if signal_confidence < 0.75:  # AUGMENTÉ de 70% à 75%
+                if signal_confidence < 0.55:  # Réduit pour crypto (était 65%)
                     return False
                     
-            # 3. Validation régime de volatilité - RENFORCÉ
+            # 3. Validation régime de volatilité - AJUSTÉ POUR CRYPTO FLAT
             if volatility_regime in self.max_volatility_regime_risk:
                 logger.debug(f"{self.name}: Régime volatilité risqué ({volatility_regime or 'N/A'}) pour {self.symbol}")
-                if signal_confidence < 0.90:  # Maintenu très strict pour volatilité extrême
+                if signal_confidence < 0.70:  # Réduit pour crypto (était 75%)
                     return False
-            # NOUVEAU: Pénalité si volatilité trop faible
+            # Volatilité faible acceptable en marché ranging
             elif volatility_regime == "low":
-                if signal_confidence < 0.60:  # Seuil modéré pour volatilité faible
-                    logger.debug(f"{self.name}: Volatilité trop faible ({volatility_regime}) pour signal faible pour {self.symbol}")
+                if signal_confidence < 0.40:  # Très permissif pour volatilité faible (était 50%)
+                    logger.debug(f"{self.name}: Volatilité faible + signal très faible pour {self.symbol}")
                     return False
                     
-            # 4. Validation alignement tendance (format décimal) - PLUS STRICT
+            # 4. Validation alignement tendance (format décimal) - AJUSTÉ POUR RANGING
             if trend_alignment is not None and abs(trend_alignment) < (self.min_trend_alignment / 100):
                 logger.debug(f"{self.name}: Alignement tendance insuffisant ({self._safe_format(abs(trend_alignment), '.3f')}) pour {self.symbol}")
-                if signal_confidence < 0.65:  # AUGMENTÉ de 60% à 65%
+                # Plus permissif en marché ranging où l'alignement est naturellement faible
+                if signal_confidence < 0.45:  # Très permissif pour faible alignement (était 55%)
                     return False
                     
-            # 5. Validation force signal globale - PLUS STRICT
+            # 5. Validation force signal globale - AJUSTÉ POUR RANGING
             if signal_strength is not None and signal_strength < self.min_signal_strength:
                 logger.debug(f"{self.name}: Force signal insuffisante ({self._safe_format(signal_strength, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.75:  # AUGMENTÉ de 70% à 75%
+                if signal_confidence < 0.50:  # Plus permissif pour signal faible (était 65%)
                     return False
                     
-            # 6. Validation score confluence - PLUS STRICT
+            # 6. Validation score confluence - AJUSTÉ POUR RANGING  
             if confluence_score is not None and confluence_score < self.min_confluence_score:
                 logger.debug(f"{self.name}: Score confluence insuffisant ({self._safe_format(confluence_score, '.2f')}) pour {self.symbol}")
-                if signal_confidence < 0.65:  # AUGMENTÉ de 60% à 65%
+                if signal_confidence < 0.45:  # Plus permissif pour faible confluence (était 55%)
                     return False
                     
             # 7. Validation cohérence bias directionnel - RENFORCÉ
             if directional_bias:
                 if signal_side == "BUY" and directional_bias.upper() == "BEARISH":
                     logger.debug(f"{self.name}: BUY signal mais bias bearish pour {self.symbol}")
-                    if signal_confidence < 0.85:  # AUGMENTÉ de 80% à 85%
+                    if signal_confidence < 0.70:  # Réduit pour crypto (était 85%)
                         return False
                 elif signal_side == "SELL" and directional_bias.upper() == "BULLISH":
                     logger.debug(f"{self.name}: SELL signal mais bias bullish pour {self.symbol}")
-                    if signal_confidence < 0.85:  # AUGMENTÉ de 80% à 85%
+                    if signal_confidence < 0.70:  # Réduit pour crypto (était 85%)
                         return False
                         
             # 8. Validation force tendance générale - PLUS STRICT
@@ -172,32 +178,32 @@ class Market_Structure_Validator(BaseValidator):
                 logger.debug(f"{self.name}: Tendance générale faible ({self._safe_format(trend_strength, '.2f')}) pour {self.symbol}")
                 # En tendance faible, favoriser stratégies de mean reversion
                 if not self._is_meanreversion_strategy(signal_strategy):
-                    if signal_confidence < 0.70:  # AUGMENTÉ de 60% à 70%
+                    if signal_confidence < 0.60:  # Réduit pour crypto (était 70%)
                         return False
             # NOUVEAU: Rejet si tendance très faible pour toutes stratégies
             if trend_strength is not None and trend_strength < 0.2:
                 logger.debug(f"{self.name}: Tendance très faible ({self._safe_format(trend_strength, '.2f')}) - signal trop risqué pour {self.symbol}")
-                if signal_confidence < 0.8:
+                if signal_confidence < 0.70:  # Réduit pour crypto (était 80%)
                     return False
                         
             # 9. Validation angle tendance - PLUS STRICT
             if trend_angle is not None and abs(trend_angle) < self.trend_angle_min:
                 logger.debug(f"{self.name}: Angle tendance faible ({self._safe_format(trend_angle, '.1f')}°) pour {self.symbol}")
-                if signal_confidence < 0.60:  # AUGMENTÉ de 50% à 60%
+                if signal_confidence < 0.55:  # Réduit pour crypto (était 60%)
                     return False
                     
             # 10. Validation pattern si détecté - PLUS STRICT
             if pattern_detected and pattern_confidence is not None:
                 if pattern_confidence < 60:  # AUGMENTÉ de 50% à 60%
                     logger.debug(f"{self.name}: Pattern {pattern_detected} confidence faible ({self._safe_format(pattern_confidence, '.2f')}) pour {self.symbol}")
-                    if signal_confidence < 0.75:  # AUGMENTÉ de 70% à 75%
+                    if signal_confidence < 0.65:  # Réduit pour crypto (était 75%)
                         return False
                         
             # 11. Validation croisée régimes - PLUS STRICT
             regime_conflict = self._detect_regime_conflicts(str(market_regime) if market_regime is not None else '', str(volatility_regime) if volatility_regime is not None else '', str(directional_bias) if directional_bias is not None else '')
             if regime_conflict:
                 logger.debug(f"{self.name}: Conflit entre régimes détecté pour {self.symbol}")
-                if signal_confidence < 0.85:  # AUGMENTÉ de 80% à 85%
+                if signal_confidence < 0.70:  # Réduit pour crypto (était 85%)
                     return False
                     
             # 12. Validation spécifique selon type stratégie - PLUS STRICT
@@ -206,13 +212,14 @@ class Market_Structure_Validator(BaseValidator):
             )
             if not strategy_regime_match:
                 logger.debug(f"{self.name}: Stratégie {signal_strategy} inadaptée au régime pour {self.symbol}")
-                if signal_confidence < 0.75:  # AUGMENTÉ de 70% à 75%
+                if signal_confidence < 0.65:  # Réduit pour crypto (était 75%)
                     return False
                     
-            # NOUVEAU: Validation finale - rejet des signaux moyennement confiants avec structure médiocre
+            # Validation finale - structure globale AJUSTÉE POUR RANGING
             overall_structure_quality = self._calculate_structure_quality(regime_strength, regime_confidence, trend_alignment, confluence_score)
-            if overall_structure_quality < 0.5 and signal_confidence < 0.70:
-                logger.debug(f"{self.name}: Structure médiocre ({overall_structure_quality:.2f}) + signal confidence insuffisante pour {self.symbol}")
+            # Plus permissif : structure médiocre acceptable en ranging avec confidence modérée
+            if overall_structure_quality < 0.4 and signal_confidence < 0.55:
+                logger.debug(f"{self.name}: Structure très médiocre ({overall_structure_quality:.2f}) + signal confidence insuffisante pour {self.symbol}")
                 return False
                     
             logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
@@ -249,19 +256,19 @@ class Market_Structure_Validator(BaseValidator):
         """Valide l'adéquation stratégie/régime."""
         strategy_lower = strategy.lower()
         
-        # MEAN REVERSION - Vérifier en PREMIER pour éviter conflits
+        # MEAN REVERSION - PLUS PERMISSIF pour crypto ranging
         if any(kw in strategy_lower for kw in ['reversal', 'rebound', 'oversold', 'overbought', 'touch', 'rejection']):
-            return market_regime in ["ranging", "normal", "compression"]
+            return market_regime in ["ranging", "normal", "compression", "trending"]  # Ajout trending
         elif any(kw in strategy_lower for kw in ['bollinger', 'zscore', 'stoch', 'williams', 'cci']):
-            return market_regime in ["ranging", "normal", "compression"]
+            return market_regime in ["ranging", "normal", "compression", "trending"]  # Ajout trending
             
-        # TREND FOLLOWING - Exclure les stratégies de reversal
+        # TREND FOLLOWING - PLUS PERMISSIF pour crypto ranging
         elif (any(kw in strategy_lower for kw in ['macd', 'slope', 'adx', 'hull', 'tema', 'trix', 'ema_cross']) 
               and 'reversal' not in strategy_lower):
-            return market_regime in ["trending", "expansion", "normal"]
+            return market_regime in ["trending", "expansion", "normal", "ranging"]  # Ajout ranging
         elif (any(kw in strategy_lower for kw in ['cross', 'crossover']) 
               and not any(rev in strategy_lower for rev in ['rsi', 'stoch', 'williams', 'reversal'])):
-            return market_regime in ["trending", "expansion", "normal"]
+            return market_regime in ["trending", "expansion", "normal", "ranging"]  # Ajout ranging
             
         # BREAKOUT - Volatilité élevée requise
         elif any(kw in strategy_lower for kw in ['breakout', 'donchian', 'atr', 'range_break']):

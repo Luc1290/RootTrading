@@ -177,7 +177,7 @@ class Range_Validator(BaseValidator):
                 
                 if range_width_ratio < self.min_range_width:
                     logger.debug(f"{self.name}: Range trop étroit ({self._safe_format(range_width_ratio*100, '.2f')}%) pour {self.symbol}")
-                    if signal_confidence < 0.8:
+                    if signal_confidence < 0.70:
                         return False
                 elif range_width_ratio > self.max_range_width:
                     logger.debug(f"{self.name}: Range trop large ({self._safe_format(range_width_ratio*100, '.2f')}%) pour {self.symbol}")
@@ -218,7 +218,7 @@ class Range_Validator(BaseValidator):
             if breakout_probability is not None and breakout_probability > self.breakout_probability_max:
                 logger.debug(f"{self.name}: Probabilité breakout élevée ({self._safe_format(breakout_probability, '.2f')}) pour {self.symbol}")
                 if not self._is_breakout_strategy(signal_strategy):
-                    if signal_confidence < 0.8:
+                    if signal_confidence < 0.70:
                         return False
                         
             # 6. Validation volatilité dans range
@@ -237,7 +237,7 @@ class Range_Validator(BaseValidator):
                 logger.debug(f"{self.name}: Range en compression ({self._safe_format(range_compression, '.2f')}) pour {self.symbol}")
                 # Range compressé peut indiquer un breakout imminent
                 if not self._is_breakout_strategy(signal_strategy):
-                    if signal_confidence < 0.8:
+                    if signal_confidence < 0.70:
                         return False
                         
             # 8. Validation tests des bornes

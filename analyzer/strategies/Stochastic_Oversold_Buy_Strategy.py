@@ -237,7 +237,7 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
                                    stoch_analysis: Dict[str, Any], buy_condition: Dict[str, Any]) -> Dict[str, Any]:
         """Crée le signal d'achat oversold avec confirmations."""
         signal_side = "BUY"  # Stratégie uniquement orientée achat
-        base_confidence = 0.35  # Base réduite - oversold ne garantit pas le rebond
+        base_confidence = 0.40  # Base réduite - oversold ne garantit pas le rebond
         confidence_boost = 0.0
         
         stoch_k = stoch_analysis['stoch_k']
