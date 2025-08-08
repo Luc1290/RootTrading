@@ -26,16 +26,21 @@ function MarketChart({ height = 750 }: MarketChartProps) {
     x: number;
     y: number;
     signal: any;
+    isHoveringTooltip: boolean;
+    isPinned: boolean;
   }>({
     visible: false,
     x: 0,
     y: 0,
     signal: null,
+    isHoveringTooltip: false,
+    isPinned: false,
   });
   const signalSeriesRef = useRef<{
     buy?: ISeriesApi<'Line'>;
     sell?: ISeriesApi<'Line'>;
   }>({});
+  const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   const { marketData, signals, indicators, config, zoomState, setZoomState, setIsUserInteracting } = useChartStore();
   
@@ -151,6 +156,9 @@ function MarketChart({ height = 750 }: MarketChartProps) {
     
     return () => {
       window.removeEventListener('resize', handleResize);
+      if (tooltipTimeoutRef.current) {
+        clearTimeout(tooltipTimeoutRef.current);
+      }
       chart.remove();
     };
   }, [height]);
@@ -357,15 +365,25 @@ function MarketChart({ height = 750 }: MarketChartProps) {
     }));
     
     // Créer un mapping des signaux par timestamp pour la recherche rapide
+    // Utiliser un tableau pour chaque timestamp pour gérer les signaux multiples
     const signalMap = new Map();
     filteredBuySignals.forEach(signal => {
-      const time = new Date(signal.timestamp).getTime() / 1000;
-      signalMap.set(time, { ...signal, type: 'buy' });
+      const time = Math.floor(new Date(signal.timestamp).getTime() / 1000);
+      if (!signalMap.has(time)) {
+        signalMap.set(time, []);
+      }
+      signalMap.get(time).push({ ...signal, type: 'buy' });
     });
     filteredSellSignals.forEach(signal => {
-      const time = new Date(signal.timestamp).getTime() / 1000;
-      signalMap.set(time, { ...signal, type: 'sell' });
+      const time = Math.floor(new Date(signal.timestamp).getTime() / 1000);
+      if (!signalMap.has(time)) {
+        signalMap.set(time, []);
+      }
+      signalMap.get(time).push({ ...signal, type: 'sell' });
     });
+
+    console.log('Signal map created:', signalMap.size, 'timestamps with', 
+      [...signalMap.values()].reduce((acc, arr) => acc + arr.length, 0), 'total signals');
 
     // Appliquer tous les marqueurs à la série candlestick
     const allMarkers = [...buyMarkers, ...sellMarkers].sort((a, b) => (a.time as number) - (b.time as number));
@@ -373,24 +391,85 @@ function MarketChart({ height = 750 }: MarketChartProps) {
     
     // Utiliser l'API native pour détecter les survols
     chartRef.current.subscribeCrosshairMove((param) => {
+      // Vérifier l'état épinglé en temps réel
+      setTooltip(currentTooltip => {
+        // Si le tooltip est épinglé ou qu'on le survole, ne pas le changer
+        if (currentTooltip.isPinned || currentTooltip.isHoveringTooltip) {
+          return currentTooltip;
+        }
+        
+        if (!param.time || !chartContainerRef.current) {
+          return { ...currentTooltip, visible: false };
+        }
+        
+        const timeValue = param.time as number;
+        
+        // Chercher les signaux les plus proches (tolérance de ±30 secondes)
+        let nearestSignals = null;
+        let minDistance = Infinity;
+        const tolerance = 30; // 30 secondes de tolérance
+        
+        for (const [signalTime, signalArray] of signalMap.entries()) {
+          const distance = Math.abs(signalTime - timeValue);
+          if (distance <= tolerance && distance < minDistance) {
+            minDistance = distance;
+            nearestSignals = signalArray;
+          }
+        }
+        
+        if (nearestSignals && param.point) {
+          console.log('Showing tooltip for signals:', nearestSignals);
+          return {
+            visible: true,
+            x: param.point!.x,
+            y: param.point!.y,
+            signal: nearestSignals,
+            isHoveringTooltip: false,
+            isPinned: false, // Nouveau signal = pas épinglé
+          };
+        } else {
+          return { ...currentTooltip, visible: false };
+        }
+      });
+    });
+
+    // Ajouter la gestion du clic pour épingler le tooltip
+    chartRef.current.subscribeClick((param) => {
       if (!param.time || !chartContainerRef.current) {
-        setTooltip(prev => ({ ...prev, visible: false }));
+        // Clic ailleurs = désépingler
+        setTooltip(prev => ({ ...prev, isPinned: false, visible: false }));
         return;
       }
       
       const timeValue = param.time as number;
-      const signal = signalMap.get(timeValue);
       
-      if (signal && param.point) {
-        const rect = chartContainerRef.current.getBoundingClientRect();
+      // Chercher s'il y a un signal à cet endroit
+      let nearestSignals = null;
+      let minDistance = Infinity;
+      const tolerance = 30;
+      
+      for (const [signalTime, signalArray] of signalMap.entries()) {
+        const distance = Math.abs(signalTime - timeValue);
+        if (distance <= tolerance && distance < minDistance) {
+          minDistance = distance;
+          nearestSignals = signalArray;
+        }
+      }
+      
+      if (nearestSignals && param.point) {
+        // Clic sur un signal = épingler le tooltip
+        console.log('Pinning tooltip for signals:', nearestSignals);
         setTooltip({
           visible: true,
-          x: param.point.x,
-          y: param.point.y,
-          signal: signal,
+          x: param.point!.x,
+          y: param.point!.y,
+          signal: nearestSignals,
+          isHoveringTooltip: false,
+          isPinned: true, // Épingler !
         });
       } else {
-        setTooltip(prev => ({ ...prev, visible: false }));
+        // Clic ailleurs = désépingler
+        setTooltip(prev => ({ ...prev, isPinned: false, visible: false }));
       }
     });
   }, [signals, config.signalFilter]);
@@ -584,34 +663,173 @@ function MarketChart({ height = 750 }: MarketChartProps) {
         style={{ height: `${height}px` }}
       />
       
-      {/* Infobulle des signaux */}
+      {/* Tooltip avec zone de connexion */}
       {tooltip.visible && tooltip.signal && (
-        <div
-          className="absolute z-20 bg-dark-200 border border-gray-600 rounded-lg p-3 shadow-lg pointer-events-none"
-          style={{
-            left: tooltip.x,
-            top: tooltip.y - 10,
-            transform: 'translate(-50%, -100%)',
-          }}
-        >
-          <div className="text-sm space-y-1">
-            <div className={`font-semibold ${tooltip.signal.type === 'buy' ? 'text-green-400' : 'text-red-400'}`}>
-              {tooltip.signal.type === 'buy' ? '📈 SIGNAL D\'ACHAT' : '📉 SIGNAL DE VENTE'}
+        <>
+          {/* Zone invisible de connexion entre la flèche et le tooltip - seulement si pas épinglé */}
+          {!tooltip.isPinned && (
+            <div
+              className="absolute pointer-events-auto"
+              style={{
+                left: Math.min(tooltip.x - 30, tooltip.x - 125), // Zone large autour du tooltip
+                top: tooltip.y - 120,
+                width: Math.max(60, 250), // Largeur adaptative
+                height: 120,
+                zIndex: 999,
+                // Débogage : décommenter pour voir la zone
+                // backgroundColor: 'rgba(255, 0, 0, 0.2)',
+              }}
+              onMouseEnter={() => {
+                if (tooltipTimeoutRef.current) {
+                  clearTimeout(tooltipTimeoutRef.current);
+                  tooltipTimeoutRef.current = null;
+                }
+                setTooltip(prev => ({ ...prev, isHoveringTooltip: true }));
+              }}
+              onMouseLeave={() => {
+                setTooltip(prev => ({ ...prev, isHoveringTooltip: false }));
+                tooltipTimeoutRef.current = setTimeout(() => {
+                  setTooltip(prev => ({ ...prev, visible: false }));
+                }, 300);
+              }}
+            />
+          )}
+          
+          {/* Infobulle des signaux */}
+          <div
+            className="absolute bg-gray-900 border border-gray-600 rounded-lg p-3 shadow-xl text-white"
+            style={{
+              left: tooltip.x,
+              top: tooltip.y - 10,
+              transform: 'translate(-50%, -100%)',
+              minWidth: '250px',
+              maxWidth: '400px',
+              maxHeight: '300px',
+              overflowY: 'auto',
+              pointerEvents: 'auto',
+              zIndex: 1000,
+              borderColor: tooltip.isPinned ? '#3b82f6' : '#4b5563', // Bordure bleue si épinglé
+            }}
+            onWheel={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onMouseEnter={() => {
+              if (tooltipTimeoutRef.current) {
+                clearTimeout(tooltipTimeoutRef.current);
+                tooltipTimeoutRef.current = null;
+              }
+              setTooltip(prev => ({ ...prev, isHoveringTooltip: true }));
+            }}
+            onMouseLeave={() => {
+              // Vérifier l'état épinglé au moment de l'événement
+              setTooltip(prev => {
+                if (prev.isPinned) {
+                  // Si épinglé, ne rien changer
+                  return prev;
+                } else {
+                  // Si pas épinglé, programmer la fermeture
+                  tooltipTimeoutRef.current = setTimeout(() => {
+                    setTooltip(state => ({ ...state, visible: false }));
+                  }, 300);
+                  return { ...prev, isHoveringTooltip: false };
+                }
+              });
+            }}
+          >
+          <div className="text-sm space-y-2">
+            {/* En-tête avec bouton de fermeture */}
+            <div className="flex justify-between items-center border-b border-gray-700 pb-1">
+              {Array.isArray(tooltip.signal) ? (
+                <div className="font-semibold text-blue-400">
+                  📊 {tooltip.signal.length} SIGNAL{tooltip.signal.length > 1 ? 'S' : ''} SIMULTANÉ{tooltip.signal.length > 1 ? 'S' : ''}
+                </div>
+              ) : (
+                <div className="font-semibold text-blue-400">
+                  📊 SIGNAL
+                </div>
+              )}
+              <div className="flex items-center space-x-2">
+                {tooltip.isPinned && (
+                  <span className="text-xs bg-blue-600 px-1.5 py-0.5 rounded text-white">📌 Épinglé</span>
+                )}
+                <button
+                  onClick={() => setTooltip(prev => ({ ...prev, visible: false, isPinned: false }))}
+                  className="text-gray-400 hover:text-white text-lg leading-none"
+                  title="Fermer"
+                >
+                  ×
+                </button>
+              </div>
             </div>
-            <div className="text-gray-300">
-              <span className="font-medium">Stratégie:</span> {tooltip.signal.strategy}
-            </div>
-            <div className="text-gray-300">
-              <span className="font-medium">Prix:</span> {tooltip.signal.price}$
-            </div>
-            <div className="text-gray-300">
-              <span className="font-medium">Force:</span> {tooltip.signal.strength}
-            </div>
-            <div className="text-gray-300">
-              <span className="font-medium">Heure:</span> {new Date(tooltip.signal.timestamp).toLocaleTimeString()}
-            </div>
+            
+            {Array.isArray(tooltip.signal) ? (
+              <>
+                {tooltip.signal.map((signal, index) => (
+                  <div key={index} className="border-l-2 border-gray-600 pl-2 space-y-1">
+                    <div className={`font-medium ${signal.type === 'buy' ? 'text-green-400' : 'text-red-400'}`}>
+                      {signal.type === 'buy' ? '📈 ACHAT' : '📉 VENTE'} #{index + 1}
+                    </div>
+                    <div className="text-gray-300">
+                      <span className="font-medium">Stratégie:</span> {signal.strategy || 'N/A'}
+                    </div>
+                    <div className="text-gray-300">
+                      <span className="font-medium">Prix:</span> {signal.price ? `${parseFloat(signal.price).toFixed(4)}$` : 'N/A'}
+                    </div>
+                    {signal.strength && (
+                      <div className="text-gray-300">
+                        <span className="font-medium">Force:</span> {signal.strength}
+                      </div>
+                    )}
+                    {index === 0 && (
+                      <div className="text-gray-300">
+                        <span className="font-medium">Heure:</span> {new Date(signal.timestamp).toLocaleString()}
+                      </div>
+                    )}
+                    {signal.metadata && (
+                      <div className="text-gray-300 text-xs">
+                        <span className="font-medium">Métadonnées:</span>
+                        <pre className="text-xs mt-1 text-gray-400 max-h-20 overflow-y-auto">
+                          {JSON.stringify(signal.metadata, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </>
+            ) : (
+              // Fallback pour un seul signal (rétrocompatibilité)
+              <>
+                <div className={`font-semibold ${tooltip.signal.type === 'buy' ? 'text-green-400' : 'text-red-400'}`}>
+                  {tooltip.signal.type === 'buy' ? '📈 SIGNAL D\'ACHAT' : '📉 SIGNAL DE VENTE'}
+                </div>
+                <div className="text-gray-300">
+                  <span className="font-medium">Stratégie:</span> {tooltip.signal.strategy || 'N/A'}
+                </div>
+                <div className="text-gray-300">
+                  <span className="font-medium">Prix:</span> {tooltip.signal.price ? `${parseFloat(tooltip.signal.price).toFixed(4)}$` : 'N/A'}
+                </div>
+                {tooltip.signal.strength && (
+                  <div className="text-gray-300">
+                    <span className="font-medium">Force:</span> {tooltip.signal.strength}
+                  </div>
+                )}
+                <div className="text-gray-300">
+                  <span className="font-medium">Heure:</span> {new Date(tooltip.signal.timestamp).toLocaleString()}
+                </div>
+                {tooltip.signal.metadata && (
+                  <div className="text-gray-300 text-xs pt-1 border-t border-gray-700">
+                    <span className="font-medium">Métadonnées:</span>
+                    <pre className="text-xs mt-1 text-gray-400">
+                      {JSON.stringify(tooltip.signal.metadata, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </>
+            )}
           </div>
-        </div>
+          </div>
+        </>
       )}
       
       {/* Contrôles du graphique */}
@@ -630,6 +848,9 @@ function MarketChart({ height = 750 }: MarketChartProps) {
         >
           Reset
         </button>
+        <div className="bg-black/70 backdrop-blur-sm text-gray-300 px-2 py-1 rounded text-xs">
+          💡 Cliquez sur une flèche pour épingler le tooltip
+        </div>
       </div>
       
       {/* Légende des cycles */}

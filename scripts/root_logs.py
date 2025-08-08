@@ -145,7 +145,7 @@ def analyze_crypto(crypto, tail=2000):
     
     if strategies:
         print(f"\n{Colors.YELLOW}🎯 TOP STRATÉGIES:{Colors.RESET}")
-        for i, (strategy, count) in enumerate(strategies.most_common(5), 1):
+        for i, (strategy, count) in enumerate(strategies.most_common(50), 1):
             print(f"   {i}. {strategy}: {count} signaux")
     
     if recent_signals:
