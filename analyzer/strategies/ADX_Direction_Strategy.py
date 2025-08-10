@@ -21,10 +21,10 @@ class ADX_Direction_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Seuils ADX optimisés pour plus de sensibilité
-        self.adx_threshold = 20.0  # Tendance émergente (plus sensible)
-        self.adx_strong = 30.0     # Tendance forte
-        self.adx_extreme = 40.0    # Tendance très forte
-        self.di_diff_threshold = 3.0  # Différence minimale entre DI (plus sensible)
+        self.adx_threshold = 15.0  # Tendance émergente (plus sensible)
+        self.adx_strong = 25.0     # Tendance forte
+        self.adx_extreme = 35.0    # Tendance très forte
+        self.di_diff_threshold = 2.0  # Différence minimale entre DI (plus sensible)
         # Gestion des régimes de marché
         self.ranging_penalty = 0.15  # Pénalité en marché ranging
         self.volatile_penalty = 0.10  # Pénalité en marché volatil

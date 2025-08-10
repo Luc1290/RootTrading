@@ -33,13 +33,13 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         super().__init__(symbol, data, indicators)
         
         # Paramètres Supertrend simulé
-        self.supertrend_multiplier = 2.0         # Multiplier ATR classique
-        self.min_atr_distance = 0.002            # Distance minimum prix/ATR stop
-        self.max_atr_distance = 0.02             # Distance maximum pour reversal
+        self.supertrend_multiplier = 1.8         # Multiplier ATR classique (moins strict)
+        self.min_atr_distance = 0.0015           # Distance minimum prix/ATR stop (moins strict)
+        self.max_atr_distance = 0.025            # Distance maximum pour reversal (plus tolérant)
         
         # Paramètres de reversal
-        self.min_trend_strength_change = 0.3     # Changement minimum trend strength
-        self.momentum_reversal_threshold = 0.2   # Momentum change pour reversal
+        self.min_trend_strength_change = 0.2     # Changement minimum trend strength (moins strict)
+        self.momentum_reversal_threshold = 0.15  # Momentum change pour reversal (moins strict)
         self.directional_bias_flip_required = True  # Bias doit changer
         
         # Paramètres EMA confirmation

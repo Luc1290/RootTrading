@@ -26,12 +26,12 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres Range Breakout - OPTIMISÉS
-        self.min_range_width = 0.015  # Largeur minimum du range (1.5%) - plus strict
-        self.max_range_width = 0.10   # Largeur maximum du range (10%) - élargi
-        self.breakout_threshold = 0.004  # Distance minimum pour breakout (0.4%) - plus strict
-        self.volume_breakout_threshold = 1.8  # Volume minimum pour breakout (1.8x) - plus strict
-        self.retest_tolerance = 0.003   # Tolérance retest (0.3%) - plus strict
-        self.min_confirmations = 2      # Minimum 2 confirmations requises
+        self.min_range_width = 0.01   # Largeur minimum du range (1%) - moins strict
+        self.max_range_width = 0.12   # Largeur maximum du range (12%) - plus élargi
+        self.breakout_threshold = 0.003  # Distance minimum pour breakout (0.3%) - moins strict
+        self.volume_breakout_threshold = 1.4  # Volume minimum pour breakout (1.4x) - moins strict
+        self.retest_tolerance = 0.005   # Tolérance retest (0.5%) - moins strict
+        self.min_confirmations = 1      # Minimum 1 confirmation requise
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pour range breakout."""

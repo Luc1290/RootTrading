@@ -34,9 +34,9 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
         super().__init__(symbol, data, indicators)
         
         # Seuils pour détection pump
-        self.pump_price_threshold = 0.03      # 3% hausse minimum
-        self.extreme_pump_threshold = 0.05    # 5% hausse extrême
-        self.pump_volume_multiplier = 3.0     # Volume 3x normal
+        self.pump_price_threshold = 0.02      # 2% hausse minimum
+        self.extreme_pump_threshold = 0.035   # 3.5% hausse extrême
+        self.pump_volume_multiplier = 2.0     # Volume 2x normal
         self.extreme_volume_multiplier = 5.0  # Volume 5x normal
         self.pump_rsi_threshold = 80          # RSI surachat pour pump
         self.extreme_rsi_threshold = 85       # RSI extrême

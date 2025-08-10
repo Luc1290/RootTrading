@@ -306,7 +306,11 @@ CREATE TABLE IF NOT EXISTS trading_signals (
     price DECIMAL(20,8) NOT NULL,
     metadata JSONB,
     processed BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
+    
+    -- Contrainte unique pour prévenir les signaux dupliqués
+    CONSTRAINT unique_signal_constraint 
+    UNIQUE (strategy, symbol, side, timestamp, confidence)
 );
 
 -- Table de configuration des stratégies

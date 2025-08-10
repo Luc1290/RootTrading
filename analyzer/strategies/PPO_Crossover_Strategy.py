@@ -24,11 +24,11 @@ class PPO_Crossover_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Seuils PPO OPTIMISÉS - Zone neutre ajoutée
-        self.bullish_threshold = 0.15     # PPO > 0.15% = signal haussier
-        self.bearish_threshold = -0.15    # PPO < -0.15% = signal baissier
-        self.neutral_zone = 0.15          # Zone neutre ±0.15%
-        self.strong_signal_threshold = 0.6  # PPO > 0.6% = signal fort (relevé)
-        self.extreme_threshold = 1.2     # PPO > 1.2% = signal très fort (relevé)
+        self.bullish_threshold = 0.08     # PPO > 0.08% = signal haussier
+        self.bearish_threshold = -0.08    # PPO < -0.08% = signal baissier
+        self.neutral_zone = 0.08          # Zone neutre ±0.08%
+        self.strong_signal_threshold = 0.4  # PPO > 0.4% = signal fort (relevé)
+        self.extreme_threshold = 0.8     # PPO > 0.8% = signal très fort (relevé)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""

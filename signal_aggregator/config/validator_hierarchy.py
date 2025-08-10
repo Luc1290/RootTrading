@@ -30,7 +30,7 @@ VALIDATOR_HIERARCHY = {
             'Trend_Alignment_Validator',   # Alignement des tendances
             'VWAP_Context_Validator'       # Position par rapport au VWAP
         ],
-        'min_pass_rate': 0.7,      # 70% doivent passer
+        'min_pass_rate': 0.75,     # 75% doivent passer (renforcé pour flux élevé)
         'weight_multiplier': 2.0,  # Double impact sur le score
         'veto_power': False
     },
@@ -55,7 +55,7 @@ VALIDATOR_HIERARCHY = {
             'Liquidity_Sweep_Validator',
             'Adaptive_Threshold_Validator'
         ],
-        'min_pass_rate': 0.5,      # 50% doivent passer
+        'min_pass_rate': 0.55,     # 55% doivent passer (renforcé pour flux élevé)
         'weight_multiplier': 1.0,  # Impact normal sur le score
         'veto_power': False
     }
@@ -64,15 +64,15 @@ VALIDATOR_HIERARCHY = {
 # Configuration des seuils de validation par niveau - AJUSTÉS POUR RANGING
 VALIDATION_THRESHOLDS = {
     'critical': {
-        'min_score': 0.50,  # Score minimum RÉDUIT pour crypto ranging (50% au lieu de 75%)
+        'min_score': 0.55,  # Score minimum AJUSTÉ pour flux élevé (55% au lieu de 50%)
         'rejection_message': "Signal rejeté par validator critique : {validator_name} - {reason}"
     },
     'important': {
-        'min_score': 0.45,  # Score minimum RÉDUIT pour crypto ranging (45% au lieu de 65%)
+        'min_score': 0.50,  # Score minimum AJUSTÉ pour flux élevé (50% au lieu de 45%)
         'low_score_penalty': 0.2  # Pénalité réduite pour ranging
     },
     'standard': {
-        'min_score': 0.40,  # Score minimum RÉDUIT pour crypto ranging (40% au lieu de 55%)
+        'min_score': 0.45,  # Score minimum AJUSTÉ pour flux élevé (45% au lieu de 40%)
         'low_score_penalty': 0.15  # Pénalité réduite pour ranging
     }
 }

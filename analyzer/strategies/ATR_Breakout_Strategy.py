@@ -21,13 +21,13 @@ class ATR_Breakout_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres ATR et volatilité
-        self.atr_multiplier = 1.5      # Multiplicateur ATR pour breakout  
-        self.volatility_threshold = 0.35 # Seuil volatilité (percentile) - 35% pour plus de signaux
-        self.resistance_proximity = 0.03 # 3% de proximité aux niveaux - zone élargie
-        self.support_proximity = 0.03   # 3% de proximité aux niveaux - zone élargie
+        self.atr_multiplier = 1.2      # Multiplicateur ATR pour breakout  
+        self.volatility_threshold = 0.25 # Seuil volatilité (percentile) - 25% pour plus de signaux
+        self.resistance_proximity = 0.05 # 5% de proximité aux niveaux - zone élargie
+        self.support_proximity = 0.05   # 5% de proximité aux niveaux - zone élargie
         # Paramètres de tendance
-        self.trend_filter_enabled = True  # Activer le filtre de tendance
-        self.min_trend_strength = 0.3    # Force minimum de tendance ADX
+        self.trend_filter_enabled = False  # Désactiver le filtre de tendance pour plus de signaux
+        self.min_trend_strength = 0.15    # Force minimum de tendance ADX
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs ATR."""

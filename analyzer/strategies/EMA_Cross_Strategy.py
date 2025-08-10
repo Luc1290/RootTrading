@@ -24,9 +24,9 @@ class EMA_Cross_Strategy(BaseStrategy):
         self.ema_fast_period = 12      # EMA rapide
         self.ema_slow_period = 26      # EMA lente  
         self.ema_filter_period = 50    # EMA filtre pour tendance générale
-        self.cross_confirmation = 3    # Barres de confirmation du croisement
-        self.min_separation_pct = 0.3  # Séparation minimum 0.3% (augmenté de 0.1%)
-        self.strong_separation_pct = 1.5  # Séparation forte 1.5%
+        self.cross_confirmation = 2    # Barres de confirmation du croisement (compromis)
+        self.min_separation_pct = 0.2  # Séparation minimum 0.2% (ajustement modéré)
+        self.strong_separation_pct = 1.2  # Séparation forte 1.2%
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs EMA."""

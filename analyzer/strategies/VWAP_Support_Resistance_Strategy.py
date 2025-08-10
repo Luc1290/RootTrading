@@ -28,14 +28,14 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
         super().__init__(symbol, data, indicators)
         
         # Paramètres VWAP
-        self.vwap_distance_threshold = 0.003      # 0.3% distance pour considérer près VWAP
-        self.vwap_confluence_threshold = 0.01     # 1% pour confluence avec S/R statique
-        self.strong_vwap_volume_threshold = 1.5   # Volume 50% au-dessus pour VWAP fort
+        self.vwap_distance_threshold = 0.005      # 0.5% distance pour considérer près VWAP
+        self.vwap_confluence_threshold = 0.015    # 1.5% pour confluence avec S/R statique
+        self.strong_vwap_volume_threshold = 1.25  # Volume 25% au-dessus pour VWAP fort
         
         # Paramètres rebond/rejet
-        self.min_bounce_strength = 0.002          # Rebond minimum 0.2%
-        self.max_bounce_distance = 0.015          # Distance max 1.5% du niveau
-        self.rejection_confirmation_bars = 2      # Barres pour confirmer rejet
+        self.min_bounce_strength = 0.0015         # Rebond minimum 0.15%
+        self.max_bounce_distance = 0.02           # Distance max 2% du niveau
+        self.rejection_confirmation_bars = 1      # Barres pour confirmer rejet
         
         # Paramètres support/résistance
         self.min_sr_strength = 0.4               # Force minimum niveau S/R

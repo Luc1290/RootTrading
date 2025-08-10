@@ -36,13 +36,13 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
         super().__init__(symbol, data, indicators)
         
         # Paramètres de détection spike baissier - OPTIMISÉS
-        self.min_price_drop = -0.025             # 2.5% chute minimum (plus strict)
-        self.severe_price_drop = -0.05           # 5% chute sévère (plus strict)
-        self.extreme_price_drop = -0.10          # 10% chute extrême (plus strict)
+        self.min_price_drop = -0.02              # 2% chute minimum (moins strict)
+        self.severe_price_drop = -0.04           # 4% chute sévère (moins strict)
+        self.extreme_price_drop = -0.08          # 8% chute extrême (moins strict)
         
-        # Paramètres volume (confirmation spike) - PLUS STRICTS
-        self.min_spike_volume = 2.5              # Volume 2.5x normal minimum (au lieu de 2.0x)
-        self.strong_spike_volume = 4.0           # Volume 4.0x pour spike fort (au lieu de 3.5x)
+        # Paramètres volume (confirmation spike) - AJUSTÉS
+        self.min_spike_volume = 1.8              # Volume 1.8x normal minimum (moins strict)
+        self.strong_spike_volume = 3.0           # Volume 3.0x pour spike fort (moins strict)
         self.extreme_spike_volume = 6.0          # Volume 6.0x pour spike extrême (au lieu de 5.0x)
         
         # Paramètres RSI (survente extrême) - PLUS STRICTS

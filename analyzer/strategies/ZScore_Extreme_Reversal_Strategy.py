@@ -37,19 +37,19 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
         super().__init__(symbol, data, indicators)
         
         # Paramètres Z-Score simulé
-        self.extreme_zscore_threshold = 2.0      # Z-Score > 2 pour extrême
-        self.very_extreme_zscore_threshold = 2.5  # Z-Score > 2.5 pour très extrême
-        self.ultra_extreme_zscore_threshold = 3.0 # Z-Score > 3.0 pour ultra extrême
+        self.extreme_zscore_threshold = 1.5      # Z-Score > 1.5 pour extrême (moins strict)
+        self.very_extreme_zscore_threshold = 2.0  # Z-Score > 2.0 pour très extrême (moins strict)
+        self.ultra_extreme_zscore_threshold = 2.5 # Z-Score > 2.5 pour ultra extrême (moins strict)
         
         # Paramètres Bollinger Bands (proxy Z-Score)
-        self.bb_extreme_position_threshold = 95   # Position BB > 95% = extrême
-        self.bb_very_extreme_threshold = 98       # Position BB > 98% = très extrême
+        self.bb_extreme_position_threshold = 85   # Position BB > 85% = extrême (moins strict)
+        self.bb_very_extreme_threshold = 92       # Position BB > 92% = très extrême (moins strict)
         self.bb_squeeze_bonus = 0.15                # Bonus si BB squeeze avant expansion
         
         # Paramètres RSI reversal
-        self.rsi_oversold_threshold = 25            # RSI < 25 = survente extrême
-        self.rsi_overbought_threshold = 75          # RSI > 75 = surachat extrême
-        self.rsi_very_extreme_threshold = 15        # RSI < 15 ou > 85 = très extrême
+        self.rsi_oversold_threshold = 30            # RSI < 30 = survente extrême (moins strict)
+        self.rsi_overbought_threshold = 70          # RSI > 70 = surachat extrême (moins strict)
+        self.rsi_very_extreme_threshold = 20        # RSI < 20 ou > 80 = très extrême (moins strict)
         
         # Paramètres Williams %R
         self.williams_oversold_threshold = -80      # Williams %R < -80 = survente

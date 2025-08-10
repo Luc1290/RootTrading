@@ -24,11 +24,11 @@ class Donchian_Breakout_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres Donchian optimisés pour crypto
-        self.breakout_threshold = 0.015   # 1.5% au-dessus/en-dessous pour confirmer breakout (évite faux signaux)
-        self.min_distance_threshold = 0.02  # Distance minimum aux niveaux (2%) pour éviter le bruit
-        self.volume_confirmation = 1.5    # Volume 50% au-dessus de la moyenne pour valider
-        self.min_adx_strength = 20        # ADX minimum pour confirmer tendance
-        self.momentum_threshold = 55      # Seuil momentum pour confirmation directionnelle
+        self.breakout_threshold = 0.008   # 0.8% au-dessus/en-dessous pour confirmer breakout (évite faux signaux)
+        self.min_distance_threshold = 0.01  # Distance minimum aux niveaux (1%) pour éviter le bruit
+        self.volume_confirmation = 1.2    # Volume 20% au-dessus de la moyenne pour valider
+        self.min_adx_strength = 15        # ADX minimum pour confirmer tendance
+        self.momentum_threshold = 45      # Seuil momentum pour confirmation directionnelle
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs."""

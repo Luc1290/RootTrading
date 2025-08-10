@@ -30,12 +30,12 @@ class Resistance_Rejection_Strategy(BaseStrategy):
         super().__init__(symbol, data, indicators)
         
         # Paramètres de proximité résistance
-        self.resistance_proximity_threshold = 0.005  # 0.5% de la résistance
-        self.tight_proximity_threshold = 0.002       # 0.2% = très proche
+        self.resistance_proximity_threshold = 0.008  # 0.8% de la résistance
+        self.tight_proximity_threshold = 0.004       # 0.4% = très proche
         
         # Paramètres de rejet
-        self.min_rejection_distance = 0.001          # 0.1% retour minimum depuis résistance
-        self.rejection_confirmation_bars = 3         # Barres pour confirmer rejet
+        self.min_rejection_distance = 0.0008         # 0.08% retour minimum depuis résistance
+        self.rejection_confirmation_bars = 2         # Barres pour confirmer rejet
         
         # Paramètres volume et momentum
         self.min_rejection_volume = 1.2              # Volume 20% au-dessus normal

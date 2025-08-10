@@ -27,10 +27,10 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres Stochastic OPTIMISÉS - Plus stricts
-        self.oversold_threshold = 15  # Seuil de survente plus strict (15 au lieu de 20)
+        self.oversold_threshold = 30  # Seuil de survente plus strict (30 au lieu de 20)
         self.exit_oversold_threshold = 22  # Seuil de sortie réduit (22 au lieu de 25)
         self.overbought_threshold = 80  # Seuil de surachat (pour éviter les entrées)
-        self.min_crossover_separation = 4  # Distance minimum relevée (4 au lieu de 2) - évite le bruit
+        self.min_crossover_separation = 3  # Distance minimum relevée (3 au lieu de 2) - évite le bruit
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs Stochastic et confirmation."""
@@ -407,7 +407,7 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio >= 1.3:  # Volume élevé confirme l'intérêt
+                if vol_ratio >= 1.1:  # Volume élevé confirme l'intérêt
                     confidence_boost += 0.12
                     reason += f" + volume élevé ({vol_ratio:.1f}x)"
                 elif vol_ratio >= 1.1:

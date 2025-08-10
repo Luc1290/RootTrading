@@ -25,15 +25,15 @@ class ROC_Threshold_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres ROC - DRASTIQUEMENT REHAUSSÉS pour crypto
-        self.bullish_threshold = 0.05   # ROC > +5% pour signal haussier (augmenté x2.5)
-        self.bearish_threshold = -0.05  # ROC < -5% pour signal baissier (augmenté x2.5)
-        self.extreme_bullish_threshold = 0.10  # ROC > +10% = momentum extrême (augmenté x2)
-        self.extreme_bearish_threshold = -0.10  # ROC < -10% = momentum extrême (augmenté x2)
-        self.momentum_confirmation_threshold = 65  # Seuil momentum_score plus strict
+        # Paramètres ROC - AJUSTÉS pour crypto
+        self.bullish_threshold = 0.025   # ROC > +2.5% pour signal haussier (réduit)
+        self.bearish_threshold = -0.025  # ROC < -2.5% pour signal baissier (réduit)
+        self.extreme_bullish_threshold = 0.06  # ROC > +6% = momentum extrême (réduit)
+        self.extreme_bearish_threshold = -0.06  # ROC < -6% = momentum extrême (réduit)
+        self.momentum_confirmation_threshold = 50  # Seuil momentum_score moins strict
         # NOUVEAUX FILTRES
-        self.min_confidence_threshold = 0.60  # Confidence minimum pour valider
-        self.max_boost_multiplier = 0.40  # Limite les boosts à +40%
+        self.min_confidence_threshold = 0.45  # Confidence minimum pour valider
+        self.max_boost_multiplier = 0.50  # Limite les boosts à +50%
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs ROC et momentum."""

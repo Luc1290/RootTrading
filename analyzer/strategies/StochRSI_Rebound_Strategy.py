@@ -20,13 +20,13 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Seuils StochRSI - OPTIMISÉS (plus stricts)
-        self.oversold_zone = 15       # Plus strict: 15 au lieu de 20
-        self.overbought_zone = 85     # Plus strict: 85 au lieu de 80
-        self.extreme_oversold = 5     # Très strict: 5 au lieu de 10
-        self.extreme_overbought = 95  # Très strict: 95 au lieu de 90
-        self.neutral_low = 30         # Zone neutre basse
-        self.neutral_high = 70        # Zone neutre haute
+        # Seuils StochRSI - AJUSTÉS (moins stricts)
+        self.oversold_zone = 25       # Moins strict: 25 au lieu de 15
+        self.overbought_zone = 75     # Moins strict: 75 au lieu de 85
+        self.extreme_oversold = 10    # Moins strict: 10 au lieu de 5
+        self.extreme_overbought = 90  # Moins strict: 90 au lieu de 95
+        self.neutral_low = 35         # Zone neutre basse
+        self.neutral_high = 65        # Zone neutre haute
         
     def _safe_float(self, value) -> Optional[float]:
         """Convertit en float de manière sécurisée."""

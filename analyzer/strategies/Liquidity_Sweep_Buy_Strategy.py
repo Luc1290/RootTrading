@@ -25,11 +25,11 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres liquidity sweep
-        self.sweep_threshold = 0.003      # 0.3% sous support pour sweep
-        self.recovery_threshold = 0.001   # 0.1% au-dessus support pour recovery
-        self.max_sweep_duration = 5      # Max barres sous support
-        self.min_volume_spike = 1.5      # Volume 50% au-dessus moyenne
-        self.support_strength_min = 0.4  # Force minimum du support
+        self.sweep_threshold = 0.005      # 0.5% sous support pour sweep (plus tolérant)
+        self.recovery_threshold = 0.0015  # 0.15% au-dessus support pour recovery  
+        self.max_sweep_duration = 7      # Max barres sous support (plus de temps)
+        self.min_volume_spike = 1.3      # Volume 30% au-dessus moyenne (moins restrictif)
+        self.support_strength_min = 0.3  # Force minimum du support (plus tolérant)
         
     def _convert_support_strength_to_score(self, strength_str: str) -> float:
         """Convertit support_strength string en score numérique."""

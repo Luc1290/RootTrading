@@ -31,13 +31,13 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
         super().__init__(symbol, data, indicators)
         
         # Paramètres Williams %R - OPTIMISÉS
-        self.oversold_threshold = -75.0        # Seuil survente (moins strict: -75 au lieu de -80)
+        self.oversold_threshold = -70.0        # Seuil survente (moins strict: -70 au lieu de -80)
         self.overbought_threshold = -25.0      # Seuil surachat (moins strict: -25 au lieu de -20)
         self.extreme_oversold_threshold = -88.0  # Survente extrême (plus strict: -88 au lieu de -90)
         self.extreme_overbought_threshold = -12.0 # Surachat extrême (plus strict: -12 au lieu de -10)
         
         # Paramètres rebond - PLUS STRICTS
-        self.min_rebound_strength = 8.0        # Williams %R doit bouger ≥8 points (au lieu de 5)
+        self.min_rebound_strength = 5.0        # Williams %R doit bouger ≥5 points (au lieu de 8)
         self.rebound_confirmation_threshold = 12.0  # 12 points pour confirmation (au lieu de 10)
         self.max_time_in_extreme = 3           # Max 3 barres en zone extrême (au lieu de 5)
         
@@ -49,7 +49,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
         # Paramètres confluence - PLUS STRICTS
         self.support_resistance_confluence = True  # Confluence S/R requise
         self.confluence_distance_threshold = 0.015  # 1.5% max du S/R (plus strict: 1.5% au lieu de 2%)
-        self.min_oscillator_confluence = 0.12   # Confluence oscillateurs minimum
+        self.min_oscillator_confluence = 0.08   # Confluence oscillateurs minimum
         self.min_sr_confluence = 0.18           # Confluence S/R minimum
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:

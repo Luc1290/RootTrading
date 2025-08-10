@@ -32,11 +32,11 @@ class TRIX_Crossover_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres TRIX simulé DURCIS - Zone neutre ajoutée
-        self.trix_bullish_threshold = 0.02      # Seuil haussier > 0.02% (plus strict)
-        self.trix_bearish_threshold = -0.02     # Seuil baissier < -0.02% (plus strict) 
-        self.neutral_zone = 0.02                # Zone neutre ±0.02% pour éviter le bruit
-        self.strong_trix_threshold = 0.08       # TRIX fort > 0.08% (relevé)
+        # Paramètres TRIX simulé AJUSTÉS - Zone neutre réduite
+        self.trix_bullish_threshold = 0.01      # Seuil haussier > 0.01% (moins strict)
+        self.trix_bearish_threshold = -0.01     # Seuil baissier < -0.01% (moins strict) 
+        self.neutral_zone = 0.008               # Zone neutre ±0.008% pour éviter le bruit
+        self.strong_trix_threshold = 0.05       # TRIX fort > 0.05% (réduit)
         self.extreme_trix_threshold = 0.15      # TRIX extrême > 0.15% (relevé)
         
         # Paramètres crossover signal line

@@ -66,7 +66,7 @@ class SignalAggregatorService:
         self.start_time = datetime.utcnow()
         self.last_health_check = None
         
-        # Statistiques détaillées
+        # Statistiques détaillées avec limites de débit
         self.cycle_stats = {
             'total_signals_received': 0,
             'total_signals_processed': 0,
@@ -78,12 +78,19 @@ class SignalAggregatorService:
             'avg_processing_time': 0.0
         }
         
+        # Limites de débit pour éviter surcharge
+        self.rate_limiter = {
+            'max_signals_per_minute': int(os.getenv('MAX_SIGNALS_PER_MINUTE', 3000)),  # 3000 signaux/min max
+            'signals_current_minute': 0,
+            'last_reset_time': datetime.utcnow().minute
+        }
+        
     async def connect_db(self):
-        """�tablit la connexion � la base de donn�es."""
+        """Établit la connexion à la base de données."""
         try:
             self.db_connection = psycopg2.connect(**self.db_config)
-            logger.info("Connexion � la base de donn�es �tablie")
-            
+            logger.info("Connexion à la base de données établie")
+
             # Initialiser le gestionnaire de contexte et de base de données
             self.context_manager = ContextManager(self.db_connection)
             self.database_manager = DatabaseManager(self.db_connection)
@@ -117,16 +124,32 @@ class SignalAggregatorService:
                 self.context_manager,
                 self.database_manager
             )
-            
-            logger.info("Tous les composants initialis�s avec succ�s")
-            
+
+            logger.info("Tous les composants initialisés avec succès")
         except Exception as e:
             logger.error(f"Erreur initialisation composants: {e}")
             raise
             
+    async def _check_rate_limit(self) -> bool:
+        """Vérifie et applique les limites de débit."""
+        current_minute = datetime.utcnow().minute
+        
+        # Reset compteur si nouvelle minute
+        if current_minute != self.rate_limiter['last_reset_time']:
+            self.rate_limiter['signals_current_minute'] = 0
+            self.rate_limiter['last_reset_time'] = current_minute
+            
+        # Vérifier limite
+        if self.rate_limiter['signals_current_minute'] >= self.rate_limiter['max_signals_per_minute']:
+            logger.warning(f"Limite de débit atteinte: {self.rate_limiter['signals_current_minute']}/{self.rate_limiter['max_signals_per_minute']} signaux/min")
+            return False
+            
+        self.rate_limiter['signals_current_minute'] += 1
+        return True
+
     async def process_signal_callback(self, signal_data: str):
         """
-        Callback pour traiter les signaux reçus depuis Redis.
+        Callback pour traiter les signaux reçus depuis Redis avec rate limiting.
         
         Args:
             signal_data: Données du signal au format JSON
@@ -136,6 +159,11 @@ class SignalAggregatorService:
         
         try:
             self.cycle_stats['total_signals_received'] += 1
+            
+            # Vérifier rate limit
+            if not await self._check_rate_limit():
+                logger.debug("Signal ignoré - limite de débit atteinte")
+                return
             
             if not self.signal_processor:
                 logger.error("Signal processor non initialisé")

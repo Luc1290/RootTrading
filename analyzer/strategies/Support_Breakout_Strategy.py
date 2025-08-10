@@ -32,18 +32,18 @@ class Support_Breakout_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres de cassure support - OPTIMISÉS
-        self.breakdown_threshold = 0.008         # 0.8% sous support (plus strict)
-        self.strong_breakdown_threshold = 0.015  # 1.5% pour cassure forte (plus strict)
-        self.extreme_breakdown_threshold = 0.025 # 2.5% pour cassure extrême (plus strict)
+        # Paramètres de cassure support - AJUSTÉS
+        self.breakdown_threshold = 0.005         # 0.5% sous support (moins strict)
+        self.strong_breakdown_threshold = 0.012  # 1.2% pour cassure forte (moins strict)
+        self.extreme_breakdown_threshold = 0.02  # 2% pour cassure extrême (moins strict)
         
         # Paramètres temporels
-        self.max_time_near_support = 5          # Max barres près support avant cassure
-        self.confirmation_bars = 2              # Barres pour confirmer cassure
+        self.max_time_near_support = 7          # Max barres près support avant cassure
+        self.confirmation_bars = 1              # Barres pour confirmer cassure
         
-        # Paramètres volume (confirmation cassure) - OPTIMISÉS
-        self.min_breakdown_volume = 1.5         # Volume 50% au-dessus normal (plus strict)
-        self.strong_breakdown_volume = 2.5      # Volume 2.5x pour cassure forte (plus strict)
+        # Paramètres volume (confirmation cassure) - AJUSTÉS
+        self.min_breakdown_volume = 1.3         # Volume 30% au-dessus normal (moins strict)
+        self.strong_breakdown_volume = 2.0      # Volume 2x pour cassure forte (moins strict)
         self.volume_quality_threshold = 0.70    # Qualité volume minimum 70% (plus strict)
         
         # Paramètres momentum (continuation baissière) - OPTIMISÉS

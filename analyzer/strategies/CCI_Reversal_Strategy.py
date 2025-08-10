@@ -21,13 +21,13 @@ class CCI_Reversal_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres CCI optimisés pour crypto
-        self.oversold_level = -80  # Zone de survente plus sensible
-        self.overbought_level = 80  # Zone de surachat plus sensible
-        self.extreme_oversold = -150  # Extrême plus accessible
-        self.extreme_overbought = 150  # Extrême plus accessible
+        self.oversold_level = -70  # Zone de survente plus sensible
+        self.overbought_level = 70  # Zone de surachat plus sensible
+        self.extreme_oversold = -100  # Extrême plus accessible
+        self.extreme_overbought = 100  # Extrême plus accessible
         
         # Paramètres de validation temporelle
-        self.min_cci_persistence = 2  # Nombre de périodes minimum en zone
+        self.min_cci_persistence = 1  # Nombre de périodes minimum en zone
         self.cci_history = []  # Historique pour validation
         self.max_history_size = 5  # Taille max de l'historique
         

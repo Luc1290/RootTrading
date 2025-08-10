@@ -21,8 +21,8 @@ class RSI_Cross_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Seuils RSI - OPTIMISÉS (plus stricts)
-        self.oversold_level = 25      # Réduit de 30 à 25
-        self.overbought_level = 75    # Augmenté de 70 à 75
+        self.oversold_level = 35      # Réduit de 30 à 25
+        self.overbought_level = 65    # Augmenté de 70 à 75
         self.extreme_oversold = 15    # Réduit de 20 à 15
         self.extreme_overbought = 85  # Augmenté de 80 à 85
         self.neutral_low = 40         # Zone neutre basse

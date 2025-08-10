@@ -28,11 +28,11 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres de confluence multi-TF
-        self.min_confluence_score = 70      # Score confluence minimum
-        self.min_signal_strength = 0.6      # Force signal minimum
-        self.min_trend_alignment = 70      # Alignement tendance minimum
-        self.max_regime_conflicts = 1       # Max conflits entre régimes
-        self.volume_confirmation_min = 1.1  # Volume minimum requis
+        self.min_confluence_score = 55      # Score confluence minimum
+        self.min_signal_strength = 0.45      # Force signal minimum
+        self.min_trend_alignment = 55      # Alignement tendance minimum
+        self.max_regime_conflicts = 2       # Max conflits entre régimes
+        self.volume_confirmation_min = 1.05  # Volume minimum requis
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs multi-TF."""

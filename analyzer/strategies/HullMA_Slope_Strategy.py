@@ -24,8 +24,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
         super().__init__(symbol, data, indicators)
         # Paramètres HullMA - OPTIMISÉS
         self.hullma_period = 20        # Période par défaut
-        self.min_slope_threshold = 0.002  # Pente minimum AUGMENTÉE (0.2% au lieu de 0.1%)
-        self.strong_slope_threshold = 0.008  # Pente forte AUGMENTÉE (0.8% au lieu de 0.5%)
+        self.min_slope_threshold = 0.0008  # Pente minimum AUGMENTÉE (0.08% au lieu de 0.1%)
+        self.strong_slope_threshold = 0.0015  # Pente forte AUGMENTÉE (0.15% au lieu de 0.5%)
         self.price_distance_max = 0.015   # Distance max RÉDUITE (1.5% au lieu de 2%)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
@@ -319,7 +319,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
                 if abs(alignment) > 0.3:  # Format décimal : 0.3 = strong alignment
                     confidence_boost += 0.10
                     reason += " + MA alignées"
-                elif abs(alignment) > 0.2:
+                elif abs(alignment) > 0.1:
                     confidence_boost += 0.05
                     reason += " + MA partiellement alignées"
             except (ValueError, TypeError):
@@ -377,7 +377,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
                 elif vol_ratio >= 1.5:
                     confidence_boost += 0.10
                     reason += f" + volume élevé ({vol_ratio:.1f}x)"
-                elif vol_ratio >= 1.2:
+                elif vol_ratio >= 1.1:
                     confidence_boost += 0.05  # Réduit
                     reason += f" + volume modéré ({vol_ratio:.1f}x)"
                 elif vol_ratio < 0.8:  # NOUVEAU: pénalité volume faible

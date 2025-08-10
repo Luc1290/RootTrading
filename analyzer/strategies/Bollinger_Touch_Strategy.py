@@ -21,11 +21,11 @@ class Bollinger_Touch_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres Bollinger Bands - OPTIMISÉS
-        self.touch_threshold = 0.005   # 0.5% de proximité (plus strict)
-        self.bb_position_extreme = 0.98  # Position vraiment extrême (98%)
-        self.bb_width_min = 0.03       # Largeur minimum 3% (éviter faux signaux en squeeze)
-        self.reversion_zone = 0.03     # Zone de retournement 3% (plus précis)
-        self.min_bb_width_for_trade = 0.05  # Ne pas trader si bandes < 5%
+        self.touch_threshold = 0.01   # 1% de proximité (moins strict)
+        self.bb_position_extreme = 0.85  # Position extrême (85%)
+        self.bb_width_min = 0.015       # Largeur minimum 1.5% (éviter faux signaux en squeeze)
+        self.reversion_zone = 0.05     # Zone de retournement 5% (plus large)
+        self.min_bb_width_for_trade = 0.025  # Ne pas trader si bandes < 2.5%
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs Bollinger."""

@@ -26,11 +26,11 @@ class TEMA_Slope_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres TEMA Slope
-        self.min_slope_threshold = 0.0001  # Pente minimum pour considérer un signal
-        self.strong_slope_threshold = 0.001  # Pente forte
-        self.very_strong_slope_threshold = 0.005  # Pente très forte
-        self.price_tema_alignment_bonus = 0.15  # Bonus si prix aligné avec TEMA
+        # Paramètres TEMA Slope - LÉGÈREMENT AJUSTÉS
+        self.min_slope_threshold = 0.00008  # Pente minimum pour considérer un signal (légèrement plus sensible)
+        self.strong_slope_threshold = 0.0009  # Pente forte (légèrement plus accessible)
+        self.very_strong_slope_threshold = 0.0045  # Pente très forte (légèrement plus accessible)
+        self.price_tema_alignment_bonus = 0.18  # Bonus si prix aligné avec TEMA (légèrement augmenté)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs TEMA et contexte."""

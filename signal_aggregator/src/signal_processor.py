@@ -34,8 +34,8 @@ class SignalProcessor:
         # Initialisation du système hiérarchique
         self.hierarchical_validator = HierarchicalValidator()
         
-        # Configuration des seuils de base - ANTI-SURTRADING
-        self.min_strategies_consensus = 4    # Minimum de 4 stratégies pour consensus (augmenté de 2)
+        # Configuration des seuils de base - ANTI-SURTRADING (AUGMENTÉ pour gérer plus de signaux)
+        self.min_strategies_consensus = 6    # Minimum de 6 stratégies pour consensus (augmenté pour gérer flux)
         
         # Statistiques de validation
         self.stats = {
@@ -320,8 +320,8 @@ class SignalProcessor:
                     self.stats['signals_rejected'] += 1
                     return None
             else:  # Signal individuel - NOUVEAU FILTRE
-                # NOUVEAU: Les signaux individuels doivent avoir une confiance minimum
-                individual_min_confidence = 0.50  # 50% minimum pour signal individuel (réduit pour crypto)
+                # NOUVEAU: Les signaux individuels doivent avoir une confiance minimum (AUGMENTÉ)
+                individual_min_confidence = 0.60  # 60% minimum pour signal individuel (augmenté pour filtrage)
                 if signal.get('confidence', 0) < individual_min_confidence:
                     logger.info(f"Signal individuel REJETÉ pour confiance insuffisante: {signal['strategy']} {symbol} "
                               f"{signal['side']} - confidence={signal.get('confidence', 0):.1%} < {individual_min_confidence:.1%}")
@@ -369,9 +369,9 @@ class SignalProcessor:
                     signal, detailed_analysis, validation_results, final_score
                 )
                 
-                # Filtre final RENFORCÉ : aggregator_confidence >= 80% (augmenté de 70%)
+                # Filtre final RENFORCÉ : aggregator_confidence >= 85% (augmenté pour flux élevé)
                 aggregator_confidence = validated_signal['metadata'].get('aggregator_confidence', 0.0)
-                min_aggregator_confidence = 0.8
+                min_aggregator_confidence = 0.85
                 
                 if aggregator_confidence < min_aggregator_confidence:
                     logger.info(f"Signal REJETÉ pour aggregator_confidence insuffisante: {signal['strategy']} {symbol} "

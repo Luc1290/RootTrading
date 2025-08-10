@@ -26,10 +26,10 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres Parabolic SAR - OPTIMISÉS
-        self.min_sar_distance = 0.008  # Distance minimum AUGMENTÉE (0.8% au lieu de 0.5%)
-        self.max_sar_distance = 0.03   # Distance maximum RÉDUITE (3% au lieu de 5%)
-        self.trend_confirmation_bonus = 0.20  # Bonus AUGMENTÉ si aligné avec tendance
-        self.volume_confirmation_threshold = 1.3  # Seuil volume PLUS STRICT (1.3x au lieu de 1.1x)
+        self.min_sar_distance = 0.005  # Distance minimum RÉDUITE (0.5% au lieu de 0.8%)
+        self.max_sar_distance = 0.04   # Distance maximum AUGMENTÉE (4% au lieu de 3%)
+        self.trend_confirmation_bonus = 0.15  # Bonus RÉDUIT si aligné avec tendance
+        self.volume_confirmation_threshold = 1.15  # Seuil volume MOINS STRICT (1.15x au lieu de 1.3x)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs SAR et contexte."""
