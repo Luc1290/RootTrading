@@ -29,10 +29,10 @@ class TrailingSellManager:
         self.service_client = service_client
         self.db_connection = db_connection
         
-        # Configuration trailing sell - AJUSTÉE POUR CRYPTO VOLATILE
-        self.sell_margin = 0.012  # 1.2% de marge pour les pumps crypto (3x plus permissif)
-        self.max_drop_threshold = 0.035  # 3.5% de chute max depuis le pic (2.3x plus permissif) 
-        self.immediate_sell_drop = 0.050  # 5% de chute = vente immédiate (2.5x plus permissif)
+        # Configuration trailing sell - OPTIMISÉE POUR PROTECTION CAPITAL
+        self.sell_margin = 0.008  # 0.8% de marge - plus strict pour préserver gains
+        self.max_drop_threshold = 0.020  # 2.0% de chute max depuis le pic - strict
+        self.immediate_sell_drop = 0.030  # 3.0% de chute = vente immédiate - resserré
         
         # Configuration stop-loss adaptatif - RESSERRÉ POUR PROTECTION CAPITAL
         self.stop_loss_percent_base = 0.015  # 1.5% de base (réduit de 2.5%)
@@ -107,19 +107,19 @@ class TrailingSellManager:
             
             # === DÉCISION DE VENTE BASÉE SUR LE PRIX MAX ===
             
-            # Si chute importante depuis le max (>2%), vendre immédiatement
+            # Si chute importante depuis le max (>2.5%), vendre immédiatement
             if drop_from_max >= self.immediate_sell_drop:
                 logger.warning(f"📉 CHUTE IMPORTANTE depuis max ({drop_from_max*100:.2f}%), SELL IMMÉDIAT!")
                 self._cleanup_references(symbol)
                 return True, f"Chute de {drop_from_max*100:.2f}% depuis max {historical_max:.{precision}f}, SELL immédiat"
             
             if previous_sell_price is None:
-                # Premier SELL gagnant : vérifier si on est loin du max - AJUSTÉ POUR CRYPTO
-                if drop_from_max > 0.020:  # Si déjà chuté de >2% depuis le max (4x plus permissif)
+                # Premier SELL gagnant : logique stricte pour protection capital
+                if drop_from_max > 0.012:  # Si déjà chuté de >1.2% depuis le max - strict
                     logger.info(f"⚠️ Premier SELL mais déjà {drop_from_max*100:.2f}% sous le max historique")
                     
-                    # Si chute significative (>1.5%), vendre
-                    if drop_from_max >= self.max_drop_threshold:
+                    # Si chute significative (>1.5%), vendre immédiatement
+                    if drop_from_max >= 0.015:  # 1.5% fixe plus strict
                         logger.info(f"📉 Chute significative depuis max, SELL!")
                         self._cleanup_references(symbol)
                         return True, f"Chute de {drop_from_max*100:.2f}% depuis max {historical_max:.{precision}f}, SELL exécuté"
@@ -419,8 +419,8 @@ class TrailingSellManager:
             
             adaptive_threshold = float(base_threshold) * float(regime_factor) * float(volatility_factor) * float(support_factor) * float(time_factor)
             
-            # Contraintes min/max - RESSERRÉES POUR PROTECTION
-            adaptive_threshold = max(0.008, min(0.025, adaptive_threshold))  # 0.8%-2.5% (beaucoup plus strict)
+            # Contraintes min/max - ULTRA STRICTES POUR PROTECTION CAPITAL
+            adaptive_threshold = max(0.008, min(0.018, adaptive_threshold))  # 0.8%-1.8% (ultra strict)
             
             logger.debug(f"🧠 Stop-loss adaptatif {symbol}: {adaptive_threshold*100:.2f}%")
             
@@ -475,15 +475,15 @@ class TrailingSellManager:
         strength = analysis.get('regime_strength', 'WEAK')
         confidence = float(analysis.get('regime_confidence', 50))
         
-        # INVERSÉ : En bear market, on veut vendre PLUS VITE (multiplicateur < 1.0)
+        # PROTECTION CAPITAL : seuils plus stricts globalement
         regime_multipliers = {
-            'TRENDING_BULL': 2.0,      # Bull = plus tolérant (2x)
-            'BREAKOUT_BULL': 1.8,      # Breakout bull = tolérant
-            'RANGING': 1.2,            # Range = neutre-tolérant
-            'TRANSITION': 1.0,         # Transition = neutre
-            'TRENDING_BEAR': 0.6,      # Bear = TRÈS strict (0.6x)
-            'VOLATILE': 0.8,           # Volatile = strict
-            'BREAKOUT_BEAR': 0.5       # Breakout bear = ULTRA strict (0.5x)
+            'TRENDING_BULL': 1.5,      # Bull = modérément tolérant (réduit de 2.0)
+            'BREAKOUT_BULL': 1.3,      # Breakout bull = moins tolérant (réduit de 1.8)
+            'RANGING': 1.0,            # Range = neutre (réduit de 1.2)
+            'TRANSITION': 0.9,         # Transition = légèrement strict (réduit de 1.0)
+            'TRENDING_BEAR': 0.5,      # Bear = ULTRA strict (réduit de 0.6)
+            'VOLATILE': 0.6,           # Volatile = plus strict (réduit de 0.8)
+            'BREAKOUT_BEAR': 0.4       # Breakout bear = MAXIMUM strict (réduit de 0.5)
         }
         
         base_factor = regime_multipliers.get(regime, 1.0)
@@ -554,19 +554,19 @@ class TrailingSellManager:
         time_elapsed = float(time.time() - float(entry_time))
         minutes_elapsed = time_elapsed / 60.0
         
-        # Crypto peut être très rapide, plus permissif sur le temps
+        # Facteur temps plus strict pour protection rapide
         if minutes_elapsed < 2:
-            return 1.5  # Très récent = très permissif
+            return 1.2  # Très récent = modérément permissif (réduit de 1.5)
         elif minutes_elapsed < 10:
-            return 1.3  # Récent = permissif
+            return 1.1  # Récent = légèrement permissif (réduit de 1.3)
         elif minutes_elapsed < 30:
-            return 1.1  # Modéré
+            return 1.0  # Modéré = neutre (réduit de 1.1)
         elif minutes_elapsed < 120:
-            return 1.0  # Normal
+            return 0.9  # Normal = légèrement strict (réduit de 1.0)
         elif minutes_elapsed < 360:
-            return 0.9  # Plus ancien
+            return 0.8  # Plus ancien = plus strict (réduit de 0.9)
         else:
-            return 0.85  # Très ancien
+            return 0.7  # Très ancien = strict (réduit de 0.85)
     
     def get_current_price(self, symbol: str) -> Optional[float]:
         """

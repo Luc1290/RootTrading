@@ -34,8 +34,8 @@ class SignalProcessor:
         # Initialisation du système hiérarchique
         self.hierarchical_validator = HierarchicalValidator()
         
-        # Configuration des seuils de base - AJUSTÉ POUR ACTIVATION  
-        self.min_strategies_consensus = 3    # Minimum de 3 stratégies pour consensus (assoupli)
+        # Configuration des seuils de base - ÉQUILIBRÉ QUALITÉ/QUANTITÉ  
+        self.min_strategies_consensus = 4    # Minimum de 4 stratégies pour consensus (resserré)
         
         # Statistiques de validation
         self.stats = {
@@ -155,8 +155,67 @@ class SignalProcessor:
                     consensus_groups[consensus_group] = []
                 consensus_groups[consensus_group].append(signal)
             
-            # Valider chaque groupe avec règle de majorité (≥50%)
-            for group_name, group_signals in consensus_groups.items():
+            # NOUVEAU: Créer un dict pour tracker les symboles traités et leur timeframe/direction
+            processed_symbols = {}  # {symbol: {'timeframe': 'xxx', 'side': 'xxx'}}
+            
+            # Fonction pour convertir timeframe en priorité numérique (plus élevé = prioritaire)
+            def get_timeframe_priority(timeframe_str):
+                priorities = {
+                    '1d': 1000, '4h': 400, '1h': 100, 
+                    '15m': 15, '5m': 5, '3m': 3, '1m': 1
+                }
+                return priorities.get(timeframe_str, 0)
+            
+            # Trier les groupes par timeframe décroissant PUIS par confidence pour résoudre conflits
+            def sort_groups_key(item):
+                group_name, group_signals = item
+                if not group_signals:
+                    return (0, 0)
+                
+                # Récupérer le timeframe du premier signal (tous identiques dans le groupe)
+                timeframe = group_signals[0].get('timeframe', '1m')
+                timeframe_priority = get_timeframe_priority(timeframe)
+                
+                # Confidence moyenne du groupe
+                avg_confidence = sum(s.get('confidence', 0) for s in group_signals) / len(group_signals)
+                
+                return (timeframe_priority, avg_confidence)
+            
+            sorted_groups = sorted(consensus_groups.items(), key=sort_groups_key, reverse=True)
+            
+            # Valider chaque groupe avec règle de majorité (≥50%) + priorité timeframe
+            for group_name, group_signals in sorted_groups:
+                # Extraire les informations du groupe
+                symbol = group_signals[0].get('symbol') if group_signals else 'unknown'
+                side = group_signals[0].get('side') if group_signals else 'unknown'
+                timeframe = group_signals[0].get('timeframe', '1m') if group_signals else '1m'
+                current_priority = get_timeframe_priority(timeframe)
+                
+                # NOUVEAU: Vérifier si ce symbole a déjà un signal validé avec priorité timeframe
+                if symbol in processed_symbols:
+                    existing = processed_symbols[symbol]
+                    existing_side = existing['side']
+                    existing_timeframe = existing['timeframe']
+                    existing_priority = get_timeframe_priority(existing_timeframe)
+                    
+                    if existing_side != side:
+                        # Conflit de direction : vérifier la priorité timeframe
+                        if current_priority <= existing_priority:
+                            logger.warning(f"Signal {side} {timeframe} ignoré pour {symbol} - "
+                                         f"signal {existing_side} {existing_timeframe} prioritaire "
+                                         f"(priorité {existing_priority} > {current_priority})")
+                            continue
+                        else:
+                            # Le nouveau signal a un timeframe plus élevé, remplacer
+                            logger.info(f"Signal {existing_side} {existing_timeframe} remplacé par "
+                                       f"{side} {timeframe} pour {symbol} "
+                                       f"(priorité {current_priority} > {existing_priority})")
+                    # Si même côté, vérifier si le nouveau timeframe est plus élevé
+                    elif current_priority <= existing_priority:
+                        logger.debug(f"Signal {side} {timeframe} ignoré pour {symbol} - "
+                                   f"signal {existing_side} {existing_timeframe} prioritaire")
+                        continue
+                
                 validated_count = 0
                 group_validations = []
                 
@@ -176,7 +235,14 @@ class SignalProcessor:
                     composite_signal = self._create_composite_signal(group_signals, group_validations)
                     if composite_signal:
                         validated_signals.append(composite_signal)
-                        logger.info(f"Consensus {group_name} VALIDÉ: {validated_count}/{len(group_signals)} signaux passés (≥{majority_threshold:.1f} requis)")
+                        # NOUVEAU: Marquer ce symbole avec sa direction et son timeframe
+                        processed_symbols[symbol] = {
+                            'side': side,
+                            'timeframe': timeframe,
+                            'priority': current_priority
+                        }
+                        logger.info(f"Consensus {group_name} VALIDÉ: {validated_count}/{len(group_signals)} signaux passés "
+                                  f"(≥{majority_threshold:.1f} requis) - Timeframe {timeframe} priorité {current_priority}")
                 else:
                     logger.info(f"Consensus {group_name} REJETÉ: {validated_count}/{len(group_signals)} signaux passés (<{majority_threshold:.1f} requis)")
                     
@@ -468,9 +534,9 @@ class SignalProcessor:
                     signal, detailed_analysis, validation_results, final_score
                 )
                 
-                # Filtre final OPTIMISÉ : aggregator_confidence >= 78% (équilibré qualité/passage)
+                # Filtre final RESSERRÉ : aggregator_confidence >= 82% (privilégier la qualité)
                 aggregator_confidence = validated_signal['metadata'].get('aggregator_confidence', 0.0)
-                min_aggregator_confidence = 0.78
+                min_aggregator_confidence = 0.82
                 
                 if aggregator_confidence < min_aggregator_confidence:
                     logger.info(f"Signal REJETÉ pour aggregator_confidence insuffisante: {signal['strategy']} {symbol} "

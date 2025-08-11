@@ -63,19 +63,19 @@ VALIDATOR_HIERARCHY = {
     }
 }
 
-# Configuration des seuils de validation par niveau - ASSOUPLIS POUR ACTIVATION
+# Configuration des seuils de validation par niveau - ÉQUILIBRÉ POUR QUALITÉ
 VALIDATION_THRESHOLDS = {
     'critical': {
-        'min_score': 0.50,  # Score minimum assoupli (50% au lieu de 55%)
+        'min_score': 0.55,  # Score minimum équilibré (55%)
         'rejection_message': "Signal rejeté par validator critique : {validator_name} - {reason}"
     },
     'important': {
-        'min_score': 0.45,  # Score minimum assoupli (45% au lieu de 50%)
-        'low_score_penalty': 0.15  # Pénalité réduite
+        'min_score': 0.50,  # Score minimum équilibré (50%)
+        'low_score_penalty': 0.20  # Pénalité standard
     },
     'standard': {
-        'min_score': 0.40,  # Score minimum assoupli (40% au lieu de 45%)
-        'low_score_penalty': 0.10  # Pénalité réduite
+        'min_score': 0.45,  # Score minimum équilibré (45%)
+        'low_score_penalty': 0.15  # Pénalité standard
     }
 }
 
