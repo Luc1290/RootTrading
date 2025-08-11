@@ -175,14 +175,22 @@ async def shutdown(signal_type, loop):
     logger.info(f"Signal {signal_type.name} reçu, arrêt en cours...")
     running = False
     
-    # Arrêter le DataListener
+    # Arrêter le DataListener AVANT de fermer la boucle
     if data_listener:
-        await data_listener.stop()
+        try:
+            await data_listener.stop()
+            logger.info("✅ DataListener arrêté proprement")
+        except Exception as e:
+            logger.error(f"❌ Erreur arrêt DataListener: {e}")
     
-    # Arrêter la boucle asyncio
+    # Attendre un peu pour que les connexions se ferment
+    await asyncio.sleep(0.1)
+    
+    logger.info("Market Analyzer terminé")
+    logger.info("Boucle asyncio fermée")
+    
+    # Arrêter la boucle asyncio EN DERNIER
     loop.stop()
-    
-    logger.info("Market Analyzer arrêté proprement")
 
 async def main():
     """Fonction principale du Market Analyzer."""

@@ -62,16 +62,16 @@ class HierarchicalValidator:
                 for result in results_by_level[level]:
                     if not result['is_valid']:
                         veto_triggered = True
-                        veto_reason = f"{result['validator_name']}: {result['reason']}"
+                        veto_reason = f"VETO - {result['validator_name']}: {result['reason']}"
                         logger.warning(f"VETO déclenché par {result['validator_name']} "
                                      f"pour {signal['symbol']} {signal['side']}: {result['reason']}")
                         break
                         
-            # Vérifier le taux de passage minimum
-            if not analysis['meets_min_pass_rate']:
+            # Vérifier le taux de passage minimum (ne s'applique que si pas de VETO direct)
+            if not veto_triggered and not analysis['meets_min_pass_rate']:
                 if level == 'critical':
                     veto_triggered = True
-                    veto_reason = f"Taux de passage critique insuffisant: {analysis['pass_rate']:.1%}"
+                    veto_reason = f"VETO - Taux critique insuffisant: {analysis['pass_rate']:.1%} < 100%"
         
         # Si veto, rejeter immédiatement
         if veto_triggered:

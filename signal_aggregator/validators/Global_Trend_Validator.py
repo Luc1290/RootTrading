@@ -23,11 +23,11 @@ class Global_Trend_Validator(BaseValidator):
     def __init__(self, symbol: str, data: Dict[str, Any], context: Dict[str, Any]):
         super().__init__(symbol, data, context)
         
-        # Seuils de validation - OPTIMISÉS POUR RÉDUIRE SURTRADING
-        self.min_trend_alignment_bull = 0.3   # Moins strict: 0.3 au lieu de 0.5  
-        self.min_trend_alignment_bear = -0.3  # Moins strict: -0.3 au lieu de -0.5
-        self.min_adx_trend = 30              # Plus strict: 30 au lieu de 25 (tendance vraiment forte)
-        self.min_regime_confidence = 75      # Plus strict: 75% au lieu de 60% (confiance vraiment élevée)
+        # Seuils de validation - OPTIMISÉS POUR CRYPTO VOLATIL
+        self.min_trend_alignment_bull = 0.2   # Encore moins strict: 0.2 pour crypto
+        self.min_trend_alignment_bear = -0.2  # Encore moins strict: -0.2 pour crypto
+        self.min_adx_trend = 30              # Équilibré: 30 pour crypto (24.7% des cas)
+        self.min_regime_confidence = 70      # Réduit: 70% au lieu de 75%
         # Filtres EMA adaptés
         self.use_ema_filter = True          # Activer le filtre EMA50/EMA99
         self.ema_divergence_penalty = 0.3   # Pénalité réduite: 0.3 au lieu de 0.5
@@ -56,12 +56,12 @@ class Global_Trend_Validator(BaseValidator):
             adx_value = self.context.get('adx_14', 0)
             trend_strength = self.context.get('trend_strength')
             
-            # En marché en range - LOGIQUE OPTIMISÉE
-            if market_regime == 'RANGING':
+            # En marché en range OU transition - LOGIQUE OPTIMISÉE
+            if market_regime in ['RANGING', 'TRANSITION', 'VOLATILE']:
                 if self.ranging_mode_permissive:
-                    # NOUVEAU: Mode permissif en ranging - accepter BUY et SELL
-                    # C'est l'essence du trading en range !
-                    logger.debug(f"Signal {signal_side} accepté en mode RANGING permissif")
+                    # NOUVEAU: Mode permissif en ranging/transition - accepter BUY et SELL
+                    # Ces régimes sont neutres par nature
+                    logger.debug(f"Signal {signal_side} accepté en mode {market_regime} permissif")
                     return True
                 else:
                     # Ancienne logique strict (gardée pour compatibilité)

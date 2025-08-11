@@ -55,11 +55,7 @@ class RedisPublisher:
             return
             
         try:
-            # Publication de chaque signal individuellement
-            for signal in signals:
-                await self.publish_signal(signal)
-                
-            # Publication d'un message de batch pour le signal_aggregator
+            # Publication directe du batch pour le signal_aggregator (consensus intelligent)
             batch_message = {
                 'type': 'signal_batch',
                 'timestamp': datetime.utcnow().isoformat(),

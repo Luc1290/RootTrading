@@ -47,16 +47,36 @@ class ContextManager:
             # TODO: Implémenter vérification TTL si nécessaire
             
         try:
+            # Récupérer les composants du contexte
+            ohlcv_data = self._get_ohlcv_data(symbol, timeframe)
+            indicators = self._get_indicators(symbol, timeframe)
+            market_structure = self._get_market_structure(symbol, timeframe)
+            volume_profile = self._get_volume_profile(symbol, timeframe)
+            multi_timeframe = self._get_multi_timeframe_context(symbol)
+            correlation_data = self._get_correlation_context(symbol)
+            
+            # Construire le contexte avec champs racine pour compatibility
             context = {
                 'symbol': symbol,
                 'timeframe': timeframe,
-                'ohlcv_data': self._get_ohlcv_data(symbol, timeframe),
-                'indicators': self._get_indicators(symbol, timeframe),
-                'market_structure': self._get_market_structure(symbol, timeframe),
-                'volume_profile': self._get_volume_profile(symbol, timeframe),
-                'multi_timeframe': self._get_multi_timeframe_context(symbol),
-                'correlation_data': self._get_correlation_context(symbol)
+                'ohlcv_data': ohlcv_data,
+                'indicators': indicators,
+                'market_structure': market_structure,
+                'volume_profile': volume_profile,
+                'multi_timeframe': multi_timeframe,
+                'correlation_data': correlation_data
             }
+            
+            # Exposer les champs critiques au niveau racine pour compatibilité validators
+            if indicators:
+                context.update(indicators)  # Tous les indicateurs au niveau racine
+            
+            if market_structure and 'current_price' in market_structure:
+                context['current_price'] = market_structure['current_price']  # Prix actuel au niveau racine
+            
+            # Fallback pour current_price si absent
+            if 'current_price' not in context and ohlcv_data:
+                context['current_price'] = ohlcv_data[-1]['close'] if ohlcv_data else 0
             
             # Mise en cache du contexte
             self.context_cache[cache_key] = context

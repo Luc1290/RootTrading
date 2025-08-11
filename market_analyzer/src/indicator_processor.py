@@ -116,8 +116,8 @@ class IndicatorProcessor:
             logger.debug(f"🔄 Traitement {symbol} {timeframe} @ {timestamp}")
             
             # Récupérer les données historiques nécessaires JUSQU'AU timestamp en cours
-            # Plus de données pour les indicateurs long terme (EMA 99 a besoin d'au moins 200-300 points pour être stable)
-            ohlcv_data = await self._get_historical_data(symbol, timeframe, limit=1000000, up_to_timestamp=timestamp)
+            # Optimisé: 500 points suffisent largement pour tous les indicateurs (EMA99, ADX, etc.)
+            ohlcv_data = await self._get_historical_data(symbol, timeframe, limit=500, up_to_timestamp=timestamp)
             
             if len(ohlcv_data) < 20:
                 logger.debug(f"⏭️ Pas assez de données pour {symbol} {timeframe}: {len(ohlcv_data)} < 20")

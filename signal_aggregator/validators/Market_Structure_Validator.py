@@ -27,20 +27,20 @@ class Market_Structure_Validator(BaseValidator):
         self.name = "Market_Structure_Validator"
         self.category = "regime"
         
-        # Paramètres régimes de marché - AJUSTÉS POUR CRYPTO RANGING
-        self.favorable_regimes = ["trending", "expansion", "normal", "ranging"]  # RANGING ajouté aux favorables
-        self.unfavorable_regimes = ["compression", "chaotic", "extreme_volatility"]  # RANGING retiré
-        self.regime_strength_min = 0.45     # Force minimum régime RÉDUITE pour crypto (45% au lieu de 55%)
-        self.regime_confidence_min = 55     # Confidence minimum régime RÉDUITE pour crypto (55% au lieu de 65%)
+        # Paramètres régimes de marché - CRYPTO ULTRA-PERMISSIF
+        self.favorable_regimes = ["TRENDING_BULL", "TRENDING_BEAR", "RANGING", "BREAKOUT_BULL", "BREAKOUT_BEAR", "TRANSITION", "VOLATILE"]
+        self.unfavorable_regimes = ["UNKNOWN"]  # Seulement UNKNOWN vraiment problématique
+        self.regime_strength_min = 0.30     # Force minimum TRÈS RÉDUITE pour crypto (30% au lieu de 45%)
+        self.regime_confidence_min = 40     # Confidence minimum TRÈS RÉDUITE pour crypto (40% au lieu de 55%)
         
-        # Paramètres alignement - AJUSTÉS POUR RANGING
-        self.min_trend_alignment = 50      # Alignement minimum tendance RÉDUIT pour ranging (50% au lieu de 70%)
-        self.min_signal_strength = 0.45     # Force signal minimum RÉDUITE pour ranging (45% au lieu de 60%)
-        self.min_confluence_score = 40.0    # Score confluence minimum RÉDUIT pour ranging (40 au lieu de 55)
+        # Paramètres alignement - CRYPTO ULTRA-PERMISSIF 
+        self.min_trend_alignment = 30      # Alignement minimum TRÈS RÉDUIT pour crypto ranging (30% au lieu de 50%)
+        self.min_signal_strength = 0.35     # Force signal minimum TRÈS RÉDUITE pour crypto (35% au lieu de 45%)
+        self.min_confluence_score = 25.0    # Score confluence minimum TRÈS RÉDUIT pour crypto (25 au lieu de 40)
         
-        # Paramètres volatilité - OPTIMISÉS
-        self.max_volatility_regime_risk = ["extreme", "chaotic"]
-        self.acceptable_volatility = ["low", "normal", "high", "expanding"]
+        # Paramètres volatilité - CRYPTO PERMISSIF
+        self.max_volatility_regime_risk = ["chaotic"]  # Seulement chaotic vraiment risqué
+        self.acceptable_volatility = ["low", "normal", "high", "expanding", "extreme"]  # extreme acceptable crypto
         
         # Seuils directionnels - AJUSTÉS POUR RANGING
         self.directional_bias_weight = 0.3  # Poids bias directionnel RÉDUIT pour ranging (30% au lieu de 40%)
@@ -110,7 +110,7 @@ class Market_Structure_Validator(BaseValidator):
                     # Accepter seulement avec confidence élevée
                     if signal_confidence < 0.65:  # Réduit pour crypto défavorables
                         return False
-                elif market_regime == "ranging":
+                elif market_regime == "RANGING":
                     # Régime ranging - PERMISSIF pour crypto flat
                     if signal_confidence < 0.45:  # Très permissif pour ranging
                         logger.debug(f"{self.name}: Régime ranging + confidence très faible pour {self.symbol}")
@@ -132,16 +132,13 @@ class Market_Structure_Validator(BaseValidator):
                 if signal_confidence < 0.55:  # Réduit pour crypto (était 65%)
                     return False
                     
-            # 3. Validation régime de volatilité - AJUSTÉ POUR CRYPTO FLAT
+            # 3. Validation régime de volatilité - CRYPTO ULTRA-PERMISSIF
             if volatility_regime in self.max_volatility_regime_risk:
-                logger.debug(f"{self.name}: Régime volatilité risqué ({volatility_regime or 'N/A'}) pour {self.symbol}")
-                if signal_confidence < 0.70:  # Réduit pour crypto (était 75%)
+                logger.debug(f"{self.name}: Volatilité chaotique ({volatility_regime or 'N/A'}) pour {self.symbol}")
+                if signal_confidence < 0.60:  # Encore plus permissif pour crypto (60% au lieu de 70%)
                     return False
-            # Volatilité faible acceptable en marché ranging
-            elif volatility_regime == "low":
-                if signal_confidence < 0.40:  # Très permissif pour volatilité faible (était 50%)
-                    logger.debug(f"{self.name}: Volatilité faible + signal très faible pour {self.symbol}")
-                    return False
+            # Toutes les autres volatilités sont acceptables en crypto
+            # Volatilité "extreme" est normale en crypto pendant les mouvements
                     
             # 4. Validation alignement tendance (format décimal) - AJUSTÉ POUR RANGING
             if trend_alignment is not None and abs(trend_alignment) < (self.min_trend_alignment / 100):
@@ -246,47 +243,54 @@ class Market_Structure_Validator(BaseValidator):
             conflicts += 1  # Ranging avec volatilité extrême = conflit
             
         # Conflit directional bias vs market regime
-        if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"] and directional_bias == "neutral":
+        if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"] and directional_bias == "NEUTRAL":
             conflicts += 1  # Trending mais bias neutre = conflit
             
         return conflicts >= 2  # Conflit si 2+ incohérences
         
     def _validate_strategy_regime_match(self, strategy: str, market_regime: str, 
                                        volatility_regime: str) -> bool:
-        """Valide l'adéquation stratégie/régime."""
+        """Valide l'adéquation stratégie/régime - CRYPTO ULTRA-PERMISSIF."""
         strategy_lower = strategy.lower()
         
-        # MEAN REVERSION - PLUS PERMISSIF pour crypto ranging
+        # CRYPTO MODE: Toutes les stratégies sont acceptables dans tous les régimes
+        # Les stratégies crypto sont conçues pour être adaptables
+        
+        # MEAN REVERSION - Accepté partout en crypto
         if any(kw in strategy_lower for kw in ['reversal', 'rebound', 'oversold', 'overbought', 'touch', 'rejection']):
-            return market_regime in ["ranging", "normal", "compression", "trending"]  # Ajout trending
+            return True  # Acceptable dans tous régimes crypto
         elif any(kw in strategy_lower for kw in ['bollinger', 'zscore', 'stoch', 'williams', 'cci']):
-            return market_regime in ["ranging", "normal", "compression", "trending"]  # Ajout trending
+            return True  # Acceptable dans tous régimes crypto
             
-        # TREND FOLLOWING - PLUS PERMISSIF pour crypto ranging
+        # TREND FOLLOWING - Accepté partout en crypto (même en ranging)
         elif (any(kw in strategy_lower for kw in ['macd', 'slope', 'adx', 'hull', 'tema', 'trix', 'ema_cross']) 
               and 'reversal' not in strategy_lower):
-            return market_regime in ["trending", "expansion", "normal", "ranging"]  # Ajout ranging
+            return True  # Acceptable dans tous régimes crypto
         elif (any(kw in strategy_lower for kw in ['cross', 'crossover']) 
               and not any(rev in strategy_lower for rev in ['rsi', 'stoch', 'williams', 'reversal'])):
-            return market_regime in ["trending", "expansion", "normal", "ranging"]  # Ajout ranging
+            return True  # Acceptable dans tous régimes crypto
             
-        # BREAKOUT - Volatilité élevée requise
+        # BREAKOUT - Plus permissif pour crypto (volatilité low acceptable)
         elif any(kw in strategy_lower for kw in ['breakout', 'donchian', 'atr', 'range_break']):
-            return volatility_regime not in ["low", "compression"]
+            return volatility_regime != "compression"  # Seulement compression exclue
             
-        # MOMENTUM/THRESHOLD - Adaptables mais préfèrent volatilité
+        # MOMENTUM/THRESHOLD - Très permissif en crypto
         elif any(kw in strategy_lower for kw in ['roc_threshold', 'spike', 'pump_dump']):
-            return volatility_regime in ["normal", "high", "expanding"]
+            return volatility_regime != "compression"  # Compression seule exclue
             
-        # LIQUIDITY SWEEP - Haute volatilité
+        # LIQUIDITY SWEEP - Plus permissif en crypto
         elif any(kw in strategy_lower for kw in ['sweep', 'liquidity']):
-            return volatility_regime in ["normal", "high", "expanding"]
+            return volatility_regime not in ["compression"]  # Compression seule exclue
             
-        # CONFLUENCE/MULTI-TF - Adaptables à tous régimes
+        # PPO/MOMENTUM - Nouvelles catégories acceptées partout
+        elif any(kw in strategy_lower for kw in ['ppo', 'momentum', 'roc', 'slope']):
+            return True  # Acceptable dans tous régimes crypto
+            
+        # CONFLUENCE/MULTI-TF - Accepté partout
         elif any(kw in strategy_lower for kw in ['confluence', 'multi', 'vwap']):
             return True  # Adaptable à tous régimes
             
-        return True  # Par défaut, accepter
+        return True  # Par défaut crypto: TOUJOURS accepter
         
     def _is_meanreversion_strategy(self, strategy_name: str) -> bool:
         """Détermine si la stratégie est de type mean reversion."""

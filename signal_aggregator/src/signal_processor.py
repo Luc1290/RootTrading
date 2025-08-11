@@ -34,8 +34,8 @@ class SignalProcessor:
         # Initialisation du système hiérarchique
         self.hierarchical_validator = HierarchicalValidator()
         
-        # Configuration des seuils de base - ANTI-SURTRADING (AUGMENTÉ pour gérer plus de signaux)
-        self.min_strategies_consensus = 6    # Minimum de 6 stratégies pour consensus (augmenté pour gérer flux)
+        # Configuration des seuils de base - ANTI-SURTRADING (AJUSTÉ selon distribution analyzer)  
+        self.min_strategies_consensus = 4    # Minimum de 4 stratégies pour consensus (optimisé selon logs analyzer)
         
         # Statistiques de validation
         self.stats = {
@@ -144,14 +144,43 @@ class SignalProcessor:
             # Étape 3: Sélectionner les signaux à traiter selon la stratégie de résolution
             selected_signals = self._select_signals_from_analysis(consensus_analysis)
             
-            # Étape 4: Valider les signaux sélectionnés
+            # Étape 4: Valider les signaux sélectionnés avec logique de majorité
             validated_signals = []
+            
+            # Grouper par consensus (symbole + side)
+            consensus_groups = {}
             for signal in selected_signals:
-                validated_signal = await self._validate_signal_core(signal)
-                if validated_signal:
-                    validated_signals.append(validated_signal)
+                consensus_group = signal.get('metadata', {}).get('consensus_group', 'unknown')
+                if consensus_group not in consensus_groups:
+                    consensus_groups[consensus_group] = []
+                consensus_groups[consensus_group].append(signal)
+            
+            # Valider chaque groupe avec règle de majorité (≥50%)
+            for group_name, group_signals in consensus_groups.items():
+                validated_count = 0
+                group_validations = []
+                
+                logger.debug(f"Validation groupe {group_name}: {len(group_signals)} signaux")
+                
+                # Tester chaque signal du groupe
+                for signal in group_signals:
+                    validated_signal = await self._validate_signal_core(signal)
+                    if validated_signal:
+                        validated_count += 1
+                        group_validations.append(validated_signal)
+                
+                # Règle majorité: ≥50% des signaux du consensus doivent passer
+                majority_threshold = len(group_signals) / 2
+                if validated_count >= majority_threshold:
+                    # Créer un signal composite représentant le consensus validé
+                    composite_signal = self._create_composite_signal(group_signals, group_validations)
+                    if composite_signal:
+                        validated_signals.append(composite_signal)
+                        logger.info(f"Consensus {group_name} VALIDÉ: {validated_count}/{len(group_signals)} signaux passés (≥{majority_threshold:.1f} requis)")
+                else:
+                    logger.info(f"Consensus {group_name} REJETÉ: {validated_count}/{len(group_signals)} signaux passés (<{majority_threshold:.1f} requis)")
                     
-            logger.info(f"Batch traité: {len(validated_signals)}/{len(signals)} signaux validés")
+            logger.info(f"Batch traité: {len(validated_signals)} consensus validés sur {len(consensus_groups)} groupes")
             
             return validated_signals if validated_signals else None
             
@@ -292,6 +321,76 @@ class SignalProcessor:
                 
         return selected_signals
         
+    def _create_composite_signal(self, group_signals: List[Dict[str, Any]], 
+                                validated_signals: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """
+        Crée un signal composite représentant le consensus validé.
+        
+        Args:
+            group_signals: Tous les signaux du groupe consensus
+            validated_signals: Signaux du groupe qui ont passé la validation
+            
+        Returns:
+            Signal composite ou None si erreur
+        """
+        if not validated_signals or not group_signals:
+            return None
+            
+        try:
+            # Utiliser le signal validé avec la plus haute confidence comme base
+            best_signal = max(validated_signals, key=lambda s: s.get('confidence', 0))
+            
+            # Calculer les statistiques du consensus
+            total_strategies = len(group_signals)
+            validated_strategies = len(validated_signals)
+            avg_confidence = sum(s.get('confidence', 0) for s in validated_signals) / len(validated_signals)
+            
+            # Créer le signal composite
+            composite_signal = {
+                **best_signal,
+                'confidence': min(1.0, avg_confidence * 1.1),  # Bonus consensus +10%
+                'metadata': {
+                    **best_signal.get('metadata', {}),
+                    
+                    # Métadonnées spécifiques au consensus
+                    'is_composite': True,
+                    'consensus_type': 'majority_validated',
+                    'total_strategies': total_strategies,
+                    'validated_strategies': validated_strategies,
+                    'validation_rate': validated_strategies / total_strategies,
+                    'avg_group_confidence': avg_confidence,
+                    'consensus_strength': 'very_strong' if validated_strategies >= total_strategies * 0.75 else 'strong',
+                    
+                    # Liste des stratégies participantes
+                    'strategies_list': [s.get('strategy') for s in group_signals],
+                    'validated_strategies_list': [s.get('strategy') for s in validated_signals],
+                    
+                    # Confidence range du groupe
+                    'group_confidence_min': min(s.get('confidence', 0) for s in validated_signals),
+                    'group_confidence_max': max(s.get('confidence', 0) for s in validated_signals),
+                }
+            }
+            
+            # Stockage en base de données du signal composite (consensus validé)
+            if self.database_manager:
+                try:
+                    signal_id = self.database_manager.store_validated_signal(composite_signal)
+                    if signal_id:
+                        composite_signal['metadata']['db_id'] = signal_id
+                        logger.info(f"Signal composite stocké en DB avec ID: {signal_id}")
+                except Exception as e:
+                    logger.error(f"Erreur stockage signal composite en DB: {e}")
+            
+            logger.debug(f"Signal composite créé: {composite_signal['strategy']} -> "
+                        f"{total_strategies} stratégies, {validated_strategies} validées, "
+                        f"confidence={composite_signal['confidence']:.2f}")
+            
+            return composite_signal
+            
+        except Exception as e:
+            logger.error(f"Erreur création signal composite: {e}")
+            return None
+        
     async def _validate_signal_core(self, signal: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Fonction de validation centrale sans duplication.
@@ -369,9 +468,9 @@ class SignalProcessor:
                     signal, detailed_analysis, validation_results, final_score
                 )
                 
-                # Filtre final RENFORCÉ : aggregator_confidence >= 85% (augmenté pour flux élevé)
+                # Filtre final OPTIMISÉ : aggregator_confidence >= 78% (équilibré qualité/passage)
                 aggregator_confidence = validated_signal['metadata'].get('aggregator_confidence', 0.0)
-                min_aggregator_confidence = 0.85
+                min_aggregator_confidence = 0.78
                 
                 if aggregator_confidence < min_aggregator_confidence:
                     logger.info(f"Signal REJETÉ pour aggregator_confidence insuffisante: {signal['strategy']} {symbol} "
@@ -379,15 +478,9 @@ class SignalProcessor:
                     self.stats['signals_rejected'] += 1
                     return None
                 
-                # Stockage en base de données si disponible
-                if self.database_manager:
-                    try:
-                        signal_id = self.database_manager.store_validated_signal(validated_signal)
-                        if signal_id:
-                            validated_signal['metadata']['db_id'] = signal_id
-                            logger.info(f"Signal stocké en DB avec ID: {signal_id}")
-                    except Exception as e:
-                        logger.error(f"Erreur stockage signal en DB: {e}")
+                # Note: Le stockage en DB se fait maintenant uniquement pour les consensus validés
+                # dans _create_composite_signal pour éviter de stocker des signaux individuels
+                # qui ne passent jamais le consensus
                 
                 self.stats['signals_validated'] += 1
                 self._update_validation_stats_hierarchical(validation_results, final_score, detailed_analysis)
@@ -593,7 +686,7 @@ class SignalProcessor:
                 'validation_timestamp': datetime.utcnow().isoformat(),
                 'validation_score': final_score,
                 'final_score': final_score * signal.get('confidence', 0),
-                'aggregator_confidence': min(1.0, signal.get('confidence', 0) * final_score),
+                'aggregator_confidence': min(1.0, (signal.get('confidence', 0) * 0.7 + final_score * 0.3) * 1.1),
                 
                 # Nouvelle analyse hiérarchique
                 'hierarchical_analysis': {
@@ -719,9 +812,10 @@ class SignalProcessor:
             current_avg = self.stats['avg_validation_score']
             total_processed = self.stats['signals_processed']
             
-            self.stats['avg_validation_score'] = (
-                (current_avg * (total_processed - 1) + final_score) / total_processed
-            )
+            if total_processed > 0:
+                self.stats['avg_validation_score'] = (
+                    (current_avg * (total_processed - 1) + final_score) / total_processed
+                )
             
             # Mise à jour des performances par validator avec importance
             for result in validation_results:
@@ -743,9 +837,10 @@ class SignalProcessor:
                 # Mise à jour de la moyenne des scores pour ce validator
                 current_avg = perf['avg_score']
                 total_runs = perf['total_runs']
-                perf['avg_score'] = (
-                    (current_avg * (total_runs - 1) + result['score']) / total_runs
-                )
+                if total_runs > 0:
+                    perf['avg_score'] = (
+                        (current_avg * (total_runs - 1) + result['score']) / total_runs
+                    )
                 
         except Exception as e:
             logger.error(f"Erreur mise à jour stats: {e}")
