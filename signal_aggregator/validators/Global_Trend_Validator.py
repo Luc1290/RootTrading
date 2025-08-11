@@ -151,14 +151,16 @@ class Global_Trend_Validator(BaseValidator):
                     elif ema50_val < ema99_val and price_val < ema50_val:
                         ema_trend_down = True
                         
-                    # Rejeter signaux fortement contra-EMA
-                    if ema_trend_down and signal_side == 'BUY':
-                        # Prix sous EMA50 < EMA99 = forte tendance baissière
-                        logger.debug(f"Signal BUY rejeté: prix {price_val:.2f} sous EMA50 {ema50_val:.2f} < EMA99 {ema99_val:.2f}")
+                    # CORRECTION: Rejeter seulement les signaux VRAIMENT contra-EMA avec forte distance
+                    price_ema50_distance = abs(price_val - ema50_val) / ema50_val
+                    
+                    if ema_trend_down and signal_side == 'BUY' and price_val < ema50_val * 0.97:
+                        # BUY très éloigné sous tendance baissière EMA (prix < EMA50 - 3%)
+                        logger.debug(f"Signal BUY rejeté: prix {price_val:.2f} très sous EMA50 {ema50_val:.2f} en tendance baissière")
                         return False
-                    elif ema_trend_up and signal_side == 'SELL':
-                        # Prix au-dessus EMA50 > EMA99 = forte tendance haussière
-                        logger.debug(f"Signal SELL rejeté: prix {price_val:.2f} au-dessus EMA50 {ema50_val:.2f} > EMA99 {ema99_val:.2f}")
+                    elif ema_trend_up and signal_side == 'SELL' and price_val > ema50_val * 1.03:
+                        # SELL très éloigné au-dessus tendance haussière EMA (prix > EMA50 + 3%)
+                        logger.debug(f"Signal SELL rejeté: prix {price_val:.2f} très au-dessus EMA50 {ema50_val:.2f} en tendance haussière")
                         return False
                         
                 except (ValueError, TypeError):

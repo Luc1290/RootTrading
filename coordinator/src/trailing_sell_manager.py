@@ -34,10 +34,10 @@ class TrailingSellManager:
         self.max_drop_threshold = 0.035  # 3.5% de chute max depuis le pic (2.3x plus permissif) 
         self.immediate_sell_drop = 0.050  # 5% de chute = vente immédiate (2.5x plus permissif)
         
-        # Configuration stop-loss adaptatif - AJUSTÉ POUR CRYPTO
-        self.stop_loss_percent_base = 0.025  # 2.5% de base pour crypto volatil
-        self.stop_loss_percent_bullish = 0.040  # 4% en tendance haussière crypto
-        self.stop_loss_percent_strong_bullish = 0.055  # 5.5% en tendance très haussière crypto
+        # Configuration stop-loss adaptatif - RESSERRÉ POUR PROTECTION CAPITAL
+        self.stop_loss_percent_base = 0.015  # 1.5% de base (réduit de 2.5%)
+        self.stop_loss_percent_bullish = 0.025  # 2.5% en tendance haussière (réduit de 4%)
+        self.stop_loss_percent_strong_bullish = 0.035  # 3.5% en tendance très haussière (réduit de 5.5%)
         
         logger.info("✅ TrailingSellManager initialisé")
     
@@ -399,18 +399,28 @@ class TrailingSellManager:
                 logger.debug(f"Pas de données d'analyse pour {symbol}, seuil par défaut")
                 return self.stop_loss_percent_base
             
+            # Récupérer le régime de marché
+            regime = analysis.get('market_regime', 'UNKNOWN')
+            
             # Calculer les facteurs d'ajustement
             regime_factor = self._calculate_regime_factor(analysis)
             volatility_factor = self._calculate_volatility_factor(analysis)
             support_factor = self._calculate_support_factor(analysis, entry_price)
             time_factor = self._calculate_time_factor(entry_time)
             
-            # Calcul du seuil final - AJUSTÉ POUR CRYPTO
-            base_threshold = 0.015  # 1.5% de base pour crypto (doublé)
+            # Calcul du seuil final - RESSERRÉ POUR PROTECTION
+            # En bear market, utiliser le seuil le PLUS STRICT directement
+            if regime == 'TRENDING_BEAR' or regime == 'BREAKOUT_BEAR':
+                base_threshold = self.stop_loss_percent_base  # 1.5% - le plus strict
+            elif regime == 'TRENDING_BULL' or regime == 'BREAKOUT_BULL':
+                base_threshold = self.stop_loss_percent_strong_bullish  # 3.5% - le plus tolérant
+            else:  # RANGING, TRANSITION, VOLATILE
+                base_threshold = self.stop_loss_percent_bullish  # 2.5% - intermédiaire
+            
             adaptive_threshold = float(base_threshold) * float(regime_factor) * float(volatility_factor) * float(support_factor) * float(time_factor)
             
-            # Contraintes min/max - PLUS PERMISSIVES POUR CRYPTO
-            adaptive_threshold = max(0.010, min(0.060, adaptive_threshold))  # 1%-6% au lieu de 0.3%-2.5%
+            # Contraintes min/max - RESSERRÉES POUR PROTECTION
+            adaptive_threshold = max(0.008, min(0.025, adaptive_threshold))  # 0.8%-2.5% (beaucoup plus strict)
             
             logger.debug(f"🧠 Stop-loss adaptatif {symbol}: {adaptive_threshold*100:.2f}%")
             
@@ -465,23 +475,24 @@ class TrailingSellManager:
         strength = analysis.get('regime_strength', 'WEAK')
         confidence = float(analysis.get('regime_confidence', 50))
         
+        # INVERSÉ : En bear market, on veut vendre PLUS VITE (multiplicateur < 1.0)
         regime_multipliers = {
-            'TRENDING_BULL': 1.8,
-            'BREAKOUT_BULL': 1.6,
-            'RANGING': 1.2,
-            'TRANSITION': 0.9,
-            'TRENDING_BEAR': 0.7,
-            'VOLATILE': 0.8,
-            'BREAKOUT_BEAR': 0.6
+            'TRENDING_BULL': 2.0,      # Bull = plus tolérant (2x)
+            'BREAKOUT_BULL': 1.8,      # Breakout bull = tolérant
+            'RANGING': 1.2,            # Range = neutre-tolérant
+            'TRANSITION': 1.0,         # Transition = neutre
+            'TRENDING_BEAR': 0.6,      # Bear = TRÈS strict (0.6x)
+            'VOLATILE': 0.8,           # Volatile = strict
+            'BREAKOUT_BEAR': 0.5       # Breakout bear = ULTRA strict (0.5x)
         }
         
         base_factor = regime_multipliers.get(regime, 1.0)
         
         strength_multipliers = {
-            'EXTREME': 1.3,
+            'EXTREME': 1.2,     # Réduit de 1.3 à 1.2
             'STRONG': 1.1, 
             'MODERATE': 1.0,
-            'WEAK': 0.8
+            'WEAK': 0.9         # Augmenté de 0.8 à 0.9 (moins punitif)
         }
         
         strength_factor = strength_multipliers.get(strength, 1.0)

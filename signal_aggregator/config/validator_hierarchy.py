@@ -9,9 +9,9 @@ Cette hiérarchie définit l'importance de chaque validator et leur pouvoir de d
 
 VALIDATOR_HIERARCHY = {
     'critical': {
-        'description': 'Validators critiques avec pouvoir de veto - rejettent immédiatement si échec',
+        'description': 'Validators critiques avec pouvoir de veto - TEMPORAIREMENT ASSOUPLIS',
         'validators': [
-            'Global_Trend_Validator',      # Évite les signaux contra-trend
+            # 'Global_Trend_Validator',      # TEMPORAIREMENT DÉSACTIVÉ - trop strict pour SELL
             'Volume_Spike_Validator'       # Confirme la force du mouvement
             # 'Market_Structure_Validator' TEMPORAIREMENT DÉSACTIVÉ - trop strict
         ],
@@ -23,6 +23,7 @@ VALIDATOR_HIERARCHY = {
     'important': {
         'description': 'Validators importants avec forte influence sur la décision',
         'validators': [
+            'Global_Trend_Validator',      # Déplacé de critical - plus permissif sans veto
             'Market_Structure_Validator',  # Déplacé de critical - plus permissif sans veto
             'Market_Regime_Validator',     # Identifie le régime de marché
             'Regime_Strength_Validator',   # Force du régime actuel
@@ -31,7 +32,7 @@ VALIDATOR_HIERARCHY = {
             'Trend_Alignment_Validator',   # Alignement des tendances
             'VWAP_Context_Validator'       # Position par rapport au VWAP
         ],
-        'min_pass_rate': 0.75,     # 75% doivent passer (renforcé pour flux élevé)
+        'min_pass_rate': 0.70,     # 70% doivent passer (assoupli)
         'weight_multiplier': 2.0,  # Double impact sur le score
         'veto_power': False
     },
@@ -56,25 +57,25 @@ VALIDATOR_HIERARCHY = {
             'Liquidity_Sweep_Validator',
             'Adaptive_Threshold_Validator'
         ],
-        'min_pass_rate': 0.55,     # 55% doivent passer (renforcé pour flux élevé)
+        'min_pass_rate': 0.50,     # 50% doivent passer (assoupli)
         'weight_multiplier': 1.0,  # Impact normal sur le score
         'veto_power': False
     }
 }
 
-# Configuration des seuils de validation par niveau - AJUSTÉS POUR RANGING
+# Configuration des seuils de validation par niveau - ASSOUPLIS POUR ACTIVATION
 VALIDATION_THRESHOLDS = {
     'critical': {
-        'min_score': 0.55,  # Score minimum AJUSTÉ pour flux élevé (55% au lieu de 50%)
+        'min_score': 0.50,  # Score minimum assoupli (50% au lieu de 55%)
         'rejection_message': "Signal rejeté par validator critique : {validator_name} - {reason}"
     },
     'important': {
-        'min_score': 0.50,  # Score minimum AJUSTÉ pour flux élevé (50% au lieu de 45%)
-        'low_score_penalty': 0.2  # Pénalité réduite pour ranging
+        'min_score': 0.45,  # Score minimum assoupli (45% au lieu de 50%)
+        'low_score_penalty': 0.15  # Pénalité réduite
     },
     'standard': {
-        'min_score': 0.45,  # Score minimum AJUSTÉ pour flux élevé (45% au lieu de 40%)
-        'low_score_penalty': 0.15  # Pénalité réduite pour ranging
+        'min_score': 0.40,  # Score minimum assoupli (40% au lieu de 45%)
+        'low_score_penalty': 0.10  # Pénalité réduite
     }
 }
 

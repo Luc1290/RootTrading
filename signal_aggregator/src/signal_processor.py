@@ -34,8 +34,8 @@ class SignalProcessor:
         # Initialisation du système hiérarchique
         self.hierarchical_validator = HierarchicalValidator()
         
-        # Configuration des seuils de base - ANTI-SURTRADING (AJUSTÉ selon distribution analyzer)  
-        self.min_strategies_consensus = 4    # Minimum de 4 stratégies pour consensus (optimisé selon logs analyzer)
+        # Configuration des seuils de base - AJUSTÉ POUR ACTIVATION  
+        self.min_strategies_consensus = 3    # Minimum de 3 stratégies pour consensus (assoupli)
         
         # Statistiques de validation
         self.stats = {
