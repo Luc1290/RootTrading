@@ -402,7 +402,7 @@ class Support_Breakout_Strategy(BaseStrategy):
         # Signal SELL si cassure + momentum baissier (volume optionnel mais bonifie)
         if breakdown_analysis['is_breakdown'] and momentum_analysis['is_bearish_momentum']:
             
-            base_confidence = 0.40  # RÉDUIT - breakouts = plus risqués
+            base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
             confidence_boost = 0.0
             
             # Score de cassure

@@ -26,11 +26,11 @@ class OBV_Crossover_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres OBV optimisés pour éviter surtrading
-        self.min_obv_ma_distance = 0.02  # Distance minimum OBV/MA (20x plus strict)
-        self.volume_confirmation_threshold = 1.5  # Volume minimum requis (plus strict)
+        self.min_obv_ma_distance = 0.01  # Distance minimum OBV/MA (réduit pour plus de signaux)
+        self.volume_confirmation_threshold = 1.2  # Volume minimum requis (assoupli)
         self.trend_alignment_bonus = 0.12  # Bonus réduit
         # Nouveaux filtres anti-bruit
-        self.min_confidence_threshold = 0.60  # Confidence minimum pour valider
+        self.min_confidence_threshold = 0.45  # Confidence minimum pour valider
         self.strong_separation_threshold = 0.05  # Séparation forte OBV/MA
         self.require_volume_confirmation = True  # Exiger confirmation volume
         
@@ -139,7 +139,7 @@ class OBV_Crossover_Strategy(BaseStrategy):
             
         signal_side = None
         reason = ""
-        base_confidence = 0.35  # Base plus conservatrice
+        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
         confidence_boost = 0.0
         cross_type = None
         

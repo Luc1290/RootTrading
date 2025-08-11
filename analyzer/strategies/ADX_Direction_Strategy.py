@@ -122,7 +122,7 @@ class ADX_Direction_Strategy(BaseStrategy):
             
         signal_side = None
         reason = ""
-        base_confidence = 0.45  # Base plus conservatrice
+        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
         confidence_boost = 0.0
         
         # Logique de signal basée sur la direction des DI

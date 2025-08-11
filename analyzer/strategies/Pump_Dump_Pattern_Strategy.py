@@ -284,7 +284,7 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
             
         if signal_side:
             # Confirmations supplémentaires
-            base_confidence = 0.4  # Réduit de 0.4 à 0.3 - plus conservateur
+            base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
             
             # Trade intensity pour confirmer l'activité anormale
             trade_intensity = values.get('trade_intensity')

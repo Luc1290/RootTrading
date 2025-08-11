@@ -306,7 +306,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
         
         # Signal SELL si rejet + essoufflement
         if rejection_analysis['is_rejection']:
-            base_confidence = 0.5
+            base_confidence = 0.50
             confidence_boost = rejection_analysis['score'] * 0.6
             
             reason = f"Rejet résistance {rejection_analysis['resistance_level']:.2f} ({rejection_analysis['distance_pct']:.2f}%)"

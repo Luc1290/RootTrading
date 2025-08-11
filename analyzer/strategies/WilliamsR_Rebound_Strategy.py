@@ -551,7 +551,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
             }
         
         # Construire signal final
-        base_confidence = 0.40  # Réduit de 0.5 à 0.40 - plus conservateur pour mean reversion
+        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
         confidence_boost = 0.0
         
         # Vérification de sécurité pour primary_rebound

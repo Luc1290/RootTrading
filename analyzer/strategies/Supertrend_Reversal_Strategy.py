@@ -37,14 +37,14 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         self.min_atr_distance = 0.0015           # Distance minimum prix/ATR stop (moins strict)
         self.max_atr_distance = 0.025            # Distance maximum pour reversal (plus tolérant)
         
-        # Paramètres de reversal
-        self.min_trend_strength_change = 0.2     # Changement minimum trend strength (moins strict)
-        self.momentum_reversal_threshold = 0.15  # Momentum change pour reversal (moins strict)
-        self.directional_bias_flip_required = True  # Bias doit changer
+        # Paramètres de reversal - SIMPLIFIÉS
+        self.min_trend_strength_change = 0.1     # Changement minimum trend strength (assoupli)
+        self.momentum_reversal_threshold = 0.10  # Momentum change pour reversal (assoupli)
+        self.directional_bias_flip_required = False  # Bias ne doit pas forcément changer
         
-        # Paramètres EMA confirmation
-        self.ema_cross_confirmation = True       # EMA cross requis
-        self.min_ema_separation = 0.001         # Séparation minimum EMA12/26
+        # Paramètres EMA confirmation - OPTIONNELS
+        self.ema_cross_confirmation = False      # EMA cross non requis
+        self.min_ema_separation = 0.005         # Séparation minimum EMA12/26 (assoupli)
         
         # Paramètres volume et volatilité
         self.min_volume_confirmation = 1.2       # Volume minimum pour reversal
@@ -226,7 +226,7 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_reversal': reversal_score >= 0.4,
+            'is_reversal': reversal_score >= 0.3,  # Seuil assoupli de 0.4 à 0.3
             'direction': reversal_direction,
             'score': reversal_score,
             'indicators': reversal_indicators
@@ -270,7 +270,7 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_cross_confirmed': cross_score >= 0.2,
+            'is_cross_confirmed': cross_score >= 0.1,  # Seuil assoupli de 0.2 à 0.1
             'score': cross_score,
             'indicators': cross_indicators
         }
@@ -307,17 +307,19 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
-        # Vérifier volatilité appropriée
+        # Vérifier volatilité appropriée - ASSOUPLI
         volatility_regime = values.get('volatility_regime')
+        vol_regime = 1.5  # Valeur par défaut si pas de données
         if volatility_regime is not None:
             try:
                 vol_regime = self._convert_volatility_to_score(str(volatility_regime))  
-                if vol_regime < self.min_volatility_regime or vol_regime > self.max_volatility_regime:
+                # Conditions plus permissives - accepter presque toutes les volatilités
+                if vol_regime < 0.2:  # Seulement exclure volatilité extrêmement faible
                     return {
                         "side": None,
                         "confidence": 0.0,
                         "strength": "weak",
-                        "reason": f"Volatilité inappropriée ({vol_regime:.2f}) pour Supertrend",
+                        "reason": f"Volatilité trop faible ({vol_regime:.2f}) pour Supertrend",
                         "metadata": {"strategy": self.name, "volatility_regime": vol_regime}
                     }
             except (ValueError, TypeError):
@@ -369,18 +371,18 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         supertrend_condition_met = False
         
         if reversal_direction == 'bullish':
-            # Signal BUY: prix au-dessus Supertrend bullish level
+            # Signal BUY: prix au-dessus Supertrend bullish level - CONDITIONS SIMPLIFIÉES
             if current_price > supertrend_bullish:
                 distance = supertrend_data['distance_to_bullish']
-                if self.min_atr_distance <= distance <= self.max_atr_distance:
+                if distance <= self.max_atr_distance * 2:  # Plus tolérant sur distance max
                     signal_side = "BUY"
                     supertrend_condition_met = True
                     
         elif reversal_direction == 'bearish':
-            # Signal SELL: prix en-dessous Supertrend bearish level
+            # Signal SELL: prix en-dessous Supertrend bearish level - CONDITIONS SIMPLIFIÉES
             if current_price < supertrend_bearish:
                 distance = supertrend_data['distance_to_bearish']
-                if self.min_atr_distance <= distance <= self.max_atr_distance:
+                if distance <= self.max_atr_distance * 2:  # Plus tolérant sur distance max
                     signal_side = "SELL"
                     supertrend_condition_met = True
                     
@@ -411,7 +413,7 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
             }
             
         # Générer signal final
-        base_confidence = 0.5
+        base_confidence = 0.50
         confidence_boost = 0.0
         
         # Score reversal

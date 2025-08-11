@@ -20,11 +20,11 @@ class RSI_Cross_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Seuils RSI - OPTIMISÉS (plus stricts)
-        self.oversold_level = 35      # Réduit de 30 à 25
-        self.overbought_level = 65    # Augmenté de 70 à 75
-        self.extreme_oversold = 15    # Réduit de 20 à 15
-        self.extreme_overbought = 85  # Augmenté de 80 à 85
+        # Seuils RSI - CORRIGÉS (standards)
+        self.oversold_level = 30      # Standard RSI oversold
+        self.overbought_level = 70    # Standard RSI overbought  
+        self.extreme_oversold = 20    # RSI extreme oversold
+        self.extreme_overbought = 80  # RSI extreme overbought
         self.neutral_low = 40         # Zone neutre basse
         self.neutral_high = 60        # Zone neutre haute
         
@@ -98,7 +98,7 @@ class RSI_Cross_Strategy(BaseStrategy):
                 
         if signal_side:
             # Utilisation des indicateurs pré-calculés pour ajuster la confiance
-            base_confidence = 0.45  # Stratégie RSI oscillator - conf élevée car zones extrêmes
+            base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
             
             # Ajustement avec momentum_score (format 0-100, 50=neutre)
             momentum_score = values.get('momentum_score', 50)
@@ -185,12 +185,12 @@ class RSI_Cross_Strategy(BaseStrategy):
                     
             # NOUVEAU: Filtre final - rejeter si confidence trop faible
             raw_confidence = base_confidence * (1 + confidence_boost)
-            if raw_confidence < 0.45:  # Seuil minimum 45%
+            if raw_confidence < 0.40:  # Seuil minimum 40%
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": f"Signal RSI rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.45)",
+                    "reason": f"Signal RSI rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.40)",
                     "metadata": {
                         "strategy": self.name,
                         "symbol": self.symbol,

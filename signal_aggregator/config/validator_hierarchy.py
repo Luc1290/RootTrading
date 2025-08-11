@@ -12,8 +12,8 @@ VALIDATOR_HIERARCHY = {
         'description': 'Validators critiques avec pouvoir de veto - rejettent immédiatement si échec',
         'validators': [
             'Global_Trend_Validator',      # Évite les signaux contra-trend
-            'Volume_Spike_Validator',      # Confirme la force du mouvement
-            'Market_Structure_Validator'   # Valide la structure du marché
+            'Volume_Spike_Validator'       # Confirme la force du mouvement
+            # 'Market_Structure_Validator' TEMPORAIREMENT DÉSACTIVÉ - trop strict
         ],
         'min_pass_rate': 1.0,     # 100% doivent passer
         'weight_multiplier': 3.0,  # Triple impact sur le score
@@ -23,6 +23,7 @@ VALIDATOR_HIERARCHY = {
     'important': {
         'description': 'Validators importants avec forte influence sur la décision',
         'validators': [
+            'Market_Structure_Validator',  # Déplacé de critical - plus permissif sans veto
             'Market_Regime_Validator',     # Identifie le régime de marché
             'Regime_Strength_Validator',   # Force du régime actuel
             'MultiTF_Consensus_Validator', # Consensus multi-timeframes

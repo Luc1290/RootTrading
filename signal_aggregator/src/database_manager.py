@@ -96,6 +96,8 @@ class DatabaseManager:
             price = self._extract_price(validated_signal)
             
             # Préparation des métadonnées (tout sauf les champs de base)
+            original_metadata = validated_signal.get('metadata', {})
+            
             metadata = {
                 'timeframe': validated_signal.get('timeframe'),
                 'strength': validated_signal.get('strength'),
@@ -111,8 +113,16 @@ class DatabaseManager:
                 'final_score': validated_signal.get('final_score'),
                 'category_scores': validated_signal.get('category_scores'),
                 'validation_details': validated_signal.get('validation_details'),
-                'original_metadata': validated_signal.get('metadata'),
-                'validation_timestamp': validated_signal.get('validation_timestamp')
+                'validation_timestamp': validated_signal.get('validation_timestamp'),
+                'original_metadata': original_metadata,
+                
+                # Promouvoir les infos de consensus importantes au niveau supérieur
+                'strategy_count': original_metadata.get('strategy_count'),
+                'has_consensus': original_metadata.get('has_consensus'),
+                'is_individual': original_metadata.get('is_individual'),
+                'consensus_group': original_metadata.get('consensus_group'),
+                'resolution_strategy': original_metadata.get('resolution_strategy'),
+                'symbol_analysis': original_metadata.get('symbol_analysis')
             }
             
             # Suppression des valeurs None pour optimiser le JSON

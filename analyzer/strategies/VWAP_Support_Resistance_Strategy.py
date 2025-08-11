@@ -506,7 +506,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
             }
             
         # Construire signal final
-        base_confidence = 0.45  # Réduit de 0.55 à 0.45 pour cohérence avec autres stratégies
+        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
         confidence_boost = 0.0
         
         # Score VWAP principal

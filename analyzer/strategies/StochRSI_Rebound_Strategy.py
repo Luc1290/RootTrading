@@ -111,7 +111,7 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                 confidence_boost += 0.20 if stoch_rsi >= self.extreme_overbought else 0.12  # Augmenté
                 
         if signal_side:
-            base_confidence = 0.40  # RÉDUIT de 0.55 à 0.40 - StochRSI oscillateur = modéré
+            base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
             
             # Bonus pour divergence détectée - AUGMENTÉ
             stoch_divergence = values.get('stoch_divergence')

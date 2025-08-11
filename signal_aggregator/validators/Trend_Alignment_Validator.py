@@ -43,8 +43,8 @@ class Trend_Alignment_Validator(BaseValidator):
         self.macd_signal_coherence_threshold = 0.85 # Cohérence MACD/signal relevé
         
         # Paramètres multi-timeframe DURCIS
-        self.timeframe_weights = {            # Poids par timeframe
-            '1m': 0.1, '5m': 0.15, '15m': 0.2, '1h': 0.25, '4h': 0.2, '1d': 0.1
+        self.timeframe_weights = {            # Poids par timeframe - 3m+5m prioritaires
+            '1m': 0.05, '3m': 0.25, '5m': 0.35, '15m': 0.2, '1h': 0.1, '4h': 0.05, '1d': 0.0
         }
         self.min_weighted_consensus = 0.75    # Consensus pondéré minimum relevé (75%)
         

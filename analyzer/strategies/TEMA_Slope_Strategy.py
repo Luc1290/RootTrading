@@ -300,7 +300,7 @@ class TEMA_Slope_Strategy(BaseStrategy):
         slope_direction = signal_condition['slope_direction']
         alignment = signal_condition['alignment']
         
-        base_confidence = 0.45  # Base réduite pour équilibrage avec autres stratégies
+        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
         confidence_boost = 0.0
         
         tema_val = tema_analysis['tema_value']

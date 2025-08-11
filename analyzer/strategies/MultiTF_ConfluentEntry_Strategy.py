@@ -27,12 +27,12 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres de confluence multi-TF
-        self.min_confluence_score = 55      # Score confluence minimum
-        self.min_signal_strength = 0.45      # Force signal minimum
-        self.min_trend_alignment = 55      # Alignement tendance minimum
-        self.max_regime_conflicts = 2       # Max conflits entre régimes
-        self.volume_confirmation_min = 1.05  # Volume minimum requis
+        # Paramètres de confluence multi-TF - HARMONISÉS
+        self.min_confluence_score = 50      # Score confluence minimum (assoupli)
+        self.min_signal_strength = 0.40      # Force signal minimum (assoupli)
+        self.min_trend_alignment = 50      # Alignement tendance minimum (assoupli)
+        self.max_regime_conflicts = 3       # Max conflits entre régimes (tolérant)
+        self.volume_confirmation_min = 1.0  # Volume minimum requis (neutre)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs multi-TF."""
@@ -142,10 +142,10 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         price_above_count = sum(1 for _, ma_val in mas.items() if current_price > ma_val)
         price_ratio = price_above_count / len(mas)
         
-        if price_ratio >= 0.8 and bullish_alignment / total_checks >= 0.7:
+        if price_ratio >= 0.7 and bullish_alignment / total_checks >= 0.6:
             direction = "bullish"
             alignment_score = min(0.9, (bullish_alignment / total_checks) * price_ratio)
-        elif price_ratio <= 0.2 and bearish_alignment / total_checks >= 0.7:
+        elif price_ratio <= 0.3 and bearish_alignment / total_checks >= 0.6:
             direction = "bearish"  
             alignment_score = min(0.9, (bearish_alignment / total_checks) * (1 - price_ratio))
         else:
@@ -224,9 +224,9 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         overbought_count = sum(1 for v in oscillators.values() if v == 'overbought')
         total_count = len(oscillators)
         
-        if oversold_count >= total_count * 0.7:
+        if oversold_count >= total_count * 0.6:
             return {'confluence': 'oversold', 'strength': oversold_count / total_count, 'count': total_count}
-        elif overbought_count >= total_count * 0.7:
+        elif overbought_count >= total_count * 0.6:
             return {'confluence': 'overbought', 'strength': overbought_count / total_count, 'count': total_count}
         else:
             return {'confluence': 'mixed', 'strength': 0.3, 'count': total_count}
@@ -284,7 +284,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                 }
             }
             
-        if signal_strength is None or signal_strength not in ['STRONG', 'VERY_STRONG']:
+        if signal_strength is None or signal_strength not in ['MODERATE', 'STRONG', 'VERY_STRONG']:
             return {
                 "side": None,
                 "confidence": 0.0,
@@ -318,7 +318,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         
         signal_side = None
         reason = ""
-        base_confidence = 0.55  # Base réduite pour équilibrage avec autres stratégies
+        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
         confidence_boost = 0.0
         
         # Détermination du signal selon l'alignement MA et oscillateurs
@@ -375,6 +375,9 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         elif signal_strength == 'STRONG':
             confidence_boost += 0.05
             reason += f" + signal fort ({signal_strength})"
+        elif signal_strength == 'MODERATE':
+            confidence_boost += 0.02
+            reason += f" + signal modéré ({signal_strength})"
             
         # Bonus alignement MA
         if ma_analysis['alignment_score'] >= 0.9:

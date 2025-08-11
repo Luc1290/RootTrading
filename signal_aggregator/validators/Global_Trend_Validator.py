@@ -176,11 +176,15 @@ class Global_Trend_Validator(BaseValidator):
                     return False
                     
             elif market_regime in bearish_regimes or trend_alignment < self.min_trend_alignment_bear:
-                # Tendance baissière forte : rejeter les BUY
+                # Tendance baissière forte : rejeter les BUY, valider les SELL
                 if signal_side == 'BUY':
                     logger.debug(f"Signal BUY rejeté en tendance baissière forte "
                                f"(regime={market_regime}, alignment={trend_alignment:.1f})")
                     return False
+                elif signal_side == 'SELL':
+                    logger.debug(f"Signal SELL validé en tendance baissière forte "
+                               f"(regime={market_regime}, alignment={trend_alignment:.1f})")
+                    return True
                     
             return True
             

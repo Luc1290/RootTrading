@@ -177,7 +177,7 @@ class CCI_Reversal_Strategy(BaseStrategy):
                 }
             
         if signal_side:
-            base_confidence = 0.45  # Base plus conservatrice
+            base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
             
             # Utilisation du momentum_score avec logique améliorée
             momentum_score_raw = values.get('momentum_score')

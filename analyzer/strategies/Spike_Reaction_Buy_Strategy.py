@@ -45,19 +45,19 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
         self.strong_spike_volume = 3.0           # Volume 3.0x pour spike fort (moins strict)
         self.extreme_spike_volume = 6.0          # Volume 6.0x pour spike extrême (au lieu de 5.0x)
         
-        # Paramètres RSI (survente extrême) - PLUS STRICTS
-        self.oversold_rsi_threshold = 28         # RSI survente (plus strict: 28 au lieu de 30)
-        self.extreme_oversold_threshold = 18     # RSI survente extrême (plus strict: 18 au lieu de 20)
-        self.williams_r_oversold = -85           # Williams %R survente (plus strict: -85 au lieu de -80)
+        # Paramètres RSI (survente extrême) - CORRIGÉS
+        self.oversold_rsi_threshold = 30         # RSI survente (standard)
+        self.extreme_oversold_threshold = 20     # RSI survente extrême (standard)
+        self.williams_r_oversold = -80           # Williams %R survente (standard)
         
         # Paramètres stabilisation
         self.stabilization_bars = 3              # Barres pour confirmer stabilisation
         self.max_continued_drop = -0.005         # Chute max après spike (0.5%)
         self.min_volatility_ratio = 0.3          # Volatilité réduite après spike
         
-        # Paramètres momentum reversal - OPTIMISÉS
-        self.momentum_reversal_threshold = 55    # Momentum redevient positif (moins strict: 55 au lieu de 60)
-        self.min_roc_improvement = -0.005        # ROC amélioration minimum (plus strict: -0.5% au lieu de -1%)
+        # Paramètres momentum reversal - ASSOUPLIS
+        self.momentum_reversal_threshold = 52    # Momentum redevient positif (assoupli)
+        self.min_roc_improvement = -0.01        # ROC amélioration minimum (assoupli: -1%)
         self.min_volume_quality = 40             # Volume quality minimum pour bottom fishing
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
@@ -368,7 +368,7 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
             stabilization_analysis['is_stabilized'] and
             volume_quality_ok):
 
-            base_confidence = 0.40  # Réduit  - plus conservateur
+            base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
             confidence_boost = 0.0
             
             # Score cumulé des analyses

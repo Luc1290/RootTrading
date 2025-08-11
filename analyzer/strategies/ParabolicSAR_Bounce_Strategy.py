@@ -191,7 +191,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         """Analyse un rebond haussier sur support."""
         signal_side = "BUY"
         reason = ""
-        base_confidence = 0.40  # RÉDUIT de 0.5 à 0.40 - rebonds plus risqués
+        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
         confidence_boost = 0.0
         bounce_level = None
         
@@ -300,7 +300,7 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         """Analyse un rebond baissier sur résistance."""
         signal_side = "SELL"
         reason = ""
-        base_confidence = 0.40  # RÉDUIT de 0.5 à 0.40 - rebonds plus risqués
+        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
         confidence_boost = 0.0
         bounce_level = None
         

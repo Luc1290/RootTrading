@@ -131,7 +131,7 @@ class EMA_Cross_Strategy(BaseStrategy):
             
         signal_side = None
         reason = ""
-        base_confidence = 0.40  # Stratégie trend following - conf modérée
+        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
         confidence_boost = 0.0
         cross_type = None
         

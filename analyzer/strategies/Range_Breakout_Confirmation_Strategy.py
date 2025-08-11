@@ -31,7 +31,7 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         self.breakout_threshold = 0.003  # Distance minimum pour breakout (0.3%) - moins strict
         self.volume_breakout_threshold = 1.4  # Volume minimum pour breakout (1.4x) - moins strict
         self.retest_tolerance = 0.005   # Tolérance retest (0.5%) - moins strict
-        self.min_confirmations = 1      # Minimum 1 confirmation requise
+        self.min_confirmations = 2      # Minimum 2 confirmations requises
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pour range breakout."""
@@ -281,7 +281,7 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         # Vérifier les confirmations du breakout
         confirmations = self._check_breakout_confirmations(values, breakout_type, current_price)
         
-        # OPTIMISÉ: Exiger minimum 2 confirmations au lieu de 1
+        # Vérifier confirmations
         confirmed_count = sum(confirmations.values())
         if confirmed_count >= self.min_confirmations:
             return {
@@ -320,10 +320,10 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                # Format 0-100, 50=neutre - SEUILS PLUS STRICTS
-                if breakout_type == "BULLISH" and momentum > 60:  # Plus strict: 60 au lieu de 55
+                # Format 0-100, 50=neutre - SEUILS ASSOUPLIS
+                if breakout_type == "BULLISH" and momentum > 55:  # Assoupli: 55 au lieu de 60
                     confirmations['momentum_confirmed'] = True
-                elif breakout_type == "BEARISH" and momentum < 40:  # Plus strict: 40 au lieu de 45
+                elif breakout_type == "BEARISH" and momentum < 45:  # Assoupli: 45 au lieu de 40
                     confirmations['momentum_confirmed'] = True
             except (ValueError, TypeError):
                 pass
@@ -376,7 +376,7 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         confirmations = breakout_analysis['confirmations']
         
         signal_side = "BUY" if breakout_type == "BULLISH" else "SELL"
-        base_confidence = 0.45  # Réduit de 0.6 à 0.45 - plus conservateur avec nouvelles règles
+        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
         confidence_boost = 0.0
         
         # Construction de la raison

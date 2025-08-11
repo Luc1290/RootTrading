@@ -240,7 +240,7 @@ class ROC_Threshold_Strategy(BaseStrategy):
         roc_value = threshold_result['roc_value']
         
         signal_side = "BUY" if signal_type == "bullish" else "SELL"
-        base_confidence = 0.40  # RÉDUIT de 0.55 à 0.40 - beaucoup plus conservateur
+        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
         confidence_boost = 0.0
         
         # Construction de la raison

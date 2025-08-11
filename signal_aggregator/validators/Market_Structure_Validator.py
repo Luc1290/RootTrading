@@ -159,7 +159,7 @@ class Market_Structure_Validator(BaseValidator):
                 if signal_confidence < 0.45:  # Plus permissif pour faible confluence (était 55%)
                     return False
                     
-            # 7. Validation cohérence bias directionnel - RENFORCÉ
+            # 7. Validation cohérence bias directionnel - ASSOUPLI POUR NEUTRAL
             if directional_bias:
                 if signal_side == "BUY" and directional_bias.upper() == "BEARISH":
                     logger.debug(f"{self.name}: BUY signal mais bias bearish pour {self.symbol}")
@@ -169,6 +169,10 @@ class Market_Structure_Validator(BaseValidator):
                     logger.debug(f"{self.name}: SELL signal mais bias bullish pour {self.symbol}")
                     if signal_confidence < 0.70:  # Réduit pour crypto (était 85%)
                         return False
+                elif directional_bias.upper() == "NEUTRAL":
+                    # NEUTRAL = pas de contrainte directionnelle, plus permissif
+                    logger.debug(f"{self.name}: Bias NEUTRAL - validation permissive pour {self.symbol}")
+                    # Pas de rejet basé sur la direction pour NEUTRAL
                         
             # 8. Validation force tendance générale - PLUS STRICT
             if trend_strength is not None and trend_strength < 0.4:  # AUGMENTÉ de 0.3 à 0.4
@@ -177,10 +181,18 @@ class Market_Structure_Validator(BaseValidator):
                 if not self._is_meanreversion_strategy(signal_strategy):
                     if signal_confidence < 0.60:  # Réduit pour crypto (était 70%)
                         return False
-            # NOUVEAU: Rejet si tendance très faible pour toutes stratégies
+            # NOUVEAU: Rejet si tendance très faible - MAIS adapter selon directional_bias
             if trend_strength is not None and trend_strength < 0.2:
-                logger.debug(f"{self.name}: Tendance très faible ({self._safe_format(trend_strength, '.2f')}) - signal trop risqué pour {self.symbol}")
-                if signal_confidence < 0.70:  # Réduit pour crypto (était 80%)
+                logger.debug(f"{self.name}: Tendance très faible ({self._safe_format(trend_strength, '.2f')}) pour {self.symbol}")
+                # Si directional_bias cohérent avec signal, être plus permissif
+                bias_coherent = False
+                if directional_bias:
+                    bias_coherent = ((signal_side == "SELL" and directional_bias.upper() == "BEARISH") or
+                                   (signal_side == "BUY" and directional_bias.upper() == "BULLISH") or
+                                   directional_bias.upper() == "NEUTRAL")  # NEUTRAL = toujours permissif
+                
+                threshold = 0.60 if bias_coherent else 0.70
+                if signal_confidence < threshold:
                     return False
                         
             # 9. Validation angle tendance - PLUS STRICT
