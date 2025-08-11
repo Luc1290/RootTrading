@@ -142,7 +142,7 @@ class IndicatorProcessor:
                        quote_asset_volume, number_of_trades
                 FROM market_data 
                 WHERE symbol = $1 AND timeframe = $2 AND time <= $3
-                ORDER BY time ASC
+                ORDER BY time DESC
                 LIMIT $4
             """
             params = [symbol, timeframe, up_to_timestamp, limit]
@@ -152,7 +152,7 @@ class IndicatorProcessor:
                        quote_asset_volume, number_of_trades
                 FROM market_data 
                 WHERE symbol = $1 AND timeframe = $2
-                ORDER BY time ASC
+                ORDER BY time DESC
                 LIMIT $3
             """
             params = [symbol, timeframe, limit]
@@ -162,9 +162,9 @@ class IndicatorProcessor:
         async with self.db_pool.acquire() as conn:
             rows = await conn.fetch(query, *params)
             
-            # Ordre chronologique direct (pas d'inversion)
+            # Inverser pour ordre chronologique ASC (nécessaire pour les calculs d'indicateurs)
             data = []
-            for row in rows:
+            for row in reversed(rows):
                 data.append({
                     'time': row['time'],
                     'open': float(row['open']),
