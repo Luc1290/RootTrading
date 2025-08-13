@@ -33,19 +33,19 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Seuils pour détection pump
-        self.pump_price_threshold = 0.02      # 2% hausse minimum
-        self.extreme_pump_threshold = 0.035   # 3.5% hausse extrême
-        self.pump_volume_multiplier = 2.0     # Volume 2x normal
-        self.extreme_volume_multiplier = 5.0  # Volume 5x normal
-        self.pump_rsi_threshold = 80          # RSI surachat pour pump
-        self.extreme_rsi_threshold = 85       # RSI extrême
+        # Seuils pour détection pump - CORRECTIONS REALISTES
+        self.pump_price_threshold = 0.015     # 1.5% hausse minimum (assoupli de 2%)
+        self.extreme_pump_threshold = 0.025   # 2.5% hausse extrême (assoupli de 3.5%)
+        self.pump_volume_multiplier = 1.6     # Volume 1.6x normal (assoupli de 2x)
+        self.extreme_volume_multiplier = 3.0  # Volume 3x normal (assoupli de 5x)
+        self.pump_rsi_threshold = 75          # RSI surachat assoupli (de 80 à 75)
+        self.extreme_rsi_threshold = 82       # RSI extrême assoupli (de 85 à 82)
         
-        # Seuils pour détection dump/correction
-        self.dump_price_threshold = -0.02     # 2% chute minimum
-        self.extreme_dump_threshold = -0.04   # 4% chute extrême
-        self.dump_rsi_threshold = 30          # RSI survente après dump
-        self.momentum_reversal_threshold = -0.5  # Momentum négatif fort
+        # Seuils pour détection dump/correction - CORRECTIONS REALISTES
+        self.dump_price_threshold = -0.015    # 1.5% chute minimum (assoupli de 2%)
+        self.extreme_dump_threshold = -0.03   # 3% chute extrême (assoupli de 4%)
+        self.dump_rsi_threshold = 35          # RSI survente assoupli (de 30 à 35)
+        self.momentum_reversal_threshold = -0.3  # Momentum négatif assoupli (de -0.5 à -0.3)
         
         # Paramètres de validation
         self.min_volatility_regime = 0.6      # Volatilité élevée requise
@@ -145,7 +145,7 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_pump': pump_score >= 0.7,  # Augmenté de 0.6 à 0.7 - plus strict
+            'is_pump': pump_score >= 0.45,  # CORRECTION MAJEURE: Très assoupli de 0.7 à 0.45
             'pump_score': pump_score,
             'indicators': pump_indicators
         }

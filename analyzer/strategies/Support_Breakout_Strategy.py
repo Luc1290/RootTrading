@@ -120,15 +120,28 @@ class Support_Breakout_Strategy(BaseStrategy):
         breakdown_score = 0.0
         breakdown_indicators = []
         
-        # Vérification support principal
+        # Vérification support principal - AVEC FALLBACK
         nearest_support = values.get('nearest_support')
+        
+        # FALLBACK: Si nearest_support est NULL, utiliser bb_lower
         if nearest_support is None:
-            return {'is_breakdown': False, 'score': 0.0, 'indicators': []}
+            bb_lower = values.get('bb_lower')
+            if bb_lower is not None:
+                nearest_support = bb_lower
+                support_strength_fallback = 'MODERATE'  # BB lower = support modéré
+            else:
+                # FALLBACK 2: VWAP lower band depuis indicators
+                vwap_lower = self.indicators.get('vwap_lower_band')
+                if vwap_lower is not None:
+                    nearest_support = vwap_lower
+                    support_strength_fallback = 'WEAK'  # VWAP band = support faible
+                else:
+                    return {'is_breakdown': False, 'score': 0.0, 'indicators': ['Aucun niveau de support disponible']}
             
         try:
             support_level = float(nearest_support)
         except (ValueError, TypeError):
-            return {'is_breakdown': False, 'score': 0.0, 'indicators': []}
+            return {'is_breakdown': False, 'score': 0.0, 'indicators': ['Support level invalide']}
             
         # Vérifier si le prix a cassé sous le support
         if current_price >= support_level:

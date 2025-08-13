@@ -34,8 +34,8 @@ class SignalProcessor:
         # Initialisation du système hiérarchique
         self.hierarchical_validator = HierarchicalValidator()
         
-        # Configuration des seuils de base - ÉQUILIBRÉ QUALITÉ/QUANTITÉ  
-        self.min_strategies_consensus = 4    # Minimum de 4 stratégies pour consensus (resserré)
+        # Configuration des seuils de base - DURCI AVEC 28 STRATÉGIES ACTIVES
+        self.min_strategies_consensus = 6    # Minimum de 6 stratégies pour consensus (durci de 4 à 6)
         
         # Statistiques de validation
         self.stats = {
@@ -156,7 +156,7 @@ class SignalProcessor:
                 consensus_groups[consensus_group].append(signal)
             
             # NOUVEAU: Créer un dict pour tracker les symboles traités et leur timeframe/direction
-            processed_symbols = {}  # {symbol: {'timeframe': 'xxx', 'side': 'xxx'}}
+            # Plus besoin de processed_symbols - remplacé par symbol_side_processed
             
             # Fonction pour convertir timeframe en priorité numérique (plus élevé = prioritaire)
             def get_timeframe_priority(timeframe_str):
@@ -183,7 +183,10 @@ class SignalProcessor:
             
             sorted_groups = sorted(consensus_groups.items(), key=sort_groups_key, reverse=True)
             
-            # Valider chaque groupe avec règle de majorité (≥50%) + priorité timeframe
+            # CORRECTION: Traiter seulement le timeframe le plus élevé par symbole/side
+            symbol_side_processed = {}  # Track (symbol, side) déjà traités
+            
+            # Valider chaque groupe avec règle de majorité + priorité timeframe STRICTE
             for group_name, group_signals in sorted_groups:
                 # Extraire les informations du groupe
                 symbol = group_signals[0].get('symbol') if group_signals else 'unknown'
@@ -191,30 +194,17 @@ class SignalProcessor:
                 timeframe = group_signals[0].get('timeframe', '1m') if group_signals else '1m'
                 current_priority = get_timeframe_priority(timeframe)
                 
-                # NOUVEAU: Vérifier si ce symbole a déjà un signal validé avec priorité timeframe
-                if symbol in processed_symbols:
-                    existing = processed_symbols[symbol]
-                    existing_side = existing['side']
-                    existing_timeframe = existing['timeframe']
-                    existing_priority = get_timeframe_priority(existing_timeframe)
-                    
-                    if existing_side != side:
-                        # Conflit de direction : vérifier la priorité timeframe
-                        if current_priority <= existing_priority:
-                            logger.warning(f"Signal {side} {timeframe} ignoré pour {symbol} - "
-                                         f"signal {existing_side} {existing_timeframe} prioritaire "
-                                         f"(priorité {existing_priority} > {current_priority})")
-                            continue
-                        else:
-                            # Le nouveau signal a un timeframe plus élevé, remplacer
-                            logger.info(f"Signal {existing_side} {existing_timeframe} remplacé par "
-                                       f"{side} {timeframe} pour {symbol} "
-                                       f"(priorité {current_priority} > {existing_priority})")
-                    # Si même côté, vérifier si le nouveau timeframe est plus élevé
-                    elif current_priority <= existing_priority:
-                        logger.debug(f"Signal {side} {timeframe} ignoré pour {symbol} - "
-                                   f"signal {existing_side} {existing_timeframe} prioritaire")
-                        continue
+                # CORRECTION: Vérifier timeframe priorité AVANT traitement
+                symbol_side_key = f"{symbol}_{side}"
+                
+                if symbol_side_key in symbol_side_processed:
+                    processed_timeframe = symbol_side_processed[symbol_side_key]
+                    logger.debug(f"Signal {side} {timeframe} ignoré pour {symbol} - "
+                               f"timeframe {processed_timeframe} déjà traité en priorité")
+                    continue
+                
+                # Marquer ce (symbol, side) comme en cours de traitement
+                symbol_side_processed[symbol_side_key] = timeframe
                 
                 validated_count = 0
                 group_validations = []
@@ -228,19 +218,15 @@ class SignalProcessor:
                         validated_count += 1
                         group_validations.append(validated_signal)
                 
-                # Règle majorité: ≥50% des signaux du consensus doivent passer
-                majority_threshold = len(group_signals) / 2
+                # Règle majorité CLASSIQUE: ≥50% des signaux du consensus doivent passer
+                majority_threshold = len(group_signals) * 0.50  # Majorité simple à 50% (4.0/8 = 4 signaux)
                 if validated_count >= majority_threshold:
                     # Créer un signal composite représentant le consensus validé
                     composite_signal = self._create_composite_signal(group_signals, group_validations)
                     if composite_signal:
                         validated_signals.append(composite_signal)
                         # NOUVEAU: Marquer ce symbole avec sa direction et son timeframe
-                        processed_symbols[symbol] = {
-                            'side': side,
-                            'timeframe': timeframe,
-                            'priority': current_priority
-                        }
+                        # Symbol déjà marqué dans symbol_side_processed - pas besoin de dupliquer
                         logger.info(f"Consensus {group_name} VALIDÉ: {validated_count}/{len(group_signals)} signaux passés "
                                   f"(≥{majority_threshold:.1f} requis) - Timeframe {timeframe} priorité {current_priority}")
                 else:
@@ -412,8 +398,13 @@ class SignalProcessor:
             avg_confidence = sum(s.get('confidence', 0) for s in validated_signals) / len(validated_signals)
             
             # Créer le signal composite
+            # Créer une stratégie composite listant toutes les stratégies contributives
+            all_strategies = [s.get('strategy') for s in group_signals]
+            composite_strategy_name = f"CONSENSUS_{len(all_strategies)}_STRATEGIES"
+            
             composite_signal = {
                 **best_signal,
+                'strategy': composite_strategy_name,  # Nom composite indiquant le consensus
                 'confidence': min(1.0, avg_confidence * 1.1),  # Bonus consensus +10%
                 'metadata': {
                     **best_signal.get('metadata', {}),
@@ -428,8 +419,9 @@ class SignalProcessor:
                     'consensus_strength': 'very_strong' if validated_strategies >= total_strategies * 0.75 else 'strong',
                     
                     # Liste des stratégies participantes
-                    'strategies_list': [s.get('strategy') for s in group_signals],
+                    'strategies_list': all_strategies,
                     'validated_strategies_list': [s.get('strategy') for s in validated_signals],
+                    'best_strategy': best_signal.get('strategy'),  # Garder trace de la meilleure stratégie
                     
                     # Confidence range du groupe
                     'group_confidence_min': min(s.get('confidence', 0) for s in validated_signals),
@@ -447,9 +439,9 @@ class SignalProcessor:
                 except Exception as e:
                     logger.error(f"Erreur stockage signal composite en DB: {e}")
             
-            logger.debug(f"Signal composite créé: {composite_signal['strategy']} -> "
-                        f"{total_strategies} stratégies, {validated_strategies} validées, "
-                        f"confidence={composite_signal['confidence']:.2f}")
+            logger.info(f"Signal composite créé: {composite_signal['symbol']} {composite_signal['side']} -> "
+                       f"{total_strategies} stratégies ({', '.join(all_strategies[:5])}{'...' if len(all_strategies) > 5 else ''}), "
+                       f"{validated_strategies} validées, confidence={composite_signal['confidence']:.2f}")
             
             return composite_signal
             
@@ -485,8 +477,8 @@ class SignalProcessor:
                     self.stats['signals_rejected'] += 1
                     return None
             else:  # Signal individuel - NOUVEAU FILTRE
-                # NOUVEAU: Les signaux individuels doivent avoir une confiance minimum (AUGMENTÉ)
-                individual_min_confidence = 0.60  # 60% minimum pour signal individuel (augmenté pour filtrage)
+                # DURCI: Les signaux individuels confiance minimum élevée  
+                individual_min_confidence = 0.72  # 72% minimum pour signal individuel (durci)
                 if signal.get('confidence', 0) < individual_min_confidence:
                     logger.info(f"Signal individuel REJETÉ pour confiance insuffisante: {signal['strategy']} {symbol} "
                               f"{signal['side']} - confidence={signal.get('confidence', 0):.1%} < {individual_min_confidence:.1%}")
@@ -534,9 +526,9 @@ class SignalProcessor:
                     signal, detailed_analysis, validation_results, final_score
                 )
                 
-                # Filtre final RESSERRÉ : aggregator_confidence >= 82% (privilégier la qualité)
+                # Filtre final ÉQUILIBRÉ : aggregator_confidence >= 75% (qualité sans sur-filtrage)
                 aggregator_confidence = validated_signal['metadata'].get('aggregator_confidence', 0.0)
-                min_aggregator_confidence = 0.82
+                min_aggregator_confidence = 0.75  # Assoupli à 75% pour laisser passer plus de bons signaux
                 
                 if aggregator_confidence < min_aggregator_confidence:
                     logger.info(f"Signal REJETÉ pour aggregator_confidence insuffisante: {signal['strategy']} {symbol} "

@@ -177,12 +177,35 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         values = self._get_current_values()
         price_data = self._get_price_volume_data()
         
-        # Vérification support level
+        # Vérification support level - AVEC FALLBACK
         try:
             nearest_support = float(values['nearest_support']) if values['nearest_support'] is not None else None
-            support_strength_raw = values['support_strength']
+            
+            # FALLBACK: Si nearest_support est NULL, utiliser bb_lower comme support dynamique  
+            if nearest_support is None:
+                bb_lower = self.indicators.get('bb_lower')
+                if bb_lower is not None:
+                    nearest_support = float(bb_lower)
+                    support_strength_raw = 'MODERATE'  # BB bands = support modéré
+                else:
+                    # FALLBACK 2: VWAP lower band
+                    vwap_lower = self.indicators.get('vwap_lower_band') 
+                    if vwap_lower is not None:
+                        nearest_support = float(vwap_lower)
+                        support_strength_raw = 'WEAK'  # VWAP band = support plus faible
+                    else:
+                        return {
+                            "side": None,
+                            "confidence": 0.0,
+                            "strength": "weak",
+                            "reason": "Aucun niveau de support disponible (nearest_support, bb_lower, vwap_lower tous NULL)",
+                            "metadata": {"strategy": self.name}
+                        }
+            else:
+                support_strength_raw = values['support_strength']
+            
             # support_strength est en format string : WEAK/MODERATE/STRONG/MAJOR
-            support_strength_score = self._convert_support_strength_to_score(support_strength_raw) if support_strength_raw is not None else None
+            support_strength_score = self._convert_support_strength_to_score(support_strength_raw) if support_strength_raw is not None else 0.3
         except (ValueError, TypeError) as e:
             return {
                 "side": None,

@@ -23,12 +23,12 @@ class Donchian_Breakout_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres Donchian optimisés pour crypto
-        self.breakout_threshold = 0.008   # 0.8% au-dessus/en-dessous pour confirmer breakout (évite faux signaux)
-        self.min_distance_threshold = 0.01  # Distance minimum aux niveaux (1%) pour éviter le bruit
-        self.volume_confirmation = 1.2    # Volume 20% au-dessus de la moyenne pour valider
-        self.min_adx_strength = 15        # ADX minimum pour confirmer tendance
-        self.momentum_threshold = 45      # Seuil momentum pour confirmation directionnelle
+        # Paramètres Donchian adaptés crypto - CORRECTIONS MAJEURES
+        self.breakout_threshold = 0.005   # 0.5% au-dessus/en-dessous (assoupli de 0.8%)
+        self.min_distance_threshold = 0.006  # Distance minimum aux niveaux (0.6%) assoupli
+        self.volume_confirmation = 1.0    # Pas de filtre volume strict (était 1.2)
+        self.min_adx_strength = 12        # ADX minimum assoupli (était 15)
+        self.momentum_threshold = 40      # Seuil momentum assoupli (était 45)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs."""
@@ -108,13 +108,32 @@ class Donchian_Breakout_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
-        # Récupération des niveaux (proxy pour canaux Donchian)
+        # Récupération des niveaux avec FALLBACK - CORRECTION MAJEURE
         try:
             nearest_resistance = float(values['nearest_resistance']) if values['nearest_resistance'] is not None else None
             nearest_support = float(values['nearest_support']) if values['nearest_support'] is not None else None
-            # Support/resistance strength sont des VARCHAR (MAJOR, STRONG, MODERATE, WEAK)
-            resistance_strength = values.get('resistance_strength')
-            support_strength = values.get('support_strength')
+            
+            # FALLBACK si niveaux NULL : utiliser BB bands comme canaux Donchian
+            if nearest_resistance is None:
+                bb_upper = self.indicators.get('bb_upper')
+                if bb_upper is not None:
+                    nearest_resistance = float(bb_upper)
+                    resistance_strength = 'MODERATE'  # BB = résistance modérée
+                else:
+                    resistance_strength = values.get('resistance_strength')
+            else:
+                resistance_strength = values.get('resistance_strength')
+                
+            if nearest_support is None:
+                bb_lower = self.indicators.get('bb_lower')
+                if bb_lower is not None:
+                    nearest_support = float(bb_lower)
+                    support_strength = 'MODERATE'  # BB = support modéré
+                else:
+                    support_strength = values.get('support_strength')
+            else:
+                support_strength = values.get('support_strength')
+                
         except (ValueError, TypeError) as e:
             return {
                 "side": None,
@@ -178,13 +197,13 @@ class Donchian_Breakout_Strategy(BaseStrategy):
                         confidence_boost += 0.10
                         reason += " - support modéré cassé"
                     
-        # Filtre anti-faux signaux : vérifier que le breakout est net
+        # Filtre anti-faux signaux : vérifier que le breakout est net - ASSOUPLI
         if signal_side is not None:
-            # Vérification volume minimum OBLIGATOIRE
+            # Vérification volume minimum OPTIONNELLE (plus de rejet systématique)
             volume_ratio = values.get('volume_ratio')
-            if volume_ratio is None or float(volume_ratio) < 1.2:
+            if volume_ratio is not None and float(volume_ratio) < 0.8:  # Seulement rejeter si volume anormalement faible
                 signal_side = None
-                reason = f"Breakout rejeté : volume insuffisant ({float(volume_ratio):.2f}x < 1.2x)"
+                reason = f"Breakout rejeté : volume anormalement faible ({float(volume_ratio):.2f}x < 0.8x)"
                 
         # Pas de breakout détecté ou filtré
         if signal_side is None:

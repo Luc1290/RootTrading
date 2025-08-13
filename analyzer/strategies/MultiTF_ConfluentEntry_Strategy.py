@@ -27,10 +27,10 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres de confluence multi-TF - HARMONISÉS
-        self.min_confluence_score = 50      # Score confluence minimum (assoupli)
+        # Paramètres de confluence multi-TF - RÉALISTES POUR CRYPTO
+        self.min_confluence_score = 35      # Score confluence minimum (adapté aux vraies valeurs)
         self.min_signal_strength = 0.40      # Force signal minimum (assoupli)
-        self.min_trend_alignment = 50      # Alignement tendance minimum (assoupli)
+        self.min_trend_alignment = 40      # Alignement tendance minimum (adapté)
         self.max_regime_conflicts = 3       # Max conflits entre régimes (tolérant)
         self.volume_confirmation_min = 1.0  # Volume minimum requis (neutre)
         
@@ -284,12 +284,12 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                 }
             }
             
-        if signal_strength is None or signal_strength not in ['MODERATE', 'STRONG', 'VERY_STRONG']:
+        if signal_strength is None or signal_strength not in ['WEAK', 'MODERATE', 'STRONG', 'VERY_STRONG']:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Signal trop faible ({signal_strength})",
+                "reason": f"Signal_strength invalide ({signal_strength})",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,

@@ -35,30 +35,30 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres de détection spike baissier - OPTIMISÉS
-        self.min_price_drop = -0.02              # 2% chute minimum (moins strict)
-        self.severe_price_drop = -0.04           # 4% chute sévère (moins strict)
-        self.extreme_price_drop = -0.08          # 8% chute extrême (moins strict)
+        # Paramètres de détection spike baissier - CORRECTIONS MAJEURES
+        self.min_price_drop = -0.012             # 1.2% chute minimum (très assoupli)
+        self.severe_price_drop = -0.025          # 2.5% chute sévère (assoupli)
+        self.extreme_price_drop = -0.05          # 5% chute extrême (assoupli)
         
-        # Paramètres volume (confirmation spike) - AJUSTÉS
-        self.min_spike_volume = 1.8              # Volume 1.8x normal minimum (moins strict)
-        self.strong_spike_volume = 3.0           # Volume 3.0x pour spike fort (moins strict)
-        self.extreme_spike_volume = 6.0          # Volume 6.0x pour spike extrême (au lieu de 5.0x)
+        # Paramètres volume (confirmation spike) - TRÈS ASSOUPLIS
+        self.min_spike_volume = 1.3              # Volume 1.3x normal minimum (très assoupli)
+        self.strong_spike_volume = 2.2           # Volume 2.2x pour spike fort (assoupli)
+        self.extreme_spike_volume = 4.0          # Volume 4x pour spike extrême (assoupli)
         
-        # Paramètres RSI (survente extrême) - CORRIGÉS
-        self.oversold_rsi_threshold = 30         # RSI survente (standard)
-        self.extreme_oversold_threshold = 20     # RSI survente extrême (standard)
-        self.williams_r_oversold = -80           # Williams %R survente (standard)
+        # Paramètres RSI (survente extrême) - ASSOUPLIS
+        self.oversold_rsi_threshold = 35         # RSI survente assoupli (de 30 à 35)
+        self.extreme_oversold_threshold = 25     # RSI survente extrême assoupli (de 20 à 25)
+        self.williams_r_oversold = -75           # Williams %R survente assoupli (de -80 à -75)
         
-        # Paramètres stabilisation
-        self.stabilization_bars = 3              # Barres pour confirmer stabilisation
-        self.max_continued_drop = -0.005         # Chute max après spike (0.5%)
-        self.min_volatility_ratio = 0.3          # Volatilité réduite après spike
+        # Paramètres stabilisation - SIMPLIFIÉS
+        self.stabilization_bars = 2              # CORRECTION: 2 barres seulement (de 3 à 2)
+        self.max_continued_drop = -0.008         # Chute max assouplie (de 0.5% à 0.8%)
+        self.min_volatility_ratio = 0.2          # Volatilité plus tolérante (de 0.3 à 0.2)
         
-        # Paramètres momentum reversal - ASSOUPLIS
-        self.momentum_reversal_threshold = 52    # Momentum redevient positif (assoupli)
-        self.min_roc_improvement = -0.01        # ROC amélioration minimum (assoupli: -1%)
-        self.min_volume_quality = 40             # Volume quality minimum pour bottom fishing
+        # Paramètres momentum reversal - TRÈS ASSOUPLIS
+        self.momentum_reversal_threshold = 48    # CORRECTION: Momentum très assoupli (de 52 à 48)
+        self.min_roc_improvement = -0.015       # ROC amélioration plus tolérant (de -1% à -1.5%)
+        self.min_volume_quality = 30             # Volume quality très assoupli (de 40 à 30)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""

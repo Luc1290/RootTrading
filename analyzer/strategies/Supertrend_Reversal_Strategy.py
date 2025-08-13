@@ -226,7 +226,7 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_reversal': reversal_score >= 0.3,  # Seuil assoupli de 0.4 à 0.3
+            'is_reversal': reversal_score >= 0.2,  # CORRECTION: Seuil encore plus assoupli de 0.3 à 0.2
             'direction': reversal_direction,
             'score': reversal_score,
             'indicators': reversal_indicators
@@ -270,7 +270,7 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_cross_confirmed': cross_score >= 0.1,  # Seuil assoupli de 0.2 à 0.1
+            'is_cross_confirmed': cross_score >= 0.05,  # CORRECTION: Seuil très assoupli de 0.1 à 0.05
             'score': cross_score,
             'indicators': cross_indicators
         }
@@ -307,21 +307,13 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
-        # Vérifier volatilité appropriée - ASSOUPLI
+        # CORRECTION: Supprimer filtre volatilité restrictif - Accepter toutes volatilités
         volatility_regime = values.get('volatility_regime')
-        vol_regime = 1.5  # Valeur par défaut si pas de données
+        vol_regime = 1.0  # Valeur par défaut neutre
         if volatility_regime is not None:
             try:
-                vol_regime = self._convert_volatility_to_score(str(volatility_regime))  
-                # Conditions plus permissives - accepter presque toutes les volatilités
-                if vol_regime < 0.2:  # Seulement exclure volatilité extrêmement faible
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Volatilité trop faible ({vol_regime:.2f}) pour Supertrend",
-                        "metadata": {"strategy": self.name, "volatility_regime": vol_regime}
-                    }
+                vol_regime = self._convert_volatility_to_score(str(volatility_regime))
+                # Plus de rejet basé sur volatilité - laisser la stratégie fonctionner
             except (ValueError, TypeError):
                 pass
                 
@@ -596,23 +588,26 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         }
         
     def validate_data(self) -> bool:
-        """Valide que tous les indicateurs requis sont présents."""
-        required_indicators = [
-            'atr_14', 'trend_strength', 'directional_bias', 
-            'ema_12', 'ema_26', 'adx_14'
-        ]
+        """Valide que tous les indicateurs requis sont présents - ASSOUPLI."""
+        # CORRECTION MAJEURE: Réduire indicateurs requis de 6 à 3 essentiels
+        essential_indicators = ['atr_14', 'trend_strength', 'directional_bias']
+        optional_indicators = ['ema_12', 'ema_26', 'adx_14']
         
         if not self.indicators:
             logger.warning(f"{self.name}: Aucun indicateur disponible")
             return False
             
-        for indicator in required_indicators:
-            if indicator not in self.indicators:
-                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
-                return False
-            if self.indicators[indicator] is None:
-                logger.warning(f"{self.name}: Indicateur null: {indicator}")
-                return False
+        # Vérifier indicateurs ESSENTIELS seulement
+        missing_essential = 0
+        for indicator in essential_indicators:
+            if indicator not in self.indicators or self.indicators[indicator] is None:
+                missing_essential += 1
+                logger.debug(f"{self.name}: Indicateur essentiel manquant: {indicator}")
+                
+        # Accepter si au moins 2/3 indicateurs essentiels présents
+        if missing_essential >= 2:  # Plus de 1 manquant = échec
+            logger.warning(f"{self.name}: Trop d'indicateurs essentiels manquants ({missing_essential}/3)")
+            return False
                 
         # Vérifier données OHLCV
         if 'close' not in self.data or not self.data['close']:

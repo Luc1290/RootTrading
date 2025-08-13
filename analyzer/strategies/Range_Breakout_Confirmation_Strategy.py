@@ -25,13 +25,13 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres Range Breakout - OPTIMISÉS
-        self.min_range_width = 0.01   # Largeur minimum du range (1%) - moins strict
-        self.max_range_width = 0.12   # Largeur maximum du range (12%) - plus élargi
-        self.breakout_threshold = 0.003  # Distance minimum pour breakout (0.3%) - moins strict
-        self.volume_breakout_threshold = 1.4  # Volume minimum pour breakout (1.4x) - moins strict
-        self.retest_tolerance = 0.005   # Tolérance retest (0.5%) - moins strict
-        self.min_confirmations = 2      # Minimum 2 confirmations requises
+        # Paramètres Range Breakout - CORRECTIONS MAJEURES
+        self.min_range_width = 0.005  # Largeur minimum (0.5%) - très assoupli
+        self.max_range_width = 0.20   # Largeur maximum (20%) - très élargi
+        self.breakout_threshold = 0.002  # Distance minimum (0.2%) - très assoupli
+        self.volume_breakout_threshold = 1.1  # Volume minimum (1.1x) - très assoupli
+        self.retest_tolerance = 0.008   # Tolérance retest (0.8%) - assoupli
+        self.min_confirmations = 1      # CORRECTION: Minimum 1 confirmation seulement
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pour range breakout."""
@@ -175,9 +175,20 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         """Identifie un range trading valide."""
         range_info = None
         
-        # Méthode 1: Support/Résistance explicites
+        # Méthode 1: Support/Résistance avec FALLBACK BB - CORRECTION MAJEURE
         nearest_support = values.get('nearest_support')
         nearest_resistance = values.get('nearest_resistance')
+        
+        # FALLBACK si support/résistance NULL : utiliser BB comme range
+        if nearest_support is None:
+            bb_lower = values.get('bb_lower')
+            if bb_lower is not None:
+                nearest_support = float(bb_lower)
+        
+        if nearest_resistance is None:
+            bb_upper = values.get('bb_upper')
+            if bb_upper is not None:
+                nearest_resistance = float(bb_upper)
         
         if nearest_support is not None and nearest_resistance is not None:
             try:
@@ -193,9 +204,14 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
                         near_edges = (abs(current_price - support_val) / current_price <= 0.01 or
                                     abs(current_price - resistance_val) / current_price <= 0.01)
                         
+                        # CORRECTION: Conditions plus permissives pour prix dans range
+                        price_in_range = support_val * 0.98 <= current_price <= resistance_val * 1.02  # 2% tolérance
+                        near_edges = (abs(current_price - support_val) / current_price <= 0.02 or
+                                    abs(current_price - resistance_val) / current_price <= 0.02)  # 2% tolérance
+                        
                         if price_in_range or near_edges:
                             range_info = {
-                                'method': 'support_resistance',
+                                'method': 'support_resistance_with_fallback',
                                 'support': support_val,
                                 'resistance': resistance_val,
                                 'width': range_width,
@@ -204,26 +220,31 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Méthode 2: Bollinger Bands squeeze (range étroit)
+        # Méthode 2: Bollinger Bands comme range - FALLBACK COMPLET AMÉLIORÉ
         if range_info is None:
             bb_upper = values.get('bb_upper')
             bb_lower = values.get('bb_lower')
             bb_squeeze = values.get('bb_squeeze')
             
-            if all(x is not None for x in [bb_upper, bb_lower]) and bb_squeeze:
+            # CORRECTION: Accepter BB même sans squeeze obligatoire
+            if all(x is not None for x in [bb_upper, bb_lower]):
                 try:
-                    upper_val = float(bb_upper) if bb_upper is not None else 0.0
-                    lower_val = float(bb_lower) if bb_lower is not None else 0.0
-                    range_width = (upper_val - lower_val) / lower_val
+                    upper_val = float(bb_upper)
+                    lower_val = float(bb_lower)
                     
-                    if self.min_range_width <= range_width <= self.max_range_width:
-                        range_info = {
-                            'method': 'bollinger_squeeze',
-                            'support': lower_val,
-                            'resistance': upper_val,
-                            'width': range_width,
-                            'mid_point': (upper_val + lower_val) / 2
-                        }
+                    if lower_val > 0 and upper_val > lower_val:
+                        range_width = (upper_val - lower_val) / lower_val
+                        
+                        # BB range toujours acceptable (plus flexible)
+                        if range_width >= 0.003:  # Minimum très faible
+                            range_info = {
+                                'method': 'bollinger_bands_fallback',
+                                'support': lower_val,
+                                'resistance': upper_val,
+                                'width': range_width,
+                                'strength': 'MODERATE',
+                                'mid_point': (lower_val + upper_val) / 2
+                            }
                 except (ValueError, TypeError):
                     pass
                     

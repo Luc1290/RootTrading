@@ -254,8 +254,8 @@ class HierarchicalValidator:
             if level in level_analysis and not level_analysis[level]['meets_min_pass_rate']:
                 return False
                 
-        # Vérifier le score final minimum (resserré pour qualité)
-        min_final_score = 0.60  # Score minimum relevé à 60% pour filtrer le bruit
+        # Vérifier le score final minimum (DURCI pour compenser volume signaux)
+        min_final_score = 0.68  # Score minimum durci à 68% avec plus de signaux disponibles 
         if final_score < min_final_score:
             return False
             
