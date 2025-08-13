@@ -37,7 +37,8 @@ RUN pip install --no-cache-dir -r /app/requirements-shared.txt && \
     pip install --no-cache-dir -r /app/requirements.txt
 
 # Install TA-Lib Python wrapper separately with NumPy already installed
-RUN pip install --no-cache-dir ta-lib==0.4.24
+# Version 0.4.32 fixes const pointer compatibility issues
+RUN pip install --no-cache-dir ta-lib==0.4.32
 
 # Copy shared modules
 COPY shared /app/shared

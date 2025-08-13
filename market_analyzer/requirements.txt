@@ -2,7 +2,8 @@
 -r ../requirements-shared.txt
 
 # Technical Analysis Library
-ta-lib==0.4.24
+# Use 0.4.32 for compatibility with newer TA-Lib C library
+ta-lib==0.4.32
 
 # Additional scientific computing
 scipy==1.9.3

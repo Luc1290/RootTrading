@@ -183,8 +183,9 @@ class SignalProcessor:
             
             sorted_groups = sorted(consensus_groups.items(), key=sort_groups_key, reverse=True)
             
-            # CORRECTION: Traiter seulement le timeframe le plus élevé par symbole/side
-            symbol_side_processed = {}  # Track (symbol, side) déjà traités
+            # CORRECTION: Un seul signal par symbole (priorité au timeframe le plus élevé + confidence)
+            symbol_processed = {}  # Track symbole déjà traité (empêche BUY ET SELL simultanés)
+            symbol_side_processed = {}  # Track (symbol, side) pour debug
             
             # Valider chaque groupe avec règle de majorité + priorité timeframe STRICTE
             for group_name, group_signals in sorted_groups:
@@ -194,7 +195,14 @@ class SignalProcessor:
                 timeframe = group_signals[0].get('timeframe', '1m') if group_signals else '1m'
                 current_priority = get_timeframe_priority(timeframe)
                 
-                # CORRECTION: Vérifier timeframe priorité AVANT traitement
+                # NOUVEAU: Bloquer TOUT signal si le symbole a déjà un signal validé
+                if symbol in symbol_processed:
+                    processed_side, processed_tf = symbol_processed[symbol]
+                    logger.debug(f"Signal {side} {timeframe} BLOQUÉ pour {symbol} - "
+                               f"Signal {processed_side} {processed_tf} déjà validé (pas de signaux contradictoires)")
+                    continue
+                
+                # Vérifier aussi si ce couple (symbol, side) a déjà été traité
                 symbol_side_key = f"{symbol}_{side}"
                 
                 if symbol_side_key in symbol_side_processed:
@@ -225,8 +233,8 @@ class SignalProcessor:
                     composite_signal = self._create_composite_signal(group_signals, group_validations)
                     if composite_signal:
                         validated_signals.append(composite_signal)
-                        # NOUVEAU: Marquer ce symbole avec sa direction et son timeframe
-                        # Symbol déjà marqué dans symbol_side_processed - pas besoin de dupliquer
+                        # IMPORTANT: Marquer ce symbole comme traité (empêche BUY et SELL simultanés)
+                        symbol_processed[symbol] = (side, timeframe)
                         logger.info(f"Consensus {group_name} VALIDÉ: {validated_count}/{len(group_signals)} signaux passés "
                                   f"(≥{majority_threshold:.1f} requis) - Timeframe {timeframe} priorité {current_priority}")
                 else:
@@ -306,7 +314,25 @@ class SignalProcessor:
                 buy_avg_conf = sum(s.get('confidence', 0) for s in buy_signals) / buy_count
                 sell_avg_conf = sum(s.get('confidence', 0) for s in sell_signals) / sell_count
                 
-                if buy_avg_conf > sell_avg_conf:
+                # NOUVEAU: Regarder aussi les timeframes pour départager (utiliser la fonction locale existante)
+                def get_tf_priority(tf):
+                    priorities = {'1d': 1000, '4h': 400, '1h': 100, '15m': 15, '5m': 5, '3m': 3, '1m': 1}
+                    return priorities.get(tf, 0)
+                
+                buy_best_tf = max([get_tf_priority(s.get('timeframe', '1m')) for s in buy_signals])
+                sell_best_tf = max([get_tf_priority(s.get('timeframe', '1m')) for s in sell_signals])
+                
+                # Priorité 1: Timeframe le plus élevé
+                # Priorité 2: Confidence moyenne si même timeframe
+                if buy_best_tf > sell_best_tf:
+                    analysis[symbol]['resolution_strategy'] = 'prioritize_buy'
+                    analysis[symbol]['selected_signals'] = buy_signals
+                    logger.warning(f"Conflit {symbol}: Priorité BUY (timeframe supérieur) > SELL")
+                elif sell_best_tf > buy_best_tf:
+                    analysis[symbol]['resolution_strategy'] = 'prioritize_sell'
+                    analysis[symbol]['selected_signals'] = sell_signals
+                    logger.warning(f"Conflit {symbol}: Priorité SELL (timeframe supérieur) > BUY")
+                elif buy_avg_conf > sell_avg_conf:
                     analysis[symbol]['resolution_strategy'] = 'prioritize_buy'
                     analysis[symbol]['selected_signals'] = buy_signals
                     logger.warning(f"Conflit {symbol}: Priorité BUY (conf={buy_avg_conf:.2f}) > SELL (conf={sell_avg_conf:.2f})")
