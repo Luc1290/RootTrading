@@ -5,6 +5,18 @@ Market_Structure_Validator - Validator basé sur la structure de marché globale
 from typing import Dict, Any
 from .base_validator import BaseValidator
 import logging
+import sys
+import os
+
+# Ajouter le chemin pour importer la classification
+sys.path.append(os.path.join(os.path.dirname(__file__), '../config'))
+from strategy_classification import (
+    get_strategy_family,
+    get_regime_adjustment,
+    get_min_confidence_for_regime,
+    is_strategy_optimal_for_regime,
+    is_strategy_acceptable_for_regime
+)
 
 logger = logging.getLogger(__name__)
 
@@ -159,20 +171,37 @@ class Market_Structure_Validator(BaseValidator):
                 if signal_confidence < 0.45:  # Plus permissif pour faible confluence (était 55%)
                     return False
                     
-            # 7. Validation cohérence bias directionnel - ASSOUPLI POUR NEUTRAL
+            # 7. Validation cohérence bias directionnel AVEC RÉGIME
+            # Appliquer les ajustements de confidence basés sur le régime
+            regime_adjustment = get_regime_adjustment(signal_strategy, market_regime, signal_side)
+            adjusted_confidence = signal_confidence * regime_adjustment
+            
+            # Obtenir le seuil minimum pour ce régime/direction
+            min_required_confidence = get_min_confidence_for_regime(market_regime, signal_side)
+            
             if directional_bias:
                 if signal_side == "BUY" and directional_bias.upper() == "BEARISH":
                     logger.debug(f"{self.name}: BUY signal mais bias bearish pour {self.symbol}")
-                    if signal_confidence < 0.70:  # Réduit pour crypto (était 85%)
+                    # Plus strict si contre-bias ET contre-régime
+                    if adjusted_confidence < max(0.75, min_required_confidence * 1.2):
+                        logger.debug(f"{self.name}: Confidence ajustée insuffisante ({adjusted_confidence:.2f})")
                         return False
                 elif signal_side == "SELL" and directional_bias.upper() == "BULLISH":
                     logger.debug(f"{self.name}: SELL signal mais bias bullish pour {self.symbol}")
-                    if signal_confidence < 0.70:  # Réduit pour crypto (était 85%)
+                    # Plus strict si contre-bias ET contre-régime
+                    if adjusted_confidence < max(0.75, min_required_confidence * 1.2):
+                        logger.debug(f"{self.name}: Confidence ajustée insuffisante ({adjusted_confidence:.2f})")
                         return False
                 elif directional_bias.upper() == "NEUTRAL":
-                    # NEUTRAL = pas de contrainte directionnelle, plus permissif
-                    logger.debug(f"{self.name}: Bias NEUTRAL - validation permissive pour {self.symbol}")
-                    # Pas de rejet basé sur la direction pour NEUTRAL
+                    # NEUTRAL = utiliser seulement l'ajustement de régime
+                    if adjusted_confidence < min_required_confidence:
+                        logger.debug(f"{self.name}: Confidence insuffisante pour régime {market_regime}: {adjusted_confidence:.2f} < {min_required_confidence:.2f}")
+                        return False
+            else:
+                # Pas de bias directionnel, utiliser le seuil de régime
+                if adjusted_confidence < min_required_confidence:
+                    logger.debug(f"{self.name}: Confidence insuffisante pour régime {market_regime}: {adjusted_confidence:.2f} < {min_required_confidence:.2f}")
+                    return False
                         
             # 8. Validation force tendance générale - PLUS STRICT
             if trend_strength is not None and trend_strength < 0.4:  # AUGMENTÉ de 0.3 à 0.4
@@ -215,13 +244,14 @@ class Market_Structure_Validator(BaseValidator):
                 if signal_confidence < 0.70:  # Réduit pour crypto (était 85%)
                     return False
                     
-            # 12. Validation spécifique selon type stratégie - PLUS STRICT
+            # 12. Validation spécifique selon type stratégie - ADAPTATIF AU RÉGIME
             strategy_regime_match = self._validate_strategy_regime_match(
                 signal_strategy, str(market_regime) if market_regime is not None else '', str(volatility_regime) if volatility_regime is not None else ''
             )
             if not strategy_regime_match:
-                logger.debug(f"{self.name}: Stratégie {signal_strategy} inadaptée au régime pour {self.symbol}")
-                if signal_confidence < 0.65:  # Réduit pour crypto (était 75%)
+                logger.warning(f"{self.name}: Stratégie {signal_strategy} INADAPTÉE au régime {market_regime} pour {self.symbol}")
+                # Rejet plus strict pour inadéquation stratégie/régime
+                if adjusted_confidence < 0.85:  # Très strict si mauvaise combinaison
                     return False
                     
             # Validation finale - structure globale AJUSTÉE POUR RANGING
@@ -231,11 +261,11 @@ class Market_Structure_Validator(BaseValidator):
                 logger.debug(f"{self.name}: Structure très médiocre ({overall_structure_quality:.2f}) + signal confidence insuffisante pour {self.symbol}")
                 return False
                     
-            logger.debug(f"{self.name}: Signal validé pour {self.symbol} - "
-                        f"Régime: {market_regime or 'N/A'}, "
-                        f"Volatilité: {volatility_regime or 'N/A'}, "
-                        f"Bias: {directional_bias or 'N/A'}, "
-                        f"Alignment: {self._safe_format(trend_alignment, '.2f') if trend_alignment is not None else 'N/A'}")
+            logger.info(f"{self.name}: Signal validé pour {self.symbol} - "
+                       f"Stratégie: {signal_strategy} ({get_strategy_family(signal_strategy)}), "
+                       f"Régime: {market_regime or 'N/A'}, "
+                       f"Ajustement: x{regime_adjustment:.2f}, "
+                       f"Conf ajustée: {adjusted_confidence:.2f}")
             
             return True
             
@@ -262,53 +292,32 @@ class Market_Structure_Validator(BaseValidator):
         
     def _validate_strategy_regime_match(self, strategy: str, market_regime: str, 
                                        volatility_regime: str) -> bool:
-        """Valide l'adéquation stratégie/régime - CRYPTO ULTRA-PERMISSIF."""
-        strategy_lower = strategy.lower()
+        """Valide l'adéquation stratégie/régime avec classification intelligente."""
         
-        # CRYPTO MODE: Toutes les stratégies sont acceptables dans tous les régimes
-        # Les stratégies crypto sont conçues pour être adaptables
+        # Utiliser la nouvelle classification
+        is_acceptable = is_strategy_acceptable_for_regime(strategy, market_regime)
         
-        # MEAN REVERSION - Accepté partout en crypto
-        if any(kw in strategy_lower for kw in ['reversal', 'rebound', 'oversold', 'overbought', 'touch', 'rejection']):
-            return True  # Acceptable dans tous régimes crypto
-        elif any(kw in strategy_lower for kw in ['bollinger', 'zscore', 'stoch', 'williams', 'cci']):
-            return True  # Acceptable dans tous régimes crypto
+        # Si la stratégie n'est pas dans les régimes acceptables, on vérifie la volatilité
+        if not is_acceptable:
+            # Certaines stratégies peuvent être bloquées par une volatilité extrême
+            family = get_strategy_family(strategy)
             
-        # TREND FOLLOWING - Accepté partout en crypto (même en ranging)
-        elif (any(kw in strategy_lower for kw in ['macd', 'slope', 'adx', 'hull', 'tema', 'trix', 'ema_cross']) 
-              and 'reversal' not in strategy_lower):
-            return True  # Acceptable dans tous régimes crypto
-        elif (any(kw in strategy_lower for kw in ['cross', 'crossover']) 
-              and not any(rev in strategy_lower for rev in ['rsi', 'stoch', 'williams', 'reversal'])):
-            return True  # Acceptable dans tous régimes crypto
-            
-        # BREAKOUT - Plus permissif pour crypto (volatilité low acceptable)
-        elif any(kw in strategy_lower for kw in ['breakout', 'donchian', 'atr', 'range_break']):
-            return volatility_regime != "compression"  # Seulement compression exclue
-            
-        # MOMENTUM/THRESHOLD - Très permissif en crypto
-        elif any(kw in strategy_lower for kw in ['roc_threshold', 'spike', 'pump_dump']):
-            return volatility_regime != "compression"  # Compression seule exclue
-            
-        # LIQUIDITY SWEEP - Plus permissif en crypto
-        elif any(kw in strategy_lower for kw in ['sweep', 'liquidity']):
-            return volatility_regime not in ["compression"]  # Compression seule exclue
-            
-        # PPO/MOMENTUM - Nouvelles catégories acceptées partout
-        elif any(kw in strategy_lower for kw in ['ppo', 'momentum', 'roc', 'slope']):
-            return True  # Acceptable dans tous régimes crypto
-            
-        # CONFLUENCE/MULTI-TF - Accepté partout
-        elif any(kw in strategy_lower for kw in ['confluence', 'multi', 'vwap']):
-            return True  # Adaptable à tous régimes
-            
-        return True  # Par défaut crypto: TOUJOURS accepter
+            # Les stratégies de breakout ont besoin de volatilité
+            if family == 'breakout' and volatility_regime in ['low', 'compression']:
+                logger.debug(f"Stratégie breakout {strategy} inadaptée en volatilité {volatility_regime}")
+                return False
+                
+            # Les stratégies de mean reversion n'aiment pas la volatilité extrême
+            if family == 'mean_reversion' and volatility_regime in ['extreme', 'chaotic']:
+                logger.debug(f"Stratégie mean-reversion {strategy} inadaptée en volatilité {volatility_regime}")
+                return False
+                
+        return is_acceptable
         
     def _is_meanreversion_strategy(self, strategy_name: str) -> bool:
         """Détermine si la stratégie est de type mean reversion."""
-        meanrev_keywords = ['bollinger', 'touch', 'reversal', 'rsi', 'oversold', 'overbought', 'rebound']
-        strategy_lower = strategy_name.lower()
-        return any(keyword in strategy_lower for keyword in meanrev_keywords)
+        family = get_strategy_family(strategy_name)
+        return family == 'mean_reversion'
         
     def get_validation_score(self, signal: Dict[str, Any]) -> float:
         """

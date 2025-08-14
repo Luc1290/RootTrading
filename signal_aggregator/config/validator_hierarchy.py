@@ -9,11 +9,10 @@ Cette hiérarchie définit l'importance de chaque validator et leur pouvoir de d
 
 VALIDATOR_HIERARCHY = {
     'critical': {
-        'description': 'Validators critiques avec pouvoir de veto - TEMPORAIREMENT ASSOUPLIS',
+        'description': 'Validators critiques avec pouvoir de veto - ADAPTATIFS AU RÉGIME',
         'validators': [
-            # 'Global_Trend_Validator',      # TEMPORAIREMENT DÉSACTIVÉ - trop strict pour SELL
+            'Market_Structure_Validator',  # RÉACTIVÉ avec logique adaptative au régime
             'Volume_Spike_Validator'       # Confirme la force du mouvement
-            # 'Market_Structure_Validator' TEMPORAIREMENT DÉSACTIVÉ - trop strict
         ],
         'min_pass_rate': 1.0,     # 100% doivent passer
         'weight_multiplier': 3.0,  # Triple impact sur le score
@@ -24,8 +23,6 @@ VALIDATOR_HIERARCHY = {
         'description': 'Validators importants avec forte influence sur la décision',
         'validators': [
             'Global_Trend_Validator',      # Déplacé de critical - plus permissif sans veto
-            'Market_Structure_Validator',  # Déplacé de critical - plus permissif sans veto
-            'Market_Regime_Validator',     # Identifie le régime de marché
             'Regime_Strength_Validator',   # Force du régime actuel
             'MultiTF_Consensus_Validator', # Consensus multi-timeframes
             'Volume_Buildup_Validator',    # Accumulation de volume

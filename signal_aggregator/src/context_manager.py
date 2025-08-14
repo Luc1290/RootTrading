@@ -28,6 +28,89 @@ class ContextManager:
         self.context_cache = {}
         self.cache_ttl = 60  # Durée de vie du cache en secondes
         
+    def get_unified_market_regime(self, symbol: str) -> Dict[str, Any]:
+        """
+        Récupère le régime de marché unifié basé sur le timeframe de référence (15m).
+        
+        Args:
+            symbol: Symbole à analyser
+            
+        Returns:
+            Dict contenant le régime unifié et ses métadonnées
+        """
+        reference_timeframe = "15m"
+        cache_key = f"regime_unified_{symbol}"
+        
+        try:
+            with self.db_connection.cursor(cursor_factory=RealDictCursor) as cursor:
+                # Récupérer le régime du timeframe de référence (plus récent)
+                cursor.execute("""
+                    SELECT market_regime, regime_strength, regime_confidence, 
+                           directional_bias, volatility_regime, time
+                    FROM analyzer_data 
+                    WHERE symbol = %s AND timeframe = %s
+                    ORDER BY time DESC 
+                    LIMIT 1
+                """, (symbol, reference_timeframe))
+                
+                regime_data = cursor.fetchone()
+                
+                if regime_data:
+                    return {
+                        'market_regime': regime_data['market_regime'],
+                        'regime_strength': regime_data['regime_strength'], 
+                        'regime_confidence': regime_data['regime_confidence'],
+                        'directional_bias': regime_data['directional_bias'],
+                        'volatility_regime': regime_data['volatility_regime'],
+                        'regime_source': f"{reference_timeframe}_unified",
+                        'regime_timestamp': regime_data['time']
+                    }
+                else:
+                    # Fallback si pas de données 15m
+                    logger.warning(f"Pas de régime 15m pour {symbol}, fallback sur 5m")
+                    cursor.execute("""
+                        SELECT market_regime, regime_strength, regime_confidence,
+                               directional_bias, volatility_regime, time
+                        FROM analyzer_data 
+                        WHERE symbol = %s AND timeframe = '5m'
+                        ORDER BY time DESC 
+                        LIMIT 1
+                    """, (symbol,))
+                    
+                    fallback_data = cursor.fetchone()
+                    if fallback_data:
+                        return {
+                            'market_regime': fallback_data['market_regime'],
+                            'regime_strength': fallback_data['regime_strength'], 
+                            'regime_confidence': fallback_data['regime_confidence'],
+                            'directional_bias': fallback_data['directional_bias'],
+                            'volatility_regime': fallback_data['volatility_regime'],
+                            'regime_source': "5m_fallback",
+                            'regime_timestamp': fallback_data['time']
+                        }
+                        
+                return {
+                    'market_regime': 'UNKNOWN',
+                    'regime_strength': 0.5,
+                    'regime_confidence': 50.0,
+                    'directional_bias': 'NEUTRAL',
+                    'volatility_regime': 'normal',
+                    'regime_source': 'default',
+                    'regime_timestamp': None
+                }
+                
+        except Exception as e:
+            logger.error(f"Erreur récupération régime unifié {symbol}: {e}")
+            return {
+                'market_regime': 'UNKNOWN',
+                'regime_strength': 0.5,
+                'regime_confidence': 50.0,
+                'directional_bias': 'NEUTRAL',
+                'volatility_regime': 'normal',
+                'regime_source': 'error',
+                'regime_timestamp': None
+            }
+
     def get_market_context(self, symbol: str, timeframe: str) -> Dict[str, Any]:
         """
         Récupère le contexte de marché complet pour un symbole et timeframe.
@@ -55,6 +138,9 @@ class ContextManager:
             multi_timeframe = self._get_multi_timeframe_context(symbol)
             correlation_data = self._get_correlation_context(symbol)
             
+            # Récupérer le régime unifié (15m de référence) 
+            unified_regime = self.get_unified_market_regime(symbol)
+            
             # Construire le contexte avec champs racine pour compatibility
             context = {
                 'symbol': symbol,
@@ -64,12 +150,24 @@ class ContextManager:
                 'market_structure': market_structure,
                 'volume_profile': volume_profile,
                 'multi_timeframe': multi_timeframe,
-                'correlation_data': correlation_data
+                'correlation_data': correlation_data,
+                'unified_regime': unified_regime  # Régime unifié pour tous les signaux
             }
             
             # Exposer les champs critiques au niveau racine pour compatibilité validators
             if indicators:
                 context.update(indicators)  # Tous les indicateurs au niveau racine
+            
+            # OVERRIDE: Utiliser le régime unifié au lieu du régime du timeframe
+            if unified_regime:
+                context.update({
+                    'market_regime': unified_regime['market_regime'],          # Régime unifié (15m)
+                    'regime_strength': unified_regime['regime_strength'],      
+                    'regime_confidence': unified_regime['regime_confidence'],
+                    'directional_bias': unified_regime['directional_bias'],
+                    'volatility_regime': unified_regime['volatility_regime'],
+                    'regime_source': unified_regime['regime_source']           # Pour debugging
+                })
             
             if market_structure and 'current_price' in market_structure:
                 context['current_price'] = market_structure['current_price']  # Prix actuel au niveau racine

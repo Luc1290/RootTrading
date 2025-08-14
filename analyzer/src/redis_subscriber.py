@@ -44,31 +44,38 @@ class RedisPublisher:
             await self.redis_client.close()
             logger.info("Connexion Redis Publisher fermée")
             
-    async def publish_signals(self, signals: List[Dict[str, Any]]):
+    async def publish_signals(self, signals: List[Dict[str, Any]], mode: str = "individual"):
         """
         Publie une liste de signaux vers Redis.
         
         Args:
             signals: Liste des signaux à publier
+            mode: "individual" (recommandé) ou "batch" (legacy)
         """
         if not signals:
             return
             
         try:
-            # Publication directe du batch pour le signal_aggregator (consensus intelligent)
-            batch_message = {
-                'type': 'signal_batch',
-                'timestamp': datetime.utcnow().isoformat(),
-                'count': len(signals),
-                'signals': signals
-            }
-            
-            await self._publish_message(
-                self.channels['signals'], 
-                batch_message
-            )
-            
-            logger.info(f"Publié {len(signals)} signaux vers Redis")
+            if mode == "individual":
+                # Mode recommandé : publication individuelle pour consensus adaptatif
+                for signal in signals:
+                    await self.publish_signal(signal)
+                logger.info(f"Publié {len(signals)} signaux individuellement vers Redis")
+                
+            else:
+                # Mode legacy : publication en batch
+                batch_message = {
+                    'type': 'signal_batch',
+                    'timestamp': datetime.utcnow().isoformat(),
+                    'count': len(signals),
+                    'signals': signals
+                }
+                
+                await self._publish_message(
+                    self.channels['signals'], 
+                    batch_message
+                )
+                logger.info(f"Publié batch de {len(signals)} signaux vers Redis")
             
         except Exception as e:
             logger.error(f"Erreur publication signaux: {e}")

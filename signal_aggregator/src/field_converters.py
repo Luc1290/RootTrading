@@ -31,14 +31,18 @@ class FieldConverter:
     }
     
     REGIME_MAPPING = {
-        # Régimes de marché
-        'TRENDING_BULL': 'trending',
-        'TRENDING_BEAR': 'trending',
-        'RANGING': 'ranging',
-        'CONSOLIDATION': 'ranging',
-        'TRANSITION': 'transition',
-        'CHAOTIC': 'chaotic',
-        'NORMAL': 'normal',
+        # Régimes de marché - GARDER LES VALEURS PRÉCISES DE LA DB
+        'TRENDING_BULL': 'TRENDING_BULL',     # Pas de simplification
+        'TRENDING_BEAR': 'TRENDING_BEAR',     # Pas de simplification
+        'BREAKOUT_BULL': 'BREAKOUT_BULL',     # Ajouter si manquant
+        'BREAKOUT_BEAR': 'BREAKOUT_BEAR',     # Ajouter si manquant
+        'RANGING': 'RANGING',
+        'CONSOLIDATION': 'RANGING',           # Seule simplification acceptable
+        'TRANSITION': 'TRANSITION',
+        'VOLATILE': 'VOLATILE',
+        'UNKNOWN': 'UNKNOWN',
+        'CHAOTIC': 'VOLATILE',                # Mapping vers VOLATILE
+        'NORMAL': 'RANGING',                  # Mapping vers RANGING
         
         # Régimes de volatilité
         'low': 'low',
@@ -473,11 +477,13 @@ class FieldConverter:
             # 4. Champs de contexte statistique manquants
             if 'distribution_normality' not in indicators:
                 # Approximer normalité avec régime de marché
-                regime = indicators.get('market_regime', 'unknown')
-                if regime == 'ranging':
+                regime = indicators.get('market_regime', 'UNKNOWN')
+                if regime == 'RANGING':
                     indicators['distribution_normality'] = 0.8  # Marché ranging = plus normal
-                elif regime == 'trending':
+                elif regime in ['TRENDING_BULL', 'TRENDING_BEAR']:
                     indicators['distribution_normality'] = 0.6  # Trending = moins normal
+                elif regime in ['VOLATILE', 'BREAKOUT_BULL', 'BREAKOUT_BEAR']:
+                    indicators['distribution_normality'] = 0.4  # Volatile = très anormal
                 else:
                     indicators['distribution_normality'] = 0.5
                     

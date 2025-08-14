@@ -109,10 +109,14 @@ class AnalyzerService:
                 
                 # Extraire symboles et timeframes uniques
                 self.symbols = sorted(list(set(row['symbol'] for row in combinations)))
-                self.timeframes = sorted(list(set(row['timeframe'] for row in combinations)))
+                all_timeframes = sorted(list(set(row['timeframe'] for row in combinations)))
                 
-                # Stocker les combinaisons valides pour éviter les requêtes vides
-                self.valid_combinations = [(row['symbol'], row['timeframe']) for row in combinations]
+                # Filtrer les timeframes indésirables (supprimer 1m pour réduire le bruit)
+                self.timeframes = [tf for tf in all_timeframes if tf != '1m']
+                logger.info(f"Timeframes filtrés: {all_timeframes} → {self.timeframes} (suppression 1m)")
+                
+                # Stocker les combinaisons valides pour éviter les requêtes vides (sans 1m)
+                self.valid_combinations = [(row['symbol'], row['timeframe']) for row in combinations if row['timeframe'] != '1m']
                 
                 logger.info(f"Symboles chargés ({len(self.symbols)}): {', '.join(self.symbols)}")
                 logger.info(f"Timeframes chargés ({len(self.timeframes)}): {', '.join(self.timeframes)}")
@@ -122,7 +126,7 @@ class AnalyzerService:
             logger.error(f"Erreur chargement symboles/timeframes: {e}")
             # Fallback vers valeurs par défaut
             self.symbols = ['BTCUSDC', 'ETHUSDC', 'SOLUSDC']
-            self.timeframes = ['1m', '3m', '5m', '15m']
+            self.timeframes = ['3m', '5m', '15m']  # Suppression du 1m (trop de bruit)
             self.valid_combinations = [(s, t) for s in self.symbols for t in self.timeframes]
             logger.warning(f"Utilisation des valeurs par défaut: {self.symbols} / {self.timeframes}")
     
@@ -395,6 +399,11 @@ class AnalyzerService:
         """
         start_time = time.time()
         
+        # FILTRAGE: Ignorer les timeframes 1m (trop de bruit)
+        if timeframe == '1m':
+            logger.debug(f"Timeframe 1m ignoré pour {symbol} (bruit filtré)")
+            return
+        
         # Récupération des données
         market_data = self.fetch_latest_data(symbol, timeframe)
         if not market_data:
@@ -478,7 +487,7 @@ class AnalyzerService:
         
         # Publication des signaux
         if signals:
-            await self.redis_publisher.publish_signals(signals)
+            await self.redis_publisher.publish_signals(signals, mode="individual")
             
     async def run_analysis_cycle(self):
         """Exécute un cycle d'analyse complet pour tous les symboles et timeframes."""
