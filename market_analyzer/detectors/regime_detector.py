@@ -425,22 +425,30 @@ class RegimeDetector:
         }
     
     def _determine_regime_type(self, volatility: Dict, trend: Dict, momentum: Dict, structure: Dict) -> RegimeType:
-        """Détermine le type de régime."""
+        """Détermine le type de régime avec logique assouplie pour crypto."""
         
-        # Régime volatil
+        # Log pour comprendre la détection de régime
+        logger.info(f"🔍 Régime - Volatilité: {volatility['regime']}, Trend: {trend['direction']}, "
+                   f"Slope: {trend['slope']:.3f}, EMA align: {trend['ema_alignment']}, "
+                   f"Momentum: {momentum['direction']}, cohérent: {momentum['coherent']}, "
+                   f"force: {momentum['strength']}")
+        
+        # Régime volatil - priorité élevée
         if volatility['regime'] == 'high' and structure['structure'] == 'wide_range':
             return RegimeType.VOLATILE
         
-        # Régime ranging
+        # Régime ranging - conditions strictes
         if (volatility['regime'] == 'low' and 
             structure['structure'] == 'tight_range' and
-            trend['direction'] == 'mixed'):
+            trend['direction'] == 'mixed' and
+            abs(trend['slope']) < 0.1):  # Pente très faible
             return RegimeType.RANGING
         
-        # Régimes trending
+        # === RÉGIMES TRENDING - LOGIQUE ASSOUPLIE POUR CRYPTO ===
+        
+        # Conditions fortes : EMA alignées ET momentum cohérent
         if trend['ema_alignment'] and momentum['coherent']:
             if trend['direction'] == 'bullish' and momentum['direction'] == 'bullish':
-                # Breakout si volatilité élevée et momentum fort
                 if volatility['regime'] == 'high' and momentum['strength'] > 70:
                     return RegimeType.BREAKOUT_BULL
                 return RegimeType.TRENDING_BULL
@@ -449,9 +457,38 @@ class RegimeDetector:
                     return RegimeType.BREAKOUT_BEAR
                 return RegimeType.TRENDING_BEAR
         
-        # Transition si signaux mixtes
+        # Conditions moyennes : EMA alignées OU momentum cohérent + pente significative
+        elif (trend['ema_alignment'] or momentum['coherent']) and abs(trend['slope']) > 0.15:
+            if trend['direction'] == 'bullish' and trend['slope'] > 0.15:
+                if momentum['direction'] in ['bullish', 'neutral']:
+                    if volatility['regime'] == 'high' and abs(trend['slope']) > 0.3:
+                        return RegimeType.BREAKOUT_BULL
+                    return RegimeType.TRENDING_BULL
+            elif trend['direction'] == 'bearish' and trend['slope'] < -0.15:
+                if momentum['direction'] in ['bearish', 'neutral']:
+                    if volatility['regime'] == 'high' and abs(trend['slope']) > 0.3:
+                        return RegimeType.BREAKOUT_BEAR
+                    return RegimeType.TRENDING_BEAR
+        
+        # Conditions faibles : Pente très significative seule (crypto peut être très directionnel)
+        elif abs(trend['slope']) > 0.25:
+            if trend['slope'] > 0.25:
+                return RegimeType.TRENDING_BULL
+            elif trend['slope'] < -0.25:
+                return RegimeType.TRENDING_BEAR
+        
+        # Breakout détection basée sur volatilité + momentum fort (même sans EMA parfait)
+        if volatility['regime'] == 'high' and momentum['strength'] > 80:
+            if momentum['direction'] == 'bullish':
+                return RegimeType.BREAKOUT_BULL
+            elif momentum['direction'] == 'bearish':
+                return RegimeType.BREAKOUT_BEAR
+        
+        # Transition si signaux mixtes mais avec une certaine cohérence
         if not trend['ema_alignment'] or not momentum['coherent']:
-            return RegimeType.TRANSITION
+            # Si on a quand même une direction claire, pas UNKNOWN
+            if abs(trend['slope']) > 0.1 or momentum['strength'] > 30:
+                return RegimeType.TRANSITION
         
         return RegimeType.UNKNOWN
     

@@ -208,6 +208,129 @@ class AdaptiveConsensusAnalyzer:
             'missing_families': missing_families if missing_families else None
         }
         
+    def analyze_adaptive_consensus_mtf(self, signals: List[Dict[str, Any]], 
+                                      market_regime: str, 
+                                      original_signal_count: int) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Analyse le consensus pour les signaux MTF post-conflit avec des critères assouplis.
+        
+        Quand le buffer MTF a résolu un conflit et filtré des signaux, on doit adapter
+        notre logique car on avait initialement plus de stratégies qui étaient d'accord.
+        
+        Args:
+            signals: Liste des signaux restants après résolution de conflit
+            market_regime: Régime de marché actuel
+            original_signal_count: Nombre de signaux avant la résolution de conflit
+            
+        Returns:
+            Tuple (has_consensus, analysis_details)
+        """
+        if not signals:
+            return False, {'reason': 'Aucun signal'}
+            
+        # Utiliser le nombre original pour la validation du consensus
+        # car ces stratégies étaient toutes d'accord avant la résolution de conflit
+        effective_strategy_count = max(len(signals), original_signal_count)
+        
+        # Classifier les signaux par famille (sur les signaux restants)
+        families_count = {}
+        families_signals = {}
+        adaptability_scores = []
+        
+        for signal in signals:
+            strategy = signal.get('strategy', 'Unknown')
+            family = get_strategy_family(strategy)
+            
+            if family not in families_count:
+                families_count[family] = 0
+                families_signals[family] = []
+                
+            families_count[family] += 1
+            families_signals[family].append(signal)
+            
+            # Score d'adaptabilité
+            is_optimal = is_strategy_optimal_for_regime(strategy, market_regime)
+            is_acceptable = is_strategy_acceptable_for_regime(strategy, market_regime)
+            
+            if is_optimal:
+                adaptability_scores.append(1.0)
+            elif is_acceptable:
+                adaptability_scores.append(0.7)
+            else:
+                adaptability_scores.append(0.3)
+                
+        avg_adaptability = sum(adaptability_scores) / len(adaptability_scores) if adaptability_scores else 0
+        
+        # Pour MTF post-conflit, on assouplit les critères
+        regime = market_regime.upper() if market_regime else 'UNKNOWN'
+        if regime not in self.regime_family_requirements:
+            regime = 'UNKNOWN'
+            
+        requirements = self.regime_family_requirements[regime]
+        
+        # Réduire le minimum requis pour MTF post-conflit
+        # Car on sait qu'on avait plus de stratégies au départ
+        total_min = max(3, requirements.get('total_min', 6) - 2)  # -2 pour MTF post-conflit
+        
+        # Vérifier avec le nombre effectif (original)
+        if effective_strategy_count < total_min:
+            return False, {
+                'reason': f'Pas assez de stratégies effectives: {effective_strategy_count} < {total_min}',
+                'families_count': families_count,
+                'total_strategies': len(signals),
+                'original_strategies': original_signal_count,
+                'effective_strategies': effective_strategy_count,
+                'required_min': total_min,
+                'avg_adaptability': avg_adaptability,
+                'is_mtf_post_conflict': True
+            }
+            
+        # Pour MTF post-conflit, on est plus permissif sur les familles manquantes
+        # car le filtrage a pu éliminer certaines familles
+        
+        # Calculer le score de consensus pondéré
+        weighted_score = 0
+        total_weight = 0
+        
+        for family, count in families_count.items():
+            if family == 'unknown':
+                continue
+                
+            weight = self.family_weights.get(family, 1.0)
+            family_config = STRATEGY_FAMILIES.get(family, {})
+            
+            if regime in family_config.get('best_regimes', []):
+                weight *= 1.5
+            elif regime in family_config.get('poor_regimes', []):
+                weight *= 0.5
+                
+            # Bonus pour MTF post-conflit car on sait que d'autres stratégies étaient d'accord
+            weight *= 1.2
+            
+            weighted_score += count * weight
+            total_weight += weight
+            
+        consensus_strength = weighted_score / max(1, total_weight)
+        
+        # Plus permissif pour MTF post-conflit
+        min_consensus_strength = 2.0 if avg_adaptability > 0.7 else 2.5
+        
+        has_consensus = consensus_strength >= min_consensus_strength or effective_strategy_count >= total_min + 2
+        
+        return has_consensus, {
+            'has_consensus': has_consensus,
+            'families_count': families_count,
+            'total_strategies': len(signals),
+            'original_strategies': original_signal_count,
+            'effective_strategies': effective_strategy_count,
+            'avg_adaptability': avg_adaptability,
+            'consensus_strength': consensus_strength,
+            'min_required_strength': min_consensus_strength,
+            'regime': regime,
+            'is_mtf_post_conflict': True,
+            'mtf_consensus_bonus': 'Applied - reduced thresholds for post-conflict MTF signals'
+        }
+    
     def get_adjusted_min_strategies(self, market_regime: str, 
                                    available_families: List[str]) -> int:
         """

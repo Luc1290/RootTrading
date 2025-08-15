@@ -508,6 +508,7 @@ class IndicatorProcessor:
                         indicators['volume_profile_val'] = value_area.get('val')
             
             # === APPEL DIRECT DE VOS MODULES DETECTORS ===
+            logger.debug(f"🔍 {symbol} {timeframe}: {len(closes)} closes disponibles (min 100 requis pour régime)")
             if len(closes) >= 100:  # Assez de données pour les détecteurs
                 
                 # RegimeDetector
@@ -523,6 +524,7 @@ class IndicatorProcessor:
                     )
                     
                     if regime_result:
+                        logger.debug(f"✅ Régime détecté pour {symbol} {timeframe}: {regime_result.regime_type.value}")
                         # Calculer trend_alignment à partir du trend_slope (normaliser entre -100 et 100)
                         trend_alignment = max(-100, min(100, regime_result.trend_slope * 10))
                         

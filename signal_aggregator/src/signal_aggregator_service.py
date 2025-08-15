@@ -14,6 +14,7 @@ import logging
 from typing import Dict, Any, Optional
 import redis.asyncio as redis
 import json
+from datetime import datetime, timedelta
 
 from signal_buffer import IntelligentSignalBuffer
 from signal_processor import SignalProcessor
@@ -49,7 +50,7 @@ class SignalAggregatorService:
             buffer_timeout=15.0,       # 15 secondes max d'attente (assez pour collecter tous les signaux)
             max_buffer_size=50,        # 50 signaux max avant traitement forcé
             min_batch_size=1,          # Minimum 1 signal pour traiter
-            sync_window=3.0,           # 3 secondes pour sync multi-TF
+            sync_window=10.0,          # 10 secondes pour sync multi-TF (pour capturer tous les timeframes)
             enable_mtf_sync=True       # Activer la synchronisation multi-timeframes
         )
         
@@ -61,11 +62,16 @@ class SignalAggregatorService:
         self.input_channel = 'analyzer:signals'      # Signaux depuis l'analyzer
         self.output_channel = 'roottrading:signals:filtered'  # Signaux vers le coordinator (même canal que redis_handler)
         
+        # Protection contre signaux contradictoires
+        self.recent_signals: Dict[str, Dict[str, Any]] = {}  # {symbol: {'side': 'BUY', 'timestamp': datetime}}
+        self.contradiction_window = 30.0  # 30 secondes de protection
+        
         # Statistiques
         self.stats = {
             'signals_received': 0,
             'batches_processed': 0,
             'signals_sent': 0,
+            'signals_blocked': 0,
             'errors': 0
         }
         
@@ -156,10 +162,38 @@ class SignalAggregatorService:
             # Obtenir le régime de marché pour le consensus adaptatif
             market_regime = await self._get_market_regime(symbol, signals)
             
-            # Analyser le consensus adaptatif
-            has_consensus, consensus_details = self.adaptive_consensus.analyze_adaptive_consensus(
-                signals, market_regime
-            )
+            # Pour les signaux MTF post-conflit, ajuster la logique de consensus
+            if is_multi_timeframe:
+                # Récupérer le nombre original de stratégies depuis les métadonnées
+                original_count = signals[0].get('metadata', {}).get('original_signal_count', len(signals)) if signals else 0
+                
+                # Si on a eu un conflit résolu (signaux filtrés), assouplir les critères
+                if original_count > len(signals):
+                    # On avait plus de stratégies au départ, le buffer a filtré après résolution de conflit
+                    logger.info(f"Signaux MTF post-conflit: {original_count} stratégies originales → {len(signals)} après résolution")
+                    
+                    # Créer des signaux "virtuels" pour représenter le consensus original
+                    # Cela permet au consensus adaptatif de voir qu'on avait assez de stratégies
+                    enhanced_signals = signals.copy()
+                    for sig in enhanced_signals:
+                        sig['metadata'] = sig.get('metadata', {})
+                        sig['metadata']['mtf_conflict_resolved'] = True
+                        sig['metadata']['original_strategy_count'] = original_count
+                    
+                    # Analyser avec des critères assouplis pour MTF post-conflit
+                    has_consensus, consensus_details = self.adaptive_consensus.analyze_adaptive_consensus_mtf(
+                        enhanced_signals, market_regime, original_count
+                    )
+                else:
+                    # Pas de conflit, analyse normale
+                    has_consensus, consensus_details = self.adaptive_consensus.analyze_adaptive_consensus(
+                        signals, market_regime
+                    )
+            else:
+                # Analyse normale pour les signaux non-MTF
+                has_consensus, consensus_details = self.adaptive_consensus.analyze_adaptive_consensus(
+                    signals, market_regime
+                )
             
             if not has_consensus:
                 logger.info(f"Pas de consensus pour {symbol}: {consensus_details.get('reason', 'N/A')}")
@@ -250,11 +284,41 @@ class SignalAggregatorService:
         return composite_signal
         
     async def _send_to_coordinator(self, signal: Dict[str, Any]):
-        """Envoie un signal validé au coordinator."""
+        """Envoie un signal validé au coordinator avec protection contre contradictions."""
         try:
+            symbol = signal['symbol']
+            side = signal['side']
+            current_time = datetime.utcnow()
+            
+            # Vérifier s'il y a un signal récent contradictoire
+            if symbol in self.recent_signals:
+                recent_signal = self.recent_signals[symbol]
+                time_diff = (current_time - recent_signal['timestamp']).total_seconds()
+                
+                if time_diff < self.contradiction_window:
+                    recent_side = recent_signal['side']
+                    
+                    # Bloquer si signal opposé dans la fenêtre
+                    if (side == 'BUY' and recent_side == 'SELL') or (side == 'SELL' and recent_side == 'BUY'):
+                        logger.warning(f"🚫 Signal {side} {symbol} BLOQUÉ: signal {recent_side} envoyé il y a {time_diff:.1f}s")
+                        self.stats['signals_blocked'] += 1
+                        return
+                    
+                    # Même direction : remplacer le signal précédent
+                    if side == recent_side:
+                        logger.info(f"🔄 Signal {side} {symbol} remplace le précédent (il y a {time_diff:.1f}s)")
+            
+            # Envoyer le signal
             signal_json = json.dumps(signal, default=str)
             await self.redis_client.publish(self.output_channel, signal_json)
-            logger.debug(f"Signal envoyé au coordinator: {signal['symbol']} {signal['side']}")
+            
+            # Enregistrer ce signal comme récent
+            self.recent_signals[symbol] = {
+                'side': side,
+                'timestamp': current_time
+            }
+            
+            logger.info(f"✅ Signal envoyé au coordinator: {symbol} {side} (confidence: {signal.get('confidence', 0):.2f})")
             
         except Exception as e:
             logger.error(f"Erreur envoi signal au coordinator: {e}")
@@ -269,10 +333,22 @@ class SignalAggregatorService:
                 # Statistiques du buffer
                 buffer_status = await self.signal_buffer.get_buffer_status()
                 
+                # Nettoyer les anciens signaux (plus de contradiction_window)
+                current_time = datetime.utcnow()
+                to_remove = []
+                for symbol, signal_data in self.recent_signals.items():
+                    age = (current_time - signal_data['timestamp']).total_seconds()
+                    if age > self.contradiction_window:
+                        to_remove.append(symbol)
+                
+                for symbol in to_remove:
+                    del self.recent_signals[symbol]
+                
                 # Log des statistiques
                 logger.info(f"Stats agrégation - Reçus: {self.stats['signals_received']}, "
                            f"Traités: {self.stats['batches_processed']}, "
                            f"Envoyés: {self.stats['signals_sent']}, "
+                           f"Bloqués: {self.stats['signals_blocked']}, "
                            f"Buffer: {buffer_status['total_buffered_signals']} signaux")
                 
                 # Log des stats de validation

@@ -115,7 +115,7 @@ class IntelligentSignalBuffer:
                         f"(TF buffer: {len(self.signal_buffer[context_key])}, "
                         f"MTF buffer: {len(self.mtf_buffer[symbol]) if self.enable_mtf_sync else 'disabled'})")
             
-            # Vérifier le traitement immédiat (priorité au MTF si activé)
+            # Si MTF activé, SEULEMENT MTF (pas de traitement par TF individuel)
             if self.enable_mtf_sync:
                 await self._check_mtf_processing(symbol)
             else:
@@ -203,22 +203,45 @@ class IntelligentSignalBuffer:
                 
                 async with self.buffer_lock:
                     now = datetime.utcnow()
-                    contexts_to_process = []
                     
-                    for context_key, first_time in self.first_signal_time.items():
-                        if context_key in self.signal_buffer and self.signal_buffer[context_key]:
-                            elapsed = (now - first_time).total_seconds()
-                            buffer_size = len(self.signal_buffer[context_key])
-                            
-                            # Déclencher par timeout
-                            if elapsed >= self.buffer_timeout and buffer_size >= self.min_batch_size:
-                                contexts_to_process.append(context_key)
+                    # Si MTF activé, NE PAS traiter les timeframes individuels en timeout
+                    if not self.enable_mtf_sync:
+                        contexts_to_process = []
+                        
+                        for context_key, first_time in self.first_signal_time.items():
+                            if context_key in self.signal_buffer and self.signal_buffer[context_key]:
+                                elapsed = (now - first_time).total_seconds()
+                                buffer_size = len(self.signal_buffer[context_key])
                                 
-                    # Traiter les contextes en timeout
-                    for context_key in contexts_to_process:
-                        logger.info(f"Déclenchement par timeout: {context_key}")
-                        await self._process_context(context_key, trigger="timeout")
-                        self.stats['timeout_triggers'] += 1
+                                # Déclencher par timeout
+                                if elapsed >= self.buffer_timeout and buffer_size >= self.min_batch_size:
+                                    contexts_to_process.append(context_key)
+                                    
+                        # Traiter les contextes en timeout (seulement si MTF désactivé)
+                        for context_key in contexts_to_process:
+                            logger.info(f"Déclenchement par timeout: {context_key}")
+                            await self._process_context(context_key, trigger="timeout")
+                            self.stats['timeout_triggers'] += 1
+                    else:
+                        # Mode MTF : traiter seulement les timeouts MTF
+                        mtf_symbols_to_process = []
+                        
+                        for symbol, first_time in self.first_mtf_signal_time.items():
+                            if symbol in self.mtf_buffer and self.mtf_buffer[symbol]:
+                                elapsed = (now - first_time).total_seconds()
+                                buffer_size = len(self.mtf_buffer[symbol])
+                                
+                                # Déclencher par timeout MTF si on a assez de signaux
+                                if elapsed >= self.buffer_timeout and buffer_size >= self.min_batch_size:
+                                    mtf_symbols_to_process.append(symbol)
+                        
+                        # Traiter les MTF timeouts
+                        for symbol in mtf_symbols_to_process:
+                            logger.info(f"Déclenchement MTF par timeout global: {symbol}")
+                            await self._process_mtf_symbol(symbol, trigger="timeout_global")
+                            if symbol in self.first_mtf_signal_time:
+                                del self.first_mtf_signal_time[symbol]
+                            self.stats['timeout_triggers'] += 1
                         
             except asyncio.CancelledError:
                 break
@@ -301,6 +324,7 @@ class IntelligentSignalBuffer:
         # Analyser les conflits potentiels avant traitement
         unique_sides = set(s.get('side', 'UNKNOWN') for s in signals)
         final_signals = signals
+        original_signal_count = len(signals)  # Conserver le nombre original
         
         if len(unique_sides) > 1:
             # Il y a un conflit, analyser et filtrer
@@ -311,8 +335,16 @@ class IntelligentSignalBuffer:
                 winning_side = conflict_analysis['winning_side']
                 final_signals = [s for s in signals if s.get('side') == winning_side]
                 
+                # Ajouter le nombre original dans les métadonnées de chaque signal
+                for signal in final_signals:
+                    if 'metadata' not in signal:
+                        signal['metadata'] = {}
+                    signal['metadata']['original_signal_count'] = original_signal_count
+                    signal['metadata']['mtf_conflict_resolved'] = True
+                    signal['metadata']['conflict_resolution'] = conflict_analysis['resolution']
+                
                 logger.info(f"Conflit MTF résolu pour {symbol}: {conflict_analysis['resolution']} "
-                           f"→ {len(final_signals)} signaux {winning_side} retenus sur {len(signals)}")
+                           f"→ {len(final_signals)} signaux {winning_side} retenus sur {original_signal_count}")
             else:
                 logger.warning(f"Conflit MTF non résolvable pour {symbol}, "
                               f"abandon du traitement : {conflict_analysis['resolution']}")
