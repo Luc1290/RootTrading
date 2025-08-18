@@ -11,6 +11,7 @@ import json
 
 from shared.src.db_pool import transaction
 from shared.src.enums import OrderSide
+from shared.src.redis_client import RedisClient
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ class CycleManager:
     
     def __init__(self):
         """Initialise le gestionnaire de cycles."""
+        self.redis_client = RedisClient()
         logger.info("✅ CycleManager initialisé")
     
     def process_trade_execution(self, trade_data: Dict[str, Any]) -> Optional[str]:
@@ -383,9 +385,9 @@ class CycleManager:
         """
         try:
             with transaction() as cursor:
-                # Récupérer les données du cycle
+                # Récupérer les données du cycle incluant le symbole
                 cursor.execute("""
-                    SELECT entry_price, quantity, metadata
+                    SELECT entry_price, quantity, metadata, symbol
                     FROM trade_cycles WHERE id = %s
                 """, (cycle_id,))
                 
@@ -395,11 +397,39 @@ class CycleManager:
                     return
                 
                 entry_price = Decimal(str(result[0]))
+                symbol = result[3]
                 
                 try:
                     metadata = json.loads(result[2]) if result[2] else {}
                 except (json.JSONDecodeError, TypeError):
                     metadata = {}
+                
+                # Récupérer le prix max depuis Redis
+                max_price = entry_price  # Valeur par défaut
+                try:
+                    max_price_key = f"cycle_max_price:{symbol}"
+                    max_price_data = self.redis_client.get(max_price_key)
+                    
+                    if max_price_data:
+                        if isinstance(max_price_data, dict):
+                            max_price = Decimal(str(max_price_data.get("price", entry_price)))
+                        elif isinstance(max_price_data, (str, bytes)):
+                            if isinstance(max_price_data, bytes):
+                                max_price_data = max_price_data.decode('utf-8')
+                            max_price_dict = json.loads(max_price_data)
+                            max_price = Decimal(str(max_price_dict.get("price", entry_price)))
+                        
+                        # Nettoyer la clé Redis après récupération
+                        self.redis_client.delete(max_price_key)
+                        logger.info(f"📊 Prix max récupéré pour {symbol}: {max_price}")
+                    else:
+                        # Si pas de max en Redis, utiliser le max entre entry et exit
+                        max_price = max(entry_price, exit_price)
+                        logger.debug(f"Pas de max_price dans Redis pour {symbol}, utilisation de {max_price}")
+                        
+                except Exception as e:
+                    logger.warning(f"Erreur récupération max_price depuis Redis: {e}")
+                    max_price = max(entry_price, exit_price)
                 
                 # Calculer le P&L
                 profit_loss = (exit_price - entry_price) * exit_quantity
@@ -413,12 +443,17 @@ class CycleManager:
                     'timestamp': datetime.utcnow().isoformat()
                 }
                 
-                # Mettre à jour le cycle
+                # Ajouter info sur le max atteint
+                metadata['max_price_reached'] = str(max_price)
+                metadata['max_gain_percent'] = str(((max_price - entry_price) / entry_price) * 100)
+                
+                # Mettre à jour le cycle avec le max_price
                 cursor.execute("""
                     UPDATE trade_cycles SET
                         status = 'completed',
                         exit_order_id = %s,
                         exit_price = %s,
+                        max_price = %s,
                         profit_loss = %s,
                         profit_loss_percent = %s,
                         metadata = %s,
@@ -426,11 +461,11 @@ class CycleManager:
                         updated_at = NOW()
                     WHERE id = %s
                 """, (
-                    order_id, exit_price, profit_loss,
+                    order_id, exit_price, max_price, profit_loss,
                     profit_loss_percent, json.dumps(metadata), cycle_id
                 ))
                 
-                logger.info(f"✅ Cycle {cycle_id} fermé: P&L={profit_loss:.2f} ({profit_loss_percent:.2f}%)")
+                logger.info(f"✅ Cycle {cycle_id} fermé: P&L={profit_loss:.2f} ({profit_loss_percent:.2f}%), Max atteint={max_price}")
                 
         except Exception as e:
             logger.error(f"❌ Erreur _close_cycle: {e}")

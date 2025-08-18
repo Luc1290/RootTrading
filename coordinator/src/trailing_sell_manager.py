@@ -29,15 +29,16 @@ class TrailingSellManager:
         self.service_client = service_client
         self.db_connection = db_connection
         
-        # Configuration trailing sell - OPTIMISÉE POUR PROTECTION CAPITAL
-        self.sell_margin = 0.008  # 0.8% de marge - plus strict pour préserver gains
-        self.max_drop_threshold = 0.020  # 2.0% de chute max depuis le pic - strict
-        self.immediate_sell_drop = 0.030  # 3.0% de chute = vente immédiate - resserré
+        # Configuration trailing sell - ÉQUILIBRE GAINS/PROTECTION
+        self.min_gain_for_trailing = 0.010  # 1.0% de gain minimum avant activation du trailing
+        self.sell_margin = 0.008  # 0.8% de marge pour les micro-variations
+        self.max_drop_threshold = 0.015  # 1.5% de chute max depuis le pic (cohérent avec activation à 1%)
+        self.immediate_sell_drop = 0.020  # 2.0% de chute = vente immédiate
         
-        # Configuration stop-loss adaptatif - RESSERRÉ POUR PROTECTION CAPITAL
-        self.stop_loss_percent_base = 0.015  # 1.5% de base (réduit de 2.5%)
-        self.stop_loss_percent_bullish = 0.025  # 2.5% en tendance haussière (réduit de 4%)
-        self.stop_loss_percent_strong_bullish = 0.035  # 3.5% en tendance très haussière (réduit de 5.5%)
+        # Configuration stop-loss adaptatif - PROTECTION CAPITAL
+        self.stop_loss_percent_base = 0.015  # 1.5% de base - protection stricte
+        self.stop_loss_percent_bullish = 0.020  # 2.0% en tendance haussière - légèrement plus souple
+        self.stop_loss_percent_strong_bullish = 0.025  # 2.5% en tendance très haussière - reste prudent
         
         logger.info("✅ TrailingSellManager initialisé")
     
@@ -92,7 +93,13 @@ class TrailingSellManager:
                 return False, f"Position perdante mais dans tolérance (perte {loss_percent*100:.2f}% < {adaptive_threshold*100:.2f}%)"
             
             # === POSITION GAGNANTE : LOGIQUE TRAILING SELL AMÉLIORÉE ===
-            logger.info(f"🔍 Position gagnante détectée, vérification trailing sell intelligent")
+            gain_percent = (current_price - entry_price) / entry_price
+            logger.info(f"🔍 Position gagnante détectée: +{gain_percent*100:.2f}%, vérification trailing sell")
+            
+            # Vérifier si le gain minimum est atteint pour activer le trailing
+            if gain_percent < self.min_gain_for_trailing:
+                logger.info(f"📊 Gain insuffisant pour trailing ({gain_percent*100:.2f}% < {self.min_gain_for_trailing*100:.1f}%), position continue")
+                return False, f"Gain insuffisant pour activer le trailing ({gain_percent*100:.2f}% < {self.min_gain_for_trailing*100:.1f}%)"
             
             # Récupérer et mettre à jour le prix max historique
             historical_max = self._get_and_update_max_price(symbol, current_price, entry_price)
@@ -107,19 +114,19 @@ class TrailingSellManager:
             
             # === DÉCISION DE VENTE BASÉE SUR LE PRIX MAX ===
             
-            # Si chute importante depuis le max (>2.5%), vendre immédiatement
+            # Si chute importante depuis le max (>2.0%), vendre immédiatement
             if drop_from_max >= self.immediate_sell_drop:
                 logger.warning(f"📉 CHUTE IMPORTANTE depuis max ({drop_from_max*100:.2f}%), SELL IMMÉDIAT!")
                 self._cleanup_references(symbol)
                 return True, f"Chute de {drop_from_max*100:.2f}% depuis max {historical_max:.{precision}f}, SELL immédiat"
             
             if previous_sell_price is None:
-                # Premier SELL gagnant : logique stricte pour protection capital
-                if drop_from_max > 0.012:  # Si déjà chuté de >1.2% depuis le max - strict
+                # Premier SELL gagnant : on est déjà à +1% minimum, donc on tolère la chute configurée
+                if drop_from_max > self.sell_margin:  # Si déjà chuté de >0.8% depuis le max
                     logger.info(f"⚠️ Premier SELL mais déjà {drop_from_max*100:.2f}% sous le max historique")
                     
-                    # Si chute significative (>1.5%), vendre immédiatement
-                    if drop_from_max >= 0.015:  # 1.5% fixe plus strict
+                    # Si chute atteint le seuil normal (>1.5%), vendre
+                    if drop_from_max >= self.max_drop_threshold:
                         logger.info(f"📉 Chute significative depuis max, SELL!")
                         self._cleanup_references(symbol)
                         return True, f"Chute de {drop_from_max*100:.2f}% depuis max {historical_max:.{precision}f}, SELL exécuté"
