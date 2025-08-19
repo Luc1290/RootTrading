@@ -42,6 +42,7 @@ interface PerformanceHistory {
 
 interface StrategyStatistics {
   strategy: string;
+  type?: 'CONSENSUS' | 'INDIVIDUAL';
   trades: number;
   winRate: number;
   avgPnl: number;
@@ -49,6 +50,15 @@ interface StrategyStatistics {
   avgDuration: number;
   maxDrawdown: number;
   sharpeRatio: number;
+  total_signals?: number;
+  total_trades?: number;
+  trades_participated?: number;
+  participation_rate?: number;
+  total_pnl_percent?: number;
+  max_gain?: number;
+  max_loss?: number;
+  max_gain_percent?: number;
+  max_loss_percent?: number;
 }
 
 function StatisticsPage() {
@@ -57,6 +67,8 @@ function StatisticsPage() {
   const [symbolStats, setSymbolStats] = useState<SymbolStatistics[]>([]);
   const [performanceHistory, setPerformanceHistory] = useState<PerformanceHistory | null>(null);
   const [strategyStats, setStrategyStats] = useState<StrategyStatistics[]>([]);
+  const [consensusStats, setConsensusStats] = useState<StrategyStatistics[]>([]);
+  const [individualStats, setIndividualStats] = useState<StrategyStatistics[]>([]);
   
   // État UI
   const [selectedSymbol, setSelectedSymbol] = useState<TradingSymbol>('BTCUSDC');
@@ -120,6 +132,8 @@ function StatisticsPage() {
       setSymbolStats(symbolResponse?.symbols || []);
       setPerformanceHistory(performanceResponse || null);
       setStrategyStats(strategiesResponse?.strategies || []);
+      setConsensusStats(strategiesResponse?.consensus_strategies || []);
+      setIndividualStats(strategiesResponse?.individual_strategies || []);
       setAvailableSymbols(symbolsResponse?.symbols || []);
       setLastUpdate(new Date());
       
@@ -456,28 +470,31 @@ function StatisticsPage() {
         </div>
       </div>
 
-      {/* Tableau des stratégies */}
-      {strategyStats.length > 0 && (
+      {/* Tableau des stratégies CONSENSUS */}
+      {consensusStats.length > 0 && (
         <div className="chart-container">
-          <div className="chart-title">🧠 Performance par Stratégie</div>
+          <div className="chart-title">🎯 Performance des Stratégies CONSENSUS (Trades Réels)</div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-700">
-                  <th className="text-left py-3 px-4 text-gray-300">Stratégie</th>
+                  <th className="text-left py-3 px-4 text-gray-300">Stratégie Consensus</th>
                   <th className="text-right py-3 px-4 text-gray-300">Trades</th>
                   <th className="text-right py-3 px-4 text-gray-300">Win Rate</th>
                   <th className="text-right py-3 px-4 text-gray-300">P&L Moy</th>
                   <th className="text-right py-3 px-4 text-gray-300">P&L Total</th>
-                  <th className="text-right py-3 px-4 text-gray-300">Sharpe</th>
-                  <th className="text-right py-3 px-4 text-gray-300">Max DD</th>
+                  <th className="text-right py-3 px-4 text-gray-300">Durée Moy</th>
+                  <th className="text-right py-3 px-4 text-gray-300">Max Gain</th>
+                  <th className="text-right py-3 px-4 text-gray-300">Max Perte</th>
                 </tr>
               </thead>
               <tbody>
-                {strategyStats.map((strategy, index) => (
+                {consensusStats.map((strategy, index) => (
                   <tr key={index} className="border-b border-gray-800 hover:bg-gray-800/30">
-                    <td className="py-3 px-4 text-white font-medium">{strategy.strategy}</td>
-                    <td className="py-3 px-4 text-right text-gray-300">{strategy.trades}</td>
+                    <td className="py-3 px-4 text-white font-medium">
+                      <span className="text-blue-400">📊</span> {strategy.strategy}
+                    </td>
+                    <td className="py-3 px-4 text-right text-gray-300">{strategy.trades || strategy.total_trades || 0}</td>
                     <td className={`py-3 px-4 text-right font-mono ${
                       strategy.winRate >= 50 ? 'text-green-400' : 'text-red-400'
                     }`}>
@@ -488,19 +505,89 @@ function StatisticsPage() {
                     }`}>
                       {formatCurrency(strategy.avgPnl)}
                     </td>
-                    <td className={`py-3 px-4 text-right font-mono ${
+                    <td className={`py-3 px-4 text-right font-mono font-bold ${
                       strategy.totalPnl >= 0 ? 'text-green-400' : 'text-red-400'
                     }`}>
                       {formatCurrency(strategy.totalPnl)}
                     </td>
-                    <td className={`py-3 px-4 text-right font-mono ${
-                      strategy.sharpeRatio >= 1 ? 'text-green-400' : 
-                      strategy.sharpeRatio >= 0.5 ? 'text-yellow-400' : 'text-red-400'
-                    }`}>
-                      {strategy.sharpeRatio.toFixed(2)}
+                    <td className="py-3 px-4 text-right text-gray-300">
+                      {strategy.avgDuration.toFixed(1)}h
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono text-green-400">
+                      {formatCurrency(strategy.max_gain || 0)}
                     </td>
                     <td className="py-3 px-4 text-right font-mono text-red-400">
-                      {formatPercent(Math.abs(strategy.maxDrawdown))}
+                      {formatCurrency(strategy.max_loss || strategy.maxDrawdown || 0)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tableau des stratégies INDIVIDUELLES */}
+      {individualStats.length > 0 && (
+        <div className="chart-container">
+          <div className="chart-title">🧠 Performance RÉELLE des Stratégies Individuelles (Contribution aux Consensus)</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-700">
+                  <th className="text-left py-3 px-4 text-gray-300">Stratégie</th>
+                  <th className="text-right py-3 px-4 text-gray-300">Signaux Émis</th>
+                  <th className="text-right py-3 px-4 text-gray-300">Trades Participés</th>
+                  <th className="text-right py-3 px-4 text-gray-300">Taux Participation</th>
+                  <th className="text-right py-3 px-4 text-gray-300">Win Rate</th>
+                  <th className="text-right py-3 px-4 text-gray-300">P&L Moy</th>
+                  <th className="text-right py-3 px-4 text-gray-300">P&L Total</th>
+                  <th className="text-right py-3 px-4 text-gray-300">Max Gain</th>
+                  <th className="text-right py-3 px-4 text-gray-300">Max Perte</th>
+                </tr>
+              </thead>
+              <tbody>
+                {individualStats.map((strategy, index) => (
+                  <tr key={index} className="border-b border-gray-800 hover:bg-gray-800/30">
+                    <td className="py-3 px-4 text-white font-medium">
+                      <span className="text-yellow-400">📈</span> {strategy.strategy}
+                    </td>
+                    <td className="py-3 px-4 text-right text-gray-300">
+                      {strategy.total_signals || 0}
+                    </td>
+                    <td className="py-3 px-4 text-right text-gray-300">
+                      {strategy.trades_participated || strategy.trades || 0}
+                    </td>
+                    <td className={`py-3 px-4 text-right font-mono ${
+                      (strategy.participation_rate ?? 0) >= 50 ? 'text-green-400' : 
+                      (strategy.participation_rate ?? 0) >= 25 ? 'text-yellow-400' :
+                      (strategy.participation_rate ?? 0) > 0 ? 'text-orange-400' : 'text-gray-500'
+                    }`}>
+                      {strategy.participation_rate ? `${strategy.participation_rate.toFixed(1)}%` : '-'}
+                    </td>
+                    <td className={`py-3 px-4 text-right font-mono ${
+                      strategy.winRate >= 50 ? 'text-green-400' : 
+                      strategy.winRate > 0 ? 'text-orange-400' : 'text-gray-500'
+                    }`}>
+                      {strategy.winRate > 0 ? formatPercent(strategy.winRate) : '-'}
+                    </td>
+                    <td className={`py-3 px-4 text-right font-mono ${
+                      strategy.avgPnl >= 0 ? 'text-green-400' : 
+                      strategy.avgPnl < 0 ? 'text-red-400' : 'text-gray-500'
+                    }`}>
+                      {strategy.avgPnl !== 0 ? formatCurrency(strategy.avgPnl) : '-'}
+                    </td>
+                    <td className={`py-3 px-4 text-right font-mono font-bold ${
+                      strategy.totalPnl >= 0 ? 'text-green-400' : 
+                      strategy.totalPnl < 0 ? 'text-red-400' : 'text-gray-500'
+                    }`}>
+                      {strategy.totalPnl !== 0 ? formatCurrency(strategy.totalPnl) : '-'}
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono text-green-400">
+                      {strategy.max_gain ? formatCurrency(strategy.max_gain) : '-'}
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono text-red-400">
+                      {strategy.max_loss ? formatCurrency(Math.abs(strategy.max_loss || 0)) : '-'}
                     </td>
                   </tr>
                 ))}

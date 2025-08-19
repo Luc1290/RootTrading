@@ -72,6 +72,7 @@ class SignalAggregatorService:
             'batches_processed': 0,
             'signals_sent': 0,
             'signals_blocked': 0,
+            'consensus_rejected_insufficient': 0,  # Consensus rejetés car < 3 stratégies validées
             'errors': 0
         }
         
@@ -217,6 +218,13 @@ class SignalAggregatorService:
                     validated_signals.append(validated_signal)
                     
             if validated_signals:
+                # VÉRIFICATION FINALE : Un vrai consensus doit avoir au minimum 3 stratégies validées
+                if len(validated_signals) < 3:
+                    self.stats['consensus_rejected_insufficient'] += 1
+                    logger.warning(f"❌ Consensus rejeté pour {symbol}: seulement {len(validated_signals)} stratégie(s) "
+                                 f"validée(s) sur {len(signals)} originales. Minimum requis: 3")
+                    return
+                
                 # Créer un signal composite final
                 composite_signal = self._create_composite_signal(signals, validated_signals, consensus_details)
                 
@@ -227,8 +235,8 @@ class SignalAggregatorService:
                     self.stats['batches_processed'] += 1
                     self.stats['signals_sent'] += 1
                     
-                    logger.info(f"Signal composite envoyé: {symbol} {composite_signal['side']} "
-                               f"(confidence: {composite_signal['confidence']:.2f})")
+                    logger.info(f"✅ Signal composite envoyé: {symbol} {composite_signal['side']} "
+                               f"({len(validated_signals)} stratégies validées, confidence: {composite_signal['confidence']:.2f})")
             else:
                 logger.info(f"Aucun signal validé dans le batch {symbol}")
                 
@@ -260,23 +268,23 @@ class SignalAggregatorService:
         best_signal = max(validated_signals, key=lambda s: s.get('confidence', 0))
         
         # Statistiques du consensus
-        total_strategies = len(original_signals)
+        original_count = len(original_signals)
         validated_count = len(validated_signals)
         avg_confidence = sum(s.get('confidence', 0) for s in validated_signals) / validated_count
         
-        # Créer le signal composite
+        # Créer le signal composite avec le nombre de stratégies VALIDÉES
         composite_signal = {
             **best_signal,
-            'strategy': f"CONSENSUS_{total_strategies}_STRATEGIES",
+            'strategy': f"CONSENSUS_{validated_count}_STRATEGIES",
             'confidence': min(1.0, avg_confidence * 1.1),  # Bonus consensus +10%
             'metadata': {
                 **best_signal.get('metadata', {}),
                 'is_composite': True,
                 'consensus_details': consensus_details,
-                'total_strategies': total_strategies,
-                'validated_strategies': validated_count,
-                'validation_rate': validated_count / total_strategies,
-                'strategies_list': [s.get('strategy') for s in original_signals],
+                'original_strategies': original_count,  # Nombre initial avant validation
+                'validated_strategies': validated_count,  # Nombre final utilisé pour le nom
+                'validation_rate': validated_count / original_count,
+                'original_strategies_list': [s.get('strategy') for s in original_signals],
                 'validated_strategies_list': [s.get('strategy') for s in validated_signals]
             }
         }
@@ -349,6 +357,7 @@ class SignalAggregatorService:
                            f"Traités: {self.stats['batches_processed']}, "
                            f"Envoyés: {self.stats['signals_sent']}, "
                            f"Bloqués: {self.stats['signals_blocked']}, "
+                           f"Consensus insuffisants: {self.stats['consensus_rejected_insufficient']}, "
                            f"Buffer: {buffer_status['total_buffered_signals']} signaux")
                 
                 # Log des stats de validation

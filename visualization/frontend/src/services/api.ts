@@ -170,7 +170,11 @@ class ApiService {
     return this.request(`/api/statistics/performance-history?timeframe=${timeframe}`);
   }
 
-  async getStrategiesStatistics(): Promise<{ strategies: StrategyStatistics[] }> {
+  async getStrategiesStatistics(): Promise<{ 
+    strategies: StrategyStatistics[],
+    consensus_strategies?: StrategyStatistics[],
+    individual_strategies?: StrategyStatistics[]
+  }> {
     return this.request('/api/statistics/strategies');
   }
   

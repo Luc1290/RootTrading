@@ -245,60 +245,249 @@ class StatisticsService:
     async def get_strategy_comparison(self) -> Dict[str, Any]:
         """
         Compare les performances des différentes stratégies.
+        Sépare les consensus des stratégies individuelles.
         
         Returns:
-            Dict avec comparaison des stratégies
+            Dict avec comparaison des stratégies (consensus et individuelles séparées)
         """
         try:
-            query = """
+            # 1. Récupérer les CONSENSUS (trades réellement exécutés)
+            consensus_query = """
                 SELECT 
-                    ts.strategy,
-                    COUNT(DISTINCT tc.id) as total_cycles,
-                    SUM(tc.profit_loss) as total_pnl,
-                    AVG(tc.profit_loss_percent) as avg_pnl_percent,
-                    SUM(CASE WHEN tc.profit_loss > 0 THEN 1 ELSE 0 END) as winning_cycles,
-                    AVG(EXTRACT(EPOCH FROM (tc.completed_at - tc.created_at))/3600) as avg_duration_hours
-                FROM trading_signals ts
-                JOIN trade_cycles tc ON tc.symbol = ts.symbol
-                    AND tc.created_at >= ts.timestamp - INTERVAL '1 minute'
-                    AND tc.created_at <= ts.timestamp + INTERVAL '1 minute'
-                WHERE tc.status = 'completed'
-                    AND tc.completed_at >= NOW() - INTERVAL '30 days'
-                GROUP BY ts.strategy
+                    strategy,
+                    COUNT(*) as total_cycles,
+                    SUM(profit_loss) as total_pnl,
+                    AVG(profit_loss) as avg_pnl,
+                    AVG(profit_loss_percent) as avg_pnl_percent,
+                    SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as winning_cycles,
+                    AVG(EXTRACT(EPOCH FROM (completed_at - created_at))/3600) as avg_duration_hours,
+                    MAX(profit_loss) as max_gain,
+                    MIN(profit_loss) as max_loss
+                FROM trade_cycles
+                WHERE status = 'completed'
+                    AND completed_at >= NOW() - INTERVAL '30 days'
+                    AND strategy LIKE 'CONSENSUS_%'
+                GROUP BY strategy
                 ORDER BY total_pnl DESC;
             """
             
-            rows = await self.data_manager.execute_query(query)
+            # Liste complète de toutes les stratégies disponibles
+            all_available_strategies = [
+                'ADX_Direction_Strategy',
+                'ATR_Breakout_Strategy', 
+                'Bollinger_Touch_Strategy',
+                'CCI_Reversal_Strategy',
+                'Donchian_Breakout_Strategy',
+                'EMA_Cross_Strategy',
+                'HullMA_Slope_Strategy',
+                'Liquidity_Sweep_Buy_Strategy',
+                'MACD_Crossover_Strategy',
+                'MultiTF_ConfluentEntry_Strategy',
+                'OBV_Crossover_Strategy',
+                'PPO_Crossover_Strategy',
+                'ParabolicSAR_Bounce_Strategy',
+                'Pump_Dump_Pattern_Strategy',
+                'ROC_Threshold_Strategy',
+                'RSI_Cross_Strategy',
+                'Range_Breakout_Confirmation_Strategy',
+                'Resistance_Rejection_Strategy',
+                'Spike_Reaction_Buy_Strategy',
+                'StochRSI_Rebound_Strategy',
+                'Stochastic_Oversold_Buy_Strategy',
+                'Supertrend_Reversal_Strategy',
+                'Support_Breakout_Strategy',
+                'TEMA_Slope_Strategy',
+                'TRIX_Crossover_Strategy',
+                'VWAP_Support_Resistance_Strategy',
+                'WilliamsR_Rebound_Strategy',
+                'ZScore_Extreme_Reversal_Strategy'
+            ]
             
-            strategies = []
-            for row in rows:
+            # 2. Récupérer les stratégies individuelles (performance RÉELLE basée sur les trades où elles participaient)
+            individual_query = """
+                WITH strategy_trades AS (
+                    -- Trouver tous les trades où chaque stratégie a participé
+                    -- En analysant les signaux individuels qui ont contribué aux consensus
+                    SELECT DISTINCT
+                        ts.strategy,
+                        tc.id as cycle_id,
+                        tc.profit_loss,
+                        tc.profit_loss_percent,
+                        tc.status,
+                        tc.completed_at
+                    FROM trading_signals ts
+                    -- Joindre avec les cycles basés sur la proximité temporelle
+                    JOIN trade_cycles tc ON 
+                        tc.symbol = ts.symbol 
+                        AND tc.side = ts.side
+                        AND tc.created_at >= ts.timestamp - INTERVAL '1 minute'
+                        AND tc.created_at <= ts.timestamp + INTERVAL '1 minute'
+                        AND tc.status = 'completed'
+                    WHERE ts.timestamp >= NOW() - INTERVAL '30 days'
+                        AND ts.strategy NOT LIKE 'CONSENSUS_%'
+                ),
+                strategy_performance AS (
+                    SELECT 
+                        strategy,
+                        COUNT(DISTINCT cycle_id) as total_trades_participated,
+                        SUM(profit_loss) as total_pnl,
+                        AVG(profit_loss) as avg_pnl,
+                        AVG(profit_loss_percent) as avg_pnl_percent,
+                        SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as winning_trades,
+                        MAX(profit_loss) as max_gain,
+                        MIN(profit_loss) as max_loss,
+                        MAX(profit_loss_percent) as max_gain_percent,
+                        MIN(profit_loss_percent) as max_loss_percent
+                    FROM strategy_trades
+                    GROUP BY strategy
+                ),
+                signal_counts AS (
+                    -- Compter le nombre total de signaux émis par chaque stratégie
+                    SELECT 
+                        strategy,
+                        COUNT(*) as total_signals_emitted
+                    FROM trading_signals
+                    WHERE timestamp >= NOW() - INTERVAL '30 days'
+                        AND strategy NOT LIKE 'CONSENSUS_%'
+                    GROUP BY strategy
+                )
+                SELECT 
+                    sc.strategy,
+                    COALESCE(sc.total_signals_emitted, 0) as total_signals,
+                    COALESCE(sp.total_trades_participated, 0) as trades_participated,
+                    COALESCE(sp.total_pnl, 0) as total_pnl,
+                    COALESCE(sp.avg_pnl, 0) as avg_pnl,
+                    COALESCE(sp.avg_pnl_percent, 0) as avg_pnl_percent,
+                    COALESCE(sp.winning_trades, 0) as winning_trades,
+                    COALESCE(sp.max_gain, 0) as max_gain,
+                    COALESCE(sp.max_loss, 0) as max_loss,
+                    COALESCE(sp.max_gain_percent, 0) as max_gain_percent,
+                    COALESCE(sp.max_loss_percent, 0) as max_loss_percent,
+                    -- Taux de participation (combien de signaux ont mené à des trades)
+                    CASE 
+                        WHEN sc.total_signals_emitted > 0 
+                        THEN (COALESCE(sp.total_trades_participated, 0)::float / sc.total_signals_emitted * 100)
+                        ELSE 0 
+                    END as participation_rate
+                FROM signal_counts sc
+                LEFT JOIN strategy_performance sp ON sc.strategy = sp.strategy
+                ORDER BY COALESCE(sp.total_pnl, 0) DESC;
+            """
+            
+            # Exécuter les deux requêtes
+            consensus_rows = await self.data_manager.execute_query(consensus_query)
+            individual_rows = await self.data_manager.execute_query(individual_query)
+            
+            # Formatter les résultats CONSENSUS
+            consensus_strategies = []
+            for row in consensus_rows:
                 win_rate = 0
                 if row['total_cycles'] > 0:
                     win_rate = (row['winning_cycles'] / row['total_cycles']) * 100
                 
-                strategies.append({
+                consensus_strategies.append({
                     'strategy': row['strategy'],
-                    'total_cycles': row['total_cycles'],
+                    'type': 'CONSENSUS',
+                    'total_trades': row['total_cycles'],
                     'total_pnl': float(row['total_pnl'] or 0),
+                    'avg_pnl': float(row['avg_pnl'] or 0),
                     'avg_pnl_percent': float(row['avg_pnl_percent'] or 0),
                     'win_rate': round(win_rate, 2),
-                    'avg_duration_hours': round(row['avg_duration_hours'] or 0, 2)
+                    'avg_duration_hours': round(row['avg_duration_hours'] or 0, 2),
+                    'max_gain': float(row['max_gain'] or 0),
+                    'max_loss': float(row['max_loss'] or 0),
+                    # Champs pour compatibilité frontend
+                    'avgPnl': float(row['avg_pnl'] or 0),
+                    'avgDuration': round(row['avg_duration_hours'] or 0, 2),
+                    'maxDrawdown': float(row['max_loss'] or 0),
+                    'sharpeRatio': 0,
+                    'trades': row['total_cycles'],
+                    'winRate': round(win_rate, 2),
+                    'totalPnl': float(row['total_pnl'] or 0)
                 })
             
-            # Ajouter des métriques supplémentaires pour le frontend
-            for strategy in strategies:
-                strategy['avgPnl'] = strategy.get('avg_pnl_percent', 0)
-                strategy['avgDuration'] = strategy.get('avg_duration_hours', 0)
-                strategy['maxDrawdown'] = 0  # À calculer si nécessaire
-                strategy['sharpeRatio'] = 0  # À calculer si nécessaire
-                strategy['trades'] = strategy.get('total_cycles', 0)
-                strategy['winRate'] = strategy.get('win_rate', 0)
-                strategy['totalPnl'] = strategy.get('total_pnl', 0)
+            # Créer un dictionnaire avec les stratégies qui ont des données
+            strategies_with_data = {}
+            for row in individual_rows:
+                strategies_with_data[row['strategy']] = row
+            
+            # Formatter les résultats INDIVIDUELS (inclure TOUTES les stratégies avec données RÉELLES)
+            individual_strategies = []
+            for strategy_name in all_available_strategies:
+                if strategy_name in strategies_with_data:
+                    # Stratégie avec des données RÉELLES
+                    row = strategies_with_data[strategy_name]
+                    
+                    # Calculer le win rate basé sur les trades réels où la stratégie a participé
+                    win_rate = 0
+                    if row['trades_participated'] > 0:
+                        win_rate = (row['winning_trades'] / row['trades_participated']) * 100
+                    
+                    individual_strategies.append({
+                        'strategy': strategy_name,
+                        'type': 'INDIVIDUAL',
+                        'total_signals': row['total_signals'],  # Nombre de signaux émis
+                        'trades_participated': row['trades_participated'],  # Trades où la stratégie a participé
+                        'participation_rate': float(row['participation_rate'] or 0),  # % de signaux qui ont mené à des trades
+                        'total_pnl': float(row['total_pnl'] or 0),  # P&L RÉEL en USDC
+                        'avg_pnl': float(row['avg_pnl'] or 0),  # P&L moyen RÉEL
+                        'avg_pnl_percent': float(row['avg_pnl_percent'] or 0),
+                        'win_rate': round(win_rate, 2),
+                        'max_gain': float(row['max_gain'] or 0),
+                        'max_loss': float(row['max_loss'] or 0),
+                        'max_gain_percent': float(row['max_gain_percent'] or 0),
+                        'max_loss_percent': float(row['max_loss_percent'] or 0),
+                        # Champs pour compatibilité frontend
+                        'avgPnl': float(row['avg_pnl'] or 0),
+                        'avgDuration': 0,  # Non applicable
+                        'maxDrawdown': float(row['max_loss'] or 0),
+                        'sharpeRatio': 0,
+                        'trades': row['trades_participated'],  # Trades réels, pas juste les signaux
+                        'winRate': round(win_rate, 2),
+                        'totalPnl': float(row['total_pnl'] or 0),
+                        'total_pnl_percent': float(row['avg_pnl_percent'] or 0) * row['trades_participated'] if row['trades_participated'] > 0 else 0
+                    })
+                else:
+                    # Stratégie sans données (0 signaux émis)
+                    individual_strategies.append({
+                        'strategy': strategy_name,
+                        'type': 'INDIVIDUAL',
+                        'total_signals': 0,
+                        'trades_participated': 0,
+                        'participation_rate': 0,
+                        'total_pnl': 0,
+                        'avg_pnl': 0,
+                        'avg_pnl_percent': 0,
+                        'win_rate': 0,
+                        'max_gain': 0,
+                        'max_loss': 0,
+                        'max_gain_percent': 0,
+                        'max_loss_percent': 0,
+                        # Champs pour compatibilité frontend
+                        'avgPnl': 0,
+                        'avgDuration': 0,
+                        'maxDrawdown': 0,
+                        'sharpeRatio': 0,
+                        'trades': 0,
+                        'winRate': 0,
+                        'totalPnl': 0,
+                        'total_pnl_percent': 0
+                    })
+            
+            # Combiner et trier par performance
+            all_strategies = consensus_strategies + individual_strategies
+            all_strategies.sort(key=lambda x: x.get('totalPnl', 0), reverse=True)
             
             return {
-                'strategies': strategies,
-                'best_performer': strategies[0]['strategy'] if strategies else None,
-                'total_strategies': len(strategies)
+                'strategies': all_strategies,  # Pour compatibilité avec le frontend existant
+                'consensus_strategies': consensus_strategies,
+                'individual_strategies': individual_strategies,
+                'all_strategies': all_strategies,
+                'best_consensus': consensus_strategies[0]['strategy'] if consensus_strategies else None,
+                'best_individual': individual_strategies[0]['strategy'] if individual_strategies else None,
+                'total_consensus': len(consensus_strategies),
+                'total_individual': len(individual_strategies),
+                'total_strategies': len(all_strategies)
             }
             
         except Exception as e:
