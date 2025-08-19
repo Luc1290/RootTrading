@@ -73,6 +73,11 @@ class TrailingSellManager:
             # Calculer la performance actuelle
             loss_percent = (entry_price - current_price) / entry_price
             
+            # Récupérer et afficher le prix max historique dès le début
+            historical_max = self._get_and_update_max_price(symbol, current_price, entry_price)
+            drop_from_max = (historical_max - current_price) / historical_max
+            logger.info(f"📊 Prix max historique: {historical_max:.{precision}f}, Chute depuis max: {drop_from_max*100:.2f}%")
+            
             # === STOP-LOSS ADAPTATIF INTELLIGENT ===
             adaptive_threshold = self._calculate_adaptive_threshold(symbol, entry_price, entry_time_epoch)
             
@@ -101,12 +106,8 @@ class TrailingSellManager:
                 logger.info(f"📊 Gain insuffisant pour trailing ({gain_percent*100:.2f}% < {self.min_gain_for_trailing*100:.1f}%), position continue")
                 return False, f"Gain insuffisant pour activer le trailing ({gain_percent*100:.2f}% < {self.min_gain_for_trailing*100:.1f}%)"
             
-            # Récupérer et mettre à jour le prix max historique
-            historical_max = self._get_and_update_max_price(symbol, current_price, entry_price)
-            
-            # Calculer la chute depuis le prix max
-            drop_from_max = (historical_max - current_price) / historical_max
-            logger.info(f"📊 Prix max historique: {historical_max:.{precision}f}, Chute depuis max: {drop_from_max*100:.2f}%")
+            # Prix max déjà récupéré plus haut
+            logger.info(f"🎯 TRAILING LOGIC: Utilisation du prix MAX ({historical_max:.{precision}f}) pour décision, PAS le prix d'entrée")
             
             # Récupérer le prix SELL précédent
             previous_sell_price = self._get_previous_sell_price(symbol)
