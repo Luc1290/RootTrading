@@ -62,6 +62,14 @@ services:
     volumes:
       - kafka-data:/var/lib/kafka/data
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'  # Kafka avec plus de ressources pour le throughput
+          memory: 1.5G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -88,6 +96,14 @@ services:
     ports:
       - "5432:5432"
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'  # Base de données intensive
+          memory: 3G   # Plus de RAM pour les requêtes
+        reservations:
+          cpus: '1.0'
+          memory: 1G
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -136,6 +152,14 @@ services:
       - WAIT_FOR_DB=true
     env_file: .env
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '3.0'  # Utilise 3 des 4 CPUs disponibles
+          memory: 2G
+        reservations:
+          cpus: '1.5'
+          memory: 512M
     depends_on:
       redis:
         condition: service_healthy
@@ -192,6 +216,14 @@ services:
       - WAIT_FOR_DB=true
     env_file: .env
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'  # Service intensif en calculs
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
     depends_on:
       redis:
         condition: service_healthy
@@ -221,6 +253,14 @@ services:
       - WAIT_FOR_DB=true
     env_file: .env
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     depends_on:
       redis:
         condition: service_healthy
@@ -344,6 +384,14 @@ services:
       - VISUALIZATION_PORT=5009
     env_file: .env
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'  # Plus de CPU pour les graphs de 20 cryptos
+          memory: 2G   # Double la RAM pour gérer 20 cryptos
+        reservations:
+          cpus: '0.5'
+          memory: 512M
     depends_on:
       redis:
         condition: service_healthy

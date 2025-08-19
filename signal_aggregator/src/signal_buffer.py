@@ -152,15 +152,26 @@ class IntelligentSignalBuffer:
         
         # Conditions de déclenchement intelligent :
         
-        # 1. Si on a des signaux de 3+ timeframes différents dans la même direction
-        if len(timeframes_present) >= 3 and len(directions_present) == 1:
-            logger.info(f"Déclenchement MTF par diversité TF: {len(timeframes_present)} TFs, "
-                       f"1 direction pour {symbol}")
-            await self._process_mtf_symbol(symbol, trigger="timeframe_diversity")
+        # 1. Si on a des signaux de TOUS les timeframes principaux (3m+5m+15m) dans la même direction
+        expected_timeframes = {'3m', '5m', '15m'}  # Timeframes principaux de l'analyzer
+        has_all_main_timeframes = expected_timeframes.issubset(timeframes_present)
+        
+        if has_all_main_timeframes and len(directions_present) == 1:
+            logger.info(f"Déclenchement MTF par timeframes complets: {len(timeframes_present)} TFs "
+                       f"({list(timeframes_present)}), 1 direction pour {symbol}")
+            await self._process_mtf_symbol(symbol, trigger="complete_timeframes")
             self.stats['mtf_sync_triggers'] += 1
             return
             
-        # 2. GESTION DES CONFLITS : Signaux opposés sur différents timeframes
+        # 2. Fallback: Si on a 3+ timeframes différents dans la même direction
+        elif len(timeframes_present) >= 3 and len(directions_present) == 1:
+            logger.info(f"Déclenchement MTF par diversité TF: {len(timeframes_present)} TFs, "
+                       f"1 direction pour {symbol}")
+            await self._process_mtf_symbol(symbol, trigger="timeframe_diversity") 
+            self.stats['mtf_sync_triggers'] += 1
+            return
+            
+        # 3. GESTION DES CONFLITS : Signaux opposés sur différents timeframes
         if len(directions_present) >= 2 and len(timeframes_present) >= 2:
             # Analyser la hiérarchie des conflits
             conflict_analysis = self._analyze_mtf_conflicts(mtf_signals)
@@ -174,7 +185,7 @@ class IntelligentSignalBuffer:
             else:
                 logger.debug(f"Conflit MTF non résolvable pour {symbol}, attente de plus de signaux")
             
-        # 3. Si on a un signal de timeframe élevé (1h+) avec confirmation courte
+        # 4. Si on a un signal de timeframe élevé (1h+) avec confirmation courte
         high_tf_signals = [s for s in mtf_signals 
                           if self.timeframe_priority.get(s.get('timeframe', '5m'), 0) >= 100]
         
@@ -185,7 +196,7 @@ class IntelligentSignalBuffer:
             self.stats['mtf_sync_triggers'] += 1
             return
             
-        # 4. Si fenêtre de sync expirée et assez de signaux
+        # 5. Si fenêtre de sync expirée et assez de signaux
         first_time = self.first_mtf_signal_time.get(symbol)
         if first_time:
             elapsed = (datetime.utcnow() - first_time).total_seconds()

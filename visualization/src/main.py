@@ -286,38 +286,9 @@ async def get_available_symbols():
 async def get_configured_symbols():
     """Get list of configured trading symbols from shared config"""
     try:
-        # Import avec chemin absolu vers shared/config
-        import sys
-        import os
-        
-        # Essayer plusieurs chemins possibles pour shared/src
-        possible_paths = [
-            os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'shared', 'src')),  # Path relatif normal
-            os.path.abspath(os.path.join('/app', 'shared', 'src')),  # Path Docker
-            os.path.abspath(os.path.join('/app', '..', 'shared', 'src')),  # Path Docker alternatif
-            '/app/shared/src'  # Path absolu Docker
-        ]
-        
-        config_imported = False
-        for shared_path in possible_paths:
-            if os.path.exists(shared_path) and shared_path not in sys.path:
-                sys.path.insert(0, shared_path)
-                logger.debug(f"Added path to sys.path: {shared_path}")
-                
-                try:
-                    # Import du module config
-                    import config
-                    config_imported = True
-                    logger.info(f"Successfully imported config from: {shared_path}")
-                    break
-                except ImportError as ie:
-                    logger.debug(f"Failed to import config from {shared_path}: {ie}")
-                    continue
-        
-        if not config_imported:
-            raise ImportError("Could not import config from any path")
-            
-        return {"symbols": config.SYMBOLS}
+        # Import standard depuis shared.src.config
+        from shared.src.config import SYMBOLS
+        return {"symbols": SYMBOLS}
         
     except Exception as e:
         logger.error(f"Error getting configured symbols: {e}")

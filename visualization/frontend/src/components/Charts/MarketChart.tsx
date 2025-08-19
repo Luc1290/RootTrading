@@ -95,7 +95,7 @@ function MarketChart({ height = 750 }: MarketChartProps) {
       leftPriceScale: {
         borderColor: '#444444',
         textColor: '#ffffff',
-        visible: true,
+        visible: false,
       },
       timeScale: {
         borderColor: '#444444',
@@ -271,7 +271,7 @@ function MarketChart({ height = 750 }: MarketChartProps) {
         color: '#ff6b35',
         lineWidth: 2,
         title: '',
-        priceScaleId: 'left',
+        priceScaleId: 'right',
         lineStyle: 0, // Solid line
         priceLineVisible: false, // Hide price line
       });
@@ -291,7 +291,7 @@ function MarketChart({ height = 750 }: MarketChartProps) {
         color: '#f7931e',
         lineWidth: 2,
         title: '',
-        priceScaleId: 'left',
+        priceScaleId: 'right',
         lineStyle: 0, // Solid line
         priceLineVisible: false, // Hide price line
       });
@@ -311,7 +311,7 @@ function MarketChart({ height = 750 }: MarketChartProps) {
         color: '#ffd700',
         lineWidth: 2,
         title: '',
-        priceScaleId: 'left',
+        priceScaleId: 'right',
         lineStyle: 0, // Solid line
         priceLineVisible: false, // Hide price line
       });
@@ -351,7 +351,7 @@ function MarketChart({ height = 750 }: MarketChartProps) {
       color: '#00ff88',
       shape: 'arrowUp' as const,
       text: `BUY`,
-      size: 2,
+      size: 1,
     }));
     
     // Créer les marqueurs pour les signaux de vente
@@ -361,7 +361,7 @@ function MarketChart({ height = 750 }: MarketChartProps) {
       color: '#ff4444',
       shape: 'arrowDown' as const,
       text: `SELL`,
-      size: 2,
+      size: 1,
     }));
     
     // Créer un mapping des signaux par timestamp pour la recherche rapide
@@ -832,40 +832,42 @@ function MarketChart({ height = 750 }: MarketChartProps) {
         </>
       )}
       
-      {/* Contrôles du graphique */}
-      <div className="absolute bottom-2 left-2 z-10 flex items-center space-x-2">
+      {/* Contrôles du graphique - repositionnés */}
+      <div className="absolute top-2 right-2 z-10 flex items-center space-x-2">
         <button
           onClick={() => chartRef.current?.timeScale().fitContent()}
-          className="bg-black/70 backdrop-blur-sm text-white px-3 py-1.5 rounded text-xs hover:bg-black/80 transition-colors"
+          className="bg-black/70 backdrop-blur-sm text-white px-2 py-1 rounded text-xs hover:bg-black/80 transition-colors"
           title="Ajuster à la taille"
         >
-          Ajuster
+          📏
         </button>
         <button
           onClick={() => chartRef.current?.timeScale().resetTimeScale()}
-          className="bg-black/70 backdrop-blur-sm text-white px-3 py-1.5 rounded text-xs hover:bg-black/80 transition-colors"
+          className="bg-black/70 backdrop-blur-sm text-white px-2 py-1 rounded text-xs hover:bg-black/80 transition-colors"
           title="Reset zoom"
         >
-          Reset
+          🔄
         </button>
         <div className="bg-black/70 backdrop-blur-sm text-gray-300 px-2 py-1 rounded text-xs">
-          💡 Cliquez sur une flèche pour épingler le tooltip
+          💡 Cliquez flèche = épingler
         </div>
       </div>
       
-      {/* Légende des cycles */}
-      <div className="absolute bottom-2 right-2 z-10 bg-black/70 backdrop-blur-sm rounded-md px-3 py-2 text-xs space-y-1">
-        <div className="flex items-center space-x-2">
-          <div className="w-3 h-3 bg-blue-500/30 rounded"></div>
-          <span className="text-gray-300">Cycle actif</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <div className="w-3 h-3 bg-green-500/30 rounded"></div>
-          <span className="text-gray-300">Cycle gagnant</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <div className="w-3 h-3 bg-red-500/30 rounded"></div>
-          <span className="text-gray-300">Cycle perdant</span>
+      {/* Légende des cycles - repositionnée en bas à gauche */}
+      <div className="absolute bottom-2 left-2 z-10 bg-black/70 backdrop-blur-sm rounded-md px-2 py-1.5 text-xs">
+        <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-1">
+            <div className="w-2 h-2 bg-blue-500/40 rounded"></div>
+            <span className="text-gray-300 text-xs">Actif</span>
+          </div>
+          <div className="flex items-center space-x-1">
+            <div className="w-2 h-2 bg-green-500/40 rounded"></div>
+            <span className="text-gray-300 text-xs">Gain</span>
+          </div>
+          <div className="flex items-center space-x-1">
+            <div className="w-2 h-2 bg-red-500/40 rounded"></div>
+            <span className="text-gray-300 text-xs">Perte</span>
+          </div>
         </div>
       </div>
     </div>

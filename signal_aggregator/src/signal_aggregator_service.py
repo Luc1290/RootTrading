@@ -47,10 +47,10 @@ class SignalAggregatorService:
         
         # Buffer intelligent avec sync multi-timeframes
         self.signal_buffer = IntelligentSignalBuffer(
-            buffer_timeout=15.0,       # 15 secondes max d'attente (assez pour collecter tous les signaux)
+            buffer_timeout=15.0,       # 15 secondes max d'attente (comme avant)
             max_buffer_size=50,        # 50 signaux max avant traitement forcé
-            min_batch_size=1,          # Minimum 1 signal pour traiter
-            sync_window=10.0,          # 10 secondes pour sync multi-TF (pour capturer tous les timeframes)
+            min_batch_size=1,          # Minimum 1 signal (comme avant)
+            sync_window=10.0,          # 10 secondes pour sync multi-TF (comme avant)
             enable_mtf_sync=True       # Activer la synchronisation multi-timeframes
         )
         
@@ -223,6 +223,15 @@ class SignalAggregatorService:
                     self.stats['consensus_rejected_insufficient'] += 1
                     logger.warning(f"❌ Consensus rejeté pour {symbol}: seulement {len(validated_signals)} stratégie(s) "
                                  f"validée(s) sur {len(signals)} originales. Minimum requis: 3")
+                    return
+                
+                # VÉRIFICATION CRITIQUE : Tous les signaux validés doivent être dans la même direction
+                unique_sides = set(s.get('side', 'UNKNOWN') for s in validated_signals)
+                if len(unique_sides) > 1:
+                    sides_count = {side: sum(1 for s in validated_signals if s.get('side') == side) for side in unique_sides}
+                    self.stats['consensus_rejected_insufficient'] += 1
+                    logger.warning(f"❌ Consensus rejeté pour {symbol}: signaux contradictoires après validation ! "
+                                 f"Directions: {sides_count}. Un consensus ne peut pas contenir BUY et SELL.")
                     return
                 
                 # Créer un signal composite final
