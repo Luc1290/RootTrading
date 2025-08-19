@@ -7,6 +7,10 @@ import type {
   TimeInterval,
   TradingSymbol,
   PerformancePeriod,
+  GlobalStatistics,
+  SymbolStatistics,
+  PerformanceHistory,
+  StrategyStatistics,
 } from '@/types';
 
 class ApiService {
@@ -149,6 +153,25 @@ class ApiService {
     if (symbol) query += `&symbol=${symbol}`;
     if (status) query += `&status=${status}`;
     return this.request(query);
+  }
+
+  // Statistics API endpoints
+  async getGlobalStatistics(): Promise<GlobalStatistics> {
+    return this.request('/api/statistics/global');
+  }
+
+  async getSymbolStatistics(symbol: TradingSymbol): Promise<{ symbols: SymbolStatistics[] }> {
+    return this.request(`/api/statistics/symbol/${symbol}`);
+  }
+
+  async getPerformanceHistory(
+    timeframe: '24h' | '7d' | '30d' | '90d' = '7d'
+  ): Promise<PerformanceHistory> {
+    return this.request(`/api/statistics/performance-history?timeframe=${timeframe}`);
+  }
+
+  async getStrategiesStatistics(): Promise<{ strategies: StrategyStatistics[] }> {
+    return this.request('/api/statistics/strategies');
   }
   
   // Méthodes spécifiques pour les indicateurs

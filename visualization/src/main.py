@@ -13,6 +13,7 @@ import os
 from data_manager import DataManager
 from chart_service import ChartService
 from websocket_hub import WebSocketHub
+from statistics_service import StatisticsService
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -20,10 +21,11 @@ logger = logging.getLogger(__name__)
 data_manager: Optional[DataManager] = None
 chart_service: Optional[ChartService] = None
 websocket_hub: Optional[WebSocketHub] = None
+statistics_service: Optional[StatisticsService] = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global data_manager, chart_service, websocket_hub
+    global data_manager, chart_service, websocket_hub, statistics_service
     
     logger.info("Starting visualization service...")
     
@@ -32,6 +34,7 @@ async def lifespan(app: FastAPI):
     
     chart_service = ChartService(data_manager)
     websocket_hub = WebSocketHub(data_manager)
+    statistics_service = StatisticsService(data_manager)
     
     asyncio.create_task(websocket_hub.start())
     
@@ -335,6 +338,76 @@ async def get_available_indicators():
             "volume", "atr", "stochastic", "adx", "obv"
         ]
     }
+
+# ============================================================================
+# Routes API Statistiques
+# ============================================================================
+
+@app.get("/api/statistics/global")
+async def get_global_statistics():
+    """Get global trading statistics across all symbols and strategies"""
+    try:
+        if statistics_service is None:
+            raise HTTPException(status_code=503, detail="Statistics service not available")
+        
+        stats = await statistics_service.get_global_statistics()
+        return stats
+    except Exception as e:
+        logger.error(f"Error getting global statistics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/statistics/symbol/{symbol}")
+async def get_symbol_statistics(symbol: str):
+    """Get detailed statistics for a specific trading symbol"""
+    try:
+        if statistics_service is None:
+            raise HTTPException(status_code=503, detail="Statistics service not available")
+        
+        stats = await statistics_service.get_symbol_statistics(symbol)
+        return stats
+    except Exception as e:
+        logger.error(f"Error getting symbol statistics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/statistics/performance-history")
+async def get_performance_history(
+    period: str = "7d",
+    interval: str = "1h"
+):
+    """Get historical performance data with configurable period and interval"""
+    try:
+        if statistics_service is None:
+            raise HTTPException(status_code=503, detail="Statistics service not available")
+        
+        # Validation des paramètres
+        valid_periods = ["1d", "7d", "30d", "90d", "1y"]
+        valid_intervals = ["1h", "4h", "1d"]
+        
+        if period not in valid_periods:
+            raise HTTPException(status_code=400, detail=f"Invalid period. Must be one of: {valid_periods}")
+        if interval not in valid_intervals:
+            raise HTTPException(status_code=400, detail=f"Invalid interval. Must be one of: {valid_intervals}")
+        
+        history = await statistics_service.get_performance_history(period, interval)
+        return history
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting performance history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/statistics/strategies")
+async def get_strategy_comparison():
+    """Compare performance metrics across different trading strategies"""
+    try:
+        if statistics_service is None:
+            raise HTTPException(status_code=503, detail="Statistics service not available")
+        
+        comparison = await statistics_service.get_strategy_comparison()
+        return comparison
+    except Exception as e:
+        logger.error(f"Error getting strategy comparison: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/trade-cycles")
 async def get_trade_cycles(

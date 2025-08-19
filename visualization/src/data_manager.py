@@ -651,6 +651,28 @@ class DataManager:
         except Exception as e:
             logger.error(f"Error listening to channel {channel_name}: {e}")
             
+    async def execute_query(self, query: str, *args) -> List[Dict[str, Any]]:
+        """
+        Execute a PostgreSQL query and return results.
+        
+        Args:
+            query: SQL query to execute
+            *args: Query parameters
+            
+        Returns:
+            List of result rows as dictionaries
+        """
+        if not self.postgres_pool:
+            await self._init_postgres()
+        
+        try:
+            async with self.postgres_pool.acquire() as conn:
+                rows = await conn.fetch(query, *args)
+                return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error executing query: {e}")
+            raise
+    
     async def get_available_symbols(self) -> List[str]:
         """Get list of available trading symbols"""
         if not self.postgres_pool:

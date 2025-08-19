@@ -5,6 +5,7 @@ import Layout from '@/components/Layout';
 import Dashboard from '@/components/Dashboard';
 import SignalsPage from '@/components/Signals/SignalsPage';
 import CyclesPage from '@/components/Cycles/CyclesPage';
+import StatisticsPage from '@/components/Statistics/StatisticsPage';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/signals" element={<SignalsPage />} />
             <Route path="/cycles" element={<CyclesPage />} />
+            <Route path="/statistics" element={<StatisticsPage />} />
           </Routes>
         </Layout>
       </Router>

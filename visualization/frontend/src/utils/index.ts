@@ -6,17 +6,26 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatNumber(num: number, decimals: number = 2): string {
+  if (num === undefined || num === null || isNaN(num)) {
+    return '0';
+  }
   return num.toLocaleString('fr-FR', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
 }
 
-export function formatCurrency(amount: number, currency: string = 'USDT'): string {
+export function formatCurrency(amount: number, currency: string = 'USDC'): string {
+  if (amount === undefined || amount === null || isNaN(amount)) {
+    return `0.00 ${currency}`;
+  }
   return `${formatNumber(amount, 2)} ${currency}`;
 }
 
 export function formatPercent(value: number): string {
+  if (value === undefined || value === null || isNaN(value)) {
+    return '0.00%';
+  }
   const sign = value >= 0 ? '+' : '';
   return `${sign}${formatNumber(value, 2)}%`;
 }

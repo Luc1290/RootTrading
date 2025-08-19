@@ -131,3 +131,49 @@ export type TradingSymbol = 'BTCUSDC' | 'ETHUSDC' | 'SOLUSDC' | 'XRPUSDC' | stri
 export type SignalFilter = 'all' | 'Aggregated_2' | 'Aggregated_3' | 'Aggregated_4' | 'Aggregated_2,Aggregated_3,Aggregated_4' | string;
 
 export type PerformancePeriod = '24h' | '7d' | '30d' | string;
+
+// Statistics types
+export interface GlobalStatistics {
+  totalTrades: number;
+  totalVolume: number;
+  totalPnl: number;
+  winRate: number;
+  avgTradeSize: number;
+  totalFees: number;
+  activePositions: number;
+  availableBalance: number;
+  totalBalance: number;
+  unrealizedPnl: number;
+  realizedPnl: number;
+}
+
+export interface SymbolStatistics {
+  symbol: string;
+  trades: number;
+  volume: number;
+  pnl: number;
+  winRate: number;
+  avgTradeSize: number;
+  fees: number;
+  lastPrice: number;
+  priceChange24h: number;
+}
+
+export interface PerformanceHistory {
+  timestamps: string[];
+  pnl: number[];
+  balance: number[];
+  winRate: number[];
+  volume: number[];
+}
+
+export interface StrategyStatistics {
+  strategy: string;
+  trades: number;
+  winRate: number;
+  avgPnl: number;
+  totalPnl: number;
+  avgDuration: number;
+  maxDrawdown: number;
+  sharpeRatio: number;
+}
