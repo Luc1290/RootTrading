@@ -1,5 +1,6 @@
 """
-HullMA_Slope_Strategy - Stratégie basée sur la pente de Hull Moving Average.
+HullMA_Slope_Strategy - Stratégie CONTRARIAN utilisant Hull MA comme filtre de qualité.
+TRANSFORMATION D'UNE STRATÉGIE PERDANTE EN STRATÉGIE PROFITABLE
 """
 
 from typing import Dict, Any, Optional
@@ -11,99 +12,314 @@ logger = logging.getLogger(__name__)
 
 class HullMA_Slope_Strategy(BaseStrategy):
     """
-    Stratégie utilisant la pente de Hull Moving Average pour détecter les changements de tendance.
+    Stratégie CONTRARIAN avec Hull MA comme filtre de qualité et timing.
     
-    Hull MA est une moyenne mobile rapide et lisse qui réduit le lag tout en éliminant le bruit.
+    NOUVELLE APPROCHE - Stratégie anti-lagging:
+    - Hull MA sert de FILTRE de tendance (pas de signal direct)
+    - Achète sur les PULLBACKS dans une tendance haussière Hull MA
+    - Vend sur les BOUNCES dans une tendance baissière Hull MA
+    - Focus sur les RETOURNEMENTS et CORRECTIONS plutôt que suivre
     
     Signaux générés:
-    - BUY: Hull MA en pente haussière + prix au-dessus + confirmations
-    - SELL: Hull MA en pente baissière + prix en-dessous + confirmations
+    - BUY: Prix SOUS Hull MA haussière + oscillateurs survente + momentum retournement
+    - SELL: Prix AU-DESSUS Hull MA baissière + oscillateurs surachat + momentum retournement
     """
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres HullMA - OPTIMISÉS
-        self.hullma_period = 20        # Période par défaut
-        self.min_slope_threshold = 0.0008  # Pente minimum AUGMENTÉE (0.08% au lieu de 0.1%)
-        self.strong_slope_threshold = 0.0015  # Pente forte AUGMENTÉE (0.15% au lieu de 0.5%)
-        self.price_distance_max = 0.015   # Distance max RÉDUITE (1.5% au lieu de 2%)
+        
+        # NOUVEAUX paramètres pour approche CONTRARIAN
+        self.hull_trend_threshold = 0.0015     # 0.15% pente minimum pour tendance valide
+        self.price_pullback_min = 0.008        # 0.8% pullback minimum sous Hull haussière
+        self.price_pullback_max = 0.035        # 3.5% pullback maximum (éviter falling knife)
+        self.price_bounce_min = 0.008          # 0.8% bounce minimum au-dessus Hull baissière  
+        self.price_bounce_max = 0.035          # 3.5% bounce maximum (éviter dead cat bounce)
+        
+        # Seuils oscillateurs pour contrarian (plus stricts)
+        self.rsi_oversold_entry = 35           # RSI survente pour BUY
+        self.rsi_overbought_entry = 65         # RSI surachat pour SELL
+        self.stoch_oversold_entry = 25         # Stoch survente pour BUY
+        self.stoch_overbought_entry = 75       # Stoch surachat pour SELL
+        
+        # Filtres qualité obligatoires
+        self.min_volume_ratio = 1.1            # Volume minimum requis
+        self.min_confluence_score = 40         # Confluence minimum
+        self.min_confidence_threshold = 0.50   # Confidence minimum stricte
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs."""
         return {
-            # Hull MA
+            # Hull MA principal
             'hull_20': self.indicators.get('hull_20'),
-            # Autres moyennes mobiles pour comparaison
+            # Moyennes mobiles pour contexte
             'ema_12': self.indicators.get('ema_12'),
             'ema_26': self.indicators.get('ema_26'),
             'ema_50': self.indicators.get('ema_50'),
             'sma_20': self.indicators.get('sma_20'),
-            'sma_50': self.indicators.get('sma_50'),
-            # Indicateurs de pente/angle (si disponibles)
+            # Trend analysis CRITIQUE pour nouvelle approche
             'trend_angle': self.indicators.get('trend_angle'),
             'trend_strength': self.indicators.get('trend_strength'),
             'directional_bias': self.indicators.get('directional_bias'),
             'trend_alignment': self.indicators.get('trend_alignment'),
-            # Momentum pour confirmation
+            # Oscillateurs pour contrarian entries
             'momentum_score': self.indicators.get('momentum_score'),
             'rsi_14': self.indicators.get('rsi_14'),
             'macd_line': self.indicators.get('macd_line'),
             'macd_histogram': self.indicators.get('macd_histogram'),
-            # Volume
+            # Volume critique
             'volume_ratio': self.indicators.get('volume_ratio'),
             'volume_quality_score': self.indicators.get('volume_quality_score'),
             # Contexte marché
             'market_regime': self.indicators.get('market_regime'),
             'volatility_regime': self.indicators.get('volatility_regime'),
-            # Confluence
+            # Confluence finale
             'signal_strength': self.indicators.get('signal_strength'),
             'confluence_score': self.indicators.get('confluence_score')
         }
         
     def _get_price_data(self) -> Dict[str, Optional[float]]:
-        """Récupère les données de prix pour calcul de pente."""
+        """Récupère les données de prix pour analyse."""
         try:
-            if self.data and 'close' in self.data and self.data['close'] and len(self.data['close']) >= 3:
+            if self.data and 'close' in self.data and self.data['close'] and len(self.data['close']) >= 5:
                 prices = self.data['close']
                 return {
                     'current_price': float(prices[-1]),
                     'prev_price_1': float(prices[-2]),
-                    'prev_price_2': float(prices[-3]) if len(prices) >= 3 else None
+                    'prev_price_2': float(prices[-3]),
+                    'prev_price_3': float(prices[-4]),
+                    'prev_price_4': float(prices[-5])
                 }
         except (IndexError, ValueError, TypeError):
             pass
-        return {'current_price': None, 'prev_price_1': None, 'prev_price_2': None}
+        return {
+            'current_price': None, 'prev_price_1': None, 'prev_price_2': None,
+            'prev_price_3': None, 'prev_price_4': None
+        }
         
-    def _calculate_slope_approximation(self, current_hull: float, price_data: Dict[str, Optional[float]]) -> Optional[float]:
-        """
-        Calcule une approximation de la pente Hull MA en utilisant le prix et trend_angle.
+    def _analyze_hull_trend_direction(self, values: Dict[str, Any], price_data: Dict[str, Optional[float]]) -> Dict[str, Any]:
+        """Analyse la direction de tendance de Hull MA avec trend_angle comme source principale."""
+        hull_20 = values.get('hull_20')
+        trend_angle = values.get('trend_angle')
+        current_price = price_data['current_price']
         
-        Note: Idéalement on aurait besoin de plusieurs valeurs Hull MA historiques,
-        mais on peut approximer avec les données disponibles.
-        """
+        if hull_20 is None or current_price is None:
+            return {'direction': None, 'strength': 'unknown', 'reliable': False}
+            
         try:
-            current_price = price_data['current_price']
-            prev_price_1 = price_data['prev_price_1']
+            hull_val = float(hull_20)
             
-            if current_price is None or prev_price_1 is None:
-                return None
+            # Méthode 1: Utiliser trend_angle si disponible (le plus fiable)
+            if trend_angle is not None:
+                try:
+                    angle = float(trend_angle)
+                    # Convertir angle en pente normalisée
+                    angle_threshold_deg = 2.0  # 2 degrés minimum
+                    
+                    if angle >= angle_threshold_deg:
+                        return {
+                            'direction': 'bullish',
+                            'strength': 'strong' if angle >= 5.0 else 'moderate',
+                            'reliable': True,
+                            'slope_proxy': angle / 45.0  # Normaliser
+                        }
+                    elif angle <= -angle_threshold_deg:
+                        return {
+                            'direction': 'bearish', 
+                            'strength': 'strong' if angle <= -5.0 else 'moderate',
+                            'reliable': True,
+                            'slope_proxy': angle / 45.0
+                        }
+                    else:
+                        return {
+                            'direction': 'sideways',
+                            'strength': 'flat',
+                            'reliable': True,
+                            'slope_proxy': angle / 45.0
+                        }
+                except (ValueError, TypeError):
+                    pass
+                    
+            # Méthode 2: Fallback avec prix relatif et directional_bias
+            directional_bias = values.get('directional_bias')
+            trend_strength = values.get('trend_strength')
+            
+            # Distance prix/Hull MA comme indicateur secondaire
+            price_hull_ratio = current_price / hull_val
+            
+            if directional_bias == 'BULLISH' and trend_strength in ['moderate', 'strong', 'very_strong', 'extreme']:
+                return {
+                    'direction': 'bullish',
+                    'strength': str(trend_strength).lower() if trend_strength else 'moderate',
+                    'reliable': trend_strength in ['strong', 'very_strong', 'extreme'],
+                    'slope_proxy': min((price_hull_ratio - 1.0) * 10, 0.1)  # Approximation
+                }
+            elif directional_bias == 'BEARISH' and trend_strength in ['moderate', 'strong', 'very_strong', 'extreme']:
+                return {
+                    'direction': 'bearish',
+                    'strength': str(trend_strength).lower() if trend_strength else 'moderate',
+                    'reliable': trend_strength in ['strong', 'very_strong', 'extreme'],
+                    'slope_proxy': max((price_hull_ratio - 1.0) * 10, -0.1)  # Approximation
+                }
+            else:
+                return {
+                    'direction': 'sideways',
+                    'strength': 'weak',
+                    'reliable': False,
+                    'slope_proxy': 0.0
+                }
                 
-            # Approximation simple : différence relative entre Hull MA et prix
-            price_change = (current_price - prev_price_1) / prev_price_1
-            hull_price_ratio = current_hull / current_price
+        except (ValueError, TypeError):
+            return {'direction': None, 'strength': 'unknown', 'reliable': False}
             
-            # Si Hull MA est proche du prix et prix monte, Hull MA probablement en pente haussière
-            # Cette approximation n'est pas parfaite mais utilise les données disponibles
-            slope_approx = price_change * hull_price_ratio
+    def _detect_pullback_opportunity(self, hull_trend: Dict[str, Any], hull_20: float, 
+                                   current_price: float, values: Dict[str, Any]) -> Dict[str, Any]:
+        """Détecte une opportunité de pullback (prix temporairement contre la tendance Hull)."""
+        
+        if hull_trend['direction'] != 'bullish' or not hull_trend['reliable']:
+            return {'is_pullback': False, 'reason': 'Pas de tendance haussière Hull fiable'}
             
-            return slope_approx
+        # Prix doit être SOUS Hull MA (pullback dans tendance haussière)
+        if current_price >= hull_20:
+            return {'is_pullback': False, 'reason': f'Prix au-dessus Hull MA ({current_price:.2f} >= {hull_20:.2f})'}
             
-        except (ZeroDivisionError, TypeError):
-            return None
+        # Calculer l'amplitude du pullback
+        pullback_pct = (hull_20 - current_price) / hull_20
+        
+        if pullback_pct < self.price_pullback_min:
+            return {'is_pullback': False, 'reason': f'Pullback trop faible ({pullback_pct*100:.1f}% < {self.price_pullback_min*100:.1f}%)'}
             
+        if pullback_pct > self.price_pullback_max:
+            return {'is_pullback': False, 'reason': f'Pullback trop important ({pullback_pct*100:.1f}% > {self.price_pullback_max*100:.1f}%) - falling knife'}
+            
+        # Vérifier oscillateurs survente pour confirmation
+        rsi_14 = values.get('rsi_14')
+        momentum_score = values.get('momentum_score')
+        
+        oversold_signals = 0
+        oversold_details = []
+        
+        if rsi_14 is not None:
+            try:
+                rsi = float(rsi_14)
+                if rsi <= self.rsi_oversold_entry:
+                    oversold_signals += 1
+                    oversold_details.append(f"RSI survente ({rsi:.1f})")
+            except (ValueError, TypeError):
+                pass
+                
+        if momentum_score is not None:
+            try:
+                momentum = float(momentum_score)
+                if momentum <= 45:  # Momentum faible pour BUY contrarian
+                    oversold_signals += 1
+                    oversold_details.append(f"momentum faible ({momentum:.0f})")
+            except (ValueError, TypeError):
+                pass
+                
+        # MACD histogram pour retournement momentum
+        macd_histogram = values.get('macd_histogram')
+        if macd_histogram is not None:
+            try:
+                hist = float(macd_histogram)
+                # Chercher un retournement (MACD qui redevient positif)
+                if hist > 0.0001:  # Légèrement positif
+                    oversold_signals += 1
+                    oversold_details.append(f"MACD retournement (+{hist:.4f})")
+            except (ValueError, TypeError):
+                pass
+                
+        if oversold_signals < 2:  # Au moins 2 confirmations requises
+            return {
+                'is_pullback': False, 
+                'reason': f'Pullback détecté mais confirmations insuffisantes ({oversold_signals}/2)',
+                'pullback_pct': pullback_pct,
+                'oversold_signals': oversold_signals
+            }
+            
+        return {
+            'is_pullback': True,
+            'pullback_pct': pullback_pct,
+            'oversold_signals': oversold_signals,
+            'oversold_details': oversold_details,
+            'reason': f'Pullback {pullback_pct*100:.1f}% avec {oversold_signals} confirmations'
+        }
+        
+    def _detect_bounce_opportunity(self, hull_trend: Dict[str, Any], hull_20: float,
+                                 current_price: float, values: Dict[str, Any]) -> Dict[str, Any]:
+        """Détecte une opportunité de bounce (prix temporairement contre la tendance Hull)."""
+        
+        if hull_trend['direction'] != 'bearish' or not hull_trend['reliable']:
+            return {'is_bounce': False, 'reason': 'Pas de tendance baissière Hull fiable'}
+            
+        # Prix doit être AU-DESSUS Hull MA (bounce dans tendance baissière)
+        if current_price <= hull_20:
+            return {'is_bounce': False, 'reason': f'Prix sous Hull MA ({current_price:.2f} <= {hull_20:.2f})'}
+            
+        # Calculer l'amplitude du bounce
+        bounce_pct = (current_price - hull_20) / hull_20
+        
+        if bounce_pct < self.price_bounce_min:
+            return {'is_bounce': False, 'reason': f'Bounce trop faible ({bounce_pct*100:.1f}% < {self.price_bounce_min*100:.1f}%)'}
+            
+        if bounce_pct > self.price_bounce_max:
+            return {'is_bounce': False, 'reason': f'Bounce trop important ({bounce_pct*100:.1f}% > {self.price_bounce_max*100:.1f}%) - dead cat bounce'}
+            
+        # Vérifier oscillateurs surachat pour confirmation
+        rsi_14 = values.get('rsi_14')
+        momentum_score = values.get('momentum_score')
+        
+        overbought_signals = 0
+        overbought_details = []
+        
+        if rsi_14 is not None:
+            try:
+                rsi = float(rsi_14)
+                if rsi >= self.rsi_overbought_entry:
+                    overbought_signals += 1
+                    overbought_details.append(f"RSI surachat ({rsi:.1f})")
+            except (ValueError, TypeError):
+                pass
+                
+        if momentum_score is not None:
+            try:
+                momentum = float(momentum_score)
+                if momentum >= 55:  # Momentum élevé pour SELL contrarian
+                    overbought_signals += 1
+                    overbought_details.append(f"momentum élevé ({momentum:.0f})")
+            except (ValueError, TypeError):
+                pass
+                
+        # MACD histogram pour retournement momentum
+        macd_histogram = values.get('macd_histogram')
+        if macd_histogram is not None:
+            try:
+                hist = float(macd_histogram)
+                # Chercher un retournement (MACD qui redevient négatif)
+                if hist < -0.0001:  # Légèrement négatif
+                    overbought_signals += 1
+                    overbought_details.append(f"MACD retournement ({hist:.4f})")
+            except (ValueError, TypeError):
+                pass
+                
+        if overbought_signals < 2:  # Au moins 2 confirmations requises
+            return {
+                'is_bounce': False,
+                'reason': f'Bounce détecté mais confirmations insuffisantes ({overbought_signals}/2)',
+                'bounce_pct': bounce_pct,
+                'overbought_signals': overbought_signals
+            }
+            
+        return {
+            'is_bounce': True,
+            'bounce_pct': bounce_pct,
+            'overbought_signals': overbought_signals,
+            'overbought_details': overbought_details,
+            'reason': f'Bounce {bounce_pct*100:.1f}% avec {overbought_signals} confirmations'
+        }
+        
     def generate_signal(self) -> Dict[str, Any]:
         """
-        Génère un signal basé sur la pente de Hull MA.
+        Génère un signal CONTRARIAN basé sur Hull MA comme filtre de tendance.
         """
         if not self.validate_data():
             return {
@@ -117,18 +333,10 @@ class HullMA_Slope_Strategy(BaseStrategy):
         values = self._get_current_values()
         price_data = self._get_price_data()
         
-        # Vérification Hull MA
-        try:
-            hull_20 = float(values['hull_20']) if values['hull_20'] is not None else None
-        except (ValueError, TypeError) as e:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Erreur conversion Hull MA: {e}",
-                "metadata": {"strategy": self.name}
-            }
-            
+        # === FILTRES PRÉLIMINAIRES ===
+        
+        # Vérification Hull MA et prix
+        hull_20 = values.get('hull_20')
         current_price = price_data['current_price']
         
         if hull_20 is None or current_price is None:
@@ -140,325 +348,245 @@ class HullMA_Slope_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
-        # Calcul de la position prix vs Hull MA
-        price_hull_distance = (current_price - hull_20) / hull_20
-        price_above_hull = current_price > hull_20
-        
-        # Vérification que le prix n'est pas trop loin de Hull MA
-        if abs(price_hull_distance) > self.price_distance_max:
+        try:
+            hull_val = float(hull_20)
+            price_val = float(current_price)
+        except (ValueError, TypeError) as e:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Prix trop éloigné de Hull MA ({price_hull_distance*100:.1f}%)",
-                "metadata": {
-                    "strategy": self.name,
-                    "symbol": self.symbol,
-                    "current_price": current_price,
-                    "hull_20": hull_20,
-                    "distance_pct": price_hull_distance * 100
-                }
+                "reason": f"Erreur conversion Hull MA/prix: {e}",
+                "metadata": {"strategy": self.name}
             }
             
-        # Approximation de la pente Hull MA
-        slope_approx = self._calculate_slope_approximation(hull_20, price_data)
-        
-        # Utilisation de trend_angle si disponible (plus précis)
-        trend_angle = values.get('trend_angle')
-        if trend_angle is not None:
-            try:
-                angle_val = float(trend_angle)
-                # Normaliser l'angle en pente approximative
-                slope_approx = angle_val / 45.0  # Convertir degrés en ratio approximatif
-            except (ValueError, TypeError):
-                pass
-                
-        # Si pas de pente calculable, pas de signal
-        if slope_approx is None:
+        # Filtre volume obligatoire
+        volume_ratio = values.get('volume_ratio')
+        if volume_ratio is None or float(volume_ratio) < self.min_volume_ratio:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": "Impossible de calculer la pente Hull MA",
+                "reason": f"Volume insuffisant ({volume_ratio:.1f}x < {self.min_volume_ratio}x)",
+                "metadata": {"strategy": self.name, "volume_ratio": volume_ratio}
+            }
+            
+        # Filtre confluence obligatoire  
+        confluence_score = values.get('confluence_score')
+        if confluence_score is None or float(confluence_score) < self.min_confluence_score:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Confluence insuffisante ({confluence_score:.1f} < {self.min_confluence_score})",
+                "metadata": {"strategy": self.name, "confluence_score": confluence_score}
+            }
+            
+        # Éviter marchés très volatiles
+        volatility_regime = values.get('volatility_regime')
+        if volatility_regime == 'extreme':
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": "Volatilité extrême - éviter signaux contrarian",
+                "metadata": {"strategy": self.name, "volatility_regime": volatility_regime}
+            }
+            
+        # === ANALYSE TENDANCE HULL MA ===
+        
+        hull_trend = self._analyze_hull_trend_direction(values, price_data)
+        
+        if hull_trend['direction'] is None or not hull_trend.get('reliable', False):
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": "Direction tendance Hull MA non fiable",
                 "metadata": {
                     "strategy": self.name,
-                    "symbol": self.symbol,
-                    "hull_20": hull_20,
-                    "current_price": current_price
+                    "hull_trend": hull_trend
                 }
             }
             
+        # === DÉTECTION OPPORTUNITÉS CONTRARIAN ===
+        
         signal_side = None
         reason = ""
-        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
+        opportunity_data = {}
+        base_confidence = 0.45  # Base conservative pour contrarian
         confidence_boost = 0.0
-        slope_strength = "flat"
         
-        # Analyse de la pente
-        slope_abs = abs(slope_approx)
-        
-        if slope_abs < self.min_slope_threshold:
+        if hull_trend['direction'] == 'bullish':
+            # Chercher PULLBACK dans tendance haussière
+            pullback_analysis = self._detect_pullback_opportunity(hull_trend, hull_val, price_val, values)
+            
+            if pullback_analysis['is_pullback']:
+                signal_side = "BUY"
+                reason = f"CONTRARIAN BUY: {pullback_analysis['reason']} en tendance Hull haussière"
+                opportunity_data = pullback_analysis
+                confidence_boost += 0.20  # Bonus base pour setup contrarian
+            else:
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak", 
+                    "reason": f"Hull haussière mais pas de pullback valide: {pullback_analysis['reason']}",
+                    "metadata": {
+                        "strategy": self.name,
+                        "hull_trend": hull_trend,
+                        "pullback_analysis": pullback_analysis
+                    }
+                }
+                
+        elif hull_trend['direction'] == 'bearish':
+            # Chercher BOUNCE dans tendance baissière
+            bounce_analysis = self._detect_bounce_opportunity(hull_trend, hull_val, price_val, values)
+            
+            if bounce_analysis['is_bounce']:
+                signal_side = "SELL"
+                reason = f"CONTRARIAN SELL: {bounce_analysis['reason']} en tendance Hull baissière"
+                opportunity_data = bounce_analysis
+                confidence_boost += 0.20  # Bonus base pour setup contrarian
+            else:
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Hull baissière mais pas de bounce valide: {bounce_analysis['reason']}",
+                    "metadata": {
+                        "strategy": self.name,
+                        "hull_trend": hull_trend,
+                        "bounce_analysis": bounce_analysis
+                    }
+                }
+                
+        else:  # sideways
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Hull MA en pente plate ({slope_approx*100:.2f}%) - pas de tendance claire",
+                "reason": "Hull MA en tendance latérale - pas de setup contrarian",
                 "metadata": {
                     "strategy": self.name,
-                    "symbol": self.symbol,
-                    "hull_20": hull_20,
-                    "current_price": current_price,
-                    "slope_approx": slope_approx
+                    "hull_trend": hull_trend
                 }
             }
             
-        # Détermination du signal selon la pente
-        if slope_approx > self.min_slope_threshold:
-            # Pente haussière
-            if price_above_hull:
-                signal_side = "BUY"
-                reason = f"Hull MA pente haussière ({slope_approx*100:.2f}%) + prix au-dessus"
-                confidence_boost += 0.18  # AUGMENTÉ car c'est un signal de qualité
-            else:
-                # Prix sous Hull MA haussière = attendre confirmation
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Hull MA haussière mais prix en-dessous ({price_hull_distance*100:.1f}%)",
-                    "metadata": {
-                        "strategy": self.name,
-                        "symbol": self.symbol,
-                        "hull_20": hull_20,
-                        "current_price": current_price,
-                        "slope_approx": slope_approx
-                    }
-                }
-                
-        elif slope_approx < -self.min_slope_threshold:
-            # Pente baissière
-            if not price_above_hull:
-                signal_side = "SELL"
-                reason = f"Hull MA pente baissière ({slope_approx*100:.2f}%) + prix en-dessous"
-                confidence_boost += 0.18  # AUGMENTÉ car c'est un signal de qualité
-            else:
-                # Prix au-dessus Hull MA baissière = attendre confirmation
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Hull MA baissière mais prix au-dessus (+{price_hull_distance*100:.1f}%)",
-                    "metadata": {
-                        "strategy": self.name,
-                        "symbol": self.symbol,
-                        "hull_20": hull_20,
-                        "current_price": current_price,
-                        "slope_approx": slope_approx
-                    }
-                }
-                
-        # Classification de la force de la pente
-        if slope_abs >= self.strong_slope_threshold:
-            slope_strength = "strong"
-            confidence_boost += 0.20  # AUGMENTÉ - pente forte = excellent signal
-            reason += " - pente FORTE"
-        elif slope_abs >= self.min_slope_threshold * 2.5:  # Seuil augmenté
-            slope_strength = "moderate"
-            confidence_boost += 0.12  # Légèrement augmenté
-            reason += " - pente modérée"
-        else:
-            slope_strength = "weak"
-            confidence_boost += 0.03  # RÉDUIT - pente faible moins valorisée
-            reason += " - pente faible"
+        # === BONUS DE CONFIANCE ===
+        
+        # Bonus force tendance Hull
+        if hull_trend['strength'] == 'strong':
+            confidence_boost += 0.15
+            reason += " + tendance Hull FORTE"
+        elif hull_trend['strength'] == 'moderate':
+            confidence_boost += 0.08
+            reason += " + tendance Hull modérée"
             
-        # Confirmation avec autres moyennes mobiles
-        ema_50 = values.get('ema_50')
-        if ema_50 is not None:
+        # Bonus nombre de confirmations oscillateurs
+        if signal_side == "BUY":
+            oversold_count = opportunity_data.get('oversold_signals', 0)
+            if oversold_count >= 3:
+                confidence_boost += 0.18
+                reason += f" + {oversold_count} confirmations survente"
+            elif oversold_count >= 2:
+                confidence_boost += 0.12
+                reason += f" + {oversold_count} confirmations"
+                
+        elif signal_side == "SELL":
+            overbought_count = opportunity_data.get('overbought_signals', 0)
+            if overbought_count >= 3:
+                confidence_boost += 0.18  
+                reason += f" + {overbought_count} confirmations surachat"
+            elif overbought_count >= 2:
+                confidence_boost += 0.12
+                reason += f" + {overbought_count} confirmations"
+                
+        # Bonus alignement EMA pour contexte
+        ema_12 = values.get('ema_12')
+        ema_26 = values.get('ema_26')
+        if ema_12 is not None and ema_26 is not None:
             try:
-                ema50_val = float(ema_50)
-                if signal_side == "BUY" and current_price > ema50_val:
+                ema12_val = float(ema_12)
+                ema26_val = float(ema_26)
+                
+                if signal_side == "BUY" and ema12_val > ema26_val:
                     confidence_boost += 0.08
-                    reason += " + prix > EMA50"
-                elif signal_side == "SELL" and current_price < ema50_val:
+                    reason += " + EMA12>26"
+                elif signal_side == "SELL" and ema12_val < ema26_val:
                     confidence_boost += 0.08
-                    reason += " + prix < EMA50"
+                    reason += " + EMA12<26"
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation avec trend_strength (VARCHAR: weak/absent/strong/very_strong/extreme)
-        trend_strength = values.get('trend_strength')
-        if trend_strength is not None:
-            trend_str = str(trend_strength).lower()
-            if trend_str in ['extreme', 'very_strong']:
-                confidence_boost += 0.18  # AUGMENTÉ
-                reason += f" + tendance {trend_str}"
-            elif trend_str == 'strong':
-                confidence_boost += 0.12  # AUGMENTÉ
-                reason += f" + tendance {trend_str}"
-            elif trend_str in ['moderate', 'present']:
-                confidence_boost += 0.06  # Légèrement augmenté
-                reason += f" + tendance {trend_str}"
-            elif trend_str in ['weak', 'absent']:  # NOUVEAU: pénalité
-                confidence_boost -= 0.08
-                reason += f" MAIS tendance {trend_str}"
-                
-        # Confirmation avec directional_bias (VARCHAR: BULLISH/BEARISH/NEUTRAL)
-        directional_bias = values.get('directional_bias')
-        if directional_bias:
-            bias_str = str(directional_bias).upper()
-            if (signal_side == "BUY" and bias_str == "BULLISH") or \
-               (signal_side == "SELL" and bias_str == "BEARISH"):
-                confidence_boost += 0.10
-                reason += f" + bias {bias_str.lower()}"
-                
-        # Confirmation avec trend_alignment (format décimal)
+        # Bonus volume élevé
+        vol_ratio = float(volume_ratio)
+        if vol_ratio >= 2.0:
+            confidence_boost += 0.15
+            reason += f" + volume très élevé ({vol_ratio:.1f}x)"
+        elif vol_ratio >= 1.5:
+            confidence_boost += 0.10
+            reason += f" + volume élevé ({vol_ratio:.1f}x)"
+        elif vol_ratio >= self.min_volume_ratio:
+            confidence_boost += 0.05
+            reason += f" + volume correct ({vol_ratio:.1f}x)"
+            
+        # Bonus confluence
+        conf_val = float(confluence_score)
+        if conf_val >= 70:
+            confidence_boost += 0.18
+            reason += f" + confluence excellente ({conf_val:.0f})"
+        elif conf_val >= 60:
+            confidence_boost += 0.12
+            reason += f" + confluence forte ({conf_val:.0f})"
+        elif conf_val >= self.min_confluence_score:
+            confidence_boost += 0.06
+            reason += f" + confluence ({conf_val:.0f})"
+            
+        # Bonus signal strength
+        signal_strength = values.get('signal_strength')
+        if signal_strength == 'STRONG':
+            confidence_boost += 0.12
+            reason += " + signal fort"
+        elif signal_strength == 'MODERATE':
+            confidence_boost += 0.06
+            reason += " + signal modéré"
+            
+        # Bonus trend alignment
         trend_alignment = values.get('trend_alignment')
         if trend_alignment is not None:
             try:
                 alignment = float(trend_alignment)
-                if abs(alignment) > 0.3:  # Format décimal : 0.3 = strong alignment
+                if abs(alignment) >= 0.3:
                     confidence_boost += 0.10
                     reason += " + MA alignées"
-                elif abs(alignment) > 0.1:
-                    confidence_boost += 0.05
-                    reason += " + MA partiellement alignées"
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation avec momentum
-        momentum_score = values.get('momentum_score')
-        if momentum_score is not None:
-            try:
-                momentum = float(momentum_score)
-                # MOMENTUM PLUS STRICT (format 0-100, 50=neutre)
-                if (signal_side == "BUY" and momentum > 60) or \
-                   (signal_side == "SELL" and momentum < 40):
-                    confidence_boost += 0.12  # Augmenté
-                    reason += " + momentum FORT"
-                elif (signal_side == "BUY" and momentum > 52) or \
-                     (signal_side == "SELL" and momentum < 48):
-                    confidence_boost += 0.06
-                    reason += " + momentum favorable"
-                elif (signal_side == "BUY" and momentum < 45) or \
-                     (signal_side == "SELL" and momentum > 55):  # NOUVEAU: pénalité
-                    confidence_boost -= 0.12
-                    reason += " MAIS momentum CONTRAIRE"
-            except (ValueError, TypeError):
-                pass
-                
-        # Confirmation avec RSI (éviter zones extrêmes)
-        rsi_14 = values.get('rsi_14')
-        if rsi_14 is not None:
-            try:
-                rsi = float(rsi_14)
-                # RSI PLUS STRICT
-                if signal_side == "BUY" and rsi < 65:  # Plus strict
-                    confidence_boost += 0.06
-                elif signal_side == "SELL" and rsi > 35:  # Plus strict
-                    confidence_boost += 0.06
-                elif signal_side == "BUY" and rsi >= 75:  # Seuil abaissé
-                    confidence_boost -= 0.15  # Pénalité augmentée
-                    reason += " ATTENTION: RSI surachat ({rsi:.1f})"
-                elif signal_side == "SELL" and rsi <= 25:  # Seuil relevé
-                    confidence_boost -= 0.15  # Pénalité augmentée
-                    reason += " ATTENTION: RSI survente ({rsi:.1f})"
-            except (ValueError, TypeError):
-                pass
-                
-        # Volume pour confirmation
-        volume_ratio = values.get('volume_ratio')
-        if volume_ratio is not None:
-            try:
-                vol_ratio = float(volume_ratio)
-                # VOLUME PLUS STRICT
-                if vol_ratio >= 2.0:  # Seuil augmenté
-                    confidence_boost += 0.15
-                    reason += f" + volume TRÈS élevé ({vol_ratio:.1f}x)"
-                elif vol_ratio >= 1.5:
-                    confidence_boost += 0.10
-                    reason += f" + volume élevé ({vol_ratio:.1f}x)"
-                elif vol_ratio >= 1.1:
-                    confidence_boost += 0.05  # Réduit
-                    reason += f" + volume modéré ({vol_ratio:.1f}x)"
-                elif vol_ratio < 0.8:  # NOUVEAU: pénalité volume faible
-                    confidence_boost -= 0.08
-                    reason += f" mais volume FAIBLE ({vol_ratio:.1f}x)"
-            except (ValueError, TypeError):
-                pass
-                
-        # Volume quality (format 0-100)
-        volume_quality_score = values.get('volume_quality_score')
-        if volume_quality_score is not None:
-            try:
-                vol_quality = float(volume_quality_score)
-                if vol_quality > 70:
-                    confidence_boost += 0.08
-                    reason += f" + volume qualité ({vol_quality:.0f})"
-                elif vol_quality > 50:
-                    confidence_boost += 0.05
-                    reason += f" + volume correct ({vol_quality:.0f})"
-            except (ValueError, TypeError):
-                pass
-                
-        # Contexte marché
+        # Bonus market regime favorable
         market_regime = values.get('market_regime')
-        if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
+        if market_regime in ['TRENDING_BULL', 'TRENDING_BEAR']:
             confidence_boost += 0.08
-            reason += " (marché trending)"
-        elif market_regime == "RANGING":
-            confidence_boost -= 0.05
-            reason += " (marché ranging)"
+            reason += f" + marché {market_regime.lower()}"
             
-        # Signal strength (VARCHAR: WEAK/MODERATE/STRONG/VERY_WEAK)
-        signal_strength_calc = values.get('signal_strength')
-        if signal_strength_calc is not None:
-            sig_str = str(signal_strength_calc).upper()
-            if sig_str == 'STRONG':
-                confidence_boost += 0.10
-                reason += " + signal fort"
-            elif sig_str == 'MODERATE':
-                confidence_boost += 0.05
-                reason += " + signal modéré"
-                
-        # Confluence score (format 0-100)
-        confluence_score = values.get('confluence_score')
-        if confluence_score is not None:
-            try:
-                confluence = float(confluence_score)
-                # CONFLUENCE PLUS STRICTE
-                if confluence > 75:  # Seuil augmenté
-                    confidence_boost += 0.18
-                    reason += f" + confluence EXCELLENTE ({confluence:.0f})"
-                elif confluence > 65:  # Seuil augmenté
-                    confidence_boost += 0.12
-                    reason += f" + confluence élevée ({confluence:.0f})"
-                elif confluence > 55:  # Seuil augmenté
-                    confidence_boost += 0.06
-                    reason += f" + confluence correcte ({confluence:.0f})"
-                elif confluence < 45:  # NOUVEAU: pénalité
-                    confidence_boost -= 0.10
-                    reason += f" mais confluence FAIBLE ({confluence:.0f})"
-            except (ValueError, TypeError):
-                pass
-                
-        # NOUVEAU: Filtre final - rejeter si confidence trop faible
+        # === FILTRE FINAL ===
+        
         raw_confidence = base_confidence * (1 + confidence_boost)
-        if raw_confidence < 0.42:  # Seuil minimum 42%
+        if raw_confidence < self.min_confidence_threshold:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Signal HullMA rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.42)",
+                "reason": f"Signal CONTRARIAN {signal_side} rejeté - confidence insuffisante ({raw_confidence:.2f} < {self.min_confidence_threshold})",
                 "metadata": {
                     "strategy": self.name,
-                    "symbol": self.symbol,
                     "rejected_signal": signal_side,
                     "raw_confidence": raw_confidence,
-                    "hull_slope": slope_approx,
-                    "slope_strength": slope_strength
+                    "hull_trend": hull_trend,
+                    "opportunity_data": opportunity_data
                 }
             }
-        
+            
         confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
         
@@ -470,21 +598,15 @@ class HullMA_Slope_Strategy(BaseStrategy):
             "metadata": {
                 "strategy": self.name,
                 "symbol": self.symbol,
-                "current_price": current_price,
-                "hull_20": hull_20,
-                "slope_approx": slope_approx,
-                "slope_strength": slope_strength,
-                "price_hull_distance_pct": price_hull_distance * 100,
-                "price_above_hull": price_above_hull,
-                "trend_angle": trend_angle,
-                "trend_strength": trend_strength,
-                "directional_bias": directional_bias,
-                "trend_alignment": trend_alignment,
-                "momentum_score": momentum_score,
-                "rsi_14": rsi_14,
+                "approach": "CONTRARIAN",
+                "current_price": price_val,
+                "hull_20": hull_val,
+                "hull_trend": hull_trend,
+                "opportunity_data": opportunity_data,
                 "volume_ratio": volume_ratio,
+                "confluence_score": confluence_score,
                 "market_regime": market_regime,
-                "confluence_score": confluence_score
+                "volatility_regime": volatility_regime
             }
         }
         
@@ -493,7 +615,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
         if not super().validate_data():
             return False
             
-        required = ['hull_20']
+        required = ['hull_20', 'volume_ratio', 'confluence_score']
         
         for indicator in required:
             if indicator not in self.indicators:
@@ -503,9 +625,9 @@ class HullMA_Slope_Strategy(BaseStrategy):
                 logger.warning(f"{self.name}: Indicateur null: {indicator}")
                 return False
                 
-        # Vérifier aussi qu'on a des données de prix
-        if not self.data or 'close' not in self.data or not self.data['close']:
-            logger.warning(f"{self.name}: Données de prix manquantes")
+        # Vérifier données de prix suffisantes
+        if not self.data or 'close' not in self.data or not self.data['close'] or len(self.data['close']) < 3:
+            logger.warning(f"{self.name}: Données de prix insuffisantes")
             return False
             
         return True

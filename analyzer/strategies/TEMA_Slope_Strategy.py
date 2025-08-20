@@ -26,11 +26,17 @@ class TEMA_Slope_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres TEMA Slope - LÉGÈREMENT AJUSTÉS
-        self.min_slope_threshold = 0.00008  # Pente minimum pour considérer un signal (légèrement plus sensible)
-        self.strong_slope_threshold = 0.0009  # Pente forte (légèrement plus accessible)
-        self.very_strong_slope_threshold = 0.0045  # Pente très forte (légèrement plus accessible)
-        self.price_tema_alignment_bonus = 0.18  # Bonus si prix aligné avec TEMA (légèrement augmenté)
+        # Paramètres TEMA Slope ANTI-SPAM - STRICTEMENT RENFORCÉS
+        self.min_slope_threshold = 0.0003   # Pente minimum 4x plus stricte (réduit le bruit)
+        self.strong_slope_threshold = 0.0018  # Pente forte 2x plus stricte (qualité > quantité)
+        self.very_strong_slope_threshold = 0.008  # Pente très forte plus stricte (signaux premium)
+        self.price_tema_alignment_bonus = 0.12  # Bonus réduit (éviter sur-optimisme)
+        
+        # NOUVEAUX FILTRES ANTI-SPAM
+        self.min_confluence_required = 60    # Confluence minimum OBLIGATOIRE
+        self.min_volume_required = 1.15      # Volume minimum OBLIGATOIRE
+        self.min_confirmations = 2           # Confirmations minimum requises
+        self.max_distance_tema = 0.015       # Distance max prix/TEMA (éviter divergences)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs TEMA et contexte."""
@@ -265,16 +271,22 @@ class TEMA_Slope_Strategy(BaseStrategy):
         slope_direction = tema_analysis['slope_direction']
         alignment = tema_analysis['alignment']
         
-        # Rejeter si pente trop faible
+        # FILTRES ANTI-SPAM RENFORCÉS
+        
+        # Rejeter si pente trop faible (inchangé mais plus strict maintenant)
         if slope_strength == "weak":
             return None
             
-        # Rejeter si prix/pente divergents
+        # Rejeter si prix/pente divergents (inchangé)
         if alignment in ["bullish_divergent", "bearish_divergent"]:
             return None
             
-        # Rejeter si pente neutre
+        # Rejeter si pente neutre (inchangé)
         if slope_direction == "neutral":
+            return None
+            
+        # NOUVEAU: Rejeter si distance prix/TEMA trop importante (éviter faux signaux)
+        if tema_analysis['price_tema_distance'] > self.max_distance_tema:
             return None
             
         # Déterminer le type de signal
@@ -310,15 +322,37 @@ class TEMA_Slope_Strategy(BaseStrategy):
         # Construction de la raison
         reason = f"TEMA pente {slope_direction}: {tema_slope:.6f} ({slope_strength})"
         
-        # Bonus selon la force de la pente
+        # VALIDATION OBLIGATOIRE CONFLUENCE ANTI-SPAM
+        confluence_score = values.get('confluence_score', 0)
+        if not confluence_score or float(confluence_score) < self.min_confluence_required:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Confluence insuffisante ({confluence_score}) < {self.min_confluence_required} - signal TEMA rejeté",
+                "metadata": {"strategy": self.name, "rejected_reason": "low_confluence"}
+            }
+            
+        # VALIDATION OBLIGATOIRE VOLUME ANTI-SPAM
+        volume_ratio = values.get('volume_ratio', 0)
+        if not volume_ratio or float(volume_ratio) < self.min_volume_required:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Volume insuffisant ({volume_ratio}) < {self.min_volume_required} - signal TEMA rejeté",
+                "metadata": {"strategy": self.name, "rejected_reason": "low_volume"}
+            }
+            
+        # Bonus selon la force de la pente (RÉDUITS pour éviter sur-confiance)
         if slope_strength == "very_strong":
-            confidence_boost += 0.25
+            confidence_boost += 0.20  # Réduit de 0.25 à 0.20
             reason += " - momentum très fort"
         elif slope_strength == "strong":
-            confidence_boost += 0.20
+            confidence_boost += 0.16  # Réduit de 0.20 à 0.16
             reason += " - momentum fort"
         else:  # moderate
-            confidence_boost += 0.15
+            confidence_boost += 0.12  # Réduit de 0.15 à 0.12
             reason += " - momentum modéré"
             
         # Bonus selon l'alignement prix/TEMA
@@ -327,9 +361,14 @@ class TEMA_Slope_Strategy(BaseStrategy):
             distance_text = f"distance {price_tema_distance:.3f}"
             reason += f" + prix/TEMA alignés ({distance_text})"
             
-        # Confirmation avec autres moyennes mobiles
+        # SYSTÈME DE CONFIRMATIONS OBLIGATOIRES ANTI-SPAM
+        confirmations_count = 0
+        required_confirmations = []
+        
+        # Confirmation avec autres moyennes mobiles (PREMIÈRE CONFIRMATION OBLIGATOIRE)
         ema_12 = values.get('ema_12')
         ema_26 = values.get('ema_26')
+        ema_confirmed = False
         if ema_12 is not None and ema_26 is not None:
             try:
                 ema12_val = float(ema_12)
@@ -338,13 +377,17 @@ class TEMA_Slope_Strategy(BaseStrategy):
                                    (signal_side == "SELL" and ema12_val < ema26_val)
                 
                 if ema_cross_aligned:
-                    confidence_boost += 0.12
+                    confirmations_count += 1
+                    ema_confirmed = True
+                    confidence_boost += 0.10  # Réduit de 0.12
                     reason += " + EMA confirme"
                 else:
-                    confidence_boost -= 0.05
+                    confidence_boost -= 0.08  # Pénalité plus forte
                     reason += " mais EMA diverge"
             except (ValueError, TypeError):
                 pass
+        
+        required_confirmations.append(("EMA_Cross", ema_confirmed))
                 
         # Confirmation avec Hull MA (autre MA réactive)
         hull_20 = values.get('hull_20')
@@ -374,41 +417,46 @@ class TEMA_Slope_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # CORRECTION: Confirmation avec momentum indicators - logique directionnelle stricte
+        # Confirmation avec momentum indicators (DEUXIÈME CONFIRMATION OBLIGATOIRE)
         momentum_score = values.get('momentum_score')
+        momentum_confirmed = False
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                # BUY : momentum positif requis (format 0-100, 50=neutre)
+                # BUY : momentum positif REQUIS (plus strict maintenant)
                 if signal_side == "BUY":
                     if momentum > 65:
-                        confidence_boost += 0.18  # Momentum très positif = excellent pour BUY
+                        confirmations_count += 1
+                        momentum_confirmed = True
+                        confidence_boost += 0.15  # Réduit de 0.18
                         reason += f" + momentum très positif ({momentum:.1f})"
-                    elif momentum > 58:
-                        confidence_boost += 0.12  # Momentum positif modéré
+                    elif momentum > 60:  # Seuil relevé de 58 à 60
+                        confirmations_count += 1
+                        momentum_confirmed = True
+                        confidence_boost += 0.10  # Réduit de 0.12
                         reason += f" + momentum positif ({momentum:.1f})"
-                    elif momentum > 52:
-                        confidence_boost += 0.06  # Momentum légèrement positif
-                        reason += f" + momentum faible positif ({momentum:.1f})"
-                    elif momentum < 45:
-                        confidence_boost -= 0.10  # Momentum négatif = mauvais pour BUY
-                        reason += f" mais momentum négatif ({momentum:.1f})"
-                # SELL : momentum négatif requis
+                    elif momentum < 48:  # Pénalité plus forte
+                        confidence_boost -= 0.15  # Plus pénalisant
+                        reason += f" mais momentum insuffisant ({momentum:.1f})"
+                # SELL : momentum négatif REQUIS (plus strict maintenant)
                 elif signal_side == "SELL":
                     if momentum < 35:
-                        confidence_boost += 0.18  # Momentum très négatif = excellent pour SELL
+                        confirmations_count += 1
+                        momentum_confirmed = True
+                        confidence_boost += 0.15  # Réduit de 0.18
                         reason += f" + momentum très négatif ({momentum:.1f})"
-                    elif momentum < 42:
-                        confidence_boost += 0.12  # Momentum négatif modéré
+                    elif momentum < 40:  # Seuil relevé de 42 à 40
+                        confirmations_count += 1
+                        momentum_confirmed = True
+                        confidence_boost += 0.10  # Réduit de 0.12
                         reason += f" + momentum négatif ({momentum:.1f})"
-                    elif momentum < 48:
-                        confidence_boost += 0.06  # Momentum légèrement négatif
-                        reason += f" + momentum faible négatif ({momentum:.1f})"
-                    elif momentum > 55:
-                        confidence_boost -= 0.10  # Momentum positif = mauvais pour SELL
-                        reason += f" mais momentum positif ({momentum:.1f})"
+                    elif momentum > 52:  # Pénalité plus forte
+                        confidence_boost -= 0.15  # Plus pénalisant
+                        reason += f" mais momentum insuffisant ({momentum:.1f})"
             except (ValueError, TypeError):
                 pass
+                
+        required_confirmations.append(("Momentum", momentum_confirmed))
                 
         # CORRECTION: Confirmation avec ROC - seuils directionnels adaptatifs (format décimal)
         roc_10 = values.get('roc_10')
@@ -534,19 +582,33 @@ class TEMA_Slope_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Volume confirmation
-        volume_ratio = values.get('volume_ratio')
-        if volume_ratio is not None:
-            try:
-                vol_ratio = float(volume_ratio)
-                if vol_ratio >= 1.3:
-                    confidence_boost += 0.12
-                    reason += f" + volume élevé ({vol_ratio:.1f}x)"
-                elif vol_ratio >= 1.1:
-                    confidence_boost += 0.08
-                    reason += f" + volume modéré ({vol_ratio:.1f}x)"
-            except (ValueError, TypeError):
-                pass
+        # VALIDATION FINALE CONFIRMATIONS ANTI-SPAM
+        if confirmations_count < self.min_confirmations:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Confirmations insuffisantes ({confirmations_count}/{self.min_confirmations}) - signal TEMA rejeté",
+                "metadata": {
+                    "strategy": self.name,
+                    "rejected_reason": "insufficient_confirmations",
+                    "confirmations_count": confirmations_count,
+                    "required_confirmations": required_confirmations
+                }
+            }
+        
+        # Volume confirmation (DÉJÀ VALIDÉ PLUS HAUT - juste bonus ici)
+        # volume_ratio déjà vérifié comme obligatoire, ici juste bonus additionnel
+        try:
+            vol_ratio = float(volume_ratio)
+            if vol_ratio >= 1.4:  # Seuil relevé pour bonus
+                confidence_boost += 0.10  # Réduit de 0.12
+                reason += f" + volume élevé ({vol_ratio:.1f}x)"
+            elif vol_ratio >= 1.25:  # Seuil relevé
+                confidence_boost += 0.06  # Réduit de 0.08
+                reason += f" + volume modéré ({vol_ratio:.1f}x)"
+        except (ValueError, TypeError):
+            pass
                 
         # VWAP context
         vwap_10 = values.get('vwap_10')
@@ -628,19 +690,34 @@ class TEMA_Slope_Strategy(BaseStrategy):
                 confidence_boost -= 0.12  # Trop risqué en volatilité extrême
                 reason += " mais volatilité extrême"
                 
-        # Confluence score
-        confluence_score = values.get('confluence_score')
-        if confluence_score is not None:
-            try:
-                confluence = float(confluence_score)
-                if confluence > 70:
-                    confidence_boost += 0.10
-                    reason += " + confluence élevée"
-                elif confluence > 50:
-                    confidence_boost += 0.05
-                    reason += " + confluence modérée"
-            except (ValueError, TypeError):
-                pass
+        # Confluence score (DÉJÀ VALIDÉ COMME OBLIGATOIRE - juste bonus ici)
+        # confluence_score déjà vérifié comme obligatoire, ici juste bonus additionnel
+        try:
+            confluence = float(confluence_score)
+            if confluence > 80:  # Seuil élevé pour bonus
+                confidence_boost += 0.08  # Réduit de 0.10
+                reason += f" + confluence excellente ({confluence:.0f})"
+            elif confluence > 70:  # Seuil relevé
+                confidence_boost += 0.05  # Réduit
+                reason += f" + confluence élevée ({confluence:.0f})"
+        except (ValueError, TypeError):
+            pass
+            
+        # FILTRE FINAL CONFIANCE MINIMUM ANTI-SPAM
+        raw_confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
+        if raw_confidence < 0.55:  # Seuil minimum élevé pour TEMA
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Confiance finale insuffisante ({raw_confidence:.2f}) < 0.55 - signal TEMA rejeté",
+                "metadata": {
+                    "strategy": self.name,
+                    "rejected_reason": "low_final_confidence",
+                    "raw_confidence": raw_confidence,
+                    "confirmations_count": confirmations_count
+                }
+            }
                 
         confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
@@ -681,16 +758,33 @@ class TEMA_Slope_Strategy(BaseStrategy):
         }
         
     def validate_data(self) -> bool:
-        """Valide que les données TEMA nécessaires sont présentes."""
+        """Valide que les données TEMA nécessaires sont présentes - ANTI-SPAM RENFORCÉ."""
         if not super().validate_data():
             return False
             
-        # Au minimum, il faut TEMA_12
-        if 'tema_12' not in self.indicators:
-            logger.warning(f"{self.name}: Indicateur manquant: tema_12")
+        # INDICATEURS OBLIGATOIRES ANTI-SPAM (plus de TEMA_12 seulement)
+        essential_indicators = ['tema_12', 'confluence_score', 'volume_ratio', 'momentum_score']
+        optional_but_preferred = ['ema_12', 'ema_26', 'trend_strength']
+        
+        missing_essential = 0
+        for indicator in essential_indicators:
+            if indicator not in self.indicators or self.indicators[indicator] is None:
+                missing_essential += 1
+                logger.debug(f"{self.name}: Indicateur essentiel manquant: {indicator}")
+                
+        # Au moins 3/4 indicateurs essentiels requis
+        if missing_essential > 1:
+            logger.warning(f"{self.name}: Trop d'indicateurs essentiels manquants ({missing_essential}/4)")
             return False
-        if self.indicators['tema_12'] is None:
-            logger.warning(f"{self.name}: Indicateur null: tema_12")
-            return False
+            
+        # Vérifier qualité minimale des données critiques
+        if 'confluence_score' in self.indicators and self.indicators['confluence_score']:
+            try:
+                conf_val = float(self.indicators['confluence_score'])
+                if conf_val < 30:  # Confluence trop faible = données de mauvaise qualité
+                    logger.debug(f"{self.name}: Confluence trop faible pour validation: {conf_val}")
+                    return False
+            except (ValueError, TypeError):
+                pass
                 
         return True

@@ -29,23 +29,23 @@ class Resistance_Rejection_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres de proximité résistance
-        self.resistance_proximity_threshold = 0.008  # 0.8% de la résistance
-        self.tight_proximity_threshold = 0.004       # 0.4% = très proche
+        # Paramètres de proximité résistance - ASSOUPLIS
+        self.resistance_proximity_threshold = 0.012  # 1.2% plus accessible crypto
+        self.tight_proximity_threshold = 0.006       # 0.6% = très proche
         
-        # Paramètres de rejet
-        self.min_rejection_distance = 0.0008         # 0.08% retour minimum depuis résistance
-        self.rejection_confirmation_bars = 2         # Barres pour confirmer rejet
+        # Paramètres de rejet - PLUS RÉALISTES
+        self.min_rejection_distance = 0.0015         # 0.15% retour minimum (plus large)
+        self.rejection_confirmation_bars = 1         # Confirmation immédiate crypto 3m
         
         # Paramètres volume et momentum
         self.min_rejection_volume = 1.2              # Volume 20% au-dessus normal
         self.strong_rejection_volume = 2.0           # Volume 2x pour rejet fort
         self.momentum_reversal_threshold = -0.2      # Momentum devient négatif
         
-        # Paramètres RSI/oscillateurs (essoufflement haussier)
-        self.overbought_rsi_threshold = 70           # RSI surachat
-        self.extreme_overbought_threshold = 80       # RSI extrême
-        self.williams_r_overbought = -20             # Williams %R surachat
+        # Paramètres RSI/oscillateurs - ADAPTÉS CRYPTO
+        self.overbought_rsi_threshold = 65           # RSI surachat plus sensible
+        self.extreme_overbought_threshold = 78       # RSI extrême accessible
+        self.williams_r_overbought = -25             # Williams %R plus permissif
         
         # Paramètres de résistance
         self.min_resistance_strength = 0.5           # Force minimum résistance
@@ -129,12 +129,16 @@ class Resistance_Rejection_Strategy(BaseStrategy):
             rejection_score += 0.15
             rejection_indicators.append(f"Proche résistance ({distance_to_resistance*100:.2f}%)")
             
-        # Vérifier si le prix est en-dessous de la résistance (rejet effectif)
-        if current_price >= resistance_level:
-            rejection_score *= 0.5  # Pénalité si pas encore rejeté
-            rejection_indicators.append("Prix encore au-dessus résistance")
-        else:
-            rejection_score += 0.2
+        # Vérifier position par rapport à résistance (logique assouplie)
+        price_vs_resistance = (current_price - resistance_level) / resistance_level
+        if price_vs_resistance > 0.002:  # Si >0.2% au-dessus
+            rejection_score += 0.1  # Léger bonus (test résistance)
+            rejection_indicators.append("Test actif de la résistance")
+        elif price_vs_resistance > -0.002:  # Entre -0.2% et +0.2%
+            rejection_score += 0.25  # Bonus fort (juste à la résistance)
+            rejection_indicators.append("Prix exactement à la résistance")
+        else:  # En-dessous
+            rejection_score += 0.3  # Maximum (rejet confirmé)
             rejection_indicators.append("Prix rejeté sous résistance")
             
         # Force de la résistance
@@ -174,7 +178,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_rejection': rejection_score >= 0.5,
+            'is_rejection': rejection_score >= 0.35,  # Seuil assoupli pour crypto
             'score': rejection_score,
             'indicators': rejection_indicators,
             'resistance_level': resistance_level,
@@ -229,9 +233,12 @@ class Resistance_Rejection_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum_val = float(momentum_score)
-                if momentum_val <= 40:  # Momentum négatif (sous 40 sur échelle 0-100)
+                if momentum_val <= 45:  # Momentum affaibli (assoupli pour crypto)
                     exhaustion_score += 0.2
-                    exhaustion_indicators.append(f"Momentum reversal ({momentum_val:.1f})")
+                    exhaustion_indicators.append(f"Momentum affaibli ({momentum_val:.1f})")
+                elif momentum_val <= 50:  # Momentum neutre
+                    exhaustion_score += 0.1
+                    exhaustion_indicators.append(f"Momentum neutre ({momentum_val:.1f})")
             except (ValueError, TypeError):
                 pass
                 
@@ -247,7 +254,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_exhausted': exhaustion_score >= 0.4,
+            'is_exhausted': exhaustion_score >= 0.25,  # Seuil assoupli pour crypto
             'score': exhaustion_score,
             'indicators': exhaustion_indicators
         }
@@ -304,17 +311,20 @@ class Resistance_Rejection_Strategy(BaseStrategy):
         # Détection de l'essoufflement du momentum
         exhaustion_analysis = self._detect_momentum_exhaustion(values)
         
-        # Signal SELL si rejet + essoufflement
+        # Signal SELL si rejet (essoufflement optionnel)
         if rejection_analysis['is_rejection']:
-            base_confidence = 0.50
-            confidence_boost = rejection_analysis['score'] * 0.6
+            base_confidence = 0.55  # Base plus généreuse
+            confidence_boost = rejection_analysis['score'] * 0.8  # Multiplicateur amélioré
             
             reason = f"Rejet résistance {rejection_analysis['resistance_level']:.2f} ({rejection_analysis['distance_pct']:.2f}%)"
             
-            # Bonus pour essoufflement momentum
+            # Bonus pour essoufflement momentum (pas obligatoire)
             if exhaustion_analysis['is_exhausted']:
-                confidence_boost += exhaustion_analysis['score'] * 0.4
+                confidence_boost += exhaustion_analysis['score'] * 0.6
                 reason += f" + momentum épuisé"
+            elif exhaustion_analysis['score'] >= 0.15:  # Essoufflement partiel
+                confidence_boost += exhaustion_analysis['score'] * 0.4
+                reason += f" + signes essoufflement"
                 
             # Volume de confirmation
             volume_ratio = values.get('volume_ratio')
@@ -335,9 +345,12 @@ class Resistance_Rejection_Strategy(BaseStrategy):
             if confluence_score is not None:
                 try:
                     conf_val = float(confluence_score)
-                    if conf_val > 70:
-                        confidence_boost += 0.1
+                    if conf_val > 60:  # Seuil assoupli
+                        confidence_boost += 0.12
                         reason += " + haute confluence"
+                    elif conf_val > 50:
+                        confidence_boost += 0.08
+                        reason += " + confluence modérée"
                 except (ValueError, TypeError):
                     pass
                     
@@ -351,7 +364,26 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                 except (ValueError, TypeError):
                     pass
                     
-            confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
+            # Calcul confidence avec seuil minimum
+            raw_confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
+            
+            # Vérification seuil minimum
+            if raw_confidence < 0.45:  # Seuil minimum 45%
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Signal rejet résistance trop faible (conf: {raw_confidence:.2f} < 0.45)",
+                    "metadata": {
+                        "strategy": self.name,
+                        "symbol": self.symbol,
+                        "rejected_confidence": raw_confidence,
+                        "rejection_score": rejection_analysis['score'],
+                        "exhaustion_score": exhaustion_analysis['score']
+                    }
+                }
+                
+            confidence = raw_confidence
             strength = self.get_strength_from_confidence(confidence)
             
             return {

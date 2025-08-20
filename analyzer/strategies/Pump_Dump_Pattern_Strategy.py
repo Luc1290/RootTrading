@@ -12,44 +12,44 @@ logger = logging.getLogger(__name__)
 
 class Pump_Dump_Pattern_Strategy(BaseStrategy):
     """
-    Stratégie détectant les patterns pump & dump pour profiter des corrections.
+    Stratégie détectant les patterns pump & dump pour surfer sur le momentum.
     
     Pattern Pump:
-    - Hausse de prix rapide et massive (>3-5%)
-    - Volume spike exceptionnel (>3x normal)
-    - RSI en surachat extrême (>80)
+    - Hausse de prix rapide et massive (>2%)
+    - Volume spike exceptionnel (>2x normal)
+    - RSI momentum fort mais pas extrême
     - Momentum très élevé
     
     Pattern Dump:
-    - Chute de prix rapide après pump
-    - Volume toujours élevé mais décroissant
-    - RSI retournant vers la normale
+    - Chute de prix rapide après distribution
+    - Volume élevé de vente
+    - RSI baissier et momentum négatif
     
     Signaux générés:
-    - SELL: Détection d'un pump au sommet (avant correction)
-    - BUY: Détection d'un dump stabilisé (après correction excessive)
+    - BUY: Détection d'un pump débutant (surfer sur la vague)
+    - SELL: Détection d'un dump débutant (sortir avant la chute)
     """
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Seuils pour détection pump - CORRECTIONS REALISTES
-        self.pump_price_threshold = 0.015     # 1.5% hausse minimum (assoupli de 2%)
-        self.extreme_pump_threshold = 0.025   # 2.5% hausse extrême (assoupli de 3.5%)
-        self.pump_volume_multiplier = 1.6     # Volume 1.6x normal (assoupli de 2x)
-        self.extreme_volume_multiplier = 3.0  # Volume 3x normal (assoupli de 5x)
-        self.pump_rsi_threshold = 75          # RSI surachat assoupli (de 80 à 75)
-        self.extreme_rsi_threshold = 82       # RSI extrême assoupli (de 85 à 82)
+        # Seuils pour détection pump - MOMENTUM TRADING OPTIMISÉ
+        self.pump_price_threshold = 0.018     # 1.8% hausse minimum (détection précoce)
+        self.extreme_pump_threshold = 0.030   # 3.0% hausse extrême (pump fort)
+        self.pump_volume_multiplier = 1.8     # Volume 1.8x normal (confirmation momentum)
+        self.extreme_volume_multiplier = 3.5  # Volume 3.5x normal (pump majeur)
+        self.pump_rsi_threshold = 60          # RSI momentum positif (pas trop tard)
+        self.extreme_rsi_threshold = 75       # RSI fort mais pas surachat extrême
         
-        # Seuils pour détection dump/correction - CORRECTIONS REALISTES
-        self.dump_price_threshold = -0.015    # 1.5% chute minimum (assoupli de 2%)
-        self.extreme_dump_threshold = -0.03   # 3% chute extrême (assoupli de 4%)
-        self.dump_rsi_threshold = 35          # RSI survente assoupli (de 30 à 35)
-        self.momentum_reversal_threshold = -0.3  # Momentum négatif assoupli (de -0.5 à -0.3)
+        # Seuils pour détection dump - MOMENTUM TRADING OPTIMISÉ
+        self.dump_price_threshold = -0.015    # 1.5% chute minimum (détection rapide)
+        self.extreme_dump_threshold = -0.025  # 2.5% chute extrême (dump sévère)
+        self.dump_rsi_threshold = 45          # RSI faiblesse (pas trop bas)
+        self.momentum_reversal_threshold = -0.3  # Momentum négatif (signal sortie)
         
-        # Paramètres de validation
-        self.min_volatility_regime = 0.6      # Volatilité élevée requise
-        self.min_trade_intensity = 1.5        # Intensité trading élevée
+        # Paramètres de validation momentum
+        self.min_volatility_regime = 0.7      # Volatilité suffisante pour momentum
+        self.min_trade_intensity = 1.3        # Activité trading confirmée
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
@@ -145,13 +145,13 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_pump': pump_score >= 0.45,  # CORRECTION MAJEURE: Très assoupli de 0.7 à 0.45
+            'is_pump': pump_score >= 0.50,  # Seuil pour détection précoce momentum
             'pump_score': pump_score,
             'indicators': pump_indicators
         }
         
     def _detect_dump_pattern(self, values: Dict[str, Any]) -> Dict[str, Any]:
-        """Détecte un pattern de dump/correction après pump."""
+        """Détecte un pattern de dump (chute rapide avec volume de vente)."""
         dump_score = 0.0
         dump_indicators = []
         
@@ -169,17 +169,18 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # RSI retour vers survente (opportunité d'achat)
+        # RSI baissier (momentum de vente)
         rsi_14 = values.get('rsi_14')
         if rsi_14 is not None:
             try:
                 rsi_val = float(rsi_14)
+                # RSI qui décline rapidement indique faiblesse
                 if rsi_val <= self.dump_rsi_threshold:
                     dump_score += 0.25
-                    dump_indicators.append(f"RSI survente ({rsi_val:.1f})")
-                elif rsi_val <= 50 and rsi_val > self.dump_rsi_threshold:
-                    dump_score += 0.1
-                    dump_indicators.append(f"RSI normalisation ({rsi_val:.1f})")
+                    dump_indicators.append(f"RSI faiblesse extrême ({rsi_val:.1f})")
+                elif rsi_val <= 45:
+                    dump_score += 0.15
+                    dump_indicators.append(f"RSI baissier ({rsi_val:.1f})")
             except (ValueError, TypeError):
                 pass
                 
@@ -202,15 +203,15 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
             try:
                 rel_vol = float(relative_volume)
                 vol_qual = float(volume_quality)
-                # Volume élevé mais qualité moyenne = distribution
+                # Volume élevé de vente (distribution/panic)
                 if rel_vol >= 2.0 and vol_qual <= 60:
                     dump_score += 0.15
-                    dump_indicators.append(f"Volume distribution ({rel_vol:.1f}x, qualité {vol_qual:.0f})")
+                    dump_indicators.append(f"Volume vente massive ({rel_vol:.1f}x, qualité {vol_qual:.0f})")
             except (ValueError, TypeError):
                 pass
                 
         return {
-            'is_dump': dump_score >= 0.6,  # Augmenté de 0.5 à 0.6 - plus strict
+            'is_dump': dump_score >= 0.45,  # Seuil pour détection rapide faiblesse
             'dump_score': dump_score,
             'indicators': dump_indicators
         }
@@ -259,10 +260,10 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
         }
         
         if pump_analysis['is_pump']:
-            # Signal SELL - Pump détecté, attendre correction
-            signal_side = "SELL"
+            # Signal BUY - Pump détecté, surfer sur la vague haussière
+            signal_side = "BUY"
             reason = f"Pump détecté ({pump_analysis['pump_score']:.2f}): {', '.join(pump_analysis['indicators'][:2])}"
-            confidence_boost = pump_analysis['pump_score'] * 0.8
+            confidence_boost = pump_analysis['pump_score'] * 0.9
             
             metadata.update({
                 "pattern_type": "pump",
@@ -271,10 +272,10 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
             })
             
         elif dump_analysis['is_dump']:
-            # Signal BUY - Dump/correction détectée, opportunité d'achat
-            signal_side = "BUY"
-            reason = f"Dump/correction détecté ({dump_analysis['dump_score']:.2f}): {', '.join(dump_analysis['indicators'][:2])}"
-            confidence_boost = dump_analysis['dump_score'] * 0.9
+            # Signal SELL - Dump détecté, sortir avant la chute
+            signal_side = "SELL"
+            reason = f"Dump détecté ({dump_analysis['dump_score']:.2f}): {', '.join(dump_analysis['indicators'][:2])}"
+            confidence_boost = dump_analysis['dump_score'] * 0.8
             
             metadata.update({
                 "pattern_type": "dump",
@@ -324,9 +325,9 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
                 except (ValueError, TypeError):
                     pass
                     
-            # NOUVEAU: Filtre final de confidence minimum
+            # Filtre final de confidence pour momentum trading
             raw_confidence = base_confidence * (1.0 + confidence_boost)
-            if raw_confidence < 0.55:  # Seuil minimum 55%
+            if raw_confidence < 0.55:  # Seuil minimum 55% (momentum actif)
                 return {
                     "side": None,
                     "confidence": 0.0,

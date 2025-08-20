@@ -20,22 +20,23 @@ class CCI_Reversal_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres CCI optimisés pour crypto
-        self.oversold_level = -70  # Zone de survente plus sensible
-        self.overbought_level = 70  # Zone de surachat plus sensible
-        self.extreme_oversold = -100  # Extrême plus accessible
-        self.extreme_overbought = 100  # Extrême plus accessible
+        # Paramètres CCI optimisés pour crypto 3m
+        self.oversold_level = -50   # Zone survente adaptée crypto
+        self.overbought_level = 50   # Zone surachat adaptée crypto
+        self.extreme_oversold = -80  # Extrême accessible
+        self.extreme_overbought = 80  # Extrême accessible
         
-        # Paramètres de validation temporelle
-        self.min_cci_persistence = 1  # Nombre de périodes minimum en zone
+        # Paramètres de validation temporelle - SIMPLIFIÉS
+        self.min_cci_persistence = 0  # Pas de persistance requise (crypto 3m rapide)
         self.cci_history = []  # Historique pour validation
-        self.max_history_size = 5  # Taille max de l'historique
+        self.max_history_size = 3  # Historique réduit
         
-        # Seuils adaptatifs selon volatilité
+        # Seuils adaptatifs selon volatilité - ASSOUPLIS
         self.volatility_adjustment = {
-            'low': 0.8,   # Seuils plus serrés en basse volatilité
-            'normal': 1.0,  # Seuils standards
-            'high': 1.2   # Seuils plus larges en haute volatilité
+            'low': 0.9,    # Seuils légèrement réduits
+            'normal': 1.0,   # Seuils standards
+            'high': 1.1,     # Seuils légèrement augmentés
+            'extreme': 1.15  # Nouveau : haute volatilité
         }
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
@@ -63,16 +64,24 @@ class CCI_Reversal_Strategy(BaseStrategy):
             self.cci_history.pop(0)
     
     def _check_cci_persistence(self, threshold: float, direction: str) -> bool:
-        """Vérifie la persistance du CCI dans une zone."""
+        """Vérifie la persistance du CCI dans une zone - SIMPLIFIÉ."""
+        # En crypto 3m, pas de persistance requise - réactivité importante
+        if self.min_cci_persistence == 0:
+            return True
+            
         if len(self.cci_history) < self.min_cci_persistence:
-            return False
+            return True  # Accepte si pas assez d'historique
         
+        # Logique assouplie : au moins 50% des valeurs dans la zone
         recent_values = self.cci_history[-self.min_cci_persistence:]
         if direction == 'oversold':
-            return all(v <= threshold for v in recent_values)
+            count = sum(1 for v in recent_values if v <= threshold)
         elif direction == 'overbought':
-            return all(v >= threshold for v in recent_values)
-        return False
+            count = sum(1 for v in recent_values if v >= threshold)
+        else:
+            return False
+            
+        return count >= len(recent_values) * 0.5  # Au moins 50%
     
     def _get_adjusted_thresholds(self, volatility_regime: str) -> Dict[str, float]:
         """Ajuste les seuils selon le régime de volatilité."""
@@ -133,51 +142,29 @@ class CCI_Reversal_Strategy(BaseStrategy):
         volatility_regime = values.get('volatility_regime', 'normal')
         thresholds = self._get_adjusted_thresholds(str(volatility_regime))
         
-        # Logique de signal avec validation temporelle
+        # Logique de signal directe (crypto 3m réactif)
         if cci_20 <= thresholds['oversold']:
-            # Vérification de persistance en zone de survente
-            if self._check_cci_persistence(thresholds['oversold'], 'oversold'):
-                signal_side = "BUY"
-                if cci_20 <= thresholds['extreme_oversold']:
-                    zone = "survente extrême"
-                    confidence_boost += 0.20  # Réduit de 0.25
-                else:
-                    zone = "survente"
-                    confidence_boost += 0.10  # Réduit de 0.15
-                reason = f"CCI ({cci_20:.1f}) en zone de {zone} persistante"
+            signal_side = "BUY"
+            if cci_20 <= thresholds['extreme_oversold']:
+                zone = "survente extrême"
+                confidence_boost += 0.25  # Bonus généreux
             else:
-                # Signal trop récent, pas encore validé
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"CCI en survente mais non confirmé (persistance < {self.min_cci_persistence})",
-                    "metadata": {"strategy": self.name, "cci_20": cci_20}
-                }
+                zone = "survente"
+                confidence_boost += 0.15  # Bonus amélioré
+            reason = f"CCI ({cci_20:.1f}) en zone de {zone}"
             
         elif cci_20 >= thresholds['overbought']:
-            # Vérification de persistance en zone de surachat
-            if self._check_cci_persistence(thresholds['overbought'], 'overbought'):
-                signal_side = "SELL"
-                if cci_20 >= thresholds['extreme_overbought']:
-                    zone = "surachat extrême"
-                    confidence_boost += 0.20  # Réduit de 0.25
-                else:
-                    zone = "surachat"
-                    confidence_boost += 0.10  # Réduit de 0.15
-                reason = f"CCI ({cci_20:.1f}) en zone de {zone} persistante"
+            signal_side = "SELL"
+            if cci_20 >= thresholds['extreme_overbought']:
+                zone = "surachat extrême"
+                confidence_boost += 0.25  # Bonus généreux
             else:
-                # Signal trop récent, pas encore validé
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"CCI en surachat mais non confirmé (persistance < {self.min_cci_persistence})",
-                    "metadata": {"strategy": self.name, "cci_20": cci_20}
-                }
+                zone = "surachat"
+                confidence_boost += 0.15  # Bonus amélioré
+            reason = f"CCI ({cci_20:.1f}) en zone de {zone}"
             
         if signal_side:
-            base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
+            base_confidence = 0.55  # Base plus élevée pour compenser
             
             # Utilisation du momentum_score avec logique améliorée
             momentum_score_raw = values.get('momentum_score')
@@ -190,19 +177,19 @@ class CCI_Reversal_Strategy(BaseStrategy):
             
             if momentum_score != 0:
                 # Momentum score format 0-100, 50 = neutre
-                if (signal_side == "BUY" and momentum_score > 65) or \
-                   (signal_side == "SELL" and momentum_score < 35):
-                    confidence_boost += 0.12  # Fort momentum aligné
+                if (signal_side == "BUY" and momentum_score > 60) or \
+                   (signal_side == "SELL" and momentum_score < 40):
+                    confidence_boost += 0.18  # Fort momentum aligné (généreux)
                     reason += " avec momentum fort"
-                elif (signal_side == "BUY" and momentum_score > 55) or \
-                     (signal_side == "SELL" and momentum_score < 45):
-                    confidence_boost += 0.06  # Momentum modéré aligné
+                elif (signal_side == "BUY" and momentum_score > 52) or \
+                     (signal_side == "SELL" and momentum_score < 48):
+                    confidence_boost += 0.10  # Momentum modéré aligné
                     reason += " avec momentum favorable"
                 elif 48 <= momentum_score <= 52:
-                    confidence_boost -= 0.10  # Momentum neutre = danger
-                elif (signal_side == "BUY" and momentum_score < 40) or \
-                     (signal_side == "SELL" and momentum_score > 60):
-                    confidence_boost -= 0.15  # Momentum contradictoire
+                    confidence_boost -= 0.05  # Pénalité réduite
+                elif (signal_side == "BUY" and momentum_score < 35) or \
+                     (signal_side == "SELL" and momentum_score > 65):
+                    confidence_boost -= 0.08  # Pénalité réduite
                     
             # Utilisation du trend_strength
             trend_strength_raw = values.get('trend_strength')
@@ -273,9 +260,9 @@ class CCI_Reversal_Strategy(BaseStrategy):
                        (signal_side == "SELL" and rsi > 65):
                         confidence_boost += 0.10
                         reason += f" confirmé par RSI ({rsi:.1f})"
-                    elif (signal_side == "BUY" and rsi > 60) or \
-                         (signal_side == "SELL" and rsi < 40):
-                        confidence_boost -= 0.15  # RSI contradictoire
+                    elif (signal_side == "BUY" and rsi > 65) or \
+                         (signal_side == "SELL" and rsi < 35):
+                        confidence_boost -= 0.08  # Pénalité réduite RSI
                 except (ValueError, TypeError):
                     pass
             
@@ -288,17 +275,19 @@ class CCI_Reversal_Strategy(BaseStrategy):
                         confidence_boost += 0.08
                         reason += " avec volume élevé"
                     elif volume_ratio < 0.5:
-                        confidence_boost -= 0.10  # Volume trop faible
+                        confidence_boost -= 0.05  # Pénalité réduite volume
                 except (ValueError, TypeError):
                     pass
             
-            # Ajustement final selon volatilité
+            # Ajustement final selon volatilité - ASSOUPLI
             if volatility_regime == "low":
-                confidence_boost += 0.05  # Meilleur pour les retournements
+                confidence_boost += 0.08  # Excellent pour retournements
+            elif volatility_regime == "normal":
+                confidence_boost += 0.03  # Léger bonus
             elif volatility_regime == "high":
-                confidence_boost -= 0.08  # Plus risqué
+                confidence_boost -= 0.03  # Pénalité réduite
             elif volatility_regime == "extreme":
-                confidence_boost -= 0.15  # Très risqué
+                confidence_boost -= 0.06  # Pénalité assouplie
                     
             # Utilisation du signal_strength pré-calculé
             signal_strength_calc_raw = values.get('signal_strength')
@@ -315,13 +304,13 @@ class CCI_Reversal_Strategy(BaseStrategy):
             total_boost = min(confidence_boost, 0.35)  # Limite le boost total
             confidence = self.calculate_confidence(base_confidence, 1 + total_boost)
             
-            # Filtre final : confidence minimum pour valider le signal
-            if confidence < 0.55:
+            # Filtre final : confidence minimum assoupli
+            if confidence < 0.45:  # Seuil plus accessible
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": f"Signal {signal_side} détecté mais confidence trop faible ({confidence:.2f})",
+                    "reason": f"Signal CCI {signal_side} détecté mais confidence insuffisante ({confidence:.2f} < 0.45)",
                     "metadata": {
                         "strategy": self.name,
                         "symbol": self.symbol,

@@ -32,24 +32,23 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres Supertrend simulé
-        self.supertrend_multiplier = 1.8         # Multiplier ATR classique (moins strict)
-        self.min_atr_distance = 0.0015           # Distance minimum prix/ATR stop (moins strict)
-        self.max_atr_distance = 0.025            # Distance maximum pour reversal (plus tolérant)
+        # Paramètres Supertrend simulé CRYPTO OPTIMISÉS
+        self.supertrend_multiplier = 2.2         # Multiplier ATR crypto (plus réactif aux gaps)
+        self.min_atr_distance = 0.001            # Distance minimum crypto (spreads serrés)
+        self.max_atr_distance = 0.035            # Distance maximum crypto (moves volatils)
         
-        # Paramètres de reversal - SIMPLIFIÉS
-        self.min_trend_strength_change = 0.1     # Changement minimum trend strength (assoupli)
-        self.momentum_reversal_threshold = 0.10  # Momentum change pour reversal (assoupli)
-        self.directional_bias_flip_required = False  # Bias ne doit pas forcément changer
+        # Paramètres de reversal CRYPTO - ULTRA SIMPLIFIÉS
+        self.min_reversal_score = 0.15           # Score reversal minimum (très permissif)
+        self.momentum_threshold = 45             # Seuil momentum reversal (crypto réactif)
+        self.directional_bias_required = False   # Bias optionnel (réactivité primordiale)
         
-        # Paramètres EMA confirmation - OPTIONNELS
-        self.ema_cross_confirmation = False      # EMA cross non requis
-        self.min_ema_separation = 0.005         # Séparation minimum EMA12/26 (assoupli)
+        # Paramètres EMA confirmation CRYPTO - SIMPLIFIÉS
+        self.ema_cross_confirmation = False      # EMA cross optionnel (réactivité > confirmation)
+        self.min_ema_separation = 0.003         # Séparation crypto minime (spreads serrés)
         
-        # Paramètres volume et volatilité
-        self.min_volume_confirmation = 1.2       # Volume minimum pour reversal
-        self.min_volatility_regime = 0.4         # Volatilité minimum requise
-        self.max_volatility_regime = 1.2         # Volatilité maximum (pas trop chaotique)
+        # Paramètres volume crypto - ADAPTÉS
+        self.min_volume_confirmation = 1.1       # Volume léger requis (crypto liquide)
+        self.volatility_bonus_threshold = 2.0    # Volatilité élevée = bonus (crypto aime la vol)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
@@ -214,19 +213,19 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
             try:
                 momentum_val = float(momentum_score)
                 
-                # Momentum change significatif (format 0-100, 50=neutre)
-                if reversal_direction == 'bullish' and momentum_val > 55:
-                    reversal_score += 0.2
+                # Momentum change CRYPTO plus réactif (format 0-100, 50=neutre)
+                if reversal_direction == 'bullish' and momentum_val > 52:  # Plus permissif
+                    reversal_score += 0.25  # Score plus élevé
                     reversal_indicators.append(f"Momentum haussier ({momentum_val:.0f})")
-                elif reversal_direction == 'bearish' and momentum_val < 45:
-                    reversal_score += 0.2
+                elif reversal_direction == 'bearish' and momentum_val < 48:  # Plus permissif
+                    reversal_score += 0.25  # Score plus élevé
                     reversal_indicators.append(f"Momentum baissier ({momentum_val:.0f})")
                     
             except (ValueError, TypeError):
                 pass
                 
         return {
-            'is_reversal': reversal_score >= 0.2,  # CORRECTION: Seuil encore plus assoupli de 0.3 à 0.2
+            'is_reversal': reversal_score >= self.min_reversal_score,  # CRYPTO: Seuil 0.15 ultra permissif
             'direction': reversal_direction,
             'score': reversal_score,
             'indicators': reversal_indicators
@@ -363,18 +362,18 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         supertrend_condition_met = False
         
         if reversal_direction == 'bullish':
-            # Signal BUY: prix au-dessus Supertrend bullish level - CONDITIONS SIMPLIFIÉES
+            # Signal BUY CRYPTO: conditions ultra simplifiées
             if current_price > supertrend_bullish:
                 distance = supertrend_data['distance_to_bullish']
-                if distance <= self.max_atr_distance * 2:  # Plus tolérant sur distance max
+                if distance <= self.max_atr_distance * 2.5:  # Crypto très tolérant 
                     signal_side = "BUY"
                     supertrend_condition_met = True
                     
         elif reversal_direction == 'bearish':
-            # Signal SELL: prix en-dessous Supertrend bearish level - CONDITIONS SIMPLIFIÉES
+            # Signal SELL CRYPTO: conditions ultra simplifiées
             if current_price < supertrend_bearish:
                 distance = supertrend_data['distance_to_bearish']
-                if distance <= self.max_atr_distance * 2:  # Plus tolérant sur distance max
+                if distance <= self.max_atr_distance * 2.5:  # Crypto très tolérant
                     signal_side = "SELL"
                     supertrend_condition_met = True
                     
@@ -425,23 +424,23 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
             try:
                 vol_ratio = float(volume_ratio)
                 
-                # Volume requis plus élevé pour confirmations selon direction
+                # Volume CRYPTO adapté - plus permissif et réactif
                 if signal_side == "BUY":
-                    # Reversal haussier : volume fort pour confirmer changement de tendance
-                    if vol_ratio >= self.min_volume_confirmation * 1.3:  # 1.56x minimum
-                        confidence_boost += 0.15  # Bonus élevé pour BUY avec fort volume
-                        reason += f" + volume reversal haussier ({vol_ratio:.1f}x)"
-                    elif vol_ratio >= self.min_volume_confirmation:
-                        confidence_boost += 0.08  # Bonus modéré
-                        reason += f" + volume modéré ({vol_ratio:.1f}x)"
+                    # Reversal haussier crypto: volume moindre acceptable (liquidité élevée)
+                    if vol_ratio >= self.min_volume_confirmation * 1.2:  # 1.32x seulement
+                        confidence_boost += 0.18  # Bonus majeur crypto
+                        reason += f" + volume crypto haussier ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= self.min_volume_confirmation * 0.9:  # Très permissif
+                        confidence_boost += 0.12  # Bonus bon
+                        reason += f" + volume adequat ({vol_ratio:.1f}x)"
                 elif signal_side == "SELL":
-                    # Reversal baissier : volume modéré acceptable (selling plus naturel)
-                    if vol_ratio >= self.min_volume_confirmation * 1.2:  # 1.44x minimum
-                        confidence_boost += 0.15  # Bonus élevé pour SELL avec volume
-                        reason += f" + volume reversal baissier ({vol_ratio:.1f}x)"
-                    elif vol_ratio >= self.min_volume_confirmation * 0.9:  # Plus permissif pour SELL
-                        confidence_boost += 0.10  # Bonus bon pour SELL
-                        reason += f" + volume confirmé ({vol_ratio:.1f}x)"
+                    # Reversal baissier crypto: volume très flexible (panic sells)
+                    if vol_ratio >= self.min_volume_confirmation * 1.1:  # 1.21x minimum
+                        confidence_boost += 0.18  # Bonus majeur
+                        reason += f" + volume crypto baissier ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= self.min_volume_confirmation * 0.8:  # Ultra permissif
+                        confidence_boost += 0.14  # Bonus fort
+                        reason += f" + volume crypto confirmé ({vol_ratio:.1f}x)"
             except (ValueError, TypeError):
                 pass
                 
@@ -459,30 +458,29 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                 if trend_alignment is not None and directional_bias is not None:
                     try:
                         trend_align_val = float(trend_alignment)
-                        # Vérifier cohérence entre confluence, trend alignment et direction
+                                # Cohérence crypto plus permissive (marchés réactifs)
                         if signal_side == "BUY" and directional_bias == "BULLISH":
-                            confluence_coherent = trend_align_val > 0.2  # Alignement haussier requis (format décimal)
+                            confluence_coherent = trend_align_val > 0.1  # Crypto moins strict (0.1 vs 0.2)
                         elif signal_side == "SELL" and directional_bias == "BEARISH":
-                            confluence_coherent = trend_align_val < -0.2  # Alignement baissier requis (format décimal)
+                            confluence_coherent = trend_align_val < -0.1  # Crypto moins strict (-0.1 vs -0.2)
                         else:
-                            confluence_coherent = False  # Incohérence direction
+                            confluence_coherent = True  # Crypto: accepter même sans parfaite cohérence
                     except (ValueError, TypeError):
                         pass
                 
-                # Bonus confluence adapté selon cohérence (format 0-100)
-                if conf_val > 80 and confluence_coherent:
-                    confidence_boost += 0.12  # Confluence très élevée et cohérente
-                    reason += f" + très haute confluence cohérente ({conf_val:.0f})"
-                elif conf_val > 70 and confluence_coherent:
-                    confidence_boost += 0.10  # Confluence élevée et cohérente
-                    reason += f" + haute confluence cohérente ({conf_val:.0f})"
-                elif conf_val > 60 and confluence_coherent:
-                    confidence_boost += 0.06  # Confluence modérée et cohérente
-                    reason += f" + confluence modérée ({conf_val:.0f})"
-                elif conf_val > 70 and not confluence_coherent:
-                    confidence_boost += 0.05  # Confluence élevée mais incohérente
-                    reason += f" + confluence élevée (partielle) ({conf_val:.0f})"
-                # Pas de bonus si confluence faible ou très incohérente
+                # Bonus confluence CRYPTO adapté - plus généreux
+                if conf_val > 75 and confluence_coherent:
+                    confidence_boost += 0.15  # Crypto bonus plus élevé
+                    reason += f" + confluence crypto excellent ({conf_val:.0f})"
+                elif conf_val > 65 and confluence_coherent:
+                    confidence_boost += 0.12  # Seuil abaissé pour crypto
+                    reason += f" + confluence crypto fort ({conf_val:.0f})"
+                elif conf_val > 55 and confluence_coherent:
+                    confidence_boost += 0.08  # Plus permissif crypto
+                    reason += f" + confluence crypto modéré ({conf_val:.0f})"
+                elif conf_val > 65:  # Même incohérent, bonus crypto
+                    confidence_boost += 0.06  # Crypto accepte l'incohérence partielle
+                    reason += f" + confluence partielle ({conf_val:.0f})"
                     
             except (ValueError, TypeError):
                 pass
@@ -588,25 +586,25 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         }
         
     def validate_data(self) -> bool:
-        """Valide que tous les indicateurs requis sont présents - ASSOUPLI."""
-        # CORRECTION MAJEURE: Réduire indicateurs requis de 6 à 3 essentiels
-        essential_indicators = ['atr_14', 'trend_strength', 'directional_bias']
-        optional_indicators = ['ema_12', 'ema_26', 'adx_14']
+        """Valide que tous les indicateurs requis sont présents - CRYPTO ULTRA-SIMPLIFIÉ."""
+        # CRYPTO MAJEURE: Seulement 2 indicateurs ABSOLUMENT requis
+        absolute_required = ['atr_14', 'trend_strength']  # Minimum vital
+        crypto_helpful = ['directional_bias', 'momentum_score']  # Utiles mais pas bloquants
         
         if not self.indicators:
             logger.warning(f"{self.name}: Aucun indicateur disponible")
             return False
             
-        # Vérifier indicateurs ESSENTIELS seulement
-        missing_essential = 0
-        for indicator in essential_indicators:
+        # Vérifier ABSOLUMENT requis seulement (2 indicateurs)
+        missing_absolute = 0
+        for indicator in absolute_required:
             if indicator not in self.indicators or self.indicators[indicator] is None:
-                missing_essential += 1
-                logger.debug(f"{self.name}: Indicateur essentiel manquant: {indicator}")
+                missing_absolute += 1
+                logger.debug(f"{self.name}: Indicateur vital manquant: {indicator}")
                 
-        # Accepter si au moins 2/3 indicateurs essentiels présents
-        if missing_essential >= 2:  # Plus de 1 manquant = échec
-            logger.warning(f"{self.name}: Trop d'indicateurs essentiels manquants ({missing_essential}/3)")
+        # Crypto: Accepter si 1/2 indicateurs vitaux présents (ultra permissif)
+        if missing_absolute >= 2:  # Les 2 manquants = échec
+            logger.warning(f"{self.name}: Indicateurs vitaux manquants ({missing_absolute}/2)")
             return False
                 
         # Vérifier données OHLCV

@@ -23,12 +23,16 @@ class Donchian_Breakout_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres Donchian adaptés crypto - CORRECTIONS MAJEURES
-        self.breakout_threshold = 0.005   # 0.5% au-dessus/en-dessous (assoupli de 0.8%)
-        self.min_distance_threshold = 0.006  # Distance minimum aux niveaux (0.6%) assoupli
-        self.volume_confirmation = 1.0    # Pas de filtre volume strict (était 1.2)
-        self.min_adx_strength = 12        # ADX minimum assoupli (était 15)
-        self.momentum_threshold = 40      # Seuil momentum assoupli (était 45)
+        # Paramètres Donchian optimisés crypto 3m
+        self.breakout_threshold = 0.004   # 0.4% plus réactif pour crypto 3m
+        self.min_distance_threshold = 0.005  # Distance minimum 0.5%
+        self.volume_confirmation = 1.0    # Pas de filtre strict initial
+        self.min_adx_strength = 12        # ADX minimum réaliste
+        self.momentum_threshold = 40      # Seuil momentum
+        
+        # Nouveaux paramètres pour détection précoce
+        self.early_breakout_threshold = 0.003  # 0.3% pour signaux précoces
+        self.strong_breakout_threshold = 0.008  # 0.8% pour breakouts forts
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs."""
@@ -55,6 +59,8 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             'atr_14': self.indicators.get('atr_14'),
             'atr_percentile': self.indicators.get('atr_percentile'),
             'volatility_regime': self.indicators.get('volatility_regime'),
+            # RSI pour timing des breakouts
+            'rsi_14': self.indicators.get('rsi_14'),
             # Confluence
             'signal_strength': self.indicators.get('signal_strength'),
             'confluence_score': self.indicators.get('confluence_score')
@@ -153,12 +159,27 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         if nearest_resistance is not None and nearest_resistance > 0:
             breakout_distance = (current_price - nearest_resistance) / nearest_resistance
             
-            # Breakout haussier confirmé
+            # Breakout haussier avec niveaux progressifs
             if breakout_distance >= self.breakout_threshold:
                 signal_side = "BUY"
                 breakout_type = "resistance_breakout"
-                reason = f"Breakout résistance {nearest_resistance:.2f} (+{breakout_distance*100:.1f}%)"
-                confidence_boost += 0.20
+                
+                # Bonus selon force du breakout
+                if breakout_distance >= self.strong_breakout_threshold:  # >0.8%
+                    reason = f"Breakout fort résistance {nearest_resistance:.2f} (+{breakout_distance*100:.1f}%)"
+                    confidence_boost += 0.25  # Breakout vraiment fort
+                elif breakout_distance >= self.breakout_threshold:  # >0.4%
+                    reason = f"Breakout résistance {nearest_resistance:.2f} (+{breakout_distance*100:.1f}%)"
+                    confidence_boost += 0.20  # Breakout confirmé
+                    
+            # Détection précoce avec volume élevé
+            elif breakout_distance >= self.early_breakout_threshold:  # 0.3-0.4%
+                volume_ratio = values.get('volume_ratio')
+                if volume_ratio is not None and float(volume_ratio) >= 1.5:
+                    signal_side = "BUY"
+                    breakout_type = "early_resistance_breakout"
+                    reason = f"Breakout précoce résistance {nearest_resistance:.2f} (+{breakout_distance*100:.1f}%) + volume"
+                    confidence_boost += 0.15  # Moins que breakout confirmé mais avec volume
                 
                 # Bonus si résistance était forte = breakout plus significatif
                 if resistance_strength is not None:
@@ -177,12 +198,27 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         if signal_side is None and nearest_support is not None and nearest_support > 0:
             breakdown_distance = (nearest_support - current_price) / nearest_support
             
-            # Breakdown baissier confirmé
+            # Breakdown baissier avec niveaux progressifs
             if breakdown_distance >= self.breakout_threshold:
                 signal_side = "SELL"
                 breakout_type = "support_breakdown"
-                reason = f"Breakdown support {nearest_support:.2f} (-{breakdown_distance*100:.1f}%)"
-                confidence_boost += 0.20
+                
+                # Bonus selon force du breakdown
+                if breakdown_distance >= self.strong_breakout_threshold:  # >0.8%
+                    reason = f"Breakdown fort support {nearest_support:.2f} (-{breakdown_distance*100:.1f}%)"
+                    confidence_boost += 0.25  # Breakdown vraiment fort
+                elif breakdown_distance >= self.breakout_threshold:  # >0.4%
+                    reason = f"Breakdown support {nearest_support:.2f} (-{breakdown_distance*100:.1f}%)"
+                    confidence_boost += 0.20  # Breakdown confirmé
+                    
+            # Détection précoce avec volume élevé
+            elif breakdown_distance >= self.early_breakout_threshold:  # 0.3-0.4%
+                volume_ratio = values.get('volume_ratio')
+                if volume_ratio is not None and float(volume_ratio) >= 1.5:
+                    signal_side = "SELL"
+                    breakout_type = "early_support_breakdown"
+                    reason = f"Breakdown précoce support {nearest_support:.2f} (-{breakdown_distance*100:.1f}%) + volume"
+                    confidence_boost += 0.15  # Moins que breakdown confirmé mais avec volume
                 
                 # Bonus si support était fort = breakdown plus significatif
                 if support_strength is not None:
@@ -292,8 +328,10 @@ class Donchian_Breakout_Strategy(BaseStrategy):
                 confidence_boost += 0.10
                 reason += f" + bias {bias_str.lower()}"
                 
-        # Confirmation avec momentum
+        # Confirmation avec momentum et RSI
         momentum_score = values.get('momentum_score')
+        rsi_14 = values.get('rsi_14')
+        
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
@@ -302,6 +340,27 @@ class Donchian_Breakout_Strategy(BaseStrategy):
                    (signal_side == "SELL" and momentum < 40):
                     confidence_boost += 0.10
                     reason += " + momentum favorable"
+            except (ValueError, TypeError):
+                pass
+                
+        # RSI timing pour éviter extrêmes
+        if rsi_14 is not None:
+            try:
+                rsi = float(rsi_14)
+                if signal_side == "BUY":
+                    if 55 <= rsi <= 80:  # Zone momentum haussier optimale
+                        confidence_boost += 0.08
+                        reason += f" + RSI momentum ({rsi:.1f})"
+                    elif rsi > 85:  # Trop suracheté
+                        confidence_boost -= 0.10
+                        reason += f" mais RSI suracheté ({rsi:.1f})"
+                elif signal_side == "SELL":
+                    if 20 <= rsi <= 45:  # Zone momentum baissier optimale
+                        confidence_boost += 0.08
+                        reason += f" + RSI momentum ({rsi:.1f})"
+                    elif rsi < 15:  # Trop survendu
+                        confidence_boost -= 0.10
+                        reason += f" mais RSI survendu ({rsi:.1f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -439,13 +498,31 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             if breakdown_strength > 0.03:  # Breakdown > 3%
                 confidence = min(confidence * 1.15, 0.95)
                 
-        # Vérification finale : au moins 40% de confidence pour émettre un signal
-        if confidence < 0.40:
+        # Ajustement ATR adaptatif selon volatilité
+        atr_percentile = values.get('atr_percentile')
+        if atr_percentile is not None:
+            try:
+                atr_perc = float(atr_percentile)
+                # Ajuster seuil breakout selon volatilité
+                if atr_perc > 90:  # Volatilité extrême
+                    # Breakout doit être plus fort en haute volatilité
+                    if breakout_type and "early" not in breakout_type:
+                        confidence_boost += 0.05  # Bonus car breakout significatif
+                        reason += " (breakout validé haute vol)"
+                elif atr_perc < 30:  # Basse volatilité
+                    # Breakout plus significatif en basse volatilité
+                    confidence_boost += 0.08
+                    reason += " (breakout significatif basse vol)"
+            except (ValueError, TypeError):
+                pass
+        
+        # Vérification finale : au moins 38% de confidence (assoupli)
+        if confidence < 0.38:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Signal trop faible (conf: {confidence:.2f} < 0.40)",
+                "reason": f"Signal trop faible (conf: {confidence:.2f} < 0.38)",
                 "metadata": {"strategy": self.name, "symbol": self.symbol}
             }
             

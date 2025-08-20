@@ -25,11 +25,17 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres Parabolic SAR - OPTIMISÉS
-        self.min_sar_distance = 0.005  # Distance minimum RÉDUITE (0.5% au lieu de 0.8%)
-        self.max_sar_distance = 0.04   # Distance maximum AUGMENTÉE (4% au lieu de 3%)
-        self.trend_confirmation_bonus = 0.15  # Bonus RÉDUIT si aligné avec tendance
-        self.volume_confirmation_threshold = 1.15  # Seuil volume MOINS STRICT (1.15x au lieu de 1.3x)
+        # Paramètres Parabolic SAR ANTI-SPAM - ULTRA STRICTS
+        self.min_sar_distance = 0.003  # Distance minimum resserrée crypto (0.3%)
+        self.max_sar_distance = 0.02   # Distance maximum STRICTE (2% max pour crypto 3m)
+        self.trend_confirmation_bonus = 0.10  # Bonus réduit (éviter sur-confiance)
+        self.volume_confirmation_threshold = 1.25  # Seuil volume STRICT (conviction requise)
+        
+        # NOUVEAUX FILTRES ANTI-SPAM REBONDS
+        self.min_confluence_required = 65    # Confluence minimum OBLIGATOIRE
+        self.min_adx_required = 22           # ADX minimum pour tendance claire
+        self.min_pattern_confidence = 60     # Pattern confidence minimum si disponible
+        self.required_confirmations = 3      # Confirmations multiples obligatoires
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs SAR et contexte."""
@@ -129,14 +135,38 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
-        # Déterminer la tendance principale
+        # VALIDATION ANTI-SPAM PRÉLIMINAIRE
+        
+        # 1. Vérifier confluence OBLIGATOIRE
+        confluence_score = values.get('confluence_score', 0)
+        if not confluence_score or float(confluence_score) < self.min_confluence_required:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Confluence insuffisante ({confluence_score}) < {self.min_confluence_required} - rebond rejeté",
+                "metadata": {"strategy": self.name, "rejected_reason": "low_confluence"}
+            }
+            
+        # 2. Vérifier ADX OBLIGATOIRE (tendance claire requise pour rebonds fiables)
+        adx_14 = values.get('adx_14')
+        if not adx_14 or float(adx_14) < self.min_adx_required:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"ADX insuffisant ({adx_14}) < {self.min_adx_required} - pas de tendance claire",
+                "metadata": {"strategy": self.name, "rejected_reason": "weak_trend"}
+            }
+            
+        # 3. Déterminer la tendance principale
         trend_direction = self._get_trend_direction(values, current_price)
         if trend_direction is None:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": "Tendance non claire",
+                "reason": "Tendance non claire après validation",
                 "metadata": {"strategy": self.name}
             }
             
@@ -212,11 +242,17 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                     
                     # Vérifier que le prix a effectivement rebondi
                     if self._detect_bounce_pattern(recent_prices, support_val, "bullish"):
-                        confidence_boost += 0.25  # AUGMENTÉ - rebond confirmé = excellent
+                        confidence_boost += 0.18  # RÉDUIT de 0.25 à 0.18 (moins généreux)
                         reason += " - rebond CONFIRMÉ"
                     else:
-                        confidence_boost += 0.03  # RÉDUIT - juste proche ne suffit pas
-                        reason += " - proche support (non confirmé)"
+                        # NOUVEAU: Rejeter si pas de rebond confirmé
+                        return {
+                            "side": None,
+                            "confidence": 0.0,
+                            "strength": "weak",
+                            "reason": f"Proche support mais rebond NON confirmé - rejeté",
+                            "metadata": {"strategy": self.name, "rejected_reason": "no_bounce_pattern"}
+                        }
             except (ValueError, TypeError):
                 pass
                 
@@ -234,8 +270,17 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                         confidence_boost += 0.12
                         
                         if self._detect_bounce_pattern(recent_prices, ema50_val, "bullish"):
-                            confidence_boost += 0.18  # AUGMENTÉ
+                            confidence_boost += 0.14  # RÉDUIT de 0.18 à 0.14
                             reason += " - rebond CONFIRMÉ"
+                        else:
+                            # NOUVEAU: Rejeter rebond EMA non confirmé aussi
+                            return {
+                                "side": None,
+                                "confidence": 0.0,
+                                "strength": "weak",
+                                "reason": f"Proche EMA50 mais rebond NON confirmé - rejeté",
+                                "metadata": {"strategy": self.name, "rejected_reason": "no_ema_bounce_pattern"}
+                            }
             except (ValueError, TypeError):
                 pass
                 
@@ -257,21 +302,37 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         confidence_boost += additional_boost
         reason += reason_additions
         
-        # NOUVEAU: Filtre final - rejeter si confidence trop faible
-        raw_confidence = base_confidence * (1 + confidence_boost)
-        if raw_confidence < 0.48:  # Seuil minimum 48% pour rebonds
+        # SYSTÈME CONFIRMATIONS OBLIGATOIRES ANTI-SPAM
+        confirmations_count = self._count_confirmations(values, signal_side, current_price)
+        if confirmations_count < self.required_confirmations:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Signal rebond rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.48)",
+                "reason": f"Confirmations insuffisantes rebond ({confirmations_count}/{self.required_confirmations}) - rejeté",
+                "metadata": {
+                    "strategy": self.name,
+                    "rejected_reason": "insufficient_confirmations",
+                    "confirmations_count": confirmations_count
+                }
+            }
+        
+        # FILTRE FINAL CONFIANCE DURCI - rejeter si confidence trop faible
+        raw_confidence = base_confidence * (1 + confidence_boost)
+        if raw_confidence < 0.60:  # DURCI: Seuil 60% (vs 48% avant) pour rebonds
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Signal rebond rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.60)",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
                     "rejected_signal": signal_side,
                     "raw_confidence": raw_confidence,
                     "bounce_level": bounce_level,
-                    "trend_direction": "bullish"
+                    "trend_direction": "bullish",
+                    "confirmations_count": confirmations_count
                 }
             }
         
@@ -320,11 +381,17 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                     confidence_boost += 0.15
                     
                     if self._detect_bounce_pattern(recent_prices, resistance_val, "bearish"):
-                        confidence_boost += 0.25  # AUGMENTÉ
+                        confidence_boost += 0.18  # RÉDUIT de 0.25 à 0.18
                         reason += " - rebond CONFIRMÉ"
                     else:
-                        confidence_boost += 0.03  # RÉDUIT
-                        reason += " - proche résistance (non confirmé)"
+                        # NOUVEAU: Rejeter si pas de rebond confirmé (même logique que BUY)
+                        return {
+                            "side": None,
+                            "confidence": 0.0,
+                            "strength": "weak",
+                            "reason": f"Proche résistance mais rebond NON confirmé - rejeté",
+                            "metadata": {"strategy": self.name, "rejected_reason": "no_bounce_pattern"}
+                        }
             except (ValueError, TypeError):
                 pass
                 
@@ -342,8 +409,17 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                         confidence_boost += 0.12
                         
                         if self._detect_bounce_pattern(recent_prices, ema50_val, "bearish"):
-                            confidence_boost += 0.18  # AUGMENTÉ
+                            confidence_boost += 0.14  # RÉDUIT de 0.18 à 0.14 (cohérent avec BUY)
                             reason += " - rebond CONFIRMÉ"
+                        else:
+                            # NOUVEAU: Rejeter rebond EMA non confirmé (cohérent avec BUY)
+                            return {
+                                "side": None,
+                                "confidence": 0.0,
+                                "strength": "weak",
+                                "reason": f"Proche EMA50 mais rebond NON confirmé - rejeté",
+                                "metadata": {"strategy": self.name, "rejected_reason": "no_ema_bounce_pattern"}
+                            }
             except (ValueError, TypeError):
                 pass
                 
@@ -413,21 +489,21 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
             price_1, price_2, price_3 = recent_prices[-3:]
             
             if direction == "bullish":
-                # Pour rebond haussier: prix s'approche du niveau puis remonte - PLUS STRICT
-                proximity_threshold = 0.015  # Plus strict: 1.5% au lieu de 2%
+                # Pour rebond haussier CRYPTO: détection ultra-stricte
+                proximity_threshold = 0.008  # ULTRA STRICT: 0.8% (vs 1.5% avant)
                 rebound_strength = (price_3 - price_2) / price_2  # Force du rebond
                 return (price_1 > level and 
-                        abs(price_2 - level) / level < proximity_threshold and  # Plus strict
+                        abs(price_2 - level) / level < proximity_threshold and  # Ultra strict
                         price_3 > price_2 and  # Prix remonte
-                        rebound_strength > 0.003)  # Rebond minimum 0.3%
+                        rebound_strength > 0.005)  # Rebond minimum relevé à 0.5%
             else:  # bearish
-                # Pour rebond baissier: prix s'approche du niveau puis redescend - PLUS STRICT
-                proximity_threshold = 0.015  # Plus strict: 1.5% au lieu de 2%
+                # Pour rebond baissier CRYPTO: détection ultra-stricte
+                proximity_threshold = 0.008  # ULTRA STRICT: 0.8% (vs 1.5% avant)
                 rebound_strength = (price_2 - price_3) / price_2  # Force du rebond
                 return (price_1 < level and
-                        abs(price_2 - level) / level < proximity_threshold and  # Plus strict
+                        abs(price_2 - level) / level < proximity_threshold and  # Ultra strict
                         price_3 < price_2 and  # Prix redescend
-                        rebound_strength > 0.003)  # Rebond minimum 0.3%
+                        rebound_strength > 0.005)  # Rebond minimum relevé à 0.5%
         except (ValueError, TypeError, ZeroDivisionError):
             return False
             
@@ -685,6 +761,52 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                 
         return boost, reason_additions
         
+    def _count_confirmations(self, values: Dict[str, Any], signal_side: str, current_price: float) -> int:
+        """Compte les confirmations techniques OBLIGATOIRES pour rebonds."""
+        count = 0
+        
+        # 1. Volume OBLIGATOIRE (déjà vérifié au niveau stratégie mais recompté)
+        volume_ratio = values.get('volume_ratio')
+        if volume_ratio and float(volume_ratio) >= self.volume_confirmation_threshold:
+            count += 1
+            
+        # 2. RSI dans zone favorable OBLIGATOIRE
+        rsi_14 = values.get('rsi_14')
+        if rsi_14:
+            rsi_val = float(rsi_14)
+            if signal_side == "BUY" and 25 <= rsi_val <= 60:
+                count += 1
+            elif signal_side == "SELL" and 40 <= rsi_val <= 75:
+                count += 1
+                
+        # 3. Trend strength minimum OBLIGATOIRE
+        trend_strength = values.get('trend_strength')
+        if trend_strength:
+            trend_str = str(trend_strength).lower()
+            if trend_str in ['moderate', 'strong', 'very_strong', 'extreme']:
+                count += 1
+                
+        # 4. Market regime favorable OBLIGATOIRE
+        market_regime = values.get('market_regime')
+        regime_strength = values.get('regime_strength')
+        if market_regime and regime_strength:
+            regime_str = str(regime_strength).upper()
+            if signal_side == "BUY":
+                if (market_regime in ["TRENDING_BULL", "TRENDING_BEAR"] and regime_str in ["MODERATE", "STRONG", "EXTREME"]) or \
+                   (market_regime == "RANGING" and regime_str in ["STRONG", "EXTREME"]):
+                    count += 1
+            else:  # SELL
+                if (market_regime == "RANGING" and regime_str in ["MODERATE", "STRONG", "EXTREME"]) or \
+                   (market_regime in ["TRENDING_BULL", "TRENDING_BEAR"] and regime_str in ["STRONG", "EXTREME"]):
+                    count += 1
+                    
+        # 5. Pattern confidence si disponible
+        pattern_confidence = values.get('pattern_confidence')
+        if pattern_confidence and float(pattern_confidence) >= self.min_pattern_confidence:
+            count += 1
+            
+        return count
+        
     def _get_metadata_values(self, values: Dict[str, Any]) -> Dict[str, Any]:
         """Récupère les valeurs importantes pour les métadonnées."""
         metadata = {}
@@ -701,21 +823,44 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         return metadata
         
     def validate_data(self) -> bool:
-        """Valide que les données nécessaires pour les rebonds sont présentes."""
+        """Valide que les données nécessaires pour les rebonds sont présentes - ANTI-SPAM RENFORCÉ."""
         if not super().validate_data():
             return False
             
-        # Au minimum, il faut des niveaux de support/résistance ou des EMA
-        required_any = [
-            ['nearest_support', 'nearest_resistance'],
-            ['ema_50'],
-            ['directional_bias']
-        ]
+        # INDICATEURS CRITIQUES OBLIGATOIRES pour rebonds fiables
+        critical_indicators = ['confluence_score', 'adx_14', 'volume_ratio', 'trend_strength']
+        level_indicators = ['nearest_support', 'nearest_resistance', 'ema_50']
         
-        for group in required_any:
-            if any(indicator in self.indicators and self.indicators[indicator] is not None 
-                   for indicator in group):
-                return True
+        # Vérifier indicateurs critiques
+        missing_critical = 0
+        for indicator in critical_indicators:
+            if indicator not in self.indicators or self.indicators[indicator] is None:
+                missing_critical += 1
+                logger.debug(f"{self.name}: Indicateur critique manquant: {indicator}")
                 
-        logger.warning(f"{self.name}: Aucun indicateur de niveau/tendance disponible")
-        return False
+        # Maximum 1 indicateur critique peut manquer
+        if missing_critical > 1:
+            logger.warning(f"{self.name}: Trop d'indicateurs critiques manquants ({missing_critical}/4)")
+            return False
+            
+        # Vérifier au moins un indicateur de niveau
+        has_level_indicator = any(
+            indicator in self.indicators and self.indicators[indicator] is not None 
+            for indicator in level_indicators
+        )
+        
+        if not has_level_indicator:
+            logger.warning(f"{self.name}: Aucun indicateur de niveau disponible")
+            return False
+            
+        # Validation qualité données critiques
+        if 'confluence_score' in self.indicators and self.indicators['confluence_score']:
+            try:
+                conf_val = float(self.indicators['confluence_score'])
+                if conf_val < 40:  # Confluence trop faible = données douteuses
+                    logger.debug(f"{self.name}: Confluence trop faible pour validation: {conf_val}")
+                    return False
+            except (ValueError, TypeError):
+                pass
+                
+        return True

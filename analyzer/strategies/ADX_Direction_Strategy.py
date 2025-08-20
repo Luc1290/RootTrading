@@ -20,14 +20,20 @@ class ADX_Direction_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Seuils ADX optimisés pour plus de sensibilité
-        self.adx_threshold = 15.0  # Tendance émergente (plus sensible)
-        self.adx_strong = 25.0     # Tendance forte
-        self.adx_extreme = 35.0    # Tendance très forte
-        self.di_diff_threshold = 2.0  # Différence minimale entre DI (plus sensible)
-        # Gestion des régimes de marché
-        self.ranging_penalty = 0.15  # Pénalité en marché ranging
-        self.volatile_penalty = 0.10  # Pénalité en marché volatil
+        # Seuils ADX CRYPTO STRICTS - Anti-faux signaux
+        self.adx_threshold = 22.0     # Tendance minimum CRYPTO (relevé de 15 à 22)
+        self.adx_strong = 30.0        # Tendance forte (relevé de 25 à 30)
+        self.adx_extreme = 40.0       # Tendance très forte (relevé de 35 à 40)
+        self.di_diff_threshold = 5.0  # Différence minimale DI STRICT (5.0 vs 2.0)
+        
+        # NOUVEAUX FILTRES CRYPTO
+        self.min_confluence_required = 55    # Confluence minimum OBLIGATOIRE
+        self.min_momentum_alignment = 8      # Momentum alignment minimum (échelle 0-100, écart min 8 points)
+        self.required_confirmations = 2      # Confirmations minimum requises
+        
+        # Gestion des régimes de marché DURCIE
+        self.ranging_penalty = 0.25   # Pénalité marché ranging augmentée  
+        self.volatile_penalty = 0.18  # Pénalité marché volatil augmentée
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs ADX."""
@@ -84,13 +90,24 @@ class ADX_Direction_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
-        # ADX trop faible = pas de tendance claire
+        # VALIDATION PRÉLIMINAIRE CONFLUENCE OBLIGATOIRE
+        confluence_score = values.get('confluence_score', 0)
+        if not confluence_score or float(confluence_score) < self.min_confluence_required:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Confluence insuffisante ({confluence_score}) < {self.min_confluence_required} - ADX rejeté",
+                "metadata": {"strategy": self.name, "rejected_reason": "low_confluence"}
+            }
+
+        # ADX trop faible = pas de tendance claire (seuil relevé)
         if adx < self.adx_threshold:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"ADX trop faible ({adx:.1f}) - marché sans tendance",
+                "reason": f"ADX insuffisant ({adx:.1f}) < {self.adx_threshold} - tendance trop faible",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
@@ -104,13 +121,13 @@ class ADX_Direction_Strategy(BaseStrategy):
         di_diff = plus_di - minus_di
         di_diff_abs = abs(di_diff)
         
-        # Vérification de la différence minimale entre DI
+        # Vérification STRICTE de la différence entre DI
         if di_diff_abs < self.di_diff_threshold:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"DI trop proches ({di_diff_abs:.1f}) - direction incertaine",
+                "reason": f"DI écart insuffisant ({di_diff_abs:.1f}) < {self.di_diff_threshold} - direction incertaine",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
@@ -119,6 +136,38 @@ class ADX_Direction_Strategy(BaseStrategy):
                     "minus_di": minus_di
                 }
             }
+            
+        # VALIDATION MOMENTUM ALIGNMENT OBLIGATOIRE 
+        momentum_score = values.get('momentum_score')
+        if momentum_score is not None:
+            try:
+                momentum_val = float(momentum_score)
+                # Vérifier alignement momentum/direction ADX
+                momentum_center = 50  # Neutre à 50
+                momentum_deviation = abs(momentum_val - momentum_center)
+                
+                # Direction déterminée par DI
+                adx_direction = "bullish" if plus_di > minus_di else "bearish"
+                
+                # Momentum doit être aligné avec direction ADX
+                if adx_direction == "bullish" and momentum_val < (momentum_center + self.min_momentum_alignment):
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Momentum non aligné bullish: {momentum_val:.1f} insuffisant pour ADX haussier",
+                        "metadata": {"strategy": self.name, "rejected_reason": "momentum_misalignment"}
+                    }
+                elif adx_direction == "bearish" and momentum_val > (momentum_center - self.min_momentum_alignment):
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Momentum non aligné bearish: {momentum_val:.1f} insuffisant pour ADX baissier",
+                        "metadata": {"strategy": self.name, "rejected_reason": "momentum_misalignment"}
+                    }
+            except (ValueError, TypeError):
+                pass
             
         signal_side = None
         reason = ""
@@ -135,53 +184,82 @@ class ADX_Direction_Strategy(BaseStrategy):
             signal_side = "SELL"
             reason = f"ADX ({adx:.1f}) avec tendance baissière (-DI > +DI)"
             
-        # Ajustement de confiance selon la force de l'ADX (plus modéré)
+        # SYSTÈME CONFIRMATIONS OBLIGATOIRES
+        confirmations_count = 0
+        confirmations_details = []
+        
+        # Ajustement confiance selon ADX (RÉDUIT pour éviter sur-confiance)
         if adx >= self.adx_extreme:
-            confidence_boost += 0.18  # Réduit de 0.25
+            confidence_boost += 0.15  # RÉDUIT de 0.18 à 0.15
             reason += " - tendance très forte"
+            confirmations_count += 1
+            confirmations_details.append("ADX_extreme")
         elif adx >= self.adx_strong:
-            confidence_boost += 0.12  # Réduit de 0.15
+            confidence_boost += 0.10  # RÉDUIT de 0.12 à 0.10
             reason += " - tendance forte"
+            confirmations_count += 1
+            confirmations_details.append("ADX_strong")
         else:
-            confidence_boost += 0.06  # Légèrement augmenté
-            reason += " - tendance émergente"
+            confidence_boost += 0.04  # RÉDUIT de 0.06 à 0.04
+            reason += " - tendance minimum"
             
-        # Ajustement selon la différence entre DI (plus progressif)
-        if di_diff_abs >= 20:
-            confidence_boost += 0.12  # Réduit de 0.15
-            reason += f" (écart DI fort: {di_diff_abs:.1f})"
-        elif di_diff_abs >= 10:
-            confidence_boost += 0.08  # Réduit de 0.10
-            reason += f" (écart DI modéré: {di_diff_abs:.1f})"
+        # Ajustement selon différence DI (PLUS STRICT)
+        if di_diff_abs >= 15:  # Seuil relevé de 20 à 15
+            confidence_boost += 0.12
+            reason += f" (écart DI excellent: {di_diff_abs:.1f})"
+            confirmations_count += 1
+            confirmations_details.append("DI_gap_excellent")
+        elif di_diff_abs >= 8:   # Seuil relevé de 10 à 8
+            confidence_boost += 0.08
+            reason += f" (écart DI bon: {di_diff_abs:.1f})"
+            confirmations_count += 1
+            confirmations_details.append("DI_gap_good")
         else:
-            confidence_boost += 0.04  # Réduit de 0.05
-            reason += f" (écart DI: {di_diff_abs:.1f})"
+            confidence_boost += 0.02  # RÉDUIT de 0.04 à 0.02
+            reason += f" (écart DI minimum: {di_diff_abs:.1f})"
             
         # Utilisation des indicateurs complémentaires
         
-        # Trend strength pré-calculé
+        # Trend strength pré-calculé (COMPTAGE CONFIRMATIONS)
         trend_strength = values.get('trend_strength')
-        if trend_strength and str(trend_strength).lower() in ['strong', 'very_strong']:
-            confidence_boost += 0.10
-            reason += f" avec trend_strength {str(trend_strength).lower()}"
+        if trend_strength:
+            trend_str = str(trend_strength).lower()
+            if trend_str in ['extreme', 'very_strong']:
+                confidence_boost += 0.12
+                confirmations_count += 1
+                confirmations_details.append("trend_very_strong")
+                reason += f" avec trend_strength {trend_str}"
+            elif trend_str == 'strong':
+                confidence_boost += 0.08
+                confirmations_count += 1
+                confirmations_details.append("trend_strong")
+                reason += f" avec trend_strength {trend_str}"
                 
-        # Directional bias confirmation
+        # Directional bias confirmation (COMPTAGE CONFIRMATIONS)
         directional_bias = values.get('directional_bias')
         if directional_bias:
             if (signal_side == "BUY" and str(directional_bias).upper() == "BULLISH") or \
                (signal_side == "SELL" and str(directional_bias).upper() == "BEARISH"):
                 confidence_boost += 0.10
+                confirmations_count += 1
+                confirmations_details.append("directional_bias_aligned")
                 reason += " confirmé par bias directionnel"
                 
-        # Momentum score (format 0-100)
-        momentum_score = values.get('momentum_score')
-        if momentum_score:
+        # Momentum score DÉJÀ VALIDÉ plus haut - juste bonus ici
+        if momentum_score is not None:
             try:
                 momentum_val = float(momentum_score)
-                if (signal_side == "BUY" and momentum_val > 60) or \
-                   (signal_side == "SELL" and momentum_val < 40):
-                    confidence_boost += 0.10
-                    reason += " avec momentum favorable"
+                # Bonus plus strict pour momentum fort
+                if (signal_side == "BUY" and momentum_val > 65) or \
+                   (signal_side == "SELL" and momentum_val < 35):
+                    confidence_boost += 0.12
+                    confirmations_count += 1
+                    confirmations_details.append("momentum_strong")
+                    reason += f" avec momentum FORT ({momentum_val:.1f})"
+                elif (signal_side == "BUY" and momentum_val > 58) or \
+                     (signal_side == "SELL" and momentum_val < 42):
+                    confidence_boost += 0.08
+                    reason += f" avec momentum favorable ({momentum_val:.1f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -207,26 +285,36 @@ class ADX_Direction_Strategy(BaseStrategy):
                 confidence_boost += 0.05
                 reason += " + signal modéré"
                 
-        # Confluence score corrigé (appliqué uniformément)
-        confluence_score = values.get('confluence_score')
-        if confluence_score:
-            try:
-                confluence = float(confluence_score)
-                # La confluence booste TOUS les signaux de manière égale
-                if confluence > 75:
-                    confidence_boost += 0.15
-                    reason += f" + confluence très élevée ({confluence:.0f})"
-                elif confluence > 60:
-                    confidence_boost += 0.10
-                    reason += f" + confluence élevée ({confluence:.0f})"
-                elif confluence > 45:
-                    confidence_boost += 0.06
-                    reason += f" + confluence modérée ({confluence:.0f})"
-                elif confluence < 30:
-                    confidence_boost -= 0.05
-                    reason += f" - confluence faible ({confluence:.0f})"
-            except (ValueError, TypeError):
-                pass
+        # VALIDATION FINALE CONFIRMATIONS OBLIGATOIRES
+        if confirmations_count < self.required_confirmations:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Confirmations insuffisantes ADX ({confirmations_count}/{self.required_confirmations}) - rejeté",
+                "metadata": {
+                    "strategy": self.name,
+                    "rejected_reason": "insufficient_confirmations",
+                    "confirmations_count": confirmations_count,
+                    "confirmations_details": confirmations_details
+                }
+            }
+        
+        # Confluence score DÉJÀ VALIDÉ comme obligatoire - juste bonus ici  
+        try:
+            confluence = float(confluence_score)
+            # Bonus confluence adapté (RÉDUIT)
+            if confluence > 80:
+                confidence_boost += 0.12  # RÉDUIT de 0.15
+                reason += f" + confluence excellente ({confluence:.0f})"
+            elif confluence > 70:
+                confidence_boost += 0.08  # RÉDUIT de 0.10  
+                reason += f" + confluence élevée ({confluence:.0f})"
+            elif confluence > 60:
+                confidence_boost += 0.04  # RÉDUIT de 0.06
+                reason += f" + confluence correcte ({confluence:.0f})"
+        except (ValueError, TypeError):
+            pass
         
         # Gestion des régimes de marché
         market_regime = values.get('market_regime')
@@ -270,7 +358,9 @@ class ADX_Direction_Strategy(BaseStrategy):
                 "momentum_score": momentum_score,
                 "signal_strength_calc": signal_strength_calc,
                 "confluence_score": confluence_score,
-                "market_regime": values.get('market_regime')
+                "market_regime": values.get('market_regime'),
+                "confirmations_count": confirmations_count,
+                "confirmations_details": confirmations_details
             }
         }
         

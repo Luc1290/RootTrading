@@ -1,5 +1,6 @@
 """
 MultiTF_ConfluentEntry_Strategy - Stratégie basée sur la confluence multi-timeframes.
+OPTIMISÉE POUR CRYPTO SPOT INTRADAY
 """
 
 from typing import Dict, Any, Optional
@@ -27,12 +28,27 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres de confluence multi-TF - RÉALISTES POUR CRYPTO
-        self.min_confluence_score = 35      # Score confluence minimum (adapté aux vraies valeurs)
-        self.min_signal_strength = 0.40      # Force signal minimum (assoupli)
-        self.min_trend_alignment = 40      # Alignement tendance minimum (adapté)
-        self.max_regime_conflicts = 3       # Max conflits entre régimes (tolérant)
-        self.volume_confirmation_min = 1.0  # Volume minimum requis (neutre)
+        # Paramètres de confluence multi-TF - OPTIMISÉS CRYPTO
+        self.min_confluence_score = 45      # Score confluence minimum (plus sélectif)
+        self.strong_confluence_score = 65   # Score pour boost fort
+        self.min_trend_alignment = 50       # Alignement tendance minimum
+        self.strong_trend_alignment = 70    # Alignement fort
+        self.volume_confirmation_min = 0.8  # Volume minimum requis
+        self.volume_strong = 1.5            # Volume fort pour boost
+        
+        # Seuils oscillateurs adaptés crypto
+        self.rsi_oversold = 28              # RSI survente crypto
+        self.rsi_overbought = 72            # RSI surachat crypto
+        self.stoch_oversold = 18            # Stoch survente crypto
+        self.stoch_overbought = 82          # Stoch surachat crypto
+        self.cci_oversold = -120            # CCI survente crypto
+        self.cci_overbought = 120           # CCI surachat crypto
+        self.williams_oversold = -85        # Williams survente crypto
+        self.williams_overbought = -15      # Williams surachat crypto
+        
+        # ADX pour filtrer les tendances faibles
+        self.min_adx_trend = 20             # ADX minimum pour tendance
+        self.strong_adx_trend = 30          # ADX fort
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs multi-TF."""
@@ -121,95 +137,148 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         if len(mas) < 3:
             return {'alignment_score': 0.0, 'direction': None, 'reason': 'Pas assez de MAs'}
             
-        # Tri des MAs par valeur
-        sorted_mas = sorted(mas.items(), key=lambda x: x[1])
+        # Analyse spécifique pour crypto : importance des EMA courtes
+        ema_7 = mas.get('ema_7')
+        ema_12 = mas.get('ema_12')
+        ema_26 = mas.get('ema_26')
+        ema_50 = mas.get('ema_50')
         
-        # Analyse pour direction haussière (prix > MA rapides > MA lentes)
-        bullish_alignment = 0
-        bearish_alignment = 0
-        total_checks = 0
+        # Score d'alignement plus sophistiqué
+        alignment_score = 0.0
+        direction = None
         
-        # Vérifier ordre croissant pour haussier
-        ma_values = [ma[1] for ma in sorted_mas]
-        for i in range(len(ma_values) - 1):
-            total_checks += 1
-            if ma_values[i] < ma_values[i + 1]:
-                bullish_alignment += 1
-            else:
-                bearish_alignment += 1
-                
         # Position du prix par rapport aux MAs
         price_above_count = sum(1 for _, ma_val in mas.items() if current_price > ma_val)
         price_ratio = price_above_count / len(mas)
         
-        if price_ratio >= 0.7 and bullish_alignment / total_checks >= 0.6:
-            direction = "bullish"
-            alignment_score = min(0.9, (bullish_alignment / total_checks) * price_ratio)
-        elif price_ratio <= 0.3 and bearish_alignment / total_checks >= 0.6:
-            direction = "bearish"  
-            alignment_score = min(0.9, (bearish_alignment / total_checks) * (1 - price_ratio))
+        # Analyse hiérarchique des EMAs (plus important en crypto)
+        if ema_7 and ema_12 and ema_26:
+            # Configuration haussière parfaite : Prix > EMA7 > EMA12 > EMA26
+            if current_price > ema_7 > ema_12 > ema_26:
+                alignment_score += 0.4
+                direction = "bullish"
+                
+                # Bonus si EMA50 aussi alignée
+                if ema_50 and ema_26 > ema_50:
+                    alignment_score += 0.2
+                    
+            # Configuration baissière parfaite : Prix < EMA7 < EMA12 < EMA26
+            elif current_price < ema_7 < ema_12 < ema_26:
+                alignment_score += 0.4
+                direction = "bearish"
+                
+                # Bonus si EMA50 aussi alignée
+                if ema_50 and ema_26 < ema_50:
+                    alignment_score += 0.2
+                    
+            # Configurations partielles
+            elif current_price > ema_7 and ema_7 > ema_26:
+                alignment_score += 0.2
+                direction = "bullish_weak"
+            elif current_price < ema_7 and ema_7 < ema_26:
+                alignment_score += 0.2
+                direction = "bearish_weak"
+                
+        # Ajustement selon position globale du prix
+        if price_ratio >= 0.75:
+            if direction in ["bullish", "bullish_weak"] or direction is None:
+                direction = "bullish"
+                alignment_score = max(alignment_score + 0.2, 0.6)
+        elif price_ratio <= 0.25:
+            if direction in ["bearish", "bearish_weak"] or direction is None:
+                direction = "bearish"
+                alignment_score = max(alignment_score + 0.2, 0.6)
         else:
-            direction = "neutral"
-            alignment_score = 0.3
-            
+            if direction is None:
+                direction = "neutral"
+                alignment_score = 0.3
+                
+        # Hull MA pour confirmation (très réactive)
+        hull_20 = mas.get('hull_20')
+        if hull_20:
+            if direction == "bullish" and current_price > hull_20:
+                alignment_score = min(alignment_score + 0.1, 0.95)
+            elif direction == "bearish" and current_price < hull_20:
+                alignment_score = min(alignment_score + 0.1, 0.95)
+                
         return {
             'alignment_score': alignment_score,
             'direction': direction,
             'price_above_ratio': price_ratio,
-            'ma_count': len(mas)
+            'ma_count': len(mas),
+            'ema_aligned': ema_7 is not None and ema_12 is not None and ema_26 is not None
         }
         
     def _analyze_oscillator_confluence(self, values: Dict[str, Optional[float]]) -> Dict[str, Any]:
-        """Analyse la confluence des oscillateurs."""
+        """Analyse la confluence des oscillateurs avec seuils crypto."""
         oscillators = {}
         
-        # RSI
-        if values.get('rsi_14') is not None:
+        # RSI avec seuils crypto
+        rsi_14 = values.get('rsi_14')
+        if rsi_14 is not None:
             try:
-                rsi = float(values['rsi_14']) if values['rsi_14'] is not None else 0.0
-                if rsi <= 30:
+                rsi = float(rsi_14)
+                if rsi <= self.rsi_oversold:
                     oscillators['rsi_14'] = 'oversold'
-                elif rsi >= 70:
+                elif rsi >= self.rsi_overbought:
                     oscillators['rsi_14'] = 'overbought'
                 else:
                     oscillators['rsi_14'] = 'neutral'
             except (ValueError, TypeError):
                 pass
                 
-        # Stochastic
-        if values.get('stoch_k') is not None and values.get('stoch_d') is not None:
+        # RSI 21 pour confirmation
+        rsi_21 = values.get('rsi_21')
+        if rsi_21 is not None:
             try:
-                k = float(values['stoch_k']) if values['stoch_k'] is not None else 0.0
-                d = float(values['stoch_d']) if values['stoch_d'] is not None else 0.0
-                if k <= 20 and d <= 20:
+                rsi = float(rsi_21)
+                if rsi <= self.rsi_oversold + 2:  # Légèrement plus tolérant
+                    oscillators['rsi_21'] = 'oversold'
+                elif rsi >= self.rsi_overbought - 2:
+                    oscillators['rsi_21'] = 'overbought'
+                else:
+                    oscillators['rsi_21'] = 'neutral'
+            except (ValueError, TypeError):
+                pass
+                
+        # Stochastic avec seuils crypto
+        stoch_k = values.get('stoch_k')
+        stoch_d = values.get('stoch_d')
+        if stoch_k is not None and stoch_d is not None:
+            try:
+                k = float(stoch_k)
+                d = float(stoch_d)
+                if k <= self.stoch_oversold and d <= self.stoch_oversold:
                     oscillators['stoch'] = 'oversold'
-                elif k >= 80 and d >= 80:
+                elif k >= self.stoch_overbought and d >= self.stoch_overbought:
                     oscillators['stoch'] = 'overbought'
                 else:
                     oscillators['stoch'] = 'neutral'
             except (ValueError, TypeError):
                 pass
                 
-        # CCI
-        if values.get('cci_20') is not None:
+        # CCI avec seuils crypto
+        cci_20 = values.get('cci_20')
+        if cci_20 is not None:
             try:
-                cci = float(values['cci_20']) if values['cci_20'] is not None else 0.0
-                if cci <= -100:
+                cci = float(cci_20)
+                if cci <= self.cci_oversold:
                     oscillators['cci'] = 'oversold'
-                elif cci >= 100:
+                elif cci >= self.cci_overbought:
                     oscillators['cci'] = 'overbought'
                 else:
                     oscillators['cci'] = 'neutral'
             except (ValueError, TypeError):
                 pass
                 
-        # Williams %R
-        if values.get('williams_r') is not None:
+        # Williams %R avec seuils crypto
+        williams_r = values.get('williams_r')
+        if williams_r is not None:
             try:
-                wr = float(values['williams_r']) if values['williams_r'] is not None else 0.0
-                if wr <= -80:
+                wr = float(williams_r)
+                if wr <= self.williams_oversold:
                     oscillators['williams'] = 'oversold'
-                elif wr >= -20:
+                elif wr >= self.williams_overbought:
                     oscillators['williams'] = 'overbought'
                 else:
                     oscillators['williams'] = 'neutral'
@@ -219,15 +288,20 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         if not oscillators:
             return {'confluence': 'none', 'strength': 0.0, 'count': 0}
             
-        # Calcul de la confluence
+        # Calcul de la confluence avec pondération
         oversold_count = sum(1 for v in oscillators.values() if v == 'oversold')
         overbought_count = sum(1 for v in oscillators.values() if v == 'overbought')
         total_count = len(oscillators)
         
-        if oversold_count >= total_count * 0.6:
+        # Seuils ajustés pour crypto (plus stricts)
+        if oversold_count >= total_count * 0.7:  # 70% au lieu de 60%
             return {'confluence': 'oversold', 'strength': oversold_count / total_count, 'count': total_count}
-        elif overbought_count >= total_count * 0.6:
+        elif overbought_count >= total_count * 0.7:
             return {'confluence': 'overbought', 'strength': overbought_count / total_count, 'count': total_count}
+        elif oversold_count >= total_count * 0.5:  # Confluence modérée
+            return {'confluence': 'oversold_moderate', 'strength': oversold_count / total_count * 0.7, 'count': total_count}
+        elif overbought_count >= total_count * 0.5:
+            return {'confluence': 'overbought_moderate', 'strength': overbought_count / total_count * 0.7, 'count': total_count}
         else:
             return {'confluence': 'mixed', 'strength': 0.3, 'count': total_count}
             
@@ -276,189 +350,331 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Confluence insuffisante ({confluence_score:.2f} < {self.min_confluence_score})",
-                "metadata": {
-                    "strategy": self.name,
-                    "symbol": self.symbol,
-                    "confluence_score": confluence_score
-                }
+                "reason": f"Confluence insuffisante ({confluence_score:.1f} < {self.min_confluence_score})",
+                "metadata": {"strategy": self.name, "confluence_score": confluence_score}
             }
             
-        if signal_strength is None or signal_strength not in ['WEAK', 'MODERATE', 'STRONG', 'VERY_STRONG']:
+        # Vérification signal_strength valide
+        valid_strengths = ['WEAK', 'MODERATE', 'STRONG', 'VERY_STRONG']
+        if signal_strength not in valid_strengths:
+            signal_strength = 'WEAK'  # Default si invalide
+            
+        # Filtre signal_strength - rejeter WEAK en crypto volatile
+        if signal_strength == 'WEAK':
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Signal_strength invalide ({signal_strength})",
-                "metadata": {
-                    "strategy": self.name,
-                    "symbol": self.symbol,
-                    "signal_strength": signal_strength
-                }
+                "reason": f"Signal trop faible pour crypto ({signal_strength})",
+                "metadata": {"strategy": self.name, "signal_strength": signal_strength}
             }
             
+        # Vérification trend_alignment
+        if trend_alignment and trend_alignment < self.min_trend_alignment:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Alignement insuffisant ({trend_alignment:.1f} < {self.min_trend_alignment})",
+                "metadata": {"strategy": self.name, "trend_alignment": trend_alignment}
+            }
+            
+        # Vérification ADX pour tendance suffisante
+        adx_14 = values.get('adx_14')
+        if adx_14 is not None:
+            try:
+                adx = float(adx_14)
+                if adx < self.min_adx_trend:
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Tendance trop faible (ADX: {adx:.1f} < {self.min_adx_trend})",
+                        "metadata": {"strategy": self.name, "adx": adx}
+                    }
+            except (ValueError, TypeError):
+                pass
+                
         # Analyse de l'alignement des moyennes mobiles
         ma_analysis = self._analyze_ma_alignment(values, current_price)
         
-        if ma_analysis['alignment_score'] < (self.min_trend_alignment / 100):
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Alignement MA insuffisant ({ma_analysis['alignment_score']:.2f})",
-                "metadata": {
-                    "strategy": self.name,
-                    "symbol": self.symbol,
-                    "ma_alignment": ma_analysis
-                }
-            }
-            
         # Analyse des oscillateurs
         osc_analysis = self._analyze_oscillator_confluence(values)
         
         signal_side = None
         reason = ""
-        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
+        base_confidence = 0.45  # Base conservative
         confidence_boost = 0.0
         
         # Détermination du signal selon l'alignement MA et oscillateurs
-        if ma_analysis['direction'] == "bullish":
+        if ma_analysis['direction'] in ["bullish", "bullish_weak"]:
             # Setup haussier
             if osc_analysis['confluence'] == 'oversold':
                 signal_side = "BUY"
-                reason = f"Confluence haussière forte (score: {confluence_score:.2f}) + oscillateurs survente"
-                confidence_boost += 0.20
-            elif osc_analysis['confluence'] == 'neutral' or osc_analysis['confluence'] == 'mixed':
+                reason = f"Confluence haussière forte (score: {confluence_score:.1f}) + oscillateurs survente parfaite"
+                confidence_boost += 0.25
+            elif osc_analysis['confluence'] == 'oversold_moderate':
                 signal_side = "BUY"
-                reason = f"Confluence haussière forte (score: {confluence_score:.2f}) + MA alignées"
-                confidence_boost += 0.10
-            # Si oscillateurs en surachat, pas de signal (éviter tops)
-            
-        elif ma_analysis['direction'] == "bearish":
+                reason = f"Confluence haussière (score: {confluence_score:.1f}) + oscillateurs survente modérée"
+                confidence_boost += 0.15
+            elif osc_analysis['confluence'] in ['neutral', 'mixed'] and ma_analysis['alignment_score'] >= 0.7:
+                signal_side = "BUY"
+                reason = f"Confluence haussière (score: {confluence_score:.1f}) + MA fortement alignées"
+                confidence_boost += 0.12
+                
+        elif ma_analysis['direction'] in ["bearish", "bearish_weak"]:
             # Setup baissier
             if osc_analysis['confluence'] == 'overbought':
                 signal_side = "SELL"
-                reason = f"Confluence baissière forte (score: {confluence_score:.2f}) + oscillateurs surachat"
-                confidence_boost += 0.20
-            elif osc_analysis['confluence'] == 'neutral' or osc_analysis['confluence'] == 'mixed':
+                reason = f"Confluence baissière forte (score: {confluence_score:.1f}) + oscillateurs surachat parfait"
+                confidence_boost += 0.25
+            elif osc_analysis['confluence'] == 'overbought_moderate':
                 signal_side = "SELL"
-                reason = f"Confluence baissière forte (score: {confluence_score:.2f}) + MA alignées"
-                confidence_boost += 0.10
-            # Si oscillateurs en survente, pas de signal (éviter bottoms)
-            
-        # Pas d'alignement clair
+                reason = f"Confluence baissière (score: {confluence_score:.1f}) + oscillateurs surachat modéré"
+                confidence_boost += 0.15
+            elif osc_analysis['confluence'] in ['neutral', 'mixed'] and ma_analysis['alignment_score'] >= 0.7:
+                signal_side = "SELL"
+                reason = f"Confluence baissière (score: {confluence_score:.1f}) + MA fortement alignées"
+                confidence_boost += 0.12
+                
+        # Pas d'alignement clair ou contradictoire
         if signal_side is None:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"MA direction {ma_analysis['direction']} + oscillateurs {osc_analysis['confluence']} - pas de setup clair",
+                "reason": f"Pas de confluence claire - MA: {ma_analysis['direction']}, Osc: {osc_analysis['confluence']}",
                 "metadata": {
                     "strategy": self.name,
-                    "symbol": self.symbol,
                     "ma_analysis": ma_analysis,
                     "osc_analysis": osc_analysis
                 }
             }
             
-        # Bonus selon la force des scores
-        if confluence_score >= 90:
-            confidence_boost += 0.15
-            reason += " - confluence exceptionnelle"
-        elif confluence_score >= 80:
-            confidence_boost += 0.10
-            reason += " - confluence très forte"
-            
-        if signal_strength == 'VERY_STRONG':
-            confidence_boost += 0.10
-            reason += f" + signal très fort ({signal_strength})"
-        elif signal_strength == 'STRONG':
+        # === BOOSTS DE CONFIANCE ===
+        
+        # Boost selon confluence_score
+        if confluence_score >= 75:
+            confidence_boost += 0.20
+            reason += " [confluence EXCELLENTE]"
+        elif confluence_score >= self.strong_confluence_score:
+            confidence_boost += 0.12
+            reason += " [confluence forte]"
+        else:
             confidence_boost += 0.05
-            reason += f" + signal fort ({signal_strength})"
-        elif signal_strength == 'MODERATE':
-            confidence_boost += 0.02
-            reason += f" + signal modéré ({signal_strength})"
             
-        # Bonus alignement MA
-        if ma_analysis['alignment_score'] >= 0.9:
+        # Boost selon signal_strength
+        if signal_strength == 'VERY_STRONG':
             confidence_boost += 0.15
+            reason += f" + signal {signal_strength}"
+        elif signal_strength == 'STRONG':
+            confidence_boost += 0.08
+            reason += f" + signal {signal_strength}"
+        elif signal_strength == 'MODERATE':
+            confidence_boost += 0.03
+            
+        # Boost alignement MA
+        if ma_analysis['alignment_score'] >= 0.85:
+            confidence_boost += 0.18
             reason += " + MA parfaitement alignées"
-        elif ma_analysis['alignment_score'] >= 0.8:
+        elif ma_analysis['alignment_score'] >= 0.70:
             confidence_boost += 0.10
             reason += " + MA bien alignées"
             
-        # Confirmation avec directional bias
+        # Boost trend_alignment global
+        if trend_alignment and trend_alignment >= self.strong_trend_alignment:
+            confidence_boost += 0.12
+            reason += f" + tendance forte ({trend_alignment:.0f})"
+        elif trend_alignment and trend_alignment >= self.min_trend_alignment:
+            confidence_boost += 0.05
+            
+        # Confirmation directional bias
         directional_bias = values.get('directional_bias')
         if directional_bias:
             if (signal_side == "BUY" and directional_bias == "BULLISH") or \
                (signal_side == "SELL" and directional_bias == "BEARISH"):
-                confidence_boost += 0.10
-                reason += f" + bias {directional_bias}"
+                confidence_boost += 0.08
+                reason += f" + bias confirmé"
+            elif (signal_side == "BUY" and directional_bias == "BEARISH") or \
+                 (signal_side == "SELL" and directional_bias == "BULLISH"):
+                confidence_boost -= 0.15  # Pénalité si contradictoire
+                reason += " MAIS bias opposé!"
                 
         # Régime de marché
         market_regime = values.get('market_regime')
         regime_strength = values.get('regime_strength')
+        regime_confidence = values.get('regime_confidence')
         
-        if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
-            confidence_boost += 0.10
-            reason += " (marché trending)"
+        if market_regime:
+            if signal_side == "BUY" and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]:
+                confidence_boost += 0.12
+                reason += f" ({market_regime})"
+            elif signal_side == "SELL" and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]:
+                confidence_boost += 0.12
+                reason += f" ({market_regime})"
+            elif market_regime == "VOLATILE":
+                confidence_boost -= 0.08  # Pénalité en marché volatile
+                reason += " (marché volatile)"
+                
+        if regime_strength in ['STRONG', 'EXTREME']:
+            confidence_boost += 0.06
             
-            if regime_strength in ['STRONG', 'EXTREME']:
-                confidence_boost += 0.08
-                reason += f" avec régime {str(regime_strength).lower()}"
-                    
-        # Volume pour confirmation
+        if regime_confidence is not None:
+            try:
+                reg_conf = float(regime_confidence)
+                if reg_conf >= 80:
+                    confidence_boost += 0.08
+            except (ValueError, TypeError):
+                pass
+                
+        # Volume confirmation IMPORTANT en crypto
         volume_ratio = values.get('volume_ratio')
-        volume_quality_score = values.get('volume_quality_score')
-        
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio >= self.volume_confirmation_min * 1.5:
-                    confidence_boost += 0.15
-                    reason += f" + volume exceptionnel ({vol_ratio:.1f}x)"
-                elif vol_ratio >= self.volume_confirmation_min:
-                    confidence_boost += 0.10
-                    reason += f" + volume confirmé ({vol_ratio:.1f}x)"
-                else:
-                    confidence_boost -= 0.05
-                    reason += f" mais volume faible ({vol_ratio:.1f}x)"
+                if vol_ratio < self.volume_confirmation_min:
+                    confidence_boost -= 0.15  # Forte pénalité si volume faible
+                    reason += f" MAIS volume faible ({vol_ratio:.1f}x)"
+                elif vol_ratio >= self.volume_strong * 1.5:  # Volume très élevé
+                    confidence_boost += 0.20
+                    reason += f" + volume EXCEPTIONNEL ({vol_ratio:.1f}x)"
+                elif vol_ratio >= self.volume_strong:
+                    confidence_boost += 0.12
+                    reason += f" + volume élevé ({vol_ratio:.1f}x)"
+                elif vol_ratio >= 1.0:
+                    confidence_boost += 0.05
+                    reason += f" + volume ok ({vol_ratio:.1f}x)"
             except (ValueError, TypeError):
                 pass
                 
+        # Volume quality
+        volume_quality_score = values.get('volume_quality_score')
         if volume_quality_score is not None:
             try:
-                volume_quality_score = float(volume_quality_score)
-                if volume_quality_score > 80:
-                    confidence_boost += 0.08
-                    reason += " + volume de qualité"
+                vq_score = float(volume_quality_score)
+                if vq_score >= 75:
+                    confidence_boost += 0.10
+                    reason += " + volume HQ"
+                elif vq_score >= 60:
+                    confidence_boost += 0.05
             except (ValueError, TypeError):
                 pass
                 
-        # ADX pour confirmation de tendance
-        adx_14 = values.get('adx_14')
+        # ADX pour force de tendance
         if adx_14 is not None:
             try:
                 adx = float(adx_14)
-                if adx > 25:
-                    confidence_boost += 0.08
+                if adx >= self.strong_adx_trend:
+                    confidence_boost += 0.10
                     reason += f" + ADX fort ({adx:.1f})"
+                elif adx >= self.min_adx_trend:
+                    confidence_boost += 0.04
             except (ValueError, TypeError):
                 pass
                 
-        # Pattern recognition
+        # DI+ / DI- pour direction
+        plus_di = values.get('plus_di')
+        minus_di = values.get('minus_di')
+        if plus_di is not None and minus_di is not None:
+            try:
+                pdi = float(plus_di)
+                mdi = float(minus_di)
+                if signal_side == "BUY" and pdi > mdi * 1.3:  # DI+ dominant
+                    confidence_boost += 0.08
+                    reason += " + DI+ dominant"
+                elif signal_side == "SELL" and mdi > pdi * 1.3:  # DI- dominant
+                    confidence_boost += 0.08
+                    reason += " + DI- dominant"
+            except (ValueError, TypeError):
+                pass
+                
+        # MACD confirmation
+        macd_histogram = values.get('macd_histogram')
+        macd_trend = values.get('macd_trend')
+        if macd_histogram is not None:
+            try:
+                hist = float(macd_histogram)
+                if signal_side == "BUY" and hist > 0:
+                    confidence_boost += 0.06
+                    reason += " + MACD+"
+                elif signal_side == "SELL" and hist < 0:
+                    confidence_boost += 0.06
+                    reason += " + MACD-"
+                elif (signal_side == "BUY" and hist < -0.001) or (signal_side == "SELL" and hist > 0.001):
+                    confidence_boost -= 0.10  # Pénalité si MACD contradictoire
+            except (ValueError, TypeError):
+                pass
+                
+        # Pattern detection
         pattern_detected = values.get('pattern_detected')
         pattern_confidence = values.get('pattern_confidence')
-        
         if pattern_detected and pattern_confidence is not None:
             try:
                 pattern_conf = float(pattern_confidence)
-                if pattern_conf > 70:
-                    confidence_boost += 0.10
+                if pattern_conf >= 75:
+                    confidence_boost += 0.12
+                    reason += f" + pattern {pattern_detected}"
+                elif pattern_conf >= 60:
+                    confidence_boost += 0.06
                     reason += f" + pattern {pattern_detected}"
             except (ValueError, TypeError):
                 pass
                 
+        # Momentum score
+        momentum_score = values.get('momentum_score')
+        if momentum_score is not None:
+            try:
+                momentum = float(momentum_score)
+                if signal_side == "BUY" and 40 <= momentum <= 60:
+                    confidence_boost += 0.08
+                    reason += f" + momentum équilibré ({momentum:.0f})"
+                elif signal_side == "SELL" and 40 <= momentum <= 60:
+                    confidence_boost += 0.08
+                    reason += f" + momentum équilibré ({momentum:.0f})"
+                elif (signal_side == "BUY" and momentum < 25) or (signal_side == "SELL" and momentum > 75):
+                    confidence_boost += 0.12  # Extrême favorable
+                    reason += f" + momentum extrême ({momentum:.0f})"
+            except (ValueError, TypeError):
+                pass
+                
+        # Support/Resistance proximity
+        nearest_support = values.get('nearest_support')
+        nearest_resistance = values.get('nearest_resistance')
+        if nearest_support is not None and nearest_resistance is not None and current_price:
+            try:
+                support = float(nearest_support)
+                resistance = float(nearest_resistance)
+                
+                # Distance en pourcentage
+                dist_to_support = abs(current_price - support) / current_price
+                dist_to_resistance = abs(resistance - current_price) / current_price
+                
+                if signal_side == "BUY" and dist_to_support < 0.02:  # Proche support (2%)
+                    confidence_boost += 0.10
+                    reason += " + proche support"
+                elif signal_side == "SELL" and dist_to_resistance < 0.02:  # Proche résistance
+                    confidence_boost += 0.10
+                    reason += " + proche résistance"
+            except (ValueError, TypeError):
+                pass
+                
+        # Calcul final
+        raw_confidence = base_confidence * (1 + confidence_boost)
+        
+        # Filtre final - seuil minimum pour crypto
+        if raw_confidence < 0.42:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Signal rejeté - confiance insuffisante ({raw_confidence:.2f})",
+                "metadata": {
+                    "strategy": self.name,
+                    "rejected_signal": signal_side,
+                    "raw_confidence": raw_confidence
+                }
+            }
+        
         confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
         
@@ -503,11 +719,11 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                 return False
                 
         # Vérifier qu'on a au moins quelques moyennes mobiles
-        ma_indicators = ['ema_12', 'ema_26', 'ema_50', 'sma_20', 'sma_50']
+        ma_indicators = ['ema_7', 'ema_12', 'ema_26', 'ema_50', 'sma_20', 'sma_50']
         ma_available = sum(1 for ma in ma_indicators if ma in self.indicators and self.indicators[ma] is not None)
         
         if ma_available < 3:
-            logger.warning(f"{self.name}: Pas assez de moyennes mobiles ({ma_available}/5)")
+            logger.warning(f"{self.name}: Pas assez de moyennes mobiles ({ma_available}/6)")
             return False
             
         return True

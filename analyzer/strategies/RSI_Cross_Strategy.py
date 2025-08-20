@@ -20,13 +20,13 @@ class RSI_Cross_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Seuils RSI - CORRIGÉS (standards)
-        self.oversold_level = 30      # Standard RSI oversold
-        self.overbought_level = 70    # Standard RSI overbought  
-        self.extreme_oversold = 20    # RSI extreme oversold
-        self.extreme_overbought = 80  # RSI extreme overbought
-        self.neutral_low = 40         # Zone neutre basse
-        self.neutral_high = 60        # Zone neutre haute
+        # Seuils RSI optimisés pour crypto (plus réactifs)
+        self.oversold_level = 25      # Crypto oversold (plus bas que stocks)
+        self.overbought_level = 75    # Crypto overbought (plus haut que stocks)  
+        self.extreme_oversold = 18    # RSI extreme oversold crypto
+        self.extreme_overbought = 82  # RSI extreme overbought crypto
+        self.neutral_low = 38         # Zone neutre basse ajustée
+        self.neutral_high = 62        # Zone neutre haute ajustée
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
@@ -38,7 +38,10 @@ class RSI_Cross_Strategy(BaseStrategy):
             'trend_strength': self.indicators.get('trend_strength'),
             'directional_bias': self.indicators.get('directional_bias'),
             'confluence_score': self.indicators.get('confluence_score'),
-            'pattern_confidence': self.indicators.get('pattern_confidence')
+            'pattern_confidence': self.indicators.get('pattern_confidence'),
+            'volume_quality_score': self.indicators.get('volume_quality_score'),
+            'adx_14': self.indicators.get('adx_14'),
+            'volatility_regime': self.indicators.get('volatility_regime')
         }
         
     def generate_signal(self) -> Dict[str, Any]:
@@ -80,9 +83,9 @@ class RSI_Cross_Strategy(BaseStrategy):
             
             # Bonus pour survente extrême
             if rsi_14 <= self.extreme_oversold:
-                confidence_boost += 0.25  # Augmenté de 0.2
+                confidence_boost += 0.30  # Boost majeur pour extrême
             else:
-                confidence_boost += 0.12  # Légèrement augmenté
+                confidence_boost += 0.15  # Boost modéré
                 
         elif rsi_14 >= self.overbought_level:
             # Zone de surachat - chercher signal SELL
@@ -92,31 +95,31 @@ class RSI_Cross_Strategy(BaseStrategy):
             
             # Bonus pour surachat extrême
             if rsi_14 >= self.extreme_overbought:
-                confidence_boost += 0.25  # Augmenté de 0.2
+                confidence_boost += 0.30  # Boost majeur pour extrême
             else:
-                confidence_boost += 0.12  # Légèrement augmenté
+                confidence_boost += 0.15  # Boost modéré
                 
         if signal_side:
             # Utilisation des indicateurs pré-calculés pour ajuster la confiance
             base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
             
-            # Ajustement avec momentum_score (format 0-100, 50=neutre)
+            # Ajustement avec momentum_score (format 0-100, 50=neutre) - CRYPTO OPTIMISÉ
             momentum_score = values.get('momentum_score', 50)
             if momentum_score:
                 try:
                     momentum_val = float(momentum_score)
-                    # MOMENTUM PLUS STRICT
-                    if (signal_side == "BUY" and momentum_val > 60) or \
-                       (signal_side == "SELL" and momentum_val < 40):
-                        confidence_boost += 0.18
-                        reason += f" avec momentum FORT ({momentum_val:.0f})"
-                    elif (signal_side == "BUY" and momentum_val > 52) or \
-                         (signal_side == "SELL" and momentum_val < 48):
-                        confidence_boost += 0.10
+                    # SEUILS CRYPTO PLUS STRICTS
+                    if (signal_side == "BUY" and momentum_val > 65) or \
+                       (signal_side == "SELL" and momentum_val < 35):
+                        confidence_boost += 0.22
+                        reason += f" avec momentum EXCELLENT ({momentum_val:.0f})"
+                    elif (signal_side == "BUY" and momentum_val > 55) or \
+                         (signal_side == "SELL" and momentum_val < 45):
+                        confidence_boost += 0.12
                         reason += f" avec momentum favorable ({momentum_val:.0f})"
-                    elif (signal_side == "BUY" and momentum_val < 40) or \
-                         (signal_side == "SELL" and momentum_val > 60):
-                        confidence_boost -= 0.20  # Pénalité doublée
+                    elif (signal_side == "BUY" and momentum_val < 35) or \
+                         (signal_side == "SELL" and momentum_val > 65):
+                        confidence_boost -= 0.25  # Pénalité plus forte
                         reason += f" ATTENTION: momentum CONTRAIRE ({momentum_val:.0f})"
                 except (ValueError, TypeError):
                     pass
@@ -148,19 +151,19 @@ class RSI_Cross_Strategy(BaseStrategy):
             if confluence_score:
                 try:
                     confluence_val = float(confluence_score)
-                    # CONFLUENCE PLUS STRICTE
-                    if confluence_val > 80:  # Seuil augmenté
-                        confidence_boost += 0.22
+                    # CONFLUENCE CRYPTO ULTRA-STRICTE
+                    if confluence_val > 85:  # Excellence exigée
+                        confidence_boost += 0.25
+                        reason += f" avec confluence PARFAITE ({confluence_val:.0f})"
+                    elif confluence_val > 75:  # Très bon minimum
+                        confidence_boost += 0.18
                         reason += f" avec confluence EXCELLENTE ({confluence_val:.0f})"
-                    elif confluence_val > 70:  # Seuil augmenté
-                        confidence_boost += 0.15
-                        reason += f" avec haute confluence ({confluence_val:.0f})"
-                    elif confluence_val > 60:  # Seuil augmenté
-                        confidence_boost += 0.08
+                    elif confluence_val > 65:  # Standard crypto
+                        confidence_boost += 0.10
                         reason += f" avec confluence correcte ({confluence_val:.0f})"
-                    elif confluence_val < 50:  # Pénalité si faible
-                        confidence_boost -= 0.10
-                        reason += f" mais confluence FAIBLE ({confluence_val:.0f})"
+                    elif confluence_val < 55:  # Pénalité plus forte
+                        confidence_boost -= 0.15
+                        reason += f" mais confluence INSUFFISANTE ({confluence_val:.0f})"
                 except (ValueError, TypeError):
                     pass
                 
@@ -183,20 +186,52 @@ class RSI_Cross_Strategy(BaseStrategy):
                     confidence_boost += 0.1
                     reason += " confirmé sur RSI 21"
                     
-            # NOUVEAU: Filtre final - rejeter si confidence trop faible
+            # FILTRES SUPPLÉMENTAIRES CRYPTO
+            # Filtre volume quality
+            volume_quality = values.get('volume_quality_score', 0)
+            if volume_quality and float(volume_quality) < 60:
+                confidence_boost -= 0.12
+                reason += f" mais volume FAIBLE ({float(volume_quality):.0f})"
+            elif volume_quality and float(volume_quality) > 80:
+                confidence_boost += 0.08
+                reason += f" avec volume EXCELLENT ({float(volume_quality):.0f})"
+                
+            # Vérifier divergence RSI 14/21 pour confirmation
+            rsi_21 = values.get('rsi_21')
+            if rsi_21:
+                rsi_diff = abs(rsi_14 - rsi_21)
+                if rsi_diff < 5:  # RSI alignés = forte confluence
+                    confidence_boost += 0.12
+                    reason += " avec RSI multi-TF alignés"
+                elif rsi_diff > 15:  # RSI divergents = attention
+                    confidence_boost -= 0.08
+                    reason += " ATTENTION: divergence multi-TF"
+                    
+            # Filtre ADX pour éviter signaux en ranging
+            adx = values.get('adx_14')
+            if adx and float(adx) < 20:  # Market ranging
+                confidence_boost -= 0.15
+                reason += f" mais ADX faible ({float(adx):.0f}) - market ranging"
+            elif adx and float(adx) > 30:  # Trend fort
+                confidence_boost += 0.10
+                reason += f" avec ADX fort ({float(adx):.0f}) - trending"
+            
+            # NOUVEAU: Filtre final CRYPTO plus strict
             raw_confidence = base_confidence * (1 + confidence_boost)
-            if raw_confidence < 0.40:  # Seuil minimum 40%
+            if raw_confidence < 0.45:  # Seuil crypto minimum 45%
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": f"Signal RSI rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.40)",
+                    "reason": f"Signal RSI rejeté - confiance crypto insuffisante ({raw_confidence:.2f} < 0.45)",
                     "metadata": {
                         "strategy": self.name,
                         "symbol": self.symbol,
                         "rejected_signal": signal_side,
                         "raw_confidence": raw_confidence,
-                        "rsi_14": rsi_14
+                        "rsi_14": rsi_14,
+                        "volume_quality": volume_quality,
+                        "adx_14": adx
                     }
                 }
             
@@ -217,7 +252,9 @@ class RSI_Cross_Strategy(BaseStrategy):
                     "trend_strength": trend_strength,
                     "directional_bias": directional_bias,
                     "confluence_score": confluence_score,
-                    "signal_strength_calc": signal_strength_calc
+                    "signal_strength_calc": signal_strength_calc,
+                    "volume_quality_score": volume_quality,
+                    "adx_14": adx
                 }
             }
             
@@ -225,7 +262,7 @@ class RSI_Cross_Strategy(BaseStrategy):
             "side": None,
             "confidence": 0.0,
             "strength": "weak",
-            "reason": f"RSI en zone neutre ({rsi_14:.1f}) - pas de signal (seuils: {self.oversold_level}/{self.overbought_level})",
+            "reason": f"RSI en zone neutre ({rsi_14:.1f}) - pas de signal crypto (seuils: {self.oversold_level}/{self.overbought_level})",
             "metadata": {
                 "strategy": self.name,
                 "symbol": self.symbol,
