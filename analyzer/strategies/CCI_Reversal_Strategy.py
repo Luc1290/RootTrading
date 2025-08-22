@@ -20,23 +20,23 @@ class CCI_Reversal_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres CCI optimisés pour crypto 3m
-        self.oversold_level = -50   # Zone survente adaptée crypto
-        self.overbought_level = 50   # Zone surachat adaptée crypto
-        self.extreme_oversold = -80  # Extrême accessible
-        self.extreme_overbought = 80  # Extrême accessible
+        # Paramètres CCI optimisés pour crypto 3m - CORRIGÉS
+        self.oversold_level = -100   # Zone survente standard CCI
+        self.overbought_level = 100   # Zone surachat standard CCI
+        self.extreme_oversold = -150  # Extrême crypto volatil
+        self.extreme_overbought = 150  # Extrême crypto volatil
         
         # Paramètres de validation temporelle - SIMPLIFIÉS
         self.min_cci_persistence = 0  # Pas de persistance requise (crypto 3m rapide)
         self.cci_history = []  # Historique pour validation
         self.max_history_size = 3  # Historique réduit
         
-        # Seuils adaptatifs selon volatilité - ASSOUPLIS
+        # Seuils adaptatifs selon volatilité - RÉAJUSTÉS
         self.volatility_adjustment = {
-            'low': 0.9,    # Seuils légèrement réduits
+            'low': 0.8,    # Seuils réduits (volatilité faible = signaux plus sensibles)
             'normal': 1.0,   # Seuils standards
-            'high': 1.1,     # Seuils légèrement augmentés
-            'extreme': 1.15  # Nouveau : haute volatilité
+            'high': 1.2,     # Seuils augmentés (volatilité élevée = signaux plus stricts)
+            'extreme': 1.3  # Seuils très augmentés
         }
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
@@ -164,7 +164,7 @@ class CCI_Reversal_Strategy(BaseStrategy):
             reason = f"CCI ({cci_20:.1f}) en zone de {zone}"
             
         if signal_side:
-            base_confidence = 0.55  # Base plus élevée pour compenser
+            base_confidence = 0.45  # Base réajustée pour permettre plus de signaux
             
             # Utilisation du momentum_score avec logique améliorée
             momentum_score_raw = values.get('momentum_score')
@@ -279,15 +279,15 @@ class CCI_Reversal_Strategy(BaseStrategy):
                 except (ValueError, TypeError):
                     pass
             
-            # Ajustement final selon volatilité - ASSOUPLI
+            # Ajustement final selon volatilité - OPTIMISÉ
             if volatility_regime == "low":
-                confidence_boost += 0.08  # Excellent pour retournements
+                confidence_boost += 0.12  # Excellents signaux en faible volatilité
             elif volatility_regime == "normal":
-                confidence_boost += 0.03  # Léger bonus
+                confidence_boost += 0.05  # Bonus standard
             elif volatility_regime == "high":
-                confidence_boost -= 0.03  # Pénalité réduite
+                confidence_boost -= 0.02  # Pénalité minimale
             elif volatility_regime == "extreme":
-                confidence_boost -= 0.06  # Pénalité assouplie
+                confidence_boost -= 0.05  # Pénalité modérée
                     
             # Utilisation du signal_strength pré-calculé
             signal_strength_calc_raw = values.get('signal_strength')
@@ -300,17 +300,17 @@ class CCI_Reversal_Strategy(BaseStrategy):
                     confidence_boost += 0.05
                     reason += " + signal modéré"
                 
-            # Calcul final avec plafond de confidence
-            total_boost = min(confidence_boost, 0.35)  # Limite le boost total
+            # Calcul final avec plafond de confidence augmenté
+            total_boost = min(confidence_boost, 0.45)  # Boost total augmenté
             confidence = self.calculate_confidence(base_confidence, 1 + total_boost)
             
             # Filtre final : confidence minimum assoupli
-            if confidence < 0.45:  # Seuil plus accessible
+            if confidence < 0.35:  # Seuil beaucoup plus accessible
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": f"Signal CCI {signal_side} détecté mais confidence insuffisante ({confidence:.2f} < 0.45)",
+                    "reason": f"Signal CCI {signal_side} détecté mais confidence insuffisante ({confidence:.2f} < 0.35)",
                     "metadata": {
                         "strategy": self.name,
                         "symbol": self.symbol,

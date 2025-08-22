@@ -21,29 +21,31 @@ class Bollinger_Touch_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres Bollinger Bands - OPTIMISÉS CRYPTO SPOT
-        self.touch_threshold = 0.006   # 0.6% de proximité (plus sensible pour crypto)
-        self.bb_position_extreme_buy = 0.08  # Position extrême basse (8% depuis le bas)
-        self.bb_position_extreme_sell = 0.92  # Position extrême haute (92% depuis le bas)
-        self.bb_width_min = 0.008       # Largeur minimum 0.8% (éviter les squeezes trop serrés)
-        self.min_bb_width_for_trade = 0.012  # Ne pas trader si bandes < 1.2%
-        self.max_bb_width_for_trade = 0.15   # Ne pas trader si bandes > 15% (trop volatile)
+        # Paramètres Bollinger Bands - OPTIMISÉS CRYPTO SPOT (CORRIGÉ)
+        self.touch_threshold = 0.004   # 0.4% de proximité (plus sensible, corrigé)
+        self.bb_position_extreme_buy = 0.15  # Position extrême basse (15% depuis le bas)
+        self.bb_position_extreme_sell = 0.85  # Position extrême haute (85% depuis le bas)
+        self.bb_position_very_low = -0.1     # Position très basse (en dehors bande basse)
+        self.bb_position_very_high = 1.1    # Position très haute (en dehors bande haute)
+        self.bb_width_min_pct = 0.5     # Largeur minimum 0.5% du prix (squeeze trop serré)
+        self.min_bb_width_for_trade_pct = 0.8  # Ne pas trader si bandes < 0.8% du prix
+        self.max_bb_width_for_trade_pct = 8.0  # Ne pas trader si bandes > 8% du prix (volatilité extrême)
         
-        # Paramètres volume (utilisant volume_ratio disponible)
-        self.min_volume_ratio = 0.7  # Volume minimum 70% de la moyenne
-        self.high_volume_ratio = 1.5  # Volume élevé pour confirmation
+        # Paramètres volume (utilisant volume_ratio disponible) - ASSOUPLIS
+        self.min_volume_ratio = 0.4  # Volume minimum 40% de la moyenne (plus permissif)
+        self.high_volume_ratio = 1.3  # Volume élevé pour confirmation (plus accessible)
         
-        # Paramètres RSI adaptés crypto
-        self.rsi_oversold_strong = 22  # Survente forte
-        self.rsi_oversold = 30         # Survente standard
-        self.rsi_overbought = 70       # Surachat standard  
-        self.rsi_overbought_strong = 78  # Surachat fort
+        # Paramètres RSI adaptés crypto - ASSOUPLIS POUR PLUS DE SIGNAUX
+        self.rsi_oversold_strong = 25  # Survente forte (était 22)
+        self.rsi_oversold = 35         # Survente standard (était 30)
+        self.rsi_overbought = 65       # Surachat standard (était 70)  
+        self.rsi_overbought_strong = 75  # Surachat fort (était 78)
         
-        # Paramètres Stochastic adaptés crypto
-        self.stoch_oversold_strong = 12  # Survente forte
-        self.stoch_oversold = 20         # Survente standard
-        self.stoch_overbought = 80       # Surachat standard
-        self.stoch_overbought_strong = 88  # Surachat fort
+        # Paramètres Stochastic adaptés crypto - ASSOUPLIS
+        self.stoch_oversold_strong = 15  # Survente forte (était 12)
+        self.stoch_oversold = 25         # Survente standard (était 20)
+        self.stoch_overbought = 75       # Surachat standard (était 80)
+        self.stoch_overbought_strong = 85  # Surachat fort (était 88)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs Bollinger."""
@@ -137,85 +139,103 @@ class Bollinger_Touch_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Vérification que les bandes sont dans la plage tradable
-        if bb_width is not None:
-            if bb_width < self.bb_width_min:
+        # CORRECTION MAJEURE: Vérification bb_width en pourcentage du prix moyen
+        if bb_width is not None and bb_middle is not None:
+            bb_width_pct = (bb_width / bb_middle) * 100  # Conversion en pourcentage
+            if bb_width_pct < self.bb_width_min_pct:
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": f"Bollinger squeeze trop serré ({bb_width:.4f} < {self.bb_width_min})",
-                    "metadata": {"strategy": self.name, "bb_width": bb_width}
+                    "reason": f"BB squeeze trop serré ({bb_width_pct:.2f}% < {self.bb_width_min_pct}%)",
+                    "metadata": {"strategy": self.name, "bb_width_pct": bb_width_pct}
                 }
-            elif bb_width > self.max_bb_width_for_trade:
+            elif bb_width_pct > self.max_bb_width_for_trade_pct:
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": f"Volatilité excessive ({bb_width:.4f} > {self.max_bb_width_for_trade})",
-                    "metadata": {"strategy": self.name, "bb_width": bb_width}
+                    "reason": f"Volatilité excessive ({bb_width_pct:.2f}% > {self.max_bb_width_for_trade_pct}%)",
+                    "metadata": {"strategy": self.name, "bb_width_pct": bb_width_pct}
                 }
+        else:
+            bb_width_pct = None
                 
-        # Calcul des distances aux bandes
-        distance_to_upper = abs(current_price - bb_upper) / bb_upper
-        distance_to_lower = abs(current_price - bb_lower) / bb_lower
+        # CORRECTION MAJEURE: Calcul des distances aux bandes (méthode cohérente)
+        distance_to_upper = abs(current_price - bb_upper) / current_price
+        distance_to_lower = abs(current_price - bb_lower) / current_price
         
         signal_side = None
         reason = ""
-        base_confidence = 0.45  # Base plus conservative
+        base_confidence = 0.35  # Base plus permissive pour générer plus de signaux
         confidence_boost = 0.0
         touch_type = None
         
-        # Détection des touches de bandes avec position
+        # Détection des touches de bandes avec position - CORRIGÉ
         is_touching_upper = distance_to_upper <= self.touch_threshold
         is_touching_lower = distance_to_lower <= self.touch_threshold
         
-        # Position dans les bandes pour confirmation
+        # Position dans les bandes pour confirmation - ÉTENDUE AUX VALEURS NÉGATIVES/SUPÉRIEURES
         is_extreme_high = bb_position is not None and bb_position >= self.bb_position_extreme_sell
         is_extreme_low = bb_position is not None and bb_position <= self.bb_position_extreme_buy
+        is_very_high = bb_position is not None and bb_position >= self.bb_position_very_high
+        is_very_low = bb_position is not None and bb_position <= self.bb_position_very_low
         
-        # SIGNAL BUY - Touche bande basse ou position extrême basse
-        if (is_touching_lower or is_extreme_low) and bb_width > self.min_bb_width_for_trade:
+        # SIGNAL BUY - LOGIQUE CORRIGÉE ET ÉTENDUE
+        if (is_touching_lower or is_extreme_low or is_very_low) and (bb_width_pct is None or bb_width_pct >= self.min_bb_width_for_trade_pct):
             signal_side = "BUY"
             touch_type = "lower_band"
             
-            if is_touching_lower and is_extreme_low:
+            if is_very_low:  # Position en dehors de la bande basse (très fort)
+                reason = f"Position très basse {bb_position:.3f} (hors bande)"
+                confidence_boost += 0.25
+            elif is_touching_lower and is_extreme_low:
                 reason = f"Touche bande basse confirmée {bb_lower:.2f} (pos: {bb_position:.3f})"
-                confidence_boost += 0.15
+                confidence_boost += 0.20
             elif is_touching_lower:
-                reason = f"Touche bande basse {bb_lower:.2f}"
-                confidence_boost += 0.08
-            else:
+                reason = f"Touche bande basse {bb_lower:.2f} (dist: {distance_to_lower:.3f})"
+                confidence_boost += 0.12
+            elif is_extreme_low:
                 reason = f"Position extrême basse ({bb_position:.3f})"
-                confidence_boost += 0.06
+                confidence_boost += 0.10
                 
-        # SIGNAL SELL - Touche bande haute ou position extrême haute
-        elif (is_touching_upper or is_extreme_high) and bb_width > self.min_bb_width_for_trade:
+        # SIGNAL SELL - LOGIQUE CORRIGÉE ET ÉTENDUE  
+        elif (is_touching_upper or is_extreme_high or is_very_high) and (bb_width_pct is None or bb_width_pct >= self.min_bb_width_for_trade_pct):
             signal_side = "SELL"
             touch_type = "upper_band"
             
-            if is_touching_upper and is_extreme_high:
+            if is_very_high:  # Position en dehors de la bande haute (très fort)
+                reason = f"Position très haute {bb_position:.3f} (hors bande)"
+                confidence_boost += 0.25
+            elif is_touching_upper and is_extreme_high:
                 reason = f"Touche bande haute confirmée {bb_upper:.2f} (pos: {bb_position:.3f})"
-                confidence_boost += 0.15
+                confidence_boost += 0.20
             elif is_touching_upper:
-                reason = f"Touche bande haute {bb_upper:.2f}"
-                confidence_boost += 0.08
-            else:
+                reason = f"Touche bande haute {bb_upper:.2f} (dist: {distance_to_upper:.3f})"
+                confidence_boost += 0.12
+            elif is_extreme_high:
                 reason = f"Position extrême haute ({bb_position:.3f})"
-                confidence_boost += 0.06
+                confidence_boost += 0.10
                 
-        # Pas de touche détectée
+        # Pas de touche détectée - DIAGNOSTIC AMÉLIORÉ
         if signal_side is None:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Pas de setup (pos: {bb_position:.3f}, dist_up: {distance_to_upper:.4f}, dist_low: {distance_to_lower:.4f})",
+                "reason": f"Pas de setup BB (pos: {bb_position:.3f}, dist_up: {distance_to_upper:.4f}, dist_low: {distance_to_lower:.4f}, width: {bb_width_pct:.2f}%)" if bb_width_pct else f"Pas de setup BB (pos: {bb_position:.3f}, distances: {distance_to_upper:.4f}/{distance_to_lower:.4f})",
                 "metadata": {
                     "strategy": self.name,
                     "bb_position": bb_position,
                     "distance_to_upper": distance_to_upper,
-                    "distance_to_lower": distance_to_lower
+                    "distance_to_lower": distance_to_lower,
+                    "bb_width_pct": bb_width_pct,
+                    "is_touching_upper": is_touching_upper,
+                    "is_touching_lower": is_touching_lower,
+                    "is_extreme_high": is_extreme_high,
+                    "is_extreme_low": is_extreme_low,
+                    "is_very_high": is_very_high,
+                    "is_very_low": is_very_low
                 }
             }
             
@@ -233,11 +253,11 @@ class Bollinger_Touch_Strategy(BaseStrategy):
                     elif rsi <= self.rsi_oversold:
                         confidence_boost += 0.12
                         reason += f" + RSI survente ({rsi:.1f})"
-                    elif rsi <= 40:
-                        confidence_boost += 0.05
+                    elif rsi <= 45:  # Plus permissif pour BUY
+                        confidence_boost += 0.06
                         reason += f" + RSI favorable ({rsi:.1f})"
-                    elif rsi > 65:  # Pénalité si RSI contradictoire
-                        confidence_boost -= 0.20
+                    elif rsi > 60:  # Pénalité plus douce
+                        confidence_boost -= 0.12
                         reason += f" MAIS RSI élevé ({rsi:.1f})"
                         
                 elif signal_side == "SELL":
@@ -247,11 +267,11 @@ class Bollinger_Touch_Strategy(BaseStrategy):
                     elif rsi >= self.rsi_overbought:
                         confidence_boost += 0.12
                         reason += f" + RSI surachat ({rsi:.1f})"
-                    elif rsi >= 60:
-                        confidence_boost += 0.05
+                    elif rsi >= 55:  # Plus permissif pour SELL
+                        confidence_boost += 0.06
                         reason += f" + RSI favorable ({rsi:.1f})"
-                    elif rsi < 35:  # Pénalité si RSI contradictoire
-                        confidence_boost -= 0.20
+                    elif rsi < 40:  # Pénalité plus douce
+                        confidence_boost -= 0.12
                         reason += f" MAIS RSI faible ({rsi:.1f})"
             except (ValueError, TypeError):
                 pass
@@ -441,13 +461,13 @@ class Bollinger_Touch_Strategy(BaseStrategy):
         # Calcul final de la confiance
         raw_confidence = base_confidence * (1 + confidence_boost)
         
-        # Filtre final - rejeter si confiance trop faible
-        if raw_confidence < 0.40:  # Seuil minimum
+        # Filtre final - SEUIL ABAISSÉ pour plus de signaux
+        if raw_confidence < 0.30:  # Seuil minimum abaissé de 0.40 à 0.30
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Signal rejeté - confiance insuffisante ({raw_confidence:.2f})",
+                "reason": f"Signal rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.30)",
                 "metadata": {
                     "strategy": self.name,
                     "rejected_signal": signal_side,
@@ -472,6 +492,7 @@ class Bollinger_Touch_Strategy(BaseStrategy):
                 "bb_lower": bb_lower,
                 "bb_position": bb_position,
                 "bb_width": bb_width,
+                "bb_width_pct": bb_width_pct,
                 "touch_type": touch_type,
                 "distance_to_upper": distance_to_upper,
                 "distance_to_lower": distance_to_lower,

@@ -50,4 +50,5 @@ COPY shared /app/shared
 COPY signal_aggregator /app/signal_aggregator
 
 # Attendre que les services soient prêts puis démarrer
-CMD ["python", "signal_aggregator/src/main.py"]
+# NOUVEAU: Version simplifiée sans validators complexes - IMPORTS CORRIGÉS
+CMD ["python", "signal_aggregator/src/main_simple.py"]

@@ -28,23 +28,23 @@ class HullMA_Slope_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # NOUVEAUX paramètres pour approche CONTRARIAN
-        self.hull_trend_threshold = 0.0015     # 0.15% pente minimum pour tendance valide
-        self.price_pullback_min = 0.008        # 0.8% pullback minimum sous Hull haussière
-        self.price_pullback_max = 0.035        # 3.5% pullback maximum (éviter falling knife)
-        self.price_bounce_min = 0.008          # 0.8% bounce minimum au-dessus Hull baissière  
-        self.price_bounce_max = 0.035          # 3.5% bounce maximum (éviter dead cat bounce)
+        # NOUVEAUX paramètres pour approche CONTRARIAN (AJUSTÉS POUR PLUS DE SIGNAUX)
+        self.hull_trend_threshold = 0.001      # 0.10% pente minimum (était 0.15%)
+        self.price_pullback_min = 0.005        # 0.5% pullback minimum (était 0.8%)
+        self.price_pullback_max = 0.050        # 5.0% pullback maximum (était 3.5%)
+        self.price_bounce_min = 0.005          # 0.5% bounce minimum (était 0.8%)
+        self.price_bounce_max = 0.050          # 5.0% bounce maximum (était 3.5%)
         
-        # Seuils oscillateurs pour contrarian (plus stricts)
-        self.rsi_oversold_entry = 35           # RSI survente pour BUY
-        self.rsi_overbought_entry = 65         # RSI surachat pour SELL
-        self.stoch_oversold_entry = 25         # Stoch survente pour BUY
-        self.stoch_overbought_entry = 75       # Stoch surachat pour SELL
+        # Seuils oscillateurs pour contrarian (ASSOUPLIS)
+        self.rsi_oversold_entry = 40           # RSI survente pour BUY (était 35)
+        self.rsi_overbought_entry = 60         # RSI surachat pour SELL (était 65)
+        self.stoch_oversold_entry = 30         # Stoch survente pour BUY (était 25)
+        self.stoch_overbought_entry = 70       # Stoch surachat pour SELL (était 75)
         
-        # Filtres qualité obligatoires
-        self.min_volume_ratio = 1.1            # Volume minimum requis
-        self.min_confluence_score = 40         # Confluence minimum
-        self.min_confidence_threshold = 0.50   # Confidence minimum stricte
+        # Filtres qualité obligatoires (ASSOUPLIS)
+        self.min_volume_ratio = 0.8            # Volume minimum requis (était 1.1)
+        self.min_confluence_score = 30         # Confluence minimum (était 40)
+        self.min_confidence_threshold = 0.35   # Confidence minimum (était 0.50)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs."""
@@ -113,7 +113,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
                 try:
                     angle = float(trend_angle)
                     # Convertir angle en pente normalisée
-                    angle_threshold_deg = 2.0  # 2 degrés minimum
+                    angle_threshold_deg = 1.0  # 1 degré minimum (était 2.0)
                     
                     if angle >= angle_threshold_deg:
                         return {
@@ -146,18 +146,18 @@ class HullMA_Slope_Strategy(BaseStrategy):
             # Distance prix/Hull MA comme indicateur secondaire
             price_hull_ratio = current_price / hull_val
             
-            if directional_bias == 'BULLISH' and trend_strength in ['moderate', 'strong', 'very_strong', 'extreme']:
+            if directional_bias == 'BULLISH' and trend_strength in ['weak', 'moderate', 'strong', 'very_strong', 'extreme']:
                 return {
                     'direction': 'bullish',
                     'strength': str(trend_strength).lower() if trend_strength else 'moderate',
-                    'reliable': trend_strength in ['strong', 'very_strong', 'extreme'],
+                    'reliable': trend_strength in ['moderate', 'strong', 'very_strong', 'extreme'],
                     'slope_proxy': min((price_hull_ratio - 1.0) * 10, 0.1)  # Approximation
                 }
-            elif directional_bias == 'BEARISH' and trend_strength in ['moderate', 'strong', 'very_strong', 'extreme']:
+            elif directional_bias == 'BEARISH' and trend_strength in ['weak', 'moderate', 'strong', 'very_strong', 'extreme']:
                 return {
                     'direction': 'bearish',
                     'strength': str(trend_strength).lower() if trend_strength else 'moderate',
-                    'reliable': trend_strength in ['strong', 'very_strong', 'extreme'],
+                    'reliable': trend_strength in ['moderate', 'strong', 'very_strong', 'extreme'],
                     'slope_proxy': max((price_hull_ratio - 1.0) * 10, -0.1)  # Approximation
                 }
             else:
@@ -222,16 +222,16 @@ class HullMA_Slope_Strategy(BaseStrategy):
             try:
                 hist = float(macd_histogram)
                 # Chercher un retournement (MACD qui redevient positif)
-                if hist > 0.0001:  # Légèrement positif
+                if hist > 0.00005:  # Légèrement positif (seuil assoupli)
                     oversold_signals += 1
                     oversold_details.append(f"MACD retournement (+{hist:.4f})")
             except (ValueError, TypeError):
                 pass
                 
-        if oversold_signals < 2:  # Au moins 2 confirmations requises
+        if oversold_signals < 1:  # Au moins 1 confirmation requise (était 2)
             return {
                 'is_pullback': False, 
-                'reason': f'Pullback détecté mais confirmations insuffisantes ({oversold_signals}/2)',
+                'reason': f'Pullback détecté mais confirmations insuffisantes ({oversold_signals}/1)',
                 'pullback_pct': pullback_pct,
                 'oversold_signals': oversold_signals
             }
@@ -295,16 +295,16 @@ class HullMA_Slope_Strategy(BaseStrategy):
             try:
                 hist = float(macd_histogram)
                 # Chercher un retournement (MACD qui redevient négatif)
-                if hist < -0.0001:  # Légèrement négatif
+                if hist < -0.00005:  # Légèrement négatif (seuil assoupli)
                     overbought_signals += 1
                     overbought_details.append(f"MACD retournement ({hist:.4f})")
             except (ValueError, TypeError):
                 pass
                 
-        if overbought_signals < 2:  # Au moins 2 confirmations requises
+        if overbought_signals < 1:  # Au moins 1 confirmation requise (était 2)
             return {
                 'is_bounce': False,
-                'reason': f'Bounce détecté mais confirmations insuffisantes ({overbought_signals}/2)',
+                'reason': f'Bounce détecté mais confirmations insuffisantes ({overbought_signals}/1)',
                 'bounce_pct': bounce_pct,
                 'overbought_signals': overbought_signals
             }
@@ -382,16 +382,11 @@ class HullMA_Slope_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name, "confluence_score": confluence_score}
             }
             
-        # Éviter marchés très volatiles
+        # Pénaliser (mais ne pas bannir) marchés très volatiles
         volatility_regime = values.get('volatility_regime')
+        volatility_penalty = 0.0
         if volatility_regime == 'extreme':
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Volatilité extrême - éviter signaux contrarian",
-                "metadata": {"strategy": self.name, "volatility_regime": volatility_regime}
-            }
+            volatility_penalty = -0.10  # Réduction confidence au lieu de rejet total
             
         # === ANALYSE TENDANCE HULL MA ===
         
@@ -414,7 +409,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
         signal_side = None
         reason = ""
         opportunity_data = {}
-        base_confidence = 0.45  # Base conservative pour contrarian
+        base_confidence = 0.30  # Base plus accessible pour contrarian (était 0.45)
         confidence_boost = 0.0
         
         if hull_trend['direction'] == 'bullish':
@@ -425,7 +420,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
                 signal_side = "BUY"
                 reason = f"CONTRARIAN BUY: {pullback_analysis['reason']} en tendance Hull haussière"
                 opportunity_data = pullback_analysis
-                confidence_boost += 0.20  # Bonus base pour setup contrarian
+                confidence_boost += 0.25  # Bonus base pour setup contrarian (augmenté)
             else:
                 return {
                     "side": None,
@@ -447,7 +442,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
                 signal_side = "SELL"
                 reason = f"CONTRARIAN SELL: {bounce_analysis['reason']} en tendance Hull baissière"
                 opportunity_data = bounce_analysis
-                confidence_boost += 0.20  # Bonus base pour setup contrarian
+                confidence_boost += 0.25  # Bonus base pour setup contrarian (augmenté)
             else:
                 return {
                     "side": None,
@@ -475,32 +470,41 @@ class HullMA_Slope_Strategy(BaseStrategy):
             
         # === BONUS DE CONFIANCE ===
         
-        # Bonus force tendance Hull
+        # Bonus force tendance Hull (AJUSTÉ)
         if hull_trend['strength'] == 'strong':
             confidence_boost += 0.15
             reason += " + tendance Hull FORTE"
         elif hull_trend['strength'] == 'moderate':
-            confidence_boost += 0.08
+            confidence_boost += 0.10  # Était 0.08
             reason += " + tendance Hull modérée"
+        elif hull_trend['strength'] == 'weak':
+            confidence_boost += 0.05  # Nouveau bonus pour weak
+            reason += " + tendance Hull faible"
             
-        # Bonus nombre de confirmations oscillateurs
+        # Bonus nombre de confirmations oscillateurs (AJUSTÉ)
         if signal_side == "BUY":
             oversold_count = opportunity_data.get('oversold_signals', 0)
             if oversold_count >= 3:
-                confidence_boost += 0.18
+                confidence_boost += 0.20  # Augmenté
                 reason += f" + {oversold_count} confirmations survente"
             elif oversold_count >= 2:
-                confidence_boost += 0.12
+                confidence_boost += 0.15  # Augmenté
                 reason += f" + {oversold_count} confirmations"
+            elif oversold_count >= 1:
+                confidence_boost += 0.08  # Nouveau bonus 1 confirmation
+                reason += f" + {oversold_count} confirmation"
                 
         elif signal_side == "SELL":
             overbought_count = opportunity_data.get('overbought_signals', 0)
             if overbought_count >= 3:
-                confidence_boost += 0.18  
+                confidence_boost += 0.20  # Augmenté
                 reason += f" + {overbought_count} confirmations surachat"
             elif overbought_count >= 2:
-                confidence_boost += 0.12
+                confidence_boost += 0.15  # Augmenté
                 reason += f" + {overbought_count} confirmations"
+            elif overbought_count >= 1:
+                confidence_boost += 0.08  # Nouveau bonus 1 confirmation
+                reason += f" + {overbought_count} confirmation"
                 
         # Bonus alignement EMA pour contexte
         ema_12 = values.get('ema_12')
@@ -570,6 +574,9 @@ class HullMA_Slope_Strategy(BaseStrategy):
             reason += f" + marché {market_regime.lower()}"
             
         # === FILTRE FINAL ===
+        
+        # Appliquer pénalité volatilité
+        confidence_boost += volatility_penalty
         
         raw_confidence = base_confidence * (1 + confidence_boost)
         if raw_confidence < self.min_confidence_threshold:

@@ -42,10 +42,10 @@ class Resistance_Rejection_Strategy(BaseStrategy):
         self.strong_rejection_volume = 2.0           # Volume 2x pour rejet fort
         self.momentum_reversal_threshold = -0.2      # Momentum devient négatif
         
-        # Paramètres RSI/oscillateurs - ADAPTÉS CRYPTO
-        self.overbought_rsi_threshold = 65           # RSI surachat plus sensible
-        self.extreme_overbought_threshold = 78       # RSI extrême accessible
-        self.williams_r_overbought = -25             # Williams %R plus permissif
+        # Paramètres RSI/oscillateurs - ASSOUPLIS CRYPTO
+        self.overbought_rsi_threshold = 58           # RSI surachat très sensible crypto
+        self.extreme_overbought_threshold = 70       # RSI extrême plus accessible
+        self.williams_r_overbought = -40             # Williams %R bien plus permissif
         
         # Paramètres de résistance
         self.min_resistance_strength = 0.5           # Force minimum résistance
@@ -178,7 +178,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_rejection': rejection_score >= 0.35,  # Seuil assoupli pour crypto
+            'is_rejection': rejection_score >= 0.25,  # Seuil très assoupli pour crypto
             'score': rejection_score,
             'indicators': rejection_indicators,
             'resistance_level': resistance_level,
@@ -228,17 +228,20 @@ class Resistance_Rejection_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Momentum score devient négatif (format 0-100, 50=neutre)
+        # Momentum score devient négatif (format 0-100, 50=neutre) - TRÈS ASSOUPLI
         momentum_score = values.get('momentum_score')
         if momentum_score is not None:
             try:
                 momentum_val = float(momentum_score)
-                if momentum_val <= 45:  # Momentum affaibli (assoupli pour crypto)
-                    exhaustion_score += 0.2
+                if momentum_val <= 50:  # Momentum neutre ou faible (très permissif)
+                    exhaustion_score += 0.15
                     exhaustion_indicators.append(f"Momentum affaibli ({momentum_val:.1f})")
-                elif momentum_val <= 50:  # Momentum neutre
+                elif momentum_val <= 60:  # Momentum modéré
                     exhaustion_score += 0.1
-                    exhaustion_indicators.append(f"Momentum neutre ({momentum_val:.1f})")
+                    exhaustion_indicators.append(f"Momentum modéré ({momentum_val:.1f})")
+                elif momentum_val <= 70:  # Encore acceptable
+                    exhaustion_score += 0.05
+                    exhaustion_indicators.append(f"Momentum ralentit ({momentum_val:.1f})")
             except (ValueError, TypeError):
                 pass
                 
@@ -254,7 +257,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_exhausted': exhaustion_score >= 0.25,  # Seuil assoupli pour crypto
+            'is_exhausted': exhaustion_score >= 0.15,  # Seuil très assoupli pour crypto
             'score': exhaustion_score,
             'indicators': exhaustion_indicators
         }
@@ -311,10 +314,10 @@ class Resistance_Rejection_Strategy(BaseStrategy):
         # Détection de l'essoufflement du momentum
         exhaustion_analysis = self._detect_momentum_exhaustion(values)
         
-        # Signal SELL si rejet (essoufflement optionnel)
+        # Signal SELL si rejet (essoufflement optionnel)  
         if rejection_analysis['is_rejection']:
-            base_confidence = 0.55  # Base plus généreuse
-            confidence_boost = rejection_analysis['score'] * 0.8  # Multiplicateur amélioré
+            base_confidence = 0.50  # Base plus accessible
+            confidence_boost = rejection_analysis['score'] * 1.0  # Multiplicateur généreux
             
             reason = f"Rejet résistance {rejection_analysis['resistance_level']:.2f} ({rejection_analysis['distance_pct']:.2f}%)"
             
@@ -326,17 +329,22 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                 confidence_boost += exhaustion_analysis['score'] * 0.4
                 reason += f" + signes essoufflement"
                 
-            # Volume de confirmation
+            # Volume de confirmation - ASSOUPLI
             volume_ratio = values.get('volume_ratio')
             if volume_ratio is not None:
                 try:
                     vol_ratio = float(volume_ratio)
                     if vol_ratio >= self.strong_rejection_volume:
-                        confidence_boost += 0.2
+                        confidence_boost += 0.25
                         reason += f" + volume fort ({vol_ratio:.1f}x)"
                     elif vol_ratio >= self.min_rejection_volume:
-                        confidence_boost += 0.1
+                        confidence_boost += 0.15
                         reason += f" + volume confirmé ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= 0.8:  # Volume acceptable
+                        confidence_boost += 0.05
+                        reason += f" + volume ok ({vol_ratio:.1f}x)"
+                    else:  # Volume faible mais pas bloquant
+                        confidence_boost -= 0.05
                 except (ValueError, TypeError):
                     pass
                     
@@ -368,12 +376,12 @@ class Resistance_Rejection_Strategy(BaseStrategy):
             raw_confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
             
             # Vérification seuil minimum
-            if raw_confidence < 0.45:  # Seuil minimum 45%
+            if raw_confidence < 0.35:  # Seuil minimum assoupli 35%
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": f"Signal rejet résistance trop faible (conf: {raw_confidence:.2f} < 0.45)",
+                    "reason": f"Signal rejet résistance trop faible (conf: {raw_confidence:.2f} < 0.35)",
                     "metadata": {
                         "strategy": self.name,
                         "symbol": self.symbol,

@@ -51,13 +51,16 @@ class Coordinator:
         self.stop_loss_active = True
         self.stop_loss_thread: Optional[threading.Thread] = None
         
-        # Configuration dynamique basée sur le capital total
+        # Configuration dynamique basée sur l'USDC disponible
         self.fee_rate = 0.001  # 0.1% de frais estimés par trade
         
-        # Allocation dynamique intelligente
-        self.base_allocation_percent = 8.0  # 8% par défaut du capital total
-        self.max_trade_percent = 15.0  # 15% maximum du capital total
-        self.min_absolute_trade_usdc = 10.0  # 10 USDC minimum Binance
+        # Allocation basée USDC - adaptée pour multi-crypto (22 symbols)
+        self.base_allocation_usdc_percent = 8.0  # 8% de l'USDC disponible (permet ~8 positions)
+        self.strong_allocation_usdc_percent = 12.0 # 12% pour signaux forts
+        self.max_allocation_usdc_percent = 15.0   # 15% maximum pour VERY_STRONG
+        self.weak_allocation_usdc_percent = 4.0   # 4% pour signaux faibles
+        self.usdc_safety_margin = 0.98            # Garde 2% d'USDC en sécurité
+        self.min_absolute_trade_usdc = 10.0       # 10 USDC minimum Binance
         
         # Initialiser la connexion DB d'abord
         self._init_db_connection()
@@ -78,7 +81,7 @@ class Coordinator:
         # Démarrer le monitoring stop-loss
         self.start_stop_loss_monitoring()
         
-        logger.info("✅ Coordinator initialisé (version simplifiée) avec stop-loss automatique")
+        logger.info(f"✅ Coordinator initialisé - Allocation USDC: {self.weak_allocation_usdc_percent}-{self.max_allocation_usdc_percent}% (22 cryptos)")
         
         # Stats
         self.stats = {
@@ -398,33 +401,38 @@ class Coordinator:
                     usdc_balance = next((b.get('free', 0) for b in balances if b.get('asset') == 'USDC'), 0)
                     total_capital = sum(b.get('value_usdc', 0) for b in balances)
                 
-                # Allocation dynamique basée sur la force du signal
-                allocation_percent = self.base_allocation_percent  # 8% par défaut
+                # ALLOCATION USDC MULTI-CRYPTO : Pourcentages adaptés pour 22 cryptos
                 
-                # Ajuster selon la force du signal si disponible
+                # Ajuster selon la force du signal (% de l'USDC disponible)
                 if signal.metadata and "signal_strength" in signal.metadata:
                     strength = signal.metadata["signal_strength"]
                     if strength == "VERY_STRONG":
-                        allocation_percent = 12.0
+                        allocation_percent = self.max_allocation_usdc_percent     # 20% USDC
                     elif strength == "STRONG":
-                        allocation_percent = 10.0
+                        allocation_percent = self.strong_allocation_usdc_percent  # 15% USDC
                     elif strength == "MODERATE":
-                        allocation_percent = 8.0
+                        allocation_percent = self.base_allocation_usdc_percent    # 12% USDC
                     elif strength == "WEAK":
-                        allocation_percent = 5.0
+                        allocation_percent = self.weak_allocation_usdc_percent    # 8% USDC
+                    else:
+                        allocation_percent = self.base_allocation_usdc_percent
+                else:
+                    allocation_percent = self.base_allocation_usdc_percent
                 
-                # Calculer le montant à trader (% du capital total)
-                trade_amount = total_capital * (allocation_percent / 100)
+                # Calculer le montant basé sur l'USDC disponible
+                trade_amount = usdc_balance * (allocation_percent / 100)
                 
-                # Limiter par l'USDC disponible (utiliser jusqu'à 98% pour garder une petite marge)
-                trade_amount = min(trade_amount, usdc_balance * 0.98)
-                
-                # Appliquer seulement le maximum (pas de minimum % car on veut pouvoir épuiser l'USDC)
-                max_trade_value = total_capital * (self.max_trade_percent / 100)
-                trade_amount = min(trade_amount, max_trade_value)
+                # Limiter par la marge de sécurité USDC
+                max_usdc_usable = usdc_balance * self.usdc_safety_margin  # 98% de l'USDC
+                trade_amount = min(trade_amount, max_usdc_usable)
                 
                 # Mais toujours respecter le minimum absolu Binance
                 trade_amount = max(self.min_absolute_trade_usdc, trade_amount)
+                
+                # Log pour debug multi-crypto
+                logger.info(f"💰 {signal.symbol} - USDC dispo: {usdc_balance:.0f}€, "
+                           f"allocation: {allocation_percent:.0f}% = {trade_amount:.0f}€ "
+                           f"(force: {signal.metadata.get('signal_strength', 'UNKNOWN') if signal.metadata else 'NONE'})")
                 
                 # Convertir en quantité
                 quantity = trade_amount / signal.price

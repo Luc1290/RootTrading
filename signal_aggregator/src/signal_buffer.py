@@ -60,9 +60,10 @@ class IntelligentSignalBuffer:
         self.timeout_task = None
         
         # Timeframes par ordre de priorité (plus élevé = plus important)
+        # CORRECTION: 15m doit être considéré comme timeframe élevé (>100) pour dominer les conflits
         self.timeframe_priority = {
-            '1d': 1000, '4h': 400, '1h': 100, 
-            '15m': 15, '5m': 5, '3m': 3, '1m': 1
+            '1d': 1000, '4h': 400, '1h': 200, 
+            '15m': 150, '5m': 5, '3m': 3, '1m': 1  # 15m passe à 150 pour dominer les 3m/5m
         }
         
         # Statistiques
@@ -474,7 +475,7 @@ class IntelligentSignalBuffer:
                 avg_sell_conf = sum(s.get('confidence', 0.5) for s in sell_signals) / len(sell_signals) if sell_signals else 0
                 
                 conf_diff = abs(avg_buy_conf - avg_sell_conf)
-                if conf_diff > 0.25:
+                if conf_diff > 0.10:  # RÉDUIT: 10% d'écart suffit au lieu de 25%
                     if avg_buy_conf > avg_sell_conf:
                         resolution_rules.append(f"BUY confidence supérieure ({avg_buy_conf:.2f} vs {avg_sell_conf:.2f})")
                         winning_side = "BUY"

@@ -457,8 +457,23 @@ class RegimeDetector:
                     return RegimeType.BREAKOUT_BEAR
                 return RegimeType.TRENDING_BEAR
         
-        # Conditions moyennes : EMA alignées OU momentum cohérent + pente significative
-        elif (trend['ema_alignment'] or momentum['coherent']) and abs(trend['slope']) > 0.15:
+        # ASSOUPLISSEMENT: EMA alignées suffisent si pente significative (même momentum non cohérent)
+        elif trend['ema_alignment'] and abs(trend['slope']) > 0.1:  # Seuil réduit de 0.15 à 0.1
+            if trend['direction'] == 'bullish' and trend['slope'] > 0.1:
+                # Accepter si momentum n'est PAS opposé (bearish)
+                if momentum['direction'] != 'bearish':
+                    if volatility['regime'] == 'high' and abs(trend['slope']) > 0.25:
+                        return RegimeType.BREAKOUT_BULL
+                    return RegimeType.TRENDING_BULL
+            elif trend['direction'] == 'bearish' and trend['slope'] < -0.1:
+                # Accepter si momentum n'est PAS opposé (bullish)  
+                if momentum['direction'] != 'bullish':
+                    if volatility['regime'] == 'high' and abs(trend['slope']) > 0.25:
+                        return RegimeType.BREAKOUT_BEAR
+                    return RegimeType.TRENDING_BEAR
+        
+        # Conditions moyennes : momentum cohérent + pente significative (même sans EMA parfait)
+        elif momentum['coherent'] and abs(trend['slope']) > 0.15:
             if trend['direction'] == 'bullish' and trend['slope'] > 0.15:
                 if momentum['direction'] in ['bullish', 'neutral']:
                     if volatility['regime'] == 'high' and abs(trend['slope']) > 0.3:
@@ -470,11 +485,12 @@ class RegimeDetector:
                         return RegimeType.BREAKOUT_BEAR
                     return RegimeType.TRENDING_BEAR
         
-        # Conditions faibles : Pente très significative seule (crypto peut être très directionnel)
-        elif abs(trend['slope']) > 0.25:
-            if trend['slope'] > 0.25:
+        # Conditions faibles : Pente significative seule (crypto peut être très directionnel)
+        # RÉDUIT pour mieux détecter les pumps crypto
+        elif abs(trend['slope']) > 0.15:  # Réduit de 0.25 à 0.15
+            if trend['slope'] > 0.15:
                 return RegimeType.TRENDING_BULL
-            elif trend['slope'] < -0.25:
+            elif trend['slope'] < -0.15:
                 return RegimeType.TRENDING_BEAR
         
         # Breakout détection basée sur volatilité + momentum fort (même sans EMA parfait)
@@ -495,12 +511,14 @@ class RegimeDetector:
     def _calculate_regime_strength(self, volatility: Dict, trend: Dict, momentum: Dict) -> RegimeStrength:
         """Calcule la force du régime."""
         
-        # Score composite 0-100
-        trend_score = trend['strength'] if trend['ema_alignment'] else 0
-        momentum_score = momentum['strength'] if momentum['coherent'] else 0
+        # Score composite 0-100 - PLUS PERMISSIF POUR CRYPTO
+        # Donner un score partiel même sans cohérence parfaite
+        trend_score = trend['strength'] * (1.0 if trend['ema_alignment'] else 0.6)  # 60% du score sans EMA
+        momentum_score = momentum['strength'] * (1.0 if momentum['coherent'] else 0.6)  # 60% du score sans cohérence
         volatility_score = 100 - volatility['volatility_percentile']  # Inverse pour trending
         
-        composite_score = (trend_score * 0.4 + momentum_score * 0.4 + volatility_score * 0.2)
+        # Ajustement crypto : réduire l'importance de la volatilité (les cryptos sont toujours volatiles)
+        composite_score = (trend_score * 0.45 + momentum_score * 0.45 + volatility_score * 0.1)
         
         if composite_score > 75:
             return RegimeStrength.EXTREME

@@ -1,6 +1,6 @@
 """
-Point d'entrée principal pour le microservice Signal Aggregator - VERSION PROPRE.
-Utilise le nouveau système d'agrégation intelligent.
+Point d'entrée principal pour le microservice Signal Aggregator - VERSION ULTRA-SIMPLIFIÉE.
+Utilise le nouveau système sans validators complexes.
 """
 
 import asyncio
@@ -12,13 +12,10 @@ import psycopg2
 from aiohttp import web
 
 # Ajouter les répertoires nécessaires au path pour les imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))  # Pour shared
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))     # Pour validators
 sys.path.append(os.path.dirname(__file__))  # Pour les modules src locaux
 
-from validator_loader import ValidatorLoader
 from context_manager import ContextManager
-from signal_aggregator_service import SignalAggregatorService
+from signal_aggregator_simple import SimpleSignalAggregatorService
 from database_manager import DatabaseManager
 
 # Configuration du logging
@@ -30,8 +27,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class SignalAggregatorApp:
-    """Application principale du signal aggregator."""
+class SimpleSignalAggregatorApp:
+    """Application principale du signal aggregator ultra-simplifié."""
     
     def __init__(self):
         # Configuration base de données
@@ -43,9 +40,8 @@ class SignalAggregatorApp:
             'password': os.getenv('DB_PASSWORD', 'postgres')
         }
         
-        # Modules principaux
+        # Modules simplifiés
         self.db_connection = None
-        self.validator_loader = None
         self.context_manager = None
         self.database_manager = None
         self.aggregator_service = None
@@ -58,24 +54,18 @@ class SignalAggregatorApp:
         self.start_time = datetime.utcnow()
         
     async def initialize(self):
-        """Initialise tous les composants."""
-        logger.info("Initialisation du Signal Aggregator...")
+        """Initialise tous les composants simplifiés."""
+        logger.info("🚀 Initialisation Signal Aggregator SIMPLIFIÉ...")
         
         # Connexion base de données
         await self.connect_db()
         
-        # Chargement des validators
-        self.validator_loader = ValidatorLoader()
-        self.validator_loader.load_validators()
-        logger.info(f"Validators chargés: {len(self.validator_loader.get_all_validators())}")
-        
-        # Gestionnaires
+        # Gestionnaires essentiels seulement
         self.context_manager = ContextManager(self.db_connection)
         self.database_manager = DatabaseManager(self.db_connection)
         
-        # Service d'agrégation principal
-        self.aggregator_service = SignalAggregatorService(
-            self.validator_loader, 
+        # Service d'agrégation simplifié
+        self.aggregator_service = SimpleSignalAggregatorService(
             self.context_manager, 
             self.database_manager
         )
@@ -83,25 +73,24 @@ class SignalAggregatorApp:
         # Web server pour health checks
         await self.setup_web_server()
         
-        logger.info("Signal Aggregator initialisé avec succès")
+        logger.info("✅ Signal Aggregator simplifié initialisé")
         
     async def connect_db(self):
         """Établit la connexion à la base de données."""
         try:
             self.db_connection = psycopg2.connect(**self.db_config)
-            logger.info("Connexion à la base de données établie")
+            logger.info("✅ Connexion DB établie")
         except Exception as e:
-            logger.error(f"Erreur connexion DB: {e}")
+            logger.error(f"❌ Erreur connexion DB: {e}")
             raise
             
     async def setup_web_server(self):
         """Configure le serveur web pour les health checks."""
         self.web_app = web.Application()
         
-        # Routes
+        # Routes simplifiées
         self.web_app.router.add_get('/health', self.health_check)
         self.web_app.router.add_get('/stats', self.get_stats)
-        self.web_app.router.add_get('/metrics', self.get_metrics)
         
         # Démarrage du serveur
         self.web_runner = web.AppRunner(self.web_app)
@@ -110,10 +99,10 @@ class SignalAggregatorApp:
         site = web.TCPSite(self.web_runner, '0.0.0.0', 8080)
         await site.start()
         
-        logger.info("Serveur web health check démarré sur le port 8080")
+        logger.info("✅ Health check server: port 8080")
         
     async def health_check(self, request):
-        """Endpoint de health check."""
+        """Endpoint de health check simplifié."""
         try:
             uptime = (datetime.utcnow() - self.start_time).total_seconds()
             
@@ -122,90 +111,90 @@ class SignalAggregatorApp:
                 cursor.execute("SELECT 1")
                 db_status = "OK"
                 
-            # Stats du service d'agrégation
+            # Stats du service simplifié
             stats = self.aggregator_service.get_stats() if self.aggregator_service else {}
             
             return web.json_response({
                 'status': 'healthy',
+                'version': 'SIMPLIFIÉ v2.0',
                 'uptime_seconds': uptime,
                 'database_status': db_status,
-                'aggregator_stats': stats.get('aggregator_stats', {}),
-                'validation_stats': stats.get('validation_stats', {}),
+                'stats_summary': {
+                    'signals_received': stats.get('service_stats', {}).get('signals_received', 0),
+                    'signals_validated': stats.get('service_stats', {}).get('signals_validated', 0),
+                    'success_rate': stats.get('processor_stats', {}).get('success_rate_percent', 0)
+                },
+                'features': [
+                    'Consensus adaptatif seulement',
+                    'Filtres critiques minimalistes (4 max)',
+                    'Pas de validators complexes',
+                    'Performance optimisée'
+                ],
                 'timestamp': datetime.utcnow().isoformat()
             })
             
         except Exception as e:
-            logger.error(f"Erreur health check: {e}")
+            logger.error(f"❌ Erreur health check: {e}")
             return web.json_response({
                 'status': 'unhealthy',
+                'version': 'SIMPLIFIÉ v2.0',
                 'error': str(e),
                 'timestamp': datetime.utcnow().isoformat()
             }, status=500)
             
     async def get_stats(self, request):
-        """Endpoint pour les statistiques détaillées."""
+        """Endpoint pour les statistiques simplifiées."""
         try:
             if not self.aggregator_service:
                 return web.json_response({'error': 'Service non initialisé'}, status=503)
                 
             stats = self.aggregator_service.get_stats()
-            return web.json_response(stats)
+            
+            # Enrichir avec infos système
+            enriched_stats = {
+                'system_info': {
+                    'version': 'Signal Aggregator SIMPLIFIÉ v2.0',
+                    'uptime_seconds': (datetime.utcnow() - self.start_time).total_seconds(),
+                    'features_removed': [
+                        '23+ validators complexes',
+                        'Système hiérarchique',
+                        'Pouvoir de veto',
+                        'Scoring pondéré complexe'
+                    ],
+                    'features_active': [
+                        'Consensus adaptatif par régime',
+                        'Filtres critiques (4 max)',
+                        'Buffer intelligent',
+                        'Protection contradictions'
+                    ]
+                },
+                **stats
+            }
+            
+            return web.json_response(enriched_stats)
             
         except Exception as e:
-            logger.error(f"Erreur récupération stats: {e}")
+            logger.error(f"❌ Erreur récupération stats: {e}")
             return web.json_response({'error': str(e)}, status=500)
             
-    async def get_metrics(self, request):
-        """Endpoint pour les métriques Prometheus-style."""
-        try:
-            if not self.aggregator_service:
-                return web.Response(text="# Service non initialisé\n", content_type='text/plain', status=503)
-                
-            stats = self.aggregator_service.get_stats()
-            aggregator_stats = stats.get('aggregator_stats', {})
-            validation_stats = stats.get('validation_stats', {})
-            
-            metrics = []
-            metrics.append("# HELP signal_aggregator_signals_received Total signals received")
-            metrics.append("# TYPE signal_aggregator_signals_received counter")
-            metrics.append(f"signal_aggregator_signals_received {aggregator_stats.get('signals_received', 0)}")
-            
-            metrics.append("# HELP signal_aggregator_signals_sent Total signals sent to coordinator")
-            metrics.append("# TYPE signal_aggregator_signals_sent counter")
-            metrics.append(f"signal_aggregator_signals_sent {aggregator_stats.get('signals_sent', 0)}")
-            
-            metrics.append("# HELP signal_aggregator_veto_rate Rate of signals vetoed")
-            metrics.append("# TYPE signal_aggregator_veto_rate gauge")
-            metrics.append(f"signal_aggregator_veto_rate {validation_stats.get('veto_rate', 0)}")
-            
-            return web.Response(text="\n".join(metrics) + "\n", content_type='text/plain')
-            
-        except Exception as e:
-            logger.error(f"Erreur génération métriques: {e}")
-            return web.Response(text=f"# Erreur: {str(e)}\n", content_type='text/plain', status=500)
-            
     async def run(self):
-        """Lance le service d'agrégation."""
+        """Lance le service d'agrégation simplifié."""
         try:
-            logger.info("Démarrage du service d'agrégation...")
+            logger.info("🚀 Démarrage service d'agrégation SIMPLIFIÉ...")
             await self.aggregator_service.start()
             
         except KeyboardInterrupt:
-            logger.info("Arrêt demandé par l'utilisateur")
+            logger.info("⏹️  Arrêt demandé par l'utilisateur")
         except Exception as e:
-            logger.error(f"Erreur service d'agrégation: {e}")
+            logger.error(f"❌ Erreur service d'agrégation: {e}")
             raise
         finally:
             await self.shutdown()
             
     async def shutdown(self):
         """Arrêt propre de l'application."""
-        logger.info("Arrêt du Signal Aggregator...")
+        logger.info("⏹️  Arrêt Signal Aggregator SIMPLIFIÉ...")
         
-        # Arrêt du service d'agrégation
-        if self.aggregator_service:
-            await self.aggregator_service.shutdown()
-            
         # Arrêt du serveur web
         if self.web_runner:
             await self.web_runner.cleanup()
@@ -214,22 +203,29 @@ class SignalAggregatorApp:
         if self.db_connection:
             self.db_connection.close()
             
-        logger.info("Signal Aggregator arrêté")
+        logger.info("✅ Signal Aggregator SIMPLIFIÉ arrêté")
 
 
 async def main():
     """Point d'entrée principal."""
-    app = SignalAggregatorApp()
+    app = SimpleSignalAggregatorApp()
     
     try:
         await app.initialize()
         await app.run()
     except KeyboardInterrupt:
-        logger.info("Arrêt par Ctrl+C")
+        logger.info("⏹️  Arrêt par Ctrl+C")
     except Exception as e:
-        logger.error(f"Erreur fatale: {e}", exc_info=True)
+        logger.error(f"❌ Erreur fatale: {e}", exc_info=True)
         sys.exit(1)
 
 
 if __name__ == "__main__":
+    # Message de démarrage
+    print("🚀 Signal Aggregator SIMPLIFIÉ v2.0")
+    print("📋 Features: Consensus adaptatif + Filtres critiques seulement")
+    print("🗑️  Supprimé: 23+ validators complexes, hiérarchies, vetos")
+    print("⚡ Optimisé pour: Performance + Simplicité")
+    print("="*60)
+    
     asyncio.run(main())

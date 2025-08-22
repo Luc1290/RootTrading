@@ -38,7 +38,9 @@ class ContextManager:
         Returns:
             Dict contenant le régime unifié et ses métadonnées
         """
-        reference_timeframe = "15m"
+        # MODIFIÉ: Utiliser 1m pour réactivité maximale (détection pump immédiate)
+        # Le bruit est déjà filtré car on n'émet pas de signaux 1m
+        reference_timeframe = "1m"  # Était 15m, trop lent pour crypto
         cache_key = f"regime_unified_{symbol}"
         
         try:
@@ -66,13 +68,13 @@ class ContextManager:
                         'regime_timestamp': regime_data['time']
                     }
                 else:
-                    # Fallback si pas de données 15m
-                    logger.warning(f"Pas de régime 15m pour {symbol}, fallback sur 5m")
+                    # Fallback si pas de données 1m
+                    logger.warning(f"Pas de régime 1m pour {symbol}, fallback sur 3m")
                     cursor.execute("""
                         SELECT market_regime, regime_strength, regime_confidence,
                                directional_bias, volatility_regime, time
                         FROM analyzer_data 
-                        WHERE symbol = %s AND timeframe = '5m'
+                        WHERE symbol = %s AND timeframe = '1m'
                         ORDER BY time DESC 
                         LIMIT 1
                     """, (symbol,))
@@ -85,7 +87,7 @@ class ContextManager:
                             'regime_confidence': fallback_data['regime_confidence'],
                             'directional_bias': fallback_data['directional_bias'],
                             'volatility_regime': fallback_data['volatility_regime'],
-                            'regime_source': "5m_fallback",
+                            'regime_source': "1m_fallback",
                             'regime_timestamp': fallback_data['time']
                         }
                         
@@ -156,12 +158,18 @@ class ContextManager:
             
             # Exposer les champs critiques au niveau racine pour compatibilité validators
             if indicators:
+                # Sauvegarder le régime du timeframe original avant update
+                original_regime = indicators.get('market_regime')
                 context.update(indicators)  # Tous les indicateurs au niveau racine
+                # Ajouter le régime original sous un autre nom pour référence
+                if original_regime:
+                    context['timeframe_regime'] = original_regime
             
-            # OVERRIDE: Utiliser le régime unifié au lieu du régime du timeframe
+            # OVERRIDE: FORCER le régime unifié après l'update des indicators
+            # IMPORTANT: Doit être APRÈS context.update(indicators) pour ne pas être écrasé
             if unified_regime:
                 context.update({
-                    'market_regime': unified_regime['market_regime'],          # Régime unifié (15m)
+                    'market_regime': unified_regime['market_regime'],          # Régime unifié (15m) - FORCE L'OVERRIDE
                     'regime_strength': unified_regime['regime_strength'],      
                     'regime_confidence': unified_regime['regime_confidence'],
                     'directional_bias': unified_regime['directional_bias'],

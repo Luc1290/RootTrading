@@ -99,11 +99,11 @@ REGIME_CONFIDENCE_ADJUSTMENTS = {
     },
     
     'TRENDING_BEAR': {
-        'trend_following': {'BUY': 0.7, 'SELL': 1.2},      # Pénalise BUY, boost SELL
-        'mean_reversion': {'BUY': 0.4, 'SELL': 0.6},       # Très pénalisé en tendance
-        'breakout': {'BUY': 0.8, 'SELL': 1.1},             # Léger boost SELL
-        'volume_based': {'BUY': 0.9, 'SELL': 1.1},         # Neutre-négatif
-        'structure_based': {'BUY': 0.9, 'SELL': 1.0}       # Quasi-neutre
+        'trend_following': {'BUY': 0.5, 'SELL': 1.3},      # DURCI: Très pénalisé BUY (était 0.7), boost SELL (était 1.2)
+        'mean_reversion': {'BUY': 0.3, 'SELL': 0.8},       # DURCI: Très pénalisé BUY (était 0.4), amélioré SELL
+        'breakout': {'BUY': 0.6, 'SELL': 1.2},             # DURCI: Très pénalisé BUY (était 0.8), boost SELL
+        'volume_based': {'BUY': 0.7, 'SELL': 1.2},         # DURCI: Pénalisé BUY (était 0.9), boost SELL
+        'structure_based': {'BUY': 0.7, 'SELL': 1.1}       # DURCI: Pénalisé BUY (était 0.9)
     },
     
     'RANGING': {
@@ -131,11 +131,11 @@ REGIME_CONFIDENCE_ADJUSTMENTS = {
     },
     
     'BREAKOUT_BEAR': {
-        'trend_following': {'BUY': 0.6, 'SELL': 1.1},      # Favorise SELL
-        'mean_reversion': {'BUY': 0.3, 'SELL': 0.5},       # Très pénalisé
-        'breakout': {'BUY': 0.7, 'SELL': 1.4},             # Très fort boost SELL
-        'volume_based': {'BUY': 0.8, 'SELL': 1.3},         # Fort boost SELL
-        'structure_based': {'BUY': 0.8, 'SELL': 1.1}       # Léger boost SELL
+        'trend_following': {'BUY': 0.4, 'SELL': 1.2},      # DURCI: Très pénalisé BUY (était 0.6)
+        'mean_reversion': {'BUY': 0.2, 'SELL': 0.7},       # DURCI: Extrêmement pénalisé BUY (était 0.3)
+        'breakout': {'BUY': 0.5, 'SELL': 1.5},             # DURCI: Très pénalisé BUY (était 0.7), boost SELL
+        'volume_based': {'BUY': 0.6, 'SELL': 1.4},         # DURCI: Très pénalisé BUY (était 0.8), boost SELL
+        'structure_based': {'BUY': 0.6, 'SELL': 1.2}       # DURCI: Très pénalisé BUY (était 0.8)
     },
     
     'TRANSITION': {
@@ -157,38 +157,39 @@ REGIME_CONFIDENCE_ADJUSTMENTS = {
 }
 
 # Seuils minimums de confidence requis selon le régime et la direction
+# DURCISSEMENT MAJEUR pour éviter les entrées prématurées en marché baissier
 REGIME_MIN_CONFIDENCE = {
     'TRENDING_BULL': {
-        'BUY': 0.55,   # Plus permissif pour BUY en tendance haussière
-        'SELL': 0.80   # Très strict pour SELL contre-tendance
+        'BUY': 0.60,   # Légèrement durci (était 0.55)
+        'SELL': 0.85   # Très strict pour SELL contre-tendance (était 0.80)
     },
     'TRENDING_BEAR': {
-        'BUY': 0.80,   # Très strict pour BUY contre-tendance
-        'SELL': 0.55   # Plus permissif pour SELL en tendance baissière
+        'BUY': 0.90,   # TRÈS STRICT pour BUY contre-tendance (était 0.80)
+        'SELL': 0.60   # Légèrement durci (était 0.55)
     },
     'RANGING': {
-        'BUY': 0.60,   # Équilibré
-        'SELL': 0.60   # Équilibré
+        'BUY': 0.70,   # Plus strict (était 0.60)
+        'SELL': 0.70   # Plus strict (était 0.60)
     },
     'VOLATILE': {
-        'BUY': 0.65,   # Plus strict en volatilité
-        'SELL': 0.65   # Plus strict en volatilité
+        'BUY': 0.75,   # Beaucoup plus strict (était 0.65)
+        'SELL': 0.70   # Plus strict (était 0.65)
     },
     'BREAKOUT_BULL': {
-        'BUY': 0.50,   # Très permissif pour BUY
-        'SELL': 0.85   # Très strict pour SELL
+        'BUY': 0.55,   # Légèrement durci (était 0.50)
+        'SELL': 0.90   # Très strict pour SELL (était 0.85)
     },
     'BREAKOUT_BEAR': {
-        'BUY': 0.85,   # Très strict pour BUY
-        'SELL': 0.50   # Très permissif pour SELL
+        'BUY': 0.95,   # EXTRÊMEMENT STRICT pour BUY (était 0.85)
+        'SELL': 0.55   # Légèrement durci (était 0.50)
     },
     'TRANSITION': {
-        'BUY': 0.65,   # Modérément strict
-        'SELL': 0.65   # Modérément strict
+        'BUY': 0.75,   # Plus conservateur (était 0.65)
+        'SELL': 0.70   # Plus conservateur (était 0.65)
     },
     'UNKNOWN': {
-        'BUY': 0.70,   # Conservateur
-        'SELL': 0.70   # Conservateur
+        'BUY': 0.80,   # Très conservateur (était 0.70)
+        'SELL': 0.75   # Conservateur (était 0.70)
     }
 }
 

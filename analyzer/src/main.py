@@ -401,7 +401,7 @@ class AnalyzerService:
         
         # FILTRAGE: Ignorer les timeframes 1m (trop de bruit)
         if timeframe == '1m':
-            logger.debug(f"Timeframe 1m ignoré pour {symbol} (bruit filtré)")
+            logger.info(f"Timeframe 1m ignoré pour {symbol} (bruit filtré)")
             return
         
         # Récupération des données

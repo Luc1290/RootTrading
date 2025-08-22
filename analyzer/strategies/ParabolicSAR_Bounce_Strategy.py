@@ -29,13 +29,13 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         self.min_sar_distance = 0.003  # Distance minimum resserrée crypto (0.3%)
         self.max_sar_distance = 0.02   # Distance maximum STRICTE (2% max pour crypto 3m)
         self.trend_confirmation_bonus = 0.10  # Bonus réduit (éviter sur-confiance)
-        self.volume_confirmation_threshold = 1.25  # Seuil volume STRICT (conviction requise)
+        self.volume_confirmation_threshold = 1.1  # Seuil volume assoupli (était 1.25)
         
-        # NOUVEAUX FILTRES ANTI-SPAM REBONDS
-        self.min_confluence_required = 65    # Confluence minimum OBLIGATOIRE
-        self.min_adx_required = 22           # ADX minimum pour tendance claire
-        self.min_pattern_confidence = 60     # Pattern confidence minimum si disponible
-        self.required_confirmations = 3      # Confirmations multiples obligatoires
+        # FILTRES REBONDS AJUSTÉS AUX CONDITIONS RÉELLES (CORRIGÉ)
+        self.min_confluence_required = 45    # Confluence minimum réaliste (était 65)
+        self.min_adx_required = 18           # ADX minimum assoupli (était 22)
+        self.min_pattern_confidence = 35     # Pattern confidence adapté (était 60)
+        self.required_confirmations = 2      # Confirmations atteignables (était 3)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs SAR et contexte."""
@@ -317,14 +317,14 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                 }
             }
         
-        # FILTRE FINAL CONFIANCE DURCI - rejeter si confidence trop faible
+        # FILTRE FINAL CONFIANCE ASSOUPLI - rejeter si confidence trop faible
         raw_confidence = base_confidence * (1 + confidence_boost)
-        if raw_confidence < 0.60:  # DURCI: Seuil 60% (vs 48% avant) pour rebonds
+        if raw_confidence < 0.45:  # ASSOUPLI: Seuil 45% (était 60%) pour rebonds BUY
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Signal rebond rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.60)",
+                "reason": f"Signal rebond rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.45)",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
@@ -441,14 +441,14 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         confidence_boost += additional_boost
         reason += reason_additions
         
-        # NOUVEAU: Filtre final - rejeter si confidence trop faible
+        # FILTRE FINAL CONFIANCE ASSOUPLI SELL - rejeter si confidence trop faible
         raw_confidence = base_confidence * (1 + confidence_boost)
-        if raw_confidence < 0.48:  # Seuil minimum 48% pour rebonds
+        if raw_confidence < 0.40:  # ASSOUPLI: Seuil 40% (était 48%) pour rebonds SELL
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Signal rebond rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.48)",
+                "reason": f"Signal rebond rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.40)",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
@@ -743,18 +743,18 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
-                # CONFLUENCE PLUS STRICTE pour rebonds
-                if confluence > 75:  # Seuil augmenté
+                # CONFLUENCE ASSOUPLIE pour rebonds (CORRIGÉ)
+                if confluence > 65:  # Seuil assoupli (était 75)
                     boost += 0.18
                     reason_additions += f" + confluence EXCELLENTE ({confluence:.0f})"
-                elif confluence > 65:  # Seuil augmenté
-                    boost += 0.12
+                elif confluence > 55:  # Seuil assoupli (était 65)
+                    boost += 0.14
                     reason_additions += f" + confluence élevée ({confluence:.0f})"
-                elif confluence > 55:  # Seuil augmenté
-                    boost += 0.06
+                elif confluence > 48:  # Seuil assoupli (était 55)
+                    boost += 0.08
                     reason_additions += f" + confluence correcte ({confluence:.0f})"
-                elif confluence < 45:  # Pénalité
-                    boost -= 0.10
+                elif confluence < 40:  # Pénalité assouplie (était 45)
+                    boost -= 0.08
                     reason_additions += f" mais confluence FAIBLE ({confluence:.0f})"
             except (ValueError, TypeError):
                 pass
@@ -779,11 +779,11 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
             elif signal_side == "SELL" and 40 <= rsi_val <= 75:
                 count += 1
                 
-        # 3. Trend strength minimum OBLIGATOIRE
+        # 3. Trend strength minimum OBLIGATOIRE (ASSOUPLI)
         trend_strength = values.get('trend_strength')
         if trend_strength:
             trend_str = str(trend_strength).lower()
-            if trend_str in ['moderate', 'strong', 'very_strong', 'extreme']:
+            if trend_str in ['weak', 'moderate', 'strong', 'very_strong', 'extreme']:  # Ajout de 'weak'
                 count += 1
                 
         # 4. Market regime favorable OBLIGATOIRE
@@ -792,18 +792,21 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         if market_regime and regime_strength:
             regime_str = str(regime_strength).upper()
             if signal_side == "BUY":
-                if (market_regime in ["TRENDING_BULL", "TRENDING_BEAR"] and regime_str in ["MODERATE", "STRONG", "EXTREME"]) or \
-                   (market_regime == "RANGING" and regime_str in ["STRONG", "EXTREME"]):
+                if (market_regime in ["TRENDING_BULL", "TRENDING_BEAR"] and regime_str in ["WEAK", "MODERATE", "STRONG", "EXTREME"]) or \
+                   (market_regime == "RANGING" and regime_str in ["MODERATE", "STRONG", "EXTREME"]):  # Ajout de WEAK
                     count += 1
             else:  # SELL
-                if (market_regime == "RANGING" and regime_str in ["MODERATE", "STRONG", "EXTREME"]) or \
-                   (market_regime in ["TRENDING_BULL", "TRENDING_BEAR"] and regime_str in ["STRONG", "EXTREME"]):
+                if (market_regime == "RANGING" and regime_str in ["WEAK", "MODERATE", "STRONG", "EXTREME"]) or \
+                   (market_regime in ["TRENDING_BULL", "TRENDING_BEAR"] and regime_str in ["MODERATE", "STRONG", "EXTREME"]):  # Ajout de WEAK
                     count += 1
                     
-        # 5. Pattern confidence si disponible
+        # 5. Pattern confidence si disponible (OPTIONNEL si pas de patterns)
         pattern_confidence = values.get('pattern_confidence')
         if pattern_confidence and float(pattern_confidence) >= self.min_pattern_confidence:
             count += 1
+        elif pattern_confidence is None or float(pattern_confidence) == 0.0:
+            # Pas de pénalité si aucun pattern détecté (fréquent)
+            pass
             
         return count
         

@@ -28,11 +28,11 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres de confluence multi-TF - OPTIMISÉS CRYPTO
-        self.min_confluence_score = 45      # Score confluence minimum (plus sélectif)
-        self.strong_confluence_score = 65   # Score pour boost fort
-        self.min_trend_alignment = 50       # Alignement tendance minimum
-        self.strong_trend_alignment = 70    # Alignement fort
+        # Paramètres de confluence multi-TF - AJUSTÉS CRYPTO RÉALISTES
+        self.min_confluence_score = 35      # Score confluence minimum (accessible)
+        self.strong_confluence_score = 55   # Score pour boost fort (réajusté)
+        self.min_trend_alignment = 0.15     # Alignement tendance minimum (format 0-1)
+        self.strong_trend_alignment = 0.45  # Alignement fort (format 0-1)
         self.volume_confirmation_min = 0.8  # Volume minimum requis
         self.volume_strong = 1.5            # Volume fort pour boost
         
@@ -46,9 +46,9 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         self.williams_oversold = -85        # Williams survente crypto
         self.williams_overbought = -15      # Williams surachat crypto
         
-        # ADX pour filtrer les tendances faibles
-        self.min_adx_trend = 20             # ADX minimum pour tendance
-        self.strong_adx_trend = 30          # ADX fort
+        # ADX pour filtrer les tendances faibles - ASSOUPLI CRYPTO
+        self.min_adx_trend = 15             # ADX minimum pour tendance (crypto volatile)
+        self.strong_adx_trend = 25          # ADX fort (crypto réaliste)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs multi-TF."""
@@ -359,15 +359,27 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         if signal_strength not in valid_strengths:
             signal_strength = 'WEAK'  # Default si invalide
             
-        # Filtre signal_strength - rejeter WEAK en crypto volatile
+        # Vérification ADX pour tendance suffisante (déplacée ici)
+        adx_14 = values.get('adx_14')
+        adx_value = None
+        if adx_14 is not None:
+            try:
+                adx_value = float(adx_14)
+            except (ValueError, TypeError):
+                pass
+        
+        # Filtre signal_strength - ASSOUPLI pour crypto
+        # On accepte maintenant WEAK si autres conditions très bonnes
+        signal_strength_penalty = 0.0
         if signal_strength == 'WEAK':
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Signal trop faible pour crypto ({signal_strength})",
-                "metadata": {"strategy": self.name, "signal_strength": signal_strength}
-            }
+            # Vérifier si conditions exceptionnelles compensent
+            exceptional_conditions = (
+                confluence_score >= 55 and 
+                trend_alignment and trend_alignment >= 0.3 and
+                adx_value is not None and adx_value >= 20
+            )
+            if not exceptional_conditions:
+                signal_strength_penalty = -0.15  # Pénalité au lieu de rejet
             
         # Vérification trend_alignment
         if trend_alignment and trend_alignment < self.min_trend_alignment:
@@ -379,21 +391,15 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name, "trend_alignment": trend_alignment}
             }
             
-        # Vérification ADX pour tendance suffisante
-        adx_14 = values.get('adx_14')
-        if adx_14 is not None:
-            try:
-                adx = float(adx_14)
-                if adx < self.min_adx_trend:
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Tendance trop faible (ADX: {adx:.1f} < {self.min_adx_trend})",
-                        "metadata": {"strategy": self.name, "adx": adx}
-                    }
-            except (ValueError, TypeError):
-                pass
+        # Vérification ADX pour tendance suffisante (utilise adx_value déjà calculé)
+        if adx_value is not None and adx_value < self.min_adx_trend:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Tendance trop faible (ADX: {adx_value:.1f} < {self.min_adx_trend})",
+                "metadata": {"strategy": self.name, "adx": adx_value}
+            }
                 
         # Analyse de l'alignement des moyennes mobiles
         ma_analysis = self._analyze_ma_alignment(values, current_price)
@@ -403,8 +409,8 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         
         signal_side = None
         reason = ""
-        base_confidence = 0.45  # Base conservative
-        confidence_boost = 0.0
+        base_confidence = 0.40  # Base plus accessible
+        confidence_boost = signal_strength_penalty  # Inclut pénalité WEAK
         
         # Détermination du signal selon l'alignement MA et oscillateurs
         if ma_analysis['direction'] in ["bullish", "bullish_weak"]:
@@ -480,13 +486,17 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         elif ma_analysis['alignment_score'] >= 0.70:
             confidence_boost += 0.10
             reason += " + MA bien alignées"
+        elif ma_analysis['alignment_score'] >= 0.50:
+            confidence_boost += 0.05
+            reason += " + MA alignées"
             
-        # Boost trend_alignment global
+        # Boost trend_alignment global (format 0-1)
         if trend_alignment and trend_alignment >= self.strong_trend_alignment:
             confidence_boost += 0.12
-            reason += f" + tendance forte ({trend_alignment:.0f})"
+            reason += f" + tendance forte ({trend_alignment:.2f})"
         elif trend_alignment and trend_alignment >= self.min_trend_alignment:
             confidence_boost += 0.05
+            reason += f" + tendance ok ({trend_alignment:.2f})"
             
         # Confirmation directional bias
         directional_bias = values.get('directional_bias')
@@ -527,14 +537,17 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Volume confirmation IMPORTANT en crypto
+        # Volume confirmation IMPORTANT en crypto - ASSOUPLI
         volume_ratio = values.get('volume_ratio')
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio < self.volume_confirmation_min:
-                    confidence_boost -= 0.15  # Forte pénalité si volume faible
-                    reason += f" MAIS volume faible ({vol_ratio:.1f}x)"
+                if vol_ratio < 0.5:  # Seuil très bas pour pénalité forte
+                    confidence_boost -= 0.15  # Forte pénalité si volume très faible
+                    reason += f" MAIS volume très faible ({vol_ratio:.1f}x)"
+                elif vol_ratio < self.volume_confirmation_min:
+                    confidence_boost -= 0.08  # Pénalité réduite
+                    reason += f" + volume modéré ({vol_ratio:.1f}x)"
                 elif vol_ratio >= self.volume_strong * 1.5:  # Volume très élevé
                     confidence_boost += 0.20
                     reason += f" + volume EXCEPTIONNEL ({vol_ratio:.1f}x)"
@@ -560,17 +573,19 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # ADX pour force de tendance
-        if adx_14 is not None:
-            try:
-                adx = float(adx_14)
-                if adx >= self.strong_adx_trend:
-                    confidence_boost += 0.10
-                    reason += f" + ADX fort ({adx:.1f})"
-                elif adx >= self.min_adx_trend:
-                    confidence_boost += 0.04
-            except (ValueError, TypeError):
-                pass
+        # ADX pour force de tendance - ASSOUPLI (utilise adx_value déjà calculé)
+        if adx_value is not None:
+            if adx_value >= 35:  # ADX très fort
+                confidence_boost += 0.15
+                reason += f" + ADX très fort ({adx_value:.1f})"
+            elif adx_value >= self.strong_adx_trend:
+                confidence_boost += 0.10
+                reason += f" + ADX fort ({adx_value:.1f})"
+            elif adx_value >= self.min_adx_trend:
+                confidence_boost += 0.04
+                reason += f" + ADX ok ({adx_value:.1f})"
+            else:
+                confidence_boost -= 0.05  # Légère pénalité si ADX très faible
                 
         # DI+ / DI- pour direction
         plus_di = values.get('plus_di')
@@ -661,17 +676,20 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         # Calcul final
         raw_confidence = base_confidence * (1 + confidence_boost)
         
-        # Filtre final - seuil minimum pour crypto
-        if raw_confidence < 0.42:
+        # Filtre final - seuil minimum ASSOUPLI pour crypto
+        if raw_confidence < 0.30:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Signal rejeté - confiance insuffisante ({raw_confidence:.2f})",
+                "reason": f"Signal rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.30)",
                 "metadata": {
                     "strategy": self.name,
                     "rejected_signal": signal_side,
-                    "raw_confidence": raw_confidence
+                    "raw_confidence": raw_confidence,
+                    "confluence_score": confluence_score,
+                    "signal_strength": signal_strength,
+                    "trend_alignment": trend_alignment
                 }
             }
         
@@ -697,7 +715,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                 "regime_strength": regime_strength,
                 "volume_ratio": volume_ratio,
                 "volume_quality_score": volume_quality_score,
-                "adx_14": adx_14,
+                "adx_14": adx_value,
                 "pattern_detected": pattern_detected,
                 "pattern_confidence": pattern_confidence
             }

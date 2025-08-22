@@ -265,7 +265,7 @@ class BinanceAccountManager:
         # Vérifier le cache
         current_time = time.time()
         if use_cache and self._prices_cache and (current_time - self._prices_cache_time < self._prices_cache_ttl):
-            logger.debug(f"Utilisation du cache des prix ({len(self._prices_cache)} symboles)")
+            logger.info(f"Utilisation du cache des prix ({len(self._prices_cache)} symboles)")
             return self._prices_cache
         
         try:

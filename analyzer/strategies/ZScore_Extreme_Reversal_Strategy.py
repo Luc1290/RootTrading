@@ -36,14 +36,14 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres Z-Score simulé
-        self.extreme_zscore_threshold = 1.5      # Z-Score > 1.5 pour extrême (moins strict)
-        self.very_extreme_zscore_threshold = 2.0  # Z-Score > 2.0 pour très extrême (moins strict)
-        self.ultra_extreme_zscore_threshold = 2.5 # Z-Score > 2.5 pour ultra extrême (moins strict)
+        # Paramètres Z-Score simulé - TRÈS ASSOUPLIS
+        self.extreme_zscore_threshold = 1.2      # Z-Score > 1.2 pour extrême (crypto volatil)
+        self.very_extreme_zscore_threshold = 1.8  # Z-Score > 1.8 pour très extrême (plus accessible)
+        self.ultra_extreme_zscore_threshold = 2.3 # Z-Score > 2.3 pour ultra extrême (accessible)
         
-        # Paramètres Bollinger Bands (proxy Z-Score)
-        self.bb_extreme_position_threshold = 85   # Position BB > 85% = extrême (moins strict)
-        self.bb_very_extreme_threshold = 92       # Position BB > 92% = très extrême (moins strict)
+        # Paramètres Bollinger Bands (proxy Z-Score) - ASSOUPLIS
+        self.bb_extreme_position_threshold = 80   # Position BB > 80% = extrême (plus accessible)
+        self.bb_very_extreme_threshold = 88       # Position BB > 88% = très extrême (plus accessible) 
         self.bb_squeeze_bonus = 0.15                # Bonus si BB squeeze avant expansion
         
         # Paramètres RSI reversal
@@ -279,13 +279,13 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
             try:
                 momentum_val = float(momentum_score)
                 
-                # Divergence momentum/prix favorable au reversal (format 0-100, 50=neutre)
+                # Divergence momentum/prix favorable au reversal (format 0-100, 50=neutre) - ASSOUPLI
                 # Reversal bullish : prix en survente mais momentum pas trop négatif (divergence)
-                if reversal_direction == 'bullish' and momentum_val > 40:  # Momentum > 40 = moins bearish que prix
+                if reversal_direction == 'bullish' and momentum_val > 35:  # Momentum > 35 = moins bearish (assoupli)
                     reversal_score += 0.15
                     reversal_indicators.append(f"Divergence momentum haussière ({momentum_val:.1f})")
                 # Reversal bearish : prix en surachat mais momentum pas trop positif (divergence)
-                elif reversal_direction == 'bearish' and momentum_val < 60:  # Momentum < 60 = moins bullish que prix
+                elif reversal_direction == 'bearish' and momentum_val < 65:  # Momentum < 65 = moins bullish (assoupli)
                     reversal_score += 0.15
                     reversal_indicators.append(f"Divergence momentum baissière ({momentum_val:.1f})")
                     
@@ -328,7 +328,7 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_reversal': reversal_score >= 0.4,
+            'is_reversal': reversal_score >= 0.28,  # Seuil très assoupli crypto
             'direction': reversal_direction,
             'score': reversal_score,
             'indicators': reversal_indicators
@@ -389,7 +389,7 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
             volatility_indicators.append("Régime faible volatilité")
             
         return {
-            'is_favorable': volatility_score >= 0.1,
+            'is_favorable': volatility_score >= 0.05,  # Seuil assoupli
             'score': volatility_score,
             'indicators': volatility_indicators
         }
@@ -478,22 +478,22 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
             }
             
         # Construire signal final
-        base_confidence = 0.50  # Base réduite pour équilibrage avec autres stratégies
+        base_confidence = 0.45  # Base plus accessible pour crypto volatil
         confidence_boost = 0.0
         
-        # Score Z-Score strength
+        # Score Z-Score strength - BOOSTS AUGMENTÉS
         if zscore_data['zscore_strength'] == 'ultra_extreme':
-            confidence_boost += 0.3
+            confidence_boost += 0.35
         elif zscore_data['zscore_strength'] == 'very_extreme':
-            confidence_boost += 0.25
+            confidence_boost += 0.28
         elif zscore_data['zscore_strength'] == 'extreme':
-            confidence_boost += 0.2
+            confidence_boost += 0.22
             
-        # Score reversal confirmations
-        confidence_boost += reversal_analysis['score'] * 0.4
+        # Score reversal confirmations - MULTIPLICATEUR AUGMENTÉ
+        confidence_boost += reversal_analysis['score'] * 0.5
         
-        # Score volatilité
-        confidence_boost += volatility_analysis['score'] * 0.3
+        # Score volatilité - MULTIPLICATEUR AUGMENTÉ
+        confidence_boost += volatility_analysis['score'] * 0.4
         
         # Construire raison
         zscore_val = zscore_data['zscore_value']
@@ -508,14 +508,17 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
             
         # Confirmations supplémentaires
         
-        # Volume confirmation
+        # Volume confirmation - ASSOUPLI
         volume_ratio = values.get('volume_ratio')
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
                 if vol_ratio >= self.min_volume_confirmation:
-                    confidence_boost += 0.1
+                    confidence_boost += 0.12
                     reason += f" + volume ({vol_ratio:.1f}x)"
+                elif vol_ratio >= 0.8:  # Volume acceptable
+                    confidence_boost += 0.05
+                    reason += f" + volume ok ({vol_ratio:.1f}x)"
             except (ValueError, TypeError):
                 pass
                 

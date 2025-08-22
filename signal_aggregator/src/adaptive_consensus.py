@@ -35,46 +35,47 @@ class AdaptiveConsensusAnalyzer:
     
     def __init__(self):
         # Consensus minimum par famille selon le régime
+        # ÉQUILIBRAGE: Strict en baissier, permissif en haussier pour rapidité d'entrée
         self.regime_family_requirements = {
             'TRENDING_BULL': {
-                'trend_following': 2,  # Au moins 2 trend-following
+                'trend_following': 1,  # RÉDUIT: 1 au lieu de 2 pour entrée rapide
                 'breakout': 1,         # Au moins 1 breakout
                 'volume_based': 1,     # Au moins 1 volume
-                'total_min': 4         # Minimum 4 stratégies au total
+                'total_min': 4         # RÉDUIT: 4 au lieu de 5 pour entrée haussière rapide
             },
             'TRENDING_BEAR': {
                 'trend_following': 2,
                 'breakout': 1,
                 'volume_based': 1,
-                'total_min': 4
+                'total_min': 6         # MAINTENU: strict en baisse pour éviter pertes
             },
             'RANGING': {
-                'mean_reversion': 2,   # Au moins 2 mean-reversion
-                'structure_based': 1,  # Au moins 1 structure
-                'total_min': 3         # Seulement 3 en ranging (plus difficile)
+                'mean_reversion': 1,   # RÉDUIT: 1 au lieu de 2 pour ranging
+                'structure_based': 1,  # REMIS: important pour structure de marché en ranging
+                'total_min': 2         # TRÈS RÉDUIT: 2 minimum avec au moins 1 mean_reversion + 1 structure_based
             },
             'VOLATILE': {
-                'breakout': 2,         # Au moins 2 breakout
+                'breakout': 1,         # RÉDUIT: 1 au lieu de 2 pour volatilité
                 'volume_based': 1,     # Au moins 1 volume
-                'total_min': 4
+                'total_min': 4         # RÉDUIT: 4 au lieu de 5
             },
             'BREAKOUT_BULL': {
-                'breakout': 2,
+                'breakout': 1,         # RÉDUIT: 1 au lieu de 2 pour breakout haussier rapide
                 'trend_following': 1,
                 'volume_based': 1,
-                'total_min': 4
+                'total_min': 3         # RÉDUIT: 3 au lieu de 5 pour breakout bull rapide
             },
             'BREAKOUT_BEAR': {
                 'breakout': 2,
                 'trend_following': 1,
-                'volume_based': 1,
-                'total_min': 4
+                'volume_based': 2,     # Volume critique en bear
+                'total_min': 7         # MAINTENU: très strict en breakout bear
             },
             'TRANSITION': {
-                'total_min': 5         # Plus strict en transition (incertitude)
+                'total_min': 5         # RÉDUIT: 5 au lieu de 6
             },
             'UNKNOWN': {
-                'total_min': 6         # Conservateur si régime inconnu
+                'total_min': 4         # RÉDUIT: était trop restrictif à 7
             }
         }
         
@@ -99,7 +100,10 @@ class AdaptiveConsensusAnalyzer:
         Returns:
             Tuple (has_consensus, analysis_details)
         """
+        logger.info(f"🔍 Analyse consensus: {len(signals)} signaux, régime: {market_regime}")
+        
         if not signals:
+            logger.info("🔍 Consensus: Aucun signal")
             return False, {'reason': 'Aucun signal'}
             
         # Classifier les signaux par famille
@@ -133,12 +137,16 @@ class AdaptiveConsensusAnalyzer:
         total_strategies = len(signals)
         avg_adaptability = sum(adaptability_scores) / len(adaptability_scores) if adaptability_scores else 0
         
+        logger.info(f"🔍 Familles détectées: {families_count}")
+        logger.info(f"🔍 Scores adaptabilité: {adaptability_scores}")
+        
         # Obtenir les requirements pour ce régime
         regime = market_regime.upper() if market_regime else 'UNKNOWN'
         if regime not in self.regime_family_requirements:
             regime = 'UNKNOWN'
             
         requirements = self.regime_family_requirements[regime]
+        logger.info(f"🔍 Requirements pour {regime}: {requirements}")
         
         # Vérifier le minimum total
         total_min = requirements.get('total_min', 6)
@@ -161,14 +169,22 @@ class AdaptiveConsensusAnalyzer:
             if actual_count < required_count:
                 missing_families.append(f"{family}: {actual_count}/{required_count}")
                 
-        # Si des familles critiques manquent mais qu'on a une forte adaptabilité, assouplir
-        if missing_families and avg_adaptability < 0.7:
-            return False, {
-                'reason': f'Familles manquantes: {", ".join(missing_families)}',
-                'families_count': families_count,
-                'missing_families': missing_families,
-                'avg_adaptability': avg_adaptability
-            }
+        # Si des familles critiques manquent, vérifier conditions d'assouplissement
+        if missing_families:
+            # Assouplir si forte adaptabilité OU consensus très fort
+            consensus_strength_preview = self._calculate_preview_consensus_strength(families_count, regime)
+            
+            can_bypass = (avg_adaptability >= 0.7 or 
+                         consensus_strength_preview >= 2.5 or 
+                         (regime == 'RANGING' and 'structure_based' in [fam.split(':')[0] for fam in missing_families]))
+                         
+            if not can_bypass:
+                return False, {
+                    'reason': f'Familles manquantes: {", ".join(missing_families)}',
+                    'families_count': families_count,
+                    'missing_families': missing_families,
+                    'avg_adaptability': avg_adaptability
+                }
             
         # Calculer le score de consensus pondéré
         weighted_score = 0
@@ -192,8 +208,13 @@ class AdaptiveConsensusAnalyzer:
         consensus_strength = weighted_score / max(1, total_weight)
         
         # Décision finale basée sur la force du consensus
-        # Plus permissif si les stratégies sont bien adaptées
-        min_consensus_strength = 2.5 if avg_adaptability > 0.8 else 3.0
+        # Plus permissif si les stratégies sont bien adaptées OU en régime UNKNOWN
+        if avg_adaptability > 0.8:
+            min_consensus_strength = 2.5
+        elif regime == 'UNKNOWN':
+            min_consensus_strength = 1.8  # Revenu au niveau correct
+        else:
+            min_consensus_strength = 3.0
         
         has_consensus = consensus_strength >= min_consensus_strength
         
@@ -207,6 +228,28 @@ class AdaptiveConsensusAnalyzer:
             'regime': regime,
             'missing_families': missing_families if missing_families else None
         }
+        
+    def _calculate_preview_consensus_strength(self, families_count: Dict[str, int], regime: str) -> float:
+        """Calcule rapidement le consensus_strength pour décision d'assouplissement."""
+        weighted_score = 0
+        total_weight = 0
+        
+        for family, count in families_count.items():
+            if family == 'unknown':
+                continue
+                
+            weight = self.family_weights.get(family, 1.0)
+            family_config = STRATEGY_FAMILIES.get(family, {})
+            
+            if regime in family_config.get('best_regimes', []):
+                weight *= 1.5
+            elif regime in family_config.get('poor_regimes', []):
+                weight *= 0.5
+                
+            weighted_score += count * weight
+            total_weight += weight
+            
+        return weighted_score / max(1, total_weight)
         
     def analyze_adaptive_consensus_mtf(self, signals: List[Dict[str, Any]], 
                                       market_regime: str, 
