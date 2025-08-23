@@ -50,9 +50,9 @@ class AdaptiveConsensusAnalyzer:
                 'total_min': 6         # MAINTENU: strict en baisse pour éviter pertes
             },
             'RANGING': {
-                'mean_reversion': 1,   # RÉDUIT: 1 au lieu de 2 pour ranging
-                'structure_based': 1,  # REMIS: important pour structure de marché en ranging
-                'total_min': 2         # TRÈS RÉDUIT: 2 minimum avec au moins 1 mean_reversion + 1 structure_based
+                'mean_reversion': 1,   # Au moins 1 stratégie mean_reversion
+                #'structure_based': 1,  # REMIS: important pour structure de marché en ranging
+                'total_min': 2         # 2 minimum avec diversité de familles
             },
             'VOLATILE': {
                 'breakout': 1,         # RÉDUIT: 1 au lieu de 2 pour volatilité
@@ -212,7 +212,7 @@ class AdaptiveConsensusAnalyzer:
         if avg_adaptability > 0.8:
             min_consensus_strength = 2.5
         elif regime == 'UNKNOWN':
-            min_consensus_strength = 1.8  # Revenu au niveau correct
+            min_consensus_strength = 1.6  # Revenu au niveau correct
         else:
             min_consensus_strength = 3.0
         

@@ -303,7 +303,7 @@ class StatisticsService:
                 'ZScore_Extreme_Reversal_Strategy'
             ]
             
-            # 2. Récupérer les stratégies individuelles (performance RÉELLE basée sur les trades où elles participaient)
+            # 2. Récupérer les stratégies individuelles avec séparation signaux émis vs trades effectués
             individual_query = """
                 WITH strategy_trades AS (
                     -- Trouver tous les trades où chaque stratégie a participé
@@ -314,7 +314,8 @@ class StatisticsService:
                         tc.profit_loss,
                         tc.profit_loss_percent,
                         tc.status,
-                        tc.completed_at
+                        tc.completed_at,
+                        ts.side
                     FROM trading_signals ts
                     -- Joindre avec les cycles basés sur la proximité temporelle
                     JOIN trade_cycles tc ON 
@@ -337,15 +338,21 @@ class StatisticsService:
                         MAX(profit_loss) as max_gain,
                         MIN(profit_loss) as max_loss,
                         MAX(profit_loss_percent) as max_gain_percent,
-                        MIN(profit_loss_percent) as max_loss_percent
+                        MIN(profit_loss_percent) as max_loss_percent,
+                        -- Séparer les trades BUY et SELL
+                        COUNT(DISTINCT CASE WHEN side = 'BUY' THEN cycle_id END) as buy_trades_executed,
+                        COUNT(DISTINCT CASE WHEN side = 'SELL' THEN cycle_id END) as sell_trades_executed
                     FROM strategy_trades
                     GROUP BY strategy
                 ),
                 signal_counts AS (
-                    -- Compter le nombre total de signaux émis par chaque stratégie
+                    -- Compter le nombre total de signaux émis par chaque stratégie (séparés BUY/SELL)
                     SELECT 
                         strategy,
-                        COUNT(*) as total_signals_emitted
+                        COUNT(*) as total_signals_emitted,
+                        COUNT(CASE WHEN side = 'BUY' THEN 1 END) as buy_signals_emitted,
+                        COUNT(CASE WHEN side = 'SELL' THEN 1 END) as sell_signals_emitted,
+                        COUNT(CASE WHEN metadata->>'part_of_consensus' = 'true' THEN 1 END) as signals_in_consensus
                     FROM trading_signals
                     WHERE timestamp >= NOW() - INTERVAL '30 days'
                         AND strategy NOT LIKE 'CONSENSUS_%'
@@ -353,8 +360,18 @@ class StatisticsService:
                 )
                 SELECT 
                     sc.strategy,
-                    COALESCE(sc.total_signals_emitted, 0) as total_signals,
-                    COALESCE(sp.total_trades_participated, 0) as trades_participated,
+                    -- Signaux émis (tous)
+                    COALESCE(sc.total_signals_emitted, 0) as total_signals_emitted,
+                    COALESCE(sc.buy_signals_emitted, 0) as buy_signals_emitted,
+                    COALESCE(sc.sell_signals_emitted, 0) as sell_signals_emitted,
+                    COALESCE(sc.signals_in_consensus, 0) as signals_in_consensus,
+                    
+                    -- Trades effectués (qui ont vraiment eu lieu)
+                    COALESCE(sp.total_trades_participated, 0) as trades_executed,
+                    COALESCE(sp.buy_trades_executed, 0) as buy_trades_executed,
+                    COALESCE(sp.sell_trades_executed, 0) as sell_trades_executed,
+                    
+                    -- Performance des trades effectués
                     COALESCE(sp.total_pnl, 0) as total_pnl,
                     COALESCE(sp.avg_pnl, 0) as avg_pnl,
                     COALESCE(sp.avg_pnl_percent, 0) as avg_pnl_percent,
@@ -363,12 +380,28 @@ class StatisticsService:
                     COALESCE(sp.max_loss, 0) as max_loss,
                     COALESCE(sp.max_gain_percent, 0) as max_gain_percent,
                     COALESCE(sp.max_loss_percent, 0) as max_loss_percent,
-                    -- Taux de participation (combien de signaux ont mené à des trades)
+                    
+                    -- Taux de conversion signal -> trade
                     CASE 
                         WHEN sc.total_signals_emitted > 0 
                         THEN (COALESCE(sp.total_trades_participated, 0)::float / sc.total_signals_emitted * 100)
                         ELSE 0 
-                    END as participation_rate
+                    END as signal_to_trade_rate,
+                    
+                    -- Taux de conversion BUY
+                    CASE 
+                        WHEN sc.buy_signals_emitted > 0 
+                        THEN (COALESCE(sp.buy_trades_executed, 0)::float / sc.buy_signals_emitted * 100)
+                        ELSE 0 
+                    END as buy_conversion_rate,
+                    
+                    -- Taux de conversion SELL
+                    CASE 
+                        WHEN sc.sell_signals_emitted > 0 
+                        THEN (COALESCE(sp.sell_trades_executed, 0)::float / sc.sell_signals_emitted * 100)
+                        ELSE 0 
+                    END as sell_conversion_rate
+                    
                 FROM signal_counts sc
                 LEFT JOIN strategy_performance sp ON sc.strategy = sp.strategy
                 ORDER BY COALESCE(sp.total_pnl, 0) DESC;
@@ -420,41 +453,75 @@ class StatisticsService:
                     
                     # Calculer le win rate basé sur les trades réels où la stratégie a participé
                     win_rate = 0
-                    if row['trades_participated'] > 0:
-                        win_rate = (row['winning_trades'] / row['trades_participated']) * 100
+                    if row['trades_executed'] > 0:
+                        win_rate = (row['winning_trades'] / row['trades_executed']) * 100
                     
                     individual_strategies.append({
                         'strategy': strategy_name,
                         'type': 'INDIVIDUAL',
-                        'total_signals': row['total_signals'],  # Nombre de signaux émis
-                        'trades_participated': row['trades_participated'],  # Trades où la stratégie a participé
-                        'participation_rate': float(row['participation_rate'] or 0),  # % de signaux qui ont mené à des trades
-                        'total_pnl': float(row['total_pnl'] or 0),  # P&L RÉEL en USDC
-                        'avg_pnl': float(row['avg_pnl'] or 0),  # P&L moyen RÉEL
+                        
+                        # Signaux émis
+                        'total_signals_emitted': row['total_signals_emitted'],
+                        'buy_signals_emitted': row['buy_signals_emitted'],
+                        'sell_signals_emitted': row['sell_signals_emitted'],
+                        'signals_in_consensus': row['signals_in_consensus'],
+                        
+                        # Trades effectués
+                        'trades_executed': row['trades_executed'],
+                        'buy_trades_executed': row['buy_trades_executed'],
+                        'sell_trades_executed': row['sell_trades_executed'],
+                        
+                        # Taux de conversion
+                        'signal_to_trade_rate': float(row['signal_to_trade_rate'] or 0),
+                        'buy_conversion_rate': float(row['buy_conversion_rate'] or 0),
+                        'sell_conversion_rate': float(row['sell_conversion_rate'] or 0),
+                        
+                        # Performance
+                        'total_pnl': float(row['total_pnl'] or 0),
+                        'avg_pnl': float(row['avg_pnl'] or 0),
                         'avg_pnl_percent': float(row['avg_pnl_percent'] or 0),
                         'win_rate': round(win_rate, 2),
                         'max_gain': float(row['max_gain'] or 0),
                         'max_loss': float(row['max_loss'] or 0),
                         'max_gain_percent': float(row['max_gain_percent'] or 0),
                         'max_loss_percent': float(row['max_loss_percent'] or 0),
-                        # Champs pour compatibilité frontend
+                        
+                        # Champs pour compatibilité frontend (ancien format)
+                        'total_signals': row['total_signals_emitted'],
+                        'trades_participated': row['trades_executed'],
+                        'participation_rate': float(row['signal_to_trade_rate'] or 0),
                         'avgPnl': float(row['avg_pnl'] or 0),
-                        'avgDuration': 0,  # Non applicable
+                        'avgDuration': 0,
                         'maxDrawdown': float(row['max_loss'] or 0),
                         'sharpeRatio': 0,
-                        'trades': row['trades_participated'],  # Trades réels, pas juste les signaux
+                        'trades': row['trades_executed'],
                         'winRate': round(win_rate, 2),
                         'totalPnl': float(row['total_pnl'] or 0),
-                        'total_pnl_percent': float(row['avg_pnl_percent'] or 0) * row['trades_participated'] if row['trades_participated'] > 0 else 0
+                        'total_pnl_percent': float(row['avg_pnl_percent'] or 0) * row['trades_executed'] if row['trades_executed'] > 0 else 0
                     })
                 else:
                     # Stratégie sans données (0 signaux émis)
                     individual_strategies.append({
                         'strategy': strategy_name,
                         'type': 'INDIVIDUAL',
-                        'total_signals': 0,
-                        'trades_participated': 0,
-                        'participation_rate': 0,
+                        
+                        # Signaux émis
+                        'total_signals_emitted': 0,
+                        'buy_signals_emitted': 0,
+                        'sell_signals_emitted': 0,
+                        'signals_in_consensus': 0,
+                        
+                        # Trades effectués  
+                        'trades_executed': 0,
+                        'buy_trades_executed': 0,
+                        'sell_trades_executed': 0,
+                        
+                        # Taux de conversion
+                        'signal_to_trade_rate': 0,
+                        'buy_conversion_rate': 0,
+                        'sell_conversion_rate': 0,
+                        
+                        # Performance
                         'total_pnl': 0,
                         'avg_pnl': 0,
                         'avg_pnl_percent': 0,
@@ -463,7 +530,11 @@ class StatisticsService:
                         'max_loss': 0,
                         'max_gain_percent': 0,
                         'max_loss_percent': 0,
-                        # Champs pour compatibilité frontend
+                        
+                        # Champs pour compatibilité frontend (ancien format)
+                        'total_signals': 0,
+                        'trades_participated': 0,
+                        'participation_rate': 0,
                         'avgPnl': 0,
                         'avgDuration': 0,
                         'maxDrawdown': 0,

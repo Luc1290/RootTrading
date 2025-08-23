@@ -80,8 +80,7 @@ class PriceMonitor:
             # Calculer le pourcentage de changement
             if old_price:
                 change_pct = (price - old_price) / old_price * 100
-                log_level = logging.INFO if abs(change_pct) >= 0.5 else logging.DEBUG
-                logger.log(log_level, f"📊 Prix {symbol}: {price:.8f} ({change_pct:+.4f}%)")
+                log_level = logging.INFO if abs(change_pct) >= 0.5 else logging.DEBUG                
             else:
                 logger.info(f"📊 Premier prix {symbol}: {price:.8f}")
             

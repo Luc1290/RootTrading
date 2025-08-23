@@ -123,11 +123,8 @@ class OrderManager:
             price: Nouveau prix
         """
         self.last_prices[symbol] = price
-        self.last_price_update = time.time()
-        
-        # Plus de trailing stops ou de cycles - juste du monitoring
-        logger.debug(f"📊 Prix mis à jour: {symbol} = {price}")
-    
+        self.last_price_update = time.time()        
+   
     def create_order(self, order_data: Dict[str, Any]) -> Optional[str]:
         """
         Crée un ordre.

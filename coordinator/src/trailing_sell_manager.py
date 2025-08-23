@@ -29,16 +29,16 @@ class TrailingSellManager:
         self.service_client = service_client
         self.db_connection = db_connection
         
-        # Configuration trailing sell - ÉQUILIBRE GAINS/PROTECTION
+        # Configuration trailing sell - ADAPTÉ POUR CRYPTO VOLATILE
         self.min_gain_for_trailing = 0.010  # 1.0% de gain minimum avant activation du trailing
-        self.sell_margin = 0.008  # 0.8% de marge pour les micro-variations
-        self.max_drop_threshold = 0.015  # 1.5% de chute max depuis le pic (cohérent avec activation à 1%)
-        self.immediate_sell_drop = 0.020  # 2.0% de chute = vente immédiate
+        self.sell_margin = 0.015  # 1.5% de marge (était 0.8%) - équilibre protection/tolérance
+        self.max_drop_threshold = 0.020  # 2.0% de chute max depuis le pic (était 1.5%)
+        self.immediate_sell_drop = 0.025  # 2.5% de chute = vente immédiate (était 2.0%)
         
         # Configuration stop-loss adaptatif - PROTECTION CAPITAL
-        self.stop_loss_percent_base = 0.015  # 1.5% de base - protection stricte
-        self.stop_loss_percent_bullish = 0.020  # 2.0% en tendance haussière - légèrement plus souple
-        self.stop_loss_percent_strong_bullish = 0.025  # 2.5% en tendance très haussière - reste prudent
+        self.stop_loss_percent_base = 0.018  # 1.8% de base (était 1.5%) - un peu plus de marge
+        self.stop_loss_percent_bullish = 0.025  # 2.5% en tendance haussière (était 2.0%)
+        self.stop_loss_percent_strong_bullish = 0.030  # 3.0% en tendance très haussière (était 2.5%)
         
         logger.info("✅ TrailingSellManager initialisé")
     

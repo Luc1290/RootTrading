@@ -69,7 +69,7 @@ class ContextManager:
                     }
                 else:
                     # Fallback si pas de données 1m
-                    logger.warning(f"Pas de régime 1m pour {symbol}, fallback sur 3m")
+                    logger.warning(f"Pas de régime 1m pour {symbol}, fallback sur 1m")
                     cursor.execute("""
                         SELECT market_regime, regime_strength, regime_confidence,
                                directional_bias, volatility_regime, time

@@ -129,7 +129,31 @@ class SimpleSignalProcessor:
                 self.stats['critical_filter_rejected'] += 1
                 return None
                 
-            # ÉTAPE 3: Construire signal de consensus validé
+            # ÉTAPE 3: Sauvegarder les signaux individuels en base de données
+            if self.database_manager:
+                for signal in signals:
+                    try:
+                        # Préparer le signal individuel pour la base de données
+                        individual_signal = {
+                            'strategy': signal.get('strategy'),
+                            'symbol': signal.get('symbol'),
+                            'side': signal.get('side'),
+                            'timestamp': signal.get('timestamp', datetime.utcnow().isoformat()),
+                            'confidence': signal.get('confidence'),
+                            'price': context.get('current_price', 0.0),
+                            'metadata': {
+                                'timeframe': signal.get('timeframe'),
+                                'original_metadata': signal.get('metadata', {}),
+                                'part_of_consensus': True,
+                                'market_regime': consensus_analysis.get('regime', 'UNKNOWN')
+                            }
+                        }
+                        # Stocker le signal individuel
+                        self.database_manager.store_validated_signal(individual_signal)
+                    except Exception as e:
+                        logger.warning(f"Erreur sauvegarde signal individuel {signal.get('strategy')}: {e}")
+            
+            # ÉTAPE 4: Construire signal de consensus validé
             consensus_signal = self._build_consensus_signal(
                 signals, symbol, timeframe, side, context, 
                 consensus_analysis, filter_reason
@@ -137,14 +161,14 @@ class SimpleSignalProcessor:
             
             self.stats['signals_validated'] += 1
             
-            # ÉTAPE 4: Sauvegarde optionnelle
+            # ÉTAPE 5: Sauvegarde du consensus
             if self.database_manager:
                 try:
                     signal_id = self.database_manager.store_validated_signal(consensus_signal)
                     if signal_id:
                         consensus_signal['db_id'] = signal_id
                 except Exception as e:
-                    logger.error(f"Erreur sauvegarde: {e}")
+                    logger.error(f"Erreur sauvegarde consensus: {e}")
                     
             logger.info(f"✅ Signal consensus validé: {symbol} {side} "
                        f"({len(signals)} stratégies, score: {consensus_analysis.get('consensus_strength', 0):.2f})")

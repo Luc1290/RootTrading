@@ -420,8 +420,7 @@ class CycleManager:
                             max_price = Decimal(str(max_price_dict.get("price", entry_price)))
                         
                         # Nettoyer la clé Redis après récupération
-                        self.redis_client.delete(max_price_key)
-                        logger.info(f"📊 Prix max récupéré pour {symbol}: {max_price}")
+                        self.redis_client.delete(max_price_key)                        
                     else:
                         # Si pas de max en Redis, utiliser le max entre entry et exit
                         max_price = max(entry_price, exit_price)
