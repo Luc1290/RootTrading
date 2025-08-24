@@ -29,16 +29,16 @@ class TrailingSellManager:
         self.service_client = service_client
         self.db_connection = db_connection
         
-        # Configuration trailing sell - ADAPTÉ POUR CRYPTO VOLATILE
-        self.min_gain_for_trailing = 0.010  # 1.0% de gain minimum avant activation du trailing
-        self.sell_margin = 0.015  # 1.5% de marge (était 0.8%) - équilibre protection/tolérance
-        self.max_drop_threshold = 0.020  # 2.0% de chute max depuis le pic (était 1.5%)
-        self.immediate_sell_drop = 0.025  # 2.5% de chute = vente immédiate (était 2.0%)
+        # Configuration trailing sell - OPTIMISÉE pour fermer les cycles efficacement
+        self.min_gain_for_trailing = 0.003  # 0.3% de gain minimum avant activation (très précoce)
+        self.sell_margin = 0.008  # 0.8% de marge - plus réactif aux rechutes
+        self.max_drop_threshold = 0.010  # 1.0% de chute max depuis le pic - protection stricte
+        self.immediate_sell_drop = 0.015  # 1.5% de chute = vente immédiate - réaction rapide
         
-        # Configuration stop-loss adaptatif - PROTECTION CAPITAL
-        self.stop_loss_percent_base = 0.018  # 1.8% de base (était 1.5%) - un peu plus de marge
-        self.stop_loss_percent_bullish = 0.025  # 2.5% en tendance haussière (était 2.0%)
-        self.stop_loss_percent_strong_bullish = 0.030  # 3.0% en tendance très haussière (était 2.5%)
+        # Configuration stop-loss adaptatif - ÉQUILIBRÉ : strict mais pas excessif
+        self.stop_loss_percent_base = 0.015  # 1.5% de base - strict mais raisonnable
+        self.stop_loss_percent_bullish = 0.018  # 1.8% en tendance haussière - équilibré
+        self.stop_loss_percent_strong_bullish = 0.022  # 2.2% en tendance très haussière - tolérant
         
         logger.info("✅ TrailingSellManager initialisé")
     
@@ -92,17 +92,50 @@ class TrailingSellManager:
                 logger.info(f"📉 Stop-loss adaptatif déclenché pour {symbol}: perte {loss_percent*100:.2f}% ≥ seuil {adaptive_threshold*100:.2f}%")
                 return True, f"Stop-loss adaptatif déclenché (perte {loss_percent*100:.2f}% ≥ {adaptive_threshold*100:.2f}%)"
             
-            # Si position perdante mais dans la tolérance : garder
+            # Si position perdante mais dans la tolérance : vérifier le temps
             if current_price <= entry_price:
+                # Calculer le temps en position
+                time_in_position = (time.time() - entry_time_epoch) / 60  # en minutes
+                
+                # Si position perdante depuis trop longtemps, couper les pertes - RESSERRÉ
+                if time_in_position > 7 and loss_percent > 0.003:  # Plus de 7 min et perte > 0.3%
+                    logger.warning(f"⏰ Position perdante trop longue pour {symbol}: {time_in_position:.0f} min, perte {loss_percent*100:.2f}%, SELL forcé")
+                    return True, f"Position perdante depuis {time_in_position:.0f} min (perte {loss_percent*100:.2f}%)"
+                
                 logger.info(f"🟡 Position perdante mais dans tolérance pour {symbol}: perte {loss_percent*100:.2f}% < seuil {adaptive_threshold*100:.2f}%")
                 return False, f"Position perdante mais dans tolérance (perte {loss_percent*100:.2f}% < {adaptive_threshold*100:.2f}%)"
             
-            # === POSITION GAGNANTE : LOGIQUE TRAILING SELL AMÉLIORÉE ===
+            # === POSITION GAGNANTE : TAKE PROFIT BINAIRE + TRAILING SELL ===
             gain_percent = (current_price - entry_price) / entry_price
-            logger.info(f"🔍 Position gagnante détectée: +{gain_percent*100:.2f}%, vérification trailing sell")
+            logger.info(f"🔍 Position gagnante détectée: +{gain_percent*100:.2f}%, vérification take profit et trailing")
+            
+            # === TAKE PROFIT PROGRESSIF - RIDE LES PUMPS MAIS FERME EFFICACEMENT ===
+            # Désactiver temporairement le TP progressif si gain < 1% pour permettre sortie rapide
+            if gain_percent >= 0.01:  # Activer TP progressif seulement après +1%
+                should_take_profit, tp_reason = self._check_progressive_take_profit(symbol, gain_percent)
+                if should_take_profit:
+                    logger.info(f"💰 TAKE PROFIT PROGRESSIF DÉCLENCHÉ: {tp_reason}")
+                    self._cleanup_references(symbol)
+                    return True, tp_reason
+            else:
+                logger.debug(f"TP progressif désactivé pour {symbol} (gain {gain_percent*100:.2f}% < 1%)")
+            
+            # NOUVEAU : Autoriser SELL immédiat si signal de consensus après un certain temps
+            # Calculer le temps écoulé depuis l'entrée
+            time_in_position = (time.time() - entry_time_epoch) / 60  # en minutes
+            
+            # Si position ouverte depuis plus de 5 minutes ET gain faible, autoriser SELL
+            if time_in_position > 5 and gain_percent < 0.01:  # Moins de 1% après 5 min
+                logger.warning(f"⏰ Position stagnante pour {symbol}: {time_in_position:.0f} min, gain {gain_percent*100:.2f}%, SELL autorisé")
+                return True, f"Position stagnante ({time_in_position:.0f} min, gain {gain_percent*100:.2f}%)"
             
             # Vérifier si le gain minimum est atteint pour activer le trailing
             if gain_percent < self.min_gain_for_trailing:
+                # Si gain très faible et position ouverte depuis longtemps, autoriser SELL
+                if gain_percent < 0.002 and time_in_position > 3:  # Moins de 0.2% après 3 min
+                    logger.warning(f"⚠️ Gain trop faible pour {symbol} après {time_in_position:.0f} min, SELL autorisé")
+                    return True, f"Gain insuffisant après {time_in_position:.0f} min ({gain_percent*100:.2f}%)"
+                    
                 logger.info(f"📊 Gain insuffisant pour trailing ({gain_percent*100:.2f}% < {self.min_gain_for_trailing*100:.1f}%), position continue")
                 return False, f"Gain insuffisant pour activer le trailing ({gain_percent*100:.2f}% < {self.min_gain_for_trailing*100:.1f}%)"
             
@@ -375,16 +408,7 @@ class TrailingSellManager:
         except Exception as e:
             logger.error(f"Erreur suppression prix max pour {symbol}: {e}")
     
-    def _cleanup_references(self, symbol: str) -> None:
-        """
-        Nettoie toutes les références pour un symbole après une vente.
-        
-        Args:
-            symbol: Symbole
-        """
-        self._clear_sell_reference(symbol)
-        self._clear_cycle_max_price(symbol)
-        logger.info(f"🧹 Toutes les références nettoyées pour {symbol}")
+    # SUPPRIMÉ - fonction dupliquée, gardée seulement la version mise à jour plus bas
     
     def _calculate_adaptive_threshold(self, symbol: str, entry_price: float, 
                                      entry_time: float) -> float:
@@ -417,18 +441,18 @@ class TrailingSellManager:
             time_factor = self._calculate_time_factor(entry_time)
             
             # Calcul du seuil final - RESSERRÉ POUR PROTECTION
-            # En bear market, utiliser le seuil le PLUS STRICT directement
+            # CORRECTION : logique bear/bull inversée pour cohérence - SEUILS ÉQUILIBRÉS
             if regime == 'TRENDING_BEAR' or regime == 'BREAKOUT_BEAR':
-                base_threshold = self.stop_loss_percent_base  # 1.5% - le plus strict
+                base_threshold = self.stop_loss_percent_base  # 1.5% - strict en bear
             elif regime == 'TRENDING_BULL' or regime == 'BREAKOUT_BULL':
-                base_threshold = self.stop_loss_percent_strong_bullish  # 3.5% - le plus tolérant
+                base_threshold = self.stop_loss_percent_strong_bullish  # 2.2% - tolérant en bull
             else:  # RANGING, TRANSITION, VOLATILE
-                base_threshold = self.stop_loss_percent_bullish  # 2.5% - intermédiaire
+                base_threshold = self.stop_loss_percent_bullish  # 1.8% - intermédiaire
             
             adaptive_threshold = float(base_threshold) * float(regime_factor) * float(volatility_factor) * float(support_factor) * float(time_factor)
             
-            # Contraintes min/max - ULTRA STRICTES POUR PROTECTION CAPITAL
-            adaptive_threshold = max(0.008, min(0.018, adaptive_threshold))  # 0.8%-1.8% (ultra strict)
+            # Contraintes min/max - ÉQUILIBRÉES pour éviter sur-trading
+            adaptive_threshold = max(0.010, min(0.025, adaptive_threshold))  # 1.0%-2.5% (équilibré)
             
             logger.debug(f"🧠 Stop-loss adaptatif {symbol}: {adaptive_threshold*100:.2f}%")
             
@@ -483,15 +507,15 @@ class TrailingSellManager:
         strength = analysis.get('regime_strength', 'WEAK')
         confidence = float(analysis.get('regime_confidence', 50))
         
-        # PROTECTION CAPITAL : seuils plus stricts globalement
+        # CORRECTION : logique inversée - plus strict en bear = seuil plus PETIT
         regime_multipliers = {
-            'TRENDING_BULL': 1.5,      # Bull = modérément tolérant (réduit de 2.0)
-            'BREAKOUT_BULL': 1.3,      # Breakout bull = moins tolérant (réduit de 1.8)
-            'RANGING': 1.0,            # Range = neutre (réduit de 1.2)
-            'TRANSITION': 0.9,         # Transition = légèrement strict (réduit de 1.0)
-            'TRENDING_BEAR': 0.5,      # Bear = ULTRA strict (réduit de 0.6)
-            'VOLATILE': 0.6,           # Volatile = plus strict (réduit de 0.8)
-            'BREAKOUT_BEAR': 0.4       # Breakout bear = MAXIMUM strict (réduit de 0.5)
+            'TRENDING_BULL': 1.2,      # Bull = plus tolérant (seuil plus large)
+            'BREAKOUT_BULL': 1.1,      # Breakout bull = modérément tolérant
+            'RANGING': 1.0,            # Range = neutre
+            'TRANSITION': 0.9,         # Transition = légèrement strict
+            'TRENDING_BEAR': 0.6,      # Bear = plus strict (seuil plus petit)
+            'VOLATILE': 0.7,           # Volatile = strict
+            'BREAKOUT_BEAR': 0.5       # Breakout bear = très strict
         }
         
         base_factor = regime_multipliers.get(regime, 1.0)
@@ -647,6 +671,118 @@ class TrailingSellManager:
             logger.error(f"❌ Erreur récupération prix pour {symbol}: {e}")
             return None
 
+    def _check_progressive_take_profit(self, symbol: str, gain_percent: float) -> Tuple[bool, str]:
+        """
+        Take profit progressif AMÉLIORÉ : vend si rechute significative depuis le palier atteint.
+        Permet de rider les pumps tout en fermant les cycles efficacement.
+        
+        Args:
+            symbol: Symbole pour tracking du palier
+            gain_percent: Pourcentage de gain actuel (ex: 0.025 = 2.5%)
+            
+        Returns:
+            (should_sell, reason)
+        """
+        # Paliers de take profit AJUSTÉS pour fermeture plus réactive
+        tp_levels = [0.10, 0.08, 0.06, 0.05, 0.04, 0.035, 0.03, 0.025, 0.02, 0.015, 0.012, 0.010, 0.008, 0.006, 0.004]
+        
+        # Trouver le palier le plus élevé atteint actuellement
+        current_tp_level = None
+        for level in tp_levels:
+            if gain_percent >= level:
+                current_tp_level = level
+                break
+        
+        if current_tp_level is None:
+            # Aucun palier atteint, pas de TP
+            return False, f"Aucun palier TP atteint (+{gain_percent*100:.2f}%)"
+        
+        # Récupérer le palier max historique pour ce symbole
+        historical_tp_key = f"max_tp_level:{symbol}"
+        historical_tp_data = self.redis_client.get(historical_tp_key)
+        historical_max_tp = None
+        
+        if historical_tp_data:
+            try:
+                if isinstance(historical_tp_data, (str, bytes)):
+                    if isinstance(historical_tp_data, bytes):
+                        historical_tp_data = historical_tp_data.decode('utf-8')
+                    historical_tp_dict = json.loads(historical_tp_data)
+                    historical_max_tp = float(historical_tp_dict.get("level", 0))
+                elif isinstance(historical_tp_data, dict):
+                    historical_max_tp = float(historical_tp_data.get("level", 0))
+            except Exception as e:
+                logger.error(f"Erreur récupération palier TP historique {symbol}: {e}")
+        
+        # Initialiser si pas de palier historique
+        if historical_max_tp is None:
+            historical_max_tp = 0
+        
+        # Mettre à jour le palier max si on a atteint un nouveau sommet
+        if current_tp_level > historical_max_tp:
+            self._update_max_tp_level(symbol, current_tp_level)
+            logger.info(f"🎯 Nouveau palier TP pour {symbol}: +{current_tp_level*100:.1f}% (était +{historical_max_tp*100:.1f}%)")
+            historical_max_tp = current_tp_level
+        
+        # VENDRE si rechute significative depuis le palier max (tolérance de 20% du palier)
+        # Ex: palier 2% -> vendre si on descend sous 1.6% (2% - 20% de 2%)
+        tolerance_factor = 0.80  # Garde 80% du palier atteint
+        adjusted_threshold = historical_max_tp * tolerance_factor
+        
+        if gain_percent < adjusted_threshold:
+            logger.warning(f"📉 Rechute significative pour {symbol}: +{gain_percent*100:.2f}% < seuil ajusté +{adjusted_threshold*100:.2f}% (palier max: +{historical_max_tp*100:.1f}%)")
+            self._clear_max_tp_level(symbol)  # Nettoyer après vente
+            return True, f"Rechute sous seuil TP ajusté +{adjusted_threshold*100:.2f}% (palier: +{historical_max_tp*100:.1f}%, gain: +{gain_percent*100:.2f}%)"
+        
+        # Sinon, continuer à surveiller
+        return False, f"Au-dessus palier TP +{historical_max_tp*100:.1f}% (+{gain_percent*100:.2f}%), surveillance active"
+    
+    def _update_max_tp_level(self, symbol: str, tp_level: float) -> None:
+        """
+        Met à jour le palier TP maximum atteint pour un symbole.
+        
+        Args:
+            symbol: Symbole
+            tp_level: Nouveau palier TP maximum (ex: 0.025 = 2.5%)
+        """
+        try:
+            tp_key = f"max_tp_level:{symbol}"
+            tp_data = {
+                "level": tp_level,
+                "timestamp": int(time.time() * 1000)
+            }
+            # TTL de 24 heures pour le palier TP
+            self.redis_client.set(tp_key, json.dumps(tp_data), expiration=86400)
+            logger.debug(f"🎯 Palier TP mis à jour pour {symbol}: +{tp_level*100:.1f}%")
+        except Exception as e:
+            logger.error(f"Erreur mise à jour palier TP pour {symbol}: {e}")
+    
+    def _clear_max_tp_level(self, symbol: str) -> None:
+        """
+        Supprime le palier TP maximum pour un symbole.
+        
+        Args:
+            symbol: Symbole
+        """
+        try:
+            tp_key = f"max_tp_level:{symbol}"
+            self.redis_client.delete(tp_key)
+            logger.info(f"🧹 Palier TP max supprimé pour {symbol}")
+        except Exception as e:
+            logger.error(f"Erreur suppression palier TP pour {symbol}: {e}")
+    
+    def _cleanup_references(self, symbol: str) -> None:
+        """
+        Nettoie toutes les références pour un symbole après une vente.
+        
+        Args:
+            symbol: Symbole
+        """
+        self._clear_sell_reference(symbol)
+        self._clear_cycle_max_price(symbol)
+        self._clear_max_tp_level(symbol)  # Ajouter nettoyage palier TP
+        logger.info(f"🧹 Toutes les références nettoyées pour {symbol}")
+    
     def _get_price_precision(self, price: float) -> int:
         """
         Détermine la précision d'affichage selon le niveau de prix.

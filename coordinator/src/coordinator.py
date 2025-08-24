@@ -54,11 +54,11 @@ class Coordinator:
         # Configuration dynamique basée sur l'USDC disponible
         self.fee_rate = 0.001  # 0.1% de frais estimés par trade
         
-        # Allocation basée USDC - adaptée pour multi-crypto (22 symbols)
-        self.base_allocation_usdc_percent = 8.0  # 8% de l'USDC disponible (permet ~8 positions)
-        self.strong_allocation_usdc_percent = 12.0 # 12% pour signaux forts
-        self.max_allocation_usdc_percent = 15.0   # 15% maximum pour VERY_STRONG
-        self.weak_allocation_usdc_percent = 4.0   # 4% pour signaux faibles
+        # Allocation basée USDC - augmentée pour permettre sorties partielles (22 symbols)
+        self.base_allocation_usdc_percent = 12.0  # 12% de l'USDC disponible (permet positions plus grosses)
+        self.strong_allocation_usdc_percent = 15.0 # 15% pour signaux forts
+        self.max_allocation_usdc_percent = 18.0   # 18% maximum pour VERY_STRONG
+        self.weak_allocation_usdc_percent = 8.0   # 8% pour signaux faibles (doublé)
         self.usdc_safety_margin = 0.98            # Garde 2% d'USDC en sécurité
         self.min_absolute_trade_usdc = 10.0       # 10 USDC minimum Binance
         
@@ -72,16 +72,14 @@ class Coordinator:
             db_connection=self.db_connection
         )
         
-        # Configuration stop-loss automatique adaptatif
-        self.stop_loss_percent_base = 0.015  # 1.5% de base
-        self.stop_loss_percent_bullish = 0.025  # 2.5% en tendance haussière (plus souple)
-        self.stop_loss_percent_strong_bullish = 0.035  # 3.5% en tendance très haussière (encore plus souple)
+        # Configuration stop-loss - SUPPRIMÉE : toute la logique est dans TrailingSellManager
+        # self.stop_loss_percent_* supprimés pour éviter duplication de code
         self.price_check_interval = 60  # Vérification des prix toutes les 60 secondes (aligné sur la fréquence des données)
         
         # Démarrer le monitoring stop-loss
         self.start_stop_loss_monitoring()
         
-        logger.info(f"✅ Coordinator initialisé - Allocation USDC: {self.weak_allocation_usdc_percent}-{self.max_allocation_usdc_percent}% (22 cryptos)")
+        logger.info(f"✅ Coordinator initialisé - Allocation USDC: {self.weak_allocation_usdc_percent}-{self.max_allocation_usdc_percent}% (positions plus grosses pour TP/SL)")
         
         # Stats
         self.stats = {
@@ -165,7 +163,7 @@ class Coordinator:
                 self.stats["signals_rejected"] += 1
                 return
             logger.info(f"📨 Signal reçu: {signal.strategy} {signal.side} {signal.symbol} @ {signal.price}")
-            logger.debug(f"Signal metadata: {signal.metadata}")
+            logger.info(f"🔍 Signal metadata: {signal.metadata}")
             if signal.metadata and 'db_id' in signal.metadata:
                 logger.info(f"DB ID trouvé dans signal: {signal.metadata['db_id']}")
             else:
@@ -305,14 +303,27 @@ class Coordinator:
                     entry_price = float(position.get('entry_price', 0))
                     entry_time = position.get('timestamp')
                     
-                    should_sell, sell_reason = self.trailing_manager.check_trailing_sell(
-                        symbol=signal.symbol,
-                        current_price=signal.price,
-                        entry_price=entry_price,
-                        entry_time=entry_time
-                    )
-                    if not should_sell:
-                        return False, sell_reason
+                    # EXCEPTION : Si signal de consensus fort avec beaucoup de stratégies, autoriser la vente
+                    force_sell = False
+                    if signal.metadata:
+                        strategies_count = signal.metadata.get('strategies_count', 0)
+                        consensus_strength = signal.metadata.get('consensus_strength', 0)
+                        signal_type = signal.metadata.get('type', '')
+                        
+                        # Forcer la vente si consensus fort (>5 stratégies et force >2.0)
+                        if signal_type == 'CONSENSUS' and strategies_count >= 5 and consensus_strength >= 2.0:
+                            logger.warning(f"⚠️ CONSENSUS FORT détecté ({strategies_count} stratégies, force {consensus_strength:.1f}), SELL forcé pour {signal.symbol}")
+                            force_sell = True
+                    
+                    if not force_sell:
+                        should_sell, sell_reason = self.trailing_manager.check_trailing_sell(
+                            symbol=signal.symbol,
+                            current_price=signal.price,
+                            entry_price=entry_price,
+                            entry_time=entry_time
+                        )
+                        if not should_sell:
+                            return False, sell_reason
                 else:
                     # Pas de position active, autoriser le SELL
                     logger.info(f"✅ Pas de position active pour {signal.symbol}, SELL autorisé")
@@ -403,21 +414,42 @@ class Coordinator:
                 
                 # ALLOCATION USDC MULTI-CRYPTO : Pourcentages adaptés pour 22 cryptos
                 
-                # Ajuster selon la force du signal (% de l'USDC disponible)
-                if signal.metadata and "signal_strength" in signal.metadata:
-                    strength = signal.metadata["signal_strength"]
-                    if strength == "VERY_STRONG":
-                        allocation_percent = self.max_allocation_usdc_percent     # 20% USDC
-                    elif strength == "STRONG":
-                        allocation_percent = self.strong_allocation_usdc_percent  # 15% USDC
-                    elif strength == "MODERATE":
-                        allocation_percent = self.base_allocation_usdc_percent    # 12% USDC
-                    elif strength == "WEAK":
-                        allocation_percent = self.weak_allocation_usdc_percent    # 8% USDC
+                # Ajuster selon la force du signal (calculée depuis consensus_strength et strategies_count)
+                strength_category = "MODERATE"  # Par défaut
+                
+                if signal.metadata:
+                    logger.info(f"🔍 Métadonnées {signal.symbol}: {signal.metadata}")
+                    
+                    # Calculer force basée sur consensus_strength et strategies_count
+                    consensus_strength = signal.metadata.get('consensus_strength', 0)
+                    strategies_count = signal.metadata.get('strategies_count', 1)
+                    avg_confidence = signal.metadata.get('avg_confidence', 0.5)
+                    
+                    # Formule de force : consensus_strength * strategies_count * avg_confidence
+                    force_score = consensus_strength * strategies_count * avg_confidence
+                    
+                    # Catégorisation basée sur le score de force
+                    if force_score >= 20:
+                        strength_category = "VERY_STRONG"
+                    elif force_score >= 15:
+                        strength_category = "STRONG" 
+                    elif force_score >= 10:
+                        strength_category = "MODERATE"
                     else:
-                        allocation_percent = self.base_allocation_usdc_percent
-                else:
-                    allocation_percent = self.base_allocation_usdc_percent
+                        strength_category = "WEAK"
+                    
+                    logger.info(f"💪 Force calculée {signal.symbol}: score={force_score:.1f} → {strength_category} "
+                               f"(consensus:{consensus_strength}, strategies:{strategies_count}, conf:{avg_confidence:.2f})")
+                
+                # Allocation selon la force calculée
+                if strength_category == "VERY_STRONG":
+                    allocation_percent = self.max_allocation_usdc_percent     # 18% USDC
+                elif strength_category == "STRONG":
+                    allocation_percent = self.strong_allocation_usdc_percent  # 15% USDC
+                elif strength_category == "MODERATE":
+                    allocation_percent = self.base_allocation_usdc_percent    # 12% USDC
+                else:  # WEAK
+                    allocation_percent = self.weak_allocation_usdc_percent    # 8% USDC
                 
                 # Calculer le montant basé sur l'USDC disponible
                 trade_amount = usdc_balance * (allocation_percent / 100)
@@ -429,10 +461,10 @@ class Coordinator:
                 # Mais toujours respecter le minimum absolu Binance
                 trade_amount = max(self.min_absolute_trade_usdc, trade_amount)
                 
-                # Log pour debug multi-crypto
+                # Log pour debug positions augmentées
                 logger.info(f"💰 {signal.symbol} - USDC dispo: {usdc_balance:.0f}€, "
                            f"allocation: {allocation_percent:.0f}% = {trade_amount:.0f}€ "
-                           f"(force: {signal.metadata.get('signal_strength', 'UNKNOWN') if signal.metadata else 'NONE'})")
+                           f"(force: {strength_category}) [POSITIONS AUGMENTÉES]")
                 
                 # Convertir en quantité
                 quantity = trade_amount / signal.price
@@ -606,205 +638,11 @@ class Coordinator:
             if current_price > entry_price:
                 self.trailing_manager.update_max_price_if_needed(symbol, current_price)
             
-            # Log debug pour positions proches des seuils
-            loss_percent = (entry_price - current_price) / entry_price * 100
-            # Utiliser le seuil adaptatif pour l'alerte précoce
-            base_threshold = self.stop_loss_percent_base * 100 * 0.5
-            if loss_percent > base_threshold:  # Si > 50% du seuil de base
-                precision = self._get_price_precision(current_price)
-                logger.debug(f"⚠️ {symbol} proche stop-loss: {current_price:.{precision}f} (perte {loss_percent:.2f}%)")
                 
         except Exception as e:
-            logger.error(f"❌ Erreur vérification stop-loss cycle {cycle_id}: {e}")
+            logger.error(f"❌ Erreur vérification position {cycle_id}: {e}")
     
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    def _get_price_precision(self, price: float) -> int:
-        """
-        Détermine la précision d'affichage selon le niveau de prix.
-        
-        Args:
-            price: Prix à analyser
-            
-        Returns:
-            Nombre de décimales à afficher
-        """
-        if price >= 1000:  # BTC, ETH haut
-            return 2  # 17000.12
-        elif price >= 100:  # ETH, SOL, AVAX
-            return 3  # 177.123
-        elif price >= 1:   # ADA, XRP, LINK
-            return 6  # 3.1234
-        elif price >= 0.01:  # Certains altcoins
-            return 6  # 0.12345
-        elif price >= 0.0001:  # DOGE, SHIB
-            return 10  # 0.123456
-        else:  # PEPE, BONK (très petits prix)
-            return 12  # 0.12345678
-    
-    def get_stats(self) -> Dict[str, Any]:
-        """Retourne les statistiques du coordinator."""
-        return self.stats.copy()
-    
-    def start_stop_loss_monitoring(self) -> None:
-        """Démarre le thread de monitoring stop-loss."""
-        if not self.stop_loss_thread or not self.stop_loss_thread.is_alive():
-            self.stop_loss_thread = threading.Thread(
-                target=self._stop_loss_monitor_loop,
-                daemon=True,
-                name="StopLossMonitor"
-            )
-            self.stop_loss_thread.start()
-            logger.info("🛡️ Monitoring stop-loss démarré")
-    
-    def stop_stop_loss_monitoring(self) -> None:
-        """Arrête le monitoring stop-loss."""
-        self.stop_loss_active = False
-        if self.stop_loss_thread:
-            self.stop_loss_thread.join(timeout=10)
-        logger.info("🛑 Monitoring stop-loss arrêté")
-    
-    def _stop_loss_monitor_loop(self) -> None:
-        """Boucle principale du monitoring stop-loss."""
-        logger.info("🔍 Boucle de monitoring stop-loss active")
-        
-        while self.stop_loss_active:
-            try:
-                self._check_all_positions_stop_loss()
-                time.sleep(self.price_check_interval)
-            except Exception as e:
-                logger.error(f"❌ Erreur dans monitoring stop-loss: {e}")
-                time.sleep(self.price_check_interval * 2)  # Attendre plus longtemps en cas d'erreur
-    
-    def _check_all_positions_stop_loss(self) -> None:
-        """Vérifie toutes les positions actives pour déclenchement stop-loss."""
-        try:
-            # Récupérer toutes les positions actives
-            all_active_cycles = self.service_client.get_all_active_cycles()
-            
-            if not all_active_cycles:
-                return
-            
-            logger.debug(f"🔍 Vérification stop-loss pour {len(all_active_cycles)} positions actives")
-            
-            for cycle in all_active_cycles:
-                try:
-                    self._check_position_stop_loss(cycle)
-                except Exception as e:
-                    logger.error(f"❌ Erreur vérification stop-loss pour cycle {cycle.get('id', 'unknown')}: {e}")
-                    
-        except Exception as e:
-            logger.error(f"❌ Erreur récupération positions actives: {e}")
-    
-    def _check_position_stop_loss(self, cycle: Dict[str, Any]) -> None:
-        """
-        Vérifie une position spécifique et déclenche un stop-loss si nécessaire.
-        Met aussi à jour la référence trailing automatiquement.
-        Utilise maintenant le système de stop-loss adaptatif intelligent.
-        
-        Args:
-            cycle: Données du cycle de trading
-        """
-        try:
-            symbol = cycle.get('symbol')
-            entry_price = float(cycle.get('entry_price', 0))
-            entry_time = cycle.get('timestamp')
-            cycle_id = cycle.get('id')
-            
-            if not symbol or not entry_price:
-                logger.warning(f"⚠️ Données cycle incomplètes: {cycle}")
-                return
-            
-            # Convertir timestamp en epoch si nécessaire
-            if isinstance(entry_time, str):
-                from datetime import datetime
-                entry_time_dt = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
-                entry_time_epoch = entry_time_dt.timestamp()
-            else:
-                entry_time_epoch = float(entry_time) if entry_time else time.time()
-            
-            # Récupérer le prix actuel via TrailingSellManager
-            current_price = self.trailing_manager.get_current_price(symbol)
-            if not current_price:
-                logger.warning(f"⚠️ Prix actuel indisponible pour {symbol}")
-                return
-            
-            # Utiliser le TrailingSellManager pour vérifier si on doit vendre
-            should_sell, sell_reason = self.trailing_manager.check_trailing_sell(
-                symbol=symbol,
-                current_price=current_price,
-                entry_price=entry_price,
-                entry_time=entry_time_epoch
-            )
-            
-            if should_sell:
-                logger.warning(f"🚨 AUTO-SELL DÉCLENCHÉ pour {symbol}: {sell_reason}")
-                # Déclencher vente d'urgence
-                self._execute_emergency_sell(symbol, current_price, str(cycle_id) if cycle_id else "unknown", sell_reason)
-                return
-            
-            # Mettre à jour le prix max si position gagnante
-            if current_price > entry_price:
-                self.trailing_manager.update_max_price_if_needed(symbol, current_price)
-            
-            # Log debug pour positions proches des seuils
-            loss_percent = (entry_price - current_price) / entry_price * 100
-            # Utiliser le seuil adaptatif pour l'alerte précoce
-            base_threshold = self.stop_loss_percent_base * 100 * 0.5
-            if loss_percent > base_threshold:  # Si > 50% du seuil de base
-                precision = self._get_price_precision(current_price)
-                logger.debug(f"⚠️ {symbol} proche stop-loss: {current_price:.{precision}f} (perte {loss_percent:.2f}%)")
-                
-        except Exception as e:
-            logger.error(f"❌ Erreur vérification stop-loss cycle {cycle_id}: {e}")
-    
-    def _get_current_price(self, symbol: str) -> Optional[float]:
-        """
-        Récupère le prix actuel d'un symbole depuis Redis.
-        
-        Args:
-            symbol: Symbole à récupérer
-            
-        Returns:
-            Prix actuel ou None
-        """
-        try:
-            # Essayer de récupérer depuis Redis (ticker)
-            ticker_key = f"ticker:{symbol}"
-            ticker_data = self.redis_client.get(ticker_key)
-            
-            if ticker_data:
-                if isinstance(ticker_data, dict):
-                    return float(ticker_data.get('price', 0))
-                elif isinstance(ticker_data, str):
-                    ticker_dict = json.loads(ticker_data)
-                    return float(ticker_dict.get('price', 0))
-            
-            # Fallback: essayer market_data
-            market_key = f"market_data:{symbol}:1m"
-            market_data = self.redis_client.get(market_key)
-            
-            if market_data:
-                if isinstance(market_data, dict):
-                    return float(market_data.get('close', 0))
-                elif isinstance(market_data, str):
-                    market_dict = json.loads(market_data)
-                    return float(market_dict.get('close', 0))
-            
-            logger.warning(f"⚠️ Prix non trouvé dans Redis pour {symbol}")
-            return None
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur récupération prix pour {symbol}: {e}")
-            return None
+    # _get_current_price SUPPRIMÉ - utiliser trailing_manager.get_current_price() à la place
     
     def _execute_emergency_sell(self, symbol: str, current_price: float, cycle_id: str, reason: str) -> None:
         """

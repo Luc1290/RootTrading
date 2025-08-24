@@ -4,8 +4,10 @@ Logique simple : reçoit ordre du coordinator → exécute sur Binance → stock
 """
 import logging
 import uuid
+import hashlib
+import time
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 
 from shared.src.enums import OrderSide, OrderStatus
 from shared.src.schemas import TradeOrder, TradeExecution
@@ -37,7 +39,68 @@ class OrderExecutor:
         # Gestionnaire de cycles pour le tracking des P&L
         self.cycle_manager = CycleManager()
         
+        # Cache de déduplication: {hash: (timestamp, order_id)}
+        self.dedup_cache: Dict[str, Tuple[float, str]] = {}
+        self.dedup_window_seconds = 10  # Fenêtre de déduplication en secondes
+        
         logger.info("✅ OrderExecutor initialisé (logique simplifiée)")
+    
+    def _get_order_hash(self, order_data: Dict[str, Any]) -> str:
+        """
+        Génère un hash unique pour un ordre basé sur ses caractéristiques.
+        
+        Args:
+            order_data: Données de l'ordre
+            
+        Returns:
+            Hash de l'ordre
+        """
+        # Créer une représentation canonique de l'ordre
+        key_parts = [
+            order_data.get("symbol", ""),
+            order_data.get("side", ""),
+            str(order_data.get("quantity", 0)),
+            str(order_data.get("strategy", "Manual"))
+        ]
+        key_string = "|".join(key_parts)
+        return hashlib.md5(key_string.encode()).hexdigest()
+    
+    def _clean_dedup_cache(self) -> None:
+        """Nettoie le cache de déduplication des entrées expirées."""
+        current_time = time.time()
+        expired_keys = [
+            k for k, (timestamp, _) in self.dedup_cache.items()
+            if current_time - timestamp > self.dedup_window_seconds
+        ]
+        for key in expired_keys:
+            del self.dedup_cache[key]
+    
+    def _is_duplicate_order(self, order_data: Dict[str, Any]) -> Optional[str]:
+        """
+        Vérifie si un ordre est un duplicata récent.
+        
+        Args:
+            order_data: Données de l'ordre
+            
+        Returns:
+            order_id du duplicata si trouvé, None sinon
+        """
+        # Nettoyer le cache
+        self._clean_dedup_cache()
+        
+        # Générer le hash de l'ordre
+        order_hash = self._get_order_hash(order_data)
+        
+        # Vérifier si l'ordre existe déjà dans le cache
+        if order_hash in self.dedup_cache:
+            timestamp, existing_order_id = self.dedup_cache[order_hash]
+            time_diff = time.time() - timestamp
+            
+            if time_diff <= self.dedup_window_seconds:
+                logger.warning(f"⚠️ Ordre dupliqué détecté (créé il y a {time_diff:.1f}s): {existing_order_id}")
+                return existing_order_id
+        
+        return None
     
     def execute_order(self, order_data: Dict[str, Any]) -> Optional[str]:
         """
@@ -58,6 +121,12 @@ class OrderExecutor:
             ID de l'ordre exécuté ou None si échec
         """
         try:
+            # Vérifier les duplicatas
+            duplicate_order_id = self._is_duplicate_order(order_data)
+            if duplicate_order_id:
+                logger.info(f"🔄 Ordre dupliqué ignoré, retour de l'ID existant: {duplicate_order_id}")
+                return duplicate_order_id
+            
             # Générer un ID unique pour l'ordre
             order_id = f"order_{uuid.uuid4().hex[:16]}"
             
@@ -73,6 +142,10 @@ class OrderExecutor:
             quantity = float(order_data["quantity"])
             price = float(order_data.get("price", 0)) if order_data.get("price") else None
             strategy = order_data.get("strategy", "Manual")
+            
+            # Ajouter l'ordre au cache de déduplication AVANT l'exécution
+            order_hash = self._get_order_hash(order_data)
+            self.dedup_cache[order_hash] = (time.time(), order_id)
             
             side_str = side.value if hasattr(side, 'value') else str(side)
             logger.info(f"📤 Exécution ordre: {side_str} {quantity} {symbol} @ {price or 'MARKET'}")

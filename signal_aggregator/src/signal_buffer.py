@@ -59,26 +59,101 @@ class IntelligentSignalBuffer:
         # Task pour gérer les timeouts
         self.timeout_task = None
         
-        # Timeframes par ordre de priorité (plus élevé = plus important)
-        # CORRECTION: 15m doit être considéré comme timeframe élevé (>100) pour dominer les conflits
+        # Timeframes par ordre de priorité décisionnelle
+        # ARCHITECTURE: 3m/5m = decision makers, 15m = context validator, 1m = timing tool
         self.timeframe_priority = {
             '1d': 1000, '4h': 400, '1h': 200, 
-            '15m': 150, '5m': 5, '3m': 3, '1m': 1  # 15m passe à 150 pour dominer les 3m/5m
+            '15m': 150,  # Context validator - fort pour régime
+            '5m': 50,    # Core decision maker - poids élevé  
+            '3m': 45,    # Core decision maker - poids élevé
+            '1m': 10     # Timing tool seulement - influence réduite pour éviter bruit
         }
         
-        # Statistiques
+        # Pondération pour calcul de consensus (influence réelle sur décisions)
+        self.decision_weights = {
+            '15m': 0.25,  # 25% - Validation contexte/régime (peut être overridé par pump 1m)
+            '5m': 0.35,   # 35% - Cœur décisionnel  
+            '3m': 0.25,   # 25% - Cœur décisionnel
+            '1m': 0.15    # 15% - PUMP DETECTOR - peut overrider si signal explosif
+        }
+        
+        # Seuils pour détection de pump/dump sur 1m
+        self.pump_detection_thresholds = {
+            'min_confidence': 0.85,  # Confidence minimale pour détecter un pump
+            'volume_boost': 2.0,     # Volume multiplié par 2+ (si disponible)
+            'momentum_boost': 1.5    # Momentum élevé (si disponible)
+        }
+        
+        # Statistiques (inclut tracking des pumps détectés)
         self.stats = {
             'signals_buffered': 0,
             'batches_processed': 0,
             'timeout_triggers': 0,
             'size_triggers': 0,
             'mtf_sync_triggers': 0,
-            'mtf_batches_processed': 0
+            'mtf_batches_processed': 0,
+            'pumps_detected': 0,
+            'pump_overrides': 0
         }
         
     def set_batch_processor(self, processor_callback):
         """Définit la fonction de callback pour traiter les batches."""
         self.batch_processor = processor_callback
+        
+    def _detect_pump_signal(self, signal: Dict[str, Any]) -> bool:
+        """
+        Détecte si un signal 1m est un pump/dump explosif qui doit override les autres TF.
+        
+        Args:
+            signal: Signal 1m à analyser
+            
+        Returns:
+            bool: True si c'est un pump détecté
+        """
+        if signal.get('timeframe') != '1m':
+            return False
+            
+        confidence = signal.get('confidence', 0.0)
+        metadata = signal.get('metadata', {})
+        
+        # Critère 1: Confidence très élevée (signal très fort)
+        if confidence < self.pump_detection_thresholds['min_confidence']:
+            return False
+            
+        # Critère 2: Volume explosif (si disponible)
+        volume_ratio = metadata.get('volume_ratio', 1.0)
+        has_volume_boost = volume_ratio >= self.pump_detection_thresholds['volume_boost']
+        
+        # Critère 3: Momentum explosif (si disponible) 
+        momentum_score = metadata.get('momentum_score', 1.0)
+        has_momentum_boost = momentum_score >= self.pump_detection_thresholds['momentum_boost']
+        
+        # Critère 4: Confluence très élevée (si disponible)
+        confluence_score = metadata.get('confluence_score', 0.5)
+        has_confluence = confluence_score >= 0.8
+        
+        # Critères additionnels spécifiques pumps
+        breakout_strength = metadata.get('breakout_strength', 0.0)
+        has_breakout = breakout_strength >= 0.7
+        
+        # DÉTECTION PUMP: Confidence très haute + au moins 2 critères explosifs
+        explosive_criteria_count = sum([
+            has_volume_boost,
+            has_momentum_boost, 
+            has_confluence,
+            has_breakout
+        ])
+        
+        is_pump = explosive_criteria_count >= 2
+        
+        if is_pump:
+            logger.info(f"🚀 PUMP DÉTECTÉ {signal.get('symbol')} {signal.get('side')}: "
+                       f"confidence={confidence:.2f}, volume={volume_ratio:.1f}x, "
+                       f"momentum={momentum_score:.1f}x, confluence={confluence_score:.2f}, "
+                       f"breakout={breakout_strength:.2f}")
+            self.stats['pumps_detected'] += 1
+            
+        return is_pump
         
     async def add_signal(self, signal: Dict[str, Any]) -> None:
         """
@@ -386,35 +461,61 @@ class IntelligentSignalBuffer:
         buy_signals = [s for s in signals if s.get('side') == 'BUY']
         sell_signals = [s for s in signals if s.get('side') == 'SELL']
         
-        # Calculer le score de chaque groupe basé sur le timeframe et la confidence
+        # Calculer le score de chaque groupe avec pondération décisionnelle intelligente
         def calculate_group_score(group_signals):
             if not group_signals:
                 return 0.0
                 
-            total_score = 0
+            total_weighted_score = 0
+            total_weight = 0
+            
             for signal in group_signals:
-                # Score basé sur la priorité du timeframe
-                tf_score = self.timeframe_priority.get(signal.get('timeframe', '5m'), 1)
-                
-                # Score basé sur la confidence du signal
+                timeframe = signal.get('timeframe', '5m')
                 confidence = signal.get('confidence', 0.5)
                 
-                # Facteur de pondération : timeframe plus élevé = plus important
-                if tf_score >= 400:  # 4h+
-                    weight = 3.0
-                elif tf_score >= 100:  # 1h+
-                    weight = 2.5
-                elif tf_score >= 15:  # 15m+
-                    weight = 2.0
-                else:  # < 15m
-                    weight = 1.0
-                    
-                # FIX: Normaliser tf_score différemment pour avoir des scores lisibles
-                normalized_tf_score = tf_score / 100.0  # Au lieu de /1000, utiliser /100
-                signal_score = normalized_tf_score * confidence * weight
-                total_score += signal_score
+                # Utiliser les poids décisionnels au lieu des priorités brutes
+                decision_weight = self.decision_weights.get(timeframe, 0.01)
                 
-            return total_score / len(group_signals)  # Score moyen pondéré
+                # Règles spéciales selon rôle du timeframe
+                if timeframe == '1m':
+                    # 1m = timing tool : fort impact SEULEMENT si très confiant OU opposé fort consensus
+                    if confidence >= 0.8:
+                        adjusted_weight = decision_weight * 2  # Boost si très confiant
+                    elif len(group_signals) == 1:  # Seul signal 1m contre consensus
+                        adjusted_weight = decision_weight * 0.3  # Réduire influence isolée
+                    else:
+                        adjusted_weight = decision_weight
+                        
+                elif timeframe in ['3m', '5m']:
+                    # 3m/5m = decision makers : poids normal, boost si consensus interne
+                    core_signals = [s for s in group_signals if s.get('timeframe') in ['3m', '5m']]
+                    if len(core_signals) >= 2:
+                        adjusted_weight = decision_weight * 1.3  # Boost consensus 3m+5m
+                    else:
+                        adjusted_weight = decision_weight
+                        
+                elif timeframe == '15m':
+                    # 15m = context validator : poids stable, crucial pour direction
+                    adjusted_weight = decision_weight
+                    
+                else:
+                    # Timeframes plus élevés : poids maximal
+                    adjusted_weight = decision_weight * 2
+                
+                # Score final pondéré
+                signal_score = confidence * adjusted_weight
+                total_weighted_score += signal_score
+                total_weight += adjusted_weight
+                
+            # Retourner score moyen pondéré avec bonus de consensus
+            avg_score = total_weighted_score / max(total_weight, 0.01)
+            
+            # Bonus si multiple signaux (consensus interne)
+            if len(group_signals) >= 2:
+                consensus_bonus = min(0.2, (len(group_signals) - 1) * 0.1)
+                avg_score += consensus_bonus
+                
+            return avg_score
         
         buy_score = calculate_group_score(buy_signals)
         sell_score = calculate_group_score(sell_signals)
@@ -428,54 +529,118 @@ class IntelligentSignalBuffer:
         sell_high_tf = len([tf for tf in sell_timeframes 
                            if self.timeframe_priority.get(tf, 0) >= 100])
         
-        # Règles de résolution des conflits
+        # Analyser la composition par rôles de timeframes
+        buy_core_signals = [s for s in buy_signals if s.get('timeframe') in ['3m', '5m']]
+        sell_core_signals = [s for s in sell_signals if s.get('timeframe') in ['3m', '5m']]
+        buy_timing_signals = [s for s in buy_signals if s.get('timeframe') == '1m']
+        sell_timing_signals = [s for s in sell_signals if s.get('timeframe') == '1m']
+        buy_context_signals = [s for s in buy_signals if s.get('timeframe') == '15m']
+        sell_context_signals = [s for s in sell_signals if s.get('timeframe') == '15m']
+        
+        # Règles de résolution des conflits HIÉRARCHIQUES
         resolution_rules = []
         should_process = False
         winning_side = None
         
-        # Règle 1: Dominance claire d'un timeframe élevé
-        if buy_high_tf >= 1 and sell_high_tf == 0:
-            resolution_rules.append("BUY dominé par timeframes élevés")
+        # RÈGLE 0 (PRIORITÉ ABSOLUE): DÉTECTION PUMP 1m - override tout autre signal
+        buy_pumps = [s for s in buy_timing_signals if self._detect_pump_signal(s)]
+        sell_pumps = [s for s in sell_timing_signals if self._detect_pump_signal(s)]
+        
+        if buy_pumps and not sell_pumps:
+            resolution_rules.append(f"🚀 PUMP BUY détecté - override tous les autres timeframes ({len(buy_pumps)} pump(s))")
             winning_side = "BUY"
             should_process = True
-        elif sell_high_tf >= 1 and buy_high_tf == 0:
-            resolution_rules.append("SELL dominé par timeframes élevés")
+            self.stats['pump_overrides'] += 1
+        elif sell_pumps and not buy_pumps:
+            resolution_rules.append(f"📉 DUMP SELL détecté - override tous les autres timeframes ({len(sell_pumps)} dump(s))")
+            winning_side = "SELL" 
+            should_process = True
+            self.stats['pump_overrides'] += 1
+        elif buy_pumps and sell_pumps:
+            # Conflit de pumps simultanés - prendre le plus fort
+            buy_pump_strength = sum(s.get('confidence', 0) for s in buy_pumps)
+            sell_pump_strength = sum(s.get('confidence', 0) for s in sell_pumps)
+            if buy_pump_strength > sell_pump_strength:
+                resolution_rules.append(f"🚀 PUMP BUY plus fort que DUMP SELL ({buy_pump_strength:.2f} vs {sell_pump_strength:.2f})")
+                winning_side = "BUY"
+                should_process = True
+                self.stats['pump_overrides'] += 1
+            else:
+                resolution_rules.append(f"📉 DUMP SELL plus fort que PUMP BUY ({sell_pump_strength:.2f} vs {buy_pump_strength:.2f})")
+                winning_side = "SELL"
+                should_process = True
+                self.stats['pump_overrides'] += 1
+        
+        # Règle 1: DOMINANCE CONTEXTE 15m (régime/direction long terme) - seulement si pas de pump
+        elif buy_context_signals and not sell_context_signals:
+            resolution_rules.append("BUY dominé par contexte 15m seul")
+            winning_side = "BUY"
+            should_process = True
+        elif sell_context_signals and not buy_context_signals:
+            resolution_rules.append("SELL dominé par contexte 15m seul")
             winning_side = "SELL"
             should_process = True
             
-        # Règle 2: Score pondéré significativement différent
+        # Règle 2: CONSENSUS DÉCISIONNEL 3m+5m (cœur de la décision)
+        elif len(buy_core_signals) >= 2 and len(sell_core_signals) == 0:
+            resolution_rules.append(f"BUY consensus décisionnel fort ({len(buy_core_signals)} signaux 3m+5m)")
+            winning_side = "BUY"
+            should_process = True
+        elif len(sell_core_signals) >= 2 and len(buy_core_signals) == 0:
+            resolution_rules.append(f"SELL consensus décisionnel fort ({len(sell_core_signals)} signaux 3m+5m)")
+            winning_side = "SELL"
+            should_process = True
+            
+        # Règle 3: SCORE PONDÉRÉ avec seuils adaptés aux nouveaux poids
         else:
-            max_score = max(buy_score, sell_score, 0.01)  # Éviter division par 0
+            max_score = max(buy_score, sell_score, 0.01)
             score_diff = abs(buy_score - sell_score)
             relative_diff = score_diff / max_score
             
-            if score_diff > 0.1 or relative_diff > 0.2:  # 10% d'écart absolu OU 20% relatif
+            # Seuils ajustés pour les nouveaux poids décisionnels (plus bas car scores plus petits)
+            if score_diff > 0.05 or relative_diff > 0.15:  # 5% absolu OU 15% relatif
                 if buy_score > sell_score:
-                    resolution_rules.append(f"BUY score supérieur ({buy_score:.2f} vs {sell_score:.2f})")
+                    resolution_rules.append(f"BUY score pondéré supérieur ({buy_score:.3f} vs {sell_score:.3f})")
                     winning_side = "BUY"
                     should_process = True
                 else:
-                    resolution_rules.append(f"SELL score supérieur ({sell_score:.2f} vs {buy_score:.2f})")
+                    resolution_rules.append(f"SELL score pondéré supérieur ({sell_score:.3f} vs {buy_score:.3f})")
                     winning_side = "SELL"
                     should_process = True
-            
-            # Règle 3: Majorité claire d'une direction (2:1 minimum)
-            elif len(buy_signals) >= 2 * len(sell_signals):
-                resolution_rules.append(f"BUY majorité claire ({len(buy_signals)} vs {len(sell_signals)})")
+            # Règle 4: GESTION SPÉCIALE 1m (timing seulement)  
+            elif buy_timing_signals and not sell_timing_signals and len(buy_core_signals) >= 1:
+                # 1m BUY + au moins 1 signal décisionnel → mais vérifier qu'il n'est pas isolé
+                if len(buy_signals) >= 2:  # 1m pas seul
+                    resolution_rules.append(f"BUY avec support timing 1m + décisionnel")
+                    winning_side = "BUY"
+                    should_process = True
+                else:
+                    resolution_rules.append("Signal 1m isolé ignoré - attendre confirmation")
+            elif sell_timing_signals and not buy_timing_signals and len(sell_core_signals) >= 1:
+                if len(sell_signals) >= 2:
+                    resolution_rules.append(f"SELL avec support timing 1m + décisionnel")
+                    winning_side = "SELL"
+                    should_process = True
+                else:
+                    resolution_rules.append("Signal 1m isolé ignoré - attendre confirmation")
+                    
+            # Règle 5: Majorité décisionnelle dans les core timeframes
+            elif len(buy_core_signals) > len(sell_core_signals) and len(buy_core_signals) >= 1:
+                resolution_rules.append(f"BUY majorité décisionnelle ({len(buy_core_signals)} vs {len(sell_core_signals)} core signals)")
                 winning_side = "BUY"
                 should_process = True
-            elif len(sell_signals) >= 2 * len(buy_signals):
-                resolution_rules.append(f"SELL majorité claire ({len(sell_signals)} vs {len(buy_signals)})")
+            elif len(sell_core_signals) > len(buy_core_signals) and len(sell_core_signals) >= 1:
+                resolution_rules.append(f"SELL majorité décisionnelle ({len(sell_core_signals)} vs {len(buy_core_signals)} core signals)")
                 winning_side = "SELL"
                 should_process = True
             
-            # Règle 4: Confidence moyenne très différente (>25% d'écart)
+            # Règle 6: Fallback - confidence moyenne si pas d'autre résolution
             else:
                 avg_buy_conf = sum(s.get('confidence', 0.5) for s in buy_signals) / len(buy_signals) if buy_signals else 0
                 avg_sell_conf = sum(s.get('confidence', 0.5) for s in sell_signals) / len(sell_signals) if sell_signals else 0
                 
                 conf_diff = abs(avg_buy_conf - avg_sell_conf)
-                if conf_diff > 0.10:  # RÉDUIT: 10% d'écart suffit au lieu de 25%
+                if conf_diff > 0.08:  # 8% d'écart suffit 
                     if avg_buy_conf > avg_sell_conf:
                         resolution_rules.append(f"BUY confidence supérieure ({avg_buy_conf:.2f} vs {avg_sell_conf:.2f})")
                         winning_side = "BUY"
@@ -485,7 +650,7 @@ class IntelligentSignalBuffer:
                         winning_side = "SELL"
                         should_process = True
                 else:
-                    resolution_rules.append("Conflit non résolvable - scores équilibrés")
+                    resolution_rules.append("Conflit équilibré - attendre signaux supplémentaires pour départager")
         
         # Décision finale : pas de traitement si conflit équilibré
         if not should_process:
@@ -499,9 +664,15 @@ class IntelligentSignalBuffer:
             'sell_signals_count': len(sell_signals),
             'buy_score': buy_score,
             'sell_score': sell_score,
-            'buy_high_tf_count': buy_high_tf,
-            'sell_high_tf_count': sell_high_tf,
-            'conflict_type': 'balanced' if not should_process else 'resolvable'
+            # Analyse par rôles de timeframes
+            'buy_core_signals': len(buy_core_signals),
+            'sell_core_signals': len(sell_core_signals),
+            'buy_timing_signals': len(buy_timing_signals),
+            'sell_timing_signals': len(sell_timing_signals),
+            'buy_context_signals': len(buy_context_signals),
+            'sell_context_signals': len(sell_context_signals),
+            'conflict_type': 'balanced' if not should_process else 'resolvable',
+            'decision_logic': 'hierarchical_timeframe_weighting'
         }
                 
     async def force_flush_all(self) -> None:
