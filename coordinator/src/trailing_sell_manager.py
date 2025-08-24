@@ -92,16 +92,8 @@ class TrailingSellManager:
                 logger.info(f"📉 Stop-loss adaptatif déclenché pour {symbol}: perte {loss_percent*100:.2f}% ≥ seuil {adaptive_threshold*100:.2f}%")
                 return True, f"Stop-loss adaptatif déclenché (perte {loss_percent*100:.2f}% ≥ {adaptive_threshold*100:.2f}%)"
             
-            # Si position perdante mais dans la tolérance : vérifier le temps
+            # Si position perdante mais dans la tolérance : garder
             if current_price <= entry_price:
-                # Calculer le temps en position
-                time_in_position = (time.time() - entry_time_epoch) / 60  # en minutes
-                
-                # Si position perdante depuis trop longtemps, couper les pertes - RESSERRÉ
-                if time_in_position > 7 and loss_percent > 0.003:  # Plus de 7 min et perte > 0.3%
-                    logger.warning(f"⏰ Position perdante trop longue pour {symbol}: {time_in_position:.0f} min, perte {loss_percent*100:.2f}%, SELL forcé")
-                    return True, f"Position perdante depuis {time_in_position:.0f} min (perte {loss_percent*100:.2f}%)"
-                
                 logger.info(f"🟡 Position perdante mais dans tolérance pour {symbol}: perte {loss_percent*100:.2f}% < seuil {adaptive_threshold*100:.2f}%")
                 return False, f"Position perdante mais dans tolérance (perte {loss_percent*100:.2f}% < {adaptive_threshold*100:.2f}%)"
             
@@ -120,22 +112,9 @@ class TrailingSellManager:
             else:
                 logger.debug(f"TP progressif désactivé pour {symbol} (gain {gain_percent*100:.2f}% < 1%)")
             
-            # NOUVEAU : Autoriser SELL immédiat si signal de consensus après un certain temps
-            # Calculer le temps écoulé depuis l'entrée
-            time_in_position = (time.time() - entry_time_epoch) / 60  # en minutes
-            
-            # Si position ouverte depuis plus de 5 minutes ET gain faible, autoriser SELL
-            if time_in_position > 5 and gain_percent < 0.01:  # Moins de 1% après 5 min
-                logger.warning(f"⏰ Position stagnante pour {symbol}: {time_in_position:.0f} min, gain {gain_percent*100:.2f}%, SELL autorisé")
-                return True, f"Position stagnante ({time_in_position:.0f} min, gain {gain_percent*100:.2f}%)"
             
             # Vérifier si le gain minimum est atteint pour activer le trailing
             if gain_percent < self.min_gain_for_trailing:
-                # Si gain très faible et position ouverte depuis longtemps, autoriser SELL
-                if gain_percent < 0.002 and time_in_position > 3:  # Moins de 0.2% après 3 min
-                    logger.warning(f"⚠️ Gain trop faible pour {symbol} après {time_in_position:.0f} min, SELL autorisé")
-                    return True, f"Gain insuffisant après {time_in_position:.0f} min ({gain_percent*100:.2f}%)"
-                    
                 logger.info(f"📊 Gain insuffisant pour trailing ({gain_percent*100:.2f}% < {self.min_gain_for_trailing*100:.1f}%), position continue")
                 return False, f"Gain insuffisant pour activer le trailing ({gain_percent*100:.2f}% < {self.min_gain_for_trailing*100:.1f}%)"
             
