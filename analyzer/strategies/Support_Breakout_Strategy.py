@@ -32,28 +32,28 @@ class Support_Breakout_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres de cassure support - AJUSTÉS
-        self.breakdown_threshold = 0.005         # 0.5% sous support (moins strict)
-        self.strong_breakdown_threshold = 0.012  # 1.2% pour cassure forte (moins strict)
-        self.extreme_breakdown_threshold = 0.02  # 2% pour cassure extrême (moins strict)
+        # Paramètres cassure support - RÉALISTES CRYPTO 3M
+        self.breakdown_threshold = 0.003         # 0.3% sous support (plus sensible)
+        self.strong_breakdown_threshold = 0.008  # 0.8% pour cassure forte (réaliste)
+        self.extreme_breakdown_threshold = 0.015 # 1.5% pour cassure extrême (atteignable)
         
         # Paramètres temporels
         self.max_time_near_support = 7          # Max barres près support avant cassure
         self.confirmation_bars = 1              # Barres pour confirmer cassure
         
-        # Paramètres volume (confirmation cassure) - AJUSTÉS
-        self.min_breakdown_volume = 1.3         # Volume 30% au-dessus normal (moins strict)
-        self.strong_breakdown_volume = 2.0      # Volume 2x pour cassure forte (moins strict)
-        self.volume_quality_threshold = 0.70    # Qualité volume minimum 70% (plus strict)
+        # Paramètres volume - ACCESSIBLES CRYPTO
+        self.min_breakdown_volume = 1.15        # Volume 15% au-dessus (accessible)
+        self.strong_breakdown_volume = 1.8      # Volume 1.8x pour cassure forte
+        self.volume_quality_threshold = 0.50    # Qualité volume 50% (réaliste)
         
-        # Paramètres momentum (continuation baissière) - OPTIMISÉS
-        self.momentum_bearish_threshold = 35    # Momentum plus strict (35 au lieu de 40)
-        self.roc_bearish_threshold = -0.015     # ROC plus strict (-1.5% au lieu de -1%)
+        # Paramètres momentum - ÉQUILIBRÉS
+        self.momentum_bearish_threshold = 42    # Momentum baissier réaliste
+        self.roc_bearish_threshold = -0.008     # ROC -0.8% (atteignable 3m)
         
-        # Paramètres de support - OPTIMISÉS
-        self.min_support_strength = 0.5         # Force minimum augmentée (50% au lieu de 40%)
-        self.strong_support_bonus = 0.20        # Bonus augmenté (20% au lieu de 15%)
-        self.min_break_probability = 0.40       # Probabilité minimum augmentée (40% au lieu de 30%)
+        # Paramètres support - COHÉRENTS
+        self.min_support_strength = 0.3         # Force minimum accessible
+        self.strong_support_bonus = 0.15        # Bonus modéré
+        self.min_break_probability = 0.25       # Probabilité 25% (réaliste)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
@@ -224,7 +224,7 @@ class Support_Breakout_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_breakdown': breakdown_score >= 0.4,
+            'is_breakdown': breakdown_score >= 0.25,  # Seuil assoupli (était 0.4)
             'score': breakdown_score,
             'indicators': breakdown_indicators,
             'support_level': support_level,
@@ -291,7 +291,7 @@ class Support_Breakout_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_bearish_momentum': momentum_score >= 30,
+            'is_bearish_momentum': momentum_score >= 20,  # Seuil réaliste (était 30)
             'score': momentum_score,
             'indicators': momentum_indicators
         }
@@ -352,7 +352,7 @@ class Support_Breakout_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_volume_confirmed': volume_score >= 0.25,
+            'is_volume_confirmed': volume_score >= 0.15,  # Seuil accessible (était 0.25)
             'score': volume_score,
             'indicators': volume_indicators
         }
@@ -504,12 +504,20 @@ class Support_Breakout_Strategy(BaseStrategy):
         
     def validate_data(self) -> bool:
         """Valide que tous les indicateurs requis sont présents."""
-        required_indicators = [
-            'nearest_support', 'momentum_score', 'volume_ratio'
-        ]
+        # FLEXIBLE: Au moins un indicateur de support
+        support_indicators = ['nearest_support', 'bb_lower', 'vwap_lower_band']
+        has_support = any(self.indicators.get(ind) is not None for ind in support_indicators)
+        
+        # Indicateurs essentiels
+        required_indicators = ['momentum_score', 'volume_ratio']
         
         if not self.indicators:
             logger.warning(f"{self.name}: Aucun indicateur disponible")
+            return False
+        
+        # Vérifier au moins un support disponible
+        if not has_support:
+            logger.warning(f"{self.name}: Aucun indicateur de support disponible")
             return False
             
         for indicator in required_indicators:

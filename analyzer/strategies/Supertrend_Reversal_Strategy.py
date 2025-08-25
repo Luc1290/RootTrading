@@ -38,7 +38,7 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         self.max_atr_distance = 0.035            # Distance maximum crypto (moves volatils)
         
         # Paramètres de reversal CRYPTO - ULTRA SIMPLIFIÉS
-        self.min_reversal_score = 0.15           # Score reversal minimum (très permissif)
+        self.min_reversal_score = 0.10           # Score reversal minimum (ultra permissif crypto)
         self.momentum_threshold = 45             # Seuil momentum reversal (crypto réactif)
         self.directional_bias_required = False   # Bias optionnel (réactivité primordiale)
         
@@ -168,16 +168,14 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
             elif trend_str == 'moderate':
                 reversal_score += 0.1
                 reversal_indicators.append(f"Trend modéré ({trend_str})")
-                    
-                # Directional bias donne la direction attendue du reversal
-                if directional_bias == 'BULLISH':
-                    reversal_direction = 'bullish'
-                    reversal_indicators.append("Bias haussier")
-                elif directional_bias == 'BEARISH':
-                    reversal_direction = 'bearish'
-                    reversal_indicators.append("Bias baissier")
-            else:
-                pass
+            
+            # CORRECTION: Directional bias TOUJOURS utilisé pour direction (pas seulement moderate)
+            if directional_bias == 'BULLISH':
+                reversal_direction = 'bullish'
+                reversal_indicators.append("Bias haussier")
+            elif directional_bias == 'BEARISH':
+                reversal_direction = 'bearish'
+                reversal_indicators.append("Bias baissier")
                 
         # ADX pour confirmer changement de tendance
         adx_14 = values.get('adx_14')
@@ -192,7 +190,7 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                 
                 # ADX décroissant = affaiblissement tendance
                 if adx_val < 25:  # ADX faible
-                    reversal_score += 0.15
+                    reversal_score += 0.25  # Bonus plus important pour reversal
                     reversal_indicators.append(f"ADX faible ({adx_val:.1f})")
                     
                 # Cross DI pour direction reversal
@@ -269,7 +267,7 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_cross_confirmed': cross_score >= 0.05,  # CORRECTION: Seuil très assoupli de 0.1 à 0.05
+            'is_cross_confirmed': cross_score >= 0.2,  # Seuil réaliste pour confirmation EMA
             'score': cross_score,
             'indicators': cross_indicators
         }
@@ -458,15 +456,15 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                 if trend_alignment is not None and directional_bias is not None:
                     try:
                         trend_align_val = float(trend_alignment)
-                                # Cohérence crypto plus permissive (marchés réactifs)
+                        # Cohérence crypto plus permissive (marchés réactifs)
                         if signal_side == "BUY" and directional_bias == "BULLISH":
-                            confluence_coherent = trend_align_val > 0.1  # Crypto moins strict (0.1 vs 0.2)
+                            confluence_coherent = trend_align_val > 30  # Score 0-100, >30 = ok
                         elif signal_side == "SELL" and directional_bias == "BEARISH":
-                            confluence_coherent = trend_align_val < -0.1  # Crypto moins strict (-0.1 vs -0.2)
+                            confluence_coherent = trend_align_val > 30  # Score 0-100, >30 = ok
                         else:
                             confluence_coherent = True  # Crypto: accepter même sans parfaite cohérence
                     except (ValueError, TypeError):
-                        pass
+                        confluence_coherent = True  # Si erreur, ne pas bloquer
                 
                 # Bonus confluence CRYPTO adapté - plus généreux
                 if conf_val > 75 and confluence_coherent:

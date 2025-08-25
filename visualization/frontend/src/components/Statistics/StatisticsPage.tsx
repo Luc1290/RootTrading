@@ -50,11 +50,16 @@ interface StrategyStatistics {
   avgDuration: number;
   maxDrawdown: number;
   sharpeRatio: number;
-  total_signals?: number;
-  total_trades?: number;
-  trades_participated?: number;
-  participation_rate?: number;
-  total_pnl_percent?: number;
+  // Nouveaux champs optimisés
+  total_signals_emitted?: number;
+  buy_signals_emitted?: number;
+  sell_signals_emitted?: number;
+  trades_executed?: number;
+  buy_trades_executed?: number;
+  sell_trades_executed?: number;
+  signal_to_trade_rate?: number;
+  buy_conversion_rate?: number;
+  sell_conversion_rate?: number;
   max_gain?: number;
   max_loss?: number;
   max_gain_percent?: number;
@@ -67,8 +72,8 @@ function StatisticsPage() {
   const [symbolStats, setSymbolStats] = useState<SymbolStatistics[]>([]);
   const [performanceHistory, setPerformanceHistory] = useState<PerformanceHistory | null>(null);
   const [strategyStats, setStrategyStats] = useState<StrategyStatistics[]>([]);
-  const [consensusStats, setConsensusStats] = useState<StrategyStatistics[]>([]);
-  const [individualStats, setIndividualStats] = useState<StrategyStatistics[]>([]);
+  const [activeStats, setActiveStats] = useState<StrategyStatistics[]>([]);
+  const [profitableStats, setProfitableStats] = useState<StrategyStatistics[]>([]);
   
   // État UI
   const [selectedSymbol, setSelectedSymbol] = useState<TradingSymbol>('BTCUSDC');
@@ -131,9 +136,9 @@ function StatisticsPage() {
       });
       setSymbolStats(symbolResponse?.symbols || []);
       setPerformanceHistory(performanceResponse || null);
-      setStrategyStats(strategiesResponse?.strategies || []);
-      setConsensusStats(strategiesResponse?.consensus_strategies || []);
-      setIndividualStats(strategiesResponse?.individual_strategies || []);
+      setStrategyStats(strategiesResponse?.individual_strategies || []);
+      setActiveStats(strategiesResponse?.active_strategies || []);
+      setProfitableStats(strategiesResponse?.profitable_strategies || []);
       setAvailableSymbols(symbolsResponse?.symbols || []);
       setLastUpdate(new Date());
       
@@ -470,67 +475,60 @@ function StatisticsPage() {
         </div>
       </div>
 
-      {/* Tableau des stratégies CONSENSUS */}
-      {consensusStats.length > 0 && (
-        <div className="chart-container">
-          <div className="chart-title">🎯 Performance des Stratégies CONSENSUS (Trades Réels)</div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-700">
-                  <th className="text-left py-3 px-4 text-gray-300">Stratégie Consensus</th>
-                  <th className="text-right py-3 px-4 text-gray-300">Trades</th>
-                  <th className="text-right py-3 px-4 text-gray-300">Win Rate</th>
-                  <th className="text-right py-3 px-4 text-gray-300">P&L Moy</th>
-                  <th className="text-right py-3 px-4 text-gray-300">P&L Total</th>
-                  <th className="text-right py-3 px-4 text-gray-300">Durée Moy</th>
-                  <th className="text-right py-3 px-4 text-gray-300">Max Gain</th>
-                  <th className="text-right py-3 px-4 text-gray-300">Max Perte</th>
-                </tr>
-              </thead>
-              <tbody>
-                {consensusStats.map((strategy, index) => (
-                  <tr key={index} className="border-b border-gray-800 hover:bg-gray-800/30">
-                    <td className="py-3 px-4 text-white font-medium">
-                      <span className="text-blue-400">📊</span> {strategy.strategy}
-                    </td>
-                    <td className="py-3 px-4 text-right text-gray-300">{strategy.trades || strategy.total_trades || 0}</td>
-                    <td className={`py-3 px-4 text-right font-mono ${
-                      strategy.winRate >= 50 ? 'text-green-400' : 'text-red-400'
-                    }`}>
-                      {formatPercent(strategy.winRate)}
-                    </td>
-                    <td className={`py-3 px-4 text-right font-mono ${
-                      strategy.avgPnl >= 0 ? 'text-green-400' : 'text-red-400'
-                    }`}>
-                      {formatCurrency(strategy.avgPnl)}
-                    </td>
-                    <td className={`py-3 px-4 text-right font-mono font-bold ${
-                      strategy.totalPnl >= 0 ? 'text-green-400' : 'text-red-400'
-                    }`}>
-                      {formatCurrency(strategy.totalPnl)}
-                    </td>
-                    <td className="py-3 px-4 text-right text-gray-300">
-                      {strategy.avgDuration.toFixed(1)}h
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono text-green-400">
-                      {formatCurrency(strategy.max_gain || 0)}
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono text-red-400">
-                      {formatCurrency(strategy.max_loss || strategy.maxDrawdown || 0)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* Section résumé optimisée */}
+      {strategyStats.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+          <div className="chart-container">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-white">
+                {strategyStats.length}
+              </div>
+              <div className="text-sm text-gray-400">Stratégies Total</div>
+              <div className="text-sm text-blue-400 mt-1">
+                📊 Système complet
+              </div>
+            </div>
+          </div>
+          <div className="chart-container">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-400">
+                {activeStats.length}
+              </div>
+              <div className="text-sm text-gray-400">Stratégies Actives</div>
+              <div className="text-sm text-green-400 mt-1">
+                🚀 Émettent des signaux
+              </div>
+            </div>
+          </div>
+          <div className="chart-container">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-yellow-400">
+                {profitableStats.length}
+              </div>
+              <div className="text-sm text-gray-400">Stratégies Profitables</div>
+              <div className="text-sm text-yellow-400 mt-1">
+                💰 P&L positif
+              </div>
+            </div>
+          </div>
+          <div className="chart-container">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-purple-400">
+                {strategyStats.filter(s => (s.total_signals_emitted || 0) > 0 && (s.trades_executed || 0) === 0).length}
+              </div>
+              <div className="text-sm text-gray-400">Stratégies Filtrées</div>
+              <div className="text-sm text-purple-400 mt-1">
+                🚫 Signaux non retenus
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Tableau des stratégies INDIVIDUELLES */}
-      {individualStats.length > 0 && (
+      {/* Tableau des stratégies optimisé */}
+      {strategyStats.length > 0 && (
         <div className="chart-container">
-          <div className="chart-title">🧠 Performance RÉELLE des Stratégies Individuelles (Contribution aux Consensus)</div>
+          <div className="chart-title">🎯 Performance des Stratégies (Signaux → Trades Réels)</div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -547,23 +545,51 @@ function StatisticsPage() {
                 </tr>
               </thead>
               <tbody>
-                {individualStats.map((strategy, index) => (
-                  <tr key={index} className="border-b border-gray-800 hover:bg-gray-800/30">
+                {strategyStats.map((strategy, index) => {
+                  const hasSignals = (strategy.total_signals_emitted || 0) > 0;
+                  const hasTrades = (strategy.trades_executed || 0) > 0;
+                  const conversionRate = strategy.signal_to_trade_rate || 0;
+                  
+                  return (
+                  <tr key={index} className={`border-b border-gray-800 hover:bg-gray-800/30 ${
+                    !hasSignals ? 'opacity-50' : hasTrades ? '' : 'bg-red-900/10'
+                  }`}>
                     <td className="py-3 px-4 text-white font-medium">
-                      <span className="text-yellow-400">📈</span> {strategy.strategy}
+                      <span className={`${
+                        !hasSignals ? 'text-gray-500' : 
+                        hasTrades ? (strategy.totalPnl >= 0 ? 'text-green-400' : 'text-red-400') :
+                        'text-orange-400'
+                      }`}>
+                        {!hasSignals ? '😴' : hasTrades ? '✅' : '⚠️'}
+                      </span> {strategy.strategy}
                     </td>
                     <td className="py-3 px-4 text-right text-gray-300">
-                      {strategy.total_signals || 0}
+                      {strategy.total_signals_emitted || 0}
+                      {(strategy.buy_signals_emitted || 0) > 0 && (strategy.sell_signals_emitted || 0) > 0 && (
+                        <div className="text-xs text-gray-500">
+                          {strategy.buy_signals_emitted}B/{strategy.sell_signals_emitted}S
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-right text-gray-300">
-                      {strategy.trades_participated || strategy.trades || 0}
+                      {strategy.trades_executed || 0}
+                      {(strategy.buy_trades_executed || 0) > 0 && (strategy.sell_trades_executed || 0) > 0 && (
+                        <div className="text-xs text-gray-500">
+                          {strategy.buy_trades_executed}B/{strategy.sell_trades_executed}S
+                        </div>
+                      )}
                     </td>
                     <td className={`py-3 px-4 text-right font-mono ${
-                      (strategy.participation_rate ?? 0) >= 50 ? 'text-green-400' : 
-                      (strategy.participation_rate ?? 0) >= 25 ? 'text-yellow-400' :
-                      (strategy.participation_rate ?? 0) > 0 ? 'text-orange-400' : 'text-gray-500'
+                      conversionRate >= 25 ? 'text-green-400' : 
+                      conversionRate >= 10 ? 'text-yellow-400' :
+                      conversionRate > 0 ? 'text-orange-400' : 'text-gray-500'
                     }`}>
-                      {strategy.participation_rate ? `${strategy.participation_rate.toFixed(1)}%` : '-'}
+                      {conversionRate > 0 ? `${conversionRate.toFixed(1)}%` : '-'}
+                      {(strategy.buy_conversion_rate || 0) !== (strategy.sell_conversion_rate || 0) && (
+                        <div className="text-xs text-gray-500">
+                          B:{(strategy.buy_conversion_rate || 0).toFixed(1)}% S:{(strategy.sell_conversion_rate || 0).toFixed(1)}%
+                        </div>
+                      )}
                     </td>
                     <td className={`py-3 px-4 text-right font-mono ${
                       strategy.winRate >= 50 ? 'text-green-400' : 
@@ -590,7 +616,8 @@ function StatisticsPage() {
                       {strategy.max_loss ? formatCurrency(Math.abs(strategy.max_loss || 0)) : '-'}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

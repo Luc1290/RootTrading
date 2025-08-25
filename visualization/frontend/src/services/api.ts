@@ -172,8 +172,16 @@ class ApiService {
 
   async getStrategiesStatistics(): Promise<{ 
     strategies: StrategyStatistics[],
-    consensus_strategies?: StrategyStatistics[],
-    individual_strategies?: StrategyStatistics[]
+    individual_strategies?: StrategyStatistics[],
+    active_strategies?: StrategyStatistics[],
+    profitable_strategies?: StrategyStatistics[],
+    best_strategy?: string,
+    total_strategies?: number,
+    active_count?: number,
+    profitable_count?: number,
+    avg_conversion_rate?: number,
+    total_signals_emitted?: number,
+    total_trades_executed?: number
   }> {
     return this.request('/api/statistics/strategies');
   }

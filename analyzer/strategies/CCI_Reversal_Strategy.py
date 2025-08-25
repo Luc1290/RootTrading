@@ -20,23 +20,23 @@ class CCI_Reversal_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres CCI optimisés pour crypto 3m - CORRIGÉS
-        self.oversold_level = -100   # Zone survente standard CCI
-        self.overbought_level = 100   # Zone surachat standard CCI
-        self.extreme_oversold = -150  # Extrême crypto volatil
-        self.extreme_overbought = 150  # Extrême crypto volatil
+        # Paramètres CCI optimisés pour meilleur winrate
+        self.oversold_level = -120   # Zone survente plus stricte
+        self.overbought_level = 120   # Zone surachat plus stricte  
+        self.extreme_oversold = -180  # Extrême vraiment extrême
+        self.extreme_overbought = 180  # Extrême vraiment extrême
         
         # Paramètres de validation temporelle - SIMPLIFIÉS
         self.min_cci_persistence = 0  # Pas de persistance requise (crypto 3m rapide)
         self.cci_history = []  # Historique pour validation
         self.max_history_size = 3  # Historique réduit
         
-        # Seuils adaptatifs selon volatilité - RÉAJUSTÉS
+        # Seuils adaptatifs selon volatilité - OPTIMISÉS winrate
         self.volatility_adjustment = {
-            'low': 0.8,    # Seuils réduits (volatilité faible = signaux plus sensibles)
+            'low': 0.9,    # Moins sensible même en faible vol
             'normal': 1.0,   # Seuils standards
-            'high': 1.2,     # Seuils augmentés (volatilité élevée = signaux plus stricts)
-            'extreme': 1.3  # Seuils très augmentés
+            'high': 1.3,     # Plus strict en haute volatilité
+            'extreme': 1.5  # Très strict en volatilité extrême
         }
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
@@ -147,26 +147,26 @@ class CCI_Reversal_Strategy(BaseStrategy):
             signal_side = "BUY"
             if cci_20 <= thresholds['extreme_oversold']:
                 zone = "survente extrême"
-                confidence_boost += 0.25  # Bonus généreux
+                confidence_boost += 0.15  # Bonus réduit
             else:
                 zone = "survente"
-                confidence_boost += 0.15  # Bonus amélioré
+                confidence_boost += 0.08  # Bonus réduit
             reason = f"CCI ({cci_20:.1f}) en zone de {zone}"
             
         elif cci_20 >= thresholds['overbought']:
             signal_side = "SELL"
             if cci_20 >= thresholds['extreme_overbought']:
                 zone = "surachat extrême"
-                confidence_boost += 0.25  # Bonus généreux
+                confidence_boost += 0.15  # Bonus réduit
             else:
                 zone = "surachat"
-                confidence_boost += 0.15  # Bonus amélioré
+                confidence_boost += 0.08  # Bonus réduit
             reason = f"CCI ({cci_20:.1f}) en zone de {zone}"
             
         if signal_side:
-            base_confidence = 0.45  # Base réajustée pour permettre plus de signaux
+            base_confidence = 0.40  # Base réduite pour être plus sélectif
             
-            # Utilisation du momentum_score avec logique améliorée
+            # Momentum validation ULTRA STRICTE pour winrate
             momentum_score_raw = values.get('momentum_score')
             momentum_score = 0
             if momentum_score_raw is not None:
@@ -176,20 +176,19 @@ class CCI_Reversal_Strategy(BaseStrategy):
                     momentum_score = 0
             
             if momentum_score != 0:
-                # Momentum score format 0-100, 50 = neutre
-                if (signal_side == "BUY" and momentum_score > 60) or \
-                   (signal_side == "SELL" and momentum_score < 40):
-                    confidence_boost += 0.18  # Fort momentum aligné (généreux)
+                # Momentum score format 0-100, validation très stricte
+                if (signal_side == "BUY" and momentum_score > 70) or \
+                   (signal_side == "SELL" and momentum_score < 30):
+                    confidence_boost += 0.12  # Bonus réduit
+                    reason += " avec momentum EXCEPTIONNEL"
+                elif (signal_side == "BUY" and momentum_score > 65) or \
+                     (signal_side == "SELL" and momentum_score < 35):
+                    confidence_boost += 0.08  # Momentum fort requis
                     reason += " avec momentum fort"
-                elif (signal_side == "BUY" and momentum_score > 52) or \
-                     (signal_side == "SELL" and momentum_score < 48):
-                    confidence_boost += 0.10  # Momentum modéré aligné
-                    reason += " avec momentum favorable"
-                elif 48 <= momentum_score <= 52:
-                    confidence_boost -= 0.05  # Pénalité réduite
-                elif (signal_side == "BUY" and momentum_score < 35) or \
-                     (signal_side == "SELL" and momentum_score > 65):
-                    confidence_boost -= 0.08  # Pénalité réduite
+                elif (signal_side == "BUY" and momentum_score < 60) or \
+                     (signal_side == "SELL" and momentum_score > 40):
+                    confidence_boost -= 0.20  # Pénalité majeure momentum inadéquat
+                    reason += " ATTENTION: momentum INSUFFISANT"
                     
             # Utilisation du trend_strength
             trend_strength_raw = values.get('trend_strength')
@@ -300,17 +299,17 @@ class CCI_Reversal_Strategy(BaseStrategy):
                     confidence_boost += 0.05
                     reason += " + signal modéré"
                 
-            # Calcul final avec plafond de confidence augmenté
-            total_boost = min(confidence_boost, 0.45)  # Boost total augmenté
+            # Calcul final avec plafond réduit pour winrate
+            total_boost = min(confidence_boost, 0.30)  # Boost total réduit
             confidence = self.calculate_confidence(base_confidence, 1 + total_boost)
             
-            # Filtre final : confidence minimum assoupli
-            if confidence < 0.35:  # Seuil beaucoup plus accessible
+            # Filtre final : confidence minimum élevé
+            if confidence < 0.45:  # Seuil plus strict pour qualité
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": f"Signal CCI {signal_side} détecté mais confidence insuffisante ({confidence:.2f} < 0.35)",
+                    "reason": f"Signal CCI {signal_side} détecté mais confidence insuffisante ({confidence:.2f} < 0.45)",
                     "metadata": {
                         "strategy": self.name,
                         "symbol": self.symbol,

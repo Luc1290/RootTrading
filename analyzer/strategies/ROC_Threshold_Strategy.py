@@ -25,15 +25,15 @@ class ROC_Threshold_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres ROC - AJUSTÉS pour crypto
-        self.bullish_threshold = 0.025   # ROC > +2.5% pour signal haussier (réduit)
-        self.bearish_threshold = -0.025  # ROC < -2.5% pour signal baissier (réduit)
-        self.extreme_bullish_threshold = 0.06  # ROC > +6% = momentum extrême (réduit)
-        self.extreme_bearish_threshold = -0.06  # ROC < -6% = momentum extrême (réduit)
+        # Paramètres ROC - OPTIMISÉS pour meilleur winrate
+        self.bullish_threshold = 0.035   # ROC > +3.5% pour signal haussier (augmenté)
+        self.bearish_threshold = -0.035  # ROC < -3.5% pour signal baissier (augmenté)
+        self.extreme_bullish_threshold = 0.08  # ROC > +8% = momentum extrême (augmenté)
+        self.extreme_bearish_threshold = -0.08  # ROC < -8% = momentum extrême (augmenté)
         self.momentum_confirmation_threshold = 50  # Seuil momentum_score moins strict
-        # NOUVEAUX FILTRES
-        self.min_confidence_threshold = 0.45  # Confidence minimum pour valider
-        self.max_boost_multiplier = 0.50  # Limite les boosts à +50%
+        # FILTRES OPTIMISÉS
+        self.min_confidence_threshold = 0.50  # Confidence minimum augmentée
+        self.max_boost_multiplier = 0.35  # Limite les boosts à +35% (réduit)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs ROC et momentum."""
@@ -240,7 +240,7 @@ class ROC_Threshold_Strategy(BaseStrategy):
         roc_value = threshold_result['roc_value']
         
         signal_side = "BUY" if signal_type == "bullish" else "SELL"
-        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
+        base_confidence = 0.45  # Réduit pour être plus sélectif
         confidence_boost = 0.0
         
         # Construction de la raison
@@ -248,12 +248,12 @@ class ROC_Threshold_Strategy(BaseStrategy):
         level_text = "extrême" if threshold_result['is_extreme'] else "normal"
         reason = f"ROC {direction} {level_text}: {roc_value*100:.2f}%"
         
-        # Bonus selon le niveau de seuil - REDUIT
+        # Bonus selon le niveau de seuil - ENCORE RÉDUIT pour winrate
         if threshold_result['is_extreme']:
-            confidence_boost += 0.15  # Réduit de 0.20
+            confidence_boost += 0.10  # Réduit pour être plus sélectif
             reason += " (momentum extrême)"
         else:
-            confidence_boost += 0.08  # Réduit de 0.15
+            confidence_boost += 0.05  # Réduit significativement
             reason += " (momentum significatif)"
             
         # Bonus selon l'excès par rapport au seuil - SEUILS PLUS STRICTS
@@ -278,35 +278,35 @@ class ROC_Threshold_Strategy(BaseStrategy):
             try:
                 momentum = float(momentum_score)
                 
-                # MOMENTUM VALIDATION PLUS STRICTE
+                # MOMENTUM VALIDATION ULTRA STRICTE pour winrate
                 if signal_side == "BUY":
-                    if momentum > 75:  # Momentum EXCEPTIONNELLEMENT positif - seuil augmenté
-                        confidence_boost += 0.12  # Réduit de 0.18
+                    if momentum > 80:  # Momentum EXCEPTIONNEL requis
+                        confidence_boost += 0.10  # Bonus réduit
                         reason += f" + momentum exceptionnel ({momentum:.1f})"
-                    elif momentum > 65:  # Momentum très positif - seuil augmenté
-                        confidence_boost += 0.08  # Réduit de 0.15
+                    elif momentum > 70:  # Momentum très positif requis
+                        confidence_boost += 0.06  # Bonus réduit
                         reason += f" + momentum fort ({momentum:.1f})"
-                    elif momentum > 60:  # Momentum modéré
-                        confidence_boost += 0.04  # Réduit de 0.06
-                        reason += f" + momentum aligné ({momentum:.1f})"
-                    elif momentum < 50:  # Momentum négatif/neutre = REJET
-                        confidence_boost -= 0.15  # Pénalité augmentée
-                        reason += f" ATTENTION: momentum INADÉQUAT ({momentum:.1f})"
+                    elif momentum > 65:  # Momentum minimum acceptable
+                        confidence_boost += 0.03  # Bonus minimal
+                        reason += f" + momentum correct ({momentum:.1f})"
+                    elif momentum < 60:  # Momentum insuffisant = FORTE PÉNALITÉ
+                        confidence_boost -= 0.25  # Pénalité majeure
+                        reason += f" REJET: momentum INSUFFISANT ({momentum:.1f})"
                         
                 # SELL : validation momentum plus stricte  
                 elif signal_side == "SELL":
-                    if momentum < 25:  # Momentum EXCEPTIONNELLEMENT négatif - seuil abaissé
-                        confidence_boost += 0.12  # Réduit de 0.18
+                    if momentum < 20:  # Momentum EXCEPTIONNEL requis
+                        confidence_boost += 0.10  # Bonus réduit
                         reason += f" + momentum exceptionnel ({momentum:.1f})"
-                    elif momentum < 35:  # Momentum très négatif - seuil augmenté
-                        confidence_boost += 0.08  # Réduit de 0.15
+                    elif momentum < 30:  # Momentum très négatif requis
+                        confidence_boost += 0.06  # Bonus réduit
                         reason += f" + momentum fort ({momentum:.1f})"
-                    elif momentum < 40:  # Momentum modéré
-                        confidence_boost += 0.04  # Réduit de 0.06
-                        reason += f" + momentum aligné ({momentum:.1f})"
-                    elif momentum > 50:  # Momentum positif/neutre = REJET
-                        confidence_boost -= 0.15  # Pénalité augmentée
-                        reason += f" ATTENTION: momentum INADÉQUAT ({momentum:.1f})"
+                    elif momentum < 35:  # Momentum minimum acceptable
+                        confidence_boost += 0.03  # Bonus minimal
+                        reason += f" + momentum correct ({momentum:.1f})"
+                    elif momentum > 40:  # Momentum insuffisant = FORTE PÉNALITÉ
+                        confidence_boost -= 0.25  # Pénalité majeure
+                        reason += f" REJET: momentum INSUFFISANT ({momentum:.1f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -439,35 +439,35 @@ class ROC_Threshold_Strategy(BaseStrategy):
             try:
                 vol_ratio = float(volume_ratio)
                 
-                # BUY : momentum haussier nécessite volume fort (buying pressure)
+                # BUY : momentum haussier EXIGE volume fort pour winrate
                 if signal_side == "BUY":
-                    if vol_ratio >= 2.0:  # Volume très élevé = buying pressure forte
-                        confidence_boost += 0.20
-                        reason += f" + volume très élevé BUY ({vol_ratio:.1f}x)"
-                    elif vol_ratio >= 1.5:  # Volume élevé confirme momentum haussier
-                        confidence_boost += 0.15
-                        reason += f" + volume élevé BUY ({vol_ratio:.1f}x)"
-                    elif vol_ratio >= 1.2:  # Volume modéré acceptable
+                    if vol_ratio >= 2.5:  # Volume EXCEPTIONNEL requis
+                        confidence_boost += 0.12
+                        reason += f" + volume exceptionnel BUY ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= 2.0:  # Volume très élevé requis
                         confidence_boost += 0.08
-                        reason += f" + volume modéré ({vol_ratio:.1f}x)"
-                    elif vol_ratio < 0.8:  # Volume faible = momentum faible
-                        confidence_boost -= 0.08
-                        reason += f" mais volume faible BUY ({vol_ratio:.1f}x)"
+                        reason += f" + volume très élevé BUY ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= 1.5:  # Volume minimum acceptable
+                        confidence_boost += 0.04
+                        reason += f" + volume correct ({vol_ratio:.1f}x)"
+                    elif vol_ratio < 1.2:  # Volume insuffisant = PÉNALITÉ
+                        confidence_boost -= 0.15
+                        reason += f" ATTENTION: volume INSUFFISANT ({vol_ratio:.1f}x)"
                         
-                # SELL : momentum baissier peut être efficace avec volume modéré (selling plus naturel)
+                # SELL : momentum baissier EXIGE aussi du volume pour winrate
                 elif signal_side == "SELL":
-                    if vol_ratio >= 1.8:  # Volume très élevé = panic selling
-                        confidence_boost += 0.18
-                        reason += f" + volume très élevé SELL ({vol_ratio:.1f}x)"
-                    elif vol_ratio >= 1.3:  # Volume élevé confirme momentum baissier
-                        confidence_boost += 0.15
+                    if vol_ratio >= 2.0:  # Volume très élevé = panic selling confirmé
+                        confidence_boost += 0.12
+                        reason += f" + volume panic SELL ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= 1.5:  # Volume élevé requis
+                        confidence_boost += 0.08
                         reason += f" + volume élevé SELL ({vol_ratio:.1f}x)"
-                    elif vol_ratio >= 1.0:  # Volume normal acceptable pour SELL
-                        confidence_boost += 0.10
-                        reason += f" + volume confirmé ({vol_ratio:.1f}x)"
-                    elif vol_ratio < 0.7:  # Volume très faible = momentum faible
-                        confidence_boost -= 0.05
-                        reason += f" mais volume faible ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= 1.2:  # Volume minimum acceptable
+                        confidence_boost += 0.04
+                        reason += f" + volume correct ({vol_ratio:.1f}x)"
+                    elif vol_ratio < 1.0:  # Volume insuffisant = PÉNALITÉ
+                        confidence_boost -= 0.10
+                        reason += f" ATTENTION: volume faible ({vol_ratio:.1f}x)"
             except (ValueError, TypeError):
                 pass
                 

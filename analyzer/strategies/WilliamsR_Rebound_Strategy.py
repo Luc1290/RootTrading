@@ -30,27 +30,27 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres Williams %R - OPTIMISÉS
-        self.oversold_threshold = -70.0        # Seuil survente (moins strict: -70 au lieu de -80)
-        self.overbought_threshold = -25.0      # Seuil surachat (moins strict: -25 au lieu de -20)
-        self.extreme_oversold_threshold = -88.0  # Survente extrême (plus strict: -88 au lieu de -90)
-        self.extreme_overbought_threshold = -12.0 # Surachat extrême (plus strict: -12 au lieu de -10)
+        # Paramètres Williams %R - OPTIMISÉS pour winrate
+        self.oversold_threshold = -75.0        # Seuil survente plus strict
+        self.overbought_threshold = -22.0      # Seuil surachat plus strict
+        self.extreme_oversold_threshold = -90.0  # Survente extrême vraiment extrême
+        self.extreme_overbought_threshold = -10.0 # Surachat extrême vraiment extrême
         
-        # Paramètres rebond - PLUS STRICTS
-        self.min_rebound_strength = 5.0        # Williams %R doit bouger ≥5 points (au lieu de 8)
-        self.rebound_confirmation_threshold = 12.0  # 12 points pour confirmation (au lieu de 10)
-        self.max_time_in_extreme = 3           # Max 3 barres en zone extrême (au lieu de 5)
+        # Paramètres rebond - ENCORE PLUS STRICTS
+        self.min_rebound_strength = 8.0        # Williams %R doit bouger ≥8 points minimum
+        self.rebound_confirmation_threshold = 15.0  # 15 points pour confirmation forte
+        self.max_time_in_extreme = 2           # Max 2 barres en zone extrême
         
         # Paramètres momentum et volume - OPTIMISÉS
         self.momentum_alignment_required = True  # Momentum doit confirmer
         self.min_momentum_threshold = 48        # Momentum minimum (moins strict: 48 au lieu de 52)
         self.min_volume_confirmation = 1.3       # Volume ≥30% au-dessus normal (plus strict)
         
-        # Paramètres confluence - PLUS STRICTS
+        # Paramètres confluence - ULTRA STRICTS
         self.support_resistance_confluence = True  # Confluence S/R requise
-        self.confluence_distance_threshold = 0.015  # 1.5% max du S/R (plus strict: 1.5% au lieu de 2%)
-        self.min_oscillator_confluence = 0.08   # Confluence oscillateurs minimum
-        self.min_sr_confluence = 0.18           # Confluence S/R minimum
+        self.confluence_distance_threshold = 0.01   # 1% max du S/R (très strict)
+        self.min_oscillator_confluence = 0.12   # Confluence oscillateurs plus élevée
+        self.min_sr_confluence = 0.25           # Confluence S/R plus élevée
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
@@ -188,7 +188,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
             }
             
         return {
-            'is_rebound': rebound_score >= 0.25,  # Plus strict: 0.25 au lieu de 0.2
+            'is_rebound': rebound_score >= 0.30,  # Encore plus strict: 0.30
             'score': rebound_score,
             'indicators': rebound_indicators,
             'williams_value': williams_val,
@@ -249,7 +249,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
             }
             
         return {
-            'is_rebound': rebound_score >= 0.25,  # Plus strict: 0.25 au lieu de 0.2
+            'is_rebound': rebound_score >= 0.30,  # Encore plus strict: 0.30
             'score': rebound_score,
             'indicators': rebound_indicators,
             'williams_value': williams_val,
@@ -551,7 +551,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
             }
         
         # Construire signal final
-        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
+        base_confidence = 0.45  # Réduit pour être plus sélectif
         confidence_boost = 0.0
         
         # Vérification de sécurité pour primary_rebound
@@ -593,46 +593,52 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
             try:
                 momentum = float(momentum_score_val)
                 
-                # BUY : momentum en récupération (pas forcément très positif pour un rebound, format 0-100)
+                # BUY : momentum validation STRICTE pour winrate
                 if signal_side == "BUY":
-                    if momentum >= 60:
-                        confidence_boost += 0.12  # Momentum franchement positif = excellent
-                        reason += f" + momentum positif ({momentum:.1f})"
-                    elif momentum >= 53:
-                        confidence_boost += 0.08  # Momentum légèrement positif = bon signe
-                        reason += f" + momentum récupération ({momentum:.1f})"
-                    elif momentum >= 45:
-                        confidence_boost += 0.05  # Momentum neutre acceptable pour rebound
-                        reason += f" + momentum neutre ({momentum:.1f})"
-                    else:
-                        confidence_boost -= 0.05  # Momentum trop négatif = rebound difficile
-                        reason += f" mais momentum négatif ({momentum:.1f})"
+                    if momentum >= 70:  # Momentum exceptionnel requis
+                        confidence_boost += 0.10  # Bonus réduit
+                        reason += f" + momentum exceptionnel ({momentum:.1f})"
+                    elif momentum >= 60:
+                        confidence_boost += 0.06  # Momentum très positif requis
+                        reason += f" + momentum fort ({momentum:.1f})"
+                    elif momentum >= 55:
+                        confidence_boost += 0.03  # Momentum minimum acceptable
+                        reason += f" + momentum correct ({momentum:.1f})"
+                    elif momentum < 50:  # Momentum insuffisant = forte pénalité
+                        confidence_boost -= 0.15  # Pénalité majeure
+                        reason += f" REJET: momentum INSUFFISANT ({momentum:.1f})"
                         
-                # SELL : momentum en détérioration (pas forcément très négatif pour un rebound, format 0-100)
+                # SELL : momentum validation STRICTE pour winrate
                 elif signal_side == "SELL":
-                    if momentum <= 40:
-                        confidence_boost += 0.12  # Momentum franchement négatif = excellent
-                        reason += f" + momentum négatif ({momentum:.1f})"
-                    elif momentum <= 47:
-                        confidence_boost += 0.08  # Momentum légèrement négatif = bon signe
-                        reason += f" + momentum détérioration ({momentum:.1f})"
-                    elif momentum <= 55:
-                        confidence_boost += 0.05  # Momentum neutre acceptable pour rebound
-                        reason += f" + momentum neutre ({momentum:.1f})"
-                    else:
-                        confidence_boost -= 0.05  # Momentum trop positif = rebound difficile
-                        reason += f" mais momentum positif ({momentum:.1f})"
+                    if momentum <= 30:  # Momentum exceptionnel requis
+                        confidence_boost += 0.10  # Bonus réduit
+                        reason += f" + momentum exceptionnel ({momentum:.1f})"
+                    elif momentum <= 40:
+                        confidence_boost += 0.06  # Momentum très négatif requis
+                        reason += f" + momentum fort ({momentum:.1f})"
+                    elif momentum <= 45:
+                        confidence_boost += 0.03  # Momentum minimum acceptable
+                        reason += f" + momentum correct ({momentum:.1f})"
+                    elif momentum > 50:  # Momentum insuffisant = forte pénalité
+                        confidence_boost -= 0.15  # Pénalité majeure
+                        reason += f" REJET: momentum INSUFFISANT ({momentum:.1f})"
             except (ValueError, TypeError):
                 pass
                 
-        # Volume confirmation
+        # Volume confirmation STRICTE
         volume_ratio = values.get('volume_ratio')
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio >= self.min_volume_confirmation:
-                    confidence_boost += 0.1
-                    reason += f" + volume ({vol_ratio:.1f}x)"
+                if vol_ratio >= self.min_volume_confirmation:  # 1.5x maintenant
+                    confidence_boost += 0.08  # Bonus réduit
+                    reason += f" + volume élevé ({vol_ratio:.1f}x)"
+                elif vol_ratio >= 1.2:  # Volume modéré acceptable
+                    confidence_boost += 0.04
+                    reason += f" + volume modéré ({vol_ratio:.1f}x)"
+                elif vol_ratio < 1.0:  # Volume insuffisant = pénalité
+                    confidence_boost -= 0.08
+                    reason += f" ATTENTION: volume faible ({vol_ratio:.1f}x)"
             except (ValueError, TypeError):
                 pass
                 

@@ -57,7 +57,7 @@ class AdaptiveConsensusAnalyzer:
             'VOLATILE': {
                 'breakout': 1,         # RÉDUIT: 1 au lieu de 2 pour volatilité
                 'volume_based': 1,     # Au moins 1 volume
-                'total_min': 4         # RÉDUIT: 4 au lieu de 5
+                'total_min': 3         # RÉDUIT: 3 au lieu de 4 (crypto volatile)
             },
             'BREAKOUT_BULL': {
                 'breakout': 1,         # RÉDUIT: 1 au lieu de 2 pour breakout haussier rapide
@@ -72,10 +72,10 @@ class AdaptiveConsensusAnalyzer:
                 'total_min': 7         # MAINTENU: très strict en breakout bear
             },
             'TRANSITION': {
-                'total_min': 5         # RÉDUIT: 5 au lieu de 6
+                'total_min': 3         # RÉDUIT: 3 au lieu de 5 (crypto rapide)
             },
             'UNKNOWN': {
-                'total_min': 4         # RÉDUIT: était trop restrictif à 7
+                'total_min': 3         # RÉDUIT: 3 au lieu de 4 (24 strats BUY, 21 SELL)
             }
         }
         
@@ -212,7 +212,7 @@ class AdaptiveConsensusAnalyzer:
         if avg_adaptability > 0.8:
             min_consensus_strength = 2.5
         elif regime == 'UNKNOWN':
-            min_consensus_strength = 1.6  # Revenu au niveau correct
+            min_consensus_strength = 1.4  # ASSOUPLI: 1.4 au lieu de 1.6
         else:
             min_consensus_strength = 3.0
         

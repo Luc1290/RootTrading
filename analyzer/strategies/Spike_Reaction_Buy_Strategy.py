@@ -36,36 +36,36 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres de détection spike baissier - OPTIMISÉS CRYPTO
-        self.min_price_drop = -0.018             # 1.8% chute minimum (plus strict)
-        self.severe_price_drop = -0.035          # 3.5% chute sévère (plus sélectif)
-        self.extreme_price_drop = -0.06          # 6% chute extrême (réaliste crypto)
+        # Paramètres spike baissier - RÉVOLUTIONNÉS CRYPTO INTRADAY
+        self.min_price_drop = -0.012             # 1.2% chute minimum RÉALISTE (+33%)
+        self.severe_price_drop = -0.025          # 2.5% chute sévère ACCESSIBLE (+29%)
+        self.extreme_price_drop = -0.04          # 4% chute extrême ATTEIGNABLE (+33%)
         
-        # Paramètres volume (confirmation spike) - ASSOUPLIS POUR CRYPTO
-        self.min_spike_volume = 1.3              # Volume 1.3x normal minimum (était 1.8)
-        self.strong_spike_volume = 2.5           # Volume 2.5x pour spike fort (était 3.0)  
-        self.extreme_spike_volume = 4.0          # Volume 4x pour spike extrême (était 5.0)
+        # Paramètres volume spike - OPTIMISÉS ACCESSIBILITÉ
+        self.min_spike_volume = 1.15             # Volume 1.15x minimum RÉALISTE (+13%)
+        self.strong_spike_volume = 2.0           # Volume 2x fort ATTEIGNABLE (+25%)
+        self.extreme_spike_volume = 3.5          # Volume 3.5x extrême POSSIBLE (+13%)
         
         # Paramètres RSI (survente extrême crypto) - ASSOUPLIS
         self.oversold_rsi_threshold = 32         # RSI survente crypto (était 28)
         self.extreme_oversold_threshold = 20     # RSI survente extrême crypto (était 18)
         self.williams_r_oversold = -78           # Williams %R survente assoupli (était -82)
         
-        # Paramètres stabilisation - RENFORCÉS
-        self.stabilization_bars = 3              # 3 barres minimum pour stabilisation
-        self.max_continued_drop = -0.005         # Chute max autorisée (-0.5%)
-        self.min_volatility_ratio = 0.15         # Volatilité réduite pour stabilisation
+        # Paramètres stabilisation - LOGIQUE TEMPORELLE COHÉRENTE
+        self.stabilization_bars = 2              # 2 barres suffisantes stabilisation
+        self.max_continued_drop = -0.008         # Chute max autorisée élargie (-0.8%)
+        self.min_volatility_ratio = 0.12         # Volatilité réduite assouplie
         
-        # Paramètres momentum reversal - PLUS STRICTS
-        self.momentum_reversal_threshold = 52    # Momentum reversal minimum
-        self.strong_momentum_reversal = 60       # Momentum reversal fort
-        self.min_roc_improvement = -0.008        # ROC amélioration (-0.8% max)
-        self.min_volume_quality = 45             # Volume quality minimum
+        # Paramètres momentum reversal - RÉALISTES CRYPTO
+        self.momentum_reversal_threshold = 48    # Momentum reversal ACCESSIBLE (+8%)
+        self.strong_momentum_reversal = 58       # Momentum reversal fort RÉALISTE (+3%)
+        self.min_roc_improvement = -0.012        # ROC amélioration ÉLARGI (-1.2%)
+        self.min_volume_quality = 35             # Volume quality ACCESSIBLE (+29%)
         
-        # Nouveaux paramètres pour timing et protection - ASSOUPLIS
-        self.min_confluence_score = 35           # Confluence minimum assoupli (était 40)
-        self.max_atr_spike = 0.12                # ATR maximum assoupli (était 0.08)
-        self.support_proximity_threshold = 0.020 # 2% du support pour bonus (était 1.5%)
+        # Paramètres protection - ÉQUILIBRÉS PERFORMANCE/SÉCURITÉ
+        self.min_confluence_score = 25           # Confluence TRÈS ACCESSIBLE (+29%)
+        self.max_atr_spike = 0.15                # ATR maximum TOLÉRANT (+25%)
+        self.support_proximity_threshold = 0.025 # 2.5% support bonus ÉLARGI (+25%)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
@@ -165,7 +165,7 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_price_spike': spike_score >= 0.3,  # Seuil assoupli (était 0.4)
+            'is_price_spike': spike_score >= 0.2,  # Seuil RÉVOLUTIONNÉ (+50% accessibilité)
             'score': spike_score,
             'indicators': spike_indicators
         }
@@ -220,7 +220,7 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_volume_spike': volume_score >= 0.25,  # Assoupli (était 0.35)
+            'is_volume_spike': volume_score >= 0.18,  # Seuil OPTIMISÉ (+39% accessibilité)
             'score': volume_score,
             'indicators': volume_indicators
         }
@@ -316,7 +316,7 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_oversold': oversold_score >= 0.35,  # Seuil assoupli (était 0.5)
+            'is_oversold': oversold_score >= 0.28,  # Seuil RÉVOLUTIONNÉ (+25% accessibilité)
             'score': oversold_score,
             'indicators': oversold_indicators
         }
@@ -390,7 +390,7 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
             stabilization_indicators.append(f"Volatilité {volatility_regime}")
             
         return {
-            'is_stabilized': stabilization_score >= 0.35,  # Seuil assoupli (était 0.45)
+            'is_stabilized': stabilization_score >= 0.25,  # Seuil OPTIMISÉ (+40% accessibilité)
             'score': stabilization_score,
             'indicators': stabilization_indicators
         }
@@ -485,12 +485,24 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Signal BUY si toutes conditions remplies + volume spike obligatoire
-        if (price_spike_analysis['is_price_spike'] and 
-            volume_spike_analysis['is_volume_spike'] and  # OBLIGATOIRE
-            oversold_analysis['is_oversold'] and
-            stabilization_analysis['is_stabilized'] and
-            volume_quality_ok):
+        # NOUVELLE LOGIQUE: Score pondéré flexible au lieu de conditions ET strictes
+        spike_total_score = (
+            price_spike_analysis['score'] * 0.40 +        # Prix spike priorité maximum
+            volume_spike_analysis['score'] * 0.30 +       # Volume confirmation importante  
+            oversold_analysis['score'] * 0.20 +           # Oversold modéré
+            stabilization_analysis['score'] * 0.10        # Stabilisation bonus
+        )
+        
+        # Conditions MINIMUM flexibles (au moins 2 sur 4)
+        conditions_met = sum([
+            price_spike_analysis['is_price_spike'],
+            volume_spike_analysis['is_volume_spike'], 
+            oversold_analysis['is_oversold'],
+            stabilization_analysis['is_stabilized']
+        ])
+        
+        # Signal BUY si score suffisant ET minimum 2 conditions (RÉVOLUTIONNÉ)
+        if spike_total_score >= 0.25 and conditions_met >= 2 and volume_quality_ok:
 
             base_confidence = 0.45  # Base conservative pour stratégie spike
             confidence_boost = 0.0
@@ -575,14 +587,14 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
                 except (ValueError, TypeError):
                     pass
                     
-            # Filtre final - seuil minimum assoupli pour éviter faux signaux
+            # Filtre final - seuil RÉVOLUTIONNÉ pour activation stratégie
             raw_confidence = base_confidence * (1 + confidence_boost)
-            if raw_confidence < 0.40:  # Seuil assoupli (était 0.48) pour spike strategy
+            if raw_confidence < 0.32:  # Seuil OPTIMISÉ (+25% signaux) 
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": f"Signal spike rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.40)",
+                    "reason": f"Signal spike rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.32)",
                     "metadata": {
                         "strategy": self.name,
                         "symbol": self.symbol,
@@ -602,6 +614,8 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
+                    "spike_total_score": spike_total_score,          # NOUVEAU: score pondéré
+                    "conditions_met": conditions_met,                # NOUVEAU: conditions actives
                     "price_spike_score": price_spike_analysis['score'],
                     "volume_spike_score": volume_spike_analysis['score'],
                     "oversold_score": oversold_analysis['score'],
@@ -620,18 +634,22 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
                 }
             }
             
-        # Diagnostic détaillé si pas de signal
+        # Diagnostic OPTIMISÉ avec nouveaux seuils
         missing_conditions = []
         if not price_spike_analysis['is_price_spike']:
-            missing_conditions.append(f"Pas de spike prix (score: {price_spike_analysis['score']:.2f}/0.3)")
+            missing_conditions.append(f"Pas de spike prix (score: {price_spike_analysis['score']:.2f}/0.2)")
         if not volume_spike_analysis['is_volume_spike']:
-            missing_conditions.append(f"Pas de spike volume (score: {volume_spike_analysis['score']:.2f}/0.25)")
+            missing_conditions.append(f"Pas de spike volume (score: {volume_spike_analysis['score']:.2f}/0.18)")
         if not oversold_analysis['is_oversold']:
-            missing_conditions.append(f"Pas survente extrême (score: {oversold_analysis['score']:.2f}/0.35)")
+            missing_conditions.append(f"Pas survente extrême (score: {oversold_analysis['score']:.2f}/0.28)")
         if not stabilization_analysis['is_stabilized']:
-            missing_conditions.append(f"Pas stabilisé (score: {stabilization_analysis['score']:.2f}/0.35)")
+            missing_conditions.append(f"Pas stabilisé (score: {stabilization_analysis['score']:.2f}/0.25)")
         if not volume_quality_ok:
             missing_conditions.append(f"Volume quality insuffisant ({volume_quality_score:.1f} < {self.min_volume_quality})")
+        if spike_total_score < 0.25:
+            missing_conditions.append(f"Score total insuffisant ({spike_total_score:.2f} < 0.25)")
+        if conditions_met < 2:
+            missing_conditions.append(f"Conditions insuffisantes ({conditions_met}/4 < 2)")
             
         return {
             "side": None,
@@ -641,6 +659,8 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
             "metadata": {
                 "strategy": self.name,
                 "symbol": self.symbol,
+                "spike_total_score": spike_total_score,          # NOUVEAU: score pondéré
+                "conditions_met": conditions_met,                # NOUVEAU: conditions actives
                 "price_spike_score": price_spike_analysis['score'],
                 "volume_spike_score": volume_spike_analysis['score'],
                 "oversold_score": oversold_analysis['score'],

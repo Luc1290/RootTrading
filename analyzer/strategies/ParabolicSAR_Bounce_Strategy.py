@@ -25,24 +25,26 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres Parabolic SAR ANTI-SPAM - ULTRA STRICTS
-        self.min_sar_distance = 0.003  # Distance minimum resserrée crypto (0.3%)
-        self.max_sar_distance = 0.02   # Distance maximum STRICTE (2% max pour crypto 3m)
-        self.trend_confirmation_bonus = 0.10  # Bonus réduit (éviter sur-confiance)
-        self.volume_confirmation_threshold = 1.1  # Seuil volume assoupli (était 1.25)
+        # Paramètres Parabolic SAR OPTIMISÉS - ÉQUILIBRE ROBUSTESSE/RÉACTIVITÉ
+        self.min_sar_distance = 0.002  # Distance minimum crypto intraday (0.2%)
+        self.max_sar_distance = 0.025  # Distance maximum élargie crypto 3m (2.5%)
+        self.trend_confirmation_bonus = 0.12  # Bonus adapté réalité marché
+        self.volume_confirmation_threshold = 1.05  # Seuil volume assoupli BUY (était 1.1)
         
-        # FILTRES REBONDS AJUSTÉS AUX CONDITIONS RÉELLES (CORRIGÉ)
-        self.min_confluence_required = 45    # Confluence minimum réaliste (était 65)
-        self.min_adx_required = 18           # ADX minimum assoupli (était 22)
-        self.min_pattern_confidence = 35     # Pattern confidence adapté (était 60)
-        self.required_confirmations = 2      # Confirmations atteignables (était 3)
+        # FILTRES REBONDS OPTIMISÉS PERFORMANCES RÉELLES
+        self.min_confluence_required = 38    # Confluence réaliste -15% (était 45)
+        self.min_adx_required = 15           # ADX assoupli -17% (était 18)
+        self.min_pattern_confidence = 28     # Pattern confidence -20% (était 35)  
+        self.required_confirmations = 2      # Confirmations maintenues
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs SAR et contexte."""
         return {
-            # Parabolic SAR (à implémenter si disponible)
-            # Note: Le SAR n'est pas listé dans les 108 indicateurs, utilisons d'autres
-            # On utilisera les niveaux de support/résistance comme proxy pour rebonds
+            # SIMULATION SAR OPTIMISÉE - Hull MA + ATR Stops comme SAR adaptatif
+            'hull_20': self.indicators.get('hull_20'),  # SAR PRIMARY: Hull adaptatif
+            'atr_stop_long': self.indicators.get('atr_stop_long'),   # SAR LONG level
+            'atr_stop_short': self.indicators.get('atr_stop_short'), # SAR SHORT level
+            # Niveaux support/résistance SECONDAIRES pour rebonds
             'support_levels': self.indicators.get('support_levels'),
             'resistance_levels': self.indicators.get('resistance_levels'),
             'nearest_support': self.indicators.get('nearest_support'),
@@ -225,11 +227,59 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         confidence_boost = 0.0
         bounce_level = None
         
-        # Chercher le niveau de rebond (support ou EMA)
+        # LOGIQUE SAR SIMULÉ - Chercher niveau rebond OPTIMISÉ
+        # 1. PRIORITÉ: ATR Stop Long comme SAR haussier
+        atr_stop_long = values.get('atr_stop_long')  
+        hull_20 = values.get('hull_20')  # Hull comme SAR adaptatif
         nearest_support = values.get('nearest_support')
         ema_50 = values.get('ema_50')
         
-        if nearest_support is not None:
+        # LOGIQUE REBOND REPENSÉE: Tester niveaux dans ordre de priorité SAR
+        
+        # 1. PRIORITÉ ATR_STOP_LONG comme SAR haussier adaptatif
+        if atr_stop_long is not None and current_price > float(atr_stop_long):
+            try:
+                atr_long_val = float(atr_stop_long)
+                distance_to_atr = abs(current_price - atr_long_val) / current_price
+                
+                if distance_to_atr <= self.max_sar_distance:
+                    bounce_level = atr_long_val
+                    level_type = "atr_stop_long"
+                    reason = f"Rebond SAR ATR Long {atr_long_val:.4f}"
+                    confidence_boost += 0.22  # BONUS SAR principal
+                    
+                    if self._detect_bounce_pattern(recent_prices, atr_long_val, "bullish"):
+                        confidence_boost += 0.20  # AUGMENTÉ pour SAR confirmé
+                        reason += " - SAR rebond CONFIRMÉ"
+                    else:
+                        confidence_boost += 0.08  # ASSOUPLI: bonus partiel même sans rebond parfait
+                        reason += " - SAR niveau atteint"
+            except (ValueError, TypeError):
+                pass
+                
+        # 2. HULL_20 comme SAR adaptatif si ATR indisponible
+        if bounce_level is None and hull_20 is not None and current_price > float(hull_20):
+            try:
+                hull_val = float(hull_20)
+                distance_to_hull = abs(current_price - hull_val) / current_price
+                
+                if distance_to_hull <= self.max_sar_distance:
+                    bounce_level = hull_val
+                    level_type = "hull_sar"
+                    reason = f"Rebond SAR Hull {hull_val:.4f}"
+                    confidence_boost += 0.18
+                    
+                    if self._detect_bounce_pattern(recent_prices, hull_val, "bullish"):
+                        confidence_boost += 0.16
+                        reason += " - Hull SAR CONFIRMÉ"
+                    else:
+                        confidence_boost += 0.06  # ASSOUPLI
+                        reason += " - Hull SAR atteint"
+            except (ValueError, TypeError):
+                pass
+                
+        # 3. FALLBACK: Support classique si pas de SAR
+        if bounce_level is None and nearest_support is not None:
             try:
                 support_val = float(nearest_support)
                 distance_to_support = abs(current_price - support_val) / current_price
@@ -237,26 +287,19 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                 if distance_to_support <= self.max_sar_distance:
                     bounce_level = support_val
                     level_type = "support"
-                    reason = f"Rebond sur support {support_val:.4f}"
+                    reason = f"Rebond support {support_val:.4f}"
                     confidence_boost += 0.15
                     
-                    # Vérifier que le prix a effectivement rebondi
                     if self._detect_bounce_pattern(recent_prices, support_val, "bullish"):
-                        confidence_boost += 0.18  # RÉDUIT de 0.25 à 0.18 (moins généreux)
-                        reason += " - rebond CONFIRMÉ"
+                        confidence_boost += 0.14  # RÉDUIT vs SAR (fallback)
+                        reason += " - support CONFIRMÉ"
                     else:
-                        # NOUVEAU: Rejeter si pas de rebond confirmé
-                        return {
-                            "side": None,
-                            "confidence": 0.0,
-                            "strength": "weak",
-                            "reason": f"Proche support mais rebond NON confirmé - rejeté",
-                            "metadata": {"strategy": self.name, "rejected_reason": "no_bounce_pattern"}
-                        }
+                        confidence_boost += 0.04  # Bonus minimal fallback
+                        reason += " - support atteint"
             except (ValueError, TypeError):
                 pass
                 
-        # Si pas de support clair, utiliser EMA50 comme niveau SAR
+        # 4. DERNIER RECOURS: EMA50 comme SAR lent
         if bounce_level is None and ema_50 is not None:
             try:
                 ema50_val = float(ema_50)
@@ -265,22 +308,16 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                     
                     if distance_to_ema <= self.max_sar_distance:
                         bounce_level = ema50_val
-                        level_type = "ema50"
-                        reason = f"Rebond sur EMA50 {ema50_val:.4f}"
-                        confidence_boost += 0.12
+                        level_type = "ema50_sar"
+                        reason = f"Rebond SAR EMA50 {ema50_val:.4f}"
+                        confidence_boost += 0.10  # RÉDUIT car dernier recours
                         
                         if self._detect_bounce_pattern(recent_prices, ema50_val, "bullish"):
-                            confidence_boost += 0.14  # RÉDUIT de 0.18 à 0.14
-                            reason += " - rebond CONFIRMÉ"
+                            confidence_boost += 0.12  # ASSOUPLI
+                            reason += " - EMA SAR CONFIRMÉ"
                         else:
-                            # NOUVEAU: Rejeter rebond EMA non confirmé aussi
-                            return {
-                                "side": None,
-                                "confidence": 0.0,
-                                "strength": "weak",
-                                "reason": f"Proche EMA50 mais rebond NON confirmé - rejeté",
-                                "metadata": {"strategy": self.name, "rejected_reason": "no_ema_bounce_pattern"}
-                            }
+                            confidence_boost += 0.03  # Bonus minimal
+                            reason += " - EMA SAR atteint"
             except (ValueError, TypeError):
                 pass
                 
@@ -317,14 +354,14 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                 }
             }
         
-        # FILTRE FINAL CONFIANCE ASSOUPLI - rejeter si confidence trop faible
+        # FILTRE FINAL CONFIANCE OPTIMISÉ - seuil BUY assoupli
         raw_confidence = base_confidence * (1 + confidence_boost)
-        if raw_confidence < 0.45:  # ASSOUPLI: Seuil 45% (était 60%) pour rebonds BUY
+        if raw_confidence < 0.42:  # ASSOUPLI: Seuil 42% (était 45%) pour plus de signaux BUY
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Signal rebond rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.45)",
+                "reason": f"Signal rebond rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.42)",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
@@ -365,11 +402,59 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         confidence_boost = 0.0
         bounce_level = None
         
-        # Chercher le niveau de rebond (résistance ou EMA)
+        # LOGIQUE SAR SIMULÉ BEARISH - Chercher niveau rebond SAR baissier
+        # 1. PRIORITÉ: ATR Stop Short comme SAR baissier
+        atr_stop_short = values.get('atr_stop_short')
+        hull_20 = values.get('hull_20')  # Hull comme SAR adaptatif
         nearest_resistance = values.get('nearest_resistance')
         ema_50 = values.get('ema_50')
         
-        if nearest_resistance is not None:
+        # LOGIQUE REBOND BEARISH REPENSÉE: Tester niveaux SAR dans ordre priorité
+        
+        # 1. PRIORITÉ ATR_STOP_SHORT comme SAR baissier adaptatif
+        if atr_stop_short is not None and current_price < float(atr_stop_short):
+            try:
+                atr_short_val = float(atr_stop_short)
+                distance_to_atr = abs(current_price - atr_short_val) / current_price
+                
+                if distance_to_atr <= self.max_sar_distance:
+                    bounce_level = atr_short_val
+                    level_type = "atr_stop_short"
+                    reason = f"Rebond SAR ATR Short {atr_short_val:.4f}"
+                    confidence_boost += 0.22  # BONUS SAR principal
+                    
+                    if self._detect_bounce_pattern(recent_prices, atr_short_val, "bearish"):
+                        confidence_boost += 0.20  # AUGMENTÉ pour SAR confirmé
+                        reason += " - SAR rebond CONFIRMÉ"
+                    else:
+                        confidence_boost += 0.08  # ASSOUPLI: bonus partiel
+                        reason += " - SAR niveau atteint"
+            except (ValueError, TypeError):
+                pass
+                
+        # 2. HULL_20 comme SAR adaptatif si ATR indisponible  
+        if bounce_level is None and hull_20 is not None and current_price < float(hull_20):
+            try:
+                hull_val = float(hull_20)
+                distance_to_hull = abs(current_price - hull_val) / current_price
+                
+                if distance_to_hull <= self.max_sar_distance:
+                    bounce_level = hull_val
+                    level_type = "hull_sar"
+                    reason = f"Rebond SAR Hull {hull_val:.4f}"
+                    confidence_boost += 0.18
+                    
+                    if self._detect_bounce_pattern(recent_prices, hull_val, "bearish"):
+                        confidence_boost += 0.16
+                        reason += " - Hull SAR CONFIRMÉ"
+                    else:
+                        confidence_boost += 0.06  # ASSOUPLI
+                        reason += " - Hull SAR atteint"
+            except (ValueError, TypeError):
+                pass
+                
+        # 3. FALLBACK: Résistance classique si pas de SAR
+        if bounce_level is None and nearest_resistance is not None:
             try:
                 resistance_val = float(nearest_resistance)
                 distance_to_resistance = abs(current_price - resistance_val) / current_price
@@ -377,25 +462,19 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                 if distance_to_resistance <= self.max_sar_distance:
                     bounce_level = resistance_val
                     level_type = "resistance"
-                    reason = f"Rebond sur résistance {resistance_val:.4f}"
+                    reason = f"Rebond résistance {resistance_val:.4f}"
                     confidence_boost += 0.15
                     
                     if self._detect_bounce_pattern(recent_prices, resistance_val, "bearish"):
-                        confidence_boost += 0.18  # RÉDUIT de 0.25 à 0.18
-                        reason += " - rebond CONFIRMÉ"
+                        confidence_boost += 0.14  # RÉDUIT vs SAR (fallback)
+                        reason += " - résistance CONFIRMÉE"
                     else:
-                        # NOUVEAU: Rejeter si pas de rebond confirmé (même logique que BUY)
-                        return {
-                            "side": None,
-                            "confidence": 0.0,
-                            "strength": "weak",
-                            "reason": f"Proche résistance mais rebond NON confirmé - rejeté",
-                            "metadata": {"strategy": self.name, "rejected_reason": "no_bounce_pattern"}
-                        }
+                        confidence_boost += 0.04  # Bonus minimal fallback
+                        reason += " - résistance atteinte"
             except (ValueError, TypeError):
                 pass
                 
-        # Si pas de résistance claire, utiliser EMA50 comme niveau SAR
+        # 4. DERNIER RECOURS: EMA50 comme SAR lent
         if bounce_level is None and ema_50 is not None:
             try:
                 ema50_val = float(ema_50)
@@ -404,22 +483,16 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                     
                     if distance_to_ema <= self.max_sar_distance:
                         bounce_level = ema50_val
-                        level_type = "ema50"
-                        reason = f"Rebond sur EMA50 {ema50_val:.4f}"
-                        confidence_boost += 0.12
+                        level_type = "ema50_sar"
+                        reason = f"Rebond SAR EMA50 {ema50_val:.4f}"
+                        confidence_boost += 0.10  # RÉDUIT car dernier recours
                         
                         if self._detect_bounce_pattern(recent_prices, ema50_val, "bearish"):
-                            confidence_boost += 0.14  # RÉDUIT de 0.18 à 0.14 (cohérent avec BUY)
-                            reason += " - rebond CONFIRMÉ"
+                            confidence_boost += 0.12  # ASSOUPLI (cohérent avec BUY)
+                            reason += " - EMA SAR CONFIRMÉ"
                         else:
-                            # NOUVEAU: Rejeter rebond EMA non confirmé (cohérent avec BUY)
-                            return {
-                                "side": None,
-                                "confidence": 0.0,
-                                "strength": "weak",
-                                "reason": f"Proche EMA50 mais rebond NON confirmé - rejeté",
-                                "metadata": {"strategy": self.name, "rejected_reason": "no_ema_bounce_pattern"}
-                            }
+                            confidence_boost += 0.03  # Bonus minimal
+                            reason += " - EMA SAR atteint"
             except (ValueError, TypeError):
                 pass
                 
@@ -441,14 +514,14 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         confidence_boost += additional_boost
         reason += reason_additions
         
-        # FILTRE FINAL CONFIANCE ASSOUPLI SELL - rejeter si confidence trop faible
+        # FILTRE FINAL CONFIANCE OPTIMISÉ SELL - seuil assoupli
         raw_confidence = base_confidence * (1 + confidence_boost)
-        if raw_confidence < 0.40:  # ASSOUPLI: Seuil 40% (était 48%) pour rebonds SELL
+        if raw_confidence < 0.38:  # ASSOUPLI: Seuil 38% (était 40%) pour plus signaux SELL
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Signal rebond rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.40)",
+                "reason": f"Signal rebond rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.38)",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
@@ -489,21 +562,21 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
             price_1, price_2, price_3 = recent_prices[-3:]
             
             if direction == "bullish":
-                # Pour rebond haussier CRYPTO: détection ultra-stricte
-                proximity_threshold = 0.008  # ULTRA STRICT: 0.8% (vs 1.5% avant)
+                # REBOND HAUSSIER CRYPTO OPTIMISÉ: plus réaliste pour 3m timeframe
+                proximity_threshold = 0.015  # ASSOUPLI: 1.5% (était 0.8%) - plus réaliste crypto
                 rebound_strength = (price_3 - price_2) / price_2  # Force du rebond
                 return (price_1 > level and 
-                        abs(price_2 - level) / level < proximity_threshold and  # Ultra strict
+                        abs(price_2 - level) / level < proximity_threshold and  # Réaliste
                         price_3 > price_2 and  # Prix remonte
-                        rebound_strength > 0.005)  # Rebond minimum relevé à 0.5%
+                        rebound_strength > 0.008)  # Force rebond augmentée 0.8% (était 0.5%)
             else:  # bearish
-                # Pour rebond baissier CRYPTO: détection ultra-stricte
-                proximity_threshold = 0.008  # ULTRA STRICT: 0.8% (vs 1.5% avant)
+                # REBOND BAISSIER CRYPTO OPTIMISÉ: plus réaliste pour 3m timeframe
+                proximity_threshold = 0.015  # ASSOUPLI: 1.5% (était 0.8%) - plus réaliste crypto
                 rebound_strength = (price_2 - price_3) / price_2  # Force du rebond
                 return (price_1 < level and
-                        abs(price_2 - level) / level < proximity_threshold and  # Ultra strict
+                        abs(price_2 - level) / level < proximity_threshold and  # Réaliste
                         price_3 < price_2 and  # Prix redescend
-                        rebound_strength > 0.005)  # Rebond minimum relevé à 0.5%
+                        rebound_strength > 0.008)  # Force rebond augmentée 0.8% (était 0.5%)
         except (ValueError, TypeError, ZeroDivisionError):
             return False
             
@@ -512,21 +585,24 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         boost = 0.0
         reason_additions = ""
         
-        # Confirmation avec trend_strength (VARCHAR: weak/moderate/strong/very_strong/extreme)
+        # Confirmation avec trend_strength - OPTIMISÉ pour SAR rebonds
         trend_strength = values.get('trend_strength')
         if trend_strength is not None:
             trend_str = str(trend_strength).lower()
             if trend_str in ['extreme', 'very_strong']:
-                boost += 0.20  # AUGMENTÉ - trend fort = rebonds fiables
+                boost += 0.25  # AUGMENTÉ +25% - trend fort = rebonds SAR très fiables
                 reason_additions += f" + trend {trend_str}"
             elif trend_str == 'strong':
-                boost += 0.15  # AUGMENTÉ
+                boost += 0.20  # AUGMENTÉ +33%
                 reason_additions += f" + trend {trend_str}"
             elif trend_str == 'moderate':
-                boost += 0.10  # AUGMENTÉ
+                boost += 0.15  # AUGMENTÉ +50%
                 reason_additions += f" + trend {trend_str}"
-            elif trend_str in ['weak', 'absent']:  # NOUVEAU: pénalité
-                boost -= 0.10
+            elif trend_str == 'weak':
+                boost += 0.05  # ASSOUPLI: bonus faible au lieu pénalité
+                reason_additions += f" + trend {trend_str}"
+            elif trend_str == 'absent':
+                boost -= 0.08  # RÉDUIT pénalité (était -0.10)
                 reason_additions += f" MAIS trend {trend_str}"
                 
         # Confirmation avec ADX (force de tendance)
@@ -534,19 +610,25 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         if adx_14 is not None:
             try:
                 adx = float(adx_14)
-                # ADX PLUS STRICT pour rebonds
-                if adx > 30:  # Tendance très forte
+                # ADX OPTIMISÉ pour rebonds SAR - trend force critique
+                if adx > 35:  # Tendance extrême (idéal SAR)
+                    boost += 0.22  # AUGMENTÉ - ADX fort = SAR très fiable
+                    reason_additions += f" + ADX excellent ({adx:.0f})"
+                elif adx > 28:  # Tendance très forte
                     boost += 0.18  # AUGMENTÉ
                     reason_additions += f" + ADX fort ({adx:.0f})"
-                elif adx > 25:  # Tendance forte
-                    boost += 0.12
+                elif adx > 22:  # Tendance forte  
+                    boost += 0.14  # AUGMENTÉ
                     reason_additions += f" + ADX correct ({adx:.0f})"
-                elif adx > 20:  # Tendance modérée
-                    boost += 0.06
-                    reason_additions += f" + ADX faible ({adx:.0f})"
-                else:  # ADX faible = pas de tendance
-                    boost -= 0.08
-                    reason_additions += f" MAIS ADX faible ({adx:.0f})"
+                elif adx > 18:  # Tendance modérée (seuil min)
+                    boost += 0.08  # AUGMENTÉ
+                    reason_additions += f" + ADX acceptable ({adx:.0f})"
+                elif adx > 15:  # Tendance faible mais acceptable
+                    boost += 0.03  # NOUVEAU: bonus minimal
+                    reason_additions += f" + ADX minimal ({adx:.0f})"
+                else:  # ADX trop faible
+                    boost -= 0.06  # RÉDUIT pénalité (était -0.08)
+                    reason_additions += f" mais ADX faible ({adx:.0f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -555,19 +637,25 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                # VOLUME PLUS STRICT - rebonds nécessitent conviction
-                if vol_ratio >= self.volume_confirmation_threshold * 1.5:  # Volume très élevé
-                    boost += 0.20
+                # VOLUME OPTIMISÉ SAR - rebonds nécessitent conviction mais assouplissement
+                if vol_ratio >= self.volume_confirmation_threshold * 1.8:  # Volume exceptionnel
+                    boost += 0.25  # AUGMENTÉ - volume extrême = rebond SAR fiable
+                    reason_additions += f" + volume EXCEPTIONNEL ({vol_ratio:.1f}x)"
+                elif vol_ratio >= self.volume_confirmation_threshold * 1.3:  # Volume très élevé
+                    boost += 0.20  # MAINTENU
                     reason_additions += f" + volume TRÈS élevé ({vol_ratio:.1f}x)"
-                elif vol_ratio >= self.volume_confirmation_threshold:
-                    boost += 0.15
+                elif vol_ratio >= self.volume_confirmation_threshold:  # 1.05x
+                    boost += 0.18  # AUGMENTÉ (était 0.15)
                     reason_additions += f" + volume élevé ({vol_ratio:.1f}x)"
-                elif vol_ratio >= 1.1:
-                    boost += 0.08
+                elif vol_ratio >= 1.02:  # NOUVEAU: volume légèrement élevé
+                    boost += 0.12  # AUGMENTÉ (était 0.08)
                     reason_additions += f" + volume modéré ({vol_ratio:.1f}x)"
+                elif vol_ratio >= 0.95:  # NOUVEAU: volume normal acceptable
+                    boost += 0.05  # NOUVEAU: bonus minimal volume normal
+                    reason_additions += f" + volume normal ({vol_ratio:.1f}x)"
                 else:
-                    boost -= 0.12  # Pénalité augmentée - volume crucial pour rebonds
-                    reason_additions += f" ATTENTION: volume FAIBLE ({vol_ratio:.1f}x)"
+                    boost -= 0.08  # RÉDUIT pénalité (était -0.12) - moins strict
+                    reason_additions += f" mais volume faible ({vol_ratio:.1f}x)"
             except (ValueError, TypeError):
                 pass
                 
@@ -830,9 +918,9 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         if not super().validate_data():
             return False
             
-        # INDICATEURS CRITIQUES OBLIGATOIRES pour rebonds fiables
+        # INDICATEURS CRITIQUES OBLIGATOIRES pour rebonds SAR optimisés
         critical_indicators = ['confluence_score', 'adx_14', 'volume_ratio', 'trend_strength']
-        level_indicators = ['nearest_support', 'nearest_resistance', 'ema_50']
+        level_indicators = ['hull_20', 'atr_stop_long', 'atr_stop_short', 'nearest_support', 'nearest_resistance', 'ema_50']
         
         # Vérifier indicateurs critiques
         missing_critical = 0
