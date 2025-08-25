@@ -370,26 +370,26 @@ class Bollinger_Touch_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Trend alignment (0-100) - Nouveau filtre important
+        # Trend alignment (0-1 décimal) - Format corrigé selon DB
         trend_alignment = values.get('trend_alignment')
         if trend_alignment is not None:
             try:
                 alignment = float(trend_alignment)
                 if signal_side == "BUY":
-                    if alignment >= 60:  # Tendance haussière
+                    if alignment >= 0.6:  # Tendance haussière (>60%)
                         confidence_boost += 0.10
-                        reason += f" + tendance alignée ({alignment:.0f})"
-                    elif alignment <= 30:  # Tendance baissière forte
+                        reason += f" + tendance alignée ({alignment:.2f})"
+                    elif alignment <= 0.3:  # Tendance baissière forte (<30%)
                         confidence_boost -= 0.20
-                        reason += f" ATTENTION: contre-tendance ({alignment:.0f})"
+                        reason += f" ATTENTION: contre-tendance ({alignment:.2f})"
                         
                 elif signal_side == "SELL":
-                    if alignment <= 40:  # Tendance baissière
+                    if alignment <= 0.4:  # Tendance baissière (<40%)
                         confidence_boost += 0.10
-                        reason += f" + tendance alignée ({alignment:.0f})"
-                    elif alignment >= 70:  # Tendance haussière forte
+                        reason += f" + tendance alignée ({alignment:.2f})"
+                    elif alignment >= 0.7:  # Tendance haussière forte (>70%)
                         confidence_boost -= 0.20
-                        reason += f" ATTENTION: contre-tendance ({alignment:.0f})"
+                        reason += f" ATTENTION: contre-tendance ({alignment:.2f})"
             except (ValueError, TypeError):
                 pass
                 

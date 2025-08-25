@@ -13,7 +13,7 @@ NOUVEAU: Consensus adaptatif + filtres de sécurité seulement
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, List, Any, Optional
 import redis.asyncio as redis
 import json
 from datetime import datetime, timedelta
@@ -44,13 +44,14 @@ class SimpleSignalAggregatorService:
         # Composant principal simplifié
         self.signal_processor = SimpleSignalProcessor(context_manager, database_manager)
         
-        # Buffer intelligent - OPTIMISÉ POUR RAPIDITÉ
+        # Buffer intelligent - OPTIMISÉ POUR RAPIDITÉ avec système de vague
         self.signal_buffer = IntelligentSignalBuffer(
             buffer_timeout=6.0,        # RÉDUIT: 6s pour crypto rapide
-            max_buffer_size=30,        # 30 signaux max (réduit)
+            max_buffer_size=100,       # AUGMENTÉ: 100 signaux max pour 28 stratégies × 4 TF
             min_batch_size=1,          # Minimum 1 signal
             sync_window=3.0,           # RÉDUIT: 3s pour sync multi-TF crypto
-            enable_mtf_sync=True       
+            enable_mtf_sync=True,      # Sync multi-timeframes
+            wave_timeout=10.0          # NOUVEAU: 10s pour détecter fin de vague (résolution conflits)
         )
         
         # Configuration Redis
@@ -61,17 +62,22 @@ class SimpleSignalAggregatorService:
         self.input_channel = 'analyzer:signals'
         self.output_channel = 'roottrading:signals:filtered'
         
-        # Protection contradictions - SIMPLIFIÉE
+        # Protection contradictions - RENFORCÉE avec locks et tracking des traitements
         self.recent_signals: Dict[str, Dict[str, Any]] = {}
-        self.contradiction_window = 90.0  # 90s de protection
+        self.signals_being_processed: Dict[str, set] = {}  # symbol -> set of sides being processed
+        self.contradiction_window = 30.0  # 30s de protection (réduit pour crypto rapide)
+        self._contradiction_locks: Dict[str, asyncio.Lock] = {}  # Locks per symbol
         
-        # Statistiques ultra-simples
+        # Statistiques ultra-simples + tracking des vagues et conflits
         self.stats = {
             'signals_received': 0,
             'signals_validated': 0,
             'signals_sent': 0,
             'consensus_rejected': 0,
             'critical_filter_rejected': 0,
+            'wave_winners_processed': 0,  # NOUVEAU: Nombre de signaux gagnants de vague traités
+            'conflicts_resolved_by_wave': 0,  # NOUVEAU: Conflits résolus au niveau wave
+            'conflicts_total_blocked': 0,  # OBSOLÈTE mais conservé pour compatibility
             'errors': 0
         }
         
@@ -159,6 +165,26 @@ class SimpleSignalAggregatorService:
                     side = signals[0]['side']  # Tous dans la même direction après résolution MTF
                     timeframe = signals[0].get('timeframe', '3m')
                     await self._validate_signal_group(signals)
+            # Si WAVE WINNER, traiter les signaux gagnants après résolution de conflit
+            elif context_key and context_key[1] == "wave_winner":
+                # Signaux gagnants après résolution de conflit de vague
+                symbol = context_key[0]
+                if signals:
+                    # Maintenant on a TOUS les signaux gagnants (ex: 19 signaux SELL)
+                    first_signal = signals[0]
+                    side = first_signal.get('side', 'UNKNOWN')
+                    
+                    logger.info(f"🏆 Traitement gagnants de vague {symbol}: {len(signals)} signaux {side}")
+                    self.stats['wave_winners_processed'] += 1
+                    
+                    # Vérifier s'il y avait un conflit résolu
+                    wave_metadata = first_signal.get('metadata', {}).get('wave_resolution', {})
+                    if wave_metadata.get('conflict_resolved', False):
+                        self.stats['conflicts_resolved_by_wave'] += 1
+                        logger.info(f"✅ Conflit résolu: score {wave_metadata.get('winning_score', 0):.3f} vs {wave_metadata.get('losing_score', 0):.3f}")
+                        
+                    # Envoyer TOUS les signaux gagnants au consensus pour analyse des vraies familles
+                    await self._validate_signal_group(signals)
             else:
                 # Grouper par symbol + side (logique simple)
                 signal_groups = {}
@@ -168,13 +194,49 @@ class SimpleSignalAggregatorService:
                         signal_groups[key] = []
                     signal_groups[key].append(signal)
                     
-                # Traiter chaque groupe
-                for group_key, group_signals in signal_groups.items():
+                # NOUVEAU: Résoudre les conflits intra-batch (BUY vs SELL simultanés)
+                resolved_groups = self._resolve_simultaneous_conflicts(signal_groups)
+                    
+                # Traiter chaque groupe résolu
+                for group_key, group_signals in resolved_groups.items():
                     await self._validate_signal_group(group_signals)
                 
         except Exception as e:
             logger.error(f"❌ Erreur traitement batch: {e}")
             self.stats['errors'] += 1
+            
+    def _resolve_simultaneous_conflicts(self, signal_groups: Dict[str, List]) -> Dict[str, List]:
+        """
+        OBSOLÈTE: Cette méthode n'est plus utilisée depuis l'implémentation du système de vague intelligent.
+        
+        Les conflits BUY vs SELL sont maintenant résolus au niveau du buffer (signal_buffer.py)
+        via le système de détection de fin de vague avec timeout de 10 secondes.
+        
+        Args:
+            signal_groups: Dict avec clés "SYMBOL_SIDE" et listes de signaux
+            
+        Returns:
+            Dict des groupes sans modification (pas de résolution ici)
+        """
+        logger.debug("⚠️ MÉTHODE OBSOLÈTE: _resolve_simultaneous_conflicts() - Conflits gérés au niveau buffer")
+        # Retourner les groupes sans modification car les conflits sont résolus en amont
+        return signal_groups
+        
+    def _calculate_group_strength(self, signals: List[Dict[str, Any]]) -> float:
+        """
+        OBSOLÈTE: Cette méthode n'est plus utilisée depuis l'implémentation du système de vague intelligent.
+        
+        Le calcul de force des signaux est maintenant fait au niveau du buffer (signal_buffer.py)
+        dans la méthode _calculate_signal_strength() avec des critères plus avancés.
+        
+        Args:
+            signals: Liste des signaux du groupe
+            
+        Returns:
+            Score de force pondéré (0-1) - toujours 0.5 par défaut
+        """
+        logger.debug("⚠️ MÉTHODE OBSOLÈTE: _calculate_group_strength() - Calcul de force fait au niveau buffer")
+        return 0.5  # Valeur par défaut pour éviter les erreurs si appelée
             
     async def _validate_signal_group(self, signals: list):
         """Valide un groupe de signaux (même symbol/side)."""
@@ -189,16 +251,27 @@ class SimpleSignalAggregatorService:
         
         logger.info(f"🔍 Validation groupe {symbol} {side}: {len(signals)} signaux")
         
+        # 🚨 CRITIQUE: Vérifier les contradictions RÉCENTES avec un lock pour éviter les races conditions
+        async with self._get_contradiction_lock(symbol):
+            if self._check_recent_contradiction(symbol, side):
+                logger.info(f"🚫 Signal {symbol} {side} bloqué AVANT consensus: contradiction récente")
+                return
+                
+            # 🚨 NOUVEAU: Vérifier également si l'opposé est en cours de traitement
+            opposite_side = 'SELL' if side == 'BUY' else 'BUY'
+            if self._is_signal_being_processed(symbol, opposite_side):
+                logger.warning(f"🚫 Signal {symbol} {side} bloqué: {opposite_side} en cours de traitement")
+                return
+                
+            # Marquer le début du traitement AVANT la validation pour bloquer l'opposé
+            self._start_processing_signal(symbol, side)
+        
         # Validation avec système simplifié
         validated_signal = await self.signal_processor.validate_signal_group(
             signals, symbol, timeframe, side
         )
         
         if validated_signal:
-            # Protection contre contradictions
-            if self._check_recent_contradiction(symbol, side):
-                logger.info(f"🚫 Signal {symbol} {side} bloqué: contradiction récente")
-                return
                 
             # Envoi du signal validé
             await self._send_validated_signal(validated_signal)
@@ -208,6 +281,9 @@ class SimpleSignalAggregatorService:
             self.stats['signals_sent'] += 1
         else:
             logger.info(f"❌ Groupe {symbol} {side} rejeté")
+            
+        # Nettoyer le tracking de traitement
+        self._finish_processing_signal(symbol, side)
             
     def _check_recent_contradiction(self, symbol: str, side: str) -> bool:
         """Vérifie les contradictions récentes pour éviter ping-pong."""
@@ -222,6 +298,32 @@ class SimpleSignalAggregatorService:
             return True
             
         return False
+        
+    def _get_contradiction_lock(self, symbol: str) -> asyncio.Lock:
+        """Obtient ou crée un lock pour éviter les races conditions sur un symbole."""
+        if symbol not in self._contradiction_locks:
+            self._contradiction_locks[symbol] = asyncio.Lock()
+        return self._contradiction_locks[symbol]
+        
+    def _is_signal_being_processed(self, symbol: str, side: str) -> bool:
+        """Vérifie si un signal est en cours de traitement pour éviter les conflits simultanés."""
+        if symbol not in self.signals_being_processed:
+            self.signals_being_processed[symbol] = set()
+            return False
+        return side in self.signals_being_processed[symbol]
+        
+    def _start_processing_signal(self, symbol: str, side: str):
+        """Marque qu'un signal commence à être traité."""
+        if symbol not in self.signals_being_processed:
+            self.signals_being_processed[symbol] = set()
+        self.signals_being_processed[symbol].add(side)
+        
+    def _finish_processing_signal(self, symbol: str, side: str):
+        """Marque qu'un signal a fini d'être traité."""
+        if symbol in self.signals_being_processed:
+            self.signals_being_processed[symbol].discard(side)
+            if not self.signals_being_processed[symbol]:  # Si plus aucun side en cours
+                del self.signals_being_processed[symbol]
         
     def _track_recent_signal(self, symbol: str, side: str):
         """Enregistre le signal récent pour éviter contradictions."""
@@ -249,11 +351,13 @@ class SimpleSignalAggregatorService:
             try:
                 await asyncio.sleep(30)  # Check toutes les 30s
                 
-                # Log stats périodiques
+                # Log stats périodiques avec métriques de vague
                 if self.stats['signals_received'] > 0:
                     success_rate = (self.stats['signals_validated'] / self.stats['signals_received']) * 100
                     logger.info(f"📊 Stats: {self.stats['signals_received']} reçus, "
                               f"{self.stats['signals_validated']} validés ({success_rate:.1f}%), "
+                              f"{self.stats['wave_winners_processed']} gagnants de vague, "
+                              f"{self.stats['conflicts_resolved_by_wave']} conflits résolus, "
                               f"{self.stats['errors']} erreurs")
                 
                 # Nettoyage des signaux anciens

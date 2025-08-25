@@ -35,47 +35,49 @@ class AdaptiveConsensusAnalyzer:
     
     def __init__(self):
         # Consensus minimum par famille selon le régime
-        # ÉQUILIBRAGE: Strict en baissier, permissif en haussier pour rapidité d'entrée
+        # ÉQUILIBRÉ: Garder exigences familles mais tolérer si une manque
         self.regime_family_requirements = {
             'TRENDING_BULL': {
-                'trend_following': 1,  # RÉDUIT: 1 au lieu de 2 pour entrée rapide
-                'breakout': 1,         # Au moins 1 breakout
-                'volume_based': 1,     # Au moins 1 volume
-                'total_min': 4         # RÉDUIT: 4 au lieu de 5 pour entrée haussière rapide
+                'trend_following': 2,  # Au moins 2 stratégies trend en bull
+                'breakout': 1,         # Au moins 1 breakout pour confirmation
+                'total_min': 4         # Consensus modéré pour bull (4/28)
             },
             'TRENDING_BEAR': {
-                'trend_following': 2,
-                'breakout': 1,
-                'volume_based': 1,
-                'total_min': 6         # MAINTENU: strict en baisse pour éviter pertes
+                'trend_following': 2,  # Au moins 2 stratégies trend en bear
+                'volume_based': 1,     # Volume important pour confirmer la baisse
+                'total_min': 4         # Modéré en bear (4/28)
             },
             'RANGING': {
-                'mean_reversion': 1,   # Au moins 1 stratégie mean_reversion
-                #'structure_based': 1,  # REMIS: important pour structure de marché en ranging
-                'total_min': 2         # 2 minimum avec diversité de familles
+                'mean_reversion': 2,   # Au moins 2 mean reversion en ranging
+                'structure_based': 1,  # Structure pour support/résistance
+                'total_min': 3         # Modéré en ranging (3/28)
             },
             'VOLATILE': {
-                'breakout': 1,         # RÉDUIT: 1 au lieu de 2 pour volatilité
-                'volume_based': 1,     # Au moins 1 volume
-                'total_min': 3         # RÉDUIT: 3 au lieu de 4 (crypto volatile)
+                'breakout': 1,         # Breakout important en volatilité
+                'volume_based': 1,     # Volume pour confirmer les mouvements
+                'total_min': 4         # Modéré en volatile (4/28)
             },
             'BREAKOUT_BULL': {
-                'breakout': 1,         # RÉDUIT: 1 au lieu de 2 pour breakout haussier rapide
-                'trend_following': 1,
-                'volume_based': 1,
-                'total_min': 3         # RÉDUIT: 3 au lieu de 5 pour breakout bull rapide
+                'breakout': 2,         # Au moins 2 stratégies breakout en bull
+                'volume_based': 1,     # Volume pour confirmer le breakout
+                'total_min': 4         # Modéré pour breakout bull (4/28)
             },
             'BREAKOUT_BEAR': {
-                'breakout': 2,
-                'trend_following': 1,
-                'volume_based': 2,     # Volume critique en bear
-                'total_min': 7         # MAINTENU: très strict en breakout bear
+                'breakout': 2,         # Au moins 2 stratégies breakout en bear
+                'trend_following': 1,  # Trend pour confirmer la direction
+                'volume_based': 1,     # Volume critique en bear breakout
+                'total_min': 5         # Plus strict en breakout bear (5/28)
             },
             'TRANSITION': {
-                'total_min': 3         # RÉDUIT: 3 au lieu de 5 (crypto rapide)
+                'trend_following': 1,  # Au moins 1 trend pour direction
+                'mean_reversion': 1,   # Au moins 1 reversion pour équilibre
+                'total_min': 4         # Prudent en transition (4/28)
             },
             'UNKNOWN': {
-                'total_min': 3         # RÉDUIT: 3 au lieu de 4 (24 strats BUY, 21 SELL)
+                'trend_following': 1,  # Au moins 1 trend
+                'mean_reversion': 1,   # Au moins 1 reversion
+                'breakout': 1,         # Au moins 1 breakout
+                'total_min': 4         # Prudent quand régime inconnu (4/28)
             }
         }
         
@@ -169,21 +171,31 @@ class AdaptiveConsensusAnalyzer:
             if actual_count < required_count:
                 missing_families.append(f"{family}: {actual_count}/{required_count}")
                 
-        # Si des familles critiques manquent, vérifier conditions d'assouplissement
+        # Si des familles critiques manquent, TOLÉRER si autres critères OK
         if missing_families:
-            # Assouplir si forte adaptabilité OU consensus très fort
+            # TOLÉRANCE: Pas grave si une famille manque, on continue quand même
             consensus_strength_preview = self._calculate_preview_consensus_strength(families_count, regime)
+            family_diversity = len([f for f in families_count.keys() if f != 'unknown' and families_count[f] > 0])
             
-            can_bypass = (avg_adaptability >= 0.7 or 
-                         consensus_strength_preview >= 2.5 or 
-                         (regime == 'RANGING' and 'structure_based' in [fam.split(':')[0] for fam in missing_families]))
+            # Tolérance: Laisser passer même avec familles manquantes si bon signal global
+            can_bypass = (
+                avg_adaptability >= 0.6 or                    # Adaptabilité correcte
+                consensus_strength_preview >= 1.8 or           # Consensus raisonnable 
+                family_diversity >= 2 or                      # Au moins 2 familles différentes
+                total_strategies >= total_min + 1 or          # 1+ stratégie au dessus du minimum
+                len(missing_families) == 1                    # NOUVEAU: Tolérer si 1 seule famille manque
+            )
                          
-            if not can_bypass:
+            if can_bypass:
+                logger.info(f"✅ Familles manquantes TOLÉRÉES: {', '.join(missing_families)} - Diversité: {family_diversity}, adaptabilité: {avg_adaptability:.2f}")
+            else:
                 return False, {
-                    'reason': f'Familles manquantes: {", ".join(missing_families)}',
+                    'reason': f'Familles manquantes ET critères tous insuffisants: {", ".join(missing_families)} (diversité: {family_diversity}, adaptabilité: {avg_adaptability:.2f})',
                     'families_count': families_count,
                     'missing_families': missing_families,
-                    'avg_adaptability': avg_adaptability
+                    'avg_adaptability': avg_adaptability,
+                    'family_diversity': family_diversity,
+                    'consensus_preview': consensus_strength_preview
                 }
             
         # Calculer le score de consensus pondéré
@@ -207,15 +219,30 @@ class AdaptiveConsensusAnalyzer:
             
         consensus_strength = weighted_score / max(1, total_weight)
         
-        # Décision finale basée sur la force du consensus
-        # Plus permissif si les stratégies sont bien adaptées OU en régime UNKNOWN
-        if avg_adaptability > 0.8:
-            min_consensus_strength = 2.5
+        # Décision finale basée sur la force du consensus RAISONNABLE
+        # RÉALISTE: Basé sur les vraies données observées (3-10 stratégies simultanées)
+        if avg_adaptability > 0.75:  # Bonne adaptabilité
+            min_consensus_strength = 2.0  # Modéré si bonne adaptabilité
         elif regime == 'UNKNOWN':
-            min_consensus_strength = 1.4  # ASSOUPLI: 1.4 au lieu de 1.6
+            min_consensus_strength = 2.5  # Modéré en inconnu
+        elif regime in ['TRENDING_BEAR', 'BREAKOUT_BEAR']:
+            min_consensus_strength = 2.8  # Un peu plus strict en bear
         else:
-            min_consensus_strength = 3.0
+            min_consensus_strength = 2.3  # Standard pour autres régimes
         
+        # Si familles manquantes ont été TOLÉRÉES, être plus permissif sur consensus strength
+        families_were_tolerated = missing_families and (
+            avg_adaptability >= 0.6 or 
+            consensus_strength >= 1.8 or
+            len([f for f in families_count.keys() if f != 'unknown' and families_count[f] > 0]) >= 2 or
+            total_strategies >= total_min + 1 or
+            len(missing_families) == 1
+        )
+        
+        if families_were_tolerated:
+            min_consensus_strength *= 0.9  # Réduire de 10% si familles tolérées
+            logger.info(f"📊 Seuil consensus ajusté (familles tolérées): {min_consensus_strength:.2f}")
+            
         has_consensus = consensus_strength >= min_consensus_strength
         
         return has_consensus, {
@@ -355,8 +382,8 @@ class AdaptiveConsensusAnalyzer:
             
         consensus_strength = weighted_score / max(1, total_weight)
         
-        # Plus permissif pour MTF post-conflit
-        min_consensus_strength = 2.0 if avg_adaptability > 0.7 else 2.5
+        # Plus permissif pour MTF post-conflit (seuils baissés)
+        min_consensus_strength = 1.5 if avg_adaptability > 0.6 else 2.0
         
         has_consensus = consensus_strength >= min_consensus_strength or effective_strategy_count >= total_min + 2
         

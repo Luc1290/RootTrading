@@ -38,9 +38,9 @@ class ContextManager:
         Returns:
             Dict contenant le régime unifié et ses métadonnées
         """
-        # MODIFIÉ: Utiliser 1m pour réactivité maximale (détection pump immédiate)
-        # Le bruit est déjà filtré car on n'émet pas de signaux 1m
-        reference_timeframe = "1m"  # Était 15m, trop lent pour crypto
+        # OPTIMISÉ: Utiliser 3m pour équilibre réactivité/stabilité crypto
+        # Cohérent avec les signaux 3m, évite le bruit 1m mais reste réactif
+        reference_timeframe = "3m"  # Sweet spot crypto: réactif mais stable
         cache_key = f"regime_unified_{symbol}"
         
         try:
@@ -68,8 +68,8 @@ class ContextManager:
                         'regime_timestamp': regime_data['time']
                     }
                 else:
-                    # Fallback si pas de données 1m
-                    logger.warning(f"Pas de régime 1m pour {symbol}, fallback sur 1m")
+                    # Fallback si pas de données 3m
+                    logger.warning(f"Pas de régime 3m pour {symbol}, fallback sur 1m")
                     cursor.execute("""
                         SELECT market_regime, regime_strength, regime_confidence,
                                directional_bias, volatility_regime, time
@@ -140,7 +140,7 @@ class ContextManager:
             multi_timeframe = self._get_multi_timeframe_context(symbol)
             correlation_data = self._get_correlation_context(symbol)
             
-            # Récupérer le régime unifié (15m de référence) 
+            # Récupérer le régime unifié (3m de référence) 
             unified_regime = self.get_unified_market_regime(symbol)
             
             # Construire le contexte avec champs racine pour compatibility
@@ -169,7 +169,7 @@ class ContextManager:
             # IMPORTANT: Doit être APRÈS context.update(indicators) pour ne pas être écrasé
             if unified_regime:
                 context.update({
-                    'market_regime': unified_regime['market_regime'],          # Régime unifié (15m) - FORCE L'OVERRIDE
+                    'market_regime': unified_regime['market_regime'],          # Régime unifié (3m) - FORCE L'OVERRIDE
                     'regime_strength': unified_regime['regime_strength'],      
                     'regime_confidence': unified_regime['regime_confidence'],
                     'directional_bias': unified_regime['directional_bias'],

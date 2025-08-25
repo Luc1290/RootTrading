@@ -279,7 +279,9 @@ class ROC_Threshold_Strategy(BaseStrategy):
                 momentum = float(momentum_score)
                 
                 # MOMENTUM VALIDATION ULTRA STRICTE pour winrate
+                # IMPORTANT: momentum_score est en échelle 0-100, PAS normalisé ici!
                 if signal_side == "BUY":
+                    # Pour BUY, on veut un momentum > 50 (haussier)
                     if momentum > 80:  # Momentum EXCEPTIONNEL requis
                         confidence_boost += 0.10  # Bonus réduit
                         reason += f" + momentum exceptionnel ({momentum:.1f})"
@@ -289,12 +291,25 @@ class ROC_Threshold_Strategy(BaseStrategy):
                     elif momentum > 65:  # Momentum minimum acceptable
                         confidence_boost += 0.03  # Bonus minimal
                         reason += f" + momentum correct ({momentum:.1f})"
-                    elif momentum < 60:  # Momentum insuffisant = FORTE PÉNALITÉ
-                        confidence_boost -= 0.25  # Pénalité majeure
-                        reason += f" REJET: momentum INSUFFISANT ({momentum:.1f})"
+                    elif momentum < 50:  # Momentum CONTRADICTOIRE avec BUY = REJET TOTAL
+                        # Si momentum < 50, c'est BEARISH, donc contradictoire avec signal BUY
+                        return {
+                            "side": None,
+                            "confidence": 0.0,
+                            "strength": "weak",
+                            "reason": f"Signal BUY REJETÉ: momentum contradictoire ({momentum:.1f} < 50)",
+                            "metadata": {
+                                "strategy": self.name,
+                                "symbol": self.symbol,
+                                "rejected_signal": "BUY",
+                                "momentum_score": momentum,
+                                "roc_value": roc_value
+                            }
+                        }
                         
                 # SELL : validation momentum plus stricte  
                 elif signal_side == "SELL":
+                    # Pour SELL, on veut un momentum < 50 (baissier)
                     if momentum < 20:  # Momentum EXCEPTIONNEL requis
                         confidence_boost += 0.10  # Bonus réduit
                         reason += f" + momentum exceptionnel ({momentum:.1f})"
@@ -304,9 +319,21 @@ class ROC_Threshold_Strategy(BaseStrategy):
                     elif momentum < 35:  # Momentum minimum acceptable
                         confidence_boost += 0.03  # Bonus minimal
                         reason += f" + momentum correct ({momentum:.1f})"
-                    elif momentum > 40:  # Momentum insuffisant = FORTE PÉNALITÉ
-                        confidence_boost -= 0.25  # Pénalité majeure
-                        reason += f" REJET: momentum INSUFFISANT ({momentum:.1f})"
+                    elif momentum > 50:  # Momentum CONTRADICTOIRE avec SELL = REJET TOTAL
+                        # Si momentum > 50, c'est BULLISH, donc contradictoire avec signal SELL
+                        return {
+                            "side": None,
+                            "confidence": 0.0,
+                            "strength": "weak",
+                            "reason": f"Signal SELL REJETÉ: momentum contradictoire ({momentum:.1f} > 50)",
+                            "metadata": {
+                                "strategy": self.name,
+                                "symbol": self.symbol,
+                                "rejected_signal": "SELL",
+                                "momentum_score": momentum,
+                                "roc_value": roc_value
+                            }
+                        }
             except (ValueError, TypeError):
                 pass
                 

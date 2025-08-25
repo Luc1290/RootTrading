@@ -662,8 +662,8 @@ class TrailingSellManager:
         Returns:
             (should_sell, reason)
         """
-        # Paliers de take profit AJUSTÉS pour fermeture plus réactive
-        tp_levels = [0.10, 0.08, 0.06, 0.05, 0.04, 0.035, 0.03, 0.025, 0.02, 0.015, 0.012, 0.010, 0.008, 0.006, 0.004]
+        # Paliers de take profit ÉQUILIBRÉS - garde les seuils rentables après frais
+        tp_levels = [0.10, 0.08, 0.06, 0.05, 0.04, 0.03, 0.025, 0.02, 0.015, 0.012, 0.010, 0.008]  # Garde 0.8% et 1.0%, supprimé 0.6% et 0.4%
         
         # Trouver le palier le plus élevé atteint actuellement
         current_tp_level = None
@@ -703,9 +703,9 @@ class TrailingSellManager:
             logger.info(f"🎯 Nouveau palier TP pour {symbol}: +{current_tp_level*100:.1f}% (était +{historical_max_tp*100:.1f}%)")
             historical_max_tp = current_tp_level
         
-        # VENDRE si rechute significative depuis le palier max (tolérance de 20% du palier)
-        # Ex: palier 2% -> vendre si on descend sous 1.6% (2% - 20% de 2%)
-        tolerance_factor = 0.80  # Garde 80% du palier atteint
+        # VENDRE si rechute significative depuis le palier max (tolérance plus large pour éviter sur-trading)
+        # Ex: palier 2% -> vendre si on descend sous 1.4% (2% - 30% de 2%)
+        tolerance_factor = 0.70  # Garde 70% du palier atteint (plus permissif)
         adjusted_threshold = historical_max_tp * tolerance_factor
         
         if gain_percent < adjusted_threshold:

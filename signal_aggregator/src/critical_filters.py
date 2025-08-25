@@ -46,6 +46,11 @@ class CriticalFilters:
         if not signals:
             return False, "Aucun signal à valider"
             
+        # FILTRE 0: Régime de marché - PAS D'ACHAT EN TENDANCE BAISSIÈRE
+        regime_check = self._check_market_regime_compatibility(signals, context)
+        if not regime_check[0]:
+            return False, f"RÉGIME INCOMPATIBLE: {regime_check[1]}"
+            
         # FILTRE 1: Volatilité extrême dangereuse
         volatility_check = self._check_extreme_volatility(context)
         if not volatility_check[0]:
@@ -67,6 +72,101 @@ class CriticalFilters:
             return False, f"ANOMALIE TECHNIQUE: {technical_check[1]}"
             
         return True, "Tous les filtres critiques passés"
+        
+    def _check_market_regime_compatibility(self, signals: List[Dict[str, Any]], 
+                                          context: Dict[str, Any]) -> Tuple[bool, str]:
+        """
+        Vérifie la compatibilité du signal avec le régime de marché.
+        CRUCIAL: Pas d'achats en tendance baissière forte!
+        """
+        if not signals:
+            return True, "Pas de signaux"
+            
+        # Déterminer la direction du signal
+        signal_side = signals[0].get('side') if signals else None
+        if not signal_side:
+            return True, "Direction non définie"
+            
+        # Récupérer le régime de marché
+        market_regime = context.get('market_regime', 'UNKNOWN')
+        # regime_strength est un string en DB, pas un float
+        regime_strength_str = context.get('regime_strength', 'weak')
+        regime_confidence = context.get('regime_confidence', 0.0)
+        
+        # RÈGLES STRICTES MAIS PERMETTANT LES REBONDS
+        if signal_side == 'BUY':
+            # En régime baissier, permettre les rebonds avec conditions strictes
+            if market_regime in ['TRENDING_BEAR', 'BREAKOUT_BEAR']:
+                # Vérifier les signaux de rebond potentiel
+                rsi_14 = context.get('rsi_14', 50)
+                stoch_rsi = context.get('stoch_rsi', 50)
+                williams_r = context.get('williams_r', -50)
+                volume_ratio = context.get('volume_ratio', 1.0)
+                
+                # Conditions pour permettre un rebond
+                oversold_conditions = 0
+                if rsi_14 and float(rsi_14) < 30:  # RSI oversold
+                    oversold_conditions += 1
+                if stoch_rsi and float(stoch_rsi) < 20:  # StochRSI oversold
+                    oversold_conditions += 1
+                if williams_r and float(williams_r) < -80:  # Williams %R oversold
+                    oversold_conditions += 1
+                if volume_ratio and float(volume_ratio) > 1.5:  # Volume spike (capitulation)
+                    oversold_conditions += 1
+                    
+                # Permettre le rebond si au moins 3 conditions oversold
+                if oversold_conditions < 3:
+                    return False, f"Achat en {market_regime} rejeté: seulement {oversold_conditions}/3 conditions oversold"
+                else:
+                    # Signal de rebond potentiel accepté mais avec prudence
+                    logger.info(f"⚠️ REBOND POTENTIEL détecté en {market_regime}: {oversold_conditions} conditions oversold")
+                
+            # Prudence en régime inconnu avec indicateurs baissiers
+            if market_regime == 'UNKNOWN':
+                # Vérifier les indicateurs de tendance (strings en DB)
+                trend_strength_str = context.get('trend_strength', 'neutral')
+                directional_bias_str = context.get('directional_bias', 'neutral')
+                momentum_score = context.get('momentum_score', 50)
+                
+                # Si indicateurs majoritairement baissiers, rejeter l'achat
+                bearish_indicators = 0
+                total_indicators = 0
+                
+                if trend_strength_str is not None:
+                    total_indicators += 1
+                    # trend_strength est un string: 'strong', 'moderate', 'weak', etc.
+                    if trend_strength_str.lower() in ['weak', 'bearish', 'downtrend']:
+                        bearish_indicators += 1
+                        
+                if directional_bias_str is not None:
+                    total_indicators += 1
+                    # directional_bias est un string: 'bullish', 'bearish', 'neutral'
+                    if directional_bias_str.lower() in ['bearish', 'sell', 'short']:
+                        bearish_indicators += 1
+                        
+                if momentum_score is not None:
+                    total_indicators += 1
+                    if float(momentum_score) < 40:
+                        bearish_indicators += 1
+                        
+                # Si plus de 50% des indicateurs sont baissiers, rejeter
+                if total_indicators > 0 and bearish_indicators / total_indicators > 0.5:
+                    return False, f"Achat rejeté: {bearish_indicators}/{total_indicators} indicateurs baissiers en régime {market_regime}"
+                    
+            # Prudence en transition
+            if market_regime == 'TRANSITION' and regime_confidence < 0.3:
+                return False, f"Achat rejeté: Transition faible (confidence {regime_confidence:.1f})"
+                
+        elif signal_side == 'SELL':
+            # Les ventes sont OK dans tous les régimes (protection du capital)
+            # Mais on peut être plus sélectif en régime haussier fort
+            if market_regime == 'TRENDING_BULL' and regime_confidence > 0.7:
+                # En bull fort, être prudent avec les shorts
+                momentum_score = context.get('momentum_score', 50)
+                if momentum_score and float(momentum_score) > 70:
+                    return False, f"Vente risquée: Bull fort (confidence {regime_confidence:.1f}) avec momentum {momentum_score:.0f}"
+                    
+        return True, "Régime compatible"
         
     def _check_extreme_volatility(self, context: Dict[str, Any]) -> Tuple[bool, str]:
         """Vérifie si la volatilité n'est pas dangereusement élevée."""

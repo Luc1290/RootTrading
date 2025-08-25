@@ -25,7 +25,8 @@ class IntelligentSignalBuffer:
                  max_buffer_size: int = 50,        # Taille max du buffer
                  min_batch_size: int = 1,          # Taille min pour traiter un batch
                  sync_window: float = 3.0,         # Fenêtre de sync multi-TF en secondes
-                 enable_mtf_sync: bool = True):    # Activer la sync multi-timeframes
+                 enable_mtf_sync: bool = True,     # Activer la sync multi-timeframes
+                 wave_timeout: float = 10.0):      # Timeout pour fin de vague en secondes
         """
         Args:
             buffer_timeout: Temps max d'attente avant de traiter le buffer
@@ -40,15 +41,21 @@ class IntelligentSignalBuffer:
         self.sync_window = sync_window
         self.enable_mtf_sync = enable_mtf_sync
         
-        # Buffer principal groupé par (symbole, timeframe)
+        # NOUVEAU: Buffer par SYMBOLE SEULEMENT (pas par timeframe/direction)
+        # On regroupe TOUS les signaux d'un symbole pour choisir UN gagnant final
+        self.symbol_wave_buffer: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        
+        # Timestamps pour détecter la fin de vague (dernier signal reçu par symbole)
+        self.last_signal_time: Dict[str, datetime] = {}
+        self.first_signal_time: Dict[str, datetime] = {}
+        
+        # Timeout pour détecter fin de vague (configurable, défaut 10 secondes)
+        self.wave_timeout = wave_timeout
+        
+        # ANCIEN: Conservé pour compatibilité mais plus utilisé
         self.signal_buffer: Dict[tuple, List[Dict[str, Any]]] = defaultdict(list)
-        
-        # Buffer multi-timeframes groupé par symbole seulement
-        self.mtf_buffer: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
-        
-        # Timestamps pour gérer les timeouts
-        self.first_signal_time: Dict[tuple, datetime] = {}
-        self.first_mtf_signal_time: Dict[str, datetime] = {}
+        self.mtf_buffer: Dict[tuple, List[Dict[str, Any]]] = defaultdict(list)
+        self.first_mtf_signal_time: Dict[tuple, datetime] = {}
         
         # Lock pour thread safety
         self.buffer_lock = asyncio.Lock()
@@ -84,14 +91,18 @@ class IntelligentSignalBuffer:
             'momentum_boost': 1.5    # Momentum élevé (si disponible)
         }
         
-        # Statistiques (inclut tracking des pumps détectés)
+        # Statistiques (inclut nouvelles métriques de vague)
         self.stats = {
             'signals_buffered': 0,
             'batches_processed': 0,
             'timeout_triggers': 0,
             'size_triggers': 0,
-            'mtf_sync_triggers': 0,
-            'mtf_batches_processed': 0,
+            'wave_completed': 0,
+            'wave_conflicts_resolved': 0,
+            'wave_no_conflicts': 0,
+            'waves_discarded_tie': 0,
+            'mtf_sync_triggers': 0,  # Conservé pour compatibilité
+            'mtf_batches_processed': 0,  # Conservé pour compatibilité
             'pumps_detected': 0,
             'pump_overrides': 0
         }
@@ -155,47 +166,369 @@ class IntelligentSignalBuffer:
             
         return is_pump
         
+    async def _wave_timeout_monitor(self) -> None:
+        """NOUVEAU: Monitor qui détecte les fins de vague par symbole."""
+        while True:
+            try:
+                await asyncio.sleep(1.0)  # Vérifier chaque seconde
+                
+                async with self.buffer_lock:
+                    now = datetime.utcnow()
+                    symbols_to_process = []
+                    
+                    for symbol, last_time in self.last_signal_time.items():
+                        if symbol in self.symbol_wave_buffer and self.symbol_wave_buffer[symbol]:
+                            elapsed = (now - last_time).total_seconds()
+                            wave_size = len(self.symbol_wave_buffer[symbol])
+                            
+                            # Fin de vague détectée si timeout atteint ET au moins 1 signal
+                            if elapsed >= self.wave_timeout and wave_size >= 1:
+                                symbols_to_process.append(symbol)
+                    
+                    # Traiter les vagues complètes
+                    for symbol in symbols_to_process:
+                        wave_size = len(self.symbol_wave_buffer[symbol])
+                        elapsed = (now - self.last_signal_time[symbol]).total_seconds()
+                        logger.info(f"🌊 FIN DE VAGUE détectée {symbol}: {wave_size} signaux, {elapsed:.1f}s timeout")
+                        await self._process_symbol_wave(symbol, trigger="wave_timeout")
+                        self.stats['timeout_triggers'] += 1
+                        
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Erreur dans wave_timeout_monitor: {e}")
+                
+    async def _process_symbol_wave(self, symbol: str, trigger: str = "manual") -> None:
+        """
+        NOUVEAU: Traite une vague complète de signaux pour un symbole.
+        Résout les conflits BUY vs SELL et choisit UN signal gagnant final.
+        
+        Args:
+            symbol: Symbole à traiter
+            trigger: Raison du déclenchement
+        """
+        if symbol not in self.symbol_wave_buffer or not self.symbol_wave_buffer[symbol]:
+            return
+            
+        # Extraire tous les signaux de la vague
+        wave_signals = self.symbol_wave_buffer[symbol].copy()
+        
+        # Nettoyer les buffers
+        del self.symbol_wave_buffer[symbol]
+        if symbol in self.first_signal_time:
+            del self.first_signal_time[symbol]
+        if symbol in self.last_signal_time:
+            del self.last_signal_time[symbol]
+            
+        wave_size = len(wave_signals)
+        logger.info(f"🏆 TRAITEMENT VAGUE {symbol}: {wave_size} signaux (trigger: {trigger})")
+        
+        # Analyser la composition de la vague
+        buy_signals = [s for s in wave_signals if s.get('side') == 'BUY']
+        sell_signals = [s for s in wave_signals if s.get('side') == 'SELL']
+        
+        buy_count = len(buy_signals)
+        sell_count = len(sell_signals)
+        
+        logger.info(f"🎢 Vague {symbol}: {buy_count} BUY vs {sell_count} SELL")
+        
+        if buy_count == 0 and sell_count == 0:
+            logger.warning(f"⚠️ Vague {symbol} vide, abandon")
+            return
+            
+        # Choisir les signaux gagnants (maintenant une liste)
+        winning_signals = await self._choose_winning_signal(symbol, buy_signals, sell_signals)
+        
+        if winning_signals:
+            # Envoyer les signaux gagnants au batch processor
+            if self.batch_processor:
+                try:
+                    # Créer une clé spéciale pour les signaux de vague
+                    wave_context_key = (symbol, "wave_winner")
+                    await self.batch_processor(winning_signals, wave_context_key)
+                    self.stats['wave_completed'] += 1
+                    
+                    # Pas de log ici car on ne sait pas encore si la validation va réussir
+                except Exception as e:
+                    logger.error(f"❌ Erreur envoi signaux gagnants {symbol}: {e}")
+        else:
+            logger.info(f"🚫 Vague {symbol}: aucun gagnant, signal ignoré")
+            
+        self.stats['batches_processed'] += 1
+        
+    async def _choose_winning_signal(self, symbol: str, buy_signals: List[Dict[str, Any]], 
+                                    sell_signals: List[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
+        """
+        Choisit les signaux gagnants entre BUY et SELL selon les critères :
+        - 40% nombre de stratégies
+        - 40% score de consensus moyen
+        - 20% timeframe le plus élevé
+        
+        Args:
+            symbol: Symbole analysé
+            buy_signals: Liste des signaux BUY
+            sell_signals: Liste des signaux SELL
+            
+        Returns:
+            Liste des signaux gagnants (même direction) ou None si égalité parfaite
+        """
+        buy_count = len(buy_signals)
+        sell_count = len(sell_signals)
+        
+        # Si une seule direction, pas de conflit
+        if buy_count > 0 and sell_count == 0:
+            logger.info(f"✅ {symbol}: BUY gagne par défaut ({buy_count} signaux)")
+            self.stats['wave_no_conflicts'] += 1
+            # NOUVEAU: Retourner les signaux BUY originaux directement
+            return self._prepare_winning_signals(buy_signals, 1.0, 0.0)
+            
+        if sell_count > 0 and buy_count == 0:
+            logger.info(f"✅ {symbol}: SELL gagne par défaut ({sell_count} signaux)")
+            self.stats['wave_no_conflicts'] += 1
+            # NOUVEAU: Retourner les signaux SELL originaux directement
+            return self._prepare_winning_signals(sell_signals, 1.0, 0.0)
+            
+        # Conflit détecté : appliquer les critères de choix
+        logger.warning(f"🤼 CONFLIT {symbol}: {buy_count} BUY vs {sell_count} SELL")
+        self.stats['wave_conflicts_resolved'] += 1
+        
+        buy_score = self._calculate_signal_strength(buy_signals)
+        sell_score = self._calculate_signal_strength(sell_signals)
+        
+        logger.info(f"📊 Scores {symbol}: BUY={buy_score:.3f} vs SELL={sell_score:.3f}")
+        
+        # Seuil minimum pour éviter les décisions sur des différences minimes
+        min_diff = 0.05  # 5% de différence minimum
+        
+        if abs(buy_score - sell_score) < min_diff:
+            logger.warning(f"⚖️ {symbol}: Égalité quasi parfaite ({buy_score:.3f} vs {sell_score:.3f}), signal ignoré")
+            self.stats['waves_discarded_tie'] += 1
+            return None
+            
+        # Déterminer le gagnant et retourner les signaux originaux
+        if buy_score > sell_score:
+            logger.info(f"🟢 {symbol}: BUY gagne ({buy_score:.3f} vs {sell_score:.3f})")
+            # NOUVEAU: Retourner les signaux BUY originaux pour validation de consensus
+            return self._prepare_winning_signals(buy_signals, buy_score, sell_score)
+        else:
+            logger.info(f"🔴 {symbol}: SELL gagne ({sell_score:.3f} vs {buy_score:.3f})")
+            # NOUVEAU: Retourner les signaux SELL originaux pour validation de consensus
+            return self._prepare_winning_signals(sell_signals, sell_score, buy_score)
+            
+    def _calculate_signal_strength(self, signals: List[Dict[str, Any]]) -> float:
+        """
+        Calcule le score de force d'un groupe de signaux selon les critères pondérés.
+        
+        Args:
+            signals: Liste des signaux du même côté
+            
+        Returns:
+            Score de force (0-1)
+        """
+        if not signals:
+            return 0.0
+            
+        # Critère 1: Nombre de stratégies (40% du score)
+        strategies_count = len(signals)
+        # Normaliser sur base de 10 stratégies max (valeur réaliste)
+        strategies_score = min(1.0, strategies_count / 10.0)
+        
+        # Critère 2: Score de consensus moyen (40% du score)
+        confidences = [s.get('confidence', 0.5) for s in signals]
+        avg_confidence = sum(confidences) / len(confidences)
+        
+        # Critère 3: Timeframe le plus élevé (20% du score)
+        timeframes = [s.get('timeframe', '5m') for s in signals]
+        max_tf_priority = max([self.timeframe_priority.get(tf, 50) for tf in timeframes])
+        # Normaliser sur base de 1000 (1d)
+        timeframe_score = min(1.0, max_tf_priority / 1000.0)
+        
+        # Score final pondéré
+        final_score = (strategies_score * 0.4 + 
+                      avg_confidence * 0.4 + 
+                      timeframe_score * 0.2)
+                      
+        return final_score
+        
+    def _prepare_winning_signals(self, winning_signals: List[Dict[str, Any]], 
+                                winning_score: float, losing_score: float) -> List[Dict[str, Any]]:
+        """
+        NOUVEAU: Prépare les signaux gagnants en ajoutant les métadonnées de résolution de conflit.
+        Contrairement à _create_consensus_signal, cette méthode préserve les signaux originaux
+        pour que le consensus adaptatif puisse analyser les vraies familles de stratégies.
+        
+        Args:
+            winning_signals: Liste des signaux gagnants (même direction)
+            winning_score: Score du côté gagnant
+            losing_score: Score du côté perdant
+            
+        Returns:
+            Liste des signaux gagnants enrichis avec métadonnées de vague
+        """
+        if not winning_signals:
+            return []
+            
+        # Enrichir chaque signal gagnant avec les métadonnées de vague
+        enriched_signals = []
+        
+        for signal in winning_signals:
+            # Copier le signal original
+            enriched_signal = signal.copy()
+            
+            # Ajouter les métadonnées de résolution de vague
+            if 'metadata' not in enriched_signal:
+                enriched_signal['metadata'] = {}
+                
+            # Enrichir avec les informations de vague
+            enriched_signal['metadata'].update({
+                'wave_resolution': {
+                    'is_wave_winner': True,
+                    'winning_score': winning_score,
+                    'losing_score': losing_score,
+                    'conflict_resolved': losing_score > 0,  # True si il y avait un conflit
+                    'total_wave_signals': len(winning_signals),
+                    'resolution_timestamp': datetime.utcnow().isoformat()
+                }
+            })
+            
+            enriched_signals.append(enriched_signal)
+            
+        logger.info(f"📋 Préparé {len(enriched_signals)} signaux gagnants avec métadonnées de vague")
+        return enriched_signals
+        
+    def _create_consensus_signal(self, signals: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Crée un signal de consensus à partir d'un groupe de signaux de même direction.
+        
+        Args:
+            signals: Liste des signaux de même direction
+            
+        Returns:
+            Signal de consensus
+        """
+        if not signals:
+            return {}
+            
+        # Prendre les infos du signal le plus fort
+        best_signal = max(signals, key=lambda s: s.get('confidence', 0.0))
+        
+        symbol = best_signal.get('symbol', 'UNKNOWN')
+        side = best_signal.get('side', 'UNKNOWN')
+        
+        # Calculer les métadonnees du consensus
+        strategies = [s.get('strategy', 'Unknown') for s in signals]
+        timeframes = list(set(s.get('timeframe', '5m') for s in signals))
+        confidences = [s.get('confidence', 0.5) for s in signals]
+        
+        avg_confidence = sum(confidences) / len(confidences)
+        max_confidence = max(confidences)
+        
+        # Créer le signal de consensus
+        consensus_signal = {
+            'strategy': 'WAVE_CONSENSUS',
+            'symbol': symbol,
+            'side': side,
+            'timestamp': datetime.utcnow().isoformat(),
+            'confidence': min(1.0, (avg_confidence + max_confidence) / 2),  # Mix moyenne et max
+            'timeframe': max(timeframes, key=lambda tf: self.timeframe_priority.get(tf, 0)),  # TF le plus élevé
+            'metadata': {
+                'type': 'WAVE_CONSENSUS',
+                'wave_size': len(signals),
+                'strategies_count': len(strategies),
+                'strategies': strategies,
+                'timeframes': sorted(timeframes),
+                'avg_confidence': avg_confidence,
+                'max_confidence': max_confidence,
+                'strength_score': self._calculate_signal_strength(signals),
+                'original_signals': signals
+            }
+        }
+        
+        return consensus_signal
+        
+    def _has_simultaneous_opposite_processing(self, symbol: str, side: str) -> bool:
+        """
+        Vérifie s'il y a un traitement simultané de la direction opposée.
+        Plus strict - utilisé pour les déclenchements normaux.
+        """
+        opposite_side = 'SELL' if side == 'BUY' else 'BUY'
+        opposite_key = (symbol, opposite_side)
+        
+        # Vérifier si l'opposé a des signaux en buffer ET dans une fenêtre critique
+        if opposite_key in self.mtf_buffer and self.mtf_buffer[opposite_key]:
+            if opposite_key in self.first_mtf_signal_time:
+                opposite_first_time = self.first_mtf_signal_time[opposite_key]
+                our_first_time = self.first_mtf_signal_time.get((symbol, side))
+                
+                if our_first_time:
+                    time_diff = abs((our_first_time - opposite_first_time).total_seconds())
+                    # Considérer comme simultané si dans les 3 secondes
+                    return time_diff < 3.0
+        return False
+        
+    def _has_critical_opposite_processing(self, symbol: str, side: str) -> bool:
+        """
+        Vérifie s'il y a un traitement critique de la direction opposée.
+        Moins strict - utilisé pour les timeouts où on peut être plus permissif.
+        """
+        opposite_side = 'SELL' if side == 'BUY' else 'BUY'
+        opposite_key = (symbol, opposite_side)
+        
+        # Seulement bloquer si l'opposé a beaucoup de signaux OU est très récent
+        if opposite_key in self.mtf_buffer and self.mtf_buffer[opposite_key]:
+            opposite_buffer_size = len(self.mtf_buffer[opposite_key])
+            
+            # Bloquer si l'opposé a plus de 3 signaux (forte conviction)
+            if opposite_buffer_size > 3:
+                return True
+                
+            # Ou si très récent (moins d'1 seconde)
+            if opposite_key in self.first_mtf_signal_time:
+                opposite_first_time = self.first_mtf_signal_time[opposite_key]
+                time_since_opposite = (datetime.utcnow() - opposite_first_time).total_seconds()
+                return time_since_opposite < 1.0
+        
+        return False
+        
     async def add_signal(self, signal: Dict[str, Any]) -> None:
         """
-        Ajoute un signal au buffer et déclenche le traitement si nécessaire.
+        NOUVEAU: Ajoute un signal au buffer de vague par symbole.
+        Détecte automatiquement la fin de vague avec timeout intelligent.
         
         Args:
             signal: Signal à ajouter
         """
         async with self.buffer_lock:
             symbol = signal.get('symbol', 'UNKNOWN')
-            timeframe = signal.get('timeframe', '5m')
-            context_key = (symbol, timeframe)
+            now = datetime.utcnow()
             
-            # Ajouter au buffer spécifique par timeframe
-            self.signal_buffer[context_key].append(signal)
+            # Ajouter au buffer de vague pour ce symbole
+            self.symbol_wave_buffer[symbol].append(signal)
             self.stats['signals_buffered'] += 1
             
-            # Ajouter au buffer multi-timeframes si activé
-            if self.enable_mtf_sync:
-                self.mtf_buffer[symbol].append(signal)
-                
-                # Marquer le timestamp du premier signal MTF pour ce symbole
-                if symbol not in self.first_mtf_signal_time:
-                    self.first_mtf_signal_time[symbol] = datetime.utcnow()
+            # Mettre à jour les timestamps
+            if symbol not in self.first_signal_time:
+                self.first_signal_time[symbol] = now
+                logger.info(f"🌊 Début de vague détecté pour {symbol}")
             
-            # Marquer le timestamp du premier signal pour ce contexte
-            if context_key not in self.first_signal_time:
-                self.first_signal_time[context_key] = datetime.utcnow()
-                
-            # Démarrer le task de timeout si pas déjà actif
+            # TOUJOURS mettre à jour le dernier signal (reset du timeout)
+            self.last_signal_time[symbol] = now
+            
+            # Démarrer le monitor de timeout si pas actif
             if not self.timeout_task or self.timeout_task.done():
-                self.timeout_task = asyncio.create_task(self._timeout_monitor())
+                self.timeout_task = asyncio.create_task(self._wave_timeout_monitor())
                 
-            logger.debug(f"Signal ajouté: {symbol} {timeframe} "
-                        f"(TF buffer: {len(self.signal_buffer[context_key])}, "
-                        f"MTF buffer: {len(self.mtf_buffer[symbol]) if self.enable_mtf_sync else 'disabled'})")
+            side = signal.get('side', 'UNKNOWN')
+            timeframe = signal.get('timeframe', 'UNKNOWN')
+            wave_size = len(self.symbol_wave_buffer[symbol])
             
-            # Si MTF activé, SEULEMENT MTF (pas de traitement par TF individuel)
-            if self.enable_mtf_sync:
-                await self._check_mtf_processing(symbol)
-            else:
-                await self._check_immediate_processing(context_key)
+            logger.debug(f"➕ Signal ajouté {symbol} {timeframe} {side} (vague: {wave_size} signaux)")
+            
+            # Vérifier si taille max atteinte (sécurité)
+            if wave_size >= self.max_buffer_size:
+                logger.warning(f"🚨 Vague {symbol} trop grande ({wave_size}), traitement forcé")
+                await self._process_symbol_wave(symbol, trigger="size_limit")
+                self.stats['size_triggers'] += 1
             
     async def _check_immediate_processing(self, context_key: tuple) -> None:
         """Vérifie s'il faut traiter immédiatement un contexte."""
@@ -207,24 +540,45 @@ class IntelligentSignalBuffer:
             await self._process_context(context_key, trigger="size")
             self.stats['size_triggers'] += 1
             
-    async def _check_mtf_processing(self, symbol: str) -> None:
+    async def _check_mtf_processing(self, mtf_key: tuple) -> None:
         """Vérifie s'il faut traiter immédiatement le buffer multi-timeframes."""
-        if symbol not in self.mtf_buffer:
+        if mtf_key not in self.mtf_buffer:
             return
             
-        mtf_signals = self.mtf_buffer[symbol]
+        mtf_signals = self.mtf_buffer[mtf_key]
         buffer_size = len(mtf_signals)
+        symbol, side = mtf_key
+        
+        # 🚨 NOUVEAU: Vérifier qu'il n'y a pas de traitement simultané de l'opposé
+        opposite_side = 'SELL' if side == 'BUY' else 'BUY'
+        opposite_key = (symbol, opposite_side)
+        if opposite_key in self.first_mtf_signal_time:
+            # Vérifier si l'opposé est en attente dans une fenêtre critique
+            opposite_first_time = self.first_mtf_signal_time[opposite_key]
+            our_first_time = self.first_mtf_signal_time.get(mtf_key)
+            
+            if our_first_time and opposite_first_time:
+                time_diff = abs((our_first_time - opposite_first_time).total_seconds())
+                # Si les deux directions ont commencé dans les 2 secondes, traiter en priorité
+                if time_diff < 2.0:
+                    opposite_buffer_size = len(self.mtf_buffer.get(opposite_key, []))
+                    if opposite_buffer_size > 0:
+                        logger.warning(f"⚠️ CONFLIT MTF détecté {symbol}: {side}({buffer_size}) vs {opposite_side}({opposite_buffer_size})")
+                        # Prioriser le plus fort ou le plus ancien
+                        if buffer_size < opposite_buffer_size or (buffer_size == opposite_buffer_size and our_first_time > opposite_first_time):
+                            logger.info(f"🗑️ ABANDON MTF {symbol} {side}: l'opposé est plus fort/ancien")
+                            return  # Abandonner le traitement de ce côté
         
         # Déclencher immédiatement si trop de signaux
         if buffer_size >= self.max_buffer_size:
-            logger.info(f"Déclenchement MTF par taille: {buffer_size} signaux pour {symbol}")
-            await self._process_mtf_symbol(symbol, trigger="size")
+            logger.info(f"Déclenchement MTF par taille: {buffer_size} signaux {side} pour {symbol}")
+            await self._process_mtf_symbol(mtf_key, trigger="size")
             self.stats['size_triggers'] += 1
             return
             
-        # Analyser la diversité des timeframes
+        # Analyser la diversité des timeframes (pas besoin de directions, déjà séparé)
         timeframes_present = set(s.get('timeframe', '5m') for s in mtf_signals)
-        directions_present = set(s.get('side', 'UNKNOWN') for s in mtf_signals)
+        # Toutes les directions sont identiques maintenant car séparées par clé
         
         # Conditions de déclenchement intelligent :
         
@@ -232,108 +586,57 @@ class IntelligentSignalBuffer:
         expected_timeframes = {'3m', '5m', '15m'}  # Timeframes principaux de l'analyzer
         has_all_main_timeframes = expected_timeframes.issubset(timeframes_present)
         
-        if has_all_main_timeframes and len(directions_present) == 1:
+        if has_all_main_timeframes:
             logger.info(f"Déclenchement MTF par timeframes complets: {len(timeframes_present)} TFs "
-                       f"({list(timeframes_present)}), 1 direction pour {symbol}")
-            await self._process_mtf_symbol(symbol, trigger="complete_timeframes")
+                       f"({list(timeframes_present)}), direction {side} pour {symbol}")
+            await self._process_mtf_symbol(mtf_key, trigger="complete_timeframes")
             self.stats['mtf_sync_triggers'] += 1
             return
             
-        # 2. Fallback: Si on a 3+ timeframes différents dans la même direction
-        elif len(timeframes_present) >= 3 and len(directions_present) == 1:
-            logger.info(f"Déclenchement MTF par diversité TF: {len(timeframes_present)} TFs, "
-                       f"1 direction pour {symbol}")
-            await self._process_mtf_symbol(symbol, trigger="timeframe_diversity") 
-            self.stats['mtf_sync_triggers'] += 1
-            return
-            
-        # 3. GESTION DES CONFLITS : Signaux opposés sur différents timeframes
-        if len(directions_present) >= 2 and len(timeframes_present) >= 2:
-            # Analyser la hiérarchie des conflits
-            conflict_analysis = self._analyze_mtf_conflicts(mtf_signals)
-            
-            if conflict_analysis['should_process']:
-                logger.info(f"Déclenchement MTF par conflit résolvable: "
-                           f"{conflict_analysis['resolution']} pour {symbol}")
-                await self._process_mtf_symbol(symbol, trigger="conflict_resolution")
+        # 2. Fallback: Si on a 3+ timeframes différents ET aucun conflit détecté
+        elif len(timeframes_present) >= 3:
+            # Vérifier une dernière fois qu'il n'y a pas de traitement simultané de l'opposé
+            if not self._has_simultaneous_opposite_processing(symbol, side):
+                logger.info(f"Déclenchement MTF par diversité TF: {len(timeframes_present)} TFs, "
+                           f"direction {side} pour {symbol}")
+                await self._process_mtf_symbol(mtf_key, trigger="timeframe_diversity") 
                 self.stats['mtf_sync_triggers'] += 1
                 return
             else:
-                logger.debug(f"Conflit MTF non résolvable pour {symbol}, attente de plus de signaux")
+                logger.warning(f"🚫 Déclenchement MTF bloqué {symbol} {side}: traitement opposé simultané")
             
-        # 4. Si on a un signal de timeframe élevé (1h+) avec confirmation courte
+        # 3. Plus de conflits possibles car BUY/SELL sont séparés!
+        # Les conflits sont maintenant impossibles dans le même buffer
+            
+        # 4. Si on a un signal de timeframe élevé (1h+) avec confirmation courte ET aucun conflit
         high_tf_signals = [s for s in mtf_signals 
                           if self.timeframe_priority.get(s.get('timeframe', '5m'), 0) >= 100]
         
-        if high_tf_signals and buffer_size >= 2:
+        if high_tf_signals and buffer_size >= 2 and not self._has_simultaneous_opposite_processing(symbol, side):
             logger.info(f"Déclenchement MTF par TF élevé: {len(high_tf_signals)} signaux 1h+ "
-                       f"avec {buffer_size-len(high_tf_signals)} confirmations pour {symbol}")
-            await self._process_mtf_symbol(symbol, trigger="high_timeframe")
+                       f"avec {buffer_size-len(high_tf_signals)} confirmations {side} pour {symbol}")
+            await self._process_mtf_symbol(mtf_key, trigger="high_timeframe")
             self.stats['mtf_sync_triggers'] += 1
             return
             
-        # 5. Si fenêtre de sync expirée et assez de signaux
-        first_time = self.first_mtf_signal_time.get(symbol)
+        # 5. Si fenêtre de sync expirée et assez de signaux ET aucun conflit critique
+        first_time = self.first_mtf_signal_time.get(mtf_key)
         if first_time:
             elapsed = (datetime.utcnow() - first_time).total_seconds()
             if elapsed >= self.sync_window and buffer_size >= self.min_batch_size:
-                logger.info(f"Déclenchement MTF par timeout sync: {elapsed:.1f}s, "
-                           f"{buffer_size} signaux pour {symbol}")
-                await self._process_mtf_symbol(symbol, trigger="sync_timeout")
-                self.stats['mtf_sync_triggers'] += 1
+                # Vérifier les conflits avant le timeout (mais être plus permissif)
+                can_process_timeout = not self._has_critical_opposite_processing(symbol, side)
+                if can_process_timeout:
+                    logger.info(f"Déclenchement MTF par timeout sync: {elapsed:.1f}s, "
+                               f"{buffer_size} signaux {side} pour {symbol}")
+                    await self._process_mtf_symbol(mtf_key, trigger="sync_timeout")
+                    self.stats['mtf_sync_triggers'] += 1
+                else:
+                    logger.warning(f"⚠️ Timeout MTF retardé {symbol} {side}: conflit critique avec opposé")
             
     async def _timeout_monitor(self) -> None:
-        """Monitor qui vérifie périodiquement les timeouts."""
-        while True:
-            try:
-                await asyncio.sleep(1.0)  # Vérifier chaque seconde
-                
-                async with self.buffer_lock:
-                    now = datetime.utcnow()
-                    
-                    # Si MTF activé, NE PAS traiter les timeframes individuels en timeout
-                    if not self.enable_mtf_sync:
-                        contexts_to_process = []
-                        
-                        for context_key, first_time in self.first_signal_time.items():
-                            if context_key in self.signal_buffer and self.signal_buffer[context_key]:
-                                elapsed = (now - first_time).total_seconds()
-                                buffer_size = len(self.signal_buffer[context_key])
-                                
-                                # Déclencher par timeout
-                                if elapsed >= self.buffer_timeout and buffer_size >= self.min_batch_size:
-                                    contexts_to_process.append(context_key)
-                                    
-                        # Traiter les contextes en timeout (seulement si MTF désactivé)
-                        for context_key in contexts_to_process:
-                            logger.info(f"Déclenchement par timeout: {context_key}")
-                            await self._process_context(context_key, trigger="timeout")
-                            self.stats['timeout_triggers'] += 1
-                    else:
-                        # Mode MTF : traiter seulement les timeouts MTF
-                        mtf_symbols_to_process = []
-                        
-                        for symbol, first_time in self.first_mtf_signal_time.items():
-                            if symbol in self.mtf_buffer and self.mtf_buffer[symbol]:
-                                elapsed = (now - first_time).total_seconds()
-                                buffer_size = len(self.mtf_buffer[symbol])
-                                
-                                # Déclencher par timeout MTF si on a assez de signaux
-                                if elapsed >= self.buffer_timeout and buffer_size >= self.min_batch_size:
-                                    mtf_symbols_to_process.append(symbol)
-                        
-                        # Traiter les MTF timeouts
-                        for symbol in mtf_symbols_to_process:
-                            logger.info(f"Déclenchement MTF par timeout global: {symbol}")
-                            await self._process_mtf_symbol(symbol, trigger="timeout_global")
-                            if symbol in self.first_mtf_signal_time:
-                                del self.first_mtf_signal_time[symbol]
-                            self.stats['timeout_triggers'] += 1
-                        
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Erreur dans timeout_monitor: {e}")
+        """ANCIEN: Conservé pour compatibilité mais redirige vers le nouveau système."""
+        return await self._wave_timeout_monitor()
                 
     async def _process_context(self, context_key: tuple, trigger: str = "manual") -> None:
         """
@@ -364,24 +667,26 @@ class IntelligentSignalBuffer:
             except Exception as e:
                 logger.error(f"Erreur traitement batch {context_key}: {e}")
                 
-    async def _process_mtf_symbol(self, symbol: str, trigger: str = "manual") -> None:
+    async def _process_mtf_symbol(self, mtf_key: tuple, trigger: str = "manual") -> None:
         """
-        Traite tous les signaux multi-timeframes d'un symbole.
+        Traite tous les signaux multi-timeframes d'un symbole/direction.
         
         Args:
-            symbol: Symbole à traiter
+            mtf_key: Tuple (symbol, side) à traiter
             trigger: Raison du déclenchement
         """
-        if symbol not in self.mtf_buffer or not self.mtf_buffer[symbol]:
+        if mtf_key not in self.mtf_buffer or not self.mtf_buffer[mtf_key]:
             return
             
+        symbol, side = mtf_key
+        
         # Extraire les signaux
-        signals = self.mtf_buffer[symbol].copy()
+        signals = self.mtf_buffer[mtf_key].copy()
         
         # Nettoyer le buffer MTF
-        del self.mtf_buffer[symbol]
-        if symbol in self.first_mtf_signal_time:
-            del self.first_mtf_signal_time[symbol]
+        del self.mtf_buffer[mtf_key]
+        if mtf_key in self.first_mtf_signal_time:
+            del self.first_mtf_signal_time[mtf_key]
             
         # Nettoyer aussi les buffers individuels de ce symbole
         contexts_to_clean = []
@@ -404,308 +709,81 @@ class IntelligentSignalBuffer:
         sides = [s.get('side', 'UNKNOWN') for s in signals]
         strategies = [s.get('strategy', 'Unknown') for s in signals]
         
-        logger.info(f"Traitement MTF {symbol}: {len(signals)} signaux "
-                   f"(TFs: {list(set(timeframes))}, Sides: {list(set(sides))}, "
-                   f"Trigger: {trigger})")
+        logger.info(f"Traitement MTF {symbol} {side}: {len(signals)} signaux "
+                   f"(TFs: {list(set(timeframes))}, Trigger: {trigger})")
         
-        # Analyser les conflits potentiels avant traitement
-        unique_sides = set(s.get('side', 'UNKNOWN') for s in signals)
+        # Plus de conflits possibles car BUY/SELL sont déjà séparés!
         final_signals = signals
-        original_signal_count = len(signals)  # Conserver le nombre original
-        
-        if len(unique_sides) > 1:
-            # Il y a un conflit, analyser et filtrer
-            conflict_analysis = self._analyze_mtf_conflicts(signals)
-            
-            if conflict_analysis['should_process'] and conflict_analysis['winning_side']:
-                # Filtrer pour ne garder que les signaux de la direction gagnante
-                winning_side = conflict_analysis['winning_side']
-                final_signals = [s for s in signals if s.get('side') == winning_side]
-                
-                # Ajouter le nombre original dans les métadonnées de chaque signal
-                for signal in final_signals:
-                    if 'metadata' not in signal:
-                        signal['metadata'] = {}
-                    signal['metadata']['original_signal_count'] = original_signal_count
-                    signal['metadata']['mtf_conflict_resolved'] = True
-                    signal['metadata']['conflict_resolution'] = conflict_analysis['resolution']
-                
-                logger.info(f"Conflit MTF résolu pour {symbol}: {conflict_analysis['resolution']} "
-                           f"→ {len(final_signals)} signaux {winning_side} retenus sur {original_signal_count}")
-            else:
-                logger.warning(f"Conflit MTF non résolvable pour {symbol}, "
-                              f"abandon du traitement : {conflict_analysis['resolution']}")
-                return  # Ne pas traiter si conflit non résolvable
+        original_signal_count = len(signals)
         
         # Traiter le batch MTF si on a un processor
         if self.batch_processor and final_signals:
             try:
-                # Créer une clé spéciale pour le batch MTF
-                mtf_context_key = (symbol, "multi_timeframe")
+                # Créer une clé spéciale pour le batch MTF incluant la direction
+                mtf_context_key = (symbol, f"multi_timeframe_{side}")
                 await self.batch_processor(final_signals, mtf_context_key)
                 self.stats['mtf_batches_processed'] += 1
             except Exception as e:
-                logger.error(f"Erreur traitement batch MTF {symbol}: {e}")
+                logger.error(f"Erreur traitement batch MTF {symbol} {side}: {e}")
                 
     def _analyze_mtf_conflicts(self, signals: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Analyse les conflits entre signaux multi-timeframes et détermine la résolution.
-        
-        Args:
-            signals: Liste des signaux en conflit
-            
-        Returns:
-            Dict avec l'analyse du conflit et la stratégie de résolution
+        OBSOLÈTE: Plus de conflits possibles car BUY/SELL sont séparés dès le buffer.
+        Méthode conservée pour compatibilité mais ne devrait plus être appelée.
         """
-        # Grouper par direction
-        buy_signals = [s for s in signals if s.get('side') == 'BUY']
-        sell_signals = [s for s in signals if s.get('side') == 'SELL']
-        
-        # Calculer le score de chaque groupe avec pondération décisionnelle intelligente
-        def calculate_group_score(group_signals):
-            if not group_signals:
-                return 0.0
-                
-            total_weighted_score = 0
-            total_weight = 0
-            
-            for signal in group_signals:
-                timeframe = signal.get('timeframe', '5m')
-                confidence = signal.get('confidence', 0.5)
-                
-                # Utiliser les poids décisionnels au lieu des priorités brutes
-                decision_weight = self.decision_weights.get(timeframe, 0.01)
-                
-                # Règles spéciales selon rôle du timeframe
-                if timeframe == '1m':
-                    # 1m = timing tool : fort impact SEULEMENT si très confiant OU opposé fort consensus
-                    if confidence >= 0.8:
-                        adjusted_weight = decision_weight * 2  # Boost si très confiant
-                    elif len(group_signals) == 1:  # Seul signal 1m contre consensus
-                        adjusted_weight = decision_weight * 0.3  # Réduire influence isolée
-                    else:
-                        adjusted_weight = decision_weight
-                        
-                elif timeframe in ['3m', '5m']:
-                    # 3m/5m = decision makers : poids normal, boost si consensus interne
-                    core_signals = [s for s in group_signals if s.get('timeframe') in ['3m', '5m']]
-                    if len(core_signals) >= 2:
-                        adjusted_weight = decision_weight * 1.3  # Boost consensus 3m+5m
-                    else:
-                        adjusted_weight = decision_weight
-                        
-                elif timeframe == '15m':
-                    # 15m = context validator : poids stable, crucial pour direction
-                    adjusted_weight = decision_weight
-                    
-                else:
-                    # Timeframes plus élevés : poids maximal
-                    adjusted_weight = decision_weight * 2
-                
-                # Score final pondéré
-                signal_score = confidence * adjusted_weight
-                total_weighted_score += signal_score
-                total_weight += adjusted_weight
-                
-            # Retourner score moyen pondéré avec bonus de consensus
-            avg_score = total_weighted_score / max(total_weight, 0.01)
-            
-            # Bonus si multiple signaux (consensus interne)
-            if len(group_signals) >= 2:
-                consensus_bonus = min(0.2, (len(group_signals) - 1) * 0.1)
-                avg_score += consensus_bonus
-                
-            return avg_score
-        
-        buy_score = calculate_group_score(buy_signals)
-        sell_score = calculate_group_score(sell_signals)
-        
-        # Analyser la composition des timeframes
-        buy_timeframes = [s.get('timeframe', '5m') for s in buy_signals]
-        sell_timeframes = [s.get('timeframe', '5m') for s in sell_signals]
-        
-        buy_high_tf = len([tf for tf in buy_timeframes 
-                          if self.timeframe_priority.get(tf, 0) >= 100])
-        sell_high_tf = len([tf for tf in sell_timeframes 
-                           if self.timeframe_priority.get(tf, 0) >= 100])
-        
-        # Analyser la composition par rôles de timeframes
-        buy_core_signals = [s for s in buy_signals if s.get('timeframe') in ['3m', '5m']]
-        sell_core_signals = [s for s in sell_signals if s.get('timeframe') in ['3m', '5m']]
-        buy_timing_signals = [s for s in buy_signals if s.get('timeframe') == '1m']
-        sell_timing_signals = [s for s in sell_signals if s.get('timeframe') == '1m']
-        buy_context_signals = [s for s in buy_signals if s.get('timeframe') == '15m']
-        sell_context_signals = [s for s in sell_signals if s.get('timeframe') == '15m']
-        
-        # Règles de résolution des conflits HIÉRARCHIQUES
-        resolution_rules = []
-        should_process = False
-        winning_side = None
-        
-        # RÈGLE 0 (PRIORITÉ ABSOLUE): DÉTECTION PUMP 1m - override tout autre signal
-        buy_pumps = [s for s in buy_timing_signals if self._detect_pump_signal(s)]
-        sell_pumps = [s for s in sell_timing_signals if self._detect_pump_signal(s)]
-        
-        if buy_pumps and not sell_pumps:
-            resolution_rules.append(f"🚀 PUMP BUY détecté - override tous les autres timeframes ({len(buy_pumps)} pump(s))")
-            winning_side = "BUY"
-            should_process = True
-            self.stats['pump_overrides'] += 1
-        elif sell_pumps and not buy_pumps:
-            resolution_rules.append(f"📉 DUMP SELL détecté - override tous les autres timeframes ({len(sell_pumps)} dump(s))")
-            winning_side = "SELL" 
-            should_process = True
-            self.stats['pump_overrides'] += 1
-        elif buy_pumps and sell_pumps:
-            # Conflit de pumps simultanés - prendre le plus fort
-            buy_pump_strength = sum(s.get('confidence', 0) for s in buy_pumps)
-            sell_pump_strength = sum(s.get('confidence', 0) for s in sell_pumps)
-            if buy_pump_strength > sell_pump_strength:
-                resolution_rules.append(f"🚀 PUMP BUY plus fort que DUMP SELL ({buy_pump_strength:.2f} vs {sell_pump_strength:.2f})")
-                winning_side = "BUY"
-                should_process = True
-                self.stats['pump_overrides'] += 1
-            else:
-                resolution_rules.append(f"📉 DUMP SELL plus fort que PUMP BUY ({sell_pump_strength:.2f} vs {buy_pump_strength:.2f})")
-                winning_side = "SELL"
-                should_process = True
-                self.stats['pump_overrides'] += 1
-        
-        # Règle 1: DOMINANCE CONTEXTE 15m (régime/direction long terme) - seulement si pas de pump
-        elif buy_context_signals and not sell_context_signals:
-            resolution_rules.append("BUY dominé par contexte 15m seul")
-            winning_side = "BUY"
-            should_process = True
-        elif sell_context_signals and not buy_context_signals:
-            resolution_rules.append("SELL dominé par contexte 15m seul")
-            winning_side = "SELL"
-            should_process = True
-            
-        # Règle 2: CONSENSUS DÉCISIONNEL 3m+5m (cœur de la décision)
-        elif len(buy_core_signals) >= 2 and len(sell_core_signals) == 0:
-            resolution_rules.append(f"BUY consensus décisionnel fort ({len(buy_core_signals)} signaux 3m+5m)")
-            winning_side = "BUY"
-            should_process = True
-        elif len(sell_core_signals) >= 2 and len(buy_core_signals) == 0:
-            resolution_rules.append(f"SELL consensus décisionnel fort ({len(sell_core_signals)} signaux 3m+5m)")
-            winning_side = "SELL"
-            should_process = True
-            
-        # Règle 3: SCORE PONDÉRÉ avec seuils adaptés aux nouveaux poids
-        else:
-            max_score = max(buy_score, sell_score, 0.01)
-            score_diff = abs(buy_score - sell_score)
-            relative_diff = score_diff / max_score
-            
-            # Seuils ajustés pour les nouveaux poids décisionnels (plus bas car scores plus petits)
-            if score_diff > 0.05 or relative_diff > 0.15:  # 5% absolu OU 15% relatif
-                if buy_score > sell_score:
-                    resolution_rules.append(f"BUY score pondéré supérieur ({buy_score:.3f} vs {sell_score:.3f})")
-                    winning_side = "BUY"
-                    should_process = True
-                else:
-                    resolution_rules.append(f"SELL score pondéré supérieur ({sell_score:.3f} vs {buy_score:.3f})")
-                    winning_side = "SELL"
-                    should_process = True
-            # Règle 4: GESTION SPÉCIALE 1m (timing seulement)  
-            elif buy_timing_signals and not sell_timing_signals and len(buy_core_signals) >= 1:
-                # 1m BUY + au moins 1 signal décisionnel → mais vérifier qu'il n'est pas isolé
-                if len(buy_signals) >= 2:  # 1m pas seul
-                    resolution_rules.append(f"BUY avec support timing 1m + décisionnel")
-                    winning_side = "BUY"
-                    should_process = True
-                else:
-                    resolution_rules.append("Signal 1m isolé ignoré - attendre confirmation")
-            elif sell_timing_signals and not buy_timing_signals and len(sell_core_signals) >= 1:
-                if len(sell_signals) >= 2:
-                    resolution_rules.append(f"SELL avec support timing 1m + décisionnel")
-                    winning_side = "SELL"
-                    should_process = True
-                else:
-                    resolution_rules.append("Signal 1m isolé ignoré - attendre confirmation")
-                    
-            # Règle 5: Majorité décisionnelle dans les core timeframes
-            elif len(buy_core_signals) > len(sell_core_signals) and len(buy_core_signals) >= 1:
-                resolution_rules.append(f"BUY majorité décisionnelle ({len(buy_core_signals)} vs {len(sell_core_signals)} core signals)")
-                winning_side = "BUY"
-                should_process = True
-            elif len(sell_core_signals) > len(buy_core_signals) and len(sell_core_signals) >= 1:
-                resolution_rules.append(f"SELL majorité décisionnelle ({len(sell_core_signals)} vs {len(buy_core_signals)} core signals)")
-                winning_side = "SELL"
-                should_process = True
-            
-            # Règle 6: Fallback - confidence moyenne si pas d'autre résolution
-            else:
-                avg_buy_conf = sum(s.get('confidence', 0.5) for s in buy_signals) / len(buy_signals) if buy_signals else 0
-                avg_sell_conf = sum(s.get('confidence', 0.5) for s in sell_signals) / len(sell_signals) if sell_signals else 0
-                
-                conf_diff = abs(avg_buy_conf - avg_sell_conf)
-                if conf_diff > 0.08:  # 8% d'écart suffit 
-                    if avg_buy_conf > avg_sell_conf:
-                        resolution_rules.append(f"BUY confidence supérieure ({avg_buy_conf:.2f} vs {avg_sell_conf:.2f})")
-                        winning_side = "BUY"
-                        should_process = True
-                    else:
-                        resolution_rules.append(f"SELL confidence supérieure ({avg_sell_conf:.2f} vs {avg_buy_conf:.2f})")
-                        winning_side = "SELL"
-                        should_process = True
-                else:
-                    resolution_rules.append("Conflit équilibré - attendre signaux supplémentaires pour départager")
-        
-        # Décision finale : pas de traitement si conflit équilibré
-        if not should_process:
-            resolution_rules.append("Attente de signaux supplémentaires pour départager")
-        
+        logger.warning("_analyze_mtf_conflicts appelée mais obsolète car BUY/SELL séparés!")
         return {
-            'should_process': should_process,
-            'winning_side': winning_side,
-            'resolution': '; '.join(resolution_rules),
-            'buy_signals_count': len(buy_signals),
-            'sell_signals_count': len(sell_signals),
-            'buy_score': buy_score,
-            'sell_score': sell_score,
-            # Analyse par rôles de timeframes
-            'buy_core_signals': len(buy_core_signals),
-            'sell_core_signals': len(sell_core_signals),
-            'buy_timing_signals': len(buy_timing_signals),
-            'sell_timing_signals': len(sell_timing_signals),
-            'buy_context_signals': len(buy_context_signals),
-            'sell_context_signals': len(sell_context_signals),
-            'conflict_type': 'balanced' if not should_process else 'resolvable',
-            'decision_logic': 'hierarchical_timeframe_weighting'
+            'should_process': True,
+            'winning_side': signals[0].get('side') if signals else None,
+            'resolution': 'No conflict - signals separated by direction'
         }
                 
     async def force_flush_all(self) -> None:
-        """Force le traitement de tous les signaux en buffer."""
+        """NOUVEAU: Force le traitement de toutes les vagues en buffer."""
         async with self.buffer_lock:
-            contexts_to_process = list(self.signal_buffer.keys())
+            symbols_to_process = list(self.symbol_wave_buffer.keys())
             
-        for context_key in contexts_to_process:
-            await self._process_context(context_key, trigger="flush")
+        for symbol in symbols_to_process:
+            await self._process_symbol_wave(symbol, trigger="flush")
             
-        logger.info(f"Flush forcé: {len(contexts_to_process)} contextes traités")
+        logger.info(f"🌊 Flush forcé: {len(symbols_to_process)} vagues traitées")
         
     async def get_buffer_status(self) -> Dict[str, Any]:
-        """Retourne le statut actuel du buffer."""
+        """NOUVEAU: Retourne le statut des vagues en cours."""
         async with self.buffer_lock:
-            total_buffered = sum(len(signals) for signals in self.signal_buffer.values())
-            contexts_count = len(self.signal_buffer)
+            total_buffered = sum(len(signals) for signals in self.symbol_wave_buffer.values())
+            waves_count = len(self.symbol_wave_buffer)
+            now = datetime.utcnow()
             
-            context_details = {}
-            for (symbol, timeframe), signals in self.signal_buffer.items():
-                first_time = self.first_signal_time.get((symbol, timeframe))
-                elapsed = (datetime.utcnow() - first_time).total_seconds() if first_time else 0
+            wave_details = {}
+            for symbol, signals in self.symbol_wave_buffer.items():
+                first_time = self.first_signal_time.get(symbol)
+                last_time = self.last_signal_time.get(symbol)
                 
-                context_details[f"{symbol}_{timeframe}"] = {
-                    'signal_count': len(signals),
-                    'elapsed_seconds': elapsed,
-                    'will_timeout_soon': elapsed >= (self.buffer_timeout - 1.0)
+                elapsed_since_first = (now - first_time).total_seconds() if first_time else 0
+                elapsed_since_last = (now - last_time).total_seconds() if last_time else 0
+                
+                # Analyser la composition
+                buy_count = sum(1 for s in signals if s.get('side') == 'BUY')
+                sell_count = sum(1 for s in signals if s.get('side') == 'SELL')
+                timeframes = list(set(s.get('timeframe', '5m') for s in signals))
+                
+                wave_details[symbol] = {
+                    'total_signals': len(signals),
+                    'buy_signals': buy_count,
+                    'sell_signals': sell_count,
+                    'has_conflict': buy_count > 0 and sell_count > 0,
+                    'timeframes': sorted(timeframes),
+                    'elapsed_since_first': elapsed_since_first,
+                    'elapsed_since_last': elapsed_since_last,
+                    'will_timeout_soon': elapsed_since_last >= (self.wave_timeout - 2.0)
                 }
                 
         return {
             'total_buffered_signals': total_buffered,
-            'active_contexts': contexts_count,
-            'context_details': context_details,
+            'active_waves': waves_count,
+            'wave_timeout_seconds': self.wave_timeout,
+            'wave_details': wave_details,
             'stats': self.stats.copy()
         }
         
@@ -719,4 +797,4 @@ class IntelligentSignalBuffer:
                 pass
                 
         await self.force_flush_all()
-        logger.info("Buffer nettoyé")
+        logger.info("🧹 Buffer de vagues nettoyé")

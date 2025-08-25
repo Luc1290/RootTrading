@@ -26,10 +26,10 @@ class CCI_Reversal_Strategy(BaseStrategy):
         self.extreme_oversold = -180  # Extrême vraiment extrême
         self.extreme_overbought = 180  # Extrême vraiment extrême
         
-        # Paramètres de validation temporelle - SIMPLIFIÉS
+        # Paramètres de validation temporelle - SIMPLIFIÉS (STATELESS)
         self.min_cci_persistence = 0  # Pas de persistance requise (crypto 3m rapide)
-        self.cci_history = []  # Historique pour validation
-        self.max_history_size = 3  # Historique réduit
+        # self.cci_history supprimé pour rendre la stratégie stateless
+        # self.max_history_size supprimé
         
         # Seuils adaptatifs selon volatilité - OPTIMISÉS winrate
         self.volatility_adjustment = {
@@ -57,31 +57,8 @@ class CCI_Reversal_Strategy(BaseStrategy):
             'rsi_14': self.indicators.get('rsi_14')  # Ajout RSI pour confirmation
         }
     
-    def _update_cci_history(self, cci_value: float) -> None:
-        """Met à jour l'historique CCI pour validation temporelle."""
-        self.cci_history.append(cci_value)
-        if len(self.cci_history) > self.max_history_size:
-            self.cci_history.pop(0)
-    
-    def _check_cci_persistence(self, threshold: float, direction: str) -> bool:
-        """Vérifie la persistance du CCI dans une zone - SIMPLIFIÉ."""
-        # En crypto 3m, pas de persistance requise - réactivité importante
-        if self.min_cci_persistence == 0:
-            return True
-            
-        if len(self.cci_history) < self.min_cci_persistence:
-            return True  # Accepte si pas assez d'historique
-        
-        # Logique assouplie : au moins 50% des valeurs dans la zone
-        recent_values = self.cci_history[-self.min_cci_persistence:]
-        if direction == 'oversold':
-            count = sum(1 for v in recent_values if v <= threshold)
-        elif direction == 'overbought':
-            count = sum(1 for v in recent_values if v >= threshold)
-        else:
-            return False
-            
-        return count >= len(recent_values) * 0.5  # Au moins 50%
+    # Méthodes d'historique CCI supprimées - stratégie stateless
+    # Pas de persistance temporelle requise en crypto 3m
     
     def _get_adjusted_thresholds(self, volatility_regime: str) -> Dict[str, float]:
         """Ajuste les seuils selon le régime de volatilité."""
@@ -135,8 +112,7 @@ class CCI_Reversal_Strategy(BaseStrategy):
         reason = ""
         confidence_boost = 0.0
         
-        # Mise à jour de l'historique CCI
-        self._update_cci_history(cci_20)
+        # Historique CCI supprimé - stratégie stateless
         
         # Ajustement des seuils selon volatilité
         volatility_regime = values.get('volatility_regime', 'normal')
@@ -164,9 +140,9 @@ class CCI_Reversal_Strategy(BaseStrategy):
             reason = f"CCI ({cci_20:.1f}) en zone de {zone}"
             
         if signal_side:
-            base_confidence = 0.40  # Base réduite pour être plus sélectif
+            base_confidence = 0.50  # Base harmonisée avec autres stratégies
             
-            # Momentum validation ULTRA STRICTE pour winrate
+            # Momentum validation ULTRA STRICTE pour winrate - LOGIQUE CORRIGÉE
             momentum_score_raw = values.get('momentum_score')
             momentum_score = 0
             if momentum_score_raw is not None:
@@ -176,17 +152,18 @@ class CCI_Reversal_Strategy(BaseStrategy):
                     momentum_score = 0
             
             if momentum_score != 0:
-                # Momentum score format 0-100, validation très stricte
-                if (signal_side == "BUY" and momentum_score > 70) or \
-                   (signal_side == "SELL" and momentum_score < 30):
+                # Momentum score format 0-100 (50=neutre), LOGIQUE CORRIGÉE:
+                # BUY = momentum bas (survente), SELL = momentum haut (surachat)
+                if (signal_side == "BUY" and momentum_score < 30) or \
+                   (signal_side == "SELL" and momentum_score > 70):
                     confidence_boost += 0.12  # Bonus réduit
                     reason += " avec momentum EXCEPTIONNEL"
-                elif (signal_side == "BUY" and momentum_score > 65) or \
-                     (signal_side == "SELL" and momentum_score < 35):
+                elif (signal_side == "BUY" and momentum_score < 35) or \
+                     (signal_side == "SELL" and momentum_score > 65):
                     confidence_boost += 0.08  # Momentum fort requis
                     reason += " avec momentum fort"
-                elif (signal_side == "BUY" and momentum_score < 60) or \
-                     (signal_side == "SELL" and momentum_score > 40):
+                elif (signal_side == "BUY" and momentum_score > 40) or \
+                     (signal_side == "SELL" and momentum_score < 60):
                     confidence_boost -= 0.20  # Pénalité majeure momentum inadéquat
                     reason += " ATTENTION: momentum INSUFFISANT"
                     

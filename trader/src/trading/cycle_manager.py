@@ -25,6 +25,7 @@ class CycleManager:
     def __init__(self):
         """Initialise le gestionnaire de cycles."""
         self.redis_client = RedisClient()
+        self.fee_rate = Decimal('0.001')  # 0.1% de frais Binance par trade
         logger.info("✅ CycleManager initialisé")
     
     def process_trade_execution(self, trade_data: Dict[str, Any]) -> Optional[str]:
@@ -430,9 +431,15 @@ class CycleManager:
                     logger.warning(f"Erreur récupération max_price depuis Redis: {e}")
                     max_price = max(entry_price, exit_price)
                 
-                # Calculer le P&L
-                profit_loss = (exit_price - entry_price) * exit_quantity
-                profit_loss_percent = ((exit_price - entry_price) / entry_price) * 100
+                # Calculer les frais (0.1% à l'achat + 0.1% à la vente = 0.2% total)
+                entry_value = entry_price * exit_quantity
+                exit_value = exit_price * exit_quantity
+                total_fees = (entry_value + exit_value) * self.fee_rate
+                
+                # Calculer le P&L net (après frais)
+                gross_profit = (exit_price - entry_price) * exit_quantity
+                profit_loss = gross_profit - total_fees
+                profit_loss_percent = (profit_loss / entry_value) * 100
                 
                 # Ajouter les infos de SELL dans metadata
                 metadata['sell_info'] = {
@@ -440,6 +447,14 @@ class CycleManager:
                     'price': str(exit_price),
                     'quantity': str(exit_quantity),
                     'timestamp': datetime.utcnow().isoformat()
+                }
+                
+                # Ajouter les détails des frais
+                metadata['fees'] = {
+                    'entry_fee': str(entry_value * self.fee_rate),
+                    'exit_fee': str(exit_value * self.fee_rate),
+                    'total_fees': str(total_fees),
+                    'gross_profit': str(gross_profit)
                 }
                 
                 # Ajouter info sur le max atteint

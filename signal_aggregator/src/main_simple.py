@@ -224,7 +224,6 @@ if __name__ == "__main__":
     # Message de démarrage
     print("🚀 Signal Aggregator SIMPLIFIÉ v2.0")
     print("📋 Features: Consensus adaptatif + Filtres critiques seulement")
-    print("🗑️  Supprimé: 23+ validators complexes, hiérarchies, vetos")
     print("⚡ Optimisé pour: Performance + Simplicité")
     print("="*60)
     

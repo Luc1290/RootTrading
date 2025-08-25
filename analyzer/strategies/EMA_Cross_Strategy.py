@@ -21,10 +21,10 @@ class EMA_Cross_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Configuration des EMA - OPTIMISÉES
-        self.ema_fast_period = 12      # EMA rapide
-        self.ema_slow_period = 26      # EMA lente  
-        self.ema_filter_period = 50    # EMA filtre pour tendance générale
-        self.cross_confirmation = 2    # Barres de confirmation du croisement (compromis)
+        self.ema_fast_period = 12      # EMA rapide (info seulement)
+        self.ema_slow_period = 26      # EMA lente (info seulement)
+        self.ema_filter_period = 50    # EMA filtre pour tendance générale (info seulement)
+        # Note: utilise directement ema_12, ema_26, ema_50 de la DB
         self.min_separation_pct = 0.2  # Séparation minimum 0.2% (ajustement modéré)
         self.strong_separation_pct = 1.2  # Séparation forte 1.2%
         
@@ -369,24 +369,24 @@ class EMA_Cross_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # NOUVEAU: Filtre final - rejeter si confidence trop faible
-        raw_confidence = base_confidence * (1 + confidence_boost)
-        if raw_confidence < 0.40:  # Seuil minimum 40%
+        # Calcul final de confidence avec seuil minimum
+        confidence = min(base_confidence * (1 + confidence_boost), 0.95)
+        
+        # Filtre final - rejeter si confidence trop faible
+        if confidence < 0.40:  # Seuil minimum 40%
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Signal EMA rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.40)",
+                "reason": f"Signal EMA rejeté - confiance insuffisante ({confidence:.2f} < 0.40)",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
                     "rejected_signal": signal_side,
-                    "raw_confidence": raw_confidence,
+                    "rejected_confidence": confidence,
                     "ema_separation": ema_distance_pct
                 }
             }
-        
-        confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
         
         return {

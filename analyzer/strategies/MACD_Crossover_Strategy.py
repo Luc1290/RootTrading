@@ -29,10 +29,11 @@ class MACD_Crossover_Strategy(BaseStrategy):
         # Paramètres de filtre de tendance
         self.trend_filter_enabled = True  # Activer le filtre de tendance globale
         self.contra_trend_penalty = 0.3   # Pénalité pour signaux contra-trend
-        # NOUVEAU: Filtres anti-bruit
-        self.min_confidence_threshold = 0.55  # Confidence minimum pour valider
+        # FILTRES OPTIMISÉS WINRATE
+        self.min_confidence_threshold = 0.60  # Plus strict pour align (55% -> 60%)
         self.strong_separation_threshold = 0.02   # Séparation forte MACD/Signal
         self.require_histogram_confirmation = True  # Exiger confirmation histogram
+        self.min_confluence_required = 50         # Confluence minimum obligatoire
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs MACD."""
@@ -98,7 +99,20 @@ class MACD_Crossover_Strategy(BaseStrategy):
         values = self._get_current_values()
         current_price = self._get_current_price()
         
-        # Vérification des indicateurs MACD essentiels
+        # FILTRES PRÉLIMINAIRES OBLIGATOIRES
+        
+        # 1. Vérification confluence minimum
+        confluence_score = values.get('confluence_score')
+        if confluence_score is None or float(confluence_score) < self.min_confluence_required:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"MACD rejeté - confluence insuffisante ({confluence_score}) < {self.min_confluence_required}",
+                "metadata": {"strategy": self.name, "confluence_score": confluence_score}
+            }
+        
+        # 2. Vérification des indicateurs MACD essentiels
         try:
             macd_line = float(values['macd_line']) if values['macd_line'] is not None else None
             macd_signal = float(values['macd_signal']) if values['macd_signal'] is not None else None
@@ -167,12 +181,16 @@ class MACD_Crossover_Strategy(BaseStrategy):
                 is_strong_downtrend = True
                 trend_confirmed = True
         
-        # Vérification supplémentaire avec trend_alignment (format décimal)
+        # Vérification supplémentaire avec trend_alignment (format 0-1 décimal)
         if trend_alignment is not None:
-            if trend_alignment > 0.3:  # Forte tendance haussière (format décimal)
-                is_strong_uptrend = True
-            elif trend_alignment < -0.3:  # Forte tendance baissière (format décimal)
-                is_strong_downtrend = True
+            try:
+                alignment = float(trend_alignment)
+                if alignment > 0.6:  # Forte tendance haussière (format 0-1)
+                    is_strong_uptrend = True
+                elif alignment < 0.4:  # Forte tendance baissière (format 0-1)
+                    is_strong_downtrend = True
+            except (ValueError, TypeError):
+                pass
         
         # NOUVEAU: Validation Histogram OBLIGATOIRE si activée
         histogram_valid = True
@@ -471,22 +489,24 @@ class MACD_Crossover_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Market regime (valeurs réelles: TRENDING_BULL/BEAR, BREAKOUT_BULL/BEAR, RANGING, TRANSITION, VOLATILE)
+        # VALIDATION MARKET REGIME - Plus strict
         market_regime_val = values.get('market_regime')
         if market_regime_val:
             regime_upper = str(market_regime_val).upper()
-            if regime_upper in ['TRENDING_BULL', 'TRENDING_BEAR', 'BREAKOUT_BULL', 'BREAKOUT_BEAR']:
+            if regime_upper in ['VOLATILE', 'RANGING']:
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"MACD désactivé en régime {regime_upper} - trop de faux signaux",
+                    "metadata": {"strategy": self.name, "market_regime": market_regime_val}
+                }
+            elif regime_upper in ['TRENDING_BULL', 'TRENDING_BEAR', 'BREAKOUT_BULL', 'BREAKOUT_BEAR']:
                 confidence_boost += 0.10
-                reason += f" (marché {regime_upper.lower()})"
-            elif regime_upper == "RANGING":
-                confidence_boost -= 0.05
-                reason += " (marché ranging)"
+                reason += f" ({regime_upper.lower()})"
             elif regime_upper == "TRANSITION":
                 confidence_boost += 0.02
-                reason += " (marché en transition)"
-            elif regime_upper == "VOLATILE":
-                confidence_boost -= 0.03
-                reason += " (marché volatil)"
+                reason += " (transition)"
             
         # PPO pour confirmation (MACD normalisé)
         ppo = values.get('ppo')
@@ -515,41 +535,39 @@ class MACD_Crossover_Strategy(BaseStrategy):
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
-                # SEUILS CONFLUENCE PLUS STRICTS
-                if confluence > 75:  # Augmenté de 60
-                    confidence_boost += 0.15
-                    reason += f" + confluence EXCELLENTE ({confluence:.0f})"
-                elif confluence > 65:  # Augmenté de 45
-                    confidence_boost += 0.10
-                    reason += f" + confluence élevée ({confluence:.0f})"
-                elif confluence > 50:
+                # CONFLUENCE DÉJÀ VALIDÉE - juste bonus progressif
+                if confluence > 80:
+                    confidence_boost += 0.12
+                    reason += f" + confluence PARFAITE ({confluence:.0f})"
+                elif confluence > 70:
+                    confidence_boost += 0.08
+                    reason += f" + confluence excellente ({confluence:.0f})"
+                elif confluence > 60:
                     confidence_boost += 0.05
-                    reason += f" + confluence correcte ({confluence:.0f})"
-                elif confluence < 40:  # NOUVEAU: Pénalité si faible
-                    confidence_boost -= 0.08
-                    reason += f" mais confluence FAIBLE ({confluence:.0f})"
+                    reason += f" + confluence forte ({confluence:.0f})"
+                # Pas de pénalité car déjà filtré en amont
             except (ValueError, TypeError):
                 pass
         
-        # NOUVEAU: Filtre final OBLIGATOIRE - confidence minimum
-        raw_confidence = base_confidence * (1 + confidence_boost)
-        if raw_confidence < self.min_confidence_threshold:
+        # CALCUL FINAL OPTIMISÉ
+        confidence = min(base_confidence * (1 + confidence_boost), 0.90)
+        
+        # Filtre final confidence
+        if confidence < self.min_confidence_threshold:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Signal MACD {signal_side} rejeté - confidence insuffisante ({raw_confidence:.2f} < {self.min_confidence_threshold})",
+                "reason": f"MACD {signal_side} rejeté - confidence insuffisante ({confidence:.2f} < {self.min_confidence_threshold})",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
                     "rejected_signal": signal_side,
-                    "raw_confidence": raw_confidence,
+                    "rejected_confidence": confidence,
                     "min_required": self.min_confidence_threshold,
                     "separation_strength": separation_strength
                 }
             }
-                
-        confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
         
         return {

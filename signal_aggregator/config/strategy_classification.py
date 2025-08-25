@@ -12,11 +12,11 @@ STRATEGY_FAMILIES = {
             'MACD_Crossover_Strategy',
             'EMA_Cross_Strategy', 
             'ADX_Direction_Strategy',
-            'Supertrend_Reversal_Strategy',
             'HullMA_Slope_Strategy',
             'TEMA_Slope_Strategy',
             'TRIX_Crossover_Strategy',
-            'PPO_Crossover_Strategy'
+            'PPO_Crossover_Strategy',
+            'ROC_Threshold_Strategy'  # DÉPLACÉ: ROC = momentum/tendance, pas mean reversion
         ],
         'best_regimes': ['TRENDING_BULL', 'TRENDING_BEAR'],
         'acceptable_regimes': ['BREAKOUT_BULL', 'BREAKOUT_BEAR', 'TRANSITION'],
@@ -33,7 +33,8 @@ STRATEGY_FAMILIES = {
             'CCI_Reversal_Strategy',
             'Bollinger_Touch_Strategy',
             'ZScore_Extreme_Reversal_Strategy',
-            'ROC_Threshold_Strategy'
+            'Supertrend_Reversal_Strategy',  # DÉPLACÉ: "Reversal" = retournement/rebond
+            'ParabolicSAR_Bounce_Strategy'   # DÉPLACÉ: "Bounce" = rebond typique mean reversion
         ],
         'best_regimes': ['RANGING'],
         'acceptable_regimes': ['VOLATILE', 'TRANSITION'],
@@ -46,8 +47,7 @@ STRATEGY_FAMILIES = {
             'ATR_Breakout_Strategy',
             'Donchian_Breakout_Strategy',
             'Range_Breakout_Confirmation_Strategy',
-            'Support_Breakout_Strategy',
-            'Resistance_Rejection_Strategy'
+            'Support_Breakout_Strategy'
         ],
         'best_regimes': ['BREAKOUT_BULL', 'BREAKOUT_BEAR', 'VOLATILE'],
         'acceptable_regimes': ['TRANSITION', 'TRENDING_BULL', 'TRENDING_BEAR'],
@@ -71,9 +71,9 @@ STRATEGY_FAMILIES = {
     'structure_based': {
         'strategies': [
             'VWAP_Support_Resistance_Strategy',
-            'ParabolicSAR_Bounce_Strategy',
             'Spike_Reaction_Buy_Strategy',
-            'MultiTF_ConfluentEntry_Strategy'
+            'MultiTF_ConfluentEntry_Strategy',
+            'Resistance_Rejection_Strategy'  # DÉPLACÉ: Rejection = analyse de structure/niveaux
         ],
         'best_regimes': ['TRENDING_BULL', 'TRENDING_BEAR', 'RANGING'],
         'acceptable_regimes': ['VOLATILE', 'TRANSITION', 'BREAKOUT_BULL', 'BREAKOUT_BEAR'],

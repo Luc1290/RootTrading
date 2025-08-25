@@ -20,13 +20,18 @@ class RSI_Cross_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Seuils RSI réalistes pour crypto (AJUSTÉS POUR PLUS DE SIGNAUX)
-        self.oversold_level = 35      # Crypto oversold accessible (était 25)
-        self.overbought_level = 65    # Crypto overbought accessible (était 75)
-        self.extreme_oversold = 25    # RSI extreme accessible (était 18)
-        self.extreme_overbought = 75  # RSI extreme accessible (était 82)
-        self.neutral_low = 45         # Zone neutre basse resserrée (était 38)
-        self.neutral_high = 55        # Zone neutre haute resserrée (était 62)
+        # Seuils RSI OPTIMISÉS WINRATE pour crypto (plus sélectifs)
+        self.oversold_level = 32      # Plus strict pour qualité (35 -> 32)
+        self.overbought_level = 68    # Plus strict pour qualité (65 -> 68)
+        self.extreme_oversold = 22    # Zone extrême plus stricte (25 -> 22)
+        self.extreme_overbought = 78  # Zone extrême plus stricte (75 -> 78)
+        self.neutral_low = 40         # Zone neutre élargie anti-whipsaw (45 -> 40)
+        self.neutral_high = 60        # Zone neutre élargie anti-whipsaw (55 -> 60)
+        
+        # NOUVEAUX FILTRES WINRATE
+        self.min_trend_confirmation_required = True  # Obligatoire pour éviter contra-trend
+        self.min_volume_quality = 60               # Volume minimum pour signaux qualité
+        self.min_confluence_for_signal = 55        # Confluence minimum obligatoire
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
@@ -40,8 +45,12 @@ class RSI_Cross_Strategy(BaseStrategy):
             'confluence_score': self.indicators.get('confluence_score'),
             'pattern_confidence': self.indicators.get('pattern_confidence'),
             'volume_quality_score': self.indicators.get('volume_quality_score'),
+            'volume_ratio': self.indicators.get('volume_ratio'),
             'adx_14': self.indicators.get('adx_14'),
-            'volatility_regime': self.indicators.get('volatility_regime')
+            'volatility_regime': self.indicators.get('volatility_regime'),
+            'market_regime': self.indicators.get('market_regime'),
+            'trend_alignment': self.indicators.get('trend_alignment'),
+            'atr_percentile': self.indicators.get('atr_percentile')
         }
         
     def generate_signal(self) -> Dict[str, Any]:
@@ -74,53 +83,118 @@ class RSI_Cross_Strategy(BaseStrategy):
         reason = ""
         confidence_boost = 0.0
         
-        # Logique de signal basée sur RSI et indicateurs pré-calculés
+        # FILTRES PRÉLIMINAIRES OBLIGATOIRES - WINRATE FOCUS
+        
+        # Filtre 1: Régime de marché - éviter RSI en ranging/volatile
+        market_regime = values.get('market_regime')
+        if market_regime not in ['TRENDING_BULL', 'TRENDING_BEAR', 'BREAKOUT_BULL', 'BREAKOUT_BEAR']:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"RSI désactivé en régime {market_regime} - trop de faux signaux",
+                "metadata": {"strategy": self.name, "market_regime": market_regime}
+            }
+            
+        # Filtre 2: Volume qualité minimum obligatoire
+        volume_quality = values.get('volume_quality_score', 0)
+        if not volume_quality or float(volume_quality) < self.min_volume_quality:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Volume qualité insuffisante ({volume_quality}) < {self.min_volume_quality} - RSI non fiable",
+                "metadata": {"strategy": self.name, "volume_quality": volume_quality}
+            }
+            
+        # Filtre 3: Confluence minimum obligatoire  
+        confluence_score = values.get('confluence_score', 0)
+        if not confluence_score or float(confluence_score) < self.min_confluence_for_signal:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Confluence insuffisante ({confluence_score}) < {self.min_confluence_for_signal} - RSI isolé",
+                "metadata": {"strategy": self.name, "confluence_score": confluence_score}
+            }
+        
+        # Logique de signal RSI avec seuils optimisés winrate
         if rsi_14 <= self.oversold_level:
-            # Zone de survente - chercher signal BUY
+            # Zone de survente - signal BUY avec confirmation obligatoire
+            
+            # Confirmation tendance requise pour BUY
+            directional_bias = values.get('directional_bias')
+            if directional_bias != 'BULLISH' and market_regime not in ['TRENDING_BULL', 'BREAKOUT_BULL']:
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"RSI survente ({rsi_14:.1f}) mais tendance non haussière - évite contra-trend",
+                    "metadata": {"strategy": self.name, "rsi_14": rsi_14, "directional_bias": directional_bias}
+                }
+            
             signal_side = "BUY"
             zone = "survente extrême" if rsi_14 <= self.extreme_oversold else "survente"
-            reason = f"RSI ({rsi_14:.1f}) en zone de {zone}"
+            reason = f"RSI ({rsi_14:.1f}) {zone} + tendance haussière confirmée"
             
-            # Bonus pour survente extrême (AJUSTÉ)
+            # Bonus réduits mais plus sélectifs
             if rsi_14 <= self.extreme_oversold:
-                confidence_boost += 0.35  # Boost majeur amélioré (était 0.30)
+                confidence_boost += 0.25  # Réduit pour éviter sur-confiance
             else:
-                confidence_boost += 0.20  # Boost modéré amélioré (était 0.15)
+                confidence_boost += 0.15  # Réduit pour éviter sur-confiance
                 
         elif rsi_14 >= self.overbought_level:
-            # Zone de surachat - chercher signal SELL
+            # Zone de surachat - signal SELL avec confirmation obligatoire
+            
+            # Confirmation tendance requise pour SELL
+            directional_bias = values.get('directional_bias')
+            if directional_bias != 'BEARISH' and market_regime not in ['TRENDING_BEAR', 'BREAKOUT_BEAR']:
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"RSI surachat ({rsi_14:.1f}) mais tendance non baissière - évite contra-trend",
+                    "metadata": {"strategy": self.name, "rsi_14": rsi_14, "directional_bias": directional_bias}
+                }
+            
             signal_side = "SELL"
             zone = "surachat extrême" if rsi_14 >= self.extreme_overbought else "surachat"
-            reason = f"RSI ({rsi_14:.1f}) en zone de {zone}"
+            reason = f"RSI ({rsi_14:.1f}) {zone} + tendance baissière confirmée"
             
-            # Bonus pour surachat extrême (AJUSTÉ)
+            # Bonus réduits mais plus sélectifs
             if rsi_14 >= self.extreme_overbought:
-                confidence_boost += 0.35  # Boost majeur amélioré (était 0.30)
+                confidence_boost += 0.25  # Réduit pour éviter sur-confiance
             else:
-                confidence_boost += 0.20  # Boost modéré amélioré (était 0.15)
+                confidence_boost += 0.15  # Réduit pour éviter sur-confiance
                 
         if signal_side:
             # Utilisation des indicateurs pré-calculés pour ajuster la confiance
-            base_confidence = 0.40  # Réduit à 0.40 pour plus d'accessibilité (était 0.50)
+            base_confidence = 0.50  # Harmonisé avec autres stratégies
             
             # Ajustement avec momentum_score (format 0-100, 50=neutre) - CRYPTO OPTIMISÉ
             momentum_score = values.get('momentum_score', 50)
             if momentum_score:
                 try:
                     momentum_val = float(momentum_score)
-                    # SEUILS CRYPTO ASSOUPLIS
-                    if (signal_side == "BUY" and momentum_val > 60) or \
-                       (signal_side == "SELL" and momentum_val < 40):
-                        confidence_boost += 0.25  # Amélioré (était 0.22)
-                        reason += f" avec momentum EXCELLENT ({momentum_val:.0f})"
-                    elif (signal_side == "BUY" and momentum_val > 52) or \
-                         (signal_side == "SELL" and momentum_val < 48):
-                        confidence_boost += 0.15  # Amélioré (était 0.12)
-                        reason += f" avec momentum favorable ({momentum_val:.0f})"
-                    elif (signal_side == "BUY" and momentum_val < 40) or \
-                         (signal_side == "SELL" and momentum_val > 60):
-                        confidence_boost -= 0.15  # Réduit (était -0.25)
-                        reason += f" ATTENTION: momentum contraire ({momentum_val:.0f})"
+                    # SEUILS MOMENTUM STRICTS POUR WINRATE
+                    if (signal_side == "BUY" and momentum_val > 65) or \
+                       (signal_side == "SELL" and momentum_val < 35):
+                        confidence_boost += 0.20  # Réduit mais plus sélectif
+                        reason += f" + momentum EXCELLENT ({momentum_val:.0f})"
+                    elif (signal_side == "BUY" and momentum_val > 55) or \
+                         (signal_side == "SELL" and momentum_val < 45):
+                        confidence_boost += 0.10  # Réduit mais plus sélectif
+                        reason += f" + momentum favorable ({momentum_val:.0f})"
+                    elif (signal_side == "BUY" and momentum_val < 45) or \
+                         (signal_side == "SELL" and momentum_val > 55):
+                        # REJET DIRECT si momentum contraire
+                        return {
+                            "side": None,
+                            "confidence": 0.0,
+                            "strength": "weak",
+                            "reason": f"RSI {signal_side} rejeté - momentum contraire ({momentum_val:.0f})",
+                            "metadata": {"strategy": self.name, "rsi_14": rsi_14, "momentum_score": momentum_val}
+                        }
                 except (ValueError, TypeError):
                     pass
                     
@@ -151,19 +225,17 @@ class RSI_Cross_Strategy(BaseStrategy):
             if confluence_score:
                 try:
                     confluence_val = float(confluence_score)
-                    # CONFLUENCE CRYPTO RÉALISTE
-                    if confluence_val > 75:  # Excellence accessible (était 85)
-                        confidence_boost += 0.25
-                        reason += f" avec confluence PARFAITE ({confluence_val:.0f})"
-                    elif confluence_val > 60:  # Très bon accessible (était 75)
-                        confidence_boost += 0.18
-                        reason += f" avec confluence EXCELLENTE ({confluence_val:.0f})"
-                    elif confluence_val > 50:  # Standard accessible (était 65)
-                        confidence_boost += 0.12  # Amélioré (était 0.10)
-                        reason += f" avec confluence correcte ({confluence_val:.0f})"
-                    elif confluence_val < 45:  # Seuil pénalité réduit (était 55)
-                        confidence_boost -= 0.10  # Pénalité réduite (était -0.15)
-                        reason += f" mais confluence insuffisante ({confluence_val:.0f})"
+                    # CONFLUENCE DÉJÀ VALIDÉE - juste bonus progressif
+                    if confluence_val > 80:
+                        confidence_boost += 0.15
+                        reason += f" + confluence PARFAITE ({confluence_val:.0f})"
+                    elif confluence_val > 70:
+                        confidence_boost += 0.12
+                        reason += f" + confluence excellente ({confluence_val:.0f})"
+                    elif confluence_val > 60:
+                        confidence_boost += 0.08
+                        reason += f" + confluence forte ({confluence_val:.0f})"
+                    # Pas de pénalité car déjà filtré en amont
                 except (ValueError, TypeError):
                     pass
                 
@@ -186,15 +258,11 @@ class RSI_Cross_Strategy(BaseStrategy):
                     confidence_boost += 0.1
                     reason += " confirmé sur RSI 21"
                     
-            # FILTRES SUPPLÉMENTAIRES CRYPTO (AJUSTÉS)
-            # Filtre volume quality
+            # FILTRES SUPPLÉMENTAIRES - Volume déjà validé, juste bonus
             volume_quality = values.get('volume_quality_score', 0)
-            if volume_quality and float(volume_quality) < 55:  # Seuil réduit (était 60)
-                confidence_boost -= 0.08  # Pénalité réduite (était -0.12)
-                reason += f" mais volume faible ({float(volume_quality):.0f})"
-            elif volume_quality and float(volume_quality) > 75:  # Seuil réduit (était 80)
-                confidence_boost += 0.10  # Bonus amélioré (était 0.08)
-                reason += f" avec volume excellent ({float(volume_quality):.0f})"
+            if volume_quality and float(volume_quality) > 80:
+                confidence_boost += 0.08
+                reason += f" + volume exceptionnel ({float(volume_quality):.0f})"
                 
             # Vérifier divergence RSI 14/21 pour confirmation (AJUSTÉ)
             rsi_21 = values.get('rsi_21')
@@ -216,26 +284,35 @@ class RSI_Cross_Strategy(BaseStrategy):
                 confidence_boost += 0.12  # Bonus amélioré (était 0.10)
                 reason += f" avec ADX fort ({float(adx):.0f}) - trending"
             
-            # NOUVEAU: Filtre final CRYPTO accessible
-            raw_confidence = base_confidence * (1 + confidence_boost)
-            if raw_confidence < 0.35:  # Seuil crypto réduit (était 0.45)
+            # Filtre ATR pour éviter signaux en marché mort
+            atr_percentile = values.get('atr_percentile')
+            if atr_percentile and float(atr_percentile) < 25:
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": f"Signal RSI rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.35)",
+                    "reason": f"RSI rejeté - volatilité trop faible ({float(atr_percentile):.0f}%) - marché inactif",
+                    "metadata": {"strategy": self.name, "atr_percentile": atr_percentile}
+                }
+            
+            # Calcul confidence final optimisé
+            confidence = min(base_confidence * (1 + confidence_boost), 0.90)
+            
+            # Filtre final plus strict
+            if confidence < 0.55:  # Seuil relevé pour qualité
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Signal RSI rejeté - confiance insuffisante ({confidence:.2f} < 0.55)",
                     "metadata": {
                         "strategy": self.name,
                         "symbol": self.symbol,
                         "rejected_signal": signal_side,
-                        "raw_confidence": raw_confidence,
-                        "rsi_14": rsi_14,
-                        "volume_quality": volume_quality,
-                        "adx_14": adx
+                        "rejected_confidence": confidence,
+                        "rsi_14": rsi_14
                     }
                 }
-            
-            confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
             strength = self.get_strength_from_confidence(confidence)
             
             return {
@@ -258,14 +335,16 @@ class RSI_Cross_Strategy(BaseStrategy):
                 }
             }
             
+        # RSI en zone neutre - élargie pour éviter whipsaw
         return {
             "side": None,
             "confidence": 0.0,
             "strength": "weak",
-            "reason": f"RSI en zone neutre ({rsi_14:.1f}) - pas de signal (seuils ajustés: {self.oversold_level}/{self.overbought_level})",
+            "reason": f"RSI neutre ({rsi_14:.1f}) - seuils optimisés winrate: {self.oversold_level}/{self.overbought_level}",
             "metadata": {
                 "strategy": self.name,
                 "symbol": self.symbol,
-                "rsi_14": rsi_14
+                "rsi_14": rsi_14,
+                "market_regime": values.get('market_regime')
             }
         }
