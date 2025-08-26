@@ -33,10 +33,16 @@ function useApi<T>(
     
     try {
       const result = await apiCall();
-      setState({ data: result, loading: false, error: null });
-      onSuccess?.(result);
+      if (result) {
+        setState({ data: result, loading: false, error: null });
+        onSuccess?.(result);
+      } else {
+        console.warn('API returned null/undefined data');
+        setState({ data: null, loading: false, error: 'No data received' });
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('API Error:', errorMessage, error);
       setState({ data: null, loading: false, error: errorMessage });
       onError?.(error as Error);
     }
@@ -134,10 +140,27 @@ export function useAllChartData(
     [symbol, interval, limit],
     {
       onSuccess: (data) => {
-        setMarketData(data.marketData);
-        setIndicators(data.indicators);
-        setSignals(data.signals);
+        console.log('Setting chart data in store:', {
+          hasMarketData: !!data.marketData,
+          hasIndicators: !!data.indicators,
+          hasSignals: !!data.signals,
+          symbol,
+          interval
+        });
+        
+        if (data.marketData) {
+          setMarketData(data.marketData);
+        }
+        if (data.indicators) {
+          setIndicators(data.indicators);
+        }
+        if (data.signals) {
+          setSignals(data.signals);
+        }
       },
+      onError: (error) => {
+        console.error('Failed to fetch chart data:', error);
+      }
     }
   );
 }

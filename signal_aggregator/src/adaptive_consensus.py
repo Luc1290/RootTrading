@@ -91,18 +91,19 @@ class AdaptiveConsensusAnalyzer:
         }
         
     def analyze_adaptive_consensus(self, signals: List[Dict[str, Any]], 
-                                  market_regime: str) -> Tuple[bool, Dict[str, Any]]:
+                                  market_regime: str, timeframe: str = None) -> Tuple[bool, Dict[str, Any]]:
         """
         Analyse si un groupe de signaux forme un consensus adapté au régime.
         
         Args:
             signals: Liste des signaux du même symbole/direction
             market_regime: Régime de marché actuel
+            timeframe: Timeframe des signaux (3m, 5m, 15m, etc.)
             
         Returns:
             Tuple (has_consensus, analysis_details)
         """
-        logger.info(f"🔍 Analyse consensus: {len(signals)} signaux, régime: {market_regime}")
+        logger.info(f"🔍 Analyse consensus: {len(signals)} signaux, régime: {market_regime}, timeframe: {timeframe}")
         
         if not signals:
             logger.info("🔍 Consensus: Aucun signal")
@@ -221,14 +222,28 @@ class AdaptiveConsensusAnalyzer:
         
         # Décision finale basée sur la force du consensus RAISONNABLE
         # RÉALISTE: Basé sur les vraies données observées (3-10 stratégies simultanées)
-        if avg_adaptability > 0.75:  # Bonne adaptabilité
-            min_consensus_strength = 2.0  # Modéré si bonne adaptabilité
-        elif regime == 'UNKNOWN':
-            min_consensus_strength = 2.5  # Modéré en inconnu
-        elif regime in ['TRENDING_BEAR', 'BREAKOUT_BEAR']:
-            min_consensus_strength = 2.8  # Un peu plus strict en bear
+        
+        # Ajustement spécifique pour le timeframe 3m (plus de faux signaux)
+        if timeframe == '3m':
+            # Plus strict pour le 3m pour filtrer les faux signaux courts
+            if avg_adaptability > 0.75:  # Bonne adaptabilité
+                min_consensus_strength = 2.5  # Plus strict même avec bonne adaptabilité
+            elif regime == 'UNKNOWN':
+                min_consensus_strength = 3.0  # Très strict en inconnu sur 3m
+            elif regime in ['TRENDING_BEAR', 'BREAKOUT_BEAR']:
+                min_consensus_strength = 3.2  # Encore plus strict en bear sur 3m
+            else:
+                min_consensus_strength = 2.7  # Standard plus élevé pour 3m
         else:
-            min_consensus_strength = 2.3  # Standard pour autres régimes
+            # Seuils normaux pour 5m, 15m et autres timeframes
+            if avg_adaptability > 0.75:  # Bonne adaptabilité
+                min_consensus_strength = 2.0  # Modéré si bonne adaptabilité
+            elif regime == 'UNKNOWN':
+                min_consensus_strength = 2.5  # Modéré en inconnu
+            elif regime in ['TRENDING_BEAR', 'BREAKOUT_BEAR']:
+                min_consensus_strength = 2.8  # Un peu plus strict en bear
+            else:
+                min_consensus_strength = 2.3  # Standard pour autres régimes
         
         # Si familles manquantes ont été TOLÉRÉES, être plus permissif sur consensus strength
         families_were_tolerated = missing_families and (
@@ -280,7 +295,8 @@ class AdaptiveConsensusAnalyzer:
         
     def analyze_adaptive_consensus_mtf(self, signals: List[Dict[str, Any]], 
                                       market_regime: str, 
-                                      original_signal_count: int) -> Tuple[bool, Dict[str, Any]]:
+                                      original_signal_count: int,
+                                      timeframe: str = None) -> Tuple[bool, Dict[str, Any]]:
         """
         Analyse le consensus pour les signaux MTF post-conflit avec des critères assouplis.
         

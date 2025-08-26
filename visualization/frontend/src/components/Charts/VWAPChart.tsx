@@ -72,24 +72,61 @@ function VWAPChart({ height = 300 }: VWAPChartProps) {
   useEffect(() => {
     if (!indicators || !marketData || !vwapSeriesRef.current || !vwapQuoteSeriesRef.current) return;
     
+    console.log('Indicateurs VWAP disponibles:', Object.keys(indicators).filter(k => k.includes('vwap')));
+    
+    // Essayer différentes variantes de VWAP
+    const vwapKeys = ['vwap_10', 'vwap', 'vwap_20', 'vwap_14'];
+    const vwapQuoteKeys = ['vwap_quote_10', 'vwap_quote', 'vwap_quote_20', 'vwap_quote_14'];
+    
+    let vwapIndicator = null;
+    let vwapQuoteIndicator = null;
+    
+    // Trouver le premier indicateur VWAP disponible
+    for (const key of vwapKeys) {
+      if (indicators[key]) {
+        vwapIndicator = indicators[key] as number[];
+        console.log('Utilisation de l\'indicateur VWAP:', key);
+        break;
+      }
+    }
+    
+    for (const key of vwapQuoteKeys) {
+      if (indicators[key]) {
+        vwapQuoteIndicator = indicators[key] as number[];
+        console.log('Utilisation de l\'indicateur VWAP Quote:', key);
+        break;
+      }
+    }
+    
     // VWAP standard
-    if (indicators.vwap_10) {
+    if (vwapIndicator) {
       const vwapData: LineData[] = marketData.timestamps.map((timestamp: string, index: number) => ({
         time: Math.floor(new Date(timestamp).getTime() / 1000) as Time,
-        value: indicators.vwap_10![index],
+        value: vwapIndicator[index],
       })).filter((item) => item.value !== null && item.value !== undefined && !isNaN(item.value)) as LineData[];
       
-      vwapSeriesRef.current.setData(vwapData);
+      if (vwapData.length > 0) {
+        vwapSeriesRef.current.setData(vwapData);
+        console.log(`Données VWAP standard chargées: ${vwapData.length} points`);
+      }
     }
     
     // VWAP Quote (plus précis)
-    if (indicators.vwap_quote_10) {
+    if (vwapQuoteIndicator) {
       const vwapQuoteData: LineData[] = marketData.timestamps.map((timestamp: string, index: number) => ({
         time: Math.floor(new Date(timestamp).getTime() / 1000) as Time,
-        value: indicators.vwap_quote_10![index],
+        value: vwapQuoteIndicator[index],
       })).filter((item) => item.value !== null && item.value !== undefined && !isNaN(item.value)) as LineData[];
       
-      vwapQuoteSeriesRef.current.setData(vwapQuoteData);
+      if (vwapQuoteData.length > 0) {
+        vwapQuoteSeriesRef.current.setData(vwapQuoteData);
+        console.log(`Données VWAP Quote chargées: ${vwapQuoteData.length} points`);
+      }
+    }
+    
+    // Si aucun VWAP n'est disponible, afficher un message
+    if (!vwapIndicator && !vwapQuoteIndicator) {
+      console.warn('Aucun indicateur VWAP trouvé dans:', Object.keys(indicators));
     }
   }, [indicators, marketData]);
   

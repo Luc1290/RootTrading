@@ -16,6 +16,8 @@ export interface TradingSignal {
 }
 
 export interface Indicators {
+  // Index signature pour accès dynamique
+  [key: string]: number[] | string[] | undefined;
   // RSI et momentum
   rsi_14?: number[];
   rsi_21?: number[];

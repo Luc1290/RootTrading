@@ -111,6 +111,49 @@ class StatisticsService:
             cycles = results[3] if not isinstance(results[3], Exception) else {}
             market = results[4] if not isinstance(results[4], Exception) else {}
             
+            # Récupérer les vrais prix depuis market_data
+            price_query = f"""
+                WITH price_data AS (
+                    SELECT 
+                        close,
+                        time,
+                        ROW_NUMBER() OVER (ORDER BY time DESC) as rn
+                    FROM market_data
+                    WHERE symbol = '{symbol}'
+                    ORDER BY time DESC
+                    LIMIT 25
+                ),
+                latest_price AS (
+                    SELECT close as current_price FROM price_data WHERE rn = 1
+                ),
+                price_24h_ago AS (
+                    SELECT close as old_price FROM price_data WHERE rn = 24
+                )
+                SELECT 
+                    lp.current_price,
+                    COALESCE(p24.old_price, lp.current_price) as price_24h_ago,
+                    CASE 
+                        WHEN p24.old_price > 0 THEN ((lp.current_price - p24.old_price) / p24.old_price * 100)
+                        ELSE 0.0
+                    END as price_change_24h
+                FROM latest_price lp
+                LEFT JOIN price_24h_ago p24 ON true
+            """
+            
+            try:
+                price_result = await self.data_manager.execute_query(price_query)
+                if price_result and len(price_result) > 0:
+                    price_row = price_result[0]
+                    current_price = float(price_row['current_price'] or 0)
+                    price_change_24h = float(price_row['price_change_24h'] or 0)
+                else:
+                    current_price = 0
+                    price_change_24h = 0
+            except Exception as e:
+                logger.error(f"Error getting price for {symbol}: {e}")
+                current_price = 0
+                price_change_24h = 0
+            
             # Formater selon le format attendu par le frontend
             symbol_stat = {
                 'symbol': symbol,
@@ -120,8 +163,8 @@ class StatisticsService:
                 'winRate': performance.get('win_rate', 0),
                 'avgTradeSize': activity.get('volume_24h', 0) / max(activity.get('trades_24h', 1), 1),
                 'fees': 0,  # À calculer si nécessaire
-                'lastPrice': market.get('avg_price_24h', 0),
-                'priceChange24h': 0  # À calculer si nécessaire
+                'lastPrice': current_price,
+                'priceChange24h': price_change_24h
             }
             
             return {

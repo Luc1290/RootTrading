@@ -8,7 +8,27 @@ interface RegimeInfoProps {
 function RegimeInfo({ className = '' }: RegimeInfoProps) {
   const { indicators, marketData } = useChartStore();
   
-  if (!indicators || !marketData?.timestamps) return null;
+  // Debug des indicateurs disponibles
+  React.useEffect(() => {
+    if (indicators) {
+      console.log('Indicateurs disponibles pour RegimeInfo:', Object.keys(indicators));
+    }
+  }, [indicators]);
+  
+  if (!indicators || !marketData?.timestamps) {
+    return (
+      <div className={`bg-gray-800 rounded-lg p-4 ${className}`}>
+        <h3 className="text-lg font-semibold text-white mb-4">Market Analysis</h3>
+        <div className="text-center text-gray-400 py-8">
+          <div className="animate-pulse">
+            <div className="h-4 bg-gray-700 rounded w-3/4 mx-auto mb-2"></div>
+            <div className="h-4 bg-gray-700 rounded w-1/2 mx-auto"></div>
+          </div>
+          <p className="mt-4 text-sm">Chargement des données de régime...</p>
+        </div>
+      </div>
+    );
+  }
   
   // Prendre les dernières valeurs
   const latestIndex = marketData.timestamps.length - 1;
@@ -19,6 +39,28 @@ function RegimeInfo({ className = '' }: RegimeInfoProps) {
   const volumePattern = indicators.volume_pattern?.[latestIndex];
   const patternDetected = indicators.pattern_detected?.[latestIndex];
   const dataQuality = indicators.data_quality?.[latestIndex];
+  
+  // Fallback: utiliser des indicateurs basiques pour déduire le régime
+  let fallbackRegime = null;
+  let fallbackStrength = null;
+  
+  if (!marketRegime && indicators.rsi_14 && indicators.ema_7 && indicators.ema_26) {
+    const rsi = indicators.rsi_14[latestIndex];
+    const ema7 = indicators.ema_7[latestIndex];
+    const ema26 = indicators.ema_26[latestIndex];
+    const currentPrice = marketData.close[latestIndex];
+    
+    if (ema7 > ema26 && currentPrice > ema7 && rsi > 50) {
+      fallbackRegime = 'TRENDING_BULL';
+      fallbackStrength = rsi > 70 ? 'STRONG' : 'MODERATE';
+    } else if (ema7 < ema26 && currentPrice < ema7 && rsi < 50) {
+      fallbackRegime = 'TRENDING_BEAR';
+      fallbackStrength = rsi < 30 ? 'STRONG' : 'MODERATE';
+    } else {
+      fallbackRegime = 'RANGING';
+      fallbackStrength = 'WEAK';
+    }
+  }
   
   const getRegimeColor = (regime: string) => {
     switch (regime) {
@@ -91,16 +133,22 @@ function RegimeInfo({ className = '' }: RegimeInfoProps) {
         {/* Régime de marché */}
         <div className="space-y-2">
           <h4 className="text-sm font-medium text-gray-300">Market Regime</h4>
-          {marketRegime && (
-            <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getRegimeColor(marketRegime)}`}>
-              {marketRegime.replace('_', ' ')}
+          {(marketRegime || fallbackRegime) && (
+            <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getRegimeColor(marketRegime || fallbackRegime || '')}`}>
+              {(marketRegime || fallbackRegime || '').replace('_', ' ')}
+              {fallbackRegime && !marketRegime && (
+                <span className="ml-1 text-xs opacity-75">(estimé)</span>
+              )}
             </div>
           )}
-          {regimeStrength && (
+          {(regimeStrength || fallbackStrength) && (
             <div className="flex items-center space-x-2">
               <span className="text-xs text-gray-400">Strength:</span>
-              <span className={`text-xs font-medium ${getStrengthColor(regimeStrength)}`}>
-                {regimeStrength}
+              <span className={`text-xs font-medium ${getStrengthColor(regimeStrength || fallbackStrength || '')}`}>
+                {regimeStrength || fallbackStrength}
+                {fallbackStrength && !regimeStrength && (
+                  <span className="ml-1 opacity-75">(estimé)</span>
+                )}
               </span>
             </div>
           )}

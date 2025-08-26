@@ -8,6 +8,7 @@ interface OwnedSymbol {
   asset: string;
   price: number;
   price_change_24h: number;
+  current_balance?: number;
 }
 
 function SymbolSelector() {
@@ -24,7 +25,7 @@ function SymbolSelector() {
   const fetchOwnedSymbols = async () => {
     try {
       const [symbols, configuredResponse] = await Promise.all([
-        apiService.getOwnedSymbolsWithVariations(),
+        apiService.getAllTradedSymbolsWithVariations(),
         apiService.getConfiguredSymbols()
       ]);
       
@@ -37,20 +38,22 @@ function SymbolSelector() {
         portfolioData.set(symbol.symbol, symbol);
       });
       
-      // Créer la liste complète avec tous les symboles autorisés
-      const validSymbols = allowedSymbols.map(symbol => {
-        const portfolioSymbol = portfolioData.get(symbol);
-        if (portfolioSymbol) {
-          return portfolioSymbol;
-        }
-        // Si pas dans le portfolio, créer un symbole avec prix 0
-        return {
-          symbol: symbol,
-          asset: symbol.replace('USDC', ''),
-          price: 0,
-          price_change_24h: 0
-        };
-      });
+      // Utiliser directement les symboles tradés, plus les symboles configurés manquants
+      let validSymbols = [...(symbols || [])];
+      
+      // Ajouter les symboles configurés manquants avec prix 0
+      const tradedSymbolNames = new Set((symbols || []).map((s: OwnedSymbol) => s.symbol));
+      const missingConfigured = allowedSymbols.filter(symbol => !tradedSymbolNames.has(symbol));
+      
+      const missingSymbols = missingConfigured.map(symbol => ({
+        symbol: symbol,
+        asset: symbol.replace('USDC', ''),
+        price: 0,
+        price_change_24h: 0,
+        current_balance: 0
+      }));
+      
+      validSymbols = [...validSymbols, ...missingSymbols];
       
       setOwnedSymbols(validSymbols);
     } catch (error) {
@@ -62,16 +65,17 @@ function SymbolSelector() {
           symbol: symbol,
           asset: symbol.replace('USDC', ''),
           price: 0,
-          price_change_24h: 0
+          price_change_24h: 0,
+          current_balance: 0
         }));
         setOwnedSymbols(fallbackSymbols);
       } catch (configError) {
         console.error('Error fetching configured symbols:', configError);
         // Dernier fallback avec quelques symboles statiques
         setOwnedSymbols([
-          { symbol: 'BTCUSDC', asset: 'BTC', price: 0, price_change_24h: 0 },
-          { symbol: 'ETHUSDC', asset: 'ETH', price: 0, price_change_24h: 0 },
-          { symbol: 'SOLUSDC', asset: 'SOL', price: 0, price_change_24h: 0 }
+          { symbol: 'BTCUSDC', asset: 'BTC', price: 0, price_change_24h: 0, current_balance: 0 },
+          { symbol: 'ETHUSDC', asset: 'ETH', price: 0, price_change_24h: 0, current_balance: 0 },
+          { symbol: 'SOLUSDC', asset: 'SOL', price: 0, price_change_24h: 0, current_balance: 0 }
         ]);
       }
     } finally {
@@ -118,7 +122,7 @@ function SymbolSelector() {
   return (
     <div className="flex flex-col space-y-2">
       <label className="text-xs text-gray-300 font-medium">
-        Symboles Possédés ({ownedSymbols.length}) - Variations 24h
+        Tous les Symboles Tradés ({ownedSymbols.length}) - Variations 24h
       </label>
       
       <div className="flex flex-wrap gap-2 p-3 bg-dark-300 rounded-lg max-h-32 overflow-y-auto">
@@ -133,8 +137,11 @@ function SymbolSelector() {
             }`}
           >
             {/* Symbole */}
-            <div className="text-white font-bold text-sm">
+            <div className="text-white font-bold text-sm flex items-center">
               {symbolData.asset}
+              {(symbolData.current_balance || 0) > 0 && (
+                <div className="ml-1 w-2 h-2 bg-green-400 rounded-full" title="Actuellement possédé" />
+              )}
             </div>
             
             {/* Prix */}

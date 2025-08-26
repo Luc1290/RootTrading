@@ -210,7 +210,7 @@ class TEMA_Slope_Strategy(BaseStrategy):
                 # Ajuster selon la position par rapport au TEMA
                 price_tema_ratio = current_price / tema_val if tema_val != 0 else 1
                 tema_slope = price_slope * price_tema_ratio  # Approximation
-            except (ValueError, TypeError, ZeroDivisionError):
+            except (ValueError, TypeError, ZeroDivisionError, IndexError):
                 tema_slope = 0
                 
         if tema_slope is None:
@@ -513,10 +513,14 @@ class TEMA_Slope_Strategy(BaseStrategy):
         # Confirmation avec directional bias
         directional_bias = values.get('directional_bias')
         if directional_bias is not None:
-            if (signal_side == "BUY" and directional_bias.upper() == "BULLISH") or \
-               (signal_side == "SELL" and directional_bias.upper() == "BEARISH"):
-                confidence_boost += 0.12
-                reason += f" + bias {directional_bias}"
+            try:
+                bias_str = str(directional_bias).upper()
+                if (signal_side == "BUY" and bias_str == "BULLISH") or \
+                   (signal_side == "SELL" and bias_str == "BEARISH"):
+                    confidence_boost += 0.12
+                    reason += f" + bias {directional_bias}"
+            except (AttributeError, TypeError):
+                pass
                 
         # Confirmation avec trend strength
         trend_strength = values.get('trend_strength')

@@ -515,12 +515,13 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
                 missing_conditions.append(f"Rebound BUY faible (score: {buy_rebound['score']:.2f})")
             if sell_rebound['score'] < 0.2:
                 missing_conditions.append(f"Rebound SELL faible (score: {sell_rebound['score']:.2f})")
-                
+            
+            williams_str = f"{williams_val:.1f}" if williams_val is not None else "N/A"
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Williams %R ({williams_val:.1f}) - {'; '.join(missing_conditions[:2])}",
+                "reason": f"Williams %R ({williams_str}) - {'; '.join(missing_conditions[:2])}",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
@@ -536,6 +537,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
         
         # NOUVEAU: Exiger au moins une confluence pour émettre signal
         if not oscillator_confluence['is_confluent'] and not sr_confluence['is_confluent']:
+            williams_val = values.get('williams_r')
             return {
                 "side": None,
                 "confidence": 0.0,

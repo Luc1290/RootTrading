@@ -115,6 +115,10 @@ class ApiService {
     return this.request(`/api/portfolio/symbols/owned`);
   }
 
+  async getAllTradedSymbolsWithVariations(): Promise<any> {
+    return this.request(`/api/portfolio/symbols/traded`);
+  }
+
   // Trader API (via proxy)
   async getTraderStats(): Promise<any> {
     return this.request(`/api/trader/stats`);
@@ -224,7 +228,7 @@ class ApiService {
     try {
       const [marketResponse, indicatorsResponse, signalsResponse] = await Promise.all([
         this.getMarketData(symbol, interval, limit),
-        this.getIndicators(symbol, 'rsi,macd,ema', interval, limit),
+        this.getIndicators(symbol, 'rsi,macd,ema,vwap', interval, limit),
         this.getTradingSignals(symbol),
       ]);
       

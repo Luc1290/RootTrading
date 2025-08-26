@@ -603,74 +603,131 @@ def _register_portfolio_routes(app: FastAPI):
         
         return {"status": "success", "message": f"{len(balances)} soldes mis à jour"}
 
+    @app.get("/symbols/traded")
+    async def get_all_traded_symbols_with_variations(
+        response: Response,
+        portfolio: PortfolioModel = Depends(get_portfolio_model)
+    ):
+        """
+        Récupère tous les symboles tradés historiquement avec leurs variations de prix 24h.
+        """
+        import os
+        
+        # Récupérer les symboles depuis le fichier .env
+        trading_symbols_env = os.getenv('TRADING_SYMBOLS', '')
+        
+        if trading_symbols_env:
+            # Utiliser les symboles définis dans .env comme source principale
+            all_symbols = [s.strip() for s in trading_symbols_env.split(',') if s.strip()]
+        else:
+            # Fallback: récupérer les symboles avec des balances actuelles
+            balances = portfolio.get_latest_balances()
+            all_symbols = [f"{balance.asset}USDC" for balance in balances if balance.total > 0 and balance.asset != 'USDC']
+        
+        if not all_symbols:
+            return []
+        
+        # Récupérer les variations de prix pour chaque symbole
+        symbols_with_variations = []
+        
+        # Récupérer les prix directement depuis la base de données
+        balances = portfolio.get_latest_balances()
+        balance_dict = {f"{b.asset}USDC": b.value_usdc for b in balances if b.asset != 'USDC'}
+        
+        for symbol in all_symbols:
+            try:
+                # Récupérer les données depuis la DB directement
+                query = """
+                WITH price_data AS (
+                    SELECT 
+                        symbol,
+                        close as current_price,
+                        time,
+                        ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY time DESC) as rn
+                    FROM market_data
+                    WHERE symbol = %s
+                      AND timeframe = '15m'
+                    ORDER BY time DESC
+                    LIMIT 97
+                ),
+                latest_price AS (
+                    SELECT current_price FROM price_data WHERE rn = 1
+                ),
+                price_24h_ago AS (
+                    SELECT current_price as old_price FROM price_data WHERE rn = 96
+                )
+                SELECT 
+                    lp.current_price,
+                    COALESCE(p24.old_price, lp.current_price) as price_24h_ago,
+                    CASE 
+                        WHEN p24.old_price > 0 THEN ((lp.current_price - p24.old_price) / p24.old_price * 100)
+                        ELSE 0.0
+                    END as price_change_24h
+                FROM latest_price lp
+                LEFT JOIN price_24h_ago p24 ON true
+                """
+                
+                result = portfolio.db.execute_query(query, (symbol,), fetch_one=True)
+                
+                if result and result['current_price']:
+                    latest_price = float(result['current_price'])
+                    price_change_24h = float(result['price_change_24h']) if result['price_change_24h'] else 0.0
+                    
+                    print(f"Prix DB pour {symbol}: {latest_price:.4f}, variation: {price_change_24h:.2f}%")
+                    
+                    asset = symbol.replace('USDC', '')
+                    symbols_with_variations.append({
+                        "symbol": symbol,
+                        "asset": asset,
+                        "price": latest_price,
+                        "price_change_24h": price_change_24h,
+                        "current_balance": balance_dict.get(symbol, 0.0)
+                    })
+                else:
+                    print(f"Aucune donnée marché pour {symbol}")
+                    asset = symbol.replace('USDC', '')
+                    # Symbole sans données de marché
+                    symbols_with_variations.append({
+                        "symbol": symbol,
+                        "asset": asset,
+                        "price": 0.0,
+                        "price_change_24h": 0.0,
+                        "current_balance": balance_dict.get(symbol, 0.0)
+                    })
+            except Exception as e:
+                print(f"Erreur DB pour {symbol}: {e}")
+                asset = symbol.replace('USDC', '')
+                symbols_with_variations.append({
+                    "symbol": symbol,
+                    "asset": asset,
+                    "price": 0.0,
+                    "price_change_24h": 0.0,
+                    "current_balance": balance_dict.get(symbol, 0.0)
+                })
+        
+        # Trier par balance actuelle décroissante, puis par ordre alphabétique
+        symbols_with_variations.sort(key=lambda x: (-x['current_balance'], x['symbol']))
+        
+        # Cache pour 30 secondes
+        response.headers["Cache-Control"] = "public, max-age=30"
+        
+        return symbols_with_variations
+
     @app.get("/symbols/owned")
     async def get_owned_symbols_with_variations(
         response: Response,
         portfolio: PortfolioModel = Depends(get_portfolio_model)
     ):
         """
-        Récupère tous les symboles possédés avec leurs variations de prix 24h.
+        Récupère uniquement les symboles possédés actuellement avec leurs variations de prix 24h.
         """
-        import requests  # type: ignore
+        # Réutiliser la nouvelle logique mais filtrer seulement les symboles possédés
+        all_symbols_data = await get_all_traded_symbols_with_variations(response, portfolio)
         
-        # Récupérer tous les soldes non nuls
-        balances = portfolio.get_latest_balances()
-        owned_assets = [balance.asset for balance in balances if balance.total > 0 and balance.asset != 'USDC']
+        # Filtrer seulement ceux avec une balance > 0
+        owned_symbols = [symbol_data for symbol_data in all_symbols_data if symbol_data['current_balance'] > 0]
         
-        if not owned_assets:
-            return []
-        
-        # Récupérer les variations de prix pour chaque symbole
-        symbols_with_variations = []
-        
-        for asset in owned_assets:
-            symbol = f"{asset}USDC"
-            try:
-                # Appel à l'API visualization pour récupérer 24h de données (24 heures en 1h = 24 points)
-                viz_response = requests.get(
-                    f"http://visualization:5009/api/charts/market/{symbol}?interval=1h&limit=24",
-                    timeout=5
-                )
-                
-                if viz_response.status_code == 200:
-                    data = viz_response.json()
-                    price_change_24h = data.get('price_change_24h', 0.0)
-                    latest_price = data.get('latest_price', 0.0)
-                    
-                    print(f"Prix récupéré pour {symbol}: {latest_price}, variation: {price_change_24h}%")
-                    
-                    symbols_with_variations.append({
-                        "symbol": symbol,
-                        "asset": asset,
-                        "price": latest_price,
-                        "price_change_24h": price_change_24h
-                    })
-                else:
-                    print(f"Erreur API pour {symbol}: HTTP {viz_response.status_code}")
-                    # Symbole sans données de marché
-                    symbols_with_variations.append({
-                        "symbol": symbol,
-                        "asset": asset,
-                        "price": 0.0,
-                        "price_change_24h": 0.0
-                    })
-            except Exception as e:
-                print(f"Erreur réseau pour {symbol}: {e}")
-                symbols_with_variations.append({
-                    "symbol": symbol,
-                    "asset": asset,
-                    "price": 0.0,
-                    "price_change_24h": 0.0
-                })
-        
-        # Trier par valeur décroissante du portfolio
-        balance_dict = {b.asset: b.value_usdc for b in balances}
-        symbols_with_variations.sort(key=lambda x: balance_dict.get(x['asset'], 0), reverse=True)
-        
-        # Cache pour 30 secondes
-        response.headers["Cache-Control"] = "public, max-age=30"
-        
-        return symbols_with_variations
+        return owned_symbols
 
 
 def _register_diagnostic_routes(app: FastAPI):

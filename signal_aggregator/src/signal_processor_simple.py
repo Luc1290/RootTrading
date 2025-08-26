@@ -109,7 +109,7 @@ class SimpleSignalProcessor:
             logger.info(f"🔍 Market regime pour {symbol}: {market_regime}")
             logger.info(f"📊 Stratégies: {[s.get('strategy') for s in signals]}")
             has_consensus, consensus_analysis = self.consensus_analyzer.analyze_adaptive_consensus(
-                signals, market_regime
+                signals, market_regime, timeframe
             )
             
             logger.info(f"🔍 Consensus result: has_consensus={has_consensus}, analysis={consensus_analysis}")
@@ -166,7 +166,9 @@ class SimpleSignalProcessor:
                 try:
                     signal_id = self.database_manager.store_validated_signal(consensus_signal)
                     if signal_id:
-                        consensus_signal['db_id'] = signal_id
+                        # Ajouter le db_id dans les métadonnées pour que le coordinator puisse le trouver
+                        consensus_signal['metadata']['db_id'] = signal_id
+                        logger.debug(f"DB ID {signal_id} ajouté au signal consensus {symbol}")
                 except Exception as e:
                     logger.error(f"Erreur sauvegarde consensus: {e}")
                     

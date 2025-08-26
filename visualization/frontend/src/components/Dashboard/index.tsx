@@ -1,4 +1,4 @@
-import React, { memo, useState, useMemo } from 'react';
+import React, { memo, useState, useMemo, useEffect } from 'react';
 import Controls from '@/components/Controls';
 import MarketChart from '@/components/Charts/MarketChart';
 import VolumeChart from '@/components/Charts/VolumeChart';
@@ -16,6 +16,7 @@ import RecentOrdersPanel from '@/components/Trading/RecentOrdersPanel';
 import MultiTimeframeChart from '@/components/Charts/MultiTimeframeChart';
 import OrderBookPanel from '@/components/Trading/OrderBookPanel';
 import { useChart } from '@/hooks/useChart';
+import toast from 'react-hot-toast';
 
 // Composants memoizés pour optimiser les performances
 const MemoizedMarketChart = memo(MarketChart);
@@ -38,11 +39,30 @@ const MemoizedRecentOrdersPanel = memo(RecentOrdersPanel);
 function Dashboard() {
   const [activeTab, setActiveTab] = useState('main');
   
-  const { isLoading } = useChart({
+  const { isLoading, apiError, marketData } = useChart({
     autoUpdate: true,
     updateInterval: 30000, // 30s au lieu de 10s pour réduire la charge
     enableWebSocket: true,
   });
+  
+  // Afficher les erreurs API
+  useEffect(() => {
+    if (apiError) {
+      toast.error(`Erreur API: ${apiError}`, {
+        duration: 5000,
+        position: 'top-center'
+      });
+    }
+  }, [apiError]);
+  
+  // Log de débogage pour les données
+  useEffect(() => {
+    console.log('Dashboard - Market data status:', {
+      hasMarketData: !!marketData,
+      timestamps: marketData?.timestamps?.length || 0,
+      activeTab
+    });
+  }, [marketData, activeTab]);
   
   // Contenu des onglets memoizé pour optimiser les performances
   const tabContent = useMemo(() => {

@@ -100,19 +100,25 @@ function StatisticsPage() {
     try {
       setLoading(true);
       
-      const [
-        globalResponse,
-        symbolResponse,
-        performanceResponse,
-        strategiesResponse,
-        symbolsResponse
-      ] = await Promise.all([
+      // Charger les données avec gestion d'erreur individuelle
+      const results = await Promise.allSettled([
         apiService.getGlobalStatistics(),
         apiService.getSymbolStatistics(selectedSymbol),
         apiService.getPerformanceHistory(selectedTimeframe),
         apiService.getStrategiesStatistics(),
         apiService.getConfiguredSymbols()
       ]);
+      
+      const globalResponse = results[0].status === 'fulfilled' ? results[0].value as GlobalStatistics : null;
+      const symbolResponse = results[1].status === 'fulfilled' ? results[1].value as { symbols: SymbolStatistics[] } : null;
+      const performanceResponse = results[2].status === 'fulfilled' ? results[2].value as PerformanceHistory : null;
+      const strategiesResponse = results[3].status === 'fulfilled' ? results[3].value as {
+        strategies?: StrategyStatistics[];
+        individual_strategies?: StrategyStatistics[];
+        active_strategies?: StrategyStatistics[];
+        profitable_strategies?: StrategyStatistics[];
+      } : null;
+      const symbolsResponse = results[4].status === 'fulfilled' ? results[4].value as { symbols: string[] } : null;
       
       // Définir des valeurs par défaut pour éviter les erreurs undefined
       const defaultGlobalStats: GlobalStatistics = {
@@ -130,17 +136,40 @@ function StatisticsPage() {
         realizedPnl: 0
       };
       
-      setGlobalStats({
-        ...defaultGlobalStats,
-        ...globalResponse
-      });
-      setSymbolStats(symbolResponse?.symbols || []);
-      setPerformanceHistory(performanceResponse || null);
-      setStrategyStats(strategiesResponse?.individual_strategies || []);
-      setActiveStats(strategiesResponse?.active_strategies || []);
-      setProfitableStats(strategiesResponse?.profitable_strategies || []);
-      setAvailableSymbols(symbolsResponse?.symbols || []);
+      // Appliquer les résultats avec fallbacks
+      if (globalResponse) {
+        setGlobalStats({
+          ...defaultGlobalStats,
+          ...globalResponse
+        });
+      }
+      
+      if (symbolResponse && symbolResponse.symbols) {
+        setSymbolStats(symbolResponse.symbols);
+      }
+      
+      if (performanceResponse) {
+        setPerformanceHistory(performanceResponse);
+      }
+      
+      if (strategiesResponse) {
+        setStrategyStats(strategiesResponse.individual_strategies || strategiesResponse.strategies || []);
+        setActiveStats(strategiesResponse.active_strategies || []);
+        setProfitableStats(strategiesResponse.profitable_strategies || []);
+      }
+      
+      if (symbolsResponse && symbolsResponse.symbols) {
+        setAvailableSymbols(symbolsResponse.symbols);
+      }
+      
       setLastUpdate(new Date());
+      
+      // Log des erreurs individuelles
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          console.error(`API Error ${index}:`, result.reason);
+        }
+      });
       
     } catch (error) {
       console.error('Erreur lors du chargement des statistiques:', error);

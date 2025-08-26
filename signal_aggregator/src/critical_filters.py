@@ -134,14 +134,16 @@ class CriticalFilters:
                 
                 if trend_strength_str is not None:
                     total_indicators += 1
-                    # trend_strength est un string: 'strong', 'moderate', 'weak', etc.
-                    if trend_strength_str.lower() in ['weak', 'bearish', 'downtrend']:
+                    # trend_strength valeurs possibles: 'unknown', 'absent', 'weak', 'strong', 'very_strong', 'extreme'
+                    trend_str = str(trend_strength_str).lower()
+                    if trend_str in ['unknown', 'absent', 'weak', 'very_weak']:
                         bearish_indicators += 1
                         
                 if directional_bias_str is not None:
                     total_indicators += 1
-                    # directional_bias est un string: 'bullish', 'bearish', 'neutral'
-                    if directional_bias_str.lower() in ['bearish', 'sell', 'short']:
+                    # directional_bias valeurs possibles: 'BULLISH', 'BEARISH', 'NEUTRAL' (majuscules)
+                    bias_str = str(directional_bias_str).upper()
+                    if bias_str == 'BEARISH':
                         bearish_indicators += 1
                         
                 if momentum_score is not None:
