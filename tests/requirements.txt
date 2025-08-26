@@ -1,0 +1,30 @@
+# Requirements pour les tests ROOT Trading System
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+pytest-asyncio==0.21.1
+
+# Base de données et schémas
+pydantic==2.5.0
+sqlalchemy==2.0.23
+
+# Calculs techniques
+numpy==1.24.3
+pandas==2.0.3
+# talib==0.4.26  # Commenté - installation complexe sur Windows
+
+# Date et time
+python-dateutil==2.8.2
+
+# Tests de performance (optionnel)
+pytest-benchmark==4.0.0
+
+# Coverage reporting
+coverage==7.3.2
+
+# Mock et fixtures
+factory-boy==3.3.0
+freezegun==1.2.2
+
+# Logging pour tests
+loguru==0.7.2
