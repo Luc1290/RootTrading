@@ -327,6 +327,19 @@ async def get_global_statistics():
         logger.error(f"Error getting global statistics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/statistics/symbols")
+async def get_all_symbols_statistics():
+    """Get detailed statistics for all trading symbols"""
+    try:
+        if statistics_service is None:
+            raise HTTPException(status_code=503, detail="Statistics service not available")
+        
+        stats = await statistics_service.get_all_symbols_statistics()
+        return stats
+    except Exception as e:
+        logger.error(f"Error getting all symbols statistics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/statistics/symbol/{symbol}")
 async def get_symbol_statistics(symbol: str):
     """Get detailed statistics for a specific trading symbol"""

@@ -41,10 +41,10 @@ class HullMA_Slope_Strategy(BaseStrategy):
         self.stoch_oversold_entry = 25         # Stoch survente extrême
         self.stoch_overbought_entry = 75       # Stoch surachat extrême
         
-        # Filtres qualité STRICTS pour WINRATE
-        self.min_volume_ratio = 1.2            # Volume minimum RELEVÉ (+50%)
-        self.min_confluence_score = 50         # Confluence minimum RELEVÉ (+67%)
-        self.min_confidence_threshold = 0.50   # Confidence minimum RELEVÉ (+43%)
+        # Filtres qualité RÉALISTES pour CRYPTO
+        self.min_volume_ratio = 0.8            # Volume minimum ACCESSIBLE (réduction -33%)
+        self.min_confluence_score = 35         # Confluence minimum RÉALISTE (réduction -30%) 
+        self.min_confidence_threshold = 0.45   # Confidence minimum ACCESSIBLE (réduction -10%)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs."""
@@ -228,10 +228,11 @@ class HullMA_Slope_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        if oversold_signals < 2:  # Au moins 2 confirmations pour QUALITÉ
+        # CORRECTION: Assouplir de 2 à 1 confirmation minimum
+        if oversold_signals < 1:  # Au moins 1 confirmation (était 2)
             return {
                 'is_pullback': False, 
-                'reason': f'Pullback détecté mais confirmations insuffisantes ({oversold_signals}/2)',
+                'reason': f'Pullback détecté mais aucune confirmation ({oversold_signals}/1)',
                 'pullback_pct': pullback_pct,
                 'oversold_signals': oversold_signals
             }
@@ -301,10 +302,11 @@ class HullMA_Slope_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        if overbought_signals < 2:  # Au moins 2 confirmations pour QUALITÉ
+        # CORRECTION: Assouplir de 2 à 1 confirmation minimum
+        if overbought_signals < 1:  # Au moins 1 confirmation (était 2)
             return {
                 'is_bounce': False,
-                'reason': f'Bounce détecté mais confirmations insuffisantes ({overbought_signals}/2)',
+                'reason': f'Bounce détecté mais aucune confirmation ({overbought_signals}/1)',
                 'bounce_pct': bounce_pct,
                 'overbought_signals': overbought_signals
             }
@@ -360,27 +362,33 @@ class HullMA_Slope_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
-        # Filtre volume obligatoire
+        # CORRECTION: Volume comme bonus au lieu de filtre obligatoire
         volume_ratio = values.get('volume_ratio')
-        if volume_ratio is None or float(volume_ratio) < self.min_volume_ratio:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Volume insuffisant ({volume_ratio:.1f}x < {self.min_volume_ratio}x)",
-                "metadata": {"strategy": self.name, "volume_ratio": volume_ratio}
-            }
+        volume_penalty = 0.0
+        if volume_ratio is None:
+            volume_penalty = -0.05  # Légère pénalité si pas de données volume
+        else:
+            try:
+                vol_val = float(volume_ratio)
+                if vol_val < 0.5:  # Volume très faible (était rejet)
+                    volume_penalty = -0.10  # Pénalité au lieu de rejet
+            except (ValueError, TypeError):
+                volume_penalty = -0.05
             
-        # Filtre confluence obligatoire  
+        # CORRECTION: Confluence comme bonus au lieu de filtre strict
         confluence_score = values.get('confluence_score')
-        if confluence_score is None or float(confluence_score) < self.min_confluence_score:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Confluence insuffisante ({confluence_score:.1f} < {self.min_confluence_score})",
-                "metadata": {"strategy": self.name, "confluence_score": confluence_score}
-            }
+        confluence_penalty = 0.0
+        if confluence_score is None:
+            confluence_penalty = -0.08  # Pénalité si pas de données confluence
+        else:
+            try:
+                conf_val = float(confluence_score)
+                if conf_val < 25:  # Confluence très faible (était rejet à 50)
+                    confluence_penalty = -0.15  # Forte pénalité au lieu de rejet
+                elif conf_val < self.min_confluence_score:  # 25-35
+                    confluence_penalty = -0.08  # Pénalité modérée
+            except (ValueError, TypeError):
+                confluence_penalty = -0.08
             
         # Pénaliser (mais ne pas bannir) marchés très volatiles
         volatility_regime = values.get('volatility_regime')
@@ -523,29 +531,37 @@ class HullMA_Slope_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Bonus volume élevé
-        vol_ratio = float(volume_ratio)
-        if vol_ratio >= 2.0:
-            confidence_boost += 0.15
-            reason += f" + volume très élevé ({vol_ratio:.1f}x)"
-        elif vol_ratio >= 1.5:
-            confidence_boost += 0.10
-            reason += f" + volume élevé ({vol_ratio:.1f}x)"
-        elif vol_ratio >= self.min_volume_ratio:
-            confidence_boost += 0.05
-            reason += f" + volume correct ({vol_ratio:.1f}x)"
+        # Bonus volume élevé (volume_ratio peut être None maintenant)
+        if volume_ratio is not None:
+            try:
+                vol_ratio = float(volume_ratio)
+                if vol_ratio >= 2.0:
+                    confidence_boost += 0.15
+                    reason += f" + volume très élevé ({vol_ratio:.1f}x)"
+                elif vol_ratio >= 1.5:
+                    confidence_boost += 0.10
+                    reason += f" + volume élevé ({vol_ratio:.1f}x)"
+                elif vol_ratio >= self.min_volume_ratio:
+                    confidence_boost += 0.05
+                    reason += f" + volume correct ({vol_ratio:.1f}x)"
+            except (ValueError, TypeError):
+                pass
             
-        # Bonus confluence
-        conf_val = float(confluence_score)
-        if conf_val >= 70:
-            confidence_boost += 0.18
-            reason += f" + confluence excellente ({conf_val:.0f})"
-        elif conf_val >= 60:
-            confidence_boost += 0.12
-            reason += f" + confluence forte ({conf_val:.0f})"
-        elif conf_val >= self.min_confluence_score:
-            confidence_boost += 0.06
-            reason += f" + confluence ({conf_val:.0f})"
+        # Bonus confluence (confluence_score peut être None maintenant)
+        if confluence_score is not None:
+            try:
+                conf_val = float(confluence_score)
+                if conf_val >= 70:
+                    confidence_boost += 0.18
+                    reason += f" + confluence excellente ({conf_val:.0f})"
+                elif conf_val >= 60:
+                    confidence_boost += 0.12
+                    reason += f" + confluence forte ({conf_val:.0f})"
+                elif conf_val >= self.min_confluence_score:
+                    confidence_boost += 0.06
+                    reason += f" + confluence ({conf_val:.0f})"
+            except (ValueError, TypeError):
+                pass
             
         # Bonus signal strength
         signal_strength = values.get('signal_strength')
@@ -575,10 +591,14 @@ class HullMA_Slope_Strategy(BaseStrategy):
             
         # === FILTRE FINAL ===
         
-        # Appliquer pénalité volatilité
-        confidence_boost += volatility_penalty
+        # CORRECTION: Appliquer toutes les pénalités
+        total_penalty = volatility_penalty + volume_penalty + confluence_penalty
+        confidence_boost += total_penalty
         
-        raw_confidence = base_confidence * (1 + confidence_boost)
+        # CORRECTION: Calcul direct au lieu de multiplicateur
+        final_confidence = base_confidence + confidence_boost
+        raw_confidence = min(max(final_confidence, 0.0), 1.0)  # Clamp 0-1
+        
         if raw_confidence < self.min_confidence_threshold:
             return {
                 "side": None,
@@ -590,11 +610,16 @@ class HullMA_Slope_Strategy(BaseStrategy):
                     "rejected_signal": signal_side,
                     "raw_confidence": raw_confidence,
                     "hull_trend": hull_trend,
-                    "opportunity_data": opportunity_data
+                    "opportunity_data": opportunity_data,
+                    "penalties_applied": {
+                        "volume": volume_penalty,
+                        "confluence": confluence_penalty,
+                        "volatility": volatility_penalty
+                    }
                 }
             }
             
-        confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
+        confidence = raw_confidence  # Utiliser directement la confidence calculée
         strength = self.get_strength_from_confidence(confidence)
         
         return {

@@ -164,6 +164,10 @@ class ApiService {
     return this.request('/api/statistics/global');
   }
 
+  async getAllSymbolsStatistics(): Promise<{ symbols: SymbolStatistics[] }> {
+    return this.request(`/api/statistics/symbols`);
+  }
+
   async getSymbolStatistics(symbol: TradingSymbol): Promise<{ symbols: SymbolStatistics[] }> {
     return this.request(`/api/statistics/symbol/${symbol}`);
   }

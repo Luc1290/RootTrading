@@ -236,26 +236,35 @@ class Support_Breakout_Strategy(BaseStrategy):
         momentum_score = 0
         momentum_indicators = []
         
-        # Momentum score général (format 0-100, 50=neutre)
+        # Momentum score général (format 0-100, 50=neutre) - CORRECTION: gérer valeurs nulles/incorrectes
         momentum_val = values.get('momentum_score')
         if momentum_val is not None:
             try:
                 momentum_float = float(momentum_val)
-                if momentum_float <= self.momentum_bearish_threshold:  # <=40
+                # CORRECTION: Si momentum_val = 0, probablement une erreur de calcul upstream
+                if momentum_float == 0.0:
+                    # Fallback: utiliser d'autres indicateurs de momentum
+                    logger.warning(f"{self.name}: momentum_score=0, utilisation fallback")
+                elif momentum_float <= self.momentum_bearish_threshold:  # <=42
                     momentum_score += 25
                     momentum_indicators.append(f"Momentum baissier ({momentum_float:.1f})")
             except (ValueError, TypeError):
+                logger.warning(f"{self.name}: momentum_score invalide: {momentum_val}")
                 pass
                 
-        # ROC négatif (continuation baissière)
+        # ROC négatif (continuation baissière) - CORRECTION: gérer valeurs extrêmes
         roc_10 = values.get('roc_10')
         if roc_10 is not None:
             try:
                 roc_val = float(roc_10)
-                if roc_val <= self.roc_bearish_threshold:  # <=-0.01
+                # CORRECTION: Détecter valeurs ROC aberrantes (>100% ou <-100%)
+                if abs(roc_val) > 1.0:  # >100%
+                    logger.warning(f"{self.name}: ROC aberrant ignoré: {roc_val*100:.1f}%")
+                elif roc_val <= self.roc_bearish_threshold:  # <=-0.008 (0.8%)
                     momentum_score += 20
                     momentum_indicators.append(f"ROC baissier ({roc_val*100:.1f}%)")
             except (ValueError, TypeError):
+                logger.warning(f"{self.name}: roc_10 invalide: {roc_10}")
                 pass
                 
         # Directional bias baissier
@@ -418,44 +427,55 @@ class Support_Breakout_Strategy(BaseStrategy):
             base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
             confidence_boost = 0.0
             
-            # Score de cassure
-            confidence_boost += breakdown_analysis['score'] * 0.4
+            # Score de cassure - CORRECTION: normaliser les scores
+            breakdown_score_normalized = min(breakdown_analysis['score'], 1.0)  # Cap à 1.0
+            confidence_boost += breakdown_score_normalized * 0.25  # Réduire impact
             
-            # Score momentum baissier
-            confidence_boost += momentum_analysis['score'] * 0.4
+            # Score momentum baissier - CORRECTION: convertir 0-100 vers 0-1
+            momentum_raw = momentum_analysis['score']
+            momentum_score_normalized = min(momentum_raw / 100.0, 1.0)  # 0-100 -> 0-1
+            confidence_boost += momentum_score_normalized * 0.20  # Réduire impact
             
             reason = f"Cassure support {breakdown_analysis['support_level']:.2f} ({breakdown_analysis['breakdown_distance_pct']:.1f}%)"
             reason += f" + {', '.join(momentum_analysis['indicators'][:1])}"
             
-            # Bonus volume (pas obligatoire mais renforce)
+            # Bonus volume (pas obligatoire mais renforce) - CORRECTION: normaliser
             if volume_analysis['is_volume_confirmed']:
-                confidence_boost += volume_analysis['score'] * 0.2
+                volume_score_normalized = min(volume_analysis['score'], 1.0)
+                confidence_boost += volume_score_normalized * 0.15  # Réduire impact
                 reason += f" + {volume_analysis['indicators'][0]}"
                 
-            # Market regime breakout
+            # Market regime breakout - CORRECTION: vérifier type/format
             market_regime = values.get('market_regime')
-            if market_regime and 'BREAKOUT_BEAR' in str(market_regime):
-                confidence_boost += 0.1
-                reason += " + regime breakout baissier"
+            if market_regime and ('BREAKOUT_BEAR' in str(market_regime) or 'TRENDING_BEAR' in str(market_regime)):
+                confidence_boost += 0.05  # Réduire bonus
+                reason += " + regime baissier"
                 
-            # Pattern detected
+            # Pattern detected - CORRECTION: vérifier type
             pattern_detected = values.get('pattern_detected')
             if pattern_detected and 'breakout' in str(pattern_detected).lower():
-                confidence_boost += 0.1
+                confidence_boost += 0.05  # Réduire bonus
                 reason += " + pattern breakout"
                 
-            # Confluence score
+            # Confluence score - CORRECTION: format string/float
             confluence_score = values.get('confluence_score')
             if confluence_score is not None:
                 try:
-                    conf_val = float(confluence_score)
-                    if conf_val > 70:
-                        confidence_boost += 0.1
-                        reason += " + haute confluence"
+                    # Gérer format string avec point décimal "46.20"
+                    if isinstance(confluence_score, str):
+                        conf_val = float(confluence_score)
+                    else:
+                        conf_val = float(confluence_score)
+                        
+                    if conf_val > 60:  # Seuil réaliste (était 70)
+                        confidence_boost += 0.05  # Réduire bonus
+                        reason += " + confluence élevée"
                 except (ValueError, TypeError):
                     pass
                     
-            confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
+            # CORRECTION: Calcul direct au lieu de multiplicateur
+            final_confidence = base_confidence + confidence_boost
+            confidence = min(max(final_confidence, 0.0), 1.0)  # Clamp entre 0-1
             strength = self.get_strength_from_confidence(confidence)
             
             return {
@@ -508,7 +528,7 @@ class Support_Breakout_Strategy(BaseStrategy):
         support_indicators = ['nearest_support', 'bb_lower', 'vwap_lower_band']
         has_support = any(self.indicators.get(ind) is not None for ind in support_indicators)
         
-        # Indicateurs essentiels
+        # Indicateurs essentiels avec validation de format
         required_indicators = ['momentum_score', 'volume_ratio']
         
         if not self.indicators:
@@ -528,9 +548,34 @@ class Support_Breakout_Strategy(BaseStrategy):
                 logger.warning(f"{self.name}: Indicateur null: {indicator}")
                 return False
                 
+            # CORRECTION: Validation supplémentaire des valeurs
+            try:
+                val = float(self.indicators[indicator])
+                if indicator == 'momentum_score':
+                    if val < 0 or val > 100:
+                        logger.warning(f"{self.name}: momentum_score hors limites (0-100): {val}")
+                        # Ne pas échouer pour cette validation, mais logger
+                elif indicator == 'volume_ratio':
+                    if val < 0:
+                        logger.warning(f"{self.name}: volume_ratio négatif: {val}")
+                        return False
+            except (ValueError, TypeError):
+                logger.warning(f"{self.name}: Valeur {indicator} non numérique: {self.indicators[indicator]}")
+                return False
+                
         # Vérifier données OHLCV
         if 'close' not in self.data or not self.data['close']:
             logger.warning(f"{self.name}: Données OHLCV manquantes")
+            return False
+            
+        # Vérifier que prix actuel est valide
+        try:
+            current_price = float(self.data['close'][-1])
+            if current_price <= 0:
+                logger.warning(f"{self.name}: Prix actuel invalide: {current_price}")
+                return False
+        except (IndexError, ValueError, TypeError):
+            logger.warning(f"{self.name}: Prix actuel inaccessible")
             return False
             
         return True

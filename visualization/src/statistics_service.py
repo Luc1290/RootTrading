@@ -84,6 +84,115 @@ class StatisticsService:
             logger.error(f"Error getting global statistics: {e}")
             return {'error': str(e), 'timestamp': datetime.utcnow().isoformat()}
     
+    async def get_all_symbols_statistics(self) -> Dict[str, Any]:
+        """
+        Récupère les statistiques détaillées pour TOUS les symboles.
+        
+        Returns:
+            Dict contenant les métriques de tous les symboles
+        """
+        try:
+            # Requête pour récupérer tous les symboles actifs avec des cycles complétés
+            symbols_query = """
+                SELECT DISTINCT symbol
+                FROM trade_cycles
+                WHERE status = 'completed'
+                    AND completed_at >= NOW() - INTERVAL '30 days'
+                ORDER BY symbol;
+            """
+            
+            symbols_result = await self.data_manager.execute_query(symbols_query)
+            symbols = [row['symbol'] for row in symbols_result] if symbols_result else []
+            
+            if not symbols:
+                return {
+                    'symbols': [],
+                    'timestamp': datetime.utcnow().isoformat()
+                }
+            
+            # Requête principale pour récupérer toutes les statistiques en une fois
+            main_query = f"""
+                WITH symbol_performance AS (
+                    SELECT 
+                        symbol,
+                        COUNT(*) as trades_count,
+                        SUM(quantity * price) as total_volume,
+                        SUM(profit_loss) as total_pnl,
+                        AVG(profit_loss_percent) as avg_pnl_percent,
+                        SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as winning_trades,
+                        AVG(quantity * price) as avg_trade_size
+                    FROM (
+                        SELECT 
+                            tc.symbol,
+                            tc.profit_loss,
+                            tc.profit_loss_percent,
+                            COALESCE(te.quantity, 100) as quantity,
+                            COALESCE(te.price, 1) as price
+                        FROM trade_cycles tc
+                        LEFT JOIN trade_executions te ON tc.symbol = te.symbol 
+                            AND te.timestamp BETWEEN tc.created_at - INTERVAL '5 minutes' AND tc.completed_at + INTERVAL '5 minutes'
+                        WHERE tc.status = 'completed'
+                            AND tc.completed_at >= NOW() - INTERVAL '30 days'
+                            AND tc.symbol IN ({','.join(["'" + s + "'" for s in symbols])})
+                    ) combined_data
+                    GROUP BY symbol
+                ),
+                price_data AS (
+                    SELECT DISTINCT ON (symbol)
+                        symbol,
+                        close as current_price,
+                        LAG(close, 24) OVER (PARTITION BY symbol ORDER BY time) as price_24h_ago
+                    FROM market_data
+                    WHERE symbol IN ({','.join(["'" + s + "'" for s in symbols])})
+                        AND time >= NOW() - INTERVAL '25 hours'
+                    ORDER BY symbol, time DESC
+                )
+                SELECT 
+                    sp.symbol,
+                    sp.trades_count,
+                    sp.total_volume,
+                    sp.total_pnl,
+                    CASE 
+                        WHEN sp.trades_count > 0 THEN (sp.winning_trades::float / sp.trades_count * 100)
+                        ELSE 0 
+                    END as win_rate,
+                    sp.avg_trade_size,
+                    COALESCE(pd.current_price, 0) as current_price,
+                    CASE 
+                        WHEN pd.price_24h_ago > 0 THEN ((pd.current_price - pd.price_24h_ago) / pd.price_24h_ago * 100)
+                        ELSE 0 
+                    END as price_change_24h
+                FROM symbol_performance sp
+                LEFT JOIN price_data pd ON sp.symbol = pd.symbol
+                ORDER BY sp.total_pnl DESC;
+            """
+            
+            rows = await self.data_manager.execute_query(main_query)
+            
+            # Formater les résultats
+            symbol_stats = []
+            for row in rows:
+                symbol_stats.append({
+                    'symbol': row['symbol'],
+                    'trades': row['trades_count'] or 0,
+                    'volume': float(row['total_volume'] or 0),
+                    'pnl': float(row['total_pnl'] or 0),
+                    'winRate': round(float(row['win_rate'] or 0), 2),
+                    'avgTradeSize': float(row['avg_trade_size'] or 0),
+                    'fees': 0,  # À calculer si nécessaire
+                    'lastPrice': float(row['current_price'] or 0),
+                    'priceChange24h': round(float(row['price_change_24h'] or 0), 2)
+                })
+            
+            return {
+                'symbols': symbol_stats,
+                'timestamp': datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting all symbols statistics: {e}")
+            return {'error': str(e), 'timestamp': datetime.utcnow().isoformat()}
+
     async def get_symbol_statistics(self, symbol: str) -> Dict[str, Any]:
         """
         Récupère les statistiques détaillées pour un symbole.

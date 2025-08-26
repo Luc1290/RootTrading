@@ -76,13 +76,11 @@ function StatisticsPage() {
   const [profitableStats, setProfitableStats] = useState<StrategyStatistics[]>([]);
   
   // État UI
-  const [selectedSymbol, setSelectedSymbol] = useState<TradingSymbol>('BTCUSDC');
   const [selectedTimeframe, setSelectedTimeframe] = useState<'24h' | '7d' | '30d' | '90d'>('7d');
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   
-  // Symboles disponibles
-  const [availableSymbols, setAvailableSymbols] = useState<TradingSymbol[]>([]);
+  // Plus besoin de la liste des symboles pour le sélecteur
   
   // Refs pour les graphiques
   const pnlChartRef = useRef<HTMLDivElement>(null);
@@ -103,10 +101,9 @@ function StatisticsPage() {
       // Charger les données avec gestion d'erreur individuelle
       const results = await Promise.allSettled([
         apiService.getGlobalStatistics(),
-        apiService.getSymbolStatistics(selectedSymbol),
+        apiService.getAllSymbolsStatistics(),
         apiService.getPerformanceHistory(selectedTimeframe),
-        apiService.getStrategiesStatistics(),
-        apiService.getConfiguredSymbols()
+        apiService.getStrategiesStatistics()
       ]);
       
       const globalResponse = results[0].status === 'fulfilled' ? results[0].value as GlobalStatistics : null;
@@ -118,7 +115,6 @@ function StatisticsPage() {
         active_strategies?: StrategyStatistics[];
         profitable_strategies?: StrategyStatistics[];
       } : null;
-      const symbolsResponse = results[4].status === 'fulfilled' ? results[4].value as { symbols: string[] } : null;
       
       // Définir des valeurs par défaut pour éviter les erreurs undefined
       const defaultGlobalStats: GlobalStatistics = {
@@ -156,10 +152,6 @@ function StatisticsPage() {
         setStrategyStats(strategiesResponse.individual_strategies || strategiesResponse.strategies || []);
         setActiveStats(strategiesResponse.active_strategies || []);
         setProfitableStats(strategiesResponse.profitable_strategies || []);
-      }
-      
-      if (symbolsResponse && symbolsResponse.symbols) {
-        setAvailableSymbols(symbolsResponse.symbols);
       }
       
       setLastUpdate(new Date());
@@ -331,7 +323,7 @@ function StatisticsPage() {
     const interval = setInterval(loadAllData, 30000); // Mise à jour toutes les 30 secondes
     
     return () => clearInterval(interval);
-  }, [selectedSymbol, selectedTimeframe]);
+  }, [selectedTimeframe]); // Supprimé selectedSymbol car on récupère tous les symboles
 
   const handleRefresh = () => {
     toast.promise(
@@ -377,17 +369,6 @@ function StatisticsPage() {
             <option value="7d">7 Jours</option>
             <option value="30d">30 Jours</option>
             <option value="90d">90 Jours</option>
-          </select>
-          
-          {/* Sélecteur de symbole */}
-          <select
-            value={selectedSymbol}
-            onChange={(e) => setSelectedSymbol(e.target.value as TradingSymbol)}
-            className="select"
-          >
-            {availableSymbols.map(symbol => (
-              <option key={symbol} value={symbol}>{symbol}</option>
-            ))}
           </select>
           
           <button
