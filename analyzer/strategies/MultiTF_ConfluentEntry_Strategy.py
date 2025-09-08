@@ -28,32 +28,32 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres OPTIMISÉS WINRATE - Plus sélectifs
-        self.min_confluence_score = 60      # Relevé pour qualité (35 -> 60)
-        self.strong_confluence_score = 75   # Relevé pour boost fort (55 -> 75)
-        self.min_trend_alignment = 0.25     # Plus strict (0.15 -> 0.25)
-        self.strong_trend_alignment = 0.55  # Plus strict (0.45 -> 0.55)
-        self.volume_confirmation_min = 1.2  # Volume minimum relevé (0.8 -> 1.2)
-        self.volume_strong = 2.0            # Volume fort relevé (1.5 -> 2.0)
+        # Paramètres RESSERCÉS pour sélectivité optimale
+        self.min_confluence_score = 40      # Rehaussé (30 -> 40)
+        self.strong_confluence_score = 65   # Rehaussé (50 -> 65)
+        self.min_trend_alignment = 0.25     # Rehaussé (0.15 -> 0.25)
+        self.strong_trend_alignment = 0.45  # Rehaussé (0.35 -> 0.45)
+        self.volume_confirmation_min = 1.0  # Rehaussé (0.8 -> 1.0) - minimum neutre
+        self.volume_strong = 1.8            # Rehaussé (1.5 -> 1.8)
         
-        # NOUVEAUX FILTRES ANTI-FAUX SIGNAUX
-        self.min_ma_count_required = 4      # Au moins 4 MAs pour signal
-        self.min_oscillator_count = 3       # Au moins 3 oscillateurs pour confluence
-        self.require_adx_confirmation = True # ADX obligatoire pour tous les signaux
+        # FILTRES ASSOUPLIS
+        self.min_ma_count_required = 2      # Assoupli (4 -> 2)
+        self.min_oscillator_count = 2       # Assoupli (3 -> 2)
+        self.require_adx_confirmation = False # ADX optionnel
         
-        # Seuils oscillateurs STRICTS winrate
-        self.rsi_oversold = 25              # Plus strict (28 -> 25)
-        self.rsi_overbought = 75            # Plus strict (72 -> 75)
-        self.stoch_oversold = 15            # Plus strict (18 -> 15)
-        self.stoch_overbought = 85          # Plus strict (82 -> 85)
-        self.cci_oversold = -150            # Plus strict (-120 -> -150)
-        self.cci_overbought = 150           # Plus strict (120 -> 150)
-        self.williams_oversold = -90        # Plus strict (-85 -> -90)
-        self.williams_overbought = -10      # Plus strict (-15 -> -10)
+        # Seuils oscillateurs ASSOUPLIS
+        self.rsi_oversold = 35              # Assoupli (25 -> 35)
+        self.rsi_overbought = 65            # Assoupli (75 -> 65)
+        self.stoch_oversold = 25            # Assoupli (15 -> 25)
+        self.stoch_overbought = 75          # Assoupli (85 -> 75)
+        self.cci_oversold = -100            # Assoupli (-150 -> -100)
+        self.cci_overbought = 100           # Assoupli (150 -> 100)
+        self.williams_oversold = -80        # Assoupli (-90 -> -80)
+        self.williams_overbought = -20      # Assoupli (-10 -> -20)
         
-        # ADX STRICT pour éviter ranging markets
-        self.min_adx_trend = 20             # Plus strict (15 -> 20)
-        self.strong_adx_trend = 30          # Plus strict (25 -> 30)
+        # ADX ASSOUPLI
+        self.min_adx_trend = 15             # Assoupli (20 -> 15)
+        self.strong_adx_trend = 25          # Assoupli (30 -> 25)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs multi-TF."""
@@ -298,13 +298,13 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         overbought_count = sum(1 for v in oscillators.values() if v == 'overbought')
         total_count = len(oscillators)
         
-        # Seuils ULTRA-STRICTS winrate - confluence parfaite requise
-        if oversold_count >= total_count * 0.85:  # 85% des oscillateurs (ultra-strict)
+        # Seuils RESSERCÉS pour sélectivité (70%)
+        if oversold_count >= total_count * 0.7:  # 70% des oscillateurs (ressercé)
             return {'confluence': 'oversold', 'strength': oversold_count / total_count, 'count': total_count}
-        elif overbought_count >= total_count * 0.85:
+        elif overbought_count >= total_count * 0.7:
             return {'confluence': 'overbought', 'strength': overbought_count / total_count, 'count': total_count}
         else:
-            # Rejet direct si pas de consensus ultra-majoritaire
+            # Pas de consensus majoritaire
             return {'confluence': 'insufficient', 'strength': 0.0, 'count': total_count}
             
     def generate_signal(self) -> Dict[str, Any]:
@@ -370,13 +370,13 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
         
-        # Filtre signal_strength STRICT - Rejet direct WEAK/MODERATE
-        if signal_strength in ['WEAK', 'MODERATE']:
+        # Signal strength ASSOUPLI - Accepter MODERATE
+        if signal_strength == 'WEAK':
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Signal strength insuffisant ({signal_strength}) - MultiTF exige STRONG/VERY_STRONG",
+                "reason": f"Signal strength trop faible ({signal_strength}) - minimum MODERATE",
                 "metadata": {"strategy": self.name, "signal_strength": signal_strength}
             }
             
@@ -390,17 +390,8 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name, "trend_alignment": trend_alignment}
             }
             
-        # ADX OBLIGATOIRE - Rejet direct si absent ou faible
-        if adx_value is None:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "ADX non disponible - requis pour MultiTF",
-                "metadata": {"strategy": self.name}
-            }
-        
-        if adx_value < self.min_adx_trend:
+        # ADX OPTIONNEL (require_adx_confirmation = False)
+        if self.require_adx_confirmation and adx_value is not None and adx_value < self.min_adx_trend:
             return {
                 "side": None,
                 "confidence": 0.0,
@@ -427,7 +418,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         
         signal_side = None
         reason = ""
-        base_confidence = 0.50  # Harmonisé avec autres stratégies
+        base_confidence = 0.65  # Harmonisé avec autres stratégies
         confidence_boost = 0.0
         
         # LOGIQUE SIMPLIFIÉE ET SÉLECTIVE - Seulement setups parfaits
@@ -507,60 +498,57 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                 }
             elif (signal_side == "BUY" and directional_bias == "BULLISH") or \
                  (signal_side == "SELL" and directional_bias == "BEARISH"):
-                confidence_boost += 0.10
-                reason += f" + bias confirmé"
+                confidence_boost += 0.20  # Boost renforcé pour alignment parfait
+                reason += f" + bias PARFAITEMENT aligné"
         
-        # VALIDATION RÉGIME MARCHÉ - Rejet si volatile/ranging
+        # VALIDATION RÉGIME MARCHÉ - REJET si contradictoire
         market_regime = values.get('market_regime')
-        if market_regime:
-            if market_regime in ["VOLATILE", "RANGING", "TRANSITION"]:
+        regime_strength = values.get('regime_strength')
+        
+        if market_regime and regime_strength == "STRONG":
+            # Rejets stricts sur régimes contradictoires FORTS
+            if (signal_side == "BUY" and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]) or \
+               (signal_side == "SELL" and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]):
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": f"MultiTF désactivé en régime {market_regime} - trop de faux signaux",
-                    "metadata": {"strategy": self.name, "market_regime": market_regime}
+                    "reason": f"Rejet {signal_side}: régime fort contradictoire ({market_regime})",
+                    "metadata": {"strategy": self.name, "market_regime": market_regime, "regime_strength": regime_strength}
                 }
+            # Confirmations régimes parfaits
             elif (signal_side == "BUY" and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]) or \
                  (signal_side == "SELL" and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]):
-                confidence_boost += 0.12
-                reason += f" ({market_regime})"
-                
-        # VALIDATION VOLUME STRICT - Rejet direct si insuffisant
-        volume_ratio = values.get('volume_ratio')
-        if volume_ratio is None:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Volume non disponible - requis pour MultiTF",
-                "metadata": {"strategy": self.name}
-            }
-        
-        try:
-            vol_ratio = float(volume_ratio)
-            if vol_ratio < self.volume_confirmation_min:
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Volume insuffisant ({vol_ratio:.1f}x < {self.volume_confirmation_min}x) - MultiTF exige volume élevé",
-                    "metadata": {"strategy": self.name, "volume_ratio": vol_ratio}
-                }
-            elif vol_ratio >= self.volume_strong * 1.5:  # Volume exceptionnel
                 confidence_boost += 0.15
-                reason += f" + volume EXCEPTIONNEL ({vol_ratio:.1f}x)"
-            elif vol_ratio >= self.volume_strong:
-                confidence_boost += 0.10
-                reason += f" + volume fort ({vol_ratio:.1f}x)"
-        except (ValueError, TypeError):
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Volume invalide",
-                "metadata": {"strategy": self.name}
-            }
+                reason += f" + régime PARFAIT ({market_regime})"
+                
+        # VALIDATION VOLUME STRICTE avec rejet
+        volume_ratio = values.get('volume_ratio')
+        vol_ratio = None
+        
+        if volume_ratio is not None:
+            try:
+                vol_ratio = float(volume_ratio)
+                # REJET si volume trop faible pour MultiTF
+                if vol_ratio < self.volume_confirmation_min:
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Volume insuffisant ({vol_ratio:.1f}x < {self.volume_confirmation_min:.1f}x) pour setup MultiTF",
+                        "metadata": {"strategy": self.name, "volume_ratio": vol_ratio}
+                    }
+                elif vol_ratio >= self.volume_strong * 1.5:  # Volume exceptionnel
+                    confidence_boost += 0.18
+                    reason += f" + volume EXCEPTIONNEL ({vol_ratio:.1f}x)"
+                elif vol_ratio >= self.volume_strong:
+                    confidence_boost += 0.12
+                    reason += f" + volume fort ({vol_ratio:.1f}x)"
+                elif vol_ratio >= 1.3:
+                    confidence_boost += 0.08
+                    reason += f" + volume élevé ({vol_ratio:.1f}x)"
+            except (ValueError, TypeError):
+                pass  # Volume invalide mais pas bloquant
                 
         # VALIDATION FINALE - Tous les autres indicateurs déjà validés
         # Plus de micros-ajustements - logique simplifiée focus winrate
@@ -571,13 +559,13 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         # Calcul final optimisé sans double calcul
         confidence = min(base_confidence * (1 + confidence_boost), 0.90)
         
-        # Filtre final STRICT pour MultiTF
-        if confidence < 0.65:  # Seuil élevé pour qualité MultiTF
+        # Filtre final STRICT pour sélectivité MultiTF
+        if confidence < 0.55:  # Seuil rehaussé pour qualité
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Setup MultiTF rejeté - confiance insuffisante ({confidence:.2f} < 0.65)",
+                "reason": f"Setup MultiTF rejeté - confiance insuffisante ({confidence:.2f} < 0.55)",
                 "metadata": {
                     "strategy": self.name,
                     "rejected_signal": signal_side,
@@ -605,12 +593,8 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                 "osc_analysis": osc_analysis,
                 "directional_bias": directional_bias,
                 "market_regime": market_regime,
-                "regime_strength": regime_strength,
                 "volume_ratio": volume_ratio,
-                "volume_quality_score": volume_quality_score,
-                "adx_14": adx_value,
-                "pattern_detected": pattern_detected,
-                "pattern_confidence": pattern_confidence
+                "adx_14": adx_value
             }
         }
         

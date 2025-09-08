@@ -13,7 +13,7 @@ import sys
 import os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../config'))
-from strategy_classification import (
+from config.strategy_classification import (
     get_strategy_family,
     is_strategy_optimal_for_regime,
     is_strategy_acceptable_for_regime,

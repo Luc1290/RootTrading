@@ -29,23 +29,23 @@ class Resistance_Rejection_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres de proximité résistance - ASSOUPLIS
-        self.resistance_proximity_threshold = 0.012  # 1.2% plus accessible crypto
-        self.tight_proximity_threshold = 0.006       # 0.6% = très proche
+        # Paramètres de proximité résistance - DURCIS
+        self.resistance_proximity_threshold = 0.01   # 1% distance maximum
+        self.tight_proximity_threshold = 0.005       # 0.5% = très proche
         
         # Paramètres de rejet - PLUS RÉALISTES
         self.min_rejection_distance = 0.0015         # 0.15% retour minimum (plus large)
         self.rejection_confirmation_bars = 1         # Confirmation immédiate crypto 3m
         
         # Paramètres volume et momentum
-        self.min_rejection_volume = 1.2              # Volume 20% au-dessus normal
-        self.strong_rejection_volume = 2.0           # Volume 2x pour rejet fort
+        self.min_rejection_volume = 1.0              # Volume normal minimum
+        self.strong_rejection_volume = 1.5           # Volume 1.5x pour rejet fort
         self.momentum_reversal_threshold = -0.2      # Momentum devient négatif
         
-        # Paramètres RSI/oscillateurs - ASSOUPLIS CRYPTO
-        self.overbought_rsi_threshold = 58           # RSI surachat très sensible crypto
-        self.extreme_overbought_threshold = 70       # RSI extrême plus accessible
-        self.williams_r_overbought = -40             # Williams %R bien plus permissif
+        # Paramètres RSI/oscillateurs - DURCIS
+        self.overbought_rsi_threshold = 65           # RSI surachat plus strict
+        self.extreme_overbought_threshold = 72       # RSI extrême
+        self.williams_r_overbought = -30             # Williams %R plus strict
         
         # Paramètres de résistance
         self.min_resistance_strength = 0.5           # Force minimum résistance
@@ -178,7 +178,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_rejection': rejection_score >= 0.25,  # Seuil très assoupli pour crypto
+            'is_rejection': rejection_score >= 0.35,  # Seuil durci pour réduire faux signaux
             'score': rejection_score,
             'indicators': rejection_indicators,
             'resistance_level': resistance_level,
@@ -228,20 +228,17 @@ class Resistance_Rejection_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Momentum score devient négatif (format 0-100, 50=neutre) - TRÈS ASSOUPLI
+        # Momentum score devient négatif (format 0-100, 50=neutre) - DURCI
         momentum_score = values.get('momentum_score')
         if momentum_score is not None:
             try:
                 momentum_val = float(momentum_score)
-                if momentum_val <= 50:  # Momentum neutre ou faible (très permissif)
+                if momentum_val <= 45:  # Momentum vraiment faible
+                    exhaustion_score += 0.2
+                    exhaustion_indicators.append(f"Momentum très affaibli ({momentum_val:.1f})")
+                elif momentum_val <= 55:  # Momentum affaibli
                     exhaustion_score += 0.15
                     exhaustion_indicators.append(f"Momentum affaibli ({momentum_val:.1f})")
-                elif momentum_val <= 60:  # Momentum modéré
-                    exhaustion_score += 0.1
-                    exhaustion_indicators.append(f"Momentum modéré ({momentum_val:.1f})")
-                elif momentum_val <= 70:  # Encore acceptable
-                    exhaustion_score += 0.05
-                    exhaustion_indicators.append(f"Momentum ralentit ({momentum_val:.1f})")
             except (ValueError, TypeError):
                 pass
                 
@@ -314,9 +311,24 @@ class Resistance_Rejection_Strategy(BaseStrategy):
         # Détection de l'essoufflement du momentum
         exhaustion_analysis = self._detect_momentum_exhaustion(values)
         
+        # Vérification market regime - REJET SELL si marché fortement haussier
+        trend_strength = values.get('trend_strength')
+        if trend_strength == "TRENDING_BULL":
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": "Rejet SELL refusé: marché fortement haussier",
+                "metadata": {
+                    "strategy": self.name,
+                    "symbol": self.symbol,
+                    "trend_strength": trend_strength
+                }
+            }
+        
         # Signal SELL si rejet (essoufflement optionnel)  
         if rejection_analysis['is_rejection']:
-            base_confidence = 0.50  # Base plus accessible
+            base_confidence = 0.65  # Base plus accessible
             confidence_boost = rejection_analysis['score'] * 1.0  # Multiplicateur généreux
             
             reason = f"Rejet résistance {rejection_analysis['resistance_level']:.2f} ({rejection_analysis['distance_pct']:.2f}%)"
@@ -340,11 +352,9 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                     elif vol_ratio >= self.min_rejection_volume:
                         confidence_boost += 0.15
                         reason += f" + volume confirmé ({vol_ratio:.1f}x)"
-                    elif vol_ratio >= 0.8:  # Volume acceptable
-                        confidence_boost += 0.05
-                        reason += f" + volume ok ({vol_ratio:.1f}x)"
-                    else:  # Volume faible mais pas bloquant
-                        confidence_boost -= 0.05
+                    else:  # Volume faible = pénalité
+                        confidence_boost -= 0.1
+                        reason += f" - volume faible ({vol_ratio:.1f}x)"
                 except (ValueError, TypeError):
                     pass
                     
@@ -372,16 +382,17 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                 except (ValueError, TypeError):
                     pass
                     
-            # Calcul confidence avec seuil minimum
+            # Calcul confidence avec clamp explicite
             raw_confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
+            raw_confidence = min(1.0, raw_confidence)  # Clamp à 100%
             
             # Vérification seuil minimum
-            if raw_confidence < 0.35:  # Seuil minimum assoupli 35%
+            if raw_confidence < 0.40:  # Seuil minimum durci 40%
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": f"Signal rejet résistance trop faible (conf: {raw_confidence:.2f} < 0.35)",
+                    "reason": f"Signal rejet résistance trop faible (conf: {raw_confidence:.2f} < 0.40)",
                     "metadata": {
                         "strategy": self.name,
                         "symbol": self.symbol,

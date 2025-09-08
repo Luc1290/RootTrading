@@ -33,17 +33,17 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Seuils pour détection pump - MOMENTUM TRADING OPTIMISÉ
-        self.pump_price_threshold = 0.018     # 1.8% hausse minimum (détection précoce)
-        self.extreme_pump_threshold = 0.030   # 3.0% hausse extrême (pump fort)
+        # Seuils pour détection pump - MOMENTUM TRADING OPTIMISÉ (décimaux convertis en %)
+        self.pump_price_threshold = 0.018     # 1.8% hausse minimum (sera * 100 = 1.8%)
+        self.extreme_pump_threshold = 0.030   # 3.0% hausse extrême (sera * 100 = 3.0%)
         self.pump_volume_multiplier = 1.8     # Volume 1.8x normal (confirmation momentum)
         self.extreme_volume_multiplier = 3.5  # Volume 3.5x normal (pump majeur)
         self.pump_rsi_threshold = 60          # RSI momentum positif (pas trop tard)
         self.extreme_rsi_threshold = 75       # RSI fort mais pas surachat extrême
         
-        # Seuils pour détection dump - MOMENTUM TRADING OPTIMISÉ
-        self.dump_price_threshold = -0.015    # 1.5% chute minimum (détection rapide)
-        self.extreme_dump_threshold = -0.025  # 2.5% chute extrême (dump sévère)
+        # Seuils pour détection dump - MOMENTUM TRADING OPTIMISÉ (décimaux convertis en %)
+        self.dump_price_threshold = -0.015    # 1.5% chute minimum (sera * 100 = -1.5%)
+        self.extreme_dump_threshold = -0.025  # 2.5% chute extrême (sera * 100 = -2.5%)
         self.dump_rsi_threshold = 45          # RSI faiblesse (pas trop bas)
         self.momentum_reversal_threshold = -0.3  # Momentum négatif (signal sortie)
         
@@ -89,17 +89,22 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
         pump_score = 0.0
         pump_indicators = []
         
-        # Analyse ROC (Rate of Change) pour mouvement de prix
+        # Analyse ROC (Rate of Change) - DB format: pourcentages directs (ex: 17.26 = 17.26%)
         roc_10 = values.get('roc_10')
         roc_20 = values.get('roc_20')
         
         if roc_10 is not None:
             try:
                 roc_val = float(roc_10)
-                if roc_val >= self.extreme_pump_threshold * 100:  # ROC en %
+                # ROC en POURCENTAGE direct dans DB (ex: 17.26 pour 17.26%)
+                # Comparaison directe avec seuils en pourcentage
+                extreme_pump_pct = self.extreme_pump_threshold * 100  # 3.0%
+                pump_pct = self.pump_price_threshold * 100  # 1.8%
+                
+                if roc_val >= extreme_pump_pct:
                     pump_score += 0.4
                     pump_indicators.append(f"ROC10 extrême ({roc_val:.1f}%)")
-                elif roc_val >= self.pump_price_threshold * 100:
+                elif roc_val >= pump_pct:
                     pump_score += 0.2
                     pump_indicators.append(f"ROC10 élevé ({roc_val:.1f}%)")
             except (ValueError, TypeError):
@@ -160,10 +165,15 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
         if roc_10 is not None:
             try:
                 roc_val = float(roc_10)
-                if roc_val <= self.extreme_dump_threshold * 100:
+                # ROC en POURCENTAGE direct dans DB (ex: -13.32 pour -13.32%)
+                # Comparaison directe avec seuils en pourcentage
+                extreme_dump_pct = self.extreme_dump_threshold * 100  # -2.5%
+                dump_pct = self.dump_price_threshold * 100  # -1.5%
+                
+                if roc_val <= extreme_dump_pct:
                     dump_score += 0.3
                     dump_indicators.append(f"ROC10 chute extrême ({roc_val:.1f}%)")
-                elif roc_val <= self.dump_price_threshold * 100:
+                elif roc_val <= dump_pct:
                     dump_score += 0.15
                     dump_indicators.append(f"ROC10 chute ({roc_val:.1f}%)")
             except (ValueError, TypeError):
@@ -231,21 +241,9 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
             
         values = self._get_current_values()
         
-        # Vérifications préalables - environnement volatil requis
+        # Vérifications préalables - ASSOUPLIE (pumps/dumps créent leur propre volatilité)
         volatility_regime = values.get('volatility_regime')
-        if volatility_regime is not None:
-            try:
-                vol_regime = self._convert_volatility_to_score(str(volatility_regime))
-                if vol_regime < self.min_volatility_regime:
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Volatilité insuffisante ({vol_regime:.2f}) pour pump/dump",
-                        "metadata": {"strategy": self.name, "volatility_regime": vol_regime}
-                    }
-            except (ValueError, TypeError):
-                pass
+        # Suppression du filtre volatilité - les patterns pump/dump peuvent survenir même en faible volatilité
                 
         # Détection des patterns
         pump_analysis = self._detect_pump_pattern(values)
@@ -262,7 +260,9 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
         if pump_analysis['is_pump']:
             # Signal BUY - Pump détecté, surfer sur la vague haussière
             signal_side = "BUY"
-            reason = f"Pump détecté ({pump_analysis['pump_score']:.2f}): {', '.join(pump_analysis['indicators'][:2])}"
+            # Afficher plus d'indicateurs si score élevé
+            indicators_to_show = pump_analysis['indicators'][:3] if pump_analysis['pump_score'] > 0.7 else pump_analysis['indicators'][:2]
+            reason = f"Pump détecté ({pump_analysis['pump_score']:.2f}): {', '.join(indicators_to_show)}"
             confidence_boost = pump_analysis['pump_score'] * 0.9
             
             metadata.update({
@@ -274,7 +274,9 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
         elif dump_analysis['is_dump']:
             # Signal SELL - Dump détecté, sortir avant la chute
             signal_side = "SELL"
-            reason = f"Dump détecté ({dump_analysis['dump_score']:.2f}): {', '.join(dump_analysis['indicators'][:2])}"
+            # Afficher plus d'indicateurs si score élevé
+            indicators_to_show = dump_analysis['indicators'][:3] if dump_analysis['dump_score'] > 0.7 else dump_analysis['indicators'][:2]
+            reason = f"Dump détecté ({dump_analysis['dump_score']:.2f}): {', '.join(indicators_to_show)}"
             confidence_boost = dump_analysis['dump_score'] * 0.8
             
             metadata.update({
@@ -284,9 +286,30 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
             })
             
         if signal_side:
+            # VALIDATION DIRECTIONAL BIAS - REJET si contradictoire
+            directional_bias = values.get('directional_bias')
+            if directional_bias:
+                if (signal_side == "BUY" and directional_bias == "BEARISH") or \
+                   (signal_side == "SELL" and directional_bias == "BULLISH"):
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet {signal_side}: bias contradictoire ({directional_bias})",
+                        "metadata": {"strategy": self.name, "directional_bias": directional_bias}
+                    }
+                    
+            # VALIDATION MARKET REGIME - MALUS si défavorable
+            market_regime = values.get('market_regime')
+            if market_regime:
+                if (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or \
+                   (signal_side == "SELL" and market_regime == "TRENDING_BULL"):
+                    confidence_boost -= 0.20  # Malus fort pour régime contradictoire
+                    reason += f" MAIS régime contradictoire ({market_regime})"
+                    
             # Confirmations supplémentaires
-            base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
-            
+            base_confidence = 0.65  # Standardisé à 0.65 pour équité avec autres stratégies
+
             # Trade intensity pour confirmer l'activité anormale
             trade_intensity = values.get('trade_intensity')
             if trade_intensity is not None:
@@ -327,12 +350,12 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
                     
             # Filtre final de confidence pour momentum trading
             raw_confidence = base_confidence * (1.0 + confidence_boost)
-            if raw_confidence < 0.55:  # Seuil minimum 55% (momentum actif)
+            if raw_confidence < 0.45:  # Seuil assoupli 45% (momentum trading)
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": f"Signal pump/dump rejeté - confidence insuffisante ({raw_confidence:.2f} < 0.55)",
+                    "reason": f"Signal pump/dump rejeté - confidence insuffisante ({raw_confidence:.2f} < 0.45)",
                     "metadata": {
                         "strategy": self.name,
                         "symbol": self.symbol,
@@ -382,22 +405,29 @@ class Pump_Dump_Pattern_Strategy(BaseStrategy):
         
     def validate_data(self) -> bool:
         """Valide que tous les indicateurs requis sont présents."""
+        # Indicateurs ESSENTIELS seulement (autres optionnels)
         required_indicators = [
-            'rsi_14', 'roc_10', 'volume_spike_multiplier', 
-            'relative_volume', 'volatility_regime'
+            'rsi_14', 'roc_10', 'volume_spike_multiplier'
         ]
+        
+        # Indicateurs optionnels mais utiles
+        optional_indicators = ['relative_volume', 'volatility_regime']
         
         if not self.indicators:
             logger.warning(f"{self.name}: Aucun indicateur disponible")
             return False
             
+        # Vérifier indicateurs essentiels
+        missing_required = 0
         for indicator in required_indicators:
-            if indicator not in self.indicators:
-                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
-                return False
-            if self.indicators[indicator] is None:
-                logger.warning(f"{self.name}: Indicateur null: {indicator}")
-                return False
+            if indicator not in self.indicators or self.indicators[indicator] is None:
+                missing_required += 1
+                logger.warning(f"{self.name}: Indicateur essentiel manquant: {indicator}")
+                
+        # Rejeter seulement si trop d'indicateurs essentiels manquent
+        if missing_required > 1:  # Tolérer 1 indicateur manquant
+            logger.warning(f"{self.name}: Trop d'indicateurs essentiels manquants ({missing_required})")
+            return False
                 
         return True
     

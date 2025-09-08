@@ -20,11 +20,11 @@ class CCI_Reversal_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres CCI optimisés pour meilleur winrate
-        self.oversold_level = -120   # Zone survente plus stricte
-        self.overbought_level = 120   # Zone surachat plus stricte  
-        self.extreme_oversold = -180  # Extrême vraiment extrême
-        self.extreme_overbought = 180  # Extrême vraiment extrême
+        # Paramètres CCI durcis pour crypto intraday
+        self.oversold_level = -150   # Zone survente stricte (crypto adapté)
+        self.overbought_level = 150   # Zone surachat stricte (crypto adapté)
+        self.extreme_oversold = -200  # Extrême vraiment extrême
+        self.extreme_overbought = 200  # Extrême vraiment extrême
         
         # Paramètres de validation temporelle - SIMPLIFIÉS (STATELESS)
         self.min_cci_persistence = 0  # Pas de persistance requise (crypto 3m rapide)
@@ -140,7 +140,7 @@ class CCI_Reversal_Strategy(BaseStrategy):
             reason = f"CCI ({cci_20:.1f}) en zone de {zone}"
             
         if signal_side:
-            base_confidence = 0.50  # Base harmonisée avec autres stratégies
+            base_confidence = 0.65  # Base harmonisée avec autres stratégies
             
             # Momentum validation ULTRA STRICTE pour winrate - LOGIQUE CORRIGÉE
             momentum_score_raw = values.get('momentum_score')
@@ -152,20 +152,33 @@ class CCI_Reversal_Strategy(BaseStrategy):
                     momentum_score = 0
             
             if momentum_score != 0:
-                # Momentum score format 0-100 (50=neutre), LOGIQUE CORRIGÉE:
-                # BUY = momentum bas (survente), SELL = momentum haut (surachat)
-                if (signal_side == "BUY" and momentum_score < 30) or \
-                   (signal_side == "SELL" and momentum_score > 70):
-                    confidence_boost += 0.12  # Bonus réduit
-                    reason += " avec momentum EXCEPTIONNEL"
-                elif (signal_side == "BUY" and momentum_score < 35) or \
-                     (signal_side == "SELL" and momentum_score > 65):
-                    confidence_boost += 0.08  # Momentum fort requis
-                    reason += " avec momentum fort"
-                elif (signal_side == "BUY" and momentum_score > 40) or \
-                     (signal_side == "SELL" and momentum_score < 60):
-                    confidence_boost -= 0.20  # Pénalité majeure momentum inadéquat
-                    reason += " ATTENTION: momentum INSUFFISANT"
+                # Rejets momentum contradictoires STRICTS
+                if signal_side == "BUY" and momentum_score < 30:
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet BUY: momentum encore trop faible ({momentum_score:.1f})",
+                        "metadata": {"strategy": self.name, "momentum_score": momentum_score}
+                    }
+                elif signal_side == "SELL" and momentum_score > 70:
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet SELL: momentum encore trop fort ({momentum_score:.1f})",
+                        "metadata": {"strategy": self.name, "momentum_score": momentum_score}
+                    }
+                
+                # Confirmations momentum de retournement
+                if (signal_side == "BUY" and momentum_score > 45) or \
+                   (signal_side == "SELL" and momentum_score < 55):
+                    confidence_boost += 0.12
+                    reason += " avec momentum de retournement"
+                elif (signal_side == "BUY" and momentum_score > 35) or \
+                     (signal_side == "SELL" and momentum_score < 65):
+                    confidence_boost += 0.08
+                    reason += " avec début retournement"
                     
             # Utilisation du trend_strength
             trend_strength_raw = values.get('trend_strength')
@@ -194,14 +207,23 @@ class CCI_Reversal_Strategy(BaseStrategy):
                 except (ValueError, TypeError):
                     confluence_score = 0
                     
+            # Rejet confluence faible strict
+            if confluence_score < 30:
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Rejet: confluence trop faible ({confluence_score:.0f} < 30)",
+                    "metadata": {"strategy": self.name, "confluence_score": confluence_score}
+                }
+            
+            # Confirmations confluence
             if confluence_score > 80:
                 confidence_boost += 0.15
                 reason += " avec très haute confluence"
             elif confluence_score > 65:
                 confidence_boost += 0.08
                 reason += " avec confluence solide"
-            elif confluence_score < 30:
-                confidence_boost -= 0.10  # Faible confluence = risqué
                 
             # Utilisation du pattern_detected et pattern_confidence avec conversion sécurisée
             pattern_detected = values.get('pattern_detected')
@@ -227,31 +249,53 @@ class CCI_Reversal_Strategy(BaseStrategy):
                     confidence_boost += 0.1
                     reason += f" en régime {market_regime}"
                     
-            # Validation avec RSI si disponible
+            # Validation RSI avec rejets contradictoires
             rsi_raw = values.get('rsi_14')
             if rsi_raw is not None:
                 try:
                     rsi = float(rsi_raw)
+                    # Rejets RSI contradictoires stricts
+                    if signal_side == "BUY" and rsi > 65:
+                        return {
+                            "side": None,
+                            "confidence": 0.0,
+                            "strength": "weak",
+                            "reason": f"Rejet BUY: RSI trop haut ({rsi:.1f}) pour reversal",
+                            "metadata": {"strategy": self.name, "rsi": rsi}
+                        }
+                    elif signal_side == "SELL" and rsi < 35:
+                        return {
+                            "side": None,
+                            "confidence": 0.0,
+                            "strength": "weak",
+                            "reason": f"Rejet SELL: RSI trop bas ({rsi:.1f}) pour reversal",
+                            "metadata": {"strategy": self.name, "rsi": rsi}
+                        }
+                    
+                    # Confirmations RSI
                     if (signal_side == "BUY" and rsi < 35) or \
                        (signal_side == "SELL" and rsi > 65):
                         confidence_boost += 0.10
                         reason += f" confirmé par RSI ({rsi:.1f})"
-                    elif (signal_side == "BUY" and rsi > 65) or \
-                         (signal_side == "SELL" and rsi < 35):
-                        confidence_boost -= 0.08  # Pénalité réduite RSI
                 except (ValueError, TypeError):
                     pass
             
-            # Validation avec volume
+            # Validation volume avec rejet strict
             volume_ratio_raw = values.get('volume_ratio')
             if volume_ratio_raw is not None:
                 try:
                     volume_ratio = float(volume_ratio_raw)
-                    if volume_ratio > 1.5:
+                    if volume_ratio < 0.2:  # Rejet volume trop faible
+                        return {
+                            "side": None,
+                            "confidence": 0.0,
+                            "strength": "weak",
+                            "reason": f"Rejet: volume trop faible ({volume_ratio:.2f}x < 0.2x)",
+                            "metadata": {"strategy": self.name, "volume_ratio": volume_ratio}
+                        }
+                    elif volume_ratio > 1.5:
                         confidence_boost += 0.08
                         reason += " avec volume élevé"
-                    elif volume_ratio < 0.5:
-                        confidence_boost -= 0.05  # Pénalité réduite volume
                 except (ValueError, TypeError):
                     pass
             
@@ -276,9 +320,10 @@ class CCI_Reversal_Strategy(BaseStrategy):
                     confidence_boost += 0.05
                     reason += " + signal modéré"
                 
-            # Calcul final avec plafond réduit pour winrate
+            # Calcul final avec plafond et clamp strict
             total_boost = min(confidence_boost, 0.30)  # Boost total réduit
             confidence = self.calculate_confidence(base_confidence, 1 + total_boost)
+            confidence = min(1.0, max(0.0, confidence))  # Clamp explicite [0,1]
             
             # Filtre final : confidence minimum élevé
             if confidence < 0.45:  # Seuil plus strict pour qualité

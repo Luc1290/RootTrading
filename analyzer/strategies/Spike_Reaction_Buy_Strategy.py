@@ -37,17 +37,17 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
         super().__init__(symbol, data, indicators)
         
         # Paramètres spike baissier - RÉVOLUTIONNÉS CRYPTO INTRADAY
-        self.min_price_drop = -0.012             # 1.2% chute minimum RÉALISTE (+33%)
+        self.min_price_drop = -0.015             # 1.5% chute minimum pour éviter bruit
         self.severe_price_drop = -0.025          # 2.5% chute sévère ACCESSIBLE (+29%)
         self.extreme_price_drop = -0.04          # 4% chute extrême ATTEIGNABLE (+33%)
         
         # Paramètres volume spike - OPTIMISÉS ACCESSIBILITÉ
-        self.min_spike_volume = 1.15             # Volume 1.15x minimum RÉALISTE (+13%)
+        self.min_spike_volume = 1.5              # Volume 1.5x minimum pour vrais spikes
         self.strong_spike_volume = 2.0           # Volume 2x fort ATTEIGNABLE (+25%)
         self.extreme_spike_volume = 3.5          # Volume 3.5x extrême POSSIBLE (+13%)
         
         # Paramètres RSI (survente extrême crypto) - ASSOUPLIS
-        self.oversold_rsi_threshold = 32         # RSI survente crypto (était 28)
+        self.oversold_rsi_threshold = 28         # RSI survente crypto vrai knife
         self.extreme_oversold_threshold = 20     # RSI survente extrême crypto (était 18)
         self.williams_r_oversold = -78           # Williams %R survente assoupli (était -82)
         
@@ -64,8 +64,8 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
         
         # Paramètres protection - ÉQUILIBRÉS PERFORMANCE/SÉCURITÉ
         self.min_confluence_score = 25           # Confluence TRÈS ACCESSIBLE (+29%)
-        self.max_atr_spike = 0.15                # ATR maximum TOLÉRANT (+25%)
-        self.support_proximity_threshold = 0.025 # 2.5% support bonus ÉLARGI (+25%)
+        self.max_atr_spike = 0.10                # ATR maximum 10% (vs 15% cataclysme)
+        self.support_proximity_threshold = 0.020 # 2% support bonus plus strict
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
@@ -130,7 +130,7 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
                     spike_score += 0.35
                     spike_indicators.append(f"ROC10 chute SÉVÈRE ({roc_val*100:.1f}%)")
                 elif roc_val <= self.min_price_drop:
-                    spike_score += 0.25
+                    spike_score += 0.30  # Score augmenté pour seuil durci
                     spike_indicators.append(f"ROC10 chute significative ({roc_val*100:.1f}%)")
             except (ValueError, TypeError):
                 pass
@@ -187,7 +187,7 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
                     volume_score += 0.35
                     volume_indicators.append(f"Volume spike FORT ({spike_mult:.1f}x)")
                 elif spike_mult >= self.min_spike_volume:
-                    volume_score += 0.25
+                    volume_score += 0.30  # Score augmenté pour seuil durci
                     volume_indicators.append(f"Volume spike ({spike_mult:.1f}x)")
             except (ValueError, TypeError):
                 pass
@@ -241,7 +241,7 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
                 elif rsi_val <= self.oversold_rsi_threshold:
                     oversold_score += 0.28
                     oversold_indicators.append(f"RSI survente crypto ({rsi_val:.1f})")
-                elif rsi_val <= 35:  # Zone intermédiaire
+                elif rsi_val <= 30:  # Zone intermédiaire plus stricte
                     oversold_score += 0.15
                     oversold_indicators.append(f"RSI favorable ({rsi_val:.1f})")
             except (ValueError, TypeError):
@@ -463,6 +463,22 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
                     "metadata": {"strategy": self.name, "directional_bias": directional_bias, "trend_strength": trend_strength}
                 }
                 
+        # Filtre momentum contradictoire AVANT détection
+        momentum_score = values.get('momentum_score')
+        if momentum_score is not None:
+            try:
+                momentum_val = float(momentum_score)
+                if momentum_val < 40:  # Momentum trop faible = rejet
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet BUY spike: momentum trop faible ({momentum_val})",
+                        "metadata": {"strategy": self.name, "momentum_score": momentum_val}
+                    }
+            except (ValueError, TypeError):
+                pass
+        
         # Étape 1: Détecter spike baissier de prix
         price_spike_analysis = self._detect_price_spike_down(values)
         
@@ -502,9 +518,9 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
         ])
         
         # Signal BUY si score suffisant ET minimum 2 conditions (RÉVOLUTIONNÉ)
-        if spike_total_score >= 0.25 and conditions_met >= 2 and volume_quality_ok:
+        if spike_total_score >= 0.25 and conditions_met >= 3 and volume_quality_ok:
 
-            base_confidence = 0.45  # Base conservative pour stratégie spike
+            base_confidence = 0.65  # Base conservative pour stratégie spike
             confidence_boost = 0.0
             
             # Score cumulé des analyses avec pondération optimisée
@@ -542,11 +558,9 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
                         distance_to_support = abs(current_price - support_val) / support_val
                         if distance_to_support <= self.support_proximity_threshold:
                             if support_strength and str(support_strength).lower() in ['strong', 'very_strong']:
-                                confidence_boost += 0.20  # Bonus fort support solide
+                                confidence_boost += 0.20  # Bonus fort support solide seulement
                                 reason += f" + support FORT à {support_val:.2f}"
-                            else:
-                                confidence_boost += 0.12
-                                reason += f" + près support {support_val:.2f}"
+                            # Suppression bonus support faible
                 except (ValueError, TypeError):
                     pass
                     
@@ -603,7 +617,7 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
                     }
                 }
                     
-            confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
+            confidence = min(1.0, self.calculate_confidence(base_confidence, 1.0 + confidence_boost))
             strength = self.get_strength_from_confidence(confidence)
             
             return {
@@ -648,8 +662,8 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
             missing_conditions.append(f"Volume quality insuffisant ({volume_quality_score:.1f} < {self.min_volume_quality})")
         if spike_total_score < 0.25:
             missing_conditions.append(f"Score total insuffisant ({spike_total_score:.2f} < 0.25)")
-        if conditions_met < 2:
-            missing_conditions.append(f"Conditions insuffisantes ({conditions_met}/4 < 2)")
+        if conditions_met < 3:
+            missing_conditions.append(f"Conditions insuffisantes ({conditions_met}/4 < 3)")
             
         return {
             "side": None,
@@ -672,8 +686,7 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
     def validate_data(self) -> bool:
         """Valide que tous les indicateurs requis sont présents."""
         required_indicators = [
-            'roc_10', 'rsi_14', 'volume_spike_multiplier', 
-            'momentum_score', 'relative_volume', 'volume_quality_score'
+            'roc_10', 'rsi_14', 'volume_spike_multiplier'
         ]
         
         if not self.indicators:

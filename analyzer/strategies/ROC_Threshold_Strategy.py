@@ -25,15 +25,15 @@ class ROC_Threshold_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres ROC - OPTIMISÉS pour meilleur winrate
-        self.bullish_threshold = 0.035   # ROC > +3.5% pour signal haussier (augmenté)
-        self.bearish_threshold = -0.035  # ROC < -3.5% pour signal baissier (augmenté)
-        self.extreme_bullish_threshold = 0.08  # ROC > +8% = momentum extrême (augmenté)
-        self.extreme_bearish_threshold = -0.08  # ROC < -8% = momentum extrême (augmenté)
-        self.momentum_confirmation_threshold = 50  # Seuil momentum_score moins strict
-        # FILTRES OPTIMISÉS
-        self.min_confidence_threshold = 0.50  # Confidence minimum augmentée
-        self.max_boost_multiplier = 0.35  # Limite les boosts à +35% (réduit)
+        # Paramètres ROC - ALIGNÉS sur strats performantes
+        self.bullish_threshold = 0.008   # ROC > +0.8% pour signal haussier (aligné Range_Breakout)
+        self.bearish_threshold = -0.008  # ROC < -0.8% pour signal baissier 
+        self.extreme_bullish_threshold = 0.035  # ROC > +3.5% = momentum extrême
+        self.extreme_bearish_threshold = -0.035  # ROC < -3.5% = momentum extrême
+        self.momentum_confirmation_threshold = 50  # Seuil momentum_score
+        # FILTRES RÉALISTES
+        self.min_confidence_threshold = 0.40  # Confidence minimum alignée PPO
+        self.max_boost_multiplier = 0.50  # Boosts plus généreux
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs ROC et momentum."""
@@ -240,7 +240,7 @@ class ROC_Threshold_Strategy(BaseStrategy):
         roc_value = threshold_result['roc_value']
         
         signal_side = "BUY" if signal_type == "bullish" else "SELL"
-        base_confidence = 0.45  # Réduit pour être plus sélectif
+        base_confidence = 0.65  # Réduit pour être plus sélectif
         confidence_boost = 0.0
         
         # Construction de la raison
@@ -256,20 +256,20 @@ class ROC_Threshold_Strategy(BaseStrategy):
             confidence_boost += 0.05  # Réduit significativement
             reason += " (momentum significatif)"
             
-        # Bonus selon l'excès par rapport au seuil - SEUILS PLUS STRICTS
+        # Bonus selon l'excès par rapport au seuil - BOOSTÉS pour vrais moves
         exceeded_by = threshold_result['exceeded_by']
-        if exceeded_by > 0.05:  # Dépasse LARGEMENT le seuil (>5%) - augmenté
-            confidence_boost += 0.12  # Réduit de 0.15
+        if exceeded_by > 0.05:  # Dépasse LARGEMENT le seuil (>5%) - vrai move marché
+            confidence_boost += 0.25  # Doublé pour signaux exceptionnels
             reason += f" + excès MAJEUR ({exceeded_by*100:.1f}%)"
-        elif exceeded_by > 0.03:  # Excès important (>3%) - augmenté
-            confidence_boost += 0.08  # Réduit de 0.10
+        elif exceeded_by > 0.03:  # Excès important (>3%)
+            confidence_boost += 0.18  # Augmenté
             reason += f" + excès important ({exceeded_by*100:.1f}%)"
         elif exceeded_by > 0.01:  # Excès modéré (>1%)
-            confidence_boost += 0.04  # Réduit de 0.05
+            confidence_boost += 0.08  # Doublé
             reason += f" + excès modéré ({exceeded_by*100:.1f}%)"
         else:
             # Excès trop faible - pénalité
-            confidence_boost -= 0.02
+            confidence_boost -= 0.05
             reason += f" mais excès FAIBLE ({exceeded_by*100:.1f}%)"
             
         # CORRECTION: Momentum confirmation directionnelle stricte
@@ -291,21 +291,17 @@ class ROC_Threshold_Strategy(BaseStrategy):
                     elif momentum > 65:  # Momentum minimum acceptable
                         confidence_boost += 0.03  # Bonus minimal
                         reason += f" + momentum correct ({momentum:.1f})"
-                    elif momentum < 50:  # Momentum CONTRADICTOIRE avec BUY = REJET TOTAL
-                        # Si momentum < 50, c'est BEARISH, donc contradictoire avec signal BUY
+                    elif momentum < 40:  # Momentum contradictoire = rejet
                         return {
                             "side": None,
                             "confidence": 0.0,
                             "strength": "weak",
-                            "reason": f"Signal BUY REJETÉ: momentum contradictoire ({momentum:.1f} < 50)",
-                            "metadata": {
-                                "strategy": self.name,
-                                "symbol": self.symbol,
-                                "rejected_signal": "BUY",
-                                "momentum_score": momentum,
-                                "roc_value": roc_value
-                            }
+                            "reason": f"Rejet ROC BUY: momentum trop faible ({momentum:.1f})",
+                            "metadata": {"strategy": self.name, "momentum_score": momentum}
                         }
+                    elif momentum < 50:  # Momentum défavorable
+                        confidence_boost -= 0.15
+                        reason += f" avec momentum défavorable ({momentum:.1f})"
                         
                 # SELL : validation momentum plus stricte  
                 elif signal_side == "SELL":
@@ -319,21 +315,17 @@ class ROC_Threshold_Strategy(BaseStrategy):
                     elif momentum < 35:  # Momentum minimum acceptable
                         confidence_boost += 0.03  # Bonus minimal
                         reason += f" + momentum correct ({momentum:.1f})"
-                    elif momentum > 50:  # Momentum CONTRADICTOIRE avec SELL = REJET TOTAL
-                        # Si momentum > 50, c'est BULLISH, donc contradictoire avec signal SELL
+                    elif momentum > 60:  # Momentum contradictoire = rejet
                         return {
                             "side": None,
                             "confidence": 0.0,
                             "strength": "weak",
-                            "reason": f"Signal SELL REJETÉ: momentum contradictoire ({momentum:.1f} > 50)",
-                            "metadata": {
-                                "strategy": self.name,
-                                "symbol": self.symbol,
-                                "rejected_signal": "SELL",
-                                "momentum_score": momentum,
-                                "roc_value": roc_value
-                            }
+                            "reason": f"Rejet ROC SELL: momentum trop fort ({momentum:.1f})",
+                            "metadata": {"strategy": self.name, "momentum_score": momentum}
                         }
+                    elif momentum > 50:  # Momentum défavorable
+                        confidence_boost -= 0.15
+                        reason += f" avec momentum défavorable ({momentum:.1f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -346,7 +338,7 @@ class ROC_Threshold_Strategy(BaseStrategy):
                     if rsi > 60:  # RSI confirme momentum haussier
                         confidence_boost += 0.12
                         reason += " + RSI confirme"
-                    elif rsi > 50:
+                    elif rsi > 55:  # RSI favorable durci
                         confidence_boost += 0.08
                         reason += " + RSI favorable"
                     elif rsi < 30:  # Oversold = momentum peut continuer
@@ -356,7 +348,7 @@ class ROC_Threshold_Strategy(BaseStrategy):
                     if rsi < 40:  # RSI confirme momentum baissier
                         confidence_boost += 0.12
                         reason += " + RSI confirme"
-                    elif rsi < 50:
+                    elif rsi < 45:  # RSI favorable durci
                         confidence_boost += 0.08
                         reason += " + RSI favorable"
                     elif rsi > 70:  # Overbought = momentum peut continuer
@@ -466,35 +458,45 @@ class ROC_Threshold_Strategy(BaseStrategy):
             try:
                 vol_ratio = float(volume_ratio)
                 
-                # BUY : momentum haussier EXIGE volume fort pour winrate
+                # Volume DURCI avec rejet volume insuffisant
+                if vol_ratio < 1.0:  # Volume insuffisant = rejet direct
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet ROC: volume insuffisant ({vol_ratio:.1f}x)",
+                        "metadata": {"strategy": self.name, "volume_ratio": vol_ratio}
+                    }
+                
+                # BUY : momentum haussier EXIGE volume fort
                 if signal_side == "BUY":
-                    if vol_ratio >= 2.5:  # Volume EXCEPTIONNEL requis
-                        confidence_boost += 0.12
+                    if vol_ratio >= 2.5:  # Volume EXCEPTIONNEL
+                        confidence_boost += 0.15
                         reason += f" + volume exceptionnel BUY ({vol_ratio:.1f}x)"
-                    elif vol_ratio >= 2.0:  # Volume très élevé requis
-                        confidence_boost += 0.08
-                        reason += f" + volume très élevé BUY ({vol_ratio:.1f}x)"
-                    elif vol_ratio >= 1.5:  # Volume minimum acceptable
-                        confidence_boost += 0.04
-                        reason += f" + volume correct ({vol_ratio:.1f}x)"
-                    elif vol_ratio < 1.2:  # Volume insuffisant = PÉNALITÉ
-                        confidence_boost -= 0.15
-                        reason += f" ATTENTION: volume INSUFFISANT ({vol_ratio:.1f}x)"
-                        
-                # SELL : momentum baissier EXIGE aussi du volume pour winrate
-                elif signal_side == "SELL":
-                    if vol_ratio >= 2.0:  # Volume très élevé = panic selling confirmé
+                    elif vol_ratio >= 2.0:  # Volume très élevé
                         confidence_boost += 0.12
-                        reason += f" + volume panic SELL ({vol_ratio:.1f}x)"
-                    elif vol_ratio >= 1.5:  # Volume élevé requis
-                        confidence_boost += 0.08
-                        reason += f" + volume élevé SELL ({vol_ratio:.1f}x)"
-                    elif vol_ratio >= 1.2:  # Volume minimum acceptable
-                        confidence_boost += 0.04
+                        reason += f" + volume fort BUY ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= 1.5:  # Volume correct
+                        confidence_boost += 0.06
                         reason += f" + volume correct ({vol_ratio:.1f}x)"
-                    elif vol_ratio < 1.0:  # Volume insuffisant = PÉNALITÉ
-                        confidence_boost -= 0.10
-                        reason += f" ATTENTION: volume faible ({vol_ratio:.1f}x)"
+                    elif vol_ratio < 1.2:  # Volume faible
+                        confidence_boost -= 0.08
+                        reason += f" volume modéré ({vol_ratio:.1f}x)"
+                        
+                # SELL : momentum baissier EXIGE aussi du volume
+                elif signal_side == "SELL":
+                    if vol_ratio >= 2.0:  # Volume très élevé = panic selling
+                        confidence_boost += 0.15
+                        reason += f" + volume panic SELL ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= 1.5:  # Volume élevé
+                        confidence_boost += 0.12
+                        reason += f" + volume élevé SELL ({vol_ratio:.1f}x)"
+                    elif vol_ratio >= 1.2:  # Volume correct
+                        confidence_boost += 0.06
+                        reason += f" + volume correct ({vol_ratio:.1f}x)"
+                    else:  # Volume faible
+                        confidence_boost -= 0.06
+                        reason += f" volume faible ({vol_ratio:.1f}x)"
             except (ValueError, TypeError):
                 pass
                 
@@ -524,14 +526,23 @@ class ROC_Threshold_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Market regime
+        # Market regime avec REJET contradictions
         market_regime = values.get('market_regime')
-        if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
+        if (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or \
+           (signal_side == "SELL" and market_regime == "TRENDING_BULL"):
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Rejet ROC {signal_side}: régime contradictoire ({market_regime})",
+                "metadata": {"strategy": self.name, "market_regime": market_regime}
+            }
+        elif market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
             confidence_boost += 0.10
             reason += " (marché trending)"
         elif market_regime == "RANGING":
-            confidence_boost -= 0.05  # Momentum moins fiable en ranging
-            reason += " (marché ranging)"
+            confidence_boost += 0.02  # ROC peut être utile en ranging pour oscillations
+            reason += " (marché ranging - oscillations ROC)"
             
         # Volatility context
         volatility_regime = values.get('volatility_regime')
@@ -546,17 +557,25 @@ class ROC_Threshold_Strategy(BaseStrategy):
             confidence_boost += 0.05
             reason += " + volatilité normale"
             
-        # Confluence score
+        # Confluence score DURCIE avec rejet
         confluence_score = values.get('confluence_score')
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
-                if confluence > 70:
-                    confidence_boost += 0.10
+                if confluence < 40:  # Confluence insuffisante = rejet
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet ROC: confluence insuffisante ({confluence})",
+                        "metadata": {"strategy": self.name, "confluence_score": confluence}
+                    }
+                elif confluence > 70:
+                    confidence_boost += 0.12
                     reason += " + confluence élevée"
-                elif confluence > 50:
-                    confidence_boost += 0.05
-                    reason += " + confluence modérée"
+                elif confluence > 60:
+                    confidence_boost += 0.08
+                    reason += " + confluence bonne"
             except (ValueError, TypeError):
                 pass
                 

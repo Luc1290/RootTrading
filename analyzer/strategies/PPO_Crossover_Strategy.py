@@ -131,8 +131,8 @@ class PPO_Crossover_Strategy(BaseStrategy):
                 confidence_boost += 0.10  # Réduit pour signaux faibles
                 
         if signal_side:
-            # Base confidence AJUSTÉE pour qualité PPO
-            base_confidence = 0.45  # Réduite pour filtrer le bruit
+            # Base confidence HARMONISÉE avec autres strats
+            base_confidence = 0.65  # Alignée pour homogénéité
             
             # Confirmation avec MACD histogram (dérivée du momentum)
             macd_histogram = values.get('macd_histogram')
@@ -160,10 +160,19 @@ class PPO_Crossover_Strategy(BaseStrategy):
                          (signal_side == "SELL" and momentum_val < 45):
                         confidence_boost += 0.08
                         reason += " avec momentum favorable"
+                    elif (signal_side == "BUY" and momentum_val < 40) or \
+                         (signal_side == "SELL" and momentum_val > 60):
+                        return {
+                            "side": None,
+                            "confidence": 0.0,
+                            "strength": "weak",
+                            "reason": f"Rejet PPO {signal_side}: momentum contradictoire ({momentum_val})",
+                            "metadata": {"strategy": self.name, "momentum_score": momentum_val}
+                        }
                     elif (signal_side == "BUY" and momentum_val < 45) or \
                          (signal_side == "SELL" and momentum_val > 55):
-                        confidence_boost -= 0.20  # Pénalité AUGMENTÉE
-                        reason += " ATTENTION: momentum contraire"
+                        confidence_boost -= 0.15  # Pénalité augmentée
+                        reason += " avec momentum défavorable"
                 except (ValueError, TypeError):
                     pass
                     
@@ -181,13 +190,17 @@ class PPO_Crossover_Strategy(BaseStrategy):
                     confidence_boost += 0.05
                     reason += f" et tendance {trend_str}"
                     
-            # Ajustement avec directional_bias
+            # Ajustement avec directional_bias DURCI
             directional_bias = values.get('directional_bias')
             if directional_bias:
                 if (signal_side == "BUY" and directional_bias == "BULLISH") or \
                    (signal_side == "SELL" and directional_bias == "BEARISH"):
                     confidence_boost += 0.1
                     reason += " confirmé par bias directionnel"
+                elif (signal_side == "BUY" and directional_bias == "BEARISH") or \
+                     (signal_side == "SELL" and directional_bias == "BULLISH"):
+                    confidence_boost -= 0.20  # Pénalité forte pour contradiction
+                    reason += f" MAIS bias contradictoire ({directional_bias})"
                     
             # Ajustement avec confluence_score (format 0-100)
             confluence_score = values.get('confluence_score')
@@ -198,15 +211,26 @@ class PPO_Crossover_Strategy(BaseStrategy):
                     if confluence_val > 80:  # Seuil EXTRÊME
                         confidence_boost += 0.25  # Bonus augmenté
                         reason += f" avec confluence PARFAITE ({confluence_val:.0f})"
-                    elif confluence_val > 70:  # Seuil élevé
+                    elif confluence_val > 70:  # Seuil maintenu
                         confidence_boost += 0.15
                         reason += f" avec confluence forte ({confluence_val:.0f})"
+                    elif confluence_val > 65:  # Nouveau seuil intermédiaire
+                        confidence_boost += 0.10
+                        reason += f" avec confluence bonne ({confluence_val:.0f})"
                     elif confluence_val > 60:
                         confidence_boost += 0.05  # Réduit
                         reason += f" avec confluence correcte ({confluence_val:.0f})"
-                    elif confluence_val < 55:  # Pénalité augmentée
-                        confidence_boost -= 0.15
-                        reason += f" mais confluence INSUFFISANTE ({confluence_val:.0f})"
+                    elif confluence_val < 50:  # Rejet direct
+                        return {
+                            "side": None,
+                            "confidence": 0.0,
+                            "strength": "weak",
+                            "reason": f"Rejet PPO: confluence insuffisante ({confluence_val} < 50)",
+                            "metadata": {"strategy": self.name, "confluence_score": confluence_val}
+                        }
+                    elif confluence_val < 55:  # Pénalité maintenue
+                        confidence_boost -= 0.10
+                        reason += f" avec confluence faible ({confluence_val:.0f})"
                 except (ValueError, TypeError):
                     pass
                     
@@ -221,26 +245,29 @@ class PPO_Crossover_Strategy(BaseStrategy):
                     confidence_boost += 0.05
                     reason += " + signal modéré"
                     
-            # Confirmation avec MACD line trend
-            macd_line = values.get('macd_line')
-            if macd_line is not None:
-                try:
-                    macd_val = float(macd_line)
-                    if (signal_side == "BUY" and macd_val > 0) or \
-                       (signal_side == "SELL" and macd_val < 0):
-                        confidence_boost += 0.05
-                        reason += " et MACD aligné"
-                except (ValueError, TypeError):
-                    pass
+            # Régime marché DURCI - rejet contradictions fortes
+            if hasattr(values, 'market_regime') and values.get('market_regime'):
+                regime = str(values['market_regime']).upper()
+                if (signal_side == "BUY" and regime == "TRENDING_BEAR") or \
+                   (signal_side == "SELL" and regime == "TRENDING_BULL"):
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet PPO {signal_side}: régime contradictoire ({regime})",
+                        "metadata": {"strategy": self.name, "market_regime": regime}
+                    }
+            
+            # MACD line bonus supprimé (redondance avec PPO)
                     
             # FILTRE QUALITÉ STRICT - Améliorer winrate
             raw_confidence = base_confidence * (1.0 + confidence_boost)
-            if raw_confidence < 0.48:  # Seuil RELEVÉ 48% pour qualité
+            if raw_confidence < 0.40:  # Seuil réduit 40% pour plus de signaux
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": f"Signal PPO rejeté - qualité insuffisante ({raw_confidence:.2f} < 0.48)",
+                    "reason": f"Signal PPO rejeté - qualité insuffisante ({raw_confidence:.2f} < 0.40)",
                     "metadata": {
                         "strategy": self.name,
                         "symbol": self.symbol,
@@ -250,7 +277,7 @@ class PPO_Crossover_Strategy(BaseStrategy):
                     }
                 }
             
-            confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
+            confidence = max(0.0, min(self.calculate_confidence(base_confidence, 1.0 + confidence_boost), 1.0))
             strength = self.get_strength_from_confidence(confidence)
             
             return {
@@ -262,7 +289,6 @@ class PPO_Crossover_Strategy(BaseStrategy):
                     "strategy": self.name,
                     "symbol": self.symbol,
                     "ppo": ppo_val,
-                    "macd_line": macd_line,
                     "macd_histogram": macd_histogram,
                     "momentum_score": momentum_score,
                     "trend_strength": trend_strength,

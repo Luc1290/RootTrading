@@ -267,6 +267,13 @@ class ContextManager:
                 # Utiliser le convertisseur pour harmoniser les types
                 indicators = FieldConverter.convert_indicators(raw_indicators)
                 
+                # FALLBACK pour volume_quality_score si manquant (critique pour filtres)
+                if not indicators.get('volume_quality_score') or indicators.get('volume_quality_score') == 0:
+                    fallback_volume_quality = self._get_volume_quality_fallback(symbol, timeframe)
+                    if fallback_volume_quality is not None:
+                        indicators['volume_quality_score'] = fallback_volume_quality
+                        logger.info(f"✅ Volume quality fallback {symbol} {timeframe}: {fallback_volume_quality}")
+
                 # Log temporaire pour debug
                 logger.debug(f"Indicateurs récupérés pour {symbol} {timeframe}: {len(indicators)} champs")
                 if 'atr_14' in indicators:
@@ -491,6 +498,100 @@ class ContextManager:
         except Exception as e:
             logger.error(f"Erreur calcul tendance volume: {e}")
             return 'stable'
+    
+    def _get_volume_quality_fallback(self, symbol: str, original_timeframe: str) -> Optional[float]:
+        """
+        Fallback pour récupérer volume_quality_score depuis timeframes inférieurs.
+        
+        Ordre de priorité : 5m → 3m → 1m
+        
+        Args:
+            symbol: Symbole
+            original_timeframe: Timeframe original qui manque la donnée
+            
+        Returns:
+            volume_quality_score du fallback ou None
+        """
+        # Définir l'ordre de fallback selon timeframe original
+        fallback_sequence = {
+            '15m': ['5m', '3m', '1m'],
+            '1h': ['15m', '5m', '3m', '1m'], 
+            '4h': ['1h', '15m', '5m', '3m', '1m'],
+            '5m': ['3m', '1m'],
+            '3m': ['1m'],
+            '1m': []  # Pas de fallback pour 1m
+        }
+        
+        timeframes_to_try = fallback_sequence.get(original_timeframe, ['3m', '1m'])
+        
+        try:
+            with self.db_connection.cursor(cursor_factory=RealDictCursor) as cursor:
+                for fallback_tf in timeframes_to_try:
+                    cursor.execute("""
+                        SELECT volume_quality_score, volume_ratio 
+                        FROM analyzer_data 
+                        WHERE symbol = %s AND timeframe = %s 
+                          AND volume_quality_score IS NOT NULL
+                        ORDER BY time DESC 
+                        LIMIT 1
+                    """, (symbol, fallback_tf))
+                    
+                    result = cursor.fetchone()
+                    if result and result['volume_quality_score'] is not None:
+                        vol_quality = float(result['volume_quality_score'])
+                        logger.debug(f"Volume quality fallback {symbol}: {original_timeframe} -> {fallback_tf} = {vol_quality}")
+                        return vol_quality
+                        
+                # Si aucun fallback trouvé, calculer une estimation basique
+                logger.warning(f"Aucun volume_quality_score trouvé pour {symbol}, estimation par défaut")
+                return self._estimate_volume_quality(symbol)
+                
+        except Exception as e:
+            logger.error(f"Erreur fallback volume quality {symbol}: {e}")
+            return None
+            
+    def _estimate_volume_quality(self, symbol: str) -> float:
+        """
+        Estime volume_quality_score basé sur volume_ratio récent.
+        
+        Args:
+            symbol: Symbole
+            
+        Returns:
+            Estimation de volume_quality_score (20-80)
+        """
+        try:
+            with self.db_connection.cursor(cursor_factory=RealDictCursor) as cursor:
+                # Prendre volume_ratio récent de n'importe quel timeframe
+                cursor.execute("""
+                    SELECT volume_ratio 
+                    FROM analyzer_data 
+                    WHERE symbol = %s AND volume_ratio IS NOT NULL
+                    ORDER BY time DESC 
+                    LIMIT 5
+                """, (symbol,))
+                
+                results = cursor.fetchall()
+                if results:
+                    vol_ratios = [float(row['volume_ratio']) for row in results if row['volume_ratio']]
+                    avg_vol_ratio = sum(vol_ratios) / len(vol_ratios)
+                    
+                    # Convertir volume_ratio en estimation volume_quality_score
+                    if avg_vol_ratio >= 2.0:
+                        return 70.0  # Volume fort = qualité élevée
+                    elif avg_vol_ratio >= 1.5:
+                        return 50.0  # Volume modéré = qualité moyenne
+                    elif avg_vol_ratio >= 1.0:
+                        return 35.0  # Volume normal = qualité acceptable
+                    else:
+                        return 20.0  # Volume faible = qualité basse mais pas 0
+                        
+                # Fallback ultime
+                return 25.0  # Valeur conservatrice qui passe le filtre (> 15)
+                
+        except Exception as e:
+            logger.error(f"Erreur estimation volume quality {symbol}: {e}")
+            return 25.0  # Valeur safe qui passe le filtre
             
     def clear_cache(self):
         """Vide le cache du contexte."""

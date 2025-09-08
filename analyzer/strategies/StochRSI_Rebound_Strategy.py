@@ -21,11 +21,11 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Seuils StochRSI - RÉALISTES POUR CRYPTO (AJUSTÉS)
-        self.oversold_zone = 30       # Plus accessible (était 20)
-        self.overbought_zone = 70     # Plus accessible (était 80)
-        self.extreme_oversold = 15    # Zone extrême atteignable (était 8)
-        self.extreme_overbought = 85  # Zone extrême atteignable (était 92)
+        # Seuils StochRSI - RESSERREÉS POUR QUALITÉ
+        self.oversold_zone = 28       # Resserré (30 -> 28)
+        self.overbought_zone = 72     # Resserré (70 -> 72)
+        self.extreme_oversold = 15    # Zone extrême
+        self.extreme_overbought = 85  # Zone extrême
         self.neutral_low = 35         # Zone neutre basse resserrée (était 40)
         self.neutral_high = 65        # Zone neutre haute resserrée (était 60)
         
@@ -72,7 +72,8 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
             'volume_ratio': self._safe_float(self.indicators.get('volume_ratio')),
             'volume_quality_score': self._safe_float(self.indicators.get('volume_quality_score')),
             'market_regime': self.indicators.get('market_regime'),
-            'volatility_regime': self.indicators.get('volatility_regime')
+            'volatility_regime': self.indicators.get('volatility_regime'),
+            'adx_14': self._safe_float(self.indicators.get('adx_14'))
         }
         
     def generate_signal(self) -> Dict[str, Any]:
@@ -101,33 +102,14 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
-        # Vérification du volume minimum (crucial en crypto)
-        volume_ratio = values.get('volume_ratio')
-        if volume_ratio is not None and volume_ratio < self.min_volume_ratio:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Volume insuffisant ({volume_ratio:.2f}x < {self.min_volume_ratio}x)",
-                "metadata": {"strategy": self.name, "volume_ratio": volume_ratio}
-            }
-            
-        # Vérification confluence minimum
-        confluence_score = values.get('confluence_score', 0)
-        if confluence_score < self.min_confluence:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Confluence insuffisante ({confluence_score:.1f} < {self.min_confluence})",
-                "metadata": {"strategy": self.name, "confluence_score": confluence_score}
-            }
+        # SUPPRIMÉ: plus de filtres pré-rejet sur volume et confluence
+        # Volume et confluence utilisés comme bonus/pénalité seulement
             
         # Pénaliser (mais ne pas bannir) volatilité extrême
         volatility_regime = values.get('volatility_regime')
         volatility_penalty = 0.0
         if volatility_regime == 'extreme':
-            volatility_penalty = -0.12  # Pénalité au lieu de rejet total
+            volatility_penalty = -0.05  # Pénalité réduite
             
         signal_side = None
         reason = ""
@@ -167,7 +149,7 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                     confidence_boost += 0.18  # Amélioré (était 0.15)
                     
         if signal_side:
-            base_confidence = 0.35  # Base plus accessible (était 0.42)
+            base_confidence = 0.65  # Base BEAUCOUP plus élevée
             
             # Bonus MAJEUR pour divergence détectée (AMÉLIORÉ)
             stoch_divergence = values.get('stoch_divergence')
@@ -185,16 +167,15 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                 if (signal_side == "BUY" and stoch_k > stoch_d and k_d_diff >= 2.5) or \
                    (signal_side == "SELL" and stoch_k < stoch_d and k_d_diff >= 2.5):
                     confidence_boost += 0.18  # Amélioré (était 0.15)
-                    reason += f" + croisement K/D fort ({k_d_diff:.1f})"
+                    reason += " + K/D fort"
                 elif (signal_side == "BUY" and stoch_k > stoch_d and k_d_diff >= 0.8) or \
                      (signal_side == "SELL" and stoch_k < stoch_d and k_d_diff >= 0.8):
                     confidence_boost += 0.10  # Amélioré (était 0.08)
-                    reason += f" + croisement K/D"
-                # Pénalité si croisement défavorable (RÉDUITE)
+                    reason += " + K/D"
+                # Pénalité si croisement défavorable (TRÈS RÉDUITE)
                 elif (signal_side == "BUY" and stoch_k <= stoch_d) or \
                      (signal_side == "SELL" and stoch_k >= stoch_d):
-                    confidence_boost -= 0.10  # Réduit (était -0.15)
-                    reason += " mais K/D défavorable"
+                    confidence_boost -= 0.05  # Réduit de -0.10 à -0.05
                     
             # Confirmation avec RSI - SEUILS CRYPTO
             rsi_14 = values.get('rsi_14')
@@ -202,30 +183,28 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                 if signal_side == "BUY":
                     if rsi_14 <= self.rsi_oversold_strong:
                         confidence_boost += 0.20
-                        reason += f" + RSI survente FORTE ({rsi_14:.1f})"
+                        reason += " + RSI survente"
                     elif rsi_14 <= self.rsi_oversold:
                         confidence_boost += 0.12
-                        reason += f" + RSI survente ({rsi_14:.1f})"
+                        reason += " + RSI survente"
                     elif rsi_14 <= 40:  # Seuil élargi (était 35)
                         confidence_boost += 0.08  # Amélioré (était 0.06)
-                        reason += f" + RSI favorable ({rsi_14:.1f})"
-                    elif rsi_14 > 60:  # Seuil réduit (était 65)
-                        confidence_boost -= 0.15  # Pénalité réduite (était -0.20)
-                        reason += f" mais RSI élevé ({rsi_14:.1f})"
+                        reason += " + RSI"
+                    elif rsi_14 > 60:
+                        confidence_boost -= 0.05  # Pénalité très réduite
                         
                 elif signal_side == "SELL":
                     if rsi_14 >= self.rsi_overbought_strong:
                         confidence_boost += 0.20
-                        reason += f" + RSI surachat FORT ({rsi_14:.1f})"
+                        reason += " + RSI surachat"
                     elif rsi_14 >= self.rsi_overbought:
                         confidence_boost += 0.12
-                        reason += f" + RSI surachat ({rsi_14:.1f})"
+                        reason += " + RSI surachat"
                     elif rsi_14 >= 60:  # Seuil réduit (était 65)
                         confidence_boost += 0.08  # Amélioré (était 0.06)
-                        reason += f" + RSI favorable ({rsi_14:.1f})"
-                    elif rsi_14 < 40:  # Seuil élargi (était 35)
-                        confidence_boost -= 0.15  # Pénalité réduite (était -0.20)
-                        reason += f" mais RSI faible ({rsi_14:.1f})"
+                        reason += " + RSI"
+                    elif rsi_14 < 40:
+                        confidence_boost -= 0.05  # Pénalité très réduite
                     
             # Utilisation du momentum_score - SEUILS CRYPTO
             momentum_score = values.get('momentum_score', 50)
@@ -233,24 +212,34 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                 if signal_side == "BUY":
                     if momentum_score >= self.momentum_strong_bull:
                         confidence_boost += 0.18
-                        reason += f" + momentum TRÈS haussier ({momentum_score:.0f})"
+                        reason += " + momentum"
                     elif momentum_score >= self.momentum_bullish:
                         confidence_boost += 0.10
-                        reason += f" + momentum haussier ({momentum_score:.0f})"
-                    elif momentum_score < self.momentum_bearish:
-                        confidence_boost -= 0.12  # Pénalité réduite (était -0.18)
-                        reason += f" mais momentum baissier ({momentum_score:.0f})"
+                        reason += " + momentum"
+                    elif momentum_score < 40:  # Rejet momentum contradictoire
+                        return {
+                            "side": None,
+                            "confidence": 0.0,
+                            "strength": "weak",
+                            "reason": f"Rejet StochRSI BUY: momentum trop faible ({momentum_score:.0f})",
+                            "metadata": {"strategy": self.name, "stoch_rsi": stoch_rsi, "momentum_score": momentum_score}
+                        }
                         
                 elif signal_side == "SELL":
                     if momentum_score <= self.momentum_strong_bear:
                         confidence_boost += 0.18
-                        reason += f" + momentum TRÈS baissier ({momentum_score:.0f})"
+                        reason += " + momentum"
                     elif momentum_score <= self.momentum_bearish:
                         confidence_boost += 0.10
-                        reason += f" + momentum baissier ({momentum_score:.0f})"
-                    elif momentum_score > self.momentum_bullish:
-                        confidence_boost -= 0.12  # Pénalité réduite (était -0.18)
-                        reason += f" mais momentum haussier ({momentum_score:.0f})"
+                        reason += " + momentum"
+                    elif momentum_score > 60:  # Rejet momentum contradictoire
+                        return {
+                            "side": None,
+                            "confidence": 0.0,
+                            "strength": "weak",
+                            "reason": f"Rejet StochRSI SELL: momentum trop fort ({momentum_score:.0f})",
+                            "metadata": {"strategy": self.name, "stoch_rsi": stoch_rsi, "momentum_score": momentum_score}
+                        }
                     
             # Utilisation du trend_strength - BONUS AJUSTÉS
             trend_strength = values.get('trend_strength')
@@ -258,16 +247,16 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                 trend_str = str(trend_strength).lower()
                 if trend_str in ['extreme', 'very_strong']:
                     confidence_boost += 0.25  # Bonus majeur pour tendance extrême
-                    reason += f" + tendance {trend_str}"
+                    reason += " + tendance"
                 elif trend_str == 'strong':
                     confidence_boost += 0.15
-                    reason += f" + tendance forte"
+                    reason += " + tendance"
                 elif trend_str == 'moderate':
                     confidence_boost += 0.08
-                    reason += f" + tendance modérée"
+                    reason += " + tendance"
                 elif trend_str in ['weak', 'absent']:
                     confidence_boost -= 0.08  # Pénalité réduite (était -0.12)
-                    reason += f" mais tendance {trend_str}"
+                    pass  # Tendance faible
                 
             # Utilisation du directional_bias - CRITIQUE EN CRYPTO
             directional_bias = values.get('directional_bias')
@@ -276,26 +265,39 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                 if (signal_side == "BUY" and bias_upper == "BULLISH") or \
                    (signal_side == "SELL" and bias_upper == "BEARISH"):
                     confidence_boost += 0.15  # Bonus important si aligné
-                    reason += f" + bias {bias_upper} aligné"
-                elif (signal_side == "BUY" and bias_upper == "BEARISH") or \
-                     (signal_side == "SELL" and bias_upper == "BULLISH"):
-                    confidence_boost -= 0.12  # Pénalité réduite (était -0.18)
-                    reason += f" mais bias contraire ({bias_upper})"
+                    reason += " + bias"
+                elif signal_side == "BUY" and bias_upper == "BEARISH":
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": "Rejet StochRSI BUY: bias contraire (BEARISH)",
+                        "metadata": {"strategy": self.name, "stoch_rsi": stoch_rsi, "directional_bias": directional_bias}
+                    }
+                elif signal_side == "SELL" and bias_upper == "BULLISH":
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": "Rejet StochRSI SELL: bias contraire (BULLISH)",
+                        "metadata": {"strategy": self.name, "stoch_rsi": stoch_rsi, "directional_bias": directional_bias}
+                    }
                     
-            # Utilisation du confluence_score - SEUILS STRICTS
-            if confluence_score:
-                if confluence_score >= 75:
-                    confidence_boost += 0.25
-                    reason += f" + confluence EXCELLENTE ({confluence_score:.0f})"
-                elif confluence_score >= self.strong_confluence:
-                    confidence_boost += 0.15
-                    reason += f" + confluence forte ({confluence_score:.0f})"
-                elif confluence_score >= 55:
-                    confidence_boost += 0.08
-                    reason += f" + confluence correcte ({confluence_score:.0f})"
-                elif confluence_score < 45:  # Seuil réduit (était 50)
-                    confidence_boost -= 0.08  # Pénalité réduite (était -0.12)
-                    reason += f" mais confluence faible ({confluence_score:.0f})"
+            # Confluence plus stricte - rejet <40
+            if confluence_score and confluence_score < 40:
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Rejet StochRSI: confluence insuffisante ({confluence_score:.0f})",
+                    "metadata": {"strategy": self.name, "stoch_rsi": stoch_rsi, "confluence_score": confluence_score}
+                }
+            # Bonus confluence si bonne
+            if confluence_score >= 60:
+                confidence_boost += 0.20
+                reason += " + confluence"
+            elif confluence_score >= 45:
+                confidence_boost += 0.10
                 
             # Utilisation du signal_strength pré-calculé
             signal_strength_calc = values.get('signal_strength')
@@ -311,17 +313,18 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                     confidence_boost -= 0.05  # Pénalité réduite (était -0.08)
                     reason += " mais signal faible"
                     
-            # Volume confirmation - CRITIQUE EN CRYPTO
+            # Volume plus strict - neutre ≥1.0
+            volume_ratio = values.get('volume_ratio')
             if volume_ratio is not None:
-                if volume_ratio >= 1.8:  # Seuil réduit (était 2.0)
-                    confidence_boost += 0.22  # Amélioré (était 0.20)
-                    reason += f" + volume exceptionnel ({volume_ratio:.1f}x)"
-                elif volume_ratio >= 1.3:  # Seuil réduit (était 1.5)
-                    confidence_boost += 0.15  # Amélioré (était 0.12)
-                    reason += f" + volume élevé ({volume_ratio:.1f}x)"
-                elif volume_ratio >= 0.8:  # Seuil réduit (était 1.0)
-                    confidence_boost += 0.08  # Amélioré (était 0.05)
-                    reason += f" + volume correct ({volume_ratio:.1f}x)"
+                if volume_ratio >= 1.8:  # Volume fort
+                    confidence_boost += 0.25
+                    reason += " + volume"
+                elif volume_ratio >= 1.3:  # Volume élevé
+                    confidence_boost += 0.15
+                elif volume_ratio >= 1.0:  # Volume neutre
+                    pass  # Pas de bonus/malus
+                else:  # Volume faible = pénalité
+                    confidence_boost -= 0.08
                     
             # Volume quality (AJUSTÉ)
             volume_quality_score = values.get('volume_quality_score')
@@ -329,40 +332,42 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                 confidence_boost += 0.10  # Amélioré (était 0.08)
                 reason += " + volume HQ"
                 
-            # Régime de marché
+            # Filtre ADX pour StochRSI
+            adx_14 = values.get('adx_14')
+            if adx_14:
+                if adx_14 < 15:  # Range trop mou
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet StochRSI: ADX trop faible ({adx_14:.0f}) - range mou",
+                        "metadata": {"strategy": self.name, "stoch_rsi": stoch_rsi, "adx_14": adx_14}
+                    }
+                elif adx_14 > 40:  # Tendance trop forte = StochRSI trompeur
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet StochRSI: ADX trop fort ({adx_14:.0f}) - tendance trop forte",
+                        "metadata": {"strategy": self.name, "stoch_rsi": stoch_rsi, "adx_14": adx_14}
+                    }
+            
+            # Market regime bonus - StochRSI EXCELLENT en ranging
             market_regime = values.get('market_regime')
-            if market_regime:
-                if signal_side == "BUY" and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]:
-                    confidence_boost += 0.12
-                    reason += f" ({market_regime})"
-                elif signal_side == "SELL" and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]:
-                    confidence_boost += 0.12
-                    reason += f" ({market_regime})"
-                elif market_regime == "VOLATILE":
-                    confidence_boost -= 0.07  # Pénalité réduite (était -0.10)
-                    reason += " (marché volatile)"
-                elif market_regime == "RANGING" and stoch_rsi not in [self.extreme_oversold, self.extreme_overbought]:
-                    confidence_boost -= 0.03  # Pénalité réduite (était -0.05)
+            if market_regime == 'RANGING':
+                confidence_boost += 0.20
+                reason += " + ranging"
+            elif market_regime in ['TRENDING_BULL', 'TRENDING_BEAR']:
+                confidence_boost += 0.05
+            elif market_regime == 'VOLATILE':
+                confidence_boost -= 0.05
                     
             # Filtre final - seuil accessible pour StochRSI
             # Appliquer pénalité volatilité
             confidence_boost += volatility_penalty
             
+            # SUPPRIMÉ: plus de filtre de rejet final - laisser aggregator décider
             raw_confidence = base_confidence * (1 + confidence_boost)
-            if raw_confidence < 0.35:  # Seuil réduit (était 0.45)
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Signal StochRSI rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.35)",
-                    "metadata": {
-                        "strategy": self.name,
-                        "symbol": self.symbol,
-                        "rejected_signal": signal_side,
-                        "raw_confidence": raw_confidence,
-                        "stoch_rsi": stoch_rsi
-                    }
-                }
             
             confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
             strength = self.get_strength_from_confidence(confidence)

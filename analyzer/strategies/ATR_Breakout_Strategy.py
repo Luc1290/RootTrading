@@ -5,29 +5,34 @@ ATR_Breakout_Strategy - Stratégie basée sur les breakouts avec volatilité ATR
 from typing import Dict, Any, Optional
 from .base_strategy import BaseStrategy
 import logging
+import math
 
 logger = logging.getLogger(__name__)
 
 
 class ATR_Breakout_Strategy(BaseStrategy):
     """
-    Stratégie utilisant ATR et volatilité pour identifier les breakouts.
+    Stratégie PURE BREAKOUT utilisant ATR pour détecter les cassures de niveaux.
     
     Signaux générés:
-    - BUY: Prix près des résistances avec volatilité élevée + breakout potentiel
-    - SELL: Prix près des supports avec volatilité élevée + breakdown potentiel
+    - BUY: Prix casse résistance avec ATR élevé (>50 percentile) + momentum haussier
+    - SELL: Prix casse support avec ATR élevé (>50 percentile) + momentum baissier
+    
+    Pas de reversion/rejet - uniquement continuation de breakout.
     """
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres ATR et volatilité
-        self.atr_multiplier = 1.2      # Multiplicateur ATR pour breakout  
-        self.volatility_threshold = 0.25 # Seuil volatilité (percentile) - 25% pour plus de signaux
-        self.resistance_proximity = 0.05 # 5% de proximité aux niveaux - zone élargie
-        self.support_proximity = 0.05   # 5% de proximité aux niveaux - zone élargie
-        # Paramètres de tendance
-        self.trend_filter_enabled = False  # Désactiver le filtre de tendance pour plus de signaux
-        self.min_trend_strength = 0.15    # Force minimum de tendance ADX
+        # Paramètres ATR et volatilité DURCIS pour vrais breakouts
+        self.atr_multiplier = 1.5          # Multiplicateur ATR pour zone de breakout  
+        self.volatility_threshold = 0.50   # Seuil volatilité 50% minimum (percentile)
+        self.resistance_proximity = 0.02   # 2% de proximité maximum (crypto précis)
+        self.support_proximity = 0.02      # 2% de proximité maximum
+        self.breakout_zone_ratio = 0.015   # 1.5% max zone breakout (limite zone ATR)
+        # Paramètres de tendance - ACTIVÉS pour filtrer
+        self.trend_filter_enabled = True   # Filtre activé pour cohérence
+        self.min_trend_strength = 0.20     # Force minimum de tendance pour breakout
+        self.min_adx_breakout = 20          # ADX minimum pour breakout valide
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs ATR."""
@@ -51,15 +56,10 @@ class ATR_Breakout_Strategy(BaseStrategy):
             'momentum_score': self.indicators.get('momentum_score'),
             'signal_strength': self.indicators.get('signal_strength'),
             'confluence_score': self.indicators.get('confluence_score'),
-            # Indicateurs de tendance
+            # Indicateurs de tendance (actifs seulement)
             'market_regime': self.indicators.get('market_regime'),
-            'regime_strength': self.indicators.get('regime_strength'),
-            'trend_strength': self.indicators.get('trend_strength'),
             'trend_alignment': self.indicators.get('trend_alignment'),
-            'adx_14': self.indicators.get('adx_14'),
-            'ema_26': self.indicators.get('ema_26'),
-            'ema_50': self.indicators.get('ema_50'),
-            'macd_trend': self.indicators.get('macd_trend')
+            'adx_14': self.indicators.get('adx_14')  # Utilisé pour validation tendance
         }
         
     def _get_current_price(self) -> Optional[float]:
@@ -87,10 +87,18 @@ class ATR_Breakout_Strategy(BaseStrategy):
         values = self._get_current_values()
         current_price = self._get_current_price()
         
-        # Vérification des indicateurs essentiels
+        # Helper pour valider les nombres (anti-NaN)
+        def _is_valid(x):
+            try:
+                x = float(x) if x is not None else None
+                return x is not None and not math.isnan(x)
+            except (TypeError, ValueError):
+                return False
+        
+        # Vérification des indicateurs essentiels avec protection NaN
         try:
-            atr = float(values['atr_14']) if values['atr_14'] is not None else None
-            atr_percentile = float(values['atr_percentile']) if values['atr_percentile'] is not None else None
+            atr = float(values['atr_14']) if _is_valid(values['atr_14']) else None
+            atr_percentile = float(values['atr_percentile']) if _is_valid(values['atr_percentile']) else None
             volatility_regime = values.get('volatility_regime')
         except (ValueError, TypeError) as e:
             return {
@@ -101,22 +109,22 @@ class ATR_Breakout_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
-        if atr is None or current_price is None:
+        if not (_is_valid(atr) and _is_valid(current_price)):
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": "ATR ou prix non disponibles",
+                "reason": "Valeurs ATR ou prix invalides/NaN",
                 "metadata": {"strategy": self.name}
             }
             
-        # Vérification de la volatilité - on veut une volatilité suffisante pour les breakouts
+        # Vérification de la volatilité - SEUIL DURCI pour vrais breakouts
         if atr_percentile is not None and atr_percentile < self.volatility_threshold:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Volatilité insuffisante ({atr_percentile:.2f}) - pas de setup breakout",
+                "reason": f"Volatilité insuffisante ({atr_percentile:.2f}) < {self.volatility_threshold} - ATR trop faible pour breakout",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
@@ -134,22 +142,33 @@ class ATR_Breakout_Strategy(BaseStrategy):
         
         signal_side = None
         reason = ""
-        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
+        base_confidence = 0.65  # Standardisé à 0.65 pour équité avec autres stratégies
         confidence_boost = 0.0
         proximity_type = None
         
-        # Filtre de tendance global
+        # Filtre de tendance OBLIGATOIRE pour breakouts cohérents
         market_regime = values.get('market_regime')
-        trend_strength = values.get('trend_strength')
         trend_alignment = values.get('trend_alignment')
         adx_value = values.get('adx_14')
         
-        # Déterminer la tendance principale
+        # Déterminer la tendance principale - OBLIGATOIRE pour breakouts
         is_uptrend = False
         is_downtrend = False
         trend_confirmed = False
         
-        if self.trend_filter_enabled and market_regime:
+        # Validation ADX pour confirmer force de tendance
+        if _is_valid(adx_value):
+            adx_val = float(adx_value)
+            if adx_val < self.min_adx_breakout:
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"ADX trop faible ({adx_val:.1f}) - pas de force pour breakout",
+                    "metadata": {"strategy": self.name}
+                }
+        
+        if market_regime:
             if market_regime == 'TRENDING_BULL':
                 is_uptrend = True
                 trend_confirmed = True
@@ -157,40 +176,58 @@ class ATR_Breakout_Strategy(BaseStrategy):
                 is_downtrend = True
                 trend_confirmed = True
             elif market_regime in ['RANGING', 'TRANSITION']:
-                # En range, on peut trader les deux côtés des niveaux
-                trend_confirmed = False
+                # En ranging, pas de breakout - on attend une tendance
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Marché en range ({market_regime}) - pas de breakout possible",
+                    "metadata": {"strategy": self.name}
+                }
         
-        # Vérification supplémentaire avec trend_alignment (format DÉCIMAL DB: -1.0 à 1.0)
-        if trend_alignment is not None:
+        # Vérification trend_alignment pour renforcer la détection
+        if trend_alignment is not None and _is_valid(trend_alignment):
             try:
                 align_val = float(trend_alignment)
-                if align_val > 0.2:  # Tendance haussière (>0.2 = 20%)
-                    is_uptrend = True
-                elif align_val < -0.2:  # Tendance baissière (<-0.2 = -20%)
-                    is_downtrend = True
+                if align_val > 0.2:  # Tendance haussière confirmée
+                    if not is_uptrend:  # Si pas déjà détecté par regime
+                        is_uptrend = True
+                        trend_confirmed = True
+                elif align_val < -0.2:  # Tendance baissière confirmée
+                    if not is_downtrend:
+                        is_downtrend = True
+                        trend_confirmed = True
             except (ValueError, TypeError):
                 pass
         
-        # Analyse de proximité aux niveaux clés avec logique adaptée à la tendance
+        # Pas de tendance détectée = pas de breakout
+        if not trend_confirmed:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": "Aucune tendance claire détectée - breakout impossible",
+                "metadata": {"strategy": self.name}
+            }
+        
+        # PURE BREAKOUT - Zone limitée (ATR + ratio max)
+        breakout_zone_atr = atr * self.atr_multiplier  # Zone ATR
+        breakout_zone_max = current_price * self.breakout_zone_ratio  # 1.5% max du prix
+        breakout_zone = min(breakout_zone_atr, breakout_zone_max)  # Prendre le plus petit
+        
         if nearest_resistance is not None:
             try:
                 resistance_level = float(nearest_resistance)
-                distance_to_resistance = abs(current_price - resistance_level) / current_price
+                distance_to_resistance = (current_price - resistance_level) / current_price
                 
-                if distance_to_resistance <= self.resistance_proximity:
-                    # Logique adaptée selon la tendance et la volatilité
-                    if is_uptrend and atr_percentile and atr_percentile > 50:
-                        # En tendance haussière + volatilité élevée : breakout haussier probable
+                # BREAKOUT HAUSSIER : Prix AU-DESSUS de la résistance + zone ATR
+                if is_uptrend and distance_to_resistance > 0 and distance_to_resistance <= self.resistance_proximity:
+                    # Vérifier si on est dans la zone de breakout limitée
+                    if current_price > resistance_level and current_price <= (resistance_level + breakout_zone):
                         signal_side = "BUY"
-                        proximity_type = "resistance"
-                        reason = f"Breakout haussier de résistance {resistance_level:.2f} (ATR: {atr:.4f})"
-                        confidence_boost += 0.15  # Confiance modérée pour breakout
-                    elif is_downtrend or (not trend_confirmed):
-                        # En tendance baissière ou range : rejet de résistance
-                        signal_side = "SELL"
-                        proximity_type = "resistance"
-                        reason = f"Rejet de résistance {resistance_level:.2f} (ATR: {atr:.4f})"
-                        confidence_boost += 0.12  # Confiance pour rejet
+                        proximity_type = "resistance_breakout"
+                        reason = f"BREAKOUT résistance {resistance_level:.2f} cassée (Prix: {current_price:.2f}, ATR: {atr:.4f})"
+                        confidence_boost += 0.20  # Confiance élevée pour vrai breakout
                     
                     # Bonus si résistance forte
                     if resistance_strength is not None and signal_side:
@@ -207,22 +244,16 @@ class ATR_Breakout_Strategy(BaseStrategy):
         if signal_side is None and nearest_support is not None:
             try:
                 support_level = float(nearest_support)
-                distance_to_support = abs(current_price - support_level) / current_price
+                distance_to_support = (support_level - current_price) / current_price
                 
-                if distance_to_support <= self.support_proximity:
-                    # Logique adaptée selon la tendance et la volatilité
-                    if is_downtrend and atr_percentile and atr_percentile > 50:
-                        # En tendance baissière + volatilité élevée : breakdown baissier probable
+                # BREAKOUT BAISSIER : Prix EN-DESSOUS du support + zone ATR
+                if is_downtrend and distance_to_support > 0 and distance_to_support <= self.support_proximity:
+                    # Vérifier si on est dans la zone de breakout limitée
+                    if current_price < support_level and current_price >= (support_level - breakout_zone):
                         signal_side = "SELL"
-                        proximity_type = "support"
-                        reason = f"Breakdown baissier de support {support_level:.2f} (ATR: {atr:.4f})"
-                        confidence_boost += 0.15  # Confiance modérée pour breakdown
-                    elif is_uptrend or (not trend_confirmed):
-                        # En tendance haussière ou range : rebond sur support
-                        signal_side = "BUY"
-                        proximity_type = "support"
-                        reason = f"Rebond sur support {support_level:.2f} (ATR: {atr:.4f})"
-                        confidence_boost += 0.12  # Confiance pour rebond
+                        proximity_type = "support_breakout"
+                        reason = f"BREAKOUT support {support_level:.2f} cassé (Prix: {current_price:.2f}, ATR: {atr:.4f})"
+                        confidence_boost += 0.20  # Confiance élevée pour vrai breakout
                     
                     # Bonus si support fort
                     if support_strength is not None and signal_side:
@@ -236,13 +267,13 @@ class ATR_Breakout_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Pas de proximité détectée
+        # Pas de breakout détecté
         if signal_side is None:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": "Prix pas proche des niveaux clés pour breakout",
+                "reason": "Pas de breakout actif - prix hors zones de cassure",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
@@ -253,20 +284,21 @@ class ATR_Breakout_Strategy(BaseStrategy):
                 }
             }
             
-        # Ajustements de confiance selon l'ATR
+        # Ajustements de confiance selon l'ATR - SEUILS DURCIS
         if atr_percentile is not None:
             if atr_percentile >= 80:
-                confidence_boost += 0.12
-                reason += " - volatilité extrême"
-            elif atr_percentile >= 60:
-                confidence_boost += 0.08
-                reason += " - volatilité élevée"
-            else:
+                confidence_boost += 0.15
+                reason += " - volatilité EXTRÊME parfaite pour breakout"
+            elif atr_percentile >= 65:
+                confidence_boost += 0.10
+                reason += " - volatilité élevée favorable"
+            elif atr_percentile >= 50:
                 confidence_boost += 0.05
-                reason += " - volatilité modérée"
+                reason += " - volatilité suffisante"
+            # Pas de bonus si < 50% (déjà filtré avant)
                 
-        # CORRECTION MAGISTRALE: Régime volatilité ATR avec seuils adaptatifs
-        if volatility_regime is not None and atr_percentile is not None:
+        # Régime volatilité ATR avec seuils adaptatifs
+        if volatility_regime is not None and _is_valid(atr_percentile):
             try:
                 atr_percentile = float(atr_percentile)
                 
@@ -363,9 +395,9 @@ class ATR_Breakout_Strategy(BaseStrategy):
             confidence_boost += 0.06
             reason += " avec BB expansion"
                 
-        # Break probability
+        # Break probability avec validation NaN
         break_probability = values.get('break_probability')
-        if break_probability is not None:
+        if break_probability is not None and _is_valid(break_probability):
             try:
                 break_prob = float(break_probability)
                 if break_prob > 0.6:
@@ -374,15 +406,36 @@ class ATR_Breakout_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Momentum pour confirmation de direction (format 0-100, 50=neutre)
+        # Momentum OBLIGATOIRE pour confirmer breakout - REJET si contraire
         momentum_score = values.get('momentum_score')
-        if momentum_score is not None:
+        if momentum_score is not None and _is_valid(momentum_score):
             try:
                 momentum = float(momentum_score)
-                if (signal_side == "BUY" and momentum > 55) or \
-                   (signal_side == "SELL" and momentum < 45):
-                    confidence_boost += 0.1
-                    reason += " avec momentum favorable"
+                # Rejet immédiat si momentum contraire au breakout
+                if signal_side == "BUY" and momentum <= 50:
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet breakout haussier : momentum trop faible ({momentum:.0f})",
+                        "metadata": {"strategy": self.name, "momentum_score": momentum}
+                    }
+                elif signal_side == "SELL" and momentum >= 50:
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet breakout baissier : momentum trop fort ({momentum:.0f})",
+                        "metadata": {"strategy": self.name, "momentum_score": momentum}
+                    }
+                
+                # Bonus si momentum aligné
+                if signal_side == "BUY" and momentum > 60:
+                    confidence_boost += 0.15
+                    reason += f" + momentum FORT haussier ({momentum:.0f})"
+                elif signal_side == "SELL" and momentum < 40:
+                    confidence_boost += 0.15
+                    reason += f" + momentum FORT baissier ({momentum:.0f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -398,7 +451,7 @@ class ATR_Breakout_Strategy(BaseStrategy):
                 reason += " + signal modéré"
                 
         confluence_score = values.get('confluence_score')
-        if confluence_score is not None:
+        if confluence_score is not None and _is_valid(confluence_score):
             try:
                 confluence = float(confluence_score)
                 if confluence > 60:
@@ -410,7 +463,8 @@ class ATR_Breakout_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
+        # Clamp confiance dans [0,1] pour éviter explosion
+        confidence = max(0.0, min(1.0, self.calculate_confidence(base_confidence, 1 + confidence_boost)))
         strength = self.get_strength_from_confidence(confidence)
         
         return {
@@ -435,8 +489,7 @@ class ATR_Breakout_Strategy(BaseStrategy):
                 "momentum_score": momentum_score,
                 "confluence_score": confluence_score,
                 "market_regime": market_regime,
-                "trend_alignment": trend_alignment,
-                "trend_strength": trend_strength
+                "trend_alignment": trend_alignment
             }
         }
         

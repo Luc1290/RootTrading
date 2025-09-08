@@ -33,23 +33,24 @@ class TRIX_Crossover_Strategy(BaseStrategy):
         super().__init__(symbol, data, indicators)
         
         # Paramètres TRIX simulé AJUSTÉS - Zone neutre réduite
-        self.trix_bullish_threshold = 0.01      # Seuil haussier > 0.01% (moins strict)
-        self.trix_bearish_threshold = -0.01     # Seuil baissier < -0.01% (moins strict) 
-        self.neutral_zone = 0.008               # Zone neutre ±0.008% pour éviter le bruit
-        self.strong_trix_threshold = 0.05       # TRIX fort > 0.05% (réduit)
-        self.extreme_trix_threshold = 0.15      # TRIX extrême > 0.15% (relevé)
+        self.trix_bullish_threshold = 0.007     # Seuil haussier durci à 0.7% (moins de bruit)
+        self.trix_bearish_threshold = -0.007    # Seuil baissier durci à -0.7%
+        self.neutral_zone = 0.005               # Zone neutre élargie à 0.5% (filtre bruit)
+        self.strong_trix_threshold = 0.02       # TRIX fort réduit de 5% à 2%
+        self.extreme_trix_threshold = 0.08      # TRIX extrême réduit de 15% à 8%
         
         # Paramètres crossover signal line
         self.signal_line_crossover = True       # Utiliser DEMA comme signal line
-        self.min_tema_dema_separation = 0.005   # Séparation minimum TEMA/DEMA (5x plus strict)
+        self.min_tema_dema_separation = 0.001   # Séparation réduite de 0.5% à 0.1%
         
         # Paramètres momentum confirmation
         self.momentum_alignment_required = True  # Momentum doit être aligné
-        self.min_roc_confirmation = 0.005       # ROC minimum pour confirmation (format décimal)
+        self.min_roc_confirmation = 0.002       # ROC minimum réduit de 0.5% à 0.2%
         
         # Paramètres filtrage  
-        self.min_trend_strength = 'WEAK'        # Trend strength minimum (STRING format schéma DB)
-        self.volume_confirmation_threshold = 1.1 # Volume confirmation
+        self.min_trend_strength = 'MODERATE'    # Trend strength minimum plus strict
+        self.volume_confirmation_threshold = 1.4 # Volume confirmation durci
+        self.strong_volume_threshold = 2.0      # Volume fort pour bonus major
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
@@ -109,15 +110,16 @@ class TRIX_Crossover_Strategy(BaseStrategy):
         try:
             tema_val = float(tema_12)
             
-            # Approximation TRIX avec ROC sur TEMA
+            # Approximation TRIX avec ROC sur TEMA (priorité ROC)
             if roc_10 is not None:
                 roc_val = float(roc_10)
                 # ROC déjà en format décimal, utiliser directement
                 trix_proxy = roc_val  # ROC en format décimal
             elif momentum_10 is not None:
-                # Alternative avec momentum
+                # Alternative avec momentum - convertir en format décimal cohérent
                 momentum_val = float(momentum_10)
-                trix_proxy = momentum_val / 1000  # Normaliser momentum
+                # Momentum normalisé pour être cohérent avec ROC (format décimal)
+                trix_proxy = momentum_val / 100.0  # Normalisation cohérente
             else:
                 return {'trix_value': None, 'trix_direction': None, 'trix_strength': 0}
                 
@@ -210,13 +212,20 @@ class TRIX_Crossover_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum_val = float(momentum_score)
-                # momentum_score format 0-100, 50=neutre - SEUILS PLUS STRICTS
-                if trix_direction in ['bullish', 'strong_bullish', 'extreme_bullish'] and momentum_val > 55:  # Plus strict
-                    alignment_score += 0.20  # Réduit de 0.3
-                    alignment_indicators.append(f"Momentum haussier ({momentum_val:.1f})")
-                elif trix_direction in ['bearish', 'strong_bearish', 'extreme_bearish'] and momentum_val < 45:  # Plus strict
-                    alignment_score += 0.20  # Réduit de 0.3
-                    alignment_indicators.append(f"Momentum baissier ({momentum_val:.1f})")
+                # momentum_score format 0-100, 50=neutre - SEUILS ULTRA STRICTS
+                # BUY impossible si momentum <45, SELL impossible si >55
+                if trix_direction in ['bullish', 'strong_bullish', 'extreme_bullish']:
+                    if momentum_val < 45:  # Momentum trop faible pour BUY
+                        return {'is_aligned': False, 'score': 0, 'indicators': [f"Momentum trop faible pour BUY ({momentum_val:.1f})"]}
+                    elif momentum_val > 60:  # Seuil plus strict
+                        alignment_score += 0.20
+                        alignment_indicators.append(f"Momentum haussier ({momentum_val:.1f})")
+                elif trix_direction in ['bearish', 'strong_bearish', 'extreme_bearish']:
+                    if momentum_val > 55:  # Momentum trop fort pour SELL
+                        return {'is_aligned': False, 'score': 0, 'indicators': [f"Momentum trop fort pour SELL ({momentum_val:.1f})"]}
+                    elif momentum_val < 40:  # Seuil plus strict
+                        alignment_score += 0.20
+                        alignment_indicators.append(f"Momentum baissier ({momentum_val:.1f})")
             except (ValueError, TypeError):
                 pass
                 
@@ -229,21 +238,19 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                 alignment_score += 0.18  # Réduit de 0.25
                 alignment_indicators.append("Bias directionnel baissier")
                 
-        # Trend strength confirmation (format STRING selon schéma DB)
+        # Trend strength confirmation - score neutre si WEAK
         if trend_strength is not None:
-            # trend_strength: WEAK/MODERATE/STRONG/VERY_STRONG - RÉDUIT
+            # trend_strength: WEAK/MODERATE/STRONG/VERY_STRONG
             if trend_strength == 'VERY_STRONG':
-                alignment_score += 0.18  # Réduit de 0.25
+                alignment_score += 0.18
                 alignment_indicators.append(f"Trend très forte ({trend_strength})")
             elif trend_strength == 'STRONG':
-                alignment_score += 0.14  # Réduit de 0.2
+                alignment_score += 0.14
                 alignment_indicators.append(f"Trend forte ({trend_strength})")
             elif trend_strength == 'MODERATE':
-                alignment_score += 0.10  # Réduit de 0.15
+                alignment_score += 0.10
                 alignment_indicators.append(f"Trend modérée ({trend_strength})")
-            elif trend_strength == 'WEAK':
-                alignment_score += 0.06  # Réduit de 0.1
-                alignment_indicators.append(f"Trend faible ({trend_strength})")
+            # WEAK ne donne plus de bonus (score neutre)
                 
         # ROC confirmation
         roc_10 = values.get('roc_10')
@@ -322,6 +329,34 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                     "alignment_score": alignment_data['score']
                 }
             }
+        
+        # NOUVEAU: Rejet si bias directionnel contradictoire
+        directional_bias = values.get('directional_bias')
+        if directional_bias:
+            if trix_direction in ['bullish', 'strong_bullish', 'extreme_bullish'] and directional_bias == 'BEARISH':
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Rejet TRIX BUY: bias contradictoire ({directional_bias})",
+                    "metadata": {
+                        "strategy": self.name,
+                        "trix_direction": trix_direction,
+                        "directional_bias": directional_bias
+                    }
+                }
+            elif trix_direction in ['bearish', 'strong_bearish', 'extreme_bearish'] and directional_bias == 'BULLISH':
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Rejet TRIX SELL: bias contradictoire ({directional_bias})",
+                    "metadata": {
+                        "strategy": self.name,
+                        "trix_direction": trix_direction,
+                        "directional_bias": directional_bias
+                    }
+                }
             
         # Générer signal selon direction TRIX - INCLUANT NOUVEAUX NIVEAUX
         signal_side = None
@@ -339,8 +374,8 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
-        # Calculer confidence - BASE RÉDUITE pour indicateur simulé
-        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
+        # Calculer confidence - BASE AUGMENTÉE pour passer le filtre aggregator
+        base_confidence = 0.65  # Augmenté pour atteindre 0.60 minimum avec bonus
         confidence_boost = 0.0
         
         # Score TRIX strength - RÉDUIT
@@ -361,57 +396,55 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                 confidence_boost += crossover_data['strength'] * 0.15  # Réduit de 0.2
                 reason += " + crossover signal line"
                 
-        # Volume confirmation
+        # Volume confirmation - seuils durcis
         volume_ratio = values.get('volume_ratio')
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio >= self.volume_confirmation_threshold:
-                    confidence_boost += 0.08  # Réduit de 0.1
+                if vol_ratio >= self.strong_volume_threshold:  # ≥2.0x
+                    confidence_boost += 0.12  # Bonus major pour volume fort
+                    reason += f" + volume fort ({vol_ratio:.1f}x)"
+                elif vol_ratio >= self.volume_confirmation_threshold:  # ≥1.4x
+                    confidence_boost += 0.07  # Bonus mineur
                     reason += f" + volume ({vol_ratio:.1f}x)"
             except (ValueError, TypeError):
                 pass
                 
-        # MACD confluence
-        macd_line = values.get('macd_line')
-        if macd_line is not None:
+        # MACD histogram seulement (éviter redondance avec TRIX)
+        macd_histogram = values.get('macd_histogram')
+        if macd_histogram is not None:
             try:
-                macd_val = float(macd_line)
-                if ((signal_side == "BUY" and macd_val > 0) or
-                    (signal_side == "SELL" and macd_val < 0)):
-                    confidence_boost += 0.07  # Réduit de 0.1
-                    reason += " + MACD aligné"
+                hist_val = float(macd_histogram)
+                if ((signal_side == "BUY" and hist_val > 0.001) or  # Seuil significatif
+                    (signal_side == "SELL" and hist_val < -0.001)):
+                    confidence_boost += 0.06  # Bonus réduit
+                    reason += " + MACD histogram"
             except (ValueError, TypeError):
                 pass
                 
-        # Confluence score
+        # Confluence score - rejet si trop faible
         confluence_score = values.get('confluence_score')
         if confluence_score is not None:
             try:
                 conf_val = float(confluence_score)
-                if conf_val > 75:  # Seuil plus strict
-                    confidence_boost += 0.08  # Réduit de 0.1
+                if conf_val < 40:  # NOUVEAU: Rejet confluence faible
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet TRIX: confluence trop faible ({conf_val:.1f})",
+                        "metadata": {
+                            "strategy": self.name,
+                            "confluence_score": conf_val,
+                            "trix_direction": trix_direction
+                        }
+                    }
+                elif conf_val > 75:  # Bonus seulement si très élevé
+                    confidence_boost += 0.08
                     reason += " + haute confluence"
             except (ValueError, TypeError):
                 pass
                 
-        # NOUVEAU: Filtre final - rejeter si confidence insuffisante
-        raw_confidence = base_confidence * (1.0 + confidence_boost)
-        if raw_confidence < 0.35:  # Seuil minimum 35% pour TRIX simulé
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Signal TRIX rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.35)",
-                "metadata": {
-                    "strategy": self.name,
-                    "symbol": self.symbol,
-                    "rejected_signal": signal_side,
-                    "raw_confidence": raw_confidence,
-                    "trix_value": trix_data['trix_value'],
-                    "trix_direction": trix_direction
-                }
-            }
         
         confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)

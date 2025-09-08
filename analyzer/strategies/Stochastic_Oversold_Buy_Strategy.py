@@ -26,11 +26,11 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres Stochastic OPTIMISÉS - Plus stricts
-        self.oversold_threshold = 30  # Seuil de survente plus strict (30 au lieu de 20)
-        self.exit_oversold_threshold = 22  # Seuil de sortie réduit (22 au lieu de 25)
-        self.overbought_threshold = 80  # Seuil de surachat (pour éviter les entrées)
-        self.min_crossover_separation = 3  # Distance minimum relevée (3 au lieu de 2) - évite le bruit
+        # Paramètres Stochastic DURCIS - Vrais oversolds
+        self.oversold_threshold = 18  # Seuil durci pour éviter bruit crypto
+        self.exit_oversold_threshold = 25  # Seuil exit maintenu
+        self.overbought_threshold = 80  # Seuil de surachat standard
+        self.min_crossover_separation = 3  # Distance durcie pour éviter mini croisements
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs Stochastic et confirmation."""
@@ -137,6 +137,44 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
+        # REJETS CRITIQUES avant création signal
+        momentum_score = values.get('momentum_score')
+        if momentum_score is not None:
+            try:
+                momentum_val = float(momentum_score)
+                if momentum_val < 40:  # Momentum trop faible = rejet
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet BUY Stoch: momentum trop faible ({momentum_val})",
+                        "metadata": {"strategy": self.name, "momentum_score": momentum_val}
+                    }
+            except (ValueError, TypeError):
+                pass
+        
+        # Bias contradictoire = rejet
+        directional_bias = values.get('directional_bias')
+        if directional_bias == "BEARISH":
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": "Rejet BUY Stoch: bias contraire (BEARISH)",
+                "metadata": {"strategy": self.name, "directional_bias": directional_bias}
+            }
+        
+        # Market regime contradictoire = rejet
+        market_regime = values.get('market_regime')
+        if market_regime == "TRENDING_BEAR":
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": "Rejet BUY Stoch: marché baissier (falling knife)",
+                "metadata": {"strategy": self.name, "market_regime": market_regime}
+            }
+        
         # Créer le signal d'achat avec confirmations
         return self._create_oversold_buy_signal(values, current_price or 0.0, stoch_analysis, buy_condition)
         
@@ -237,7 +275,7 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
                                    stoch_analysis: Dict[str, Any], buy_condition: Dict[str, Any]) -> Dict[str, Any]:
         """Crée le signal d'achat oversold avec confirmations."""
         signal_side = "BUY"  # Stratégie uniquement orientée achat
-        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
+        base_confidence = 0.65  # Augmentée pour compenser pénalités
         confidence_boost = 0.0
         
         stoch_k = stoch_analysis['stoch_k']
@@ -245,57 +283,52 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         signal_type = buy_condition['signal_type']
         signal_quality = buy_condition['signal_quality']
         
-        # Construction de la raison
-        reason = f"Stochastic oversold: K={stoch_k:.1f}, D={stoch_d:.1f}"
+        # Construction de la raison CONCISE
+        reason = f"Stoch oversold: K={stoch_k:.1f}, D={stoch_d:.1f}"
+        reason_parts = []  # Limiter à 4-5 éléments max
         
-        # Bonus selon le type de signal - RÉDUITS
+        # Bonus selon le type de signal
         if signal_quality == "strong":
-            confidence_boost += 0.15  # Réduit de 0.20 - survente profonde
-            reason += " (survente profonde)"
+            confidence_boost += 0.15
+            reason_parts.append("profonde")
         else:
-            confidence_boost += 0.10  # Réduit de 0.15 - sortie de survente
-            reason += " (sortie survente)"
+            confidence_boost += 0.10
+            reason_parts.append("sortie")
             
-        # Bonus selon la force du croisement - SEUILS RELEVÉS
+        # Bonus selon la force du croisement
         crossover_strength = buy_condition['crossover_strength']
-        if crossover_strength > 15:  # Seuil relevé de 10 à 15
-            confidence_boost += 0.12  # Réduit de 0.15
-            reason += f" + croisement fort (Δ{crossover_strength:.1f})"
-        elif crossover_strength > 8:  # Seuil relevé de 5 à 8
-            confidence_boost += 0.08  # Réduit de 0.10
-            reason += f" + croisement modéré (Δ{crossover_strength:.1f})"
-        elif crossover_strength >= 4:  # Nouveau seuil minimum
-            confidence_boost += 0.04  # Réduit de 0.05
-            reason += f" + croisement acceptable (Δ{crossover_strength:.1f})"
-        else:
-            confidence_boost -= 0.05  # PÉNALITÉ si croisement trop faible
-            reason += f" ATTENTION: croisement trop faible (Δ{crossover_strength:.1f})"
+        if crossover_strength > 15:
+            confidence_boost += 0.12
+            reason_parts.append(f"fort cross({crossover_strength:.1f})")
+        elif crossover_strength > 8:
+            confidence_boost += 0.08
+            reason_parts.append(f"cross({crossover_strength:.1f})")
+        elif crossover_strength < 3:
+            confidence_boost -= 0.02
             
         # Confirmation avec Stochastic Fast
         fast_analysis = stoch_analysis.get('fast_analysis')
         if fast_analysis is not None:
             if fast_analysis['fast_oversold'] and fast_analysis['fast_crossover']:
-                confidence_boost += 0.10  # Réduit de 0.15
-                reason += " + Stoch Fast confirme"
+                confidence_boost += 0.10
+                reason_parts.append("Fast+")
             elif fast_analysis['fast_crossover']:
-                confidence_boost += 0.05  # Réduit de 0.08
-                reason += " + Stoch Fast aligné"
+                confidence_boost += 0.05
                 
         # Confirmation avec RSI
         rsi_14 = values.get('rsi_14')
         if rsi_14 is not None:
             try:
                 rsi = float(rsi_14)
-                # RSI plus strict pour oversold
-                if rsi <= 25:  # Seuil RSI plus strict (25 au lieu de 30)
-                    confidence_boost += 0.12  # Réduit de 0.15
-                    reason += f" + RSI survente forte ({rsi:.1f})"
-                elif rsi <= 35:  # Seuil réduit (35 au lieu de 40)
-                    confidence_boost += 0.06  # Réduit de 0.10
-                    reason += f" + RSI favorable ({rsi:.1f})"
-                elif rsi >= 65:  # Seuil plus strict (65 au lieu de 70)
-                    confidence_boost -= 0.12  # Pénalité augmentée
-                    reason += f" ATTENTION: RSI élevé ({rsi:.1f})"
+                # RSI plus strict pour vrais oversolds
+                if rsi <= 25:  # RSI survente forte
+                    confidence_boost += 0.12
+                    reason_parts.append(f"RSI{rsi:.0f}")
+                elif rsi <= 30:  # RSI favorable durci
+                    confidence_boost += 0.06
+                elif rsi >= 65:  # Seuil maintenu
+                    confidence_boost -= 0.05  # Pénalité réduite
+                    reason += f" RSI élevé ({rsi:.1f})"
             except (ValueError, TypeError):
                 pass
                 
@@ -331,16 +364,13 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Contexte de tendance
-        directional_bias = values.get('directional_bias')
+        # Contexte de tendance - directional_bias déjà traité en rejet
         trend_strength = values.get('trend_strength')
         
+        # Directional bias déjà vérifié en amont, ici que BULLISH ou NEUTRAL
         if directional_bias == "BULLISH":
-            confidence_boost += 0.10  # Réduit de 0.15
+            confidence_boost += 0.10
             reason += " + bias haussier"
-        elif directional_bias == "BEARISH":
-            confidence_boost -= 0.12  # Pénalité augmentée (contre-tendance plus risqué)
-            reason += " ATTENTION: bias baissier"
             
         if trend_strength is not None:
             # trend_strength selon schéma: WEAK, MODERATE, STRONG, VERY_STRONG
@@ -407,23 +437,24 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio >= 1.1:  # Volume élevé confirme l'intérêt
+                if vol_ratio >= 2.0:  # Volume très élevé
                     confidence_boost += 0.12
-                    reason += f" + volume élevé ({vol_ratio:.1f}x)"
-                elif vol_ratio >= 1.1:
+                    reason += f" + volume exceptionnel ({vol_ratio:.1f}x)"
+                elif vol_ratio >= 1.5:  # Volume élevé
                     confidence_boost += 0.08
-                    reason += f" + volume modéré ({vol_ratio:.1f}x)"
+                    reason += f" + volume élevé ({vol_ratio:.1f}x)"
+                # Volume <1.5x = neutre, pas de bonus
             except (ValueError, TypeError):
                 pass
                 
         # Market regime
-        market_regime = values.get('market_regime')
+        # Market regime - TRENDING_BEAR déjà rejeté en amont
         if market_regime == "RANGING":
-            confidence_boost += 0.10  # Oversold plus fiable en ranging
-            reason += " (marché ranging)"
-        elif market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
-            confidence_boost += 0.05  # Oversold peut fonctionner en trending
-            reason += " (marché trending)"
+            confidence_boost += 0.15  # Bonus fort en ranging (oversold works)
+            reason += " + ranging"
+        elif market_regime == "TRENDING_BULL":
+            confidence_boost += 0.10  # Bonus en trend bull
+            reason += " + haussier"
             
         # Volatilité
         volatility_regime = values.get('volatility_regime')
@@ -460,33 +491,22 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # NOUVEAU: Filtre final - rejeter si confidence insuffisante ou excessive
-        raw_confidence = base_confidence * (1 + confidence_boost)
-        if raw_confidence < 0.40:  # Seuil minimum 40% pour signaux oversold
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Signal oversold rejeté - confiance insuffisante ({raw_confidence:.2f} < 0.40)",
-                "metadata": {
-                    "strategy": self.name,
-                    "symbol": self.symbol,
-                    "rejected_signal": "BUY",
-                    "raw_confidence": raw_confidence,
-                    "stoch_k": stoch_k,
-                    "stoch_d": stoch_d
-                }
-            }
+        # SUPPRESSION du filtre interne - laisser aggregator décider
+        # raw_confidence = base_confidence * (1 + confidence_boost)
+        # Pas de rejet interne, l'aggregator gère les seuils
         
-        # Limiter la confiance maximale pour éviter les sur-confiances
-        confidence = min(self.calculate_confidence(base_confidence, 1 + confidence_boost), 0.85)
+        # Construire reason final CONCIS (max 4-5 éléments)
+        final_reason = reason + " " + " ".join(reason_parts[:4])
+        
+        # Calcul final avec clamp à 1.0
+        confidence = min(1.0, self.calculate_confidence(base_confidence, 1 + confidence_boost))
         strength: str = self.get_strength_from_confidence(confidence)
         
         return {
             "side": signal_side,
             "confidence": confidence,
             "strength": strength,
-            "reason": reason,
+            "reason": final_reason,
             "metadata": {
                 "strategy": self.name,
                 "symbol": self.symbol,

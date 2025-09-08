@@ -25,13 +25,13 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres Range Breakout - CORRECTIONS MAJEURES
-        self.min_range_width = 0.005  # Largeur minimum (0.5%) - très assoupli
-        self.max_range_width = 0.20   # Largeur maximum (20%) - très élargi
-        self.breakout_threshold = 0.002  # Distance minimum (0.2%) - très assoupli
-        self.volume_breakout_threshold = 1.1  # Volume minimum (1.1x) - très assoupli
-        self.retest_tolerance = 0.008   # Tolérance retest (0.8%) - assoupli
-        self.min_confirmations = 1      # CORRECTION: Minimum 1 confirmation seulement
+        # Paramètres Range Breakout - SEUILS DURCIS POUR FIABILITÉ
+        self.min_range_width = 0.01   # Largeur minimum (1%) - durci
+        self.max_range_width = 0.15   # Largeur maximum (15%) - resserré
+        self.breakout_threshold = 0.005  # Distance minimum (0.5%) - durci
+        self.volume_breakout_threshold = 1.5  # Volume minimum (1.5x) - durci
+        self.retest_tolerance = 0.008   # Tolérance retest (0.8%) - maintenu
+        self.min_confirmations = 2      # DURCI: Minimum 2 confirmations obligatoires
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pour range breakout."""
@@ -179,16 +179,7 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         nearest_support = values.get('nearest_support')
         nearest_resistance = values.get('nearest_resistance')
         
-        # FALLBACK si support/résistance NULL : utiliser BB comme range
-        if nearest_support is None:
-            bb_lower = values.get('bb_lower')
-            if bb_lower is not None:
-                nearest_support = float(bb_lower)
-        
-        if nearest_resistance is None:
-            bb_upper = values.get('bb_upper')
-            if bb_upper is not None:
-                nearest_resistance = float(bb_upper)
+        # Support/Résistance PURS - plus de fallback BB conceptuel
         
         if nearest_support is not None and nearest_resistance is not None:
             try:
@@ -211,7 +202,7 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
                         
                         if price_in_range or near_edges:
                             range_info = {
-                                'method': 'support_resistance_with_fallback',
+                                'method': 'support_resistance_pure',
                                 'support': support_val,
                                 'resistance': resistance_val,
                                 'width': range_width,
@@ -235,15 +226,16 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
                     if lower_val > 0 and upper_val > lower_val:
                         range_width = (upper_val - lower_val) / lower_val
                         
-                        # BB range toujours acceptable (plus flexible)
-                        if range_width >= 0.003:  # Minimum très faible
+                        # BB range avec seuils réalistes
+                        if 0.005 <= range_width <= 0.10:  # Entre 0.5% et 10%
                             range_info = {
-                                'method': 'bollinger_bands_fallback',
+                                'method': 'bollinger_bands_separate',
                                 'support': lower_val,
                                 'resistance': upper_val,
                                 'width': range_width,
-                                'strength': 'MODERATE',
-                                'mid_point': (lower_val + upper_val) / 2
+                                'strength': 'STATISTICAL',
+                                'mid_point': (lower_val + upper_val) / 2,
+                                'note': 'Statistical range - different from S/R levels'
                             }
                 except (ValueError, TypeError):
                     pass
@@ -341,10 +333,10 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                # Format 0-100, 50=neutre - SEUILS ASSOUPLIS
-                if breakout_type == "BULLISH" and momentum > 55:  # Assoupli: 55 au lieu de 60
+                # Format 0-100, 50=neutre - SEUILS DURCIS
+                if breakout_type == "BULLISH" and momentum > 60:  # Durci: 60
                     confirmations['momentum_confirmed'] = True
-                elif breakout_type == "BEARISH" and momentum < 45:  # Assoupli: 45 au lieu de 40
+                elif breakout_type == "BEARISH" and momentum < 40:  # Durci: 40
                     confirmations['momentum_confirmed'] = True
             except (ValueError, TypeError):
                 pass
@@ -371,7 +363,7 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
                 plus_val = float(plus_di) if plus_di is not None else 0.0
                 minus_val = float(minus_di) if minus_di is not None else 0.0
                 
-                if adx > 20:  # Tendance en formation
+                if adx > 25:  # Tendance confirmée (durci)
                     if breakout_type == "BULLISH" and plus_val > minus_val:
                         confirmations['trend_confirmed'] = True
                     elif breakout_type == "BEARISH" and minus_val > plus_val:
@@ -397,7 +389,7 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         confirmations = breakout_analysis['confirmations']
         
         signal_side = "BUY" if breakout_type == "BULLISH" else "SELL"
-        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
+        base_confidence = 0.65  # Standardisé à 0.65 pour équité avec autres stratégies
         confidence_boost = 0.0
         
         # Construction de la raison
@@ -417,16 +409,19 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         if confirmations['pattern_confirmed']:
             reason += " + pattern confirmé"
             
-        # Bonus selon largeur du range (ranges plus larges = breakouts plus significatifs)
+        # Bonus selon largeur du range - SEUILS AJUSTÉS
         range_width = range_info['width']
-        if range_width > 0.04:  # Range large (>4%)
-            confidence_boost += 0.15
+        if range_width > 0.06:  # Range large (>6%)
+            confidence_boost += 0.18
+            reason += " - range très large"
+        elif range_width > 0.03:  # Range moyen (>3%)
+            confidence_boost += 0.12
             reason += " - range large"
-        elif range_width > 0.02:  # Range moyen (>2%)
-            confidence_boost += 0.10
-            reason += " - range moyen"
+        elif range_width > 0.015:  # Range correct (>1.5%)
+            confidence_boost += 0.08
+            reason += " - range correct"
         else:
-            confidence_boost += 0.05
+            confidence_boost += 0.03  # Range étroit - bonus minimal
             reason += " - range étroit"
             
         # Confirmation additionnelle avec VWAP
@@ -451,14 +446,14 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
                 
                 if signal_side == "BUY":
                     # Breakout haussier : volatilité contrôlée idéale, haute volatilité = piège
-                    if atr_percentile < 20:  # Volatilité très faible = compression
+                    if 15 <= atr_percentile <= 30:  # Zone idéale compression/expansion
                         confidence_boost += 0.18
-                        reason += f" + compression extrême breakout ({atr_percentile:.0f}%)"
-                    elif 20 <= atr_percentile <= 50:  # Volatilité idéale pour breakout haussier
-                        confidence_boost += 0.15
-                        reason += f" + volatilité idéale breakout ({atr_percentile:.0f}%)"
-                    elif 50 < atr_percentile <= 75:  # Volatilité modérée à élevée
-                        confidence_boost += 0.08
+                        reason += f" + compression idéale breakout ({atr_percentile:.0f}%)"
+                    elif 30 < atr_percentile <= 50:  # Volatilité normale pour breakout
+                        confidence_boost += 0.12
+                        reason += f" + volatilité normale breakout ({atr_percentile:.0f}%)"
+                    elif 50 < atr_percentile <= 70:  # Volatilité modérée à élevée
+                        confidence_boost += 0.06
                         reason += f" + volatilité modérée breakout ({atr_percentile:.0f}%)"
                     elif 75 < atr_percentile <= 90:  # Volatilité très élevée = risque faux breakout
                         confidence_boost -= 0.10
@@ -485,10 +480,22 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # CORRECTION MAGISTRALE: Market regime avec durée de consolidation
+        # Market regime avec REJET des contradictions fortes
         market_regime = values.get('market_regime')
         regime_strength = values.get('regime_strength')
         bb_squeeze = values.get('bb_squeeze')
+        
+        # REJET regime contradictoire fort
+        if market_regime is not None:
+            if (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or \
+               (signal_side == "SELL" and market_regime == "TRENDING_BULL"):
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Rejet breakout {signal_side}: régime contradictoire ({market_regime})",
+                    "metadata": {"strategy": self.name, "market_regime": market_regime}
+                }
         
         if market_regime is not None:
             try:
@@ -558,7 +565,7 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
+        confidence = min(1.0, self.calculate_confidence(base_confidence, 1 + confidence_boost))
         strength = self.get_strength_from_confidence(confidence)
         
         return {

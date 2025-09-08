@@ -16,7 +16,9 @@ STRATEGY_FAMILIES = {
             'TEMA_Slope_Strategy',
             'TRIX_Crossover_Strategy',
             'PPO_Crossover_Strategy',
-            'ROC_Threshold_Strategy'  # DÉPLACÉ: ROC = momentum/tendance, pas mean reversion
+            'ROC_Threshold_Strategy',
+            'Supertrend_Reversal_Strategy',  # CORRIGÉ: Supertrend est trend-following
+            'ParabolicSAR_Bounce_Strategy'   # CORRIGÉ: SAR est trend-following
         ],
         'best_regimes': ['TRENDING_BULL', 'TRENDING_BEAR'],
         'acceptable_regimes': ['BREAKOUT_BULL', 'BREAKOUT_BEAR', 'TRANSITION'],
@@ -32,9 +34,7 @@ STRATEGY_FAMILIES = {
             'WilliamsR_Rebound_Strategy',
             'CCI_Reversal_Strategy',
             'Bollinger_Touch_Strategy',
-            'ZScore_Extreme_Reversal_Strategy',
-            'Supertrend_Reversal_Strategy',  # DÉPLACÉ: "Reversal" = retournement/rebond
-            'ParabolicSAR_Bounce_Strategy'   # DÉPLACÉ: "Bounce" = rebond typique mean reversion
+            'ZScore_Extreme_Reversal_Strategy'
         ],
         'best_regimes': ['RANGING'],
         'acceptable_regimes': ['VOLATILE', 'TRANSITION'],
@@ -99,11 +99,11 @@ REGIME_CONFIDENCE_ADJUSTMENTS = {
     },
     
     'TRENDING_BEAR': {
-        'trend_following': {'BUY': 0.5, 'SELL': 1.3},      # DURCI: Très pénalisé BUY (était 0.7), boost SELL (était 1.2)
-        'mean_reversion': {'BUY': 0.3, 'SELL': 0.8},       # DURCI: Très pénalisé BUY (était 0.4), amélioré SELL
-        'breakout': {'BUY': 0.6, 'SELL': 1.2},             # DURCI: Très pénalisé BUY (était 0.8), boost SELL
-        'volume_based': {'BUY': 0.7, 'SELL': 1.2},         # DURCI: Pénalisé BUY (était 0.9), boost SELL
-        'structure_based': {'BUY': 0.7, 'SELL': 1.1}       # DURCI: Pénalisé BUY (était 0.9)
+        'trend_following': {'BUY': 0.7, 'SELL': 1.2},      # CORRIGÉ: Pénalisé mais pas extrême
+        'mean_reversion': {'BUY': 0.6, 'SELL': 0.9},       # CORRIGÉ: Permet rebonds légitimes
+        'breakout': {'BUY': 0.7, 'SELL': 1.2},             # CORRIGÉ: Moins pénalisant
+        'volume_based': {'BUY': 0.8, 'SELL': 1.2},         # CORRIGÉ: Légèrement pénalisé
+        'structure_based': {'BUY': 0.8, 'SELL': 1.1}       # CORRIGÉ: Moins pénalisant
     },
     
     'RANGING': {
@@ -131,11 +131,11 @@ REGIME_CONFIDENCE_ADJUSTMENTS = {
     },
     
     'BREAKOUT_BEAR': {
-        'trend_following': {'BUY': 0.4, 'SELL': 1.2},      # DURCI: Très pénalisé BUY (était 0.6)
-        'mean_reversion': {'BUY': 0.2, 'SELL': 0.7},       # DURCI: Extrêmement pénalisé BUY (était 0.3)
-        'breakout': {'BUY': 0.5, 'SELL': 1.5},             # DURCI: Très pénalisé BUY (était 0.7), boost SELL
-        'volume_based': {'BUY': 0.6, 'SELL': 1.4},         # DURCI: Très pénalisé BUY (était 0.8), boost SELL
-        'structure_based': {'BUY': 0.6, 'SELL': 1.2}       # DURCI: Très pénalisé BUY (était 0.8)
+        'trend_following': {'BUY': 0.6, 'SELL': 1.2},      # CORRIGÉ: Pénalisé mais viable
+        'mean_reversion': {'BUY': 0.5, 'SELL': 0.8},       # CORRIGÉ: Minimum viable pour rebonds
+        'breakout': {'BUY': 0.6, 'SELL': 1.4},             # CORRIGÉ: Pénalisé mais pas extrême
+        'volume_based': {'BUY': 0.7, 'SELL': 1.3},         # CORRIGÉ: Réduit la pénalité
+        'structure_based': {'BUY': 0.7, 'SELL': 1.2}       # CORRIGÉ: Plus équilibré
     },
     
     'TRANSITION': {
@@ -164,32 +164,32 @@ REGIME_MIN_CONFIDENCE = {
         'SELL': 0.85   # Très strict pour SELL contre-tendance (était 0.80)
     },
     'TRENDING_BEAR': {
-        'BUY': 0.90,   # TRÈS STRICT pour BUY contre-tendance (était 0.80)
-        'SELL': 0.60   # Légèrement durci (était 0.55)
+        'BUY': 0.75,   # CORRIGÉ: Strict mais permet rebonds légitimes
+        'SELL': 0.60   # Inchangé
     },
     'RANGING': {
         'BUY': 0.70,   # Plus strict (était 0.60)
         'SELL': 0.70   # Plus strict (était 0.60)
     },
     'VOLATILE': {
-        'BUY': 0.75,   # Beaucoup plus strict (était 0.65)
-        'SELL': 0.70   # Plus strict (était 0.65)
+        'BUY': 0.70,   # CORRIGÉ: Réduit la barrière d'entrée
+        'SELL': 0.65   # CORRIGÉ: Moins restrictif
     },
     'BREAKOUT_BULL': {
         'BUY': 0.55,   # Légèrement durci (était 0.50)
         'SELL': 0.90   # Très strict pour SELL (était 0.85)
     },
     'BREAKOUT_BEAR': {
-        'BUY': 0.95,   # EXTRÊMEMENT STRICT pour BUY (était 0.85)
-        'SELL': 0.55   # Légèrement durci (était 0.50)
+        'BUY': 0.80,   # CORRIGÉ: Strict mais réaliste
+        'SELL': 0.55   # Inchangé
     },
     'TRANSITION': {
-        'BUY': 0.75,   # Plus conservateur (était 0.65)
-        'SELL': 0.70   # Plus conservateur (était 0.65)
+        'BUY': 0.65,   # CORRIGÉ: Retour à niveau raisonnable
+        'SELL': 0.65   # CORRIGÉ: Retour à niveau raisonnable
     },
     'UNKNOWN': {
-        'BUY': 0.80,   # Très conservateur (était 0.70)
-        'SELL': 0.75   # Conservateur (était 0.70)
+        'BUY': 0.70,   # CORRIGÉ: Conservateur mais pas bloquant
+        'SELL': 0.70   # CORRIGÉ: Équilibré
     }
 }
 
@@ -287,3 +287,193 @@ def is_strategy_acceptable_for_regime(strategy_name: str, market_regime: str) ->
     
     regime = market_regime.upper() if market_regime else 'UNKNOWN'
     return regime in best_regimes or regime in acceptable_regimes
+
+def should_allow_counter_trend_rebound(market_regime: str, signal_side: str, 
+                                     market_indicators: dict = None) -> bool:
+    """
+    Vérifie si on doit permettre un signal contre-tendance (rebond) basé sur les conditions de marché.
+    
+    Args:
+        market_regime: Régime de marché actuel
+        signal_side: Direction du signal (BUY/SELL)
+        market_indicators: Dictionnaire des indicateurs de marché (RSI, volume, etc.)
+        
+    Returns:
+        True si le rebond contre-tendance est autorisé
+    """
+    if market_indicators is None:
+        market_indicators = {}
+        
+    regime = market_regime.upper() if market_regime else 'UNKNOWN'
+    
+    # Permettre les rebonds BUY en marché baissier si conditions réunies
+    if regime in ['TRENDING_BEAR', 'BREAKOUT_BEAR'] and signal_side == 'BUY':
+        rsi = market_indicators.get('rsi_14', 50)
+        volume_ratio = market_indicators.get('volume_ratio', 1.0)
+        price_change_24h = market_indicators.get('price_change_24h', 0)
+        
+        # Conditions de rebond légitime:
+        oversold = rsi < 30  # RSI oversold
+        volume_spike = volume_ratio > 1.8  # Volume élevé
+        significant_drop = price_change_24h < -8  # Chute significative
+        
+        # Permettre si au moins 2 conditions sont réunies
+        conditions_met = sum([oversold, volume_spike, significant_drop])
+        return conditions_met >= 2
+        
+    # Permettre les rebonds SELL en marché haussier si conditions réunies
+    elif regime in ['TRENDING_BULL', 'BREAKOUT_BULL'] and signal_side == 'SELL':
+        rsi = market_indicators.get('rsi_14', 50)
+        volume_ratio = market_indicators.get('volume_ratio', 1.0)
+        price_change_24h = market_indicators.get('price_change_24h', 0)
+        
+        # Conditions de rebond baissier:
+        overbought = rsi > 70  # RSI overbought
+        volume_spike = volume_ratio > 1.8  # Volume élevé
+        significant_rally = price_change_24h > 8  # Hausse significative
+        
+        # Permettre si au moins 2 conditions sont réunies
+        conditions_met = sum([overbought, volume_spike, significant_rally])
+        return conditions_met >= 2
+        
+    return False
+
+class AdaptiveRegimeAdjuster:
+    """
+    Système d'ajustement adaptatif des multiplicateurs basé sur la performance historique.
+    """
+    
+    def __init__(self):
+        self.performance_history = {}
+        self.min_samples = 10  # Minimum de trades pour ajuster
+        
+    def record_trade_result(self, strategy_name: str, regime: str, side: str, 
+                           success: bool, confidence: float):
+        """
+        Enregistre le résultat d'un trade pour l'apprentissage adaptatif.
+        
+        Args:
+            strategy_name: Nom de la stratégie
+            regime: Régime de marché
+            side: Direction du trade (BUY/SELL)
+            success: Succès du trade
+            confidence: Confidence du signal
+        """
+        family = get_strategy_family(strategy_name)
+        key = f"{family}_{regime}_{side}"
+        
+        if key not in self.performance_history:
+            self.performance_history[key] = {
+                'successes': 0,
+                'total': 0,
+                'confidence_sum': 0.0
+            }
+            
+        stats = self.performance_history[key]
+        stats['total'] += 1
+        stats['confidence_sum'] += confidence
+        if success:
+            stats['successes'] += 1
+    
+    def get_adaptive_multiplier(self, strategy_name: str, regime: str, side: str, 
+                              base_multiplier: float) -> float:
+        """
+        Retourne un multiplicateur ajusté basé sur la performance historique.
+        
+        Args:
+            strategy_name: Nom de la stratégie
+            regime: Régime de marché
+            side: Direction (BUY/SELL)
+            base_multiplier: Multiplicateur de base
+            
+        Returns:
+            Multiplicateur ajusté
+        """
+        family = get_strategy_family(strategy_name)
+        key = f"{family}_{regime}_{side}"
+        
+        if key not in self.performance_history:
+            return base_multiplier
+            
+        stats = self.performance_history[key]
+        
+        # Pas assez de données pour ajuster
+        if stats['total'] < self.min_samples:
+            return base_multiplier
+            
+        success_rate = stats['successes'] / stats['total']
+        avg_confidence = stats['confidence_sum'] / stats['total']
+        
+        # Ajustement basé sur le taux de succès
+        if success_rate > 0.75:  # Très bon performance
+            adjustment = 1.1
+        elif success_rate > 0.60:  # Bonne performance
+            adjustment = 1.05
+        elif success_rate < 0.35:  # Mauvaise performance
+            adjustment = 0.85
+        elif success_rate < 0.50:  # Performance moyenne-faible
+            adjustment = 0.92
+        else:  # Performance acceptable
+            adjustment = 1.0
+            
+        # Ajustement basé sur la confidence moyenne
+        if avg_confidence > 0.80:  # Signaux haute confidence
+            adjustment *= 1.02
+        elif avg_confidence < 0.60:  # Signaux faible confidence
+            adjustment *= 0.98
+            
+        # Limiter l'ajustement pour éviter les extrêmes
+        adjustment = max(0.75, min(1.25, adjustment))
+        
+        return base_multiplier * adjustment
+    
+    def get_regime_statistics(self, regime: str = None) -> dict:
+        """
+        Retourne les statistiques de performance par régime.
+        
+        Args:
+            regime: Régime spécifique (optionnel)
+            
+        Returns:
+            Dictionnaire des statistiques
+        """
+        if regime:
+            regime = regime.upper()
+            filtered_stats = {k: v for k, v in self.performance_history.items() 
+                            if regime in k}
+            return filtered_stats
+        
+        return self.performance_history.copy()
+
+# Instance globale pour l'ajustement adaptatif
+adaptive_adjuster = AdaptiveRegimeAdjuster()
+
+def get_enhanced_regime_adjustment(strategy_name: str, market_regime: str, 
+                                 signal_side: str, market_indicators: dict = None) -> float:
+    """
+    Version améliorée avec détection de rebonds et ajustement adaptatif.
+    
+    Args:
+        strategy_name: Nom de la stratégie
+        market_regime: Régime de marché actuel
+        signal_side: Direction du signal (BUY/SELL)
+        market_indicators: Indicateurs de marché pour détecter les rebonds
+        
+    Returns:
+        Multiplicateur de confidence ajusté
+    """
+    # Obtenir le multiplicateur de base
+    base_multiplier = get_regime_adjustment(strategy_name, market_regime, signal_side)
+    
+    # Vérifier si c'est un rebond légitime
+    if should_allow_counter_trend_rebound(market_regime, signal_side, market_indicators):
+        # Réduire la pénalité pour les rebonds légitimes
+        if base_multiplier < 0.8:  # Si fortement pénalisé
+            base_multiplier = max(base_multiplier * 1.4, 0.7)  # Boost significatif mais limité
+    
+    # Appliquer l'ajustement adaptatif
+    adaptive_multiplier = adaptive_adjuster.get_adaptive_multiplier(
+        strategy_name, market_regime, signal_side, base_multiplier
+    )
+    
+    return adaptive_multiplier

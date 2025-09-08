@@ -30,27 +30,27 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres Williams %R - OPTIMISÉS pour winrate
+        # Paramètres Williams %R - RESSERRE pour vrais rebonds
         self.oversold_threshold = -75.0        # Seuil survente plus strict
-        self.overbought_threshold = -22.0      # Seuil surachat plus strict
+        self.overbought_threshold = -25.0      # Seuil surachat plus strict
         self.extreme_oversold_threshold = -90.0  # Survente extrême vraiment extrême
         self.extreme_overbought_threshold = -10.0 # Surachat extrême vraiment extrême
         
-        # Paramètres rebond - ENCORE PLUS STRICTS
-        self.min_rebound_strength = 8.0        # Williams %R doit bouger ≥8 points minimum
-        self.rebound_confirmation_threshold = 15.0  # 15 points pour confirmation forte
+        # Paramètres rebond - ASSOUPLIS pour plus de signaux
+        self.min_rebound_strength = 5.0        # Williams %R doit bouger ≥5 points minimum
+        self.rebound_confirmation_threshold = 10.0  # 10 points pour confirmation forte
         self.max_time_in_extreme = 2           # Max 2 barres en zone extrême
         
-        # Paramètres momentum et volume - OPTIMISÉS
+        # Paramètres momentum et volume - STRICTS pour qualité
         self.momentum_alignment_required = True  # Momentum doit confirmer
-        self.min_momentum_threshold = 48        # Momentum minimum (moins strict: 48 au lieu de 52)
-        self.min_volume_confirmation = 1.3       # Volume ≥30% au-dessus normal (plus strict)
+        self.min_momentum_threshold = 45        # Momentum minimum plus strict
+        self.min_volume_confirmation = 1.5       # Volume ≥50% au-dessus normal (strict)
         
-        # Paramètres confluence - ULTRA STRICTS
-        self.support_resistance_confluence = True  # Confluence S/R requise
-        self.confluence_distance_threshold = 0.01   # 1% max du S/R (très strict)
-        self.min_oscillator_confluence = 0.12   # Confluence oscillateurs plus élevée
-        self.min_sr_confluence = 0.25           # Confluence S/R plus élevée
+        # Paramètres confluence - EQUILIBRES (bonus mais avec seuils stricts)
+        self.support_resistance_confluence = False  # Confluence S/R non requise
+        self.confluence_distance_threshold = 0.01    # 1% max du S/R (strict)
+        self.min_oscillator_confluence = 0.10   # Confluence oscillateurs rehaussée
+        self.min_sr_confluence = 0.20           # Confluence S/R rehaussée
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
@@ -188,7 +188,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
             }
             
         return {
-            'is_rebound': rebound_score >= 0.30,  # Encore plus strict: 0.30
+            'is_rebound': rebound_score >= 0.25,  # Seuil durci: 0.25
             'score': rebound_score,
             'indicators': rebound_indicators,
             'williams_value': williams_val,
@@ -249,7 +249,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
             }
             
         return {
-            'is_rebound': rebound_score >= 0.30,  # Encore plus strict: 0.30
+            'is_rebound': rebound_score >= 0.25,  # Seuil durci: 0.25
             'score': rebound_score,
             'indicators': rebound_indicators,
             'williams_value': williams_val,
@@ -535,25 +535,116 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
         oscillator_confluence = self._detect_oscillator_confluence(values, signal_side)
         sr_confluence = self._detect_support_resistance_confluence(values, current_price, signal_side)
         
-        # NOUVEAU: Exiger au moins une confluence pour émettre signal
-        if not oscillator_confluence['is_confluent'] and not sr_confluence['is_confluent']:
-            williams_val = values.get('williams_r')
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Rebound Williams %R détecté mais aucune confluence (osc: {oscillator_confluence['score']:.2f}, sr: {sr_confluence['score']:.2f})",
-                "metadata": {
-                    "strategy": self.name,
-                    "williams_r": williams_val,
-                    "missing_confluence": True,
-                    "oscillator_score": oscillator_confluence['score'],
-                    "sr_score": sr_confluence['score']
+        # Vérifier rejets préliminaires critiques
+        
+        # 1. REJET momentum contradictoire (avant calcul confidence)  
+        momentum_score_val = values.get('momentum_score')
+        if momentum_score_val is not None:
+            try:
+                momentum = float(momentum_score_val)
+                if signal_side == "BUY" and momentum < 40:
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet Williams %R BUY: momentum trop faible ({momentum:.1f})",
+                        "metadata": {
+                            "strategy": self.name,
+                            "williams_r": values.get('williams_r'),
+                            "momentum_score": momentum,
+                            "rejection_reason": "momentum_too_low"
+                        }
+                    }
+                elif signal_side == "SELL" and momentum > 60:
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet Williams %R SELL: momentum trop fort ({momentum:.1f})",
+                        "metadata": {
+                            "strategy": self.name,
+                            "williams_r": values.get('williams_r'),
+                            "momentum_score": momentum,
+                            "rejection_reason": "momentum_too_high"
+                        }
+                    }
+            except (ValueError, TypeError):
+                pass
+                
+        # 2. REJET bias contradictoire
+        directional_bias = values.get('directional_bias')
+        if directional_bias:
+            if signal_side == "BUY" and directional_bias == "BEARISH":
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": "Rejet Williams %R BUY: bias contradictoire",
+                    "metadata": {
+                        "strategy": self.name,
+                        "williams_r": values.get('williams_r'),
+                        "directional_bias": directional_bias,
+                        "rejection_reason": "bias_contradiction"
+                    }
                 }
-            }
+            elif signal_side == "SELL" and directional_bias == "BULLISH":
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": "Rejet Williams %R SELL: bias contradictoire",
+                    "metadata": {
+                        "strategy": self.name,
+                        "williams_r": values.get('williams_r'),
+                        "directional_bias": directional_bias,
+                        "rejection_reason": "bias_contradiction"
+                    }
+                }
+                
+        # 3. REJET volume insuffisant
+        volume_ratio = values.get('volume_ratio')
+        if volume_ratio is not None:
+            try:
+                vol_ratio = float(volume_ratio)
+                if vol_ratio < 1.0:
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet Williams %R: volume trop faible ({vol_ratio:.1f}x)",
+                        "metadata": {
+                            "strategy": self.name,
+                            "williams_r": values.get('williams_r'),
+                            "volume_ratio": vol_ratio,
+                            "rejection_reason": "volume_too_low"
+                        }
+                    }
+            except (ValueError, TypeError):
+                pass
+                
+        # 4. REJET confluence globale faible
+        confluence_score_global = values.get('confluence_score')
+        if confluence_score_global is not None:
+            try:
+                conf_val = float(confluence_score_global)
+                if conf_val < 40:
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet Williams %R: confluence trop faible ({conf_val:.1f})",
+                        "metadata": {
+                            "strategy": self.name,
+                            "williams_r": values.get('williams_r'),
+                            "confluence_score": conf_val,
+                            "rejection_reason": "confluence_too_low"
+                        }
+                    }
+            except (ValueError, TypeError):
+                pass
         
         # Construire signal final
-        base_confidence = 0.45  # Réduit pour être plus sélectif
+        base_confidence = 0.65  # Augmenté pour passer le filtre aggregator
         confidence_boost = 0.0
         
         # Vérification de sécurité pour primary_rebound
@@ -575,19 +666,22 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
         # Score confluence support/résistance
         confidence_boost += sr_confluence['score'] * 0.3
         
-        # Construire raison
+        # Construire raison SIMPLIFIÉE (max 4-5 confirmations)
         williams_val = primary_rebound['williams_value']
         rebound_type = primary_rebound['rebound_type']
         
         reason = f"Williams %R {williams_val:.1f} - {primary_rebound['indicators'][0]}"
+        confirmation_count = 1  # Limiter à 4-5 confirmations max
         
-        if oscillator_confluence['indicators']:
+        # 1. Confluence oscillateurs (priorité 1)
+        if oscillator_confluence['indicators'] and confirmation_count < 4:
             reason += f" + {oscillator_confluence['indicators'][0]}"
+            confirmation_count += 1
             
-        if sr_confluence['indicators']:
+        # 2. Support/Résistance (priorité 2)
+        if sr_confluence['indicators'] and confirmation_count < 4:
             reason += f" + {sr_confluence['indicators'][0]}"
-            
-        # Confirmations supplémentaires
+            confirmation_count += 1
         
         # CORRECTION: Momentum alignment - logique directionnelle optimisée pour rebonds
         momentum_score_val = values.get('momentum_score')
@@ -595,180 +689,97 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
             try:
                 momentum = float(momentum_score_val)
                 
-                # BUY : momentum validation STRICTE pour winrate
-                if signal_side == "BUY":
-                    if momentum >= 70:  # Momentum exceptionnel requis
-                        confidence_boost += 0.10  # Bonus réduit
-                        reason += f" + momentum exceptionnel ({momentum:.1f})"
-                    elif momentum >= 60:
-                        confidence_boost += 0.06  # Momentum très positif requis
-                        reason += f" + momentum fort ({momentum:.1f})"
-                    elif momentum >= 55:
-                        confidence_boost += 0.03  # Momentum minimum acceptable
-                        reason += f" + momentum correct ({momentum:.1f})"
-                    elif momentum < 50:  # Momentum insuffisant = forte pénalité
-                        confidence_boost -= 0.15  # Pénalité majeure
-                        reason += f" REJET: momentum INSUFFISANT ({momentum:.1f})"
-                        
-                # SELL : momentum validation STRICTE pour winrate
-                elif signal_side == "SELL":
-                    if momentum <= 30:  # Momentum exceptionnel requis
-                        confidence_boost += 0.10  # Bonus réduit
-                        reason += f" + momentum exceptionnel ({momentum:.1f})"
-                    elif momentum <= 40:
-                        confidence_boost += 0.06  # Momentum très négatif requis
-                        reason += f" + momentum fort ({momentum:.1f})"
-                    elif momentum <= 45:
-                        confidence_boost += 0.03  # Momentum minimum acceptable
-                        reason += f" + momentum correct ({momentum:.1f})"
-                    elif momentum > 50:  # Momentum insuffisant = forte pénalité
-                        confidence_boost -= 0.15  # Pénalité majeure
-                        reason += f" REJET: momentum INSUFFISANT ({momentum:.1f})"
+                # 3. Momentum (priorité 3) - adapter aux rebonds
+                if confirmation_count < 4:
+                    if signal_side == "BUY":
+                        if momentum >= 55:  # Momentum qui remonte
+                            confidence_boost += 0.10
+                            reason += f" + momentum ({momentum:.1f})"
+                            confirmation_count += 1
+                        elif momentum >= 48 and confirmation_count < 3:  # Seulement si pas trop de confirmations
+                            confidence_boost += 0.05
+                            reason += f" + momentum neutre ({momentum:.1f})"
+                            confirmation_count += 1
+                    elif signal_side == "SELL":
+                        if momentum <= 45:  # Momentum qui descend
+                            confidence_boost += 0.10
+                            reason += f" + momentum ({momentum:.1f})"
+                            confirmation_count += 1
+                        elif momentum <= 52 and confirmation_count < 3:
+                            confidence_boost += 0.05
+                            reason += f" + momentum neutre ({momentum:.1f})"
+                            confirmation_count += 1
             except (ValueError, TypeError):
                 pass
                 
-        # Volume confirmation STRICTE
+        # 4. Volume (priorité 4) - strict mais limité dans la raison
         volume_ratio = values.get('volume_ratio')
-        if volume_ratio is not None:
+        if volume_ratio is not None and confirmation_count < 4:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio >= self.min_volume_confirmation:  # 1.5x maintenant
-                    confidence_boost += 0.08  # Bonus réduit
-                    reason += f" + volume élevé ({vol_ratio:.1f}x)"
-                elif vol_ratio >= 1.2:  # Volume modéré acceptable
+                if vol_ratio >= self.min_volume_confirmation:  # ≥1.5x
+                    confidence_boost += 0.08
+                    reason += f" + volume ({vol_ratio:.1f}x)"
+                    confirmation_count += 1
+                elif vol_ratio >= 1.2 and confirmation_count < 3:
                     confidence_boost += 0.04
                     reason += f" + volume modéré ({vol_ratio:.1f}x)"
-                elif vol_ratio < 1.0:  # Volume insuffisant = pénalité
-                    confidence_boost -= 0.08
-                    reason += f" ATTENTION: volume faible ({vol_ratio:.1f}x)"
+                    confirmation_count += 1
             except (ValueError, TypeError):
                 pass
                 
-        # MACD confirmation
-        macd_line = values.get('macd_line')
-        macd_signal = values.get('macd_signal')
-        if macd_line is not None and macd_signal is not None:
-            try:
-                macd_val = float(macd_line)
-                macd_sig = float(macd_signal)
+        # 5. MACD (priorité 5) - seulement si pas trop de confirmations
+        if confirmation_count < 4:
+            macd_line = values.get('macd_line')
+            macd_signal = values.get('macd_signal')
+            if macd_line is not None and macd_signal is not None:
+                try:
+                    macd_val = float(macd_line)
+                    macd_sig = float(macd_signal)
+                    
+                    if signal_side == "BUY" and macd_val > macd_sig:
+                        confidence_boost += 0.08
+                        if confirmation_count < 4:
+                            reason += " + MACD"
+                            confirmation_count += 1
+                    elif signal_side == "SELL" and macd_val < macd_sig:
+                        confidence_boost += 0.08
+                        if confirmation_count < 4:
+                            reason += " + MACD"
+                            confirmation_count += 1
+                except (ValueError, TypeError):
+                    pass
                 
-                if signal_side == "BUY" and macd_val > macd_sig:
-                    confidence_boost += 0.08
-                    reason += " + MACD haussier"
-                elif signal_side == "SELL" and macd_val < macd_sig:
-                    confidence_boost += 0.08
-                    reason += " + MACD baissier"
-            except (ValueError, TypeError):
-                pass
-                
-        # Trend alignment
-        directional_bias = values.get('directional_bias')
-        if directional_bias:
-            if (signal_side == "BUY" and directional_bias == 'BULLISH') or \
-               (signal_side == "SELL" and directional_bias == 'BEARISH'):
-                confidence_boost += 0.08
-                reason += f" + bias {directional_bias}"
-                
-        # CORRECTION: ADX context - adaptation selon direction et DI
-        adx_14 = values.get('adx_14')
-        plus_di = values.get('plus_di')
-        minus_di = values.get('minus_di')
+        # Autres bonus (sans ajout à la raison pour éviter surcharge)
         
+        # Market regime context (bonus silencieux)
+        market_regime = values.get('market_regime')
+        if market_regime == "RANGING":
+            confidence_boost += 0.08  # Williams %R excellent en ranging
+        elif market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
+            confidence_boost += 0.03
+            
+        # ADX context (bonus silencieux)
+        adx_14 = values.get('adx_14')
         if adx_14 is not None:
             try:
                 adx_val = float(adx_14)
-                
-                # Analyser les DI si disponibles pour contexte directionnel
-                di_context = ""
-                if plus_di is not None and minus_di is not None:
-                    try:
-                        plus_di_val = float(plus_di)
-                        minus_di_val = float(minus_di)
-                        
-                        # BUY : favoriser si +DI commence à dépasser -DI ou trend baissier s'affaiblit
-                        if signal_side == "BUY":
-                            if plus_di_val > minus_di_val:
-                                confidence_boost += 0.08
-                                di_context = " +DI > -DI"
-                            elif plus_di_val > minus_di_val * 0.8:  # +DI rattrape
-                                confidence_boost += 0.05
-                                di_context = " +DI rattrape"
-                                
-                        # SELL : favoriser si -DI commence à dépasser +DI ou trend haussier s'affaiblit  
-                        elif signal_side == "SELL":
-                            if minus_di_val > plus_di_val:
-                                confidence_boost += 0.08
-                                di_context = " -DI > +DI"
-                            elif minus_di_val > plus_di_val * 0.8:  # -DI rattrape
-                                confidence_boost += 0.05
-                                di_context = " -DI rattrape"
-                    except (ValueError, TypeError):
-                        pass
-                
-                # ADX général : rebonds meilleurs avec ADX modéré
-                if 15 <= adx_val <= 30:  # ADX modéré = rebonds plus probables
+                if 15 <= adx_val <= 30:  # ADX modéré favorable aux rebonds
                     confidence_boost += 0.08
-                    reason += f" + ADX modéré ({adx_val:.1f}){di_context}"
-                elif 30 < adx_val <= 45:  # ADX élevé mais rebonds possibles
-                    confidence_boost += 0.03
-                    reason += f" + ADX élevé ({adx_val:.1f}){di_context}"
-                elif adx_val > 50:  # Trend très fort = rebonds difficiles mais DI peut aider
-                    if di_context:  # Si DI favorable, moins de pénalité
-                        confidence_boost -= 0.03
-                        reason += f" ADX très fort ({adx_val:.1f}) mais{di_context}"
-                    else:
-                        confidence_boost -= 0.10
-                        reason += f" mais ADX très fort ({adx_val:.1f})"
-                elif adx_val < 15:  # ADX très faible = marché sans direction
-                    confidence_boost += 0.05  # Favorable aux rebonds
-                    reason += f" + ADX faible directionless ({adx_val:.1f})"
-                    
+                elif adx_val < 15:  # ADX faible = marché sans direction
+                    confidence_boost += 0.05
             except (ValueError, TypeError):
                 pass
                 
-        # Bollinger Bands context
+        # Bollinger Bands context (bonus silencieux)
         bb_position = values.get('bb_position')
         if bb_position is not None:
             try:
                 bb_pos = float(bb_position)
-                if signal_side == "BUY" and bb_pos <= 0.2:  # Prix près BB basse
+                if signal_side == "BUY" and bb_pos <= 0.2:
                     confidence_boost += 0.05
-                    reason += " + BB position basse"
-                elif signal_side == "SELL" and bb_pos >= 0.8:  # Prix près BB haute
+                elif signal_side == "SELL" and bb_pos >= 0.8:
                     confidence_boost += 0.05
-                    reason += " + BB position haute"
-            except (ValueError, TypeError):
-                pass
-                
-        # Market regime context
-        market_regime = values.get('market_regime')
-        if market_regime == "RANGING":
-            confidence_boost += 0.08  # Williams %R excellent en ranging
-            reason += " (marché ranging)"
-        elif market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
-            confidence_boost += 0.03  # Rebonds possibles mais plus risqués
-            reason += " (marché trending)"
-            
-        # Volatility context
-        volatility_regime = values.get('volatility_regime')
-        if volatility_regime == "normal":
-            confidence_boost += 0.05
-            reason += " + volatilité normale"
-        elif volatility_regime in ["high", "extreme"]:
-            confidence_boost += 0.03  # Haute volatilité = rebonds plus forts mais plus risqués
-            reason += " (volatilité élevée)"
-            
-        # Confluence score global
-        confluence_score_global = values.get('confluence_score')
-        if confluence_score_global is not None:
-            try:
-                conf_val = float(confluence_score_global)
-                if conf_val > 80:
-                    confidence_boost += 0.1
-                    reason += " + très haute confluence"
-                elif conf_val > 60:
-                    confidence_boost += 0.05
-                    reason += " + haute confluence"
             except (ValueError, TypeError):
                 pass
                 

@@ -1,6 +1,6 @@
 """
-Support_Breakout_Strategy - Stratégie basée sur les cassures de support vers le bas.
-Détecte les breakdowns de support pour signaler des opportunités de vente (breakdown baissier).
+Support_Breakout_Strategy - Version ULTRA SIMPLIFIÉE pour crypto spot.
+Détecte breakouts support/résistance avec logique bidirectionnelle cohérente.
 """
 
 from typing import Dict, Any, Optional
@@ -12,570 +12,279 @@ logger = logging.getLogger(__name__)
 
 class Support_Breakout_Strategy(BaseStrategy):
     """
-    Stratégie détectant les cassures (breakouts) de niveaux de support vers le bas.
+    Stratégie ULTRA SIMPLIFIÉE détectant breakouts support/résistance.
     
-    Pattern de support breakout :
-    1. Prix s'approche d'un niveau de support établi
-    2. Volume augmente (pression vendeuse)
-    3. Prix casse sous le support avec conviction
-    4. Confirmation par momentum baissier
-    5. Continuation baissière attendue (signal SELL)
-    
-    Note: Cette stratégie se concentre sur les breakdowns baissiers de support.
-    Pour les breakouts haussiers de résistance, voir Resistance_Breakout_Strategy.
+    Principe simplifié :
+    - Support breakout (prix < support) → SELL
+    - Resistance breakout (prix > résistance) → BUY  
+    - Confirmation volume + momentum
+    - Seuil unique 0.3% pour détecter breakout
     
     Signaux générés:
-    - SELL: Cassure confirmée de support + momentum baissier + volume
-    - Pas de BUY (focus sur breakdowns baissiers)
+    - SELL: Cassure support + confirmations
+    - BUY: Cassure résistance + confirmations
     """
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres cassure support - RÉALISTES CRYPTO 3M
-        self.breakdown_threshold = 0.003         # 0.3% sous support (plus sensible)
-        self.strong_breakdown_threshold = 0.008  # 0.8% pour cassure forte (réaliste)
-        self.extreme_breakdown_threshold = 0.015 # 1.5% pour cassure extrême (atteignable)
-        
-        # Paramètres temporels
-        self.max_time_near_support = 7          # Max barres près support avant cassure
-        self.confirmation_bars = 1              # Barres pour confirmer cassure
-        
-        # Paramètres volume - ACCESSIBLES CRYPTO
-        self.min_breakdown_volume = 1.15        # Volume 15% au-dessus (accessible)
-        self.strong_breakdown_volume = 1.8      # Volume 1.8x pour cassure forte
-        self.volume_quality_threshold = 0.50    # Qualité volume 50% (réaliste)
-        
-        # Paramètres momentum - ÉQUILIBRÉS
-        self.momentum_bearish_threshold = 42    # Momentum baissier réaliste
-        self.roc_bearish_threshold = -0.008     # ROC -0.8% (atteignable 3m)
-        
-        # Paramètres support - COHÉRENTS
-        self.min_support_strength = 0.3         # Force minimum accessible
-        self.strong_support_bonus = 0.15        # Bonus modéré
-        self.min_break_probability = 0.25       # Probabilité 25% (réaliste)
+        # Paramètres DURCIS pour vrais breakouts
+        self.breakout_threshold = 0.005    # 0.5% seuil durci (vs bruit 0.3%)
+        self.base_confidence = 0.65        # Confiance élevée maintenue
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
-        """Récupère les valeurs actuelles des indicateurs pré-calculés."""
+        """Récupère seulement les indicateurs essentiels."""
         return {
-            # Support/Résistance (principal)
             'nearest_support': self.indicators.get('nearest_support'),
-            'support_strength': self.indicators.get('support_strength'),
-            'support_levels': self.indicators.get('support_levels'),
-            'break_probability': self.indicators.get('break_probability'),
-            'pivot_count': self.indicators.get('pivot_count'),
-            
-            # Bollinger Bands (support dynamique)
-            'bb_lower': self.indicators.get('bb_lower'),
-            'bb_position': self.indicators.get('bb_position'),
-            'bb_width': self.indicators.get('bb_width'),
-            'bb_breakout_direction': self.indicators.get('bb_breakout_direction'),
-            
-            # Momentum et ROC (continuation baissière)
+            'nearest_resistance': self.indicators.get('nearest_resistance'),
             'momentum_score': self.indicators.get('momentum_score'),
-            'momentum_10': self.indicators.get('momentum_10'),
-            'roc_10': self.indicators.get('roc_10'),
-            'roc_20': self.indicators.get('roc_20'),
-            
-            # Trend (confirme direction baissière)
-            'trend_strength': self.indicators.get('trend_strength'),
-            'directional_bias': self.indicators.get('directional_bias'),
-            'trend_alignment': self.indicators.get('trend_alignment'),
-            
-            # ADX (force de la cassure)
-            'adx_14': self.indicators.get('adx_14'),
-            'plus_di': self.indicators.get('plus_di'),
-            'minus_di': self.indicators.get('minus_di'),
-            
-            # Volume analysis (confirmation cassure)
             'volume_ratio': self.indicators.get('volume_ratio'),
-            'relative_volume': self.indicators.get('relative_volume'),
-            'volume_quality_score': self.indicators.get('volume_quality_score'),
-            'volume_spike_multiplier': self.indicators.get('volume_spike_multiplier'),
-            'trade_intensity': self.indicators.get('trade_intensity'),
-            
-            # Volatilité (contexte cassure)
-            'atr_14': self.indicators.get('atr_14'),
-            'volatility_regime': self.indicators.get('volatility_regime'),
-            'atr_percentile': self.indicators.get('atr_percentile'),
-            
-            # Oscillateurs (survente potentielle après cassure)
-            'rsi_14': self.indicators.get('rsi_14'),
-            'rsi_21': self.indicators.get('rsi_21'),
-            'williams_r': self.indicators.get('williams_r'),
-            'stoch_k': self.indicators.get('stoch_k'),
-            'stoch_d': self.indicators.get('stoch_d'),
-            
-            # Market regime et confluence
+            'directional_bias': self.indicators.get('directional_bias'),
             'market_regime': self.indicators.get('market_regime'),
-            'regime_strength': self.indicators.get('regime_strength'),
-            'signal_strength': self.indicators.get('signal_strength'),
             'confluence_score': self.indicators.get('confluence_score'),
-            'pattern_detected': self.indicators.get('pattern_detected'),
-            'pattern_confidence': self.indicators.get('pattern_confidence')
+            'bb_lower': self.indicators.get('bb_lower'),
+            'bb_upper': self.indicators.get('bb_upper')
         }
         
-    def _detect_support_breakdown(self, values: Dict[str, Any], current_price: float) -> Dict[str, Any]:
-        """Détecte une cassure de support."""
-        breakdown_score = 0.0
-        breakdown_indicators = []
+    def _detect_breakout(self, values: Dict[str, Any], current_price: float) -> Dict[str, Any]:
+        """Détecte breakout support (SELL) ou résistance (BUY)."""
         
-        # Vérification support principal - AVEC FALLBACK
-        nearest_support = values.get('nearest_support')
+        # Support breakout (SELL)
+        nearest_support = values.get('nearest_support') or values.get('bb_lower')
+        if nearest_support is not None:
+            try:
+                support_level = float(nearest_support)
+                if current_price < support_level * (1 - self.breakout_threshold):
+                    breakdown_distance = (support_level - current_price) / support_level
+                    return {
+                        'is_breakout': True,
+                        'signal_side': 'SELL',
+                        'level': support_level,
+                        'distance_pct': breakdown_distance * 100,
+                        'reason': f'Support breakout {support_level:.4f} ({breakdown_distance*100:.1f}%)'
+                    }
+            except (ValueError, TypeError):
+                pass
         
-        # FALLBACK: Si nearest_support est NULL, utiliser bb_lower
-        if nearest_support is None:
-            bb_lower = values.get('bb_lower')
-            if bb_lower is not None:
-                nearest_support = bb_lower
-                support_strength_fallback = 'MODERATE'  # BB lower = support modéré
-            else:
-                # FALLBACK 2: VWAP lower band depuis indicators
-                vwap_lower = self.indicators.get('vwap_lower_band')
-                if vwap_lower is not None:
-                    nearest_support = vwap_lower
-                    support_strength_fallback = 'WEAK'  # VWAP band = support faible
-                else:
-                    return {'is_breakdown': False, 'score': 0.0, 'indicators': ['Aucun niveau de support disponible']}
-            
-        try:
-            support_level = float(nearest_support)
-        except (ValueError, TypeError):
-            return {'is_breakdown': False, 'score': 0.0, 'indicators': ['Support level invalide']}
-            
-        # Vérifier si le prix a cassé sous le support
-        if current_price >= support_level:
-            return {
-                'is_breakdown': False,
-                'score': 0.0,
-                'indicators': ['Prix encore au-dessus support'],
-                'support_level': support_level
-            }
-            
-        # Distance de cassure (plus c'est loin, plus c'est significatif)
-        breakdown_distance = (support_level - current_price) / support_level
+        # Resistance breakout (BUY)
+        nearest_resistance = values.get('nearest_resistance') or values.get('bb_upper')
+        if nearest_resistance is not None:
+            try:
+                resistance_level = float(nearest_resistance)
+                if current_price > resistance_level * (1 + self.breakout_threshold):
+                    breakout_distance = (current_price - resistance_level) / resistance_level
+                    return {
+                        'is_breakout': True,
+                        'signal_side': 'BUY',
+                        'level': resistance_level,
+                        'distance_pct': breakout_distance * 100,
+                        'reason': f'Resistance breakout {resistance_level:.4f} ({breakout_distance*100:.1f}%)'
+                    }
+            except (ValueError, TypeError):
+                pass
         
-        if breakdown_distance >= self.extreme_breakdown_threshold:
-            breakdown_score += 0.4
-            breakdown_indicators.append(f"Cassure extrême ({breakdown_distance*100:.1f}%)")
-        elif breakdown_distance >= self.strong_breakdown_threshold:
-            breakdown_score += 0.3
-            breakdown_indicators.append(f"Cassure forte ({breakdown_distance*100:.1f}%)")
-        elif breakdown_distance >= self.breakdown_threshold:
-            breakdown_score += 0.2
-            breakdown_indicators.append(f"Cassure confirmée ({breakdown_distance*100:.1f}%)")
-        else:
-            # Cassure trop faible
-            return {
-                'is_breakdown': False,
-                'score': 0.0,
-                'indicators': [f'Cassure insuffisante ({breakdown_distance*100:.2f}%)'],
-                'support_level': support_level
-            }
-            
-        # Force du support cassé (plus fort = cassure plus significative)
-        support_strength = values.get('support_strength')
-        if support_strength is not None:
-            try:
-                if isinstance(support_strength, str):
-                    strength_map = {'WEAK': 0.2, 'MODERATE': 0.5, 'STRONG': 0.8, 'MAJOR': 1.0}
-                    strength_val = strength_map.get(support_strength.upper(), 0.5)
-                else:
-                    strength_val = float(support_strength)
-                    
-                if strength_val >= 0.8:
-                    breakdown_score += self.strong_support_bonus * 2
-                    breakdown_indicators.append(f"Support très fort cassé ({strength_val:.2f})")
-                elif strength_val >= self.min_support_strength:
-                    breakdown_score += self.strong_support_bonus
-                    breakdown_indicators.append(f"Support fort cassé ({strength_val:.2f})")
-            except (ValueError, TypeError):
-                pass
-                
-        # Probabilité de cassure (format décimal 0-1 depuis DB)
-        break_probability = values.get('break_probability')
-        if break_probability is not None:
-            try:
-                break_prob = float(break_probability)
-                if break_prob >= 0.70:  # Haute probabilité (70%)
-                    breakdown_score += 0.15
-                    breakdown_indicators.append(f"Haute probabilité cassure ({break_prob*100:.0f}%)")
-                elif break_prob >= self.min_break_probability:  # >= 0.30 (30%)
-                    breakdown_score += 0.1
-                    breakdown_indicators.append(f"Probabilité cassure modérée ({break_prob*100:.0f}%)")
-            except (ValueError, TypeError):
-                pass
-                
-        # Bollinger Band breakdown (support dynamique)
-        bb_lower = values.get('bb_lower')
-        bb_breakout_direction = values.get('bb_breakout_direction')
+        return {'is_breakout': False, 'reason': 'Pas de breakout détecté'}
         
-        if bb_lower is not None:
-            try:
-                bb_lower_val = float(bb_lower)
-                if current_price < bb_lower_val:
-                    breakdown_score += 0.1
-                    breakdown_indicators.append("Cassure Bollinger basse")
-                    
-                if bb_breakout_direction == 'DOWN':
-                    breakdown_score += 0.1
-                    breakdown_indicators.append("BB breakout baissier")
-            except (ValueError, TypeError):
-                pass
-                
-        return {
-            'is_breakdown': breakdown_score >= 0.25,  # Seuil assoupli (était 0.4)
-            'score': breakdown_score,
-            'indicators': breakdown_indicators,
-            'support_level': support_level,
-            'breakdown_distance_pct': breakdown_distance * 100
-        }
         
-    def _detect_bearish_momentum(self, values: Dict[str, Any]) -> Dict[str, Any]:
-        """Détecte le momentum baissier pour continuation."""
-        momentum_score = 0
-        momentum_indicators = []
-        
-        # Momentum score général (format 0-100, 50=neutre) - CORRECTION: gérer valeurs nulles/incorrectes
-        momentum_val = values.get('momentum_score')
-        if momentum_val is not None:
-            try:
-                momentum_float = float(momentum_val)
-                # CORRECTION: Si momentum_val = 0, probablement une erreur de calcul upstream
-                if momentum_float == 0.0:
-                    # Fallback: utiliser d'autres indicateurs de momentum
-                    logger.warning(f"{self.name}: momentum_score=0, utilisation fallback")
-                elif momentum_float <= self.momentum_bearish_threshold:  # <=42
-                    momentum_score += 25
-                    momentum_indicators.append(f"Momentum baissier ({momentum_float:.1f})")
-            except (ValueError, TypeError):
-                logger.warning(f"{self.name}: momentum_score invalide: {momentum_val}")
-                pass
-                
-        # ROC négatif (continuation baissière) - CORRECTION: gérer valeurs extrêmes
-        roc_10 = values.get('roc_10')
-        if roc_10 is not None:
-            try:
-                roc_val = float(roc_10)
-                # CORRECTION: Détecter valeurs ROC aberrantes (>100% ou <-100%)
-                if abs(roc_val) > 1.0:  # >100%
-                    logger.warning(f"{self.name}: ROC aberrant ignoré: {roc_val*100:.1f}%")
-                elif roc_val <= self.roc_bearish_threshold:  # <=-0.008 (0.8%)
-                    momentum_score += 20
-                    momentum_indicators.append(f"ROC baissier ({roc_val*100:.1f}%)")
-            except (ValueError, TypeError):
-                logger.warning(f"{self.name}: roc_10 invalide: {roc_10}")
-                pass
-                
-        # Directional bias baissier
-        directional_bias = values.get('directional_bias')
-        if directional_bias and directional_bias.upper() == 'BEARISH':
-            momentum_score += 15
-            momentum_indicators.append("Bias directionnel baissier")
-            
-        # ADX DI confirmation
-        plus_di = values.get('plus_di')
-        minus_di = values.get('minus_di')
-        
-        if plus_di is not None and minus_di is not None:
-            try:
-                plus_di_val = float(plus_di)
-                minus_di_val = float(minus_di)
-                
-                if minus_di_val > plus_di_val:  # DI- > DI+ = pression baissière
-                    momentum_score += 15
-                    momentum_indicators.append(f"DI- > DI+ ({minus_di_val:.1f} > {plus_di_val:.1f})")
-            except (ValueError, TypeError):
-                pass
-                
-        # Trend alignment baissier (format décimal)
-        trend_alignment = values.get('trend_alignment')
-        if trend_alignment is not None:
-            try:
-                trend_align = float(trend_alignment)
-                if trend_align < -0.5:  # Alignment baissier fort (format décimal)
-                    momentum_score += 10
-                    momentum_indicators.append(f"Trend alignment baissier ({trend_align:.2f})")
-            except (ValueError, TypeError):
-                pass
-                
-        return {
-            'is_bearish_momentum': momentum_score >= 20,  # Seuil réaliste (était 30)
-            'score': momentum_score,
-            'indicators': momentum_indicators
-        }
-        
-    def _detect_volume_confirmation(self, values: Dict[str, Any]) -> Dict[str, Any]:
-        """Détecte confirmation volume pour la cassure."""
-        volume_score = 0.0
-        volume_indicators = []
-        
-        # Volume ratio principal
-        volume_ratio = values.get('volume_ratio')
-        if volume_ratio is not None:
-            try:
-                vol_ratio = float(volume_ratio)
-                if vol_ratio >= self.strong_breakdown_volume:
-                    volume_score += 0.3
-                    volume_indicators.append(f"Volume fort ({vol_ratio:.1f}x)")
-                elif vol_ratio >= self.min_breakdown_volume:
-                    volume_score += 0.2
-                    volume_indicators.append(f"Volume élevé ({vol_ratio:.1f}x)")
-            except (ValueError, TypeError):
-                pass
-                
-        # Volume quality score
-        volume_quality = values.get('volume_quality_score')
-        if volume_quality is not None:
-            try:
-                volume_quality_score = float(volume_quality)
-                if volume_quality_score >= 80:
-                    volume_score += 0.2
-                    volume_indicators.append(f"Volume qualité élevée ({volume_quality_score:.0f})")
-                elif volume_quality_score >= 60:  # Ajuster le seuil pour format 0-100
-                    volume_score += 0.1
-                    volume_indicators.append(f"Volume qualité correcte ({volume_quality_score:.0f})")
-            except (ValueError, TypeError):
-                pass
-                
-        # Trade intensity
-        trade_intensity = values.get('trade_intensity')
-        if trade_intensity is not None:
-            try:
-                intensity = float(trade_intensity)
-                if intensity >= 1.5:
-                    volume_score += 0.15
-                    volume_indicators.append(f"Intensité élevée ({intensity:.1f}x)")
-            except (ValueError, TypeError):
-                pass
-                
-        # Volume spike multiplier
-        volume_spike = values.get('volume_spike_multiplier')
-        if volume_spike is not None:
-            try:
-                spike_mult = float(volume_spike)
-                if spike_mult >= 2.0:
-                    volume_score += 0.1
-                    volume_indicators.append(f"Volume spike ({spike_mult:.1f}x)")
-            except (ValueError, TypeError):
-                pass
-                
-        return {
-            'is_volume_confirmed': volume_score >= 0.15,  # Seuil accessible (était 0.25)
-            'score': volume_score,
-            'indicators': volume_indicators
-        }
         
     def generate_signal(self) -> Dict[str, Any]:
-        """
-        Génère un signal basé sur les cassures de support.
-        """
+        """Version ULTRA SIMPLIFIÉE pour crypto spot breakouts."""
+        
+        # Validation minimale
         if not self.validate_data():
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": "Données insuffisantes",
-                "metadata": {}
-            }
-            
-        values = self._get_current_values()
-        
-        # Récupérer prix actuel
-        current_price = None
-        if 'close' in self.data and self.data['close']:
-            try:
-                current_price = float(self.data['close'][-1])
-            except (IndexError, ValueError, TypeError):
-                pass
-            
-        if current_price is None:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Prix actuel non disponible",
                 "metadata": {"strategy": self.name}
             }
             
-        # Étape 1: Détecter cassure de support
-        breakdown_analysis = self._detect_support_breakdown(values, current_price)
+        values = self._get_current_values()
+        confidence_boost = 0.0
         
-        if not breakdown_analysis['is_breakdown']:
+        # Prix actuel
+        if not ('close' in self.data and self.data['close']):
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Pas de cassure support détectée: {', '.join(breakdown_analysis['indicators'][:2]) if breakdown_analysis['indicators'] else 'Support intact'}",
-                "metadata": {
-                    "strategy": self.name,
-                    "symbol": self.symbol,
-                    "current_price": current_price,
-                    "breakdown_score": breakdown_analysis['score']
-                }
+                "reason": "Prix non disponible",
+                "metadata": {"strategy": self.name}
             }
             
-        # Étape 2: Confirmer momentum baissier
-        momentum_analysis = self._detect_bearish_momentum(values)
-        
-        # Étape 3: Confirmer avec volume
-        volume_analysis = self._detect_volume_confirmation(values)
-        
-        # Signal SELL si cassure + momentum baissier (volume optionnel mais bonifie)
-        if breakdown_analysis['is_breakdown'] and momentum_analysis['is_bearish_momentum']:
-            
-            base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
-            confidence_boost = 0.0
-            
-            # Score de cassure - CORRECTION: normaliser les scores
-            breakdown_score_normalized = min(breakdown_analysis['score'], 1.0)  # Cap à 1.0
-            confidence_boost += breakdown_score_normalized * 0.25  # Réduire impact
-            
-            # Score momentum baissier - CORRECTION: convertir 0-100 vers 0-1
-            momentum_raw = momentum_analysis['score']
-            momentum_score_normalized = min(momentum_raw / 100.0, 1.0)  # 0-100 -> 0-1
-            confidence_boost += momentum_score_normalized * 0.20  # Réduire impact
-            
-            reason = f"Cassure support {breakdown_analysis['support_level']:.2f} ({breakdown_analysis['breakdown_distance_pct']:.1f}%)"
-            reason += f" + {', '.join(momentum_analysis['indicators'][:1])}"
-            
-            # Bonus volume (pas obligatoire mais renforce) - CORRECTION: normaliser
-            if volume_analysis['is_volume_confirmed']:
-                volume_score_normalized = min(volume_analysis['score'], 1.0)
-                confidence_boost += volume_score_normalized * 0.15  # Réduire impact
-                reason += f" + {volume_analysis['indicators'][0]}"
-                
-            # Market regime breakout - CORRECTION: vérifier type/format
-            market_regime = values.get('market_regime')
-            if market_regime and ('BREAKOUT_BEAR' in str(market_regime) or 'TRENDING_BEAR' in str(market_regime)):
-                confidence_boost += 0.05  # Réduire bonus
-                reason += " + regime baissier"
-                
-            # Pattern detected - CORRECTION: vérifier type
-            pattern_detected = values.get('pattern_detected')
-            if pattern_detected and 'breakout' in str(pattern_detected).lower():
-                confidence_boost += 0.05  # Réduire bonus
-                reason += " + pattern breakout"
-                
-            # Confluence score - CORRECTION: format string/float
-            confluence_score = values.get('confluence_score')
-            if confluence_score is not None:
-                try:
-                    # Gérer format string avec point décimal "46.20"
-                    if isinstance(confluence_score, str):
-                        conf_val = float(confluence_score)
-                    else:
-                        conf_val = float(confluence_score)
-                        
-                    if conf_val > 60:  # Seuil réaliste (était 70)
-                        confidence_boost += 0.05  # Réduire bonus
-                        reason += " + confluence élevée"
-                except (ValueError, TypeError):
-                    pass
-                    
-            # CORRECTION: Calcul direct au lieu de multiplicateur
-            final_confidence = base_confidence + confidence_boost
-            confidence = min(max(final_confidence, 0.0), 1.0)  # Clamp entre 0-1
-            strength = self.get_strength_from_confidence(confidence)
-            
+        try:
+            current_price = float(self.data['close'][-1])
+        except (IndexError, ValueError, TypeError):
             return {
-                "side": "SELL",
-                "confidence": confidence,
-                "strength": strength,
-                "reason": reason,
-                "metadata": {
-                    "strategy": self.name,
-                    "symbol": self.symbol,
-                    "current_price": current_price,
-                    "support_level": breakdown_analysis['support_level'],
-                    "breakdown_distance_pct": breakdown_analysis['breakdown_distance_pct'],
-                    "breakdown_score": breakdown_analysis['score'],
-                    "momentum_score": momentum_analysis['score'],
-                    "volume_score": volume_analysis['score'],
-                    "breakdown_indicators": breakdown_analysis['indicators'],
-                    "momentum_indicators": momentum_analysis['indicators'],
-                    "volume_indicators": volume_analysis['indicators'],
-                    "market_regime": market_regime,
-                    "confluence_score": confluence_score
-                }
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": "Prix invalide",
+                "metadata": {"strategy": self.name}
             }
+        
+        # Détection breakout simplifiée
+        breakout_analysis = self._detect_breakout(values, current_price)
+        
+        if not breakout_analysis['is_breakout']:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": breakout_analysis['reason'],
+                "metadata": {"strategy": self.name}
+            }
+        
+        signal_side = breakout_analysis['signal_side']
+        reason = breakout_analysis['reason']
+        
+        # REJETS CRITIQUES - cohérence momentum/bias
+        momentum_score = values.get('momentum_score', 50)
+        directional_bias = values.get('directional_bias')
+        
+        try:
+            momentum_val = float(momentum_score)
+        except (ValueError, TypeError):
+            momentum_val = 50
+        
+        # Rejet momentum DURCI - plus tranchant
+        if signal_side == "BUY" and momentum_val < 50:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Rejet BUY: momentum trop faible ({momentum_val:.0f})",
+                "metadata": {"strategy": self.name}
+            }
+        elif signal_side == "SELL" and momentum_val > 50:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Rejet SELL: momentum trop fort ({momentum_val:.0f})",
+                "metadata": {"strategy": self.name}
+            }
+        
+        # Rejet si incohérence signal/bias + BONUS si aligné
+        if (signal_side == "BUY" and directional_bias == 'BEARISH') or \
+           (signal_side == "SELL" and directional_bias == 'BULLISH'):
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Rejet {signal_side}: bias contradictoire ({directional_bias})",
+                "metadata": {"strategy": self.name}
+            }
+        elif (signal_side == "BUY" and directional_bias == 'BULLISH') or \
+             (signal_side == "SELL" and directional_bias == 'BEARISH'):
+            confidence_boost += 0.10
+            reason += f" + bias aligné ({directional_bias})"
+        
+        # Bonus simples
+        
+        # Volume DURCI - évite breakouts neutres
+        volume_ratio = values.get('volume_ratio', 1.0)
+        try:
+            vol_ratio = float(volume_ratio)
+            if vol_ratio >= 1.8:  # Seuil plus strict
+                confidence_boost += 0.15
+                reason += f" + volume fort ({vol_ratio:.1f}x)"
+            elif vol_ratio >= 1.5:
+                confidence_boost += 0.08
+                reason += f" + volume ({vol_ratio:.1f}x)"
+            elif vol_ratio < 1.1:  # Rejet durci (vs 1.0)
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Rejet: volume trop faible ({vol_ratio:.1f}x)",
+                    "metadata": {"strategy": self.name}
+                }
+        except (ValueError, TypeError):
+            pass
+        
+        # Confluence avec rejet
+        confluence_score = values.get('confluence_score', 0)
+        try:
+            conf_val = float(confluence_score)
+        except (ValueError, TypeError):
+            conf_val = 0
             
-        # Diagnostic si conditions incomplètes
-        missing_conditions = []
-        if not breakdown_analysis['is_breakdown']:
-            missing_conditions.append(f"Cassure insuffisante (score: {breakdown_analysis['score']:.2f})")
-        if not momentum_analysis['is_bearish_momentum']:
-            missing_conditions.append(f"Momentum pas assez baissier (score: {momentum_analysis['score']:.2f})")
-            
+        if conf_val < 40:  # Rejet si confluence trop faible
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Rejet: confluence insuffisante ({conf_val})",
+                "metadata": {"strategy": self.name, "confluence_score": conf_val}
+            }
+        elif conf_val >= 75:  # Confluence affinée
+            confidence_boost += 0.10
+            reason += f" + confluence excellente ({conf_val:.0f})"
+        elif conf_val >= 60:
+            confidence_boost += 0.05
+            reason += f" + confluence ({conf_val:.0f})"
+        
+        # Enrichir reason avec détails systématiques
+        reason += f" (momentum={momentum_val:.0f}, conf={conf_val:.0f})"
+        
+        # Market regime avec rejets contradictoires + BONUS aligné
+        market_regime = values.get('market_regime')
+        if (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or \
+           (signal_side == "SELL" and market_regime == "TRENDING_BULL"):
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Rejet {signal_side}: régime contradictoire ({market_regime})",
+                "metadata": {"strategy": self.name, "market_regime": market_regime}
+            }
+        elif (signal_side == "BUY" and market_regime == "TRENDING_BULL") or \
+             (signal_side == "SELL" and market_regime == "TRENDING_BEAR"):
+            confidence_boost += 0.08
+            reason += f" + régime aligné ({market_regime})"
+        
+        # Calcul final
+        confidence = min(1.0, self.base_confidence * (1 + confidence_boost))
+        strength = self.get_strength_from_confidence(confidence)
+        
         return {
-            "side": None,
-            "confidence": 0.0,
-            "strength": "weak",
-            "reason": f"Conditions incomplètes: {'; '.join(missing_conditions)}",
+            "side": signal_side,
+            "confidence": confidence,
+            "strength": strength,
+            "reason": reason,
             "metadata": {
                 "strategy": self.name,
                 "symbol": self.symbol,
-                "current_price": current_price,
-                "breakdown_score": breakdown_analysis['score'],
-                "momentum_score": momentum_analysis['score'],
-                "missing_conditions": missing_conditions
+                "breakout_level": breakout_analysis['level'],
+                "breakout_distance_pct": breakout_analysis['distance_pct'],
+                "momentum_score": momentum_val,
+                "volume_ratio": volume_ratio,
+                "directional_bias": directional_bias,
+                "market_regime": market_regime,
+                "confluence_score": confluence_score,
+                "base_confidence": self.base_confidence,
+                "confidence_boost": confidence_boost
             }
         }
         
     def validate_data(self) -> bool:
-        """Valide que tous les indicateurs requis sont présents."""
-        # FLEXIBLE: Au moins un indicateur de support
-        support_indicators = ['nearest_support', 'bb_lower', 'vwap_lower_band']
-        has_support = any(self.indicators.get(ind) is not None for ind in support_indicators)
-        
-        # Indicateurs essentiels avec validation de format
-        required_indicators = ['momentum_score', 'volume_ratio']
-        
-        if not self.indicators:
-            logger.warning(f"{self.name}: Aucun indicateur disponible")
-            return False
-        
-        # Vérifier au moins un support disponible
-        if not has_support:
-            logger.warning(f"{self.name}: Aucun indicateur de support disponible")
+        """Validation ULTRA SIMPLIFIÉE - seulement essentiels."""
+        if not super().validate_data():
             return False
             
-        for indicator in required_indicators:
-            if indicator not in self.indicators:
-                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
-                return False
-            if self.indicators[indicator] is None:
-                logger.warning(f"{self.name}: Indicateur null: {indicator}")
-                return False
+        # Au moins un niveau support OU résistance
+        has_level = any(self.indicators.get(ind) is not None 
+                       for ind in ['nearest_support', 'nearest_resistance', 'bb_lower', 'bb_upper'])
+        
+        if not has_level:
+            logger.warning(f"{self.name}: Aucun niveau support/résistance disponible")
+            return False
+            
+        # Seulement momentum requis
+        if 'momentum_score' not in self.indicators or self.indicators['momentum_score'] is None:
+            logger.warning(f"{self.name}: momentum_score manquant")
+            return False
                 
-            # CORRECTION: Validation supplémentaire des valeurs
-            try:
-                val = float(self.indicators[indicator])
-                if indicator == 'momentum_score':
-                    if val < 0 or val > 100:
-                        logger.warning(f"{self.name}: momentum_score hors limites (0-100): {val}")
-                        # Ne pas échouer pour cette validation, mais logger
-                elif indicator == 'volume_ratio':
-                    if val < 0:
-                        logger.warning(f"{self.name}: volume_ratio négatif: {val}")
-                        return False
-            except (ValueError, TypeError):
-                logger.warning(f"{self.name}: Valeur {indicator} non numérique: {self.indicators[indicator]}")
-                return False
-                
-        # Vérifier données OHLCV
-        if 'close' not in self.data or not self.data['close']:
-            logger.warning(f"{self.name}: Données OHLCV manquantes")
-            return False
-            
-        # Vérifier que prix actuel est valide
-        try:
-            current_price = float(self.data['close'][-1])
-            if current_price <= 0:
-                logger.warning(f"{self.name}: Prix actuel invalide: {current_price}")
-                return False
-        except (IndexError, ValueError, TypeError):
-            logger.warning(f"{self.name}: Prix actuel inaccessible")
-            return False
-            
         return True

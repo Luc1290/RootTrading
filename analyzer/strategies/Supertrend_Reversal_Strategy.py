@@ -1,6 +1,6 @@
 """
-Supertrend_Reversal_Strategy - Stratégie basée sur les reversals de Supertrend utilisant ATR.
-Le Supertrend est un indicateur de suivi de tendance basé sur l'ATR qui génère des signaux de reversal.
+Supertrend_Reversal_Strategy - Version ULTRA SIMPLIFIÉE pour crypto.
+Détecte les reversals de tendance avec logique adaptée spot crypto intraday.
 """
 
 from typing import Dict, Any, Optional
@@ -12,552 +12,192 @@ logger = logging.getLogger(__name__)
 
 class Supertrend_Reversal_Strategy(BaseStrategy):
     """
-    Stratégie détectant les reversals de tendance avec logique Supertrend simulée.
+    Stratégie ULTRA SIMPLIFIÉE de détection reversal adaptée crypto.
     
-    Principe Supertrend :
-    - Supertrend = HL2 ± (Multiplier × ATR)
-    - Bullish: prix > Supertrend (signal BUY sur reversal)
-    - Bearish: prix < Supertrend (signal SELL sur reversal)
-    
-    Comme Supertrend n'est pas directement disponible, nous le simulons avec :
-    - ATR stops (atr_stop_long/short) comme proxy Supertrend
-    - Trend strength + directional bias pour direction
-    - EMA cross patterns pour confirmation reversal
+    Principe simplifié :
+    - Direction basée sur directional_bias + momentum_score
+    - Confirmations volume, trend_strength, confluence
+    - Bonus adaptés crypto (volatilité, regime, RSI)
+    - Pas de simulation Supertrend complexe
     
     Signaux générés:
-    - BUY: Reversal haussier détecté (prix > ATR stop + confirmations)
-    - SELL: Reversal baissier détecté (prix < ATR stop + confirmations)
+    - BUY: Reversal haussier détecté + confirmations
+    - SELL: Reversal baissier détecté + confirmations
     """
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres Supertrend simulé CRYPTO OPTIMISÉS
-        self.supertrend_multiplier = 2.2         # Multiplier ATR crypto (plus réactif aux gaps)
-        self.min_atr_distance = 0.001            # Distance minimum crypto (spreads serrés)
-        self.max_atr_distance = 0.035            # Distance maximum crypto (moves volatils)
-        
-        # Paramètres de reversal CRYPTO - ULTRA SIMPLIFIÉS
-        self.min_reversal_score = 0.10           # Score reversal minimum (ultra permissif crypto)
-        self.momentum_threshold = 45             # Seuil momentum reversal (crypto réactif)
-        self.directional_bias_required = False   # Bias optionnel (réactivité primordiale)
-        
-        # Paramètres EMA confirmation CRYPTO - SIMPLIFIÉS
-        self.ema_cross_confirmation = False      # EMA cross optionnel (réactivité > confirmation)
-        self.min_ema_separation = 0.003         # Séparation crypto minime (spreads serrés)
-        
-        # Paramètres volume crypto - ADAPTÉS
-        self.min_volume_confirmation = 1.1       # Volume léger requis (crypto liquide)
-        self.volatility_bonus_threshold = 2.0    # Volatilité élevée = bonus (crypto aime la vol)
-        
-    def _get_current_values(self) -> Dict[str, Optional[float]]:
-        """Récupère les valeurs actuelles des indicateurs pré-calculés."""
-        return {
-            # ATR et stops (proxy Supertrend)
-            'atr_14': self.indicators.get('atr_14'),
-            'atr_stop_long': self.indicators.get('atr_stop_long'),
-            'atr_stop_short': self.indicators.get('atr_stop_short'),
-            'volatility_regime': self.indicators.get('volatility_regime'),
-            
-            # Tendance et direction (cœur reversal)
-            'trend_strength': self.indicators.get('trend_strength'),
-            'directional_bias': self.indicators.get('directional_bias'),
-            'trend_alignment': self.indicators.get('trend_alignment'),
-            'trend_angle': self.indicators.get('trend_angle'),
-            
-            # EMA cross patterns (confirmation reversal)
-            'ema_12': self.indicators.get('ema_12'),
-            'ema_26': self.indicators.get('ema_26'),
-            'ema_50': self.indicators.get('ema_50'),
-            
-            # ADX (force tendance)
-            'adx_14': self.indicators.get('adx_14'),
-            'plus_di': self.indicators.get('plus_di'),
-            'minus_di': self.indicators.get('minus_di'),
-            
-            # Momentum (détection changement)
-            'momentum_score': self.indicators.get('momentum_score'),
-            'momentum_10': self.indicators.get('momentum_10'),
-            'roc_10': self.indicators.get('roc_10'),
-            'roc_20': self.indicators.get('roc_20'),
-            
-            # Oscillateurs (timing reversal)
-            'rsi_14': self.indicators.get('rsi_14'),
-            'rsi_21': self.indicators.get('rsi_21'),
-            'stoch_k': self.indicators.get('stoch_k'),
-            'stoch_d': self.indicators.get('stoch_d'),
-            'williams_r': self.indicators.get('williams_r'),
-            
-            # Volume (confirmation)
-            'volume_ratio': self.indicators.get('volume_ratio'),
-            'relative_volume': self.indicators.get('relative_volume'),
-            'volume_quality_score': self.indicators.get('volume_quality_score'),
-            'trade_intensity': self.indicators.get('trade_intensity'),
-            
-            # Support/Résistance (niveaux clés)
-            'nearest_support': self.indicators.get('nearest_support'),
-            'nearest_resistance': self.indicators.get('nearest_resistance'),
-            'support_strength': self.indicators.get('support_strength'),
-            'resistance_strength': self.indicators.get('resistance_strength'),
-            
-            # Contexte marché
-            'market_regime': self.indicators.get('market_regime'),
-            'regime_strength': self.indicators.get('regime_strength'),
-            'confluence_score': self.indicators.get('confluence_score'),
-            'signal_strength': self.indicators.get('signal_strength')
-        }
-        
-    def _calculate_supertrend_proxy(self, values: Dict[str, Any], current_price: float) -> Dict[str, Any]:
-        """Calcule une approximation du Supertrend basée sur ATR stops."""
-        atr_14 = values.get('atr_14')
-        atr_stop_long = values.get('atr_stop_long')
-        atr_stop_short = values.get('atr_stop_short')
-        
-        if atr_14 is None:
-            return {'supertrend_bullish': None, 'supertrend_bearish': None, 'distance': None}
-            
-        try:
-            atr_val = float(atr_14)
-            
-            # Calcul Supertrend approximatif
-            # HL2 = (high + low) / 2, approximé par current_price
-            supertrend_distance = self.supertrend_multiplier * atr_val
-            
-            # Utiliser ATR stops s'ils sont disponibles, sinon calculer
-            if atr_stop_long is not None:
-                supertrend_bullish_level = float(atr_stop_long)
-            else:
-                supertrend_bullish_level = current_price - supertrend_distance
-                
-            if atr_stop_short is not None:
-                supertrend_bearish_level = float(atr_stop_short)  
-            else:
-                supertrend_bearish_level = current_price + supertrend_distance
-                
-            # Distance relative au Supertrend
-            distance_to_bull_st = abs(current_price - supertrend_bullish_level) / current_price
-            distance_to_bear_st = abs(current_price - supertrend_bearish_level) / current_price
-            
-            return {
-                'supertrend_bullish_level': supertrend_bullish_level,
-                'supertrend_bearish_level': supertrend_bearish_level,
-                'distance_to_bullish': distance_to_bull_st,
-                'distance_to_bearish': distance_to_bear_st,
-                'atr_value': atr_val
-            }
-            
-        except (ValueError, TypeError):
-            return {'supertrend_bullish': None, 'supertrend_bearish': None, 'distance': None}
-            
-    def _detect_trend_reversal(self, values: Dict[str, Any]) -> Dict[str, Any]:
-        """Détecte un potentiel reversal de tendance."""
-        reversal_score = 0.0
-        reversal_indicators = []
-        reversal_direction = None  # 'bullish' ou 'bearish'
-        
-        # Analyse directional bias (changement de direction)
-        directional_bias = values.get('directional_bias')
-        trend_strength = values.get('trend_strength')
-        
-        if directional_bias and trend_strength is not None:
-            # trend_strength selon schéma: weak/moderate/strong/very_strong/extreme
-            trend_str = str(trend_strength).lower()
-            if trend_str in ['weak', 'absent']:
-                reversal_score += 0.2
-                reversal_indicators.append(f"Trend faible ({trend_str})")
-            elif trend_str == 'moderate':
-                reversal_score += 0.1
-                reversal_indicators.append(f"Trend modéré ({trend_str})")
-            
-            # CORRECTION: Directional bias TOUJOURS utilisé pour direction (pas seulement moderate)
-            if directional_bias == 'BULLISH':
-                reversal_direction = 'bullish'
-                reversal_indicators.append("Bias haussier")
-            elif directional_bias == 'BEARISH':
-                reversal_direction = 'bearish'
-                reversal_indicators.append("Bias baissier")
-                
-        # ADX pour confirmer changement de tendance
-        adx_14 = values.get('adx_14')
-        plus_di = values.get('plus_di')
-        minus_di = values.get('minus_di')
-        
-        if adx_14 is not None and plus_di is not None and minus_di is not None:
-            try:
-                adx_val = float(adx_14)
-                plus_di_val = float(plus_di)
-                minus_di_val = float(minus_di)
-                
-                # ADX décroissant = affaiblissement tendance
-                if adx_val < 25:  # ADX faible
-                    reversal_score += 0.25  # Bonus plus important pour reversal
-                    reversal_indicators.append(f"ADX faible ({adx_val:.1f})")
-                    
-                # Cross DI pour direction reversal
-                di_diff = plus_di_val - minus_di_val
-                if reversal_direction == 'bullish' and di_diff > 0:
-                    reversal_score += 0.15
-                    reversal_indicators.append("DI+ > DI- (haussier)")
-                elif reversal_direction == 'bearish' and di_diff < 0:
-                    reversal_score += 0.15
-                    reversal_indicators.append("DI- > DI+ (baissier)")
-                    
-            except (ValueError, TypeError):
-                pass
-                
-        # Momentum reversal confirmation
-        momentum_score = values.get('momentum_score')
-        if momentum_score is not None:
-            try:
-                momentum_val = float(momentum_score)
-                
-                # Momentum change CRYPTO plus réactif (format 0-100, 50=neutre)
-                if reversal_direction == 'bullish' and momentum_val > 52:  # Plus permissif
-                    reversal_score += 0.25  # Score plus élevé
-                    reversal_indicators.append(f"Momentum haussier ({momentum_val:.0f})")
-                elif reversal_direction == 'bearish' and momentum_val < 48:  # Plus permissif
-                    reversal_score += 0.25  # Score plus élevé
-                    reversal_indicators.append(f"Momentum baissier ({momentum_val:.0f})")
-                    
-            except (ValueError, TypeError):
-                pass
-                
-        return {
-            'is_reversal': reversal_score >= self.min_reversal_score,  # CRYPTO: Seuil 0.15 ultra permissif
-            'direction': reversal_direction,
-            'score': reversal_score,
-            'indicators': reversal_indicators
-        }
-        
-    def _detect_ema_cross_confirmation(self, values: Dict[str, Any], reversal_direction: str) -> Dict[str, Any]:
-        """Détecte confirmation EMA cross pour le reversal."""
-        cross_score = 0.0
-        cross_indicators = []
-        
-        ema_12 = values.get('ema_12')
-        ema_26 = values.get('ema_26')
-        ema_50 = values.get('ema_50')
-        
-        if ema_12 is not None and ema_26 is not None:
-            try:
-                ema12_val = float(ema_12)
-                ema26_val = float(ema_26)
-                
-                ema_diff = (ema12_val - ema26_val) / ema12_val
-                
-                # Cross confirmation selon direction reversal
-                if reversal_direction == 'bullish' and ema_diff > self.min_ema_separation:
-                    cross_score += 0.3
-                    cross_indicators.append(f"EMA12 > EMA26 ({ema_diff*100:.2f}%)")
-                elif reversal_direction == 'bearish' and ema_diff < -self.min_ema_separation:
-                    cross_score += 0.3
-                    cross_indicators.append(f"EMA12 < EMA26 ({ema_diff*100:.2f}%)")
-                    
-                # EMA50 pour confirmation long terme
-                if ema_50 is not None:
-                    ema50_val = float(ema_50)
-                    if reversal_direction == 'bullish' and ema12_val > ema50_val:
-                        cross_score += 0.1
-                        cross_indicators.append("EMA12 > EMA50")
-                    elif reversal_direction == 'bearish' and ema12_val < ema50_val:
-                        cross_score += 0.1
-                        cross_indicators.append("EMA12 < EMA50")
-                        
-            except (ValueError, TypeError):
-                pass
-                
-        return {
-            'is_cross_confirmed': cross_score >= 0.2,  # Seuil réaliste pour confirmation EMA
-            'score': cross_score,
-            'indicators': cross_indicators
-        }
+        # Paramètres DURCIS pour vrais reversals
+        self.min_momentum_threshold = 55  # BUY si momentum > 55 (plus strict)
+        self.max_momentum_threshold = 45  # SELL si momentum < 45 (plus strict)
+        self.base_confidence = 0.65       # Base élevée maintenue
         
     def generate_signal(self) -> Dict[str, Any]:
-        """
-        Génère un signal basé sur les reversals Supertrend.
-        """
+        """Version ULTRA SIMPLIFIÉE pour crypto spot intraday."""
+        
+        # Validation minimale
         if not self.validate_data():
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": "Données insuffisantes",
-                "metadata": {}
+                "metadata": {"strategy": self.name}
             }
             
         values = self._get_current_values()
-        
-        # Récupérer prix actuel
-        current_price = None
-        if 'close' in self.data and self.data['close']:
-            try:
-                current_price = float(self.data['close'][-1])
-            except (IndexError, ValueError, TypeError):
-                pass
-            
-        if current_price is None:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Prix actuel non disponible",
-                "metadata": {"strategy": self.name}
-            }
-            
-        # CORRECTION: Supprimer filtre volatilité restrictif - Accepter toutes volatilités
-        volatility_regime = values.get('volatility_regime')
-        vol_regime = 1.0  # Valeur par défaut neutre
-        if volatility_regime is not None:
-            try:
-                vol_regime = self._convert_volatility_to_score(str(volatility_regime))
-                # Plus de rejet basé sur volatilité - laisser la stratégie fonctionner
-            except (ValueError, TypeError):
-                pass
-                
-        # Calculer Supertrend proxy
-        supertrend_data = self._calculate_supertrend_proxy(values, current_price)
-        if supertrend_data.get('supertrend_bullish_level') is None:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "ATR indisponible pour calcul Supertrend",
-                "metadata": {"strategy": self.name}
-            }
-            
-        # Détecter reversal de tendance
-        reversal_analysis = self._detect_trend_reversal(values)
-        
-        if not reversal_analysis['is_reversal']:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Pas de reversal détecté (score: {reversal_analysis['score']:.2f})",
-                "metadata": {
-                    "strategy": self.name,
-                    "symbol": self.symbol,
-                    "reversal_score": reversal_analysis['score'],
-                    "current_price": current_price
-                }
-            }
-            
-        reversal_direction = reversal_analysis['direction']
-        if reversal_direction is None:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Direction de reversal indéterminée",
-                "metadata": {"strategy": self.name}
-            }
-            
-        # Vérifier position par rapport au Supertrend
-        supertrend_bullish = supertrend_data['supertrend_bullish_level']
-        supertrend_bearish = supertrend_data['supertrend_bearish_level']
-        
-        signal_side = None
-        supertrend_condition_met = False
-        
-        if reversal_direction == 'bullish':
-            # Signal BUY CRYPTO: conditions ultra simplifiées
-            if current_price > supertrend_bullish:
-                distance = supertrend_data['distance_to_bullish']
-                if distance <= self.max_atr_distance * 2.5:  # Crypto très tolérant 
-                    signal_side = "BUY"
-                    supertrend_condition_met = True
-                    
-        elif reversal_direction == 'bearish':
-            # Signal SELL CRYPTO: conditions ultra simplifiées
-            if current_price < supertrend_bearish:
-                distance = supertrend_data['distance_to_bearish']
-                if distance <= self.max_atr_distance * 2.5:  # Crypto très tolérant
-                    signal_side = "SELL"
-                    supertrend_condition_met = True
-                    
-        if not supertrend_condition_met:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Prix pas en position Supertrend pour reversal {reversal_direction}",
-                "metadata": {
-                    "strategy": self.name,
-                    "current_price": current_price,
-                    "supertrend_bullish": supertrend_bullish,
-                    "supertrend_bearish": supertrend_bearish
-                }
-            }
-            
-        # Confirmation EMA cross
-        ema_analysis = self._detect_ema_cross_confirmation(values, reversal_direction)
-        
-        if self.ema_cross_confirmation and not ema_analysis['is_cross_confirmed']:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"EMA cross non confirmé pour reversal {reversal_direction}",
-                "metadata": {"strategy": self.name}
-            }
-            
-        # Générer signal final
-        base_confidence = 0.50
         confidence_boost = 0.0
         
-        # Score reversal
-        confidence_boost += reversal_analysis['score'] * 0.4
+        # Direction simple basée sur bias + momentum
+        directional_bias = values.get('directional_bias')
+        momentum_score = values.get('momentum_score', 50)
         
-        # Score EMA confirmation  
-        confidence_boost += ema_analysis['score'] * 0.3
+        try:
+            momentum_val = float(momentum_score)
+        except (ValueError, TypeError):
+            momentum_val = 50
         
-        reason = f"Supertrend reversal {reversal_direction}: {', '.join(reversal_analysis['indicators'][:2])}"
+        # REJETS CRITIQUES avant signal
         
-        if ema_analysis['indicators']:
-            reason += f" + {ema_analysis['indicators'][0]}"
+        # Déterminer signal avec cohérence bias/momentum
+        if directional_bias == 'BULLISH' and momentum_val > self.min_momentum_threshold:
+            signal_side = "BUY"
+            reason = "Reversal haussier cohérent (bias + momentum)"
+            confidence_boost += 0.20  # Double confirmation
             
-        # CORRECTION: Volume confirmation - adaptation selon direction reversal
-        volume_ratio = values.get('volume_ratio')
-        if volume_ratio is not None:
-            try:
-                vol_ratio = float(volume_ratio)
-                
-                # Volume CRYPTO adapté - plus permissif et réactif
-                if signal_side == "BUY":
-                    # Reversal haussier crypto: volume moindre acceptable (liquidité élevée)
-                    if vol_ratio >= self.min_volume_confirmation * 1.2:  # 1.32x seulement
-                        confidence_boost += 0.18  # Bonus majeur crypto
-                        reason += f" + volume crypto haussier ({vol_ratio:.1f}x)"
-                    elif vol_ratio >= self.min_volume_confirmation * 0.9:  # Très permissif
-                        confidence_boost += 0.12  # Bonus bon
-                        reason += f" + volume adequat ({vol_ratio:.1f}x)"
-                elif signal_side == "SELL":
-                    # Reversal baissier crypto: volume très flexible (panic sells)
-                    if vol_ratio >= self.min_volume_confirmation * 1.1:  # 1.21x minimum
-                        confidence_boost += 0.18  # Bonus majeur
-                        reason += f" + volume crypto baissier ({vol_ratio:.1f}x)"
-                    elif vol_ratio >= self.min_volume_confirmation * 0.8:  # Ultra permissif
-                        confidence_boost += 0.14  # Bonus fort
-                        reason += f" + volume crypto confirmé ({vol_ratio:.1f}x)"
-            except (ValueError, TypeError):
-                pass
-                
-        # CORRECTION: Confluence score - vérification cohérence directionnelle
-        confluence_score = values.get('confluence_score')
-        if confluence_score is not None:
-            try:
-                conf_val = float(confluence_score)
-                
-                # Vérifier cohérence confluence avec direction reversal
-                trend_alignment = values.get('trend_alignment')
-                directional_bias = values.get('directional_bias')
-                
-                confluence_coherent = True
-                if trend_alignment is not None and directional_bias is not None:
-                    try:
-                        trend_align_val = float(trend_alignment)
-                        # Cohérence crypto plus permissive (marchés réactifs)
-                        if signal_side == "BUY" and directional_bias == "BULLISH":
-                            confluence_coherent = trend_align_val > 30  # Score 0-100, >30 = ok
-                        elif signal_side == "SELL" and directional_bias == "BEARISH":
-                            confluence_coherent = trend_align_val > 30  # Score 0-100, >30 = ok
-                        else:
-                            confluence_coherent = True  # Crypto: accepter même sans parfaite cohérence
-                    except (ValueError, TypeError):
-                        confluence_coherent = True  # Si erreur, ne pas bloquer
-                
-                # Bonus confluence CRYPTO adapté - plus généreux
-                if conf_val > 75 and confluence_coherent:
-                    confidence_boost += 0.15  # Crypto bonus plus élevé
-                    reason += f" + confluence crypto excellent ({conf_val:.0f})"
-                elif conf_val > 65 and confluence_coherent:
-                    confidence_boost += 0.12  # Seuil abaissé pour crypto
-                    reason += f" + confluence crypto fort ({conf_val:.0f})"
-                elif conf_val > 55 and confluence_coherent:
-                    confidence_boost += 0.08  # Plus permissif crypto
-                    reason += f" + confluence crypto modéré ({conf_val:.0f})"
-                elif conf_val > 65:  # Même incohérent, bonus crypto
-                    confidence_boost += 0.06  # Crypto accepte l'incohérence partielle
-                    reason += f" + confluence partielle ({conf_val:.0f})"
-                    
-            except (ValueError, TypeError):
-                pass
+        elif directional_bias == 'BULLISH' and momentum_val <= self.min_momentum_threshold:
+            # Bias positif mais momentum faible = incohérent
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Rejet BUY: bias positif mais momentum faible ({momentum_val:.0f})",
+                "metadata": {"strategy": self.name}
+            }
+            
+        elif directional_bias == 'BEARISH' and momentum_val < self.max_momentum_threshold:
+            signal_side = "SELL"
+            reason = "Reversal baissier cohérent (bias + momentum)"
+            confidence_boost += 0.20  # Double confirmation
+            
+        elif directional_bias == 'BEARISH' and momentum_val >= self.max_momentum_threshold:
+            # Bias négatif mais momentum élevé = incohérent
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Rejet SELL: bias négatif mais momentum élevé ({momentum_val:.0f})",
+                "metadata": {"strategy": self.name}
+            }
+            
+        elif momentum_val > self.min_momentum_threshold:
+            signal_side = "BUY"
+            reason = f"Reversal haussier momentum ({momentum_val:.0f})"
+            confidence_boost += 0.08
+            
+        elif momentum_val < self.max_momentum_threshold:
+            signal_side = "SELL"
+            reason = f"Reversal baissier momentum ({momentum_val:.0f})"
+            confidence_boost += 0.08
+            
+        else:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak", 
+                "reason": f"Pas de direction claire (momentum {momentum_val:.0f})",
+                "metadata": {"strategy": self.name}
+            }
         
-        # CORRECTION: Confirmations directionnelles supplémentaires
+        # Bonus simples crypto
         
-        # RSI confirmation pour reversal
+        # Volume durci
+        volume_ratio = values.get('volume_ratio', 1.0)
+        try:
+            vol_ratio = float(volume_ratio)
+            if vol_ratio >= 2.0:
+                confidence_boost += 0.15
+                reason += f" + volume exceptionnel ({vol_ratio:.1f}x)"
+            elif vol_ratio >= 1.5:
+                confidence_boost += 0.10
+                reason += f" + volume fort ({vol_ratio:.1f}x)"
+            # Volume <1.5x = neutre, pas de bonus
+        except (ValueError, TypeError):
+            pass
+        
+        # Trend strength avec condition confluence
+        trend_strength = values.get('trend_strength')
+        confluence_score = values.get('confluence_score', 0)
+        try:
+            conf_val = float(confluence_score)
+        except (ValueError, TypeError):
+            conf_val = 0
+            
+        if trend_strength:
+            trend_str = str(trend_strength).lower()
+            if trend_str in ['weak', 'absent'] and conf_val >= 50:
+                confidence_boost += 0.10  # Réduit et conditionné
+                reason += " + trend faible"
+            elif trend_str == 'moderate':
+                confidence_boost += 0.05  # Réduit
+                reason += " + trend modéré"
+        
+        # Confluence score avec rejet
+        if conf_val < 40:  # Rejet direct si confluence trop faible
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Rejet Supertrend: confluence insuffisante ({conf_val})",
+                "metadata": {"strategy": self.name, "confluence_score": conf_val}
+            }
+        elif conf_val >= 70:
+            confidence_boost += 0.15
+            reason += f" + confluence {conf_val:.0f}"
+        elif conf_val >= 60:
+            confidence_boost += 0.10
+        
+        # Market regime avec rejets contradictoires
+        market_regime = values.get('market_regime')
+        if (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or \
+           (signal_side == "SELL" and market_regime == "TRENDING_BULL"):
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Rejet {signal_side}: régime contradictoire ({market_regime})",
+                "metadata": {"strategy": self.name, "market_regime": market_regime}
+            }
+        elif market_regime == "RANGING":
+            confidence_boost += 0.15  # Reversals excellents en ranging
+            reason += " + ranging"
+        elif market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
+            confidence_boost += 0.05  # Bonus réduit (après rejet contradictions)
+            reason += " + trending"
+        
+        # RSI pour timing reversal - plus sélectif
         rsi_14 = values.get('rsi_14')
-        if rsi_14 is not None:
+        if rsi_14:
             try:
                 rsi_val = float(rsi_14)
-                # BUY reversal : RSI sort d'oversold ou en zone neutre-haussière
-                if signal_side == "BUY":
-                    if 35 <= rsi_val <= 60:  # Zone optimale pour reversal haussier
-                        confidence_boost += 0.08
-                        reason += f" + RSI reversal optimal ({rsi_val:.1f})"
-                    elif 25 <= rsi_val <= 34:  # Sortie d'oversold
-                        confidence_boost += 0.12
-                        reason += f" + RSI sortie oversold ({rsi_val:.1f})"
-                    elif rsi_val >= 70:  # Déjà overbought = reversal difficile
-                        confidence_boost -= 0.05
-                        reason += f" mais RSI overbought ({rsi_val:.1f})"
-                        
-                # SELL reversal : RSI sort d'overbought ou en zone neutre-baissière
-                elif signal_side == "SELL":
-                    if 40 <= rsi_val <= 65:  # Zone optimale pour reversal baissier
-                        confidence_boost += 0.08
-                        reason += f" + RSI reversal optimal ({rsi_val:.1f})"
-                    elif 66 <= rsi_val <= 75:  # Sortie d'overbought
-                        confidence_boost += 0.12
-                        reason += f" + RSI sortie overbought ({rsi_val:.1f})"
-                    elif rsi_val <= 30:  # Déjà oversold = reversal difficile
-                        confidence_boost -= 0.05
-                        reason += f" mais RSI oversold ({rsi_val:.1f})"
+                if signal_side == "BUY" and rsi_val <= 30:  # Plus strict
+                    confidence_boost += 0.12  # Oversold = bon timing BUY
+                    reason += f" + RSI {rsi_val:.0f}"
+                elif signal_side == "SELL" and rsi_val >= 70:  # Plus strict
+                    confidence_boost += 0.12  # Overbought = bon timing SELL
+                    reason += f" + RSI {rsi_val:.0f}"
             except (ValueError, TypeError):
                 pass
         
-        # Support/Résistance confluence pour reversal
-        if signal_side == "BUY":
-            nearest_support = values.get('nearest_support')
-            if nearest_support is not None:
-                try:
-                    support_level = float(nearest_support)
-                    distance_to_support = abs(current_price - support_level) / current_price
-                    if distance_to_support <= 0.015:  # 1.5% du support
-                        confidence_boost += 0.10
-                        reason += f" + proche support ({distance_to_support*100:.1f}%)"
-                except (ValueError, TypeError):
-                    pass
-                    
-        elif signal_side == "SELL":
-            nearest_resistance = values.get('nearest_resistance')
-            if nearest_resistance is not None:
-                try:
-                    resistance_level = float(nearest_resistance)
-                    distance_to_resistance = abs(current_price - resistance_level) / current_price
-                    if distance_to_resistance <= 0.015:  # 1.5% de la résistance
-                        confidence_boost += 0.10
-                        reason += f" + proche résistance ({distance_to_resistance*100:.1f}%)"
-                except (ValueError, TypeError):
-                    pass
+        # Volatilité crypto bonus
+        volatility_regime = values.get('volatility_regime')
+        if volatility_regime in ['high', 'extreme']:
+            confidence_boost += 0.08  # Haute volatilité = reversals plus forts
+            reason += " + volatilité"
         
-        # ROC confirmation pour momentum reversal
-        roc_10 = values.get('roc_10')
-        if roc_10 is not None:
-            try:
-                roc_val = float(roc_10)
-                # BUY reversal : ROC commence à devenir positif
-                if signal_side == "BUY" and roc_val > 0.5:
-                    confidence_boost += 0.08
-                    reason += f" + ROC positif ({roc_val:.1f}%)"
-                # SELL reversal : ROC commence à devenir négatif  
-                elif signal_side == "SELL" and roc_val < -0.5:
-                    confidence_boost += 0.08
-                    reason += f" + ROC négatif ({roc_val:.1f}%)"
-            except (ValueError, TypeError):
-                pass
-                
-        confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
+        # Calcul final
+        confidence = min(1.0, self.base_confidence * (1 + confidence_boost))
         strength = self.get_strength_from_confidence(confidence)
         
         return {
@@ -568,69 +208,41 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
             "metadata": {
                 "strategy": self.name,
                 "symbol": self.symbol,
-                "current_price": current_price,
-                "reversal_direction": reversal_direction,
-                "reversal_score": reversal_analysis['score'],
-                "ema_cross_score": ema_analysis['score'],
-                "supertrend_bullish_level": supertrend_bullish,
-                "supertrend_bearish_level": supertrend_bearish,
-                "atr_value": supertrend_data.get('atr_value'),
-                "reversal_indicators": reversal_analysis['indicators'],
-                "ema_indicators": ema_analysis['indicators'],
+                "momentum_score": momentum_val,
+                "directional_bias": directional_bias,
                 "volume_ratio": volume_ratio,
-                "volatility_regime": volatility_regime,
-                "confluence_score": confluence_score
+                "trend_strength": trend_strength,
+                "market_regime": market_regime,
+                "confluence_score": confluence_score,
+                "base_confidence": self.base_confidence,
+                "confidence_boost": confidence_boost
             }
         }
         
-    def validate_data(self) -> bool:
-        """Valide que tous les indicateurs requis sont présents - CRYPTO ULTRA-SIMPLIFIÉ."""
-        # CRYPTO MAJEURE: Seulement 2 indicateurs ABSOLUMENT requis
-        absolute_required = ['atr_14', 'trend_strength']  # Minimum vital
-        crypto_helpful = ['directional_bias', 'momentum_score']  # Utiles mais pas bloquants
+    def _get_current_values(self) -> Dict[str, Optional[float]]:
+        """Récupère seulement les indicateurs essentiels."""
+        return {
+            'directional_bias': self.indicators.get('directional_bias'),
+            'momentum_score': self.indicators.get('momentum_score'),
+            'trend_strength': self.indicators.get('trend_strength'),
+            'volume_ratio': self.indicators.get('volume_ratio'),
+            'confluence_score': self.indicators.get('confluence_score'),
+            'market_regime': self.indicators.get('market_regime'),
+            'rsi_14': self.indicators.get('rsi_14'),
+            'volatility_regime': self.indicators.get('volatility_regime')
+        }
         
-        if not self.indicators:
-            logger.warning(f"{self.name}: Aucun indicateur disponible")
+    def validate_data(self) -> bool:
+        """Validation ULTRA SIMPLIFIÉE - seulement essentiels."""
+        if not super().validate_data():
             return False
             
-        # Vérifier ABSOLUMENT requis seulement (2 indicateurs)
-        missing_absolute = 0
-        for indicator in absolute_required:
-            if indicator not in self.indicators or self.indicators[indicator] is None:
-                missing_absolute += 1
-                logger.debug(f"{self.name}: Indicateur vital manquant: {indicator}")
-                
-        # Crypto: Accepter si 1/2 indicateurs vitaux présents (ultra permissif)
-        if missing_absolute >= 2:  # Les 2 manquants = échec
-            logger.warning(f"{self.name}: Indicateurs vitaux manquants ({missing_absolute}/2)")
+        # Seulement 1 indicateur requis : trend_strength OU momentum_score
+        has_trend = 'trend_strength' in self.indicators and self.indicators['trend_strength'] is not None
+        has_momentum = 'momentum_score' in self.indicators and self.indicators['momentum_score'] is not None
+        
+        if not (has_trend or has_momentum):
+            logger.warning(f"{self.name}: Ni trend_strength ni momentum_score disponible")
             return False
                 
-        # Vérifier données OHLCV
-        if 'close' not in self.data or not self.data['close']:
-            logger.warning(f"{self.name}: Données close manquantes")
-            return False
-            
         return True
-    
-    def _convert_volatility_to_score(self, volatility_regime: str) -> float:
-        """Convertit un régime de volatilité en score numérique selon schéma."""
-        try:
-            if not volatility_regime:
-                return 1.0
-                
-            vol_lower = volatility_regime.lower()
-            
-            # Conversion selon schéma enum: LOW, NORMAL, HIGH, EXTREME
-            if vol_lower == 'extreme':
-                return 3.0  # Volatilité extrême
-            elif vol_lower == 'high':
-                return 2.5  # Haute volatilité
-            elif vol_lower == 'normal':
-                return 1.5  # Volatilité normale
-            elif vol_lower == 'low':
-                return 0.5  # Faible volatilité
-            else:
-                return 1.5  # Valeur par défaut (normal)
-                    
-        except Exception:
-            return 1.5

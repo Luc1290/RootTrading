@@ -36,27 +36,29 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres Z-Score STRICTS pour WINRATE
-        self.extreme_zscore_threshold = 2.0      # Z-Score > 2.0 statistiquement significatif (+67%)
-        self.very_extreme_zscore_threshold = 2.5  # Z-Score > 2.5 très rare (+39%)
-        self.ultra_extreme_zscore_threshold = 3.0 # Z-Score > 3.0 exceptionnel (+30%)
+        # Paramètres Z-Score HEDGE FUND - équilibre qualité/fréquence
+        self.extreme_zscore_threshold = 1.8      # 1.8 (moins de bruit que 1.5)
+        self.very_extreme_zscore_threshold = 2.2  # 2.2 (équilibre)
+        self.ultra_extreme_zscore_threshold = 2.8 # 2.8 (rare mais atteignable)
         
-        # Paramètres Bollinger Bands STRICTS pour Z-Score authentique
-        self.bb_extreme_position_threshold = 92   # Position BB > 92% = vraiment extrême (+15%)
-        self.bb_very_extreme_threshold = 95       # Position BB > 95% = ultra extrême (+8%) 
+        # Paramètres Bollinger Bands PLUS FLEXIBLES
+        self.bb_extreme_position_threshold = 85   # 85% au lieu de 92% (plus accessible)
+        self.bb_very_extreme_threshold = 90       # 90% au lieu de 95% 
         self.bb_squeeze_bonus = 0.15                # Bonus si BB squeeze avant expansion
         
-        # Paramètres RSI ÉQUILIBRÉS pour éviter bias SELL
-        self.rsi_oversold_threshold = 25            # RSI < 25 = survente vraie (+20% strict)
-        self.rsi_overbought_threshold = 75          # RSI > 75 = surachat vrai (+7% strict)
-        self.rsi_very_extreme_threshold = 15        # RSI < 15 ou > 85 = ultra extrême (+25% strict)
+        # Paramètres RSI SYMÉTRIQUES pour équilibre
+        self.rsi_oversold_threshold = 30            # RSI < 30 symétrique 
+        self.rsi_overbought_threshold = 70          # RSI > 70 symétrique
+        self.rsi_very_extreme_threshold = 20        # RSI < 20 ou > 80 (20/80 vs 15/85)
         
         # Paramètres Williams %R
         self.williams_oversold_threshold = -80      # Williams %R < -80 = survente
         self.williams_overbought_threshold = -20    # Williams %R > -20 = surachat
         
         # Paramètres volume et momentum
-        self.min_volume_confirmation = 1.1          # Volume minimum pour reversal
+        self.min_volume_confirmation = 1.0          # Volume minimum strict
+        self.strong_volume_threshold = 1.5          # Volume fort pour bonus
+        self.exceptional_volume_threshold = 2.0    # Volume exceptionnel
         self.momentum_divergence_required = True    # Divergence momentum/prix requise
         self.min_volatility_percentile = 60       # Volatilité minimum pour signal fort
         
@@ -159,17 +161,9 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
         if bb_position is not None:
             try:
                 bb_pos = float(bb_position)
-                # Convertir position BB (0-1) vers Z-Score CALIBRÉ pour équilibre
-                # Formule non-linéaire pour éviter bias : transformation arctangente
-                # BB position 0.05 = Z-Score -2.5, BB position 0.95 = Z-Score +2.5
-                if bb_pos <= 0.05:
-                    zscore_from_bb = -2.5
-                elif bb_pos >= 0.95:
-                    zscore_from_bb = 2.5
-                else:
-                    # Transformation non-linéaire équilibrée
-                    normalized = (bb_pos - 0.5) * 2  # -1 à +1
-                    zscore_from_bb = normalized * 3.0 * (abs(normalized) ** 0.7)  # Courbe calibrée
+                # Formule Z-Score SIMPLIFIÉE et CLAIRE (fix #2)
+                # Simple transformation linéaire : BB position vers Z-Score -2 à +2
+                zscore_from_bb = (bb_pos - 0.5) * 4  # Simple: -2 à +2
                 
                 zscore_data['zscore_value'] = zscore_from_bb
                 cast(List[str], zscore_data['zscore_components']).append(f"BB position ({bb_pos:.3f})")
@@ -287,15 +281,15 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
             try:
                 momentum_val = float(momentum_score)
                 
-                # DIVERGENCE MOMENTUM STRICTE pour vraies divergences
-                # Reversal bullish : prix survente MAIS momentum déjà remonte (divergence)
-                if reversal_direction == 'bullish' and momentum_val > 42:  # Momentum > 42 = divergence (+20%)
-                    reversal_score += 0.18  # Bonus augmenté
-                    reversal_indicators.append(f"Divergence momentum haussière forte ({momentum_val:.1f})")
-                # Reversal bearish : prix surachat MAIS momentum déjà baisse (divergence)
-                elif reversal_direction == 'bearish' and momentum_val < 58:  # Momentum < 58 = divergence (+11%)
-                    reversal_score += 0.18  # Bonus augmenté
-                    reversal_indicators.append(f"Divergence momentum baissière forte ({momentum_val:.1f})")
+                # VRAIE DIVERGENCE MOMENTUM corrigée (fix #5)
+                # BUY: Prix bas MAIS momentum qui remonte vraiment
+                if reversal_direction == 'bullish' and momentum_val > 48:  # 48 minimum (vraie divergence)
+                    reversal_score += 0.15
+                    reversal_indicators.append(f"Divergence momentum haussière ({momentum_val:.1f})")
+                # SELL: Prix haut MAIS momentum qui baisse vraiment  
+                elif reversal_direction == 'bearish' and momentum_val < 52:  # 52 maximum (vraie divergence)
+                    reversal_score += 0.15
+                    reversal_indicators.append(f"Divergence momentum baissière ({momentum_val:.1f})")
                     
             except (ValueError, TypeError):
                 pass
@@ -336,7 +330,7 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_reversal': reversal_score >= 0.45,  # Seuil STRICT pour qualité (+61%)
+            'is_reversal': reversal_score >= 0.45,  # Seuil durci pour qualité
             'direction': reversal_direction,
             'score': reversal_score,
             'indicators': reversal_indicators
@@ -485,52 +479,102 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
-        # Construire signal final avec BASE ÉLEVÉE
-        base_confidence = 0.55  # Base RELEVÉE pour signaux rares (+22%)
+        # REJETS CRITIQUES HEDGE FUND - contradictions inacceptables
+        momentum_val = values.get('momentum_score', 50)
+        directional_bias = values.get('directional_bias')
+        market_regime = values.get('market_regime')
+        
+        try:
+            momentum_score = float(momentum_val)
+        except (ValueError, TypeError):
+            momentum_score = 50
+        
+        # Rejet momentum contradictoire
+        if signal_side == "BUY" and momentum_score < 40:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Rejet ZScore BUY: momentum trop faible ({momentum_score:.0f})",
+                "metadata": {"strategy": self.name, "momentum_score": momentum_score}
+            }
+        elif signal_side == "SELL" and momentum_score > 60:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Rejet ZScore SELL: momentum trop fort ({momentum_score:.0f})",
+                "metadata": {"strategy": self.name, "momentum_score": momentum_score}
+            }
+        
+        # Rejet bias contradictoire
+        if (signal_side == "BUY" and str(directional_bias).upper() == "BEARISH") or \
+           (signal_side == "SELL" and str(directional_bias).upper() == "BULLISH"):
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Rejet ZScore {signal_side}: bias contradictoire ({directional_bias})",
+                "metadata": {"strategy": self.name, "directional_bias": directional_bias}
+            }
+        
+        # BASE CONFIDENCE CORRIGÉE pour aggregator
+        base_confidence = 0.65  # Au lieu de 0.55 (passe aggregator)
         confidence_boost = 0.0
         
-        # Score Z-Score strength - BOOSTS pour signaux rares de QUALITÉ
+        # Score Z-Score strength - BONUS GÉNÉREUX mais équilibrés
         if zscore_data['zscore_strength'] == 'ultra_extreme':
-            confidence_boost += 0.45  # MEGA bonus pour 3+ sigma (+29%)
+            confidence_boost += 0.30  # Réduit de 0.45 à 0.30
         elif zscore_data['zscore_strength'] == 'very_extreme':
-            confidence_boost += 0.35  # Bonus élevé pour 2.5+ sigma (+25%)
+            confidence_boost += 0.25  # Réduit de 0.35 à 0.25
         elif zscore_data['zscore_strength'] == 'extreme':
-            confidence_boost += 0.25  # Bonus pour 2+ sigma (+14%)
+            confidence_boost += 0.20  # Réduit de 0.25 à 0.20
             
         # Score reversal confirmations - MULTIPLICATEUR OPTIMISÉ
         confidence_boost += reversal_analysis['score'] * 0.6  # Augmenté (+20%)
         
-        # Score volatilité - BONUS obligatoire pour Z-Score
+        # Score volatilité - Z-Score fonctionne MIEUX avec haute volatilité
         if volatility_analysis['is_favorable']:
-            confidence_boost += volatility_analysis['score'] * 0.5  # Augmenté (+25%)
-        else:
-            # Pénaliser volatilité insuffisante
-            confidence_boost -= 0.15
+            confidence_boost += volatility_analysis['score'] * 0.5  # Bonus pour haute vol
+        # SUPPRIMER pénalité volatilité - juste pas de bonus
         
         # Construire raison
         zscore_val = zscore_data['zscore_value']
         reason = f"Z-Score {zscore_data['zscore_strength']} ({zscore_val:.2f})" if zscore_val else f"Z-Score {zscore_data['zscore_strength']}"
         reason += f" reversal {reversal_direction}"
         
+        # Construire reason LIMITÉE (max 4 éléments hedge fund style)
+        reason_elements = []
+        
         if reversal_analysis['indicators']:
-            reason += f": {reversal_analysis['indicators'][0]}"
-            
+            reason_elements.append(reversal_analysis['indicators'][0])
         if volatility_analysis['indicators']:
-            reason += f" + {volatility_analysis['indicators'][0]}"
+            reason_elements.append(volatility_analysis['indicators'][0])
+            
+        # Ajouter jusqu'à 2 éléments de confluence max
+        added_elements = 0
             
         # Confirmations supplémentaires
         
-        # Volume confirmation - ASSOUPLI
+        # Volume STRICT - rejet si insuffisant
         volume_ratio = values.get('volume_ratio')
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio >= self.min_volume_confirmation:
-                    confidence_boost += 0.12
-                    reason += f" + volume ({vol_ratio:.1f}x)"
-                elif vol_ratio >= 0.8:  # Volume acceptable
-                    confidence_boost += 0.05
-                    reason += f" + volume ok ({vol_ratio:.1f}x)"
+                if vol_ratio < self.min_volume_confirmation:  # <1.0
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet ZScore: volume insuffisant ({vol_ratio:.1f}x)",
+                        "metadata": {"strategy": self.name, "volume_ratio": vol_ratio}
+                    }
+                elif vol_ratio >= self.exceptional_volume_threshold:  # >=2.0
+                    confidence_boost += 0.15
+                    reason += f" + volume exceptionnel ({vol_ratio:.1f}x)"
+                elif vol_ratio >= self.strong_volume_threshold:  # >=1.5
+                    confidence_boost += 0.10
+                    reason += f" + volume fort ({vol_ratio:.1f}x)"
             except (ValueError, TypeError):
                 pass
                 
@@ -543,7 +587,9 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
                     distance_to_support = abs(current_price - support_level) / current_price
                     if distance_to_support <= 0.02:  # Près support
                         confidence_boost += 0.1
-                        reason += " + près support"
+                        if added_elements < 2:
+                            reason_elements.append("près support")
+                            added_elements += 1
                 except (ValueError, TypeError):
                     pass
         else:  # SELL
@@ -554,38 +600,56 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
                     distance_to_resistance = abs(current_price - resistance_level) / current_price
                     if distance_to_resistance <= 0.02:  # Près résistance
                         confidence_boost += 0.1
-                        reason += " + près résistance"
+                        if added_elements < 2:
+                            reason_elements.append("près résistance")
+                            added_elements += 1
                 except (ValueError, TypeError):
                     pass
                     
-        # ADX pour force (reversal meilleur avec ADX faible)
+        # ADX FILTRE - reversal impossible si tendance surpuissante
         adx_14 = values.get('adx_14')
         if adx_14 is not None:
             try:
                 adx_val = float(adx_14)
-                if adx_val < 25:  # Trend faible = reversal plus probable
+                if adx_val > 45:  # Tendance trop forte pour reversal
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet ZScore: tendance trop forte (ADX={adx_val:.1f})",
+                        "metadata": {"strategy": self.name, "adx_14": adx_val}
+                    }
+                elif adx_val < 25:  # Trend faible = reversal plus probable
                     confidence_boost += 0.08
-                    reason += " + ADX faible favorable"
-                elif adx_val > 40:  # Trend très forte = reversal difficile
-                    confidence_boost -= 0.1
-                    reason += " mais ADX très fort"
+                    reason += " + ADX faible"
             except (ValueError, TypeError):
                 pass
                 
-        # Market regime context
-        market_regime = values.get('market_regime')
+        # Market regime FILTRÉ - reversals selon contexte
+        regime_strength = values.get('regime_strength')
+        regime_str = str(regime_strength).upper() if regime_strength else "WEAK"
+        
         if market_regime == "RANGING":
-            confidence_boost += 0.08  # Z-Score excellent en ranging
-            reason += " (marché ranging)"
+            confidence_boost += 0.12  # Z-Score excellent en ranging
+            reason += " (ranging)"
         elif market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
-            confidence_boost -= 0.05  # Z-Score moins fiable en trending fort
-            reason += " (marché trending)"
+            if regime_str in ["EXTREME", "STRONG"]:  # Trend trop fort
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Rejet ZScore: trend extrême ({market_regime} {regime_str})",
+                    "metadata": {"strategy": self.name, "market_regime": market_regime, "regime_strength": regime_str}
+                }
+            # Trend léger acceptable, pas de bonus ni malus
             
         # Anomaly detection
         anomaly_detected = values.get('anomaly_detected')
         if anomaly_detected:
             confidence_boost += 0.05
-            reason += " + anomalie détectée"
+            if added_elements < 2:
+                reason_elements.append("anomalie")
+                added_elements += 1
             
         # Pattern confluence
         pattern_detected = values.get('pattern_detected')
@@ -596,7 +660,9 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
                     pattern_conf = float(pattern_confidence)
                     if pattern_conf > 70:
                         confidence_boost += 0.1
-                        reason += " + pattern reversal"
+                        if added_elements < 2:
+                            reason_elements.append("pattern")
+                            added_elements += 1
                 except (ValueError, TypeError):
                     pass
                     
@@ -607,10 +673,16 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
                 conf_val = float(confluence_score)
                 if conf_val > 80:
                     confidence_boost += 0.1
-                    reason += " + haute confluence"
+                    if added_elements < 2:
+                        reason_elements.append(f"conf.{conf_val:.0f}")
+                        added_elements += 1
             except (ValueError, TypeError):
                 pass
                 
+        # Finaliser reason concise (max 4 éléments)
+        if reason_elements:
+            reason += ": " + " + ".join(reason_elements[:4])
+        
         confidence = self.calculate_confidence(base_confidence, 1.0 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)
         

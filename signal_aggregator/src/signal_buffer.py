@@ -22,7 +22,7 @@ class IntelligentSignalBuffer:
     
     def __init__(self, 
                  buffer_timeout: float = 5.0,      # Timeout en secondes
-                 max_buffer_size: int = 50,        # Taille max du buffer
+                 max_buffer_size: int = 1000,        # Taille max du buffer
                  min_batch_size: int = 1,          # Taille min pour traiter un batch
                  sync_window: float = 3.0,         # Fenêtre de sync multi-TF en secondes
                  enable_mtf_sync: bool = True,     # Activer la sync multi-timeframes

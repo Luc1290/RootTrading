@@ -6,6 +6,7 @@ TRANSFORMATION D'UNE STRATÉGIE PERDANTE EN STRATÉGIE PROFITABLE
 from typing import Dict, Any, Optional
 from .base_strategy import BaseStrategy
 import logging
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -112,8 +113,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
             if trend_angle is not None:
                 try:
                     angle = float(trend_angle)
-                    # Convertir angle en pente normalisée
-                    angle_threshold_deg = 1.0  # 1 degré minimum (était 2.0)
+                    # Convertir angle en pente normalisée - SEUIL DURCI
+                    angle_threshold_deg = 2.5  # 2.5 degrés minimum (plus strict)
                     
                     if angle >= angle_threshold_deg:
                         return {
@@ -198,10 +199,17 @@ class HullMA_Slope_Strategy(BaseStrategy):
         oversold_signals = 0
         oversold_details = []
         
-        if rsi_14 is not None:
+        if rsi_14 is not None and self._is_valid(rsi_14):
             try:
                 rsi = float(rsi_14)
-                if rsi <= self.rsi_oversold_entry:
+                # REJET si RSI contradictoire (BUY avec RSI élevé = pas contrarian)
+                if rsi >= 70:  # RSI trop haut pour un BUY contrarian
+                    return {
+                        'is_pullback': False,
+                        'reason': f'RSI contradictoire pour BUY contrarian: {rsi:.1f} trop élevé (>70)',
+                        'rsi_rejection': True
+                    }
+                elif rsi <= self.rsi_oversold_entry:
                     oversold_signals += 1
                     oversold_details.append(f"RSI survente ({rsi:.1f})")
             except (ValueError, TypeError):
@@ -272,10 +280,17 @@ class HullMA_Slope_Strategy(BaseStrategy):
         overbought_signals = 0
         overbought_details = []
         
-        if rsi_14 is not None:
+        if rsi_14 is not None and self._is_valid(rsi_14):
             try:
                 rsi = float(rsi_14)
-                if rsi >= self.rsi_overbought_entry:
+                # REJET si RSI contradictoire (SELL avec RSI faible = pas contrarian)
+                if rsi <= 30:  # RSI trop bas pour un SELL contrarian
+                    return {
+                        'is_bounce': False,
+                        'reason': f'RSI contradictoire pour SELL contrarian: {rsi:.1f} trop bas (<30)',
+                        'rsi_rejection': True
+                    }
+                elif rsi >= self.rsi_overbought_entry:
                     overbought_signals += 1
                     overbought_details.append(f"RSI surachat ({rsi:.1f})")
             except (ValueError, TypeError):
@@ -335,18 +350,20 @@ class HullMA_Slope_Strategy(BaseStrategy):
         values = self._get_current_values()
         price_data = self._get_price_data()
         
+        # _is_valid est maintenant une méthode de classe
+        
         # === FILTRES PRÉLIMINAIRES ===
         
-        # Vérification Hull MA et prix
+        # Vérification Hull MA et prix avec protection NaN
         hull_20 = values.get('hull_20')
         current_price = price_data['current_price']
         
-        if hull_20 is None or current_price is None:
+        if not (self._is_valid(hull_20) and self._is_valid(current_price)):
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": "Hull MA ou prix non disponibles",
+                "reason": "Hull MA ou prix invalides/NaN",
                 "metadata": {"strategy": self.name}
             }
             
@@ -362,39 +379,52 @@ class HullMA_Slope_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
-        # CORRECTION: Volume comme bonus au lieu de filtre obligatoire
+        # Volume comme bonus avec validation NaN
         volume_ratio = values.get('volume_ratio')
         volume_penalty = 0.0
-        if volume_ratio is None:
-            volume_penalty = -0.05  # Légère pénalité si pas de données volume
+        if not self._is_valid(volume_ratio):
+            volume_penalty = -0.05  # Légère pénalité si pas de données volume valides
         else:
             try:
                 vol_val = float(volume_ratio)
-                if vol_val < 0.5:  # Volume très faible (était rejet)
-                    volume_penalty = -0.10  # Pénalité au lieu de rejet
+                if vol_val < 1.0:  # Volume sous la normale = problématique
+                    volume_penalty = -0.15  # Pénalité forte (contrarian besoin d'énergie)
             except (ValueError, TypeError):
                 volume_penalty = -0.05
             
-        # CORRECTION: Confluence comme bonus au lieu de filtre strict
+        # Confluence comme bonus avec validation NaN
         confluence_score = values.get('confluence_score')
         confluence_penalty = 0.0
-        if confluence_score is None:
-            confluence_penalty = -0.08  # Pénalité si pas de données confluence
+        if not self._is_valid(confluence_score):
+            confluence_penalty = -0.08  # Pénalité si pas de données confluence valides
         else:
             try:
                 conf_val = float(confluence_score)
-                if conf_val < 25:  # Confluence très faible (était rejet à 50)
-                    confluence_penalty = -0.15  # Forte pénalité au lieu de rejet
+                if conf_val < 25:  # Confluence trop faible = rejet net
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet contrarian: confluence trop faible ({conf_val:.0f}) - signal bruité",
+                        "metadata": {"strategy": self.name}
+                    }
                 elif conf_val < self.min_confluence_score:  # 25-35
                     confluence_penalty = -0.08  # Pénalité modérée
             except (ValueError, TypeError):
                 confluence_penalty = -0.08
             
-        # Pénaliser (mais ne pas bannir) marchés très volatiles
+        # Volatilité extrême = REJET (pullbacks explosent les stops)
         volatility_regime = values.get('volatility_regime')
-        volatility_penalty = 0.0
         if volatility_regime == 'extreme':
-            volatility_penalty = -0.10  # Réduction confidence au lieu de rejet total
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": "Rejet contrarian: volatilité extrême - pullbacks trop violents",
+                "metadata": {"strategy": self.name}
+            }
+            
+        volatility_penalty = 0.0  # Pas de pénalité si pas extrême
             
         # === ANALYSE TENDANCE HULL MA ===
         
@@ -417,13 +447,23 @@ class HullMA_Slope_Strategy(BaseStrategy):
         signal_side = None
         reason = ""
         opportunity_data = {}
-        base_confidence = 0.45  # Base RELEVÉE pour meilleur winrate (+50%)
+        base_confidence = 0.65  # Base RELEVÉE pour meilleur winrate (+50%)
         confidence_boost = 0.0
         
         if hull_trend['direction'] == 'bullish':
             # Chercher PULLBACK dans tendance haussière
             pullback_analysis = self._detect_pullback_opportunity(hull_trend, hull_val, price_val, values)
             
+            # Gérer rejets RSI contradictoires
+            if pullback_analysis.get('rsi_rejection'):
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": pullback_analysis['reason'],
+                    "metadata": {"strategy": self.name}
+                }
+                
             if pullback_analysis['is_pullback']:
                 signal_side = "BUY"
                 reason = f"CONTRARIAN BUY: {pullback_analysis['reason']} en tendance Hull haussière"
@@ -446,6 +486,16 @@ class HullMA_Slope_Strategy(BaseStrategy):
             # Chercher BOUNCE dans tendance baissière
             bounce_analysis = self._detect_bounce_opportunity(hull_trend, hull_val, price_val, values)
             
+            # Gérer rejets RSI contradictoires
+            if bounce_analysis.get('rsi_rejection'):
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": bounce_analysis['reason'],
+                    "metadata": {"strategy": self.name}
+                }
+                
             if bounce_analysis['is_bounce']:
                 signal_side = "SELL"
                 reason = f"CONTRARIAN SELL: {bounce_analysis['reason']} en tendance Hull baissière"
@@ -531,8 +581,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Bonus volume élevé (volume_ratio peut être None maintenant)
-        if volume_ratio is not None:
+        # Bonus volume élevé avec validation NaN
+        if self._is_valid(volume_ratio):
             try:
                 vol_ratio = float(volume_ratio)
                 if vol_ratio >= 2.0:
@@ -547,8 +597,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
             
-        # Bonus confluence (confluence_score peut être None maintenant)
-        if confluence_score is not None:
+        # Bonus confluence avec validation NaN
+        if self._is_valid(confluence_score):
             try:
                 conf_val = float(confluence_score)
                 if conf_val >= 70:
@@ -572,9 +622,9 @@ class HullMA_Slope_Strategy(BaseStrategy):
             confidence_boost += 0.06
             reason += " + signal modéré"
             
-        # Bonus trend alignment
+        # Bonus trend alignment avec validation NaN
         trend_alignment = values.get('trend_alignment')
-        if trend_alignment is not None:
+        if self._is_valid(trend_alignment):
             try:
                 alignment = float(trend_alignment)
                 if abs(alignment) >= 0.3:
@@ -591,13 +641,12 @@ class HullMA_Slope_Strategy(BaseStrategy):
             
         # === FILTRE FINAL ===
         
-        # CORRECTION: Appliquer toutes les pénalités
-        total_penalty = volatility_penalty + volume_penalty + confluence_penalty
+        # Appliquer pénalités restantes
+        total_penalty = volume_penalty + confluence_penalty  # volatility_penalty supprimé (rejet direct)
         confidence_boost += total_penalty
         
-        # CORRECTION: Calcul direct au lieu de multiplicateur
-        final_confidence = base_confidence + confidence_boost
-        raw_confidence = min(max(final_confidence, 0.0), 1.0)  # Clamp 0-1
+        # CORRECTION: Calcul MULTIPLICATIF pour cohérence avec autres strats
+        raw_confidence = max(0.0, min(1.0, self.calculate_confidence(base_confidence, 1 + confidence_boost)))
         
         if raw_confidence < self.min_confidence_threshold:
             return {
@@ -647,7 +696,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
         if not super().validate_data():
             return False
             
-        required = ['hull_20', 'volume_ratio', 'confluence_score']
+        # CORRECTION CRITIQUE: Seulement Hull MA obligatoire
+        required = ['hull_20']  # volume_ratio et confluence_score en optionnel
         
         for indicator in required:
             if indicator not in self.indicators:
@@ -663,3 +713,11 @@ class HullMA_Slope_Strategy(BaseStrategy):
             return False
             
         return True
+        
+    def _is_valid(self, x):
+        """Helper pour valider les nombres (anti-NaN)."""
+        try:
+            x = float(x) if x is not None else None
+            return x is not None and not math.isnan(x)
+        except (TypeError, ValueError):
+            return False

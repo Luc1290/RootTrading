@@ -5,6 +5,7 @@ ADX_Direction_Strategy - Stratégie basée sur la force et direction de tendance
 from typing import Dict, Any, Optional
 from .base_strategy import BaseStrategy
 import logging
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -27,13 +28,12 @@ class ADX_Direction_Strategy(BaseStrategy):
         self.di_diff_threshold = 5.0  # Différence minimale DI STRICT (5.0 vs 2.0)
         
         # NOUVEAUX FILTRES CRYPTO
-        self.min_confluence_required = 55    # Confluence minimum OBLIGATOIRE
-        self.min_momentum_alignment = 8      # Momentum alignment minimum (échelle 0-100, écart min 8 points)
+        self.min_confluence_bonus = 55       # Confluence pour bonus (pas obligatoire)
+        self.min_momentum_alignment = 15     # Momentum opposition forte (rejet seulement)
         self.required_confirmations = 2      # Confirmations minimum requises
         
-        # Gestion des régimes de marché DURCIE
-        self.ranging_penalty = 0.25   # Pénalité marché ranging augmentée  
-        self.volatile_penalty = 0.18  # Pénalité marché volatil augmentée
+        # Gestion des régimes de marché (pas de pénalité ranging - ADX détecte les sorties)
+        self.volatile_penalty = 0.10  # Pénalité marché volatil réduite
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs ADX."""
@@ -67,11 +67,19 @@ class ADX_Direction_Strategy(BaseStrategy):
             
         values = self._get_current_values()
         
-        # Vérification des indicateurs essentiels
+        # Helper pour valider les nombres (anti-NaN)
+        def _is_valid(x):
+            try:
+                x = float(x) if x is not None else None
+                return x is not None and not math.isnan(x)
+            except (TypeError, ValueError):
+                return False
+        
+        # Vérification des indicateurs essentiels avec protection NaN
         try:
-            adx = float(values['adx_14']) if values['adx_14'] is not None else None
-            plus_di = float(values['plus_di']) if values['plus_di'] is not None else None
-            minus_di = float(values['minus_di']) if values['minus_di'] is not None else None
+            adx = float(values['adx_14']) if _is_valid(values['adx_14']) else None
+            plus_di = float(values['plus_di']) if _is_valid(values['plus_di']) else None
+            minus_di = float(values['minus_di']) if _is_valid(values['minus_di']) else None
         except (ValueError, TypeError) as e:
             return {
                 "side": None,
@@ -81,26 +89,16 @@ class ADX_Direction_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
-        if adx is None or plus_di is None or minus_di is None:
+        if not (_is_valid(adx) and _is_valid(plus_di) and _is_valid(minus_di)):
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": "ADX ou DI non disponibles",
+                "reason": "Valeurs ADX/DI invalides ou NaN",
                 "metadata": {"strategy": self.name}
             }
             
-        # VALIDATION PRÉLIMINAIRE CONFLUENCE OBLIGATOIRE
-        confluence_score = values.get('confluence_score', 0)
-        if not confluence_score or float(confluence_score) < self.min_confluence_required:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Confluence insuffisante ({confluence_score}) < {self.min_confluence_required} - ADX rejeté",
-                "metadata": {"strategy": self.name, "rejected_reason": "low_confluence"}
-            }
-
+        # ADX est le critère principal - on vérifie d'abord la force de tendance
         # ADX trop faible = pas de tendance claire (seuil relevé)
         if adx < self.adx_threshold:
             return {
@@ -137,42 +135,55 @@ class ADX_Direction_Strategy(BaseStrategy):
                 }
             }
             
-        # VALIDATION MOMENTUM ALIGNMENT OBLIGATOIRE 
+        # VALIDATION MOMENTUM ASSOUPLIE - Seulement forte opposition rejette
         momentum_score = values.get('momentum_score')
-        if momentum_score is not None:
+        if momentum_score is not None and _is_valid(momentum_score):
             try:
                 momentum_val = float(momentum_score)
-                # Vérifier alignement momentum/direction ADX
                 momentum_center = 50  # Neutre à 50
-                momentum_deviation = abs(momentum_val - momentum_center)
                 
                 # Direction déterminée par DI
                 adx_direction = "bullish" if plus_di > minus_di else "bearish"
                 
-                # Momentum doit être aligné avec direction ADX
-                if adx_direction == "bullish" and momentum_val < (momentum_center + self.min_momentum_alignment):
+                # Rejet seulement si momentum fortement opposé (utilise variable d'instance)
+                if adx_direction == "bullish" and momentum_val < (momentum_center - self.min_momentum_alignment):
                     return {
                         "side": None,
                         "confidence": 0.0,
                         "strength": "weak",
-                        "reason": f"Momentum non aligné bullish: {momentum_val:.1f} insuffisant pour ADX haussier",
-                        "metadata": {"strategy": self.name, "rejected_reason": "momentum_misalignment"}
+                        "reason": f"Momentum fortement opposé bullish: {momentum_val:.1f} contre ADX haussier",
+                        "metadata": {"strategy": self.name, "rejected_reason": "momentum_strongly_opposed"}
                     }
-                elif adx_direction == "bearish" and momentum_val > (momentum_center - self.min_momentum_alignment):
+                elif adx_direction == "bearish" and momentum_val > (momentum_center + self.min_momentum_alignment):
                     return {
                         "side": None,
                         "confidence": 0.0,
                         "strength": "weak",
-                        "reason": f"Momentum non aligné bearish: {momentum_val:.1f} insuffisant pour ADX baissier",
-                        "metadata": {"strategy": self.name, "rejected_reason": "momentum_misalignment"}
+                        "reason": f"Momentum fortement opposé bearish: {momentum_val:.1f} contre ADX baissier",
+                        "metadata": {"strategy": self.name, "rejected_reason": "momentum_strongly_opposed"}
                     }
             except (ValueError, TypeError):
                 pass
             
         signal_side = None
         reason = ""
-        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
+        base_confidence = 0.65  # Standardisé à 0.65 pour équité avec autres stratégies
         confidence_boost = 0.0
+        
+        # Gérer égalité DI comme neutre (pas arbitraire SELL)
+        if plus_di == minus_di:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": "DI égaux : direction neutre, pas de signal ADX",
+                "metadata": {
+                    "strategy": self.name,
+                    "adx": adx,
+                    "plus_di": plus_di,
+                    "minus_di": minus_di
+                }
+            }
         
         # Logique de signal basée sur la direction des DI
         if plus_di > minus_di:
@@ -235,42 +246,54 @@ class ADX_Direction_Strategy(BaseStrategy):
                 confirmations_details.append("trend_strong")
                 reason += f" avec trend_strength {trend_str}"
                 
-        # Directional bias confirmation (COMPTAGE CONFIRMATIONS)
+        # Directional bias confirmation avec normalisation
         directional_bias = values.get('directional_bias')
         if directional_bias:
-            if (signal_side == "BUY" and str(directional_bias).upper() == "BULLISH") or \
-               (signal_side == "SELL" and str(directional_bias).upper() == "BEARISH"):
+            # Normaliser les variantes possibles
+            bias_str = str(directional_bias).upper().strip()
+            bias_bullish = bias_str in ['BULLISH', 'BULL', 'UP', 'HAUSSIER', 'POSITIVE']
+            bias_bearish = bias_str in ['BEARISH', 'BEAR', 'DOWN', 'BAISSIER', 'NEGATIVE']
+            
+            if (signal_side == "BUY" and bias_bullish) or \
+               (signal_side == "SELL" and bias_bearish):
                 confidence_boost += 0.10
                 confirmations_count += 1
                 confirmations_details.append("directional_bias_aligned")
                 reason += " confirmé par bias directionnel"
                 
-        # Momentum score DÉJÀ VALIDÉ plus haut - juste bonus ici
-        if momentum_score is not None:
+        # Momentum score - bonus selon alignement (pas de variable morte)
+        if momentum_score is not None and _is_valid(momentum_score):
             try:
                 momentum_val = float(momentum_score)
-                # Bonus plus strict pour momentum fort
-                if (signal_side == "BUY" and momentum_val > 65) or \
-                   (signal_side == "SELL" and momentum_val < 35):
+                # Bonus progressif selon alignement momentum (seuils plus tolérants)
+                if (signal_side == "BUY" and momentum_val > 60) or \
+                   (signal_side == "SELL" and momentum_val < 40):
                     confidence_boost += 0.12
                     confirmations_count += 1
                     confirmations_details.append("momentum_strong")
                     reason += f" avec momentum FORT ({momentum_val:.1f})"
-                elif (signal_side == "BUY" and momentum_val > 58) or \
-                     (signal_side == "SELL" and momentum_val < 42):
+                elif (signal_side == "BUY" and momentum_val > 55) or \
+                     (signal_side == "SELL" and momentum_val < 45):
                     confidence_boost += 0.08
+                    confirmations_count += 1
+                    confirmations_details.append("momentum_aligned")
                     reason += f" avec momentum favorable ({momentum_val:.1f})"
+                elif (signal_side == "BUY" and momentum_val > 50) or \
+                     (signal_side == "SELL" and momentum_val < 50):
+                    confidence_boost += 0.04
+                    reason += f" avec momentum légèrement aligné ({momentum_val:.1f})"
             except (ValueError, TypeError):
                 pass
                 
-        # ADXR pour confirmation de persistance
+        # ADXR pour confirmation de persistance (seuil plus souple)
         adxr = values.get('adxr')
-        if adxr:
+        if adxr and _is_valid(adxr):
             try:
                 adxr_val = float(adxr)
-                if adxr_val > self.adx_threshold:
+                adxr_threshold = max(self.adx_threshold - 2, 15)  # Seuil plus souple
+                if adxr_val > adxr_threshold:
                     confidence_boost += 0.05
-                    reason += " (ADXR confirme)"
+                    reason += " (ADXR confirme persistance)"
             except (ValueError, TypeError):
                 pass
                 
@@ -285,7 +308,60 @@ class ADX_Direction_Strategy(BaseStrategy):
                 confidence_boost += 0.05
                 reason += " + signal modéré"
                 
-        # VALIDATION FINALE CONFIRMATIONS OBLIGATOIRES
+        # CONFLUENCE et REGIME d'abord - puis validation finale
+        # (confluence peut ajouter des confirmations)
+        
+        # Confluence score maintenant optionnel - bonus seulement
+        confluence_score = values.get('confluence_score', 0)
+        if confluence_score and _is_valid(confluence_score):
+            try:
+                confluence = float(confluence_score)
+                # Bonus confluence si présente et élevée
+                if confluence > 80:
+                    confidence_boost += 0.15
+                    confirmations_count += 1
+                    confirmations_details.append("confluence_excellent")
+                    reason += f" + confluence excellente ({confluence:.0f})"
+                elif confluence > 70:
+                    confidence_boost += 0.10
+                    confirmations_count += 1
+                    confirmations_details.append("confluence_high")
+                    reason += f" + confluence élevée ({confluence:.0f})"
+                elif confluence > self.min_confluence_bonus:
+                    confidence_boost += 0.05
+                    reason += f" + confluence correcte ({confluence:.0f})"
+                # Pas de pénalité si confluence faible - ADX prime
+            except (ValueError, TypeError):
+                pass
+        
+        # Gestion des régimes de marché (sans pénalité ranging - ADX détecte les sorties)
+        market_regime = values.get('market_regime')
+        if market_regime:
+            regime_str = str(market_regime).upper()
+            if regime_str == 'RANGING':
+                # Pas de pénalité ranging - ADX fort peut indiquer sortie de range
+                # Bonus léger si ADX monte en ranging (sortie potentielle)
+                if adx > self.adx_strong:
+                    confidence_boost += 0.05
+                    reason += " (sortie de range potentielle)"
+                else:
+                    reason += " (marché ranging - surveiller)"
+            elif regime_str == 'VOLATILE':
+                confidence_boost -= self.volatile_penalty  
+                reason += " (marché volatil)"
+            elif regime_str in ['TRENDING_BULL', 'TRENDING_BEAR']:
+                # Bonus si aligné avec la tendance
+                if (signal_side == "BUY" and regime_str == 'TRENDING_BULL') or \
+                   (signal_side == "SELL" and regime_str == 'TRENDING_BEAR'):
+                    confidence_boost += 0.15
+                    confirmations_count += 1
+                    confirmations_details.append("regime_aligned")
+                    reason += f" (aligné {regime_str.lower()})"
+                else:
+                    confidence_boost -= 0.05  # Pénalité réduite
+                    reason += f" (contre-tendance {regime_str.lower()})"
+        
+        # VALIDATION FINALE CONFIRMATIONS - APRÈS confluence & regime
         if confirmations_count < self.required_confirmations:
             return {
                 "side": None,
@@ -299,42 +375,6 @@ class ADX_Direction_Strategy(BaseStrategy):
                     "confirmations_details": confirmations_details
                 }
             }
-        
-        # Confluence score DÉJÀ VALIDÉ comme obligatoire - juste bonus ici  
-        try:
-            confluence = float(confluence_score)
-            # Bonus confluence adapté (RÉDUIT)
-            if confluence > 80:
-                confidence_boost += 0.12  # RÉDUIT de 0.15
-                reason += f" + confluence excellente ({confluence:.0f})"
-            elif confluence > 70:
-                confidence_boost += 0.08  # RÉDUIT de 0.10  
-                reason += f" + confluence élevée ({confluence:.0f})"
-            elif confluence > 60:
-                confidence_boost += 0.04  # RÉDUIT de 0.06
-                reason += f" + confluence correcte ({confluence:.0f})"
-        except (ValueError, TypeError):
-            pass
-        
-        # Gestion des régimes de marché
-        market_regime = values.get('market_regime')
-        if market_regime:
-            regime_str = str(market_regime).upper()
-            if regime_str == 'RANGING':
-                confidence_boost -= self.ranging_penalty
-                reason += " (marché ranging)"
-            elif regime_str == 'VOLATILE':
-                confidence_boost -= self.volatile_penalty  
-                reason += " (marché volatil)"
-            elif regime_str in ['TRENDING_BULL', 'TRENDING_BEAR']:
-                # Bonus si aligné avec la tendance
-                if (signal_side == "BUY" and regime_str == 'TRENDING_BULL') or \
-                   (signal_side == "SELL" and regime_str == 'TRENDING_BEAR'):
-                    confidence_boost += 0.12
-                    reason += f" (aligné {regime_str.lower()})"
-                else:
-                    confidence_boost -= 0.08
-                    reason += f" (contre-tendance {regime_str.lower()})"
                 
         confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
         strength = self.get_strength_from_confidence(confidence)

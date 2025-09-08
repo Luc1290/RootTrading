@@ -2,25 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(sudo apt install:*)",
-      "Bash(docker exec:*)",
       "Bash(grep:*)",
-      "Bash(docker-compose exec postgres psql:*)",
       "Bash(awk:*)",
-      "Bash(docker logs:*)",
       "Bash(find:*)",
       "Bash(rg:*)",
       "Bash(ls:*)",
-      "Bash(docker-compose logs:*)",
-      "Bash(docker stats:*)",
       "Bash(mkdir:*)",
       "Bash(echo:*)",
-      "Bash(docker-compose exec:*)",
-      "Bash(docker cp:*)",
       "Bash(python3:*)",
-      "Bash(PGPASSWORD=postgres psql -h db -p 5432 -U postgres -d trading -c \"\nSELECT COUNT(*) as total_count \nFROM market_data \nWHERE symbol = ''SOLUSDC'';\n\")",
-      "Bash(docker compose logs:*)",
       "Bash(chmod:*)",
-      "Bash(./debug/monitor_signals.sh:*)",
       "Bash(bash:*)",
       "Bash(rm:*)",
       "Bash(python:*)",
@@ -32,24 +22,13 @@
       "Bash(iostat:*)",
       "Bash(cp:*)",
       "Bash(apt list:*)",
-      "Bash(npm install:*)",
-      "Bash(docker ps:*)",
+      "Bash(npm install:*)",      
       "Bash(mypy:*)",
       "Bash(ruff check:*)",
-      "Bash(sed:*)",
-      "Bash(/mnt/e/RootTrading/RootTrading/debug/complete_analysis_compact.sh:*)"
+      "Bash(sed:*)"
     ],
     "deny": [
-      "Bash(docker-compose restart *)",
-      "Bash(docker-compose stop *)",
-      "Bash(docker-compose up *)",
-      "Bash(docker-compose down *)",
-      "Bash(docker-compose build *)",
-      "Bash(docker-compose rebuild *)",
-      "Bash(docker-compose start *)",
-      "Bash(docker restart *)",
-      "Bash(docker stop *)",
-      "Bash(docker kill *)"
+      "Kill Bash(Kill shell: *)"
     ]
   }
 }

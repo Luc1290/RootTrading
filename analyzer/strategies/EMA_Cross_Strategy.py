@@ -25,8 +25,8 @@ class EMA_Cross_Strategy(BaseStrategy):
         self.ema_slow_period = 26      # EMA lente (info seulement)
         self.ema_filter_period = 50    # EMA filtre pour tendance générale (info seulement)
         # Note: utilise directement ema_12, ema_26, ema_50 de la DB
-        self.min_separation_pct = 0.2  # Séparation minimum 0.2% (ajustement modéré)
-        self.strong_separation_pct = 1.2  # Séparation forte 1.2%
+        self.min_separation_pct = 0.25  # Séparation minimum 0.25% (filtre bruit crypto)
+        self.strong_separation_pct = 1.0  # Séparation forte 1.0%
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs EMA."""
@@ -131,88 +131,105 @@ class EMA_Cross_Strategy(BaseStrategy):
             
         signal_side = None
         reason = ""
-        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
+        base_confidence = 0.65  # Standardisé à 0.65 pour équité avec autres stratégies
         confidence_boost = 0.0
         cross_type = None
         
-        # NOUVEAU: Vérifier la direction de la tendance avec EMA50
-        trend_filter_passed = False
-        if ema_50 is not None:
-            if ema_fast_above_slow and current_price > ema_50 and ema_12 > ema_50:
-                # Configuration haussière confirmée
-                signal_side = "BUY"
-                cross_type = "golden_cross"
-                reason = f"EMA12 ({ema_12:.2f}) > EMA26 ({ema_26:.2f}) + tendance haussière"
-                confidence_boost += 0.20
-                trend_filter_passed = True
-            elif not ema_fast_above_slow and current_price < ema_50 and ema_12 < ema_50:
-                # Configuration baissière confirmée
-                signal_side = "SELL"
-                cross_type = "death_cross"
-                reason = f"EMA12 ({ema_12:.2f}) < EMA26 ({ema_26:.2f}) + tendance baissière"
-                confidence_boost += 0.20
-                trend_filter_passed = True
-            else:
-                # Signal contra-trend ou ambigu - REJETER
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Croisement EMA contra-trend ou ambigu (prix vs EMA50)",
-                    "metadata": {
-                        "strategy": self.name,
-                        "symbol": self.symbol,
-                        "ema_12": ema_12,
-                        "ema_26": ema_26,
-                        "ema_50": ema_50,
-                        "current_price": current_price,
-                        "cross_type": "golden_cross" if ema_fast_above_slow else "death_cross",
-                        "rejected": "contra_trend"
-                    }
-                }
+        # Détection du croisement EMA de base
+        if ema_fast_above_slow:
+            signal_side = "BUY"
+            cross_type = "golden_cross"
+            reason = f"EMA12 ({ema_12:.2f}) > EMA26 ({ema_26:.2f})"
+            confidence_boost += 0.15  # Base pour croisement
         else:
-            # Pas d'EMA50 disponible - utiliser l'ancienne logique mais plus stricte
-            if ema_fast_above_slow:
-                signal_side = "BUY"
-                cross_type = "golden_cross"
-                reason = f"EMA12 ({ema_12:.2f}) > EMA26 ({ema_26:.2f})"
-                confidence_boost += 0.10  # Réduit de 0.15
-            else:
-                signal_side = "SELL"
-                cross_type = "death_cross"
-                reason = f"EMA12 ({ema_12:.2f}) < EMA26 ({ema_26:.2f})"
-                confidence_boost += 0.10  # Réduit de 0.15
+            signal_side = "SELL"
+            cross_type = "death_cross"
+            reason = f"EMA12 ({ema_12:.2f}) < EMA26 ({ema_26:.2f})"
+            confidence_boost += 0.15  # Base pour croisement
             
-        # Bonus selon la force de la séparation - SEUILS PLUS STRICTS
-        if ema_distance_pct >= self.strong_separation_pct:  # 1.5% au lieu de 1.0%
+        # Filtre EMA50 comme bonus/malus (pas rejet)
+        if ema_50 is not None:
+            if signal_side == "BUY" and current_price > ema_50 and ema_12 > ema_50:
+                # Configuration haussière parfaite
+                confidence_boost += 0.20
+                reason += " + tendance haussière EMA50"
+            elif signal_side == "SELL" and current_price < ema_50 and ema_12 < ema_50:
+                # Configuration baissière parfaite  
+                confidence_boost += 0.20
+                reason += " + tendance baissière EMA50"
+            elif (signal_side == "BUY" and (current_price < ema_50 or ema_12 < ema_50)) or \
+                 (signal_side == "SELL" and (current_price > ema_50 or ema_12 > ema_50)):
+                # Contra-trend = malus mais pas rejet
+                confidence_boost -= 0.15
+                reason += " MAIS contra-tendance EMA50"
+            
+        # Bonus selon la force de la séparation - SEUILS RENFORCÉS
+        cross_quality = "weak"
+        if ema_distance_pct >= self.strong_separation_pct:  # 1.0%
             confidence_boost += 0.20
             reason += f" - séparation FORTE ({ema_distance_pct:.2f}%)"
-        elif ema_distance_pct >= 0.8:
+            cross_quality = "strong"
+        elif ema_distance_pct >= 0.5:
             confidence_boost += 0.12
             reason += f" - séparation correcte ({ema_distance_pct:.2f}%)"
-        elif ema_distance_pct >= 0.5:
+            cross_quality = "moderate"
+        elif ema_distance_pct >= 0.35:
             confidence_boost += 0.06
             reason += f" - séparation acceptable ({ema_distance_pct:.2f}%)"
+            cross_quality = "acceptable"
         else:
-            # Séparation faible - pénalité
+            # Séparation faible
             confidence_boost -= 0.05
-            reason += f" - ATTENTION: séparation faible ({ema_distance_pct:.2f}%)"
+            reason += f" - séparation faible ({ema_distance_pct:.2f}%)"
+            cross_quality = "weak"
             
-        # Confirmation supplémentaire avec EMA99 si disponible
+        # Confirmation stricte avec EMA99 (rejet si forte divergence LT)
         ema_99 = values.get('ema_99')
         if ema_99 is not None:
             try:
                 ema99_val = float(ema_99)
+                
+                # Rejet si contre-tendance LT franche
+                if signal_side == "BUY" and current_price < ema99_val * 0.98:  # 2% sous EMA99
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet BUY: prix {current_price:.2f} trop sous EMA99 {ema99_val:.2f} (contra-trend LT)",
+                        "metadata": {
+                            "strategy": self.name,
+                            "symbol": self.symbol,
+                            "current_price": current_price,
+                            "ema_99": ema99_val,
+                            "rejected": "contra_trend_lt"
+                        }
+                    }
+                elif signal_side == "SELL" and current_price > ema99_val * 1.02:  # 2% au-dessus EMA99
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet SELL: prix {current_price:.2f} trop au-dessus EMA99 {ema99_val:.2f} (contra-trend LT)",
+                        "metadata": {
+                            "strategy": self.name,
+                            "symbol": self.symbol,
+                            "current_price": current_price,
+                            "ema_99": ema99_val,
+                            "rejected": "contra_trend_lt"
+                        }
+                    }
+                
+                # Confirmations EMA99
                 if signal_side == "BUY" and current_price > ema99_val:
                     confidence_boost += 0.08
                     reason += f" + tendance LT haussière"
                 elif signal_side == "SELL" and current_price < ema99_val:
                     confidence_boost += 0.08
                     reason += f" + tendance LT baissière"
-                elif (signal_side == "BUY" and current_price < ema99_val) or \
-                     (signal_side == "SELL" and current_price > ema99_val):
-                    confidence_boost -= 0.10
-                    reason += f" MAIS contra-trend LT"
+                else:
+                    # Léger malus mais pas rejet (cas limites)
+                    confidence_boost -= 0.05
+                    reason += f" mais neutre LT"
             except (ValueError, TypeError):
                 pass
                 
@@ -227,17 +244,35 @@ class EMA_Cross_Strategy(BaseStrategy):
                 macd_sig = float(macd_signal)
                 macd_cross = macd > macd_sig
                 
+                # Rejet STRICT si MACD diverge franchement
+                if (signal_side == "BUY" and macd < 0 and not macd_cross) or \
+                   (signal_side == "SELL" and macd > 0 and macd_cross):
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet croisement EMA: MACD diverge franchement ({macd:.4f})",
+                        "metadata": {
+                            "strategy": self.name,
+                            "symbol": self.symbol,
+                            "macd_line": macd,
+                            "macd_signal": macd_sig,
+                            "rejected": "macd_divergence"
+                        }
+                    }
+                
+                # Confirmations MACD
                 if (signal_side == "BUY" and macd_cross and macd > 0) or \
                    (signal_side == "SELL" and not macd_cross and macd < 0):
-                    confidence_boost += 0.18  # Augmenté si MACD aligné ET bon côté du zéro
+                    confidence_boost += 0.18
                     reason += " + MACD PARFAITEMENT aligné"
                 elif (signal_side == "BUY" and macd_cross) or \
                      (signal_side == "SELL" and not macd_cross):
                     confidence_boost += 0.10
                     reason += " + MACD confirme"
                 else:
-                    confidence_boost -= 0.15  # Pénalité augmentée
-                    reason += " ATTENTION: MACD diverge"
+                    confidence_boost -= 0.10  # Pénalité réduite car les cas graves sont rejetés
+                    reason += " MAIS MACD mitigé"
             except (ValueError, TypeError):
                 pass
                 
@@ -252,133 +287,41 @@ class EMA_Cross_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation avec trend_strength (VARCHAR: absent/weak/moderate/strong/very_strong)
-        trend_strength = values.get('trend_strength')
-        if trend_strength is not None:
-            trend_str = str(trend_strength).lower()
-            if trend_str in ['strong', 'very_strong']:
-                confidence_boost += 0.12
-                reason += f" + tendance {trend_str}"
-            elif trend_str == 'moderate':
-                confidence_boost += 0.08
-                reason += f" + tendance {trend_str}"
                 
-        # Confirmation avec directional_bias
-        directional_bias = values.get('directional_bias')
-        if directional_bias:
-            if (signal_side == "BUY" and directional_bias == "BULLISH") or \
-               (signal_side == "SELL" and directional_bias == "BEARISH"):
-                confidence_boost += 0.10
-                reason += f" + bias {directional_bias}"
                 
-        # Confirmation avec trend_alignment (toutes les EMA alignées) - format décimal
-        trend_alignment = values.get('trend_alignment')
-        if trend_alignment is not None:
-            try:
-                alignment = float(trend_alignment)
-                # SEUIL PLUS STRICT pour alignement
-                if abs(alignment) > 0.5:  # Plus strict: 0.5 au lieu de 0.3
-                    confidence_boost += 0.15
-                    reason += " + EMA FORTEMENT alignées"
-                elif abs(alignment) > 0.3:
-                    confidence_boost += 0.08
-                    reason += " + EMA alignées"
-                else:
-                    confidence_boost -= 0.05
-                    reason += " mais EMA peu alignées"
-            except (ValueError, TypeError):
-                pass
                 
-        # Momentum pour éviter signaux contre-tendance (format 0-100, 50=neutre)
-        momentum_score = values.get('momentum_score')
-        if momentum_score is not None:
-            try:
-                momentum = float(momentum_score)
-                # MOMENTUM PLUS STRICT
-                if (signal_side == "BUY" and momentum > 60) or \
-                   (signal_side == "SELL" and momentum < 40):
-                    confidence_boost += 0.12
-                    reason += " + momentum FORT"
-                elif (signal_side == "BUY" and momentum > 52) or \
-                     (signal_side == "SELL" and momentum < 48):
-                    confidence_boost += 0.06
-                    reason += " + momentum favorable"
-                elif (signal_side == "BUY" and momentum < 40) or \
-                     (signal_side == "SELL" and momentum > 60):
-                    confidence_boost -= 0.20  # Pénalité forte
-                    reason += " ATTENTION: momentum CONTRAIRE"
-            except (ValueError, TypeError):
-                pass
                 
-        # Volume pour confirmation
+        # Volume pour confirmation - SEUILS RENFORCÉS
         volume_ratio = values.get('volume_ratio')
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio >= 1.2:
+                if vol_ratio >= 2.0:
+                    confidence_boost += 0.12
+                    reason += f" + volume EXCEPTIONNEL ({vol_ratio:.1f}x)"
+                elif vol_ratio >= 1.5:
                     confidence_boost += 0.08
                     reason += f" + volume élevé ({vol_ratio:.1f}x)"
-                elif vol_ratio >= 1.1:
-                    confidence_boost += 0.05
+                elif vol_ratio >= 1.2:
+                    confidence_boost += 0.04
                     reason += f" + volume modéré ({vol_ratio:.1f}x)"
+                # Pas de bonus sous 1.2x
             except (ValueError, TypeError):
                 pass
                 
-        # Volume quality (champ DB: volume_quality_score - format 0-100)
-        volume_quality_score = values.get('volume_quality_score')
-        if volume_quality_score is not None:
-            try:
-                vol_quality = float(volume_quality_score)
-                if vol_quality > 70:
-                    confidence_boost += 0.08
-                    reason += f" + volume qualité ({vol_quality:.0f})"
-                elif vol_quality > 50:
-                    confidence_boost += 0.05
-                    reason += f" + volume correct ({vol_quality:.0f})"
-            except (ValueError, TypeError):
-                pass
                 
-        # Signal strength (VARCHAR: WEAK/MODERATE/STRONG)
-        signal_strength_calc = values.get('signal_strength')
-        if signal_strength_calc is not None:
-            sig_str = str(signal_strength_calc).upper()
-            if sig_str == 'STRONG':
-                confidence_boost += 0.10
-                reason += " + signal fort"
-            elif sig_str == 'MODERATE':
-                confidence_boost += 0.05
-                reason += " + signal modéré"
                 
-        confluence_score = values.get('confluence_score')
-        if confluence_score is not None:
-            try:
-                confluence = float(confluence_score)
-                # CONFLUENCE PLUS STRICTE
-                if confluence > 75:  # Seuil augmenté
-                    confidence_boost += 0.20
-                    reason += f" + confluence EXCELLENTE ({confluence:.0f})"
-                elif confluence > 65:  # Seuil augmenté
-                    confidence_boost += 0.12
-                    reason += f" + confluence élevée ({confluence:.0f})"
-                elif confluence > 55:  # Seuil augmenté
-                    confidence_boost += 0.06
-                    reason += f" + confluence correcte ({confluence:.0f})"
-                elif confluence < 45:  # Pénalité si faible
-                    confidence_boost -= 0.10
-                    reason += f" mais confluence FAIBLE ({confluence:.0f})"
-            except (ValueError, TypeError):
-                pass
                 
-        # Calcul final de confidence avec seuil minimum
-        confidence = min(base_confidence * (1 + confidence_boost), 0.95)
+        # Calcul final de confidence avec clamp
+        confidence = min(1.0, base_confidence * (1 + confidence_boost))
         
         # Filtre final - rejeter si confidence trop faible
-        if confidence < 0.40:  # Seuil minimum 40%
+        if confidence < 0.35:  # Seuil minimum abaissé
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Signal EMA rejeté - confiance insuffisante ({confidence:.2f} < 0.40)",
+                "reason": f"Signal EMA rejeté - confiance insuffisante ({confidence:.2f} < 0.35)",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
@@ -402,16 +345,12 @@ class EMA_Cross_Strategy(BaseStrategy):
                 "ema_26": ema_26,
                 "ema_50": ema_50,
                 "cross_type": cross_type,
+                "cross_quality": cross_quality,
                 "ema_separation_pct": ema_distance_pct,
                 "macd_line": macd_line,
                 "macd_signal": macd_signal,
                 "macd_histogram": macd_histogram,
-                "trend_strength": trend_strength,
-                "directional_bias": directional_bias,
-                "trend_alignment": trend_alignment,
-                "momentum_score": momentum_score,
-                "volume_ratio": volume_ratio,
-                "confluence_score": confluence_score
+                "volume_ratio": volume_ratio
             }
         }
         

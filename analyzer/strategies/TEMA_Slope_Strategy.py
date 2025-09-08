@@ -34,7 +34,7 @@ class TEMA_Slope_Strategy(BaseStrategy):
         
         # NOUVEAUX FILTRES ANTI-SPAM
         self.min_confluence_required = 60    # Confluence minimum OBLIGATOIRE
-        self.min_volume_required = 1.15      # Volume minimum OBLIGATOIRE
+        self.min_volume_required = 1.25      # Volume minimum DURCI
         self.min_confirmations = 2           # Confirmations minimum requises
         self.max_distance_tema = 0.015       # Distance max prix/TEMA (éviter divergences)
         
@@ -200,16 +200,22 @@ class TEMA_Slope_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Méthode 2: Approximer avec la relation prix/TEMA et prix récents
+        # Méthode 2 AMÉLIORÉE: Fallback EMA plus stable que prix brut
         if tema_slope is None and recent_prices is not None and len(recent_prices) >= 3:
             try:
-                # Calculer une pente approximative basée sur les prix récents
-                price_change = recent_prices[-1] - recent_prices[0]
-                price_slope = price_change / recent_prices[0] if recent_prices[0] != 0 else 0
-                
-                # Ajuster selon la position par rapport au TEMA
-                price_tema_ratio = current_price / tema_val if tema_val != 0 else 1
-                tema_slope = price_slope * price_tema_ratio  # Approximation
+                # Essayer fallback EMA_12 d'abord (plus stable)
+                ema_12 = values.get('ema_12')
+                if ema_12 is not None:
+                    ema_val = float(ema_12)
+                    price_change = recent_prices[-1] - recent_prices[0]
+                    ema_slope_approx = price_change / max(abs(ema_val), 1e-9)
+                    tema_slope = ema_slope_approx
+                else:
+                    # Fallback prix brut si pas d'EMA
+                    price_change = recent_prices[-1] - recent_prices[0]
+                    price_slope = price_change / recent_prices[0] if recent_prices[0] != 0 else 0
+                    price_tema_ratio = current_price / tema_val if tema_val != 0 else 1
+                    tema_slope = price_slope * price_tema_ratio
             except (ValueError, TypeError, ZeroDivisionError, IndexError):
                 tema_slope = 0
                 
@@ -311,8 +317,8 @@ class TEMA_Slope_Strategy(BaseStrategy):
         slope_strength = signal_condition['slope_strength']
         slope_direction = signal_condition['slope_direction']
         alignment = signal_condition['alignment']
-        
-        base_confidence = 0.50  # Standardisé à 0.50 pour équité avec autres stratégies
+
+        base_confidence = 0.65  # Standardisé à 0.65 pour équité avec autres stratégies
         confidence_boost = 0.0
         
         tema_val = tema_analysis['tema_value']
@@ -333,6 +339,45 @@ class TEMA_Slope_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name, "rejected_reason": "low_confluence"}
             }
             
+        # REJETS CRITIQUES - régime/bias contradictoires
+        market_regime = values.get('market_regime')
+        directional_bias = values.get('directional_bias')
+        
+        if signal_side == "BUY":
+            if market_regime == "TRENDING_BEAR":
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": "Rejet TEMA: BUY interdit en TRENDING_BEAR",
+                    "metadata": {"strategy": self.name, "market_regime": market_regime}
+                }
+            if str(directional_bias).upper() == "BEARISH":
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": "Rejet TEMA: bias contradictoire (BEARISH)",
+                    "metadata": {"strategy": self.name, "directional_bias": directional_bias}
+                }
+        elif signal_side == "SELL":
+            if market_regime == "TRENDING_BULL":
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": "Rejet TEMA: SELL interdit en TRENDING_BULL",
+                    "metadata": {"strategy": self.name, "market_regime": market_regime}
+                }
+            if str(directional_bias).upper() == "BULLISH":
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": "Rejet TEMA: bias contradictoire (BULLISH)",
+                    "metadata": {"strategy": self.name, "directional_bias": directional_bias}
+                }
+        
         # VALIDATION OBLIGATOIRE VOLUME ANTI-SPAM
         volume_ratio = values.get('volume_ratio', 0)
         if not volume_ratio or float(volume_ratio) < self.min_volume_required:
@@ -494,9 +539,10 @@ class TEMA_Slope_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation avec MACD
+        # Confirmation avec MACD - COMPTE pour confirmations
         macd_line = values.get('macd_line')
         macd_signal = values.get('macd_signal')
+        macd_aligned = False
         if macd_line is not None and macd_signal is not None:
             try:
                 macd_val = float(macd_line)
@@ -505,6 +551,7 @@ class TEMA_Slope_Strategy(BaseStrategy):
                               (signal_side == "SELL" and macd_val < macd_sig)
                 
                 if macd_aligned:
+                    confirmations_count += 1  # COMPTE maintenant
                     confidence_boost += 0.10
                     reason += " + MACD confirme"
             except (ValueError, TypeError):
@@ -536,12 +583,13 @@ class TEMA_Slope_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation avec ADX
+        # Confirmation avec ADX - COMPTE pour confirmations
         adx_14 = values.get('adx_14')
         if adx_14 is not None:
             try:
                 adx = float(adx_14)
-                if adx > 25:  # Tendance forte
+                if adx >= 25:  # Tendance forte
+                    confirmations_count += 1  # COMPTE maintenant
                     confidence_boost += 0.12
                     reason += " + ADX fort"
                 elif adx > 20:
@@ -652,11 +700,11 @@ class TEMA_Slope_Strategy(BaseStrategy):
                 except (ValueError, TypeError):
                     pass
                     
-        # Market regime
-        market_regime = values.get('market_regime')
-        if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
+        # Market regime - seulement BONUS si aligné (rejets déjà traités)
+        if (signal_side == "BUY" and market_regime == "TRENDING_BULL") or \
+           (signal_side == "SELL" and market_regime == "TRENDING_BEAR"):
             confidence_boost += 0.10
-            reason += " (marché trending)"
+            reason += f" + régime aligné ({market_regime})"
         elif market_regime == "RANGING":
             confidence_boost -= 0.05  # TEMA slope moins fiable en ranging
             reason += " (marché ranging)"
@@ -707,7 +755,7 @@ class TEMA_Slope_Strategy(BaseStrategy):
         except (ValueError, TypeError):
             pass
             
-        # FILTRE FINAL CONFIANCE MINIMUM ANTI-SPAM
+        # FILTRE FINAL CONFIANCE MINIMUM ANTI-SPAM + CLAMP EXPLICITE
         raw_confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
         if raw_confidence < 0.55:  # Seuil minimum élevé pour TEMA
             return {
@@ -723,7 +771,8 @@ class TEMA_Slope_Strategy(BaseStrategy):
                 }
             }
                 
-        confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
+        # Clamp explicite de la confiance pour homogénéité
+        confidence = min(1.0, max(0.0, self.calculate_confidence(base_confidence, 1 + confidence_boost)))
         strength = self.get_strength_from_confidence(confidence)
         
         return {

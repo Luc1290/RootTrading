@@ -24,12 +24,12 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres liquidity sweep
-        self.sweep_threshold = 0.005      # 0.5% sous support pour sweep (plus tolérant)
-        self.recovery_threshold = 0.0015  # 0.15% au-dessus support pour recovery  
-        self.max_sweep_duration = 7      # Max barres sous support (plus de temps)
-        self.min_volume_spike = 1.3      # Volume 30% au-dessus moyenne (moins restrictif)
-        self.support_strength_min = 0.3  # Force minimum du support (plus tolérant)
+        # Paramètres liquidity sweep - DURCIS POUR SÉLECTIVITÉ
+        self.sweep_threshold = 0.012      # 1.2% sous support pour sweep (sélectif crypto)
+        self.recovery_threshold = 0.003  # 0.3% au-dessus support pour recovery
+        self.max_sweep_duration = 4      # Max barres sous support (chasse rapide)
+        self.min_volume_spike = 1.5      # Volume 50% au-dessus moyenne (sélectif)
+        self.support_strength_min = 0.5  # Force minimum du support (MODERATE+)
         
     def _convert_support_strength_to_score(self, strength_str: str) -> float:
         """Convertit support_strength string en score numérique."""
@@ -80,10 +80,10 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         }
         
     def _get_price_volume_data(self) -> Dict[str, Optional[float]]:
-        """Récupère les données de prix et volume pour analyse sweep."""
+        """Récupère les données de prix et volume pour analyse sweep (7 barres)."""
         try:
             if self.data and all(key in self.data for key in ['close', 'low', 'high', 'volume']) and \
-               all(len(self.data[key]) >= 5 for key in ['close', 'low', 'high', 'volume']):
+               all(len(self.data[key]) >= 8 for key in ['close', 'low', 'high', 'volume']):  # 8 pour avoir 7 barres précédentes
                 
                 return {
                     'current_price': float(self.data['close'][-1]),
@@ -93,6 +93,10 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
                     'prev_low_1': float(self.data['low'][-2]),
                     'prev_low_2': float(self.data['low'][-3]),
                     'prev_low_3': float(self.data['low'][-4]),
+                    'prev_low_4': float(self.data['low'][-5]),
+                    'prev_low_5': float(self.data['low'][-6]),
+                    'prev_low_6': float(self.data['low'][-7]),
+                    'prev_low_7': float(self.data['low'][-8]),
                     'prev_volume_1': float(self.data['volume'][-2]),
                     'prev_volume_2': float(self.data['volume'][-3]),
                     'prev_close_1': float(self.data['close'][-2]),
@@ -101,8 +105,8 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         except (IndexError, ValueError, TypeError):
             pass
         return {k: None for k in ['current_price', 'current_low', 'current_high', 'current_volume',
-                                 'prev_low_1', 'prev_low_2', 'prev_low_3', 'prev_volume_1', 
-                                 'prev_volume_2', 'prev_close_1', 'prev_close_2']}
+                                 'prev_low_1', 'prev_low_2', 'prev_low_3', 'prev_low_4', 'prev_low_5', 
+                                 'prev_low_6', 'prev_low_7', 'prev_volume_1', 'prev_volume_2', 'prev_close_1', 'prev_close_2']}
         
     def _detect_liquidity_sweep_setup(self, price_data: Dict[str, Optional[float]], 
                                      support_level: float) -> Dict[str, Any]:
@@ -126,15 +130,18 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         assert prev_low_1 is not None
         assert prev_low_2 is not None
             
-        # Détection du sweep : prix a cassé sous support récemment
+        # Détection du sweep : prix a cassé sous support récemment (7 barres)
         if support_level <= 0:
             return {'is_sweep': False, 'reason': 'Support level invalide pour calcul sweep'}
         sweep_distance = (support_level - current_low) / support_level
         recent_sweep = False
         sweep_bars_ago = 0
         
-        # Vérifier si on a cassé sous support dans les dernières barres
-        lows = [current_low, prev_low_1, prev_low_2]
+        # Vérifier si on a cassé sous support dans les 7 dernières barres
+        lows = [current_low, prev_low_1, prev_low_2, 
+                price_data.get('prev_low_3'), price_data.get('prev_low_4'),
+                price_data.get('prev_low_5'), price_data.get('prev_low_6'), 
+                price_data.get('prev_low_7')]
         for i, low in enumerate(lows):
             if low is not None and low < support_level * (1 - self.sweep_threshold):
                 recent_sweep = True
@@ -144,14 +151,18 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         if not recent_sweep:
             return {'is_sweep': False, 'reason': 'Pas de sweep récent détecté'}
             
-        # Vérification recovery : prix est revenu au-dessus du support
-        recovery_successful = current_price is not None and current_price > support_level * (1 + self.recovery_threshold)
+        # Vérification recovery : prix est revenu au-dessus du support (CORRIGÉ)
+        recovery_successful = current_price is not None and current_price > support_level
         
         if not recovery_successful:
             return {'is_sweep': False, 'reason': 'Pas encore de recovery au-dessus support'}
             
-        # Calcul de la force du sweep
-        max_sweep_distance = max(abs(low - support_level) / support_level for low in lows if low is not None and low < support_level)
+        # Calcul de la force du sweep avec protection contre séquence vide
+        sweep_lows = [low for low in lows if low is not None and low < support_level]
+        if not sweep_lows:
+            max_sweep_distance = 0.0  # Pas de sweep réel
+        else:
+            max_sweep_distance = max(abs(low - support_level) / support_level for low in sweep_lows)
         
         return {
             'is_sweep': True,
@@ -181,26 +192,15 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         try:
             nearest_support = float(values['nearest_support']) if values['nearest_support'] is not None else None
             
-            # FALLBACK: Si nearest_support est NULL, utiliser bb_lower comme support dynamique  
+            # Pas de fallback : liquidity sweep nécessite un support FIXE
             if nearest_support is None:
-                bb_lower = self.indicators.get('bb_lower')
-                if bb_lower is not None:
-                    nearest_support = float(bb_lower)
-                    support_strength_raw = 'MODERATE'  # BB bands = support modéré
-                else:
-                    # FALLBACK 2: VWAP lower band
-                    vwap_lower = self.indicators.get('vwap_lower_band') 
-                    if vwap_lower is not None:
-                        nearest_support = float(vwap_lower)
-                        support_strength_raw = 'WEAK'  # VWAP band = support plus faible
-                    else:
-                        return {
-                            "side": None,
-                            "confidence": 0.0,
-                            "strength": "weak",
-                            "reason": "Aucun niveau de support disponible (nearest_support, bb_lower, vwap_lower tous NULL)",
-                            "metadata": {"strategy": self.name}
-                        }
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": "Pas de support fixe disponible - liquidity sweep impossible sur niveaux dynamiques",
+                    "metadata": {"strategy": self.name}
+                }
             else:
                 support_strength_raw = values['support_strength']
             
@@ -262,7 +262,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         # Si on a un sweep setup, générer signal BUY
         signal_side = "BUY"
         reason = f"Liquidity sweep haussier sur support {nearest_support:.2f}"
-        base_confidence = 0.50  # Base réduite pour équilibrage avec autres stratégies
+        base_confidence = 0.65  # Base réduite pour équilibrage avec autres stratégies
         confidence_boost = 0.0
         
         # Bonus selon la qualité du sweep
@@ -287,22 +287,30 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             confidence_boost += 0.08
             reason += f" + recovery modérée (+{recovery_distance*100:.1f}%)"
             
-        # Confirmation avec volume (crucial pour liquidity sweep)
+        # Confirmation volume STRICTE (crucial pour liquidity sweep)
         volume_ratio = values.get('volume_ratio')
         volume_spike_multiplier = values.get('volume_spike_multiplier')
         
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio >= self.min_volume_spike * 1.5:  # Volume très élevé
+                if vol_ratio < 1.0:  # Volume trop faible = rejet immédiat
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet liquidity sweep: volume trop faible ({vol_ratio:.1f}x < 1.0x)",
+                        "metadata": {"strategy": self.name, "volume_ratio": vol_ratio}
+                    }
+                elif vol_ratio >= 2.0:  # Volume exceptionnel
                     confidence_boost += 0.20
-                    reason += f" + volume exceptionnel ({vol_ratio:.1f}x)"
-                elif vol_ratio >= self.min_volume_spike:
+                    reason += f" + volume EXCEPTIONNEL ({vol_ratio:.1f}x)"
+                elif vol_ratio >= self.min_volume_spike:  # Volume élevé (1.5x)
                     confidence_boost += 0.15
                     reason += f" + volume élevé ({vol_ratio:.1f}x)"
-                else:
-                    confidence_boost -= 0.10  # Pénalité si volume faible
-                    reason += f" mais volume faible ({vol_ratio:.1f}x)"
+                else:  # Volume correct mais pas exceptionnel
+                    confidence_boost += 0.05
+                    reason += f" + volume correct ({vol_ratio:.1f}x)"
             except (ValueError, TypeError):
                 pass
                 
@@ -316,12 +324,20 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation avec oscillateurs (recherche de survente après sweep)
+        # Confirmation oscillateurs avec rejets contradictoires
         rsi_14 = values.get('rsi_14')
         if rsi_14 is not None:
             try:
                 rsi = float(rsi_14)
-                if rsi <= 30:  # Survente extrême
+                if rsi > 60:  # RSI trop haut = rejet BUY sweep
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": f"Rejet liquidity sweep: RSI trop haut ({rsi:.1f}) pour BUY",
+                        "metadata": {"strategy": self.name, "rsi": rsi}
+                    }
+                elif rsi <= 30:  # Survente extrême
                     confidence_boost += 0.15
                     reason += f" + RSI survente ({rsi:.1f})"
                 elif rsi <= 40:  # Survente modérée
@@ -389,11 +405,19 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Market regime (valeurs DB réelles: TRENDING_BULL/TRENDING_BEAR/RANGING/TRANSITION)
+        # Market regime avec rejet contradictoire
         market_regime = values.get('market_regime')
-        if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
+        if market_regime == "TRENDING_BEAR":
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": f"Rejet liquidity sweep BUY: marché en tendance baissière",
+                "metadata": {"strategy": self.name, "market_regime": market_regime}
+            }
+        elif market_regime == "TRENDING_BULL":
             confidence_boost += 0.08
-            reason += f" (marché {market_regime.lower().replace('trending_', '')})"
+            reason += " (marché haussier)"
         elif market_regime == "RANGING":
             confidence_boost += 0.10
             reason += " (marché en range - favorable aux sweeps)"
@@ -425,7 +449,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        confidence = self.calculate_confidence(base_confidence, 1 + confidence_boost)
+        confidence = min(1.0, self.calculate_confidence(base_confidence, 1 + confidence_boost))
         strength = self.get_strength_from_confidence(confidence)
         
         return {
@@ -463,21 +487,16 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         if not super().validate_data():
             return False
             
-        required = ['nearest_support']
-        
-        for indicator in required:
-            if indicator not in self.indicators:
-                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
-                return False
-            if self.indicators[indicator] is None:
-                logger.warning(f"{self.name}: Indicateur null: {indicator}")
-                return False
+        # Liquidity sweep nécessite un support FIXE uniquement
+        if self.indicators.get('nearest_support') is None:
+            logger.warning(f"{self.name}: nearest_support requis pour liquidity sweep")
+            return False
                 
         # Vérifier qu'on a des données OHLCV suffisantes pour analyse sweep
         required_ohlcv = ['close', 'low', 'high', 'volume']
         for key in required_ohlcv:
-            if not self.data or key not in self.data or not self.data[key] or len(self.data[key]) < 5:
-                logger.warning(f"{self.name}: Données {key} insuffisantes pour liquidity sweep")
+            if not self.data or key not in self.data or not self.data[key] or len(self.data[key]) < 8:
+                logger.warning(f"{self.name}: Données {key} insuffisantes pour liquidity sweep (besoin 8 barres)")
                 return False
                 
         return True
