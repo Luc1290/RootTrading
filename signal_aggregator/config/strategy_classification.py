@@ -79,6 +79,33 @@ STRATEGY_FAMILIES = {
         'acceptable_regimes': ['VOLATILE', 'TRANSITION', 'BREAKOUT_BULL', 'BREAKOUT_BEAR'],
         'poor_regimes': [],  # Adaptable à tous les régimes
         'characteristics': 'Analyse la structure de marché, très adaptable'
+    },
+    
+    # NOUVELLES FAMILLES POUR SCALPING
+    'flow': {
+        'strategies': [
+            # Stratégies basées sur l'analyse du flux d'ordres (à adapter selon vos stratégies)
+            'Liquidity_Sweep_Buy_Strategy',  # Déjà dans volume_based mais aussi flow
+            'OrderFlow_Imbalance_Strategy',  # Si existe
+            'BookPressure_Strategy'          # Si existe
+        ],
+        'best_regimes': ['VOLATILE', 'BREAKOUT_BULL', 'BREAKOUT_BEAR'],
+        'acceptable_regimes': ['TRENDING_BULL', 'TRENDING_BEAR', 'TRANSITION'],
+        'poor_regimes': ['RANGING'],  # Flow moins utile en range calme
+        'characteristics': 'Analyse le flux d\'ordres et la pression d\'achat/vente'
+    },
+    
+    'contrarian': {
+        'strategies': [
+            # Stratégies contrariennes pures (contre-tendance extrême)
+            'ZScore_Extreme_Reversal_Strategy',  # Déjà dans mean_reversion mais très contrarian
+            'Exhaustion_Reversal_Strategy',      # Si existe
+            'Sentiment_Contrarian_Strategy'      # Si existe
+        ],
+        'best_regimes': ['RANGING', 'TRANSITION'],  # Optimal en range et transitions
+        'acceptable_regimes': ['VOLATILE'],          # Peut fonctionner en volatilité
+        'poor_regimes': ['TRENDING_BULL', 'TRENDING_BEAR', 'BREAKOUT_BULL', 'BREAKOUT_BEAR'],
+        'characteristics': 'Prend des positions contre la tendance dominante, risqué mais rentable sur retournements'
     }
 }
 
@@ -95,7 +122,9 @@ REGIME_CONFIDENCE_ADJUSTMENTS = {
         'mean_reversion': {'BUY': 0.6, 'SELL': 0.4},       # Très pénalisé en tendance
         'breakout': {'BUY': 1.1, 'SELL': 0.8},             # Léger boost BUY
         'volume_based': {'BUY': 1.1, 'SELL': 0.9},         # Neutre-positif
-        'structure_based': {'BUY': 1.0, 'SELL': 0.9}       # Quasi-neutre
+        'structure_based': {'BUY': 1.0, 'SELL': 0.9},      # Quasi-neutre
+        'flow': {'BUY': 1.2, 'SELL': 0.8},                 # Boost BUY car suit le flux
+        'contrarian': {'BUY': 0.4, 'SELL': 0.3}            # Très pénalisé contre tendance
     },
     
     'TRENDING_BEAR': {
@@ -103,7 +132,9 @@ REGIME_CONFIDENCE_ADJUSTMENTS = {
         'mean_reversion': {'BUY': 0.6, 'SELL': 0.9},       # CORRIGÉ: Permet rebonds légitimes
         'breakout': {'BUY': 0.7, 'SELL': 1.2},             # CORRIGÉ: Moins pénalisant
         'volume_based': {'BUY': 0.8, 'SELL': 1.2},         # CORRIGÉ: Légèrement pénalisé
-        'structure_based': {'BUY': 0.8, 'SELL': 1.1}       # CORRIGÉ: Moins pénalisant
+        'structure_based': {'BUY': 0.8, 'SELL': 1.1},      # CORRIGÉ: Moins pénalisant
+        'flow': {'BUY': 0.8, 'SELL': 1.2},                 # Suit le flux baissier
+        'contrarian': {'BUY': 0.6, 'SELL': 0.4}            # Pénalisé mais BUY possible pour rebond
     },
     
     'RANGING': {
@@ -111,7 +142,9 @@ REGIME_CONFIDENCE_ADJUSTMENTS = {
         'mean_reversion': {'BUY': 1.3, 'SELL': 1.3},       # Fortement boosté
         'breakout': {'BUY': 0.8, 'SELL': 0.8},             # Légèrement pénalisé
         'volume_based': {'BUY': 0.9, 'SELL': 0.9},         # Légèrement pénalisé
-        'structure_based': {'BUY': 1.1, 'SELL': 1.1}       # Légèrement boosté
+        'structure_based': {'BUY': 1.1, 'SELL': 1.1},      # Légèrement boosté
+        'flow': {'BUY': 0.8, 'SELL': 0.8},                 # Moins utile en range
+        'contrarian': {'BUY': 1.2, 'SELL': 1.2}            # Boosté car optimal en range
     },
     
     'VOLATILE': {
@@ -119,7 +152,9 @@ REGIME_CONFIDENCE_ADJUSTMENTS = {
         'mean_reversion': {'BUY': 1.1, 'SELL': 1.1},       # Boosté en volatilité
         'breakout': {'BUY': 1.2, 'SELL': 1.2},             # Fortement boosté
         'volume_based': {'BUY': 1.2, 'SELL': 1.2},         # Fortement boosté
-        'structure_based': {'BUY': 1.0, 'SELL': 1.0}       # Neutre
+        'structure_based': {'BUY': 1.0, 'SELL': 1.0},      # Neutre
+        'flow': {'BUY': 1.3, 'SELL': 1.3},                 # Très utile en volatilité
+        'contrarian': {'BUY': 0.9, 'SELL': 0.9}            # Légèrement pénalisé
     },
     
     'BREAKOUT_BULL': {
@@ -127,7 +162,9 @@ REGIME_CONFIDENCE_ADJUSTMENTS = {
         'mean_reversion': {'BUY': 0.5, 'SELL': 0.3},       # Très pénalisé
         'breakout': {'BUY': 1.4, 'SELL': 0.7},             # Très fort boost BUY
         'volume_based': {'BUY': 1.3, 'SELL': 0.8},         # Fort boost BUY
-        'structure_based': {'BUY': 1.1, 'SELL': 0.8}       # Léger boost BUY
+        'structure_based': {'BUY': 1.1, 'SELL': 0.8},      # Léger boost BUY
+        'flow': {'BUY': 1.4, 'SELL': 0.6},                 # Très fort en breakout
+        'contrarian': {'BUY': 0.3, 'SELL': 0.2}            # Très dangereux contre breakout
     },
     
     'BREAKOUT_BEAR': {
@@ -135,7 +172,9 @@ REGIME_CONFIDENCE_ADJUSTMENTS = {
         'mean_reversion': {'BUY': 0.5, 'SELL': 0.8},       # CORRIGÉ: Minimum viable pour rebonds
         'breakout': {'BUY': 0.6, 'SELL': 1.4},             # CORRIGÉ: Pénalisé mais pas extrême
         'volume_based': {'BUY': 0.7, 'SELL': 1.3},         # CORRIGÉ: Réduit la pénalité
-        'structure_based': {'BUY': 0.7, 'SELL': 1.2}       # CORRIGÉ: Plus équilibré
+        'structure_based': {'BUY': 0.7, 'SELL': 1.2},      # CORRIGÉ: Plus équilibré
+        'flow': {'BUY': 0.6, 'SELL': 1.4},                 # Suit le flux baissier
+        'contrarian': {'BUY': 0.5, 'SELL': 0.3}            # Très risqué contre breakout bear
     },
     
     'TRANSITION': {
@@ -143,7 +182,9 @@ REGIME_CONFIDENCE_ADJUSTMENTS = {
         'mean_reversion': {'BUY': 1.0, 'SELL': 1.0},       # Neutre
         'breakout': {'BUY': 1.0, 'SELL': 1.0},             # Neutre
         'volume_based': {'BUY': 1.0, 'SELL': 1.0},         # Neutre
-        'structure_based': {'BUY': 1.0, 'SELL': 1.0}       # Neutre
+        'structure_based': {'BUY': 1.0, 'SELL': 1.0},      # Neutre
+        'flow': {'BUY': 1.0, 'SELL': 1.0},                 # Neutre
+        'contrarian': {'BUY': 1.1, 'SELL': 1.1}            # Légèrement boosté en transition
     },
     
     'UNKNOWN': {

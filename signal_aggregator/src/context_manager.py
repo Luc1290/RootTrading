@@ -28,19 +28,27 @@ class ContextManager:
         self.context_cache = {}
         self.cache_ttl = 60  # Durée de vie du cache en secondes
         
-    def get_unified_market_regime(self, symbol: str) -> Dict[str, Any]:
+    def get_unified_market_regime(self, symbol: str, signal_timeframe: str = None) -> Dict[str, Any]:
         """
-        Récupère le régime de marché unifié basé sur le timeframe de référence (15m).
+        Récupère le régime de marché unifié adapté au timeframe du signal.
         
         Args:
             symbol: Symbole à analyser
+            signal_timeframe: Timeframe du signal pour adapter le régime
             
         Returns:
             Dict contenant le régime unifié et ses métadonnées
         """
-        # OPTIMISÉ: Utiliser 3m pour équilibre réactivité/stabilité crypto
-        # Cohérent avec les signaux 3m, évite le bruit 1m mais reste réactif
-        reference_timeframe = "3m"  # Sweet spot crypto: réactif mais stable
+        # Adapter le régime de référence au timeframe du signal
+        if signal_timeframe:
+            if signal_timeframe in ['1m', '3m']:
+                reference_timeframe = "3m"   # Court terme
+            elif signal_timeframe in ['5m', '15m']:
+                reference_timeframe = "5m"   # Moyen terme  
+            else:
+                reference_timeframe = "15m"  # Long terme
+        else:
+            reference_timeframe = "3m"  # Par défaut
         cache_key = f"regime_unified_{symbol}"
         
         try:

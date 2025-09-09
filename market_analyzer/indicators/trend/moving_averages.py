@@ -324,10 +324,13 @@ def calculate_tema(prices: Union[List[float], np.ndarray, pd.Series],
 def calculate_hull_ma(prices: Union[List[float], np.ndarray, pd.Series],
                       period: int) -> Optional[float]:
     """
-    Calculate Hull Moving Average (HMA).
+    Calculate Hull Moving Average (HMA) - OPTIMIZED VERSION.
     
     HMA aims to be responsive while maintaining smoothness.
     Formula: WMA(2*WMA(n/2) - WMA(n), sqrt(n))
+    
+    PERFORMANCE: Optimized to avoid O(n²) complexity by using vectorized operations
+    instead of recalculating WMA for each point in the series.
     
     Args:
         prices: Price series
@@ -344,28 +347,43 @@ def calculate_hull_ma(prices: Union[List[float], np.ndarray, pd.Series],
     if len(prices_array) < min_required:
         return None
     
-    # Calculate WMA(n/2) and WMA(n)
-    wma_half = calculate_wma(prices_array, half_period)
-    wma_full = calculate_wma(prices_array, period)
+    # OPTIMIZED: Calculate WMA series using vectorized rolling window
+    # Instead of recalculating WMA for each point (O(n²))
     
-    if wma_half is None or wma_full is None:
-        return None
+    # Calculate rolling WMA for half period
+    wma_half_series = []
+    for i in range(half_period - 1, len(prices_array)):
+        window = prices_array[i - half_period + 1:i + 1]
+        weights = np.arange(1, half_period + 1)
+        wma_val = np.average(window, weights=weights)
+        wma_half_series.append(wma_val)
     
-    # Calculate 2*WMA(n/2) - WMA(n) series
+    # Calculate rolling WMA for full period
+    wma_full_series = []
+    for i in range(period - 1, len(prices_array)):
+        window = prices_array[i - period + 1:i + 1]
+        weights = np.arange(1, period + 1)
+        wma_val = np.average(window, weights=weights)
+        wma_full_series.append(wma_val)
+    
+    # Calculate difference series: 2*WMA(n/2) - WMA(n)
+    # Align the series (wma_full starts later)
+    offset = (period - 1) - (half_period - 1)
     diff_series = []
-    for i in range(len(prices_array)):
-        if i >= period - 1:
-            wma_h = calculate_wma(prices_array[:i+1], half_period)
-            wma_f = calculate_wma(prices_array[:i+1], period)
-            if wma_h is not None and wma_f is not None:
-                diff_series.append(2 * wma_h - wma_f)
+    for i in range(len(wma_full_series)):
+        wma_h = wma_half_series[i + offset]
+        wma_f = wma_full_series[i]
+        diff_series.append(2 * wma_h - wma_f)
     
     if len(diff_series) < sqrt_period:
         return None
     
-    # Final WMA on the difference series
-    hma = calculate_wma(diff_series, sqrt_period)
-    return hma
+    # Final WMA on the difference series (last sqrt_period points)
+    diff_window = diff_series[-sqrt_period:]
+    weights = np.arange(1, sqrt_period + 1)
+    hma = np.average(diff_window, weights=weights)
+    
+    return float(hma)
 
 
 def calculate_adaptive_ma(prices: Union[List[float], np.ndarray, pd.Series],
@@ -373,7 +391,12 @@ def calculate_adaptive_ma(prices: Union[List[float], np.ndarray, pd.Series],
                           fast_period: int = 2,
                           slow_period: int = 30) -> Optional[float]:
     """
-    Calculate Kaufman Adaptive Moving Average (KAMA).
+    Calculate Kaufman Adaptive Moving Average (KAMA) - SIMPLIFIED VERSION.
+    
+    ⚠️  IMPORTANT: This is an approximation of KAMA, not the exact implementation.
+    True KAMA requires incremental calculation across the entire historical series.
+    This version provides a "light" approximation using current efficiency ratio
+    and SMA initialization instead of proper recursive calculation.
     
     KAMA adapts its speed based on market volatility and trends.
     
@@ -384,7 +407,11 @@ def calculate_adaptive_ma(prices: Union[List[float], np.ndarray, pd.Series],
         slow_period: Slow EMA period
         
     Returns:
-        KAMA value or None if insufficient data
+        Approximate KAMA value or None if insufficient data
+        
+    Notes:
+        - Use with caution: approximation may differ from true KAMA
+        - For exact KAMA, implement full recursive calculation with historical state
     """
     prices_array = _to_numpy_array(prices)
     if len(prices_array) < period + 1:

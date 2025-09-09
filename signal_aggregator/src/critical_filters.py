@@ -20,9 +20,9 @@ class CriticalFilters:
         self.max_atr_percent = 0.15  # ATR > 15% = trop volatil
         self.extreme_bb_width_threshold = 0.12  # BB width > 12% = chaos
         
-        # Filtres volume mort (critique pour liquidité)
-        self.min_volume_ratio = 0.20  # Volume < 20% moyenne = marché mort (assoupli de 25%)
-        self.min_volume_quality = 15   # Quality < 15% = données douteuses
+        # Filtres volume mort OPTIMISÉS SCALPING (exige plus de liquidité)
+        self.min_volume_ratio = 0.30  # Volume < 30% moyenne = marché mort (durci pour scalping)
+        self.min_volume_quality = 20   # Quality < 20% = données douteuses (durci pour scalping)
         
         # Filtres conflits multi-timeframe majeurs
         self.max_conflicting_directions = 0.7  # > 70% contradictoire = problème
@@ -162,11 +162,12 @@ class CriticalFilters:
         elif signal_side == 'SELL':
             # Les ventes sont OK dans tous les régimes (protection du capital)
             # Mais on peut être plus sélectif en régime haussier fort
-            if market_regime == 'TRENDING_BULL' and regime_confidence > 0.7:
-                # En bull fort, être prudent avec les shorts
+            # OPTIMISÉ SCALPING: Inclut BREAKOUT_BULL pour éviter de shorter les rallyes explosifs
+            if market_regime in ['TRENDING_BULL', 'BREAKOUT_BULL'] and regime_confidence > 0.7:
+                # En bull fort ou breakout haussier, être très prudent avec les shorts
                 momentum_score = context.get('momentum_score', 50)
                 if momentum_score and float(momentum_score) > 70:
-                    return False, f"Vente risquée: Bull fort (confidence {regime_confidence:.1f}) avec momentum {momentum_score:.0f}"
+                    return False, f"Vente risquée: {market_regime} fort (confidence {regime_confidence:.1f}) avec momentum {momentum_score:.0f}"
                     
         return True, "Régime compatible"
         

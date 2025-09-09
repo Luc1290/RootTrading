@@ -34,6 +34,9 @@ class SimpleSignalProcessor:
         self.consensus_analyzer = AdaptiveConsensusAnalyzer()
         self.critical_filters = CriticalFilters()
         
+        # SEUIL MINIMUM DE CONFIDENCE POUR SCALPING
+        self.min_confidence_threshold = 0.6  # Rejeter signaux < 60% confidence
+        
         # Cache de contexte pour optimisation
         self.context_cache = {}
         self.cache_ttl = 5  # 5 secondes
@@ -44,6 +47,7 @@ class SimpleSignalProcessor:
             'signals_validated': 0,
             'consensus_rejected': 0,
             'critical_filter_rejected': 0,
+            'low_confidence_rejected': 0,  # NOUVEAU: Track rejets par faible confidence
             'errors': 0,
             'rejections_by_regime': {},  # Par régime de marché
             'rejections_by_family': {},  # Par famille de stratégies
@@ -75,6 +79,29 @@ class SimpleSignalProcessor:
             if not self._validate_signal_structure(signal):
                 logger.debug(f"Signal rejeté: structure invalide")
                 self.stats['errors'] += 1
+                return None
+            
+            # NORMALISATION CONFIDENCE: Clamp entre 0 et 1
+            conf = signal.get('confidence')
+            if conf is not None:
+                try:
+                    conf_val = float(conf)
+                except:
+                    conf_val = 0.0
+                # Clamp entre 0 et 1
+                if conf_val < 0.0: 
+                    conf_val = 0.0
+                if conf_val > 1.0: 
+                    conf_val = 1.0
+                signal['confidence'] = conf_val
+            else:
+                # Confidence manquante = signal faible par défaut
+                signal['confidence'] = 0.0
+            
+            # FILTRE CONFIDENCE MINIMUM POUR SCALPING
+            if signal['confidence'] < self.min_confidence_threshold:
+                logger.debug(f"Signal rejeté: confidence {signal['confidence']:.2f} < {self.min_confidence_threshold}")
+                self.stats['low_confidence_rejected'] += 1
                 return None
                 
             # Ajouter timestamp de réception

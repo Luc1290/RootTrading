@@ -410,7 +410,15 @@ def _calculate_adx_full_manual(highs: np.ndarray,
                                lows: np.ndarray,
                                closes: np.ndarray,
                                period: int) -> Dict[str, Optional[float]]:
-    """Manual calculation of full ADX indicators."""
+    """
+    Manual calculation of full ADX indicators.
+    
+    ⚠️  PERFORMANCE ISSUE: This function is called by _calculate_adx_series_manual
+    for each data point, creating O(n²) complexity. Each call recalculates
+    ADX + ADXR from scratch instead of using incremental updates.
+    
+    For massive backtests with thousands of data points, this becomes a bottleneck.
+    """
     if len(highs) < period * 2:
         return {
             'adx': None,
@@ -484,7 +492,16 @@ def _calculate_adx_series_manual(highs: np.ndarray,
                                 lows: np.ndarray,
                                 closes: np.ndarray,
                                 period: int) -> Dict[str, List[Optional[float]]]:
-    """Manual ADX series calculation."""
+    """
+    Manual ADX series calculation.
+    
+    ⚠️  PERFORMANCE WARNING: This implementation has O(n²) complexity
+    because it calls _calculate_adx_full_manual for each point, which
+    recalculates everything from scratch. For large datasets or massive
+    backtests, this creates a bottleneck.
+    
+    TODO: Optimize with incremental/rolling calculations for O(n) complexity.
+    """
     adx_series: List[Optional[float]] = []
     plus_di_series: List[Optional[float]] = []
     minus_di_series: List[Optional[float]] = []
@@ -498,7 +515,8 @@ def _calculate_adx_series_manual(highs: np.ndarray,
             plus_di_series.append(None)
             minus_di_series.append(None)
         else:
-            # Calculate for current window
+            # PERFORMANCE ISSUE: Recalculates ADX from scratch for each point
+            # This creates O(n²) complexity - inefficient for large datasets
             window_highs = highs[:i+1]
             window_lows = lows[:i+1]
             window_closes = closes[:i+1]

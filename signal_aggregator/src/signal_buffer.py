@@ -8,6 +8,11 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 from collections import defaultdict
+import sys
+import os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '../config'))
+from config.strategy_classification import get_strategy_family
 
 logger = logging.getLogger(__name__)
 
@@ -298,8 +303,8 @@ class IntelligentSignalBuffer:
         
         logger.info(f"📊 Scores {symbol}: BUY={buy_score:.3f} vs SELL={sell_score:.3f}")
         
-        # Seuil minimum pour éviter les décisions sur des différences minimes
-        min_diff = 0.05  # 5% de différence minimum
+        # Seuil adaptatif selon le nombre de signaux
+        min_diff = self._get_min_diff_threshold(buy_count, sell_count)
         
         if abs(buy_score - sell_score) < min_diff:
             logger.warning(f"⚖️ {symbol}: Égalité quasi parfaite ({buy_score:.3f} vs {sell_score:.3f}), signal ignoré")
@@ -315,6 +320,29 @@ class IntelligentSignalBuffer:
             logger.info(f"🔴 {symbol}: SELL gagne ({sell_score:.3f} vs {buy_score:.3f})")
             # NOUVEAU: Retourner les signaux SELL originaux pour validation de consensus
             return self._prepare_winning_signals(sell_signals, sell_score, buy_score)
+    
+    def _get_min_diff_threshold(self, buy_count: int, sell_count: int) -> float:
+        """
+        Calcule le seuil de différence minimum adaptatif selon le nombre de signaux.
+        
+        Plus on a de signaux, plus on peut être confiant dans une petite différence.
+        Moins on a de signaux, plus on exige une différence importante.
+        
+        Args:
+            buy_count: Nombre de signaux BUY
+            sell_count: Nombre de signaux SELL
+            
+        Returns:
+            Seuil de différence minimum (entre 0.03 et 0.08)
+        """
+        total = buy_count + sell_count
+        
+        if total >= 20:  # Beaucoup de signaux = forte conviction statistique
+            return 0.03   # 3% suffisant avec beaucoup de données
+        elif total >= 10:  # Nombre moyen de signaux
+            return 0.05   # 5% standard
+        else:  # Peu de signaux = besoin de plus de certitude
+            return 0.08   # 8% pour éviter les faux positifs
             
     def _calculate_signal_strength(self, signals: List[Dict[str, Any]]) -> float:
         """
@@ -329,25 +357,39 @@ class IntelligentSignalBuffer:
         if not signals:
             return 0.0
             
-        # Critère 1: Nombre de stratégies (40% du score)
+        # Critère 1: Nombre de stratégies (30% du score)
         strategies_count = len(signals)
         # Normaliser sur base de 10 stratégies max (valeur réaliste)
         strategies_score = min(1.0, strategies_count / 10.0)
         
-        # Critère 2: Score de consensus moyen (40% du score)
+        # Critère 2: Score de consensus moyen (30% du score)
         confidences = [s.get('confidence', 0.5) for s in signals]
         avg_confidence = sum(confidences) / len(confidences)
         
-        # Critère 3: Timeframe le plus élevé (20% du score)
+        # Critère 3: Diversité des familles de stratégies (25% du score)
+        unique_families = set()
+        for signal in signals:
+            strategy = signal.get('strategy', 'Unknown')
+            family = get_strategy_family(strategy)
+            if family != 'unknown':
+                unique_families.add(family)
+        
+        # Normaliser sur 5 familles principales
+        family_diversity_score = len(unique_families) / 5.0
+        
+        # Critère 4: Timeframe le plus élevé (15% du score)
         timeframes = [s.get('timeframe', '5m') for s in signals]
         max_tf_priority = max([self.timeframe_priority.get(tf, 50) for tf in timeframes])
         # Normaliser sur base de 1000 (1d)
         timeframe_score = min(1.0, max_tf_priority / 1000.0)
         
-        # Score final pondéré
-        final_score = (strategies_score * 0.4 + 
-                      avg_confidence * 0.4 + 
-                      timeframe_score * 0.2)
+        # Score final pondéré avec diversité des familles
+        final_score = (
+            strategies_score * 0.3 +
+            avg_confidence * 0.3 +
+            family_diversity_score * 0.25 +
+            timeframe_score * 0.15
+        )
                       
         return final_score
         

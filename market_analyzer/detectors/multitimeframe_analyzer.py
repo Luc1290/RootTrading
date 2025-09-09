@@ -27,6 +27,7 @@ class TimeframeType(Enum):
     M15 = "15m"
     M30 = "30m"
     H1 = "1h"
+    H4 = "4h"
     D1 = "1d"
 
 
@@ -435,7 +436,7 @@ class MultiTimeframeAnalyzer:
         weighted_strength = 0.0
         
         timeframe_weights = {
-            "1m": 0.5, "5m": 1.0, "15m": 1.5, "30m": 2.0,
+            "1m": 0.5, "5m": 1.0, "15m": 1.5,
             "1h": 2.5, "1d": 4.0
         }
         

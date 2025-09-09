@@ -272,7 +272,7 @@ def calculate_bollinger_expansion(prices: Union[List[float], np.ndarray, pd.Seri
             
         window_prices = prices_array[start_idx:end_idx]
         sma = np.mean(window_prices)
-        std = np.std(window_prices, ddof=1)
+        std = np.std(window_prices, ddof=0)
         
         upper_band = sma + (std_dev * std)
         lower_band = sma - (std_dev * std)
@@ -319,7 +319,7 @@ def calculate_bollinger_breakout_direction(prices: Union[List[float], np.ndarray
     # Calculate current BB levels
     bb_data = prices_array[-period:]
     sma = np.mean(bb_data)
-    std = np.std(bb_data, ddof=1)
+    std = np.std(bb_data, ddof=0)
     
     upper_band = sma + (std_dev * std)
     lower_band = sma - (std_dev * std)
