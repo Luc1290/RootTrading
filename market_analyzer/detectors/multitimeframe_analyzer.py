@@ -27,7 +27,6 @@ class TimeframeType(Enum):
     M15 = "15m"
     M30 = "30m"
     H1 = "1h"
-    H4 = "4h"
     D1 = "1d"
 
 
@@ -437,7 +436,7 @@ class MultiTimeframeAnalyzer:
         
         timeframe_weights = {
             "1m": 0.5, "5m": 1.0, "15m": 1.5, "30m": 2.0,
-            "1h": 2.5, "4h": 3.0, "1d": 4.0
+            "1h": 2.5, "1d": 4.0
         }
         
         for tf_str, signal in signals.items():
@@ -472,7 +471,7 @@ class MultiTimeframeAnalyzer:
         
         timeframe_weights = {
             "1m": 0.5, "5m": 1.0, "15m": 1.5, "30m": 2.0,
-            "1h": 2.5, "4h": 3.0, "1d": 4.0
+            "1h": 2.5, "1d": 4.0
         }
         
         for tf_str, signal in signals.items():

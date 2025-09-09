@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS market_data (
     -- Contraintes
     PRIMARY KEY (time, symbol, timeframe),
     CONSTRAINT market_data_symbol_check CHECK (symbol ~ '^[A-Z0-9]+$'),
-    CONSTRAINT market_data_timeframe_check CHECK (timeframe IN ('1m', '3m', '5m', '15m', '1h', '4h', '1d')),
+    CONSTRAINT market_data_timeframe_check CHECK (timeframe IN ('1m', '3m', '5m', '15m', '1h', '1d')),
     CONSTRAINT market_data_prices_check CHECK (high >= low AND high >= open AND high >= close AND low <= open AND low <= close)
 );
 
@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS analyzer_data (
     -- Contraintes
     PRIMARY KEY (time, symbol, timeframe),
     CONSTRAINT analyzer_data_symbol_check CHECK (symbol ~ '^[A-Z0-9]+$'),
-    CONSTRAINT analyzer_data_timeframe_check CHECK (timeframe IN ('1m', '3m', '5m', '15m', '1h', '4h', '1d')),
+    CONSTRAINT analyzer_data_timeframe_check CHECK (timeframe IN ('1m', '3m', '5m', '15m', '1h', '1d')),
     CONSTRAINT analyzer_data_regime_check CHECK (market_regime IN (
         'TRENDING_BULL', 'TRENDING_BEAR', 'RANGING', 'VOLATILE', 
         'BREAKOUT_BULL', 'BREAKOUT_BEAR', 'TRANSITION', 'UNKNOWN'

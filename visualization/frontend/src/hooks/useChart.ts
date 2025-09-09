@@ -9,11 +9,10 @@ import type { TradingSymbol, TimeInterval } from '@/types';
 const getIntervalMs = (interval: TimeInterval): number => {
   switch (interval) {
     case '1m': return 60000;      // 1 minute
+    case '3m': return 180000;     // 3 minutes
     case '5m': return 300000;     // 5 minutes
     case '15m': return 900000;    // 15 minutes
-    case '30m': return 1800000;   // 30 minutes
     case '1h': return 3600000;    // 1 heure
-    case '4h': return 14400000;   // 4 heures
     case '1d': return 86400000;   // 1 jour
     default: return 60000;        // Par défaut 1 minute
   }

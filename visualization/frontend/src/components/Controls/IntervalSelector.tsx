@@ -10,6 +10,7 @@ function IntervalSelector() {
     { value: '3m', label: '3 minutes' },
     { value: '5m', label: '5 minutes' },
     { value: '15m', label: '15 minutes' },
+    { value: '1h', label: '1 heure' },
     { value: '1d', label: '1 jour' },
   ];
   

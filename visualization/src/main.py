@@ -140,7 +140,7 @@ async def get_market_chart(
                 "3m": 960,     # 48 heures de données
                 "5m": 2016,    # 7 jours de données
                 "15m": 1344,   # 14 jours de données  
-                "30m": 1440,   # 30 jours de données
+                "1h": 720,     # 30 jours de données
                 "1d": 365      # 1 an de données
             }
             limit = timeframe_limits.get(interval, 2880)
@@ -218,7 +218,7 @@ async def get_indicators_chart(
                 "3m": 960,     # 48 heures de données
                 "5m": 2016,    # 7 jours de données
                 "15m": 1344,   # 14 jours de données  
-                "30m": 1440,   # 30 jours de données
+                "1h": 720,     # 30 jours de données
                 "1d": 365      # 1 an de données
             }
             limit = timeframe_limits.get(interval, 2880)
@@ -365,7 +365,7 @@ async def get_performance_history(
         
         # Validation des paramètres
         valid_periods = ["1d", "7d", "30d", "90d", "1y"]
-        valid_intervals = ["1h", "4h", "1d"]
+        valid_intervals = ["1h", "1d"]
         
         if period not in valid_periods:
             raise HTTPException(status_code=400, detail=f"Invalid period. Must be one of: {valid_periods}")

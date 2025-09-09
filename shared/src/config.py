@@ -45,13 +45,13 @@ def get_db_config() -> Dict[str, Any]:
     }
 
 # Paramètres de trading
-DEFAULT_SYMBOL = os.getenv("DEFAULT_SYMBOL", "BTCUSDC")
+DEFAULT_SYMBOL = os.getenv("DEFAULT_SYMBOL")
 # Les symboles sont définis dans .env via TRADING_SYMBOLS
-SYMBOLS = os.getenv("TRADING_SYMBOLS", "BTCUSDC,ETHUSDC,SOLUSDC,XRPUSDC,AVAXUSDC,ADAUSDC,LINKUSDC,INJUSDC,RENDERUSDC,NEARUSDC,APTUSDC,SUIUSDC,ARBUSDC,OPUSDC,TRXUSDC,XLMUSDC,HBARUSDC,DOGEUSDC,TONUSDC,LDOUSDC,FILUSDC").split(",")
+SYMBOLS = os.getenv("TRADING_SYMBOLS").split(",")
 INTERVAL = "1m"
 VALIDATION_INTERVAL = "3m"
 SCALPING_INTERVALS = ["1m", "3m", "5m", "15m"]
-TRADING_MODE = os.getenv("TRADING_MODE", "demo")  # 'demo' ou 'live' - reste dans .env car peut changer
+TRADING_MODE = os.getenv("TRADING_MODE")  # 'demo' ou 'live' - reste dans .env car peut changer
 
 # Configuration des canaux Redis
 CHANNEL_PREFIX = "roottrading"

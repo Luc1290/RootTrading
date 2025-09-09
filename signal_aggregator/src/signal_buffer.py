@@ -69,7 +69,8 @@ class IntelligentSignalBuffer:
         # Timeframes par ordre de priorité décisionnelle
         # ARCHITECTURE: 3m/5m = decision makers, 15m = context validator, 1m = timing tool
         self.timeframe_priority = {
-            '1d': 1000, '4h': 400, '1h': 200, 
+            '1d': 1000, 
+            '1h': 200, 
             '15m': 150,  # Context validator - fort pour régime
             '5m': 50,    # Core decision maker - poids élevé  
             '3m': 45,    # Core decision maker - poids élevé

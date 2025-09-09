@@ -59,6 +59,7 @@ class GapDetector:
             '5m': 300,
             '15m': 900,
             '3m': 180,
+            '1h': 3600,
             '1d': 86400
         }.get(timeframe, 60)
         
@@ -204,7 +205,7 @@ class GapDetector:
             # Cas 1: DB vide ou pas assez de données - charger min_candles
             if current_count < min_candles:
                 interval_seconds = {
-                    '1m': 60, '3m': 180, '5m': 300, '15m': 900, '1d': 86400
+                    '1m': 60, '3m': 180, '5m': 300, '15m': 900, '1h': 3600, '1d': 86400
                 }.get(timeframe, 60)
                 
                 # Calculer la durée pour min_candles
@@ -234,8 +235,8 @@ class GapDetector:
         """
         if symbols is None:
             symbols = SYMBOLS
-            
-        timeframes = ['1m', '3m', '5m', '15m', '1d']
+
+        timeframes = ['1m', '3m', '5m', '15m', '1h', '1d']
         all_gaps: Dict[str, Dict[str, List[Tuple[datetime, datetime]]]] = {}
         total_gaps = 0
         
@@ -341,6 +342,7 @@ class GapDetector:
             '5m': 5,
             '15m': 15,
             '3m': 3,
+            '1h': 60,
             '1d': 1440
         }.get(timeframe, 1)
         

@@ -38,11 +38,11 @@ class SimpleBinanceWebSocket:
         
         Args:
             symbols: Liste des symboles à surveiller (ex: ['BTCUSDC', 'ETHUSDC'])
-            intervals: Liste des intervalles à surveiller (ex: ['1m', '3m', '5m', '15m', '1d'])
+            intervals: Liste des intervalles à surveiller (ex: ['1m', '3m', '5m', '15m', '1h', '1d'])
             kafka_client: Client Kafka pour la publication des données
         """
         self.symbols = symbols or SYMBOLS
-        self.intervals = intervals or ['1m', '3m', '5m', '15m', '1d']
+        self.intervals = intervals or ['1m', '3m', '5m', '15m', '1h', '1d']
         self.kafka_client = kafka_client or get_producer()
         self.ws: Optional[WebSocketClientProtocol] = None
         self.running = False

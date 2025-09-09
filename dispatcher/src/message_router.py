@@ -285,7 +285,7 @@ class MessageRouter:
         }
         
         # Traitement spécifique selon le type de topic
-        if any(topic.startswith(f"market.data.") and topic.endswith(f".{tf}") for tf in ["1m", "3m", "5m", "15m", "1d"]):
+        if any(topic.startswith(f"market.data.") and topic.endswith(f".{tf}") for tf in ["1m", "3m", "5m", "15m", "1h", "1d"]):
             # Extraction du symbole et timeframe depuis le topic
             parts = topic.split(".")
             if len(parts) >= 4:
@@ -314,8 +314,8 @@ class MessageRouter:
                 if has_indicators:
                     logger.warning(f"ATTENTION: Données avec indicateurs reçues du Gateway - architecture corrompue!")
                     transformed["_routing"]["data_type"] = "corrupted_enriched_data"
-                        
-        elif topic == "market.data" or topic.startswith("market.data.") and not any(topic.endswith(f".{tf}") for tf in ["1m", "3m", "5m", "15m", "1d"]):
+
+        elif topic == "market.data" or topic.startswith("market.data.") and not any(topic.endswith(f".{tf}") for tf in ["1m", "3m", "5m", "15m", "1h", "1d"]):
             # Format legacy ou données brutes génériques
             transformed["_routing"]["data_type"] = "raw_market_data_legacy"
             

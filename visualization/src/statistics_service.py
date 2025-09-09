@@ -295,7 +295,7 @@ class StatisticsService:
         
         Args:
             period: Période (1d, 7d, 30d, 90d, 1y)
-            interval: Intervalle d'agrégation (1h, 4h, 1d)
+            interval: Intervalle d'agrégation (1h, 1d)
             
         Returns:
             Dict avec historique de performance
@@ -312,7 +312,6 @@ class StatisticsService:
             
             interval_map = {
                 '1h': 'hour',
-                '4h': '4 hours',
                 '1d': 'day'
             }
             

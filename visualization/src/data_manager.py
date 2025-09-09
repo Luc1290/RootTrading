@@ -104,12 +104,12 @@ class DataManager:
             "3m": 3,
             "5m": 5,
             "15m": 15,
-            "30m": 30,
+            "1h": 60,
             "1d": 1440
         }.get(interval, 1)
         
         # Vérifier si des données natives existent pour ce timeframe
-        native_timeframes = ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d']
+        native_timeframes = ['1m', '3m', '5m', '15m', '1h', '1d']
         use_native = interval in native_timeframes
         
         if use_native:

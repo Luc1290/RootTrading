@@ -136,7 +136,7 @@ async def health_check(request):
         "uptime": uptime,
         "mode": "active" if running else "stopping",
         "symbols": SYMBOLS,
-        "intervals": ['1m', '3m', '5m', '15m', '1d'],
+        "intervals": ['1m', '3m', '5m', '15m', '1h', '1d'],
         "architecture": "multi_timeframe_clean_data"
     })
 
@@ -149,7 +149,7 @@ async def diagnostic(request):
     fetcher_status = {
         "running": data_fetcher.running if data_fetcher else False,
         "symbols_count": len(SYMBOLS),
-        "timeframes": ['1m', '3m', '5m', '15m', '1d'],
+        "timeframes": ['1m', '3m', '5m', '15m', '1h', '1d'],
         "data_type": "raw_ohlcv_only"
     }
     
@@ -159,7 +159,7 @@ async def diagnostic(request):
         "uptime": time.time() - start_time,
         "data_fetcher": fetcher_status,
         "symbols": SYMBOLS,
-        "intervals": ['1m', '3m', '5m', '15m', '1d'],
+        "intervals": ['1m', '3m', '5m', '15m', '1h', '1d'],
         "architecture": "multi_timeframe_clean_gateway"
     }
     
@@ -207,7 +207,7 @@ async def main():
     global data_fetcher, ws_client
     
     logger.info("🚀 Démarrage du service Gateway SIMPLE (données brutes uniquement)...")
-    logger.info(f"Configuration: {', '.join(SYMBOLS)} @ ['1m', '3m', '5m', '15m', '1d']")
+    logger.info(f"Configuration: {', '.join(SYMBOLS)} @ ['1m', '3m', '5m', '15m', '1h', '1d']")
     logger.info("🎯 Architecture: AUCUN calcul d'indicateur - transmission pure")
     
     # Démarrer le serveur HTTP
@@ -216,8 +216,8 @@ async def main():
     try:
         # Créer les services intelligents
         data_fetcher = SmartDataFetcher()
-        ws_client = SimpleBinanceWebSocket(symbols=SYMBOLS, intervals=['1m', '3m', '5m', '15m', '1d'])
-        
+        ws_client = SimpleBinanceWebSocket(symbols=SYMBOLS, intervals=['1m', '3m', '5m', '15m', '1h', '1d'])
+
         logger.info("📡 Initialisation des services intelligents...")
         logger.info("🧠 Mode: Détection de gaps + WebSocket temps réel")
         

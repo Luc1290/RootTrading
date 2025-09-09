@@ -31,7 +31,7 @@ class SimpleDataFetcher:
     
     def __init__(self):
         self.symbols = SYMBOLS
-        self.timeframes = ['1m', '3m', '5m', '15m', '1d']
+        self.timeframes = ['1m', '3m', '5m', '15m', '1h', '1d']
         self.redis_client = RedisClient()
         self.kafka_producer = get_producer()
         self.running = False
@@ -49,6 +49,7 @@ class SimpleDataFetcher:
             '3m': 300,   # 900 minutes = 15h (bon équilibre)
             '5m': 300,   # 1500 minutes = 25h (journée + 1h)
             '15m': 300,  # 4500 minutes = 75h (3+ jours)
+            '1h': 300,   # 18000 minutes = 300h (12+ jours)
             '1d': 300    # 300 jours = 10 mois (EMA 99 très stable)
         }
         
