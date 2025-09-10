@@ -40,8 +40,8 @@ RUN pip install --no-cache-dir -r /app/requirements-shared.txt && \
 # Version 0.4.32 fixes const pointer compatibility issues
 RUN pip install --no-cache-dir ta-lib==0.4.32
 
-# Install pandas-ta for advanced indicators
-RUN pip install --no-cache-dir pandas-ta==0.3.14b0
+# Note: pandas-ta removed - incompatible with Python 3.10
+# Using TA-Lib for technical indicators instead
 
 # Copy shared modules
 COPY shared /app/shared

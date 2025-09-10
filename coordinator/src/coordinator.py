@@ -418,7 +418,7 @@ class Coordinator:
                 strength_category = "MODERATE"  # Par défaut
                 
                 if signal.metadata:
-                    logger.info(f"🔍 Métadonnées {signal.symbol}: {signal.metadata}")
+                    logger.debug(f"🔍 Métadonnées {signal.symbol}: {signal.metadata}")
                     
                     # Calculer force basée sur consensus_strength et strategies_count
                     consensus_strength = signal.metadata.get('consensus_strength', 0)

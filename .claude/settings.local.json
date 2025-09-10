@@ -22,10 +22,11 @@
       "Bash(iostat:*)",
       "Bash(cp:*)",
       "Bash(apt list:*)",
-      "Bash(npm install:*)",      
+      "Bash(npm install:*)",
       "Bash(mypy:*)",
       "Bash(ruff check:*)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "Bash(docker exec:*)"
     ],
     "deny": [
       "Kill Bash(Kill shell: *)"

@@ -16,7 +16,12 @@ import logging
 from typing import Dict, List, Any, Optional
 import redis.asyncio as redis
 import json
+import sys
+import os
 from datetime import datetime, timedelta
+
+# Ajouter le répertoire src au path pour les imports locaux
+sys.path.append(os.path.dirname(__file__))
 
 from signal_buffer import IntelligentSignalBuffer
 from signal_processor_simple import SimpleSignalProcessor

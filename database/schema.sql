@@ -30,13 +30,13 @@ CREATE TABLE IF NOT EXISTS market_data (
     high DECIMAL(20,8) NOT NULL,
     low DECIMAL(20,8) NOT NULL,
     close DECIMAL(20,8) NOT NULL,
-    volume DECIMAL(20,8) NOT NULL,
+    volume DECIMAL(28,8) NOT NULL,
     
     -- Métadonnées Binance additionnelles
-    quote_asset_volume DECIMAL(20,8),
+    quote_asset_volume DECIMAL(28,8),
     number_of_trades INTEGER,
-    taker_buy_base_asset_volume DECIMAL(20,8),
-    taker_buy_quote_asset_volume DECIMAL(20,8),
+    taker_buy_base_asset_volume DECIMAL(28,8),
+    taker_buy_quote_asset_volume DECIMAL(28,8),
     
     -- Métadonnées système
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -156,14 +156,14 @@ CREATE TABLE IF NOT EXISTS analyzer_data (
     vwap_upper_band DECIMAL(20,8), -- VWAP + 1 std
     vwap_lower_band DECIMAL(20,8), -- VWAP - 1 std
     volume_ratio DECIMAL(10,4),    -- Ratio volume vs moyenne
-    avg_volume_20 DECIMAL(20,8),   -- Volume moyen 20 périodes
+    avg_volume_20 DECIMAL(28,8),   -- Volume moyen 20 périodes
     quote_volume_ratio DECIMAL(10,4), -- Ratio du volume en quote asset (USDC)
-    avg_trade_size DECIMAL(20,8),  -- Taille moyenne des trades (volume/nb trades)
+    avg_trade_size DECIMAL(28,8),  -- Taille moyenne des trades (volume/nb trades)
     trade_intensity DECIMAL(10,4), -- Intensité du trading (nb trades vs moyenne)
-    obv DECIMAL(20,8),             -- On Balance Volume
-    obv_ma_10 DECIMAL(20,8),       -- OBV Moving Average 10
-    obv_oscillator DECIMAL(20,8),  -- OBV Oscillator
-    ad_line DECIMAL(20,8),         -- Accumulation/Distribution Line
+    obv DECIMAL(28,8),             -- On Balance Volume
+    obv_ma_10 DECIMAL(28,8),       -- OBV Moving Average 10
+    obv_oscillator DECIMAL(28,8),  -- OBV Oscillator
+    ad_line DECIMAL(28,8),         -- Accumulation/Distribution Line
     
     -- === VOLUME PROFILE ===
     volume_profile_poc DECIMAL(20,8), -- Point of Control
