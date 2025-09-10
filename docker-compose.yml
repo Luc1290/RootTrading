@@ -138,6 +138,13 @@ services:
       POSTGRES_DB: ${PGDATABASE:-trading}
       PGDATA: /var/lib/postgresql/data/pgdata
       TIMESCALEDB_TELEMETRY: false
+    command: >
+      postgres -c max_connections=200
+               -c shared_buffers=256MB
+               -c effective_cache_size=1GB
+               -c maintenance_work_mem=64MB
+               -c checkpoint_completion_target=0.9
+               -c wal_buffers=16MB
     volumes:
     - db-data:/var/lib/postgresql/data
     - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
