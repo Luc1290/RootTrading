@@ -28,6 +28,31 @@ class EMA_Cross_Strategy(BaseStrategy):
         self.min_separation_pct = 0.25  # Séparation minimum 0.25% (filtre bruit crypto)
         self.strong_separation_pct = 1.0  # Séparation forte 1.0%
         
+    def _format_percentage(self, value: float) -> str:
+        """
+        Formate un pourcentage de manière intelligente pour les micro-caps.
+        Évite d'afficher 0.00% en ajustant les décimales selon la valeur.
+        """
+        if abs(value) >= 1.0:
+            return f"{value:.2f}%"
+        elif abs(value) >= 0.1:
+            return f"{value:.3f}%"
+        elif abs(value) >= 0.01:
+            return f"{value:.4f}%"
+        else:
+            return f"{value:.5f}%"
+            
+    def _format_price(self, price: float) -> str:
+        """
+        Formate un prix de manière intelligente pour les micro-caps.
+        """
+        if price >= 1.0:
+            return f"{price:.4f}"
+        elif price >= 0.001:
+            return f"{price:.6f}"
+        else:
+            return f"{price:.8f}"
+        
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs EMA."""
         return {
@@ -118,7 +143,7 @@ class EMA_Cross_Strategy(BaseStrategy):
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"EMA trop proches ({ema_distance_pct:.2f}%) - pas de signal clair",
+                "reason": f"EMA trop proches ({self._format_percentage(ema_distance_pct)}) - pas de signal clair",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
@@ -139,12 +164,12 @@ class EMA_Cross_Strategy(BaseStrategy):
         if ema_fast_above_slow:
             signal_side = "BUY"
             cross_type = "golden_cross"
-            reason = f"EMA12 ({ema_12:.2f}) > EMA26 ({ema_26:.2f})"
+            reason = f"EMA12 ({self._format_price(ema_12)}) > EMA26 ({self._format_price(ema_26)})"
             confidence_boost += 0.15  # Base pour croisement
         else:
             signal_side = "SELL"
             cross_type = "death_cross"
-            reason = f"EMA12 ({ema_12:.2f}) < EMA26 ({ema_26:.2f})"
+            reason = f"EMA12 ({self._format_price(ema_12)}) < EMA26 ({self._format_price(ema_26)})"
             confidence_boost += 0.15  # Base pour croisement
             
         # Filtre EMA50 comme bonus/malus (pas rejet)
@@ -167,20 +192,20 @@ class EMA_Cross_Strategy(BaseStrategy):
         cross_quality = "weak"
         if ema_distance_pct >= self.strong_separation_pct:  # 1.0%
             confidence_boost += 0.20
-            reason += f" - séparation FORTE ({ema_distance_pct:.2f}%)"
+            reason += f" - séparation FORTE ({self._format_percentage(ema_distance_pct)})"
             cross_quality = "strong"
         elif ema_distance_pct >= 0.5:
             confidence_boost += 0.12
-            reason += f" - séparation correcte ({ema_distance_pct:.2f}%)"
+            reason += f" - séparation correcte ({self._format_percentage(ema_distance_pct)})"
             cross_quality = "moderate"
         elif ema_distance_pct >= 0.35:
             confidence_boost += 0.06
-            reason += f" - séparation acceptable ({ema_distance_pct:.2f}%)"
+            reason += f" - séparation acceptable ({self._format_percentage(ema_distance_pct)})"
             cross_quality = "acceptable"
         else:
             # Séparation faible
             confidence_boost -= 0.05
-            reason += f" - séparation faible ({ema_distance_pct:.2f}%)"
+            reason += f" - séparation faible ({self._format_percentage(ema_distance_pct)})"
             cross_quality = "weak"
             
         # Confirmation stricte avec EMA99 (rejet si forte divergence LT)
@@ -195,7 +220,7 @@ class EMA_Cross_Strategy(BaseStrategy):
                         "side": None,
                         "confidence": 0.0,
                         "strength": "weak",
-                        "reason": f"Rejet BUY: prix {current_price:.2f} trop sous EMA99 {ema99_val:.2f} (contra-trend LT)",
+                        "reason": f"Rejet BUY: prix {self._format_price(current_price)} trop sous EMA99 {self._format_price(ema99_val)} (contra-trend LT)",
                         "metadata": {
                             "strategy": self.name,
                             "symbol": self.symbol,
@@ -209,7 +234,7 @@ class EMA_Cross_Strategy(BaseStrategy):
                         "side": None,
                         "confidence": 0.0,
                         "strength": "weak",
-                        "reason": f"Rejet SELL: prix {current_price:.2f} trop au-dessus EMA99 {ema99_val:.2f} (contra-trend LT)",
+                        "reason": f"Rejet SELL: prix {self._format_price(current_price)} trop au-dessus EMA99 {self._format_price(ema99_val)} (contra-trend LT)",
                         "metadata": {
                             "strategy": self.name,
                             "symbol": self.symbol,
@@ -321,7 +346,7 @@ class EMA_Cross_Strategy(BaseStrategy):
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Signal EMA rejeté - confiance insuffisante ({confidence:.2f} < 0.35)",
+                "reason": f"Signal EMA rejeté - confiance insuffisante ({confidence:.3f} < 0.35)",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,

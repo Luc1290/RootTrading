@@ -163,7 +163,7 @@ class Coordinator:
                 self.stats["signals_rejected"] += 1
                 return
             logger.info(f"📨 Signal reçu: {signal.strategy} {signal.side} {signal.symbol} @ {signal.price}")
-            logger.info(f"🔍 Signal metadata: {signal.metadata}")
+            logger.debug(f"🔍 Signal metadata: {signal.metadata}")
             if signal.metadata and 'db_id' in signal.metadata:
                 logger.info(f"DB ID trouvé dans signal: {signal.metadata['db_id']}")
             else:

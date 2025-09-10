@@ -175,33 +175,27 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
         volume_score = 0.0
         volume_indicators = []
         
-        # Volume spike multiplier (principal) - PLUS STRICT
-        volume_spike_mult = values.get('volume_spike_multiplier')
-        if volume_spike_mult is not None:
-            try:
-                spike_mult = float(volume_spike_mult)
-                if spike_mult >= self.extreme_spike_volume:
-                    volume_score += 0.5  # Score augmenté
-                    volume_indicators.append(f"Volume spike EXTRÊME ({spike_mult:.1f}x)")
-                elif spike_mult >= self.strong_spike_volume:
-                    volume_score += 0.35
-                    volume_indicators.append(f"Volume spike FORT ({spike_mult:.1f}x)")
-                elif spike_mult >= self.min_spike_volume:
-                    volume_score += 0.30  # Score augmenté pour seuil durci
-                    volume_indicators.append(f"Volume spike ({spike_mult:.1f}x)")
-            except (ValueError, TypeError):
-                pass
-                
-        # Volume ratio (confirmation)
+        # Volume spike analysis - utiliser volume_ratio (plus fiable que volume_spike_multiplier)
+        # car volume_spike_multiplier se reset à 1.0 si le VolumeContextAnalyzer ne détecte pas de spike
         volume_ratio = values.get('volume_ratio')
+        volume_spike_mult = values.get('volume_spike_multiplier')  # Garder pour metadata
+        
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio >= 2.5:  # Seuil plus strict
-                    volume_score += 0.2
-                    volume_indicators.append(f"Volume ratio élevé ({vol_ratio:.1f}x)")
-                elif vol_ratio >= 1.5:
+                # Utiliser volume_ratio comme référence principale (plus cohérent)
+                if vol_ratio >= self.extreme_spike_volume:
+                    volume_score += 0.5  # Score augmenté
+                    volume_indicators.append(f"Volume spike EXTRÊME ({vol_ratio:.1f}x)")
+                elif vol_ratio >= self.strong_spike_volume:
+                    volume_score += 0.35
+                    volume_indicators.append(f"Volume spike FORT ({vol_ratio:.1f}x)")
+                elif vol_ratio >= self.min_spike_volume:
+                    volume_score += 0.30  # Score augmenté pour seuil durci
+                    volume_indicators.append(f"Volume spike ({vol_ratio:.1f}x)")
+                elif vol_ratio >= 1.5:  # Volume élevé mais pas encore spike
                     volume_score += 0.1
+                    volume_indicators.append(f"Volume élevé ({vol_ratio:.1f}x)")
             except (ValueError, TypeError):
                 pass
                 
@@ -640,7 +634,7 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
                     "stabilization_indicators": stabilization_analysis['indicators'],
                     "roc_10": values.get('roc_10'),
                     "rsi_14": values.get('rsi_14'),
-                    "volume_spike_multiplier": values.get('volume_spike_multiplier'),
+                    "volume_spike_multiplier": values.get('volume_ratio') or values.get('volume_spike_multiplier', 1.0),  # Utiliser volume_ratio comme référence
                     "momentum_score": values.get('momentum_score'),
                     "anomaly_detected": anomaly_detected,
                     "confluence_score": confluence_score,

@@ -284,6 +284,7 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                     }
                     
             # Confluence plus stricte - rejet <40
+            confluence_score = values.get('confluence_score')
             if confluence_score and confluence_score < 40:
                 return {
                     "side": None,

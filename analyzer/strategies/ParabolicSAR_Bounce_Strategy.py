@@ -369,6 +369,22 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
                 "reason": f"Confirmations SAR insuffisantes ({confirmations_count}/{self.required_confirmations})",
                 "metadata": {"strategy": self.name}
             }
+        
+        # PÉNALITÉ VOLUME - Empêcher les boosts faciles sans volume
+        volume_ratio = values.get('volume_ratio')
+        if volume_ratio is not None:
+            try:
+                vol_ratio = float(volume_ratio)
+                if vol_ratio < 0.8:
+                    # Malus pour volume très faible
+                    confidence_boost -= 0.20
+                    reason += f" - volume très faible ({vol_ratio:.2f}x)"
+                elif vol_ratio < 1.1:
+                    # Limiter les boosts si volume insuffisant
+                    confidence_boost = min(confidence_boost, 0.10)
+                    reason += f" - boost limité par volume faible ({vol_ratio:.2f}x)"
+            except (ValueError, TypeError):
+                pass
             
         # Calcul final
         confidence = min(base_confidence * (1 + confidence_boost), 0.95)

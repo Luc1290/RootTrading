@@ -34,6 +34,8 @@ class DataListener:
         self.running = False
         self.processed_count = 0
         self.indicator_processor = IndicatorProcessor()
+        # Semaphore pour limiter les connexions DB concurrentes
+        self.db_semaphore = asyncio.Semaphore(15)  # Max 15 connexions simultanées
         
         logger.info("📡 DataListener initialisé")
 
@@ -42,15 +44,19 @@ class DataListener:
         try:
             db_config = get_db_config()
             
-            # Pool principal pour les requêtes
+            # Pool principal pour les requêtes - AUGMENTÉ pour traitement historique
             self.db_pool = await asyncpg.create_pool(
                 host=db_config['host'],
                 port=db_config['port'],
                 database=db_config['database'],
                 user=db_config['user'],
                 password=db_config['password'],
-                min_size=2,
-                max_size=10
+                min_size=5,
+                max_size=25,  # Augmenté de 10 à 25
+                command_timeout=30,  # Timeout requêtes longues
+                server_settings={
+                    'application_name': 'market_analyzer_pool'
+                }
             )
             
             # Connexion dédiée pour LISTEN
@@ -209,7 +215,10 @@ class DataListener:
         
         try:
             async with self.db_pool.acquire() as conn:
-                result = await conn.fetchval(query, symbol, timeframe, timestamp)
+                result = await asyncio.wait_for(
+                    conn.fetchval(query, symbol, timeframe, timestamp),
+                    timeout=5.0
+                )
                 return result is not None
                 
         except Exception as e:
@@ -267,17 +276,17 @@ class DataListener:
         """Traite l'historique d'un symbole spécifique dans l'ordre chronologique."""
         logger.info(f"🔄 Traitement historique optimisé pour {symbol}...")
         
-        # Requête optimisée : ORDER BY time ASC pour traiter dans l'ordre chronologique
+        # Requête optimisée : EXISTS plus rapide que LEFT JOIN
         query = """
             SELECT DISTINCT md.timeframe, md.time
             FROM market_data md
-            LEFT JOIN analyzer_data ad ON (
-                md.symbol = ad.symbol AND 
-                md.timeframe = ad.timeframe AND 
-                md.time = ad.time
+            WHERE md.symbol = $1
+            AND NOT EXISTS (
+                SELECT 1 FROM analyzer_data ad 
+                WHERE ad.symbol = md.symbol 
+                AND ad.timeframe = md.timeframe 
+                AND ad.time = md.time
             )
-            WHERE ad.time IS NULL
-            AND md.symbol = $1
         """
         
         params = [symbol]
@@ -293,7 +302,10 @@ class DataListener:
         
         try:
             async with self.db_pool.acquire() as conn:
-                rows = await conn.fetch(query, *params)
+                rows = await asyncio.wait_for(
+                    conn.fetch(query, *params),
+                    timeout=10.0
+                )
                 
             if not rows:
                 logger.info(f"✅ {symbol}: Aucune donnée non analysée")
@@ -319,11 +331,12 @@ class DataListener:
                 # Traiter dans l'ordre chronologique
                 for timestamp in timestamps:
                     try:
-                        await self.indicator_processor.process_new_data(
-                            symbol, 
-                            tf, 
-                            timestamp
-                        )
+                        async with self.db_semaphore:  # Limiter les connexions concurrentes
+                            await self.indicator_processor.process_new_data(
+                                symbol, 
+                                tf, 
+                                timestamp
+                            )
                         processed += 1
                         
                         # Log de progression
@@ -331,9 +344,9 @@ class DataListener:
                             percent = (processed / len(timestamps)) * 100
                             logger.info(f"📈 {symbol} {tf}: {processed}/{len(timestamps)} ({percent:.1f}%)")
                         
-                        # Micro pause tous les 10 éléments pour ne pas bloquer
+                        # Pause raisonnable tous les 10 éléments pour éviter saturation DB
                         if processed % 10 == 0:
-                            await asyncio.sleep(0.001)
+                            await asyncio.sleep(0.01)  # 10ms
                             
                     except Exception as e:
                         errors += 1

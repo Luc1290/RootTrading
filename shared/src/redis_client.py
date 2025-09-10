@@ -427,6 +427,11 @@ class RedisClientPool:
                     logger.error(f"❌ Échec de reconnexion PubSub pour {client_id}: {str(reconnect_error)}")
                 
             except Exception as e:
+                # Si connexion fermée ou arrêt demandé, sortir proprement
+                if stop_event.is_set() or "closed file" in str(e).lower():
+                    logger.debug(f"Thread d'écoute PubSub {client_id} terminé proprement")
+                    break
+                    
                 logger.error(f"❌ Erreur dans le thread d'écoute PubSub {client_id}: {str(e)}")
                 time.sleep(1)  # Pause pour éviter de consommer trop de CPU
     

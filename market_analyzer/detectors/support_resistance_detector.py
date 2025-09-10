@@ -163,6 +163,11 @@ class SupportResistanceDetector:
             # 6. Calculer la force finale et trier
             final_levels = self._calculate_final_strength(consolidated_levels, highs, lows, closes, volumes)
             
+            # Si aucun niveau détecté, créer des niveaux basiques de fallback
+            if not final_levels:
+                logger.debug("Aucun niveau détecté, création de niveaux basiques")
+                final_levels = self._create_basic_levels(highs, lows, closes, current_price, timeframe)
+            
             # Trier par force (majeurs d'abord) puis par proximité
             final_levels.sort(key=lambda x: (
                 -self._strength_to_number(x.strength),
@@ -695,6 +700,126 @@ class SupportResistanceDetector:
         except Exception as e:
             logger.warning(f"Erreur calcul trendline: {e}")
             return None
+    
+    def _create_basic_levels(self, highs: np.ndarray, lows: np.ndarray, 
+                            closes: np.ndarray, current_price: float, 
+                            timeframe: str) -> List[PriceLevel]:
+        """
+        Crée des niveaux basiques de fallback quand aucun niveau n'est détecté.
+        Utilise les high/low récents et les moyennes.
+        """
+        levels = []
+        
+        try:
+            # Récupérer les dernières périodes selon le timeframe
+            lookback = min(100, len(closes))
+            recent_highs = highs[-lookback:]
+            recent_lows = lows[-lookback:]
+            recent_closes = closes[-lookback:]
+            
+            # Niveau 1: Plus haut récent (résistance)
+            recent_high = float(np.max(recent_highs))
+            if recent_high > current_price:
+                levels.append(PriceLevel(
+                    price=recent_high,
+                    level_type=LevelType.RESISTANCE,
+                    strength=LevelStrength.MODERATE,
+                    confidence=60.0,
+                    touches=1,
+                    volume_strength=0.0,
+                    distance_from_price=abs(recent_high - current_price) / current_price,
+                    last_test_age=0,
+                    break_probability=0.5,
+                    timeframe=timeframe
+                ))
+            
+            # Niveau 2: Plus bas récent (support)
+            recent_low = float(np.min(recent_lows))
+            if recent_low < current_price:
+                levels.append(PriceLevel(
+                    price=recent_low,
+                    level_type=LevelType.SUPPORT,
+                    strength=LevelStrength.MODERATE,
+                    confidence=60.0,
+                    touches=1,
+                    volume_strength=0.0,
+                    distance_from_price=abs(recent_low - current_price) / current_price,
+                    last_test_age=0,
+                    break_probability=0.5,
+                    timeframe=timeframe
+                ))
+            
+            # Niveau 3: Moyenne mobile 50 périodes
+            if len(recent_closes) >= 50:
+                ma_50 = float(np.mean(recent_closes[-50:]))
+                level_type = LevelType.SUPPORT if ma_50 < current_price else LevelType.RESISTANCE
+                levels.append(PriceLevel(
+                    price=ma_50,
+                    level_type=level_type,
+                    strength=LevelStrength.WEAK,
+                    confidence=50.0,
+                    touches=1,
+                    volume_strength=0.0,
+                    distance_from_price=abs(ma_50 - current_price) / current_price,
+                    last_test_age=0,
+                    break_probability=0.6,
+                    timeframe=timeframe
+                ))
+            
+            # Niveau 4: Moyenne mobile 20 périodes
+            if len(recent_closes) >= 20:
+                ma_20 = float(np.mean(recent_closes[-20:]))
+                level_type = LevelType.SUPPORT if ma_20 < current_price else LevelType.RESISTANCE
+                levels.append(PriceLevel(
+                    price=ma_20,
+                    level_type=level_type,
+                    strength=LevelStrength.WEAK,
+                    confidence=45.0,
+                    touches=1,
+                    volume_strength=0.0,
+                    distance_from_price=abs(ma_20 - current_price) / current_price,
+                    last_test_age=0,
+                    break_probability=0.6,
+                    timeframe=timeframe
+                ))
+                
+            # Niveau 5 & 6: High et Low de la dernière période de 24h environ
+            if lookback >= 288:  # ~24h en 5m
+                day_high = float(np.max(recent_highs[-288:]))
+                day_low = float(np.min(recent_lows[-288:]))
+                
+                if day_high > current_price and day_high != recent_high:
+                    levels.append(PriceLevel(
+                        price=day_high,
+                        level_type=LevelType.RESISTANCE,
+                        strength=LevelStrength.MODERATE,
+                        confidence=55.0,
+                        touches=1,
+                        volume_strength=0.0,
+                        distance_from_price=abs(day_high - current_price) / current_price,
+                        last_test_age=0,
+                        break_probability=0.5,
+                        timeframe=timeframe
+                    ))
+                
+                if day_low < current_price and day_low != recent_low:
+                    levels.append(PriceLevel(
+                        price=day_low,
+                        level_type=LevelType.SUPPORT,
+                        strength=LevelStrength.MODERATE,
+                        confidence=55.0,
+                        touches=1,
+                        volume_strength=0.0,
+                        distance_from_price=abs(day_low - current_price) / current_price,
+                        last_test_age=0,
+                        break_probability=0.5,
+                        timeframe=timeframe
+                    ))
+                    
+        except Exception as e:
+            logger.warning(f"Erreur création niveaux basiques: {e}")
+        
+        return levels
     
     def _strength_to_number(self, strength: LevelStrength) -> int:
         """Convertit la force en nombre pour tri."""

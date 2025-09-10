@@ -350,7 +350,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
         
     def _detect_momentum_alignment(self, values: Dict[str, Any], signal_direction: str) -> Dict[str, Any]:
         """Détecte l'alignement du momentum avec la direction du signal."""
-        momentum_score = 0
+        momentum_score = 0.0  # Float cohérent
         momentum_indicators = []
         
         # Momentum score général (format 0-100, 50=neutre)
@@ -552,7 +552,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": f"Rejet VWAP BUY: momentum trop faible ({momentum_score:.0f})",
-                "metadata": {"strategy": self.name, "momentum_score": momentum_score}
+                "metadata": {"strategy": self.name, "momentum_score": float(momentum_score)}
             }
         elif signal_side == "SELL" and momentum_score > 60:
             return {
@@ -560,7 +560,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": f"Rejet VWAP SELL: momentum trop fort ({momentum_score:.0f})",
-                "metadata": {"strategy": self.name, "momentum_score": momentum_score}
+                "metadata": {"strategy": self.name, "momentum_score": float(momentum_score)}
             }
         
         # Rejet bias contradictoire
@@ -598,7 +598,7 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                         "confidence": 0.0,
                         "strength": "weak",
                         "reason": f"Rejet VWAP: confluence insuffisante ({conf_val:.0f})",
-                        "metadata": {"strategy": self.name, "confluence_score": conf_val}
+                        "metadata": {"strategy": self.name, "confluence_score": float(conf_val)}
                     }
             except (ValueError, TypeError):
                 pass
@@ -853,18 +853,18 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                 "vwap_level": vwap_level,
                 "vwap_distance_pct": vwap_distance,
                 "vwap_score": primary_analysis['score'] if primary_analysis else 0.0,
-                "momentum_score": momentum_analysis['score'] if momentum_analysis else 0.0,
+                "momentum_score": float(momentum_analysis['score'] if momentum_analysis else 0.0),
                 "vwap_indicators": primary_analysis['indicators'] if primary_analysis else [],
                 "momentum_indicators": momentum_analysis['indicators'] if momentum_analysis else [],
                 "support_analysis": support_analysis if signal_side == "BUY" else None,
                 "resistance_analysis": resistance_analysis if signal_side == "SELL" else None,
-                "volume_ratio": values.get('volume_ratio'),
-                "trend_alignment": values.get('trend_alignment'),
+                "volume_ratio": float(values.get('volume_ratio')) if values.get('volume_ratio') is not None else None,
+                "trend_alignment": float(values.get('trend_alignment')) if values.get('trend_alignment') is not None else None,
                 "market_regime": values.get('market_regime'),
                 "volatility_regime": values.get('volatility_regime'),
-                "confluence_score": values.get('confluence_score'),
+                "confluence_score": float(values.get('confluence_score')) if values.get('confluence_score') is not None else None,
                 "pattern_detected": values.get('pattern_detected'),
-                "pattern_confidence": values.get('pattern_confidence')
+                "pattern_confidence": float(values.get('pattern_confidence')) if values.get('pattern_confidence') is not None else None
             }
         }
         

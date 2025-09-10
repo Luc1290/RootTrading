@@ -25,15 +25,43 @@ class ROC_Threshold_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres ROC - ALIGNÉS sur strats performantes
-        self.bullish_threshold = 0.008   # ROC > +0.8% pour signal haussier (aligné Range_Breakout)
-        self.bearish_threshold = -0.008  # ROC < -0.8% pour signal baissier 
-        self.extreme_bullish_threshold = 0.035  # ROC > +3.5% = momentum extrême
-        self.extreme_bearish_threshold = -0.035  # ROC < -3.5% = momentum extrême
+        # Paramètres ROC - Valeurs déjà en pourcentage
+        self.bullish_threshold = 0.8   # ROC > +0.8% pour signal haussier
+        self.bearish_threshold = -0.8  # ROC < -0.8% pour signal baissier 
+        self.extreme_bullish_threshold = 3.5  # ROC > +3.5% = momentum extrême
+        self.extreme_bearish_threshold = -3.5  # ROC < -3.5% = momentum extrême
         self.momentum_confirmation_threshold = 50  # Seuil momentum_score
         # FILTRES RÉALISTES
         self.min_confidence_threshold = 0.40  # Confidence minimum alignée PPO
         self.max_boost_multiplier = 0.50  # Boosts plus généreux
+        # Cap ROC - mettre à None pour désactiver
+        self.enable_roc_cap = True  # Active/désactive le cap ROC
+        
+    def _cap_roc_by_timeframe(self, roc: float) -> float:
+        """
+        Limite les valeurs ROC extrêmes selon le timeframe.
+        Pour éviter les valeurs aberrantes en scalping intraday.
+        Adapté au marché crypto qui peut avoir des mouvements violents.
+        """
+        # Récupérer le timeframe depuis les données
+        timeframe = self.data.get('timeframe', '3m')
+        
+        # Caps par timeframe - adaptés pour la crypto (mouvements plus violents possibles)
+        caps = {
+            '1m': 10.0,   # Max ±10% en 1 minute (flash crash/pump possible)
+            '3m': 15.0,   # Max ±15% en 3 minutes  
+            '5m': 20.0,   # Max ±20% en 5 minutes
+            '15m': 30.0,  # Max ±30% en 15 minutes
+            '30m': 40.0,  # Max ±40% en 30 minutes
+            '1h': 50.0,   # Max ±50% en 1 heure
+            '4h': 75.0,   # Max ±75% en 4 heures
+            '1d': 100.0,  # Max ±100% en 1 jour
+        }
+        
+        max_cap = caps.get(timeframe, 25.0)  # Par défaut 25%
+        
+        # Appliquer le cap dans les deux directions
+        return max(-max_cap, min(max_cap, roc))
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs ROC et momentum."""
@@ -237,7 +265,17 @@ class ROC_Threshold_Strategy(BaseStrategy):
         """Crée le signal ROC avec confirmations."""
         signal_type = threshold_result['signal_type']
         threshold_level = threshold_result['threshold_level']
-        roc_value = threshold_result['roc_value']
+        
+        # Garder la valeur originale et la valeur cappée
+        roc_value_original = threshold_result['roc_value']
+        
+        # Appliquer le cap seulement si activé
+        if self.enable_roc_cap:
+            roc_value = self._cap_roc_by_timeframe(roc_value_original)
+            was_capped = roc_value != roc_value_original
+        else:
+            roc_value = roc_value_original
+            was_capped = False
         
         signal_side = "BUY" if signal_type == "bullish" else "SELL"
         base_confidence = 0.65  # Réduit pour être plus sélectif
@@ -246,7 +284,12 @@ class ROC_Threshold_Strategy(BaseStrategy):
         # Construction de la raison
         direction = "haussier" if signal_type == "bullish" else "baissier"
         level_text = "extrême" if threshold_result['is_extreme'] else "normal"
-        reason = f"ROC {direction} {level_text}: {roc_value*100:.2f}%"
+        
+        # Afficher la valeur originale si cappée
+        if was_capped:
+            reason = f"ROC {direction} {level_text}: {roc_value_original:.2f}% (cappé à {roc_value:.2f}%)"
+        else:
+            reason = f"ROC {direction} {level_text}: {roc_value:.2f}%"
         
         # Bonus selon le niveau de seuil - ENCORE RÉDUIT pour winrate
         if threshold_result['is_extreme']:
@@ -258,19 +301,19 @@ class ROC_Threshold_Strategy(BaseStrategy):
             
         # Bonus selon l'excès par rapport au seuil - BOOSTÉS pour vrais moves
         exceeded_by = threshold_result['exceeded_by']
-        if exceeded_by > 0.05:  # Dépasse LARGEMENT le seuil (>5%) - vrai move marché
+        if exceeded_by > 5:  # Dépasse LARGEMENT le seuil (>5%) - vrai move marché
             confidence_boost += 0.25  # Doublé pour signaux exceptionnels
-            reason += f" + excès MAJEUR ({exceeded_by*100:.1f}%)"
-        elif exceeded_by > 0.03:  # Excès important (>3%)
+            reason += f" + excès MAJEUR ({exceeded_by:.1f}%)"
+        elif exceeded_by > 3:  # Excès important (>3%)
             confidence_boost += 0.18  # Augmenté
-            reason += f" + excès important ({exceeded_by*100:.1f}%)"
-        elif exceeded_by > 0.01:  # Excès modéré (>1%)
+            reason += f" + excès important ({exceeded_by:.1f}%)"
+        elif exceeded_by > 1:  # Excès modéré (>1%)
             confidence_boost += 0.08  # Doublé
-            reason += f" + excès modéré ({exceeded_by*100:.1f}%)"
+            reason += f" + excès modéré ({exceeded_by:.1f}%)"
         else:
             # Excès trop faible - pénalité
             confidence_boost -= 0.05
-            reason += f" mais excès FAIBLE ({exceeded_by*100:.1f}%)"
+            reason += f" mais excès FAIBLE ({exceeded_by:.1f}%)"
             
         # CORRECTION: Momentum confirmation directionnelle stricte
         momentum_score = values.get('momentum_score')
@@ -616,7 +659,9 @@ class ROC_Threshold_Strategy(BaseStrategy):
                 "strategy": self.name,
                 "symbol": self.symbol,
                 "current_price": current_price,
-                "roc_value": roc_value,
+                "roc_value": roc_value_original,  # Valeur ROC originale
+                "roc_value_capped": roc_value if was_capped else None,  # Valeur cappée si applicable
+                "was_capped": was_capped,
                 "roc_period": roc_analysis['primary_period'],
                 "threshold_level": threshold_level,
                 "is_extreme": threshold_result['is_extreme'],

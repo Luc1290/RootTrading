@@ -290,6 +290,71 @@ def calculate_atr_bands(prices: Union[List[float], np.ndarray, pd.Series],
     }
 
 
+def calculate_atr_percentile(highs: Union[List[float], np.ndarray, pd.Series],
+                            lows: Union[List[float], np.ndarray, pd.Series],
+                            closes: Union[List[float], np.ndarray, pd.Series],
+                            period: int = 14,
+                            lookback: int = 100,
+                            max_lookback: int = 500) -> Optional[float]:
+    """
+    Calculate ATR percentile over historical distribution.
+    
+    Calculates where the current ATR sits in the distribution of past ATR values.
+    
+    Args:
+        highs: High prices
+        lows: Low prices
+        closes: Close prices
+        period: ATR calculation period (default: 14)
+        lookback: Minimum periods for percentile calculation (default: 100)
+        max_lookback: Maximum periods to look back (default: 500)
+        
+    Returns:
+        Percentile value (0-100) or None if insufficient data
+        
+    Notes:
+        - 0 = current ATR is the lowest in the lookback period
+        - 50 = current ATR is at the median
+        - 100 = current ATR is the highest in the lookback period
+    """
+    highs_array = _to_numpy_array(highs)
+    lows_array = _to_numpy_array(lows)
+    closes_array = _to_numpy_array(closes)
+    
+    # Need at least lookback + period for meaningful percentile
+    if len(highs_array) < lookback + period:
+        logger.debug(f"Insufficient data for ATR percentile: {len(highs_array)} < {lookback + period}")
+        return 50.0  # Return neutral value if insufficient data
+    
+    # Limit lookback to avoid excessive computation
+    actual_lookback = min(max_lookback, len(highs_array) - period)
+    
+    # Calculate ATR values over the lookback period
+    atr_values = []
+    start_idx = max(period, len(highs_array) - actual_lookback)
+    
+    for i in range(start_idx, len(highs_array)):
+        atr_val = _calculate_atr_manual(
+            highs_array[i-period:i+1],
+            lows_array[i-period:i+1],
+            closes_array[i-period:i+1],
+            period
+        )
+        if atr_val is not None:
+            atr_values.append(atr_val)
+    
+    if not atr_values or len(atr_values) < 20:  # Need minimum 20 values for percentile
+        logger.debug(f"Not enough ATR values for percentile: {len(atr_values)}")
+        return 50.0
+    
+    current_atr = atr_values[-1]
+    
+    # Calculate percentile
+    percentile = (sum(1 for x in atr_values if x <= current_atr) / len(atr_values)) * 100
+    
+    return float(percentile)
+
+
 def volatility_regime(highs: Union[List[float], np.ndarray, pd.Series],
                       lows: Union[List[float], np.ndarray, pd.Series],
                       closes: Union[List[float], np.ndarray, pd.Series],

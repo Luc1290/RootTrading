@@ -284,7 +284,7 @@ class CoordinatorService:
         
         # Arrêter les composants
         if self.redis_client:
-            self.redis_client.unsubscribe_all()
+            self.redis_client.close()
             self.redis_client = None
         
         if self.coordinator:

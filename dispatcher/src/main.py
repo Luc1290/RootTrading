@@ -180,8 +180,8 @@ class DispatcherService:
         
         # Arrêt du client Kafka
         if self.kafka_client:
-            self.kafka_client.stop_consuming()
-            logger.info("Consommation Kafka arrêtée")
+            self.kafka_client.close()
+            logger.info("Client Kafka fermé")
         
         # Fermeture du client Redis
         if self.redis_client:

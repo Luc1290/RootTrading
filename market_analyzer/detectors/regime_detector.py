@@ -281,11 +281,19 @@ class RegimeDetector:
         
         current = valid_emas[-1]
         
-        # Direction basée sur ordre des EMAs
-        if current['fast'] > current['medium'] > current['slow']:
+        # Direction basée sur ordre des EMAs - logique plus nuancée
+        fast_above_medium = current['fast'] > current['medium']
+        medium_above_slow = current['medium'] > current['slow']
+        fast_above_slow = current['fast'] > current['slow']
+        
+        if fast_above_medium and medium_above_slow and fast_above_slow:
             direction = 'bullish'
-        elif current['fast'] < current['medium'] < current['slow']:
+        elif not fast_above_medium and not medium_above_slow and not fast_above_slow:
             direction = 'bearish'
+        elif fast_above_slow:  # 2/3 conditions haussières
+            direction = 'bullish_partial'
+        elif not fast_above_slow:  # 2/3 conditions baissières  
+            direction = 'bearish_partial'
         else:
             direction = 'mixed'
         
@@ -303,7 +311,7 @@ class RegimeDetector:
             'direction': direction,
             'slope': slope,
             'strength': min(ema_spread * 100, 100),  # 0-100
-            'ema_alignment': direction in ['bullish', 'bearish']
+            'ema_alignment': direction in ['bullish', 'bearish', 'bullish_partial', 'bearish_partial']  # Accepter les alignements partiels
         }
     
     def _analyze_momentum(self, closes: np.ndarray, symbol: Optional[str] = None, enable_cache: bool = True) -> Dict:
@@ -349,8 +357,19 @@ class RegimeDetector:
                     macd_direction = 'bearish'
                 break
         
-        # Cohérence momentum
-        momentum_coherent = momentum_direction == macd_direction
+        # Cohérence momentum - plus nuancée
+        if momentum_direction == macd_direction:
+            momentum_coherent = True
+        elif momentum_direction == 'neutral' or macd_direction == 'neutral':
+            # Si l'un est neutre, pas d'incohérence
+            momentum_coherent = True
+        else:
+            # Vérifier si c'est juste un décalage temporel normal
+            # Si la force du momentum est faible, l'incohérence est moins importante
+            if momentum_strength < 40:
+                momentum_coherent = True  # Décalage acceptable en momentum faible
+            else:
+                momentum_coherent = False
         
         return {
             'direction': momentum_direction,
@@ -448,24 +467,26 @@ class RegimeDetector:
         
         # Conditions fortes : EMA alignées ET momentum cohérent
         if trend['ema_alignment'] and momentum['coherent']:
-            if trend['direction'] == 'bullish' and momentum['direction'] == 'bullish':
+            # Bullish : direction complète ou partielle + momentum bullish
+            if trend['direction'] in ['bullish', 'bullish_partial'] and momentum['direction'] == 'bullish':
                 if volatility['regime'] == 'high' and momentum['strength'] > 70:
                     return RegimeType.BREAKOUT_BULL
                 return RegimeType.TRENDING_BULL
-            elif trend['direction'] == 'bearish' and momentum['direction'] == 'bearish':
+            # Bearish : direction complète ou partielle + momentum bearish
+            elif trend['direction'] in ['bearish', 'bearish_partial'] and momentum['direction'] == 'bearish':
                 if volatility['regime'] == 'high' and momentum['strength'] > 70:
                     return RegimeType.BREAKOUT_BEAR
                 return RegimeType.TRENDING_BEAR
         
         # ASSOUPLISSEMENT: EMA alignées suffisent si pente significative (même momentum non cohérent)
         elif trend['ema_alignment'] and abs(trend['slope']) > 0.1:  # Seuil réduit de 0.15 à 0.1
-            if trend['direction'] == 'bullish' and trend['slope'] > 0.1:
+            if trend['direction'] in ['bullish', 'bullish_partial'] and trend['slope'] > 0.1:
                 # Accepter si momentum n'est PAS opposé (bearish)
                 if momentum['direction'] != 'bearish':
                     if volatility['regime'] == 'high' and abs(trend['slope']) > 0.25:
                         return RegimeType.BREAKOUT_BULL
                     return RegimeType.TRENDING_BULL
-            elif trend['direction'] == 'bearish' and trend['slope'] < -0.1:
+            elif trend['direction'] in ['bearish', 'bearish_partial'] and trend['slope'] < -0.1:
                 # Accepter si momentum n'est PAS opposé (bullish)  
                 if momentum['direction'] != 'bullish':
                     if volatility['regime'] == 'high' and abs(trend['slope']) > 0.25:
@@ -474,12 +495,12 @@ class RegimeDetector:
         
         # Conditions moyennes : momentum cohérent + pente significative (même sans EMA parfait)
         elif momentum['coherent'] and abs(trend['slope']) > 0.15:
-            if trend['direction'] == 'bullish' and trend['slope'] > 0.15:
+            if trend['direction'] in ['bullish', 'bullish_partial'] and trend['slope'] > 0.15:
                 if momentum['direction'] in ['bullish', 'neutral']:
                     if volatility['regime'] == 'high' and abs(trend['slope']) > 0.3:
                         return RegimeType.BREAKOUT_BULL
                     return RegimeType.TRENDING_BULL
-            elif trend['direction'] == 'bearish' and trend['slope'] < -0.15:
+            elif trend['direction'] in ['bearish', 'bearish_partial'] and trend['slope'] < -0.15:
                 if momentum['direction'] in ['bearish', 'neutral']:
                     if volatility['regime'] == 'high' and abs(trend['slope']) > 0.3:
                         return RegimeType.BREAKOUT_BEAR
@@ -505,6 +526,12 @@ class RegimeDetector:
             # Si on a quand même une direction claire, pas UNKNOWN
             if abs(trend['slope']) > 0.1 or momentum['strength'] > 30:
                 return RegimeType.TRANSITION
+        
+        # DEBUG: Logger les valeurs quand on arrive à UNKNOWN pour diagnostiquer
+        logger.warning(f"Régime UNKNOWN détecté - DEBUG INFO:")
+        logger.warning(f"  trend: direction={trend.get('direction')}, slope={trend.get('slope'):.4f}, ema_alignment={trend.get('ema_alignment')}")
+        logger.warning(f"  momentum: direction={momentum.get('direction')}, strength={momentum.get('strength')}, coherent={momentum.get('coherent')}")
+        logger.warning(f"  volatility: regime={volatility.get('regime')}")
         
         return RegimeType.UNKNOWN
     

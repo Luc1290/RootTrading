@@ -189,16 +189,30 @@ async def shutdown(signal_type, loop):
     logger.info(f"Signal {signal_type.name} reçu, arrêt en cours...")
     running = False
     
-    # Arrêter les services
-    if ws_client:
-        await ws_client.stop()
-    if data_fetcher:
-        await data_fetcher.stop()
-    
-    # Arrêter la boucle asyncio
-    loop.stop()
-    
-    logger.info("Service Gateway intelligent arrêté proprement")
+    try:
+        # Arrêter les services avec timeout
+        shutdown_tasks = []
+        
+        if ws_client:
+            logger.info("Arrêt WebSocket client...")
+            shutdown_tasks.append(asyncio.wait_for(ws_client.stop(), timeout=5.0))
+            
+        if data_fetcher:
+            logger.info("Arrêt Data fetcher...")
+            shutdown_tasks.append(asyncio.wait_for(data_fetcher.stop(), timeout=5.0))
+        
+        if shutdown_tasks:
+            await asyncio.gather(*shutdown_tasks, return_exceptions=True)
+            
+        logger.info("Services arrêtés proprement")
+        
+    except asyncio.TimeoutError:
+        logger.warning("Timeout lors de l'arrêt des services - arrêt forcé")
+    except Exception as e:
+        logger.error(f"Erreur lors de l'arrêt des services: {e}")
+    finally:
+        # Ne pas appeler loop.stop() ici - laissons le main loop se terminer naturellement
+        logger.info("Shutdown terminé")
 
 async def main():
     """
@@ -229,6 +243,13 @@ async def main():
         logger.info("🚀 Phase 2: Démarrage WebSocket temps réel...")
         # Note: WebSocket fonctionne en continu, pas de synchronisation nécessaire
         await ws_client.start()
+        
+        # 3. Attendre le signal d'arrêt
+        logger.info("✅ Gateway démarré - en attente du signal d'arrêt...")
+        while running:
+            await asyncio.sleep(1)  # Vérifier le statut toutes les secondes
+            
+        logger.info("📟 Signal d'arrêt reçu - fermeture en cours...")
         
     except Exception as e:
         logger.error(f"❌ Erreur critique dans le Gateway: {str(e)}")
@@ -261,7 +282,24 @@ if __name__ == "__main__":
         loop.run_until_complete(main())
     except KeyboardInterrupt:
         logger.info("Interruption clavier détectée")
+    except Exception as e:
+        logger.error(f"Erreur lors de l'exécution: {e}")
     finally:
-        # Fermer la boucle asyncio
-        loop.close()
-        logger.info("Boucle asyncio fermée")
+        # Arrêt propre de toutes les tâches
+        try:
+            # Annuler toutes les tâches en cours
+            pending_tasks = [task for task in asyncio.all_tasks(loop) if not task.done()]
+            if pending_tasks:
+                logger.info(f"Annulation de {len(pending_tasks)} tâches en cours...")
+                for task in pending_tasks:
+                    task.cancel()
+                
+                # Attendre que toutes les tâches se terminent proprement
+                loop.run_until_complete(asyncio.gather(*pending_tasks, return_exceptions=True))
+        except Exception as e:
+            logger.warning(f"Erreur lors de l'annulation des tâches: {e}")
+        finally:
+            # Fermer la boucle asyncio
+            if not loop.is_closed():
+                loop.close()
+            logger.info("Boucle asyncio fermée proprement")

@@ -44,7 +44,9 @@ from market_analyzer.indicators.momentum.momentum import (
 from market_analyzer.indicators.momentum.rsi import calculate_stoch_rsi
 
 # Import des indicateurs de volatilité  
-from market_analyzer.indicators.volatility.atr import calculate_atr, calculate_natr, volatility_regime
+from market_analyzer.indicators.volatility.atr import (
+    calculate_atr, calculate_natr, volatility_regime, calculate_atr_percentile
+)
 from market_analyzer.indicators.volatility.bollinger import calculate_bollinger_squeeze, calculate_keltner_channels
 
 # Import des indicateurs de volume
@@ -265,7 +267,7 @@ class IndicatorProcessor:
                     })
                     
                     # MACD Signaux binaires
-                    from ..indicators.trend.macd import macd_zero_cross, macd_signal_cross, calculate_macd_trend
+                    from ..indicators.trend.macd import macd_zero_cross, macd_signal_cross, calculate_macd_trend, calculate_ppo
                     if macd_line_series and macd_signal_series and len(macd_line_series) >= 2:
                         current_macd = {
                             'macd_line': macd_line_series[-1],
@@ -289,8 +291,10 @@ class IndicatorProcessor:
                             'macd_trend': trend.upper() if trend and trend != 'none' else 'NEUTRAL'
                         })
                 
-                # PPO
-                indicators['ppo'] = self._safe_call(lambda: calculate_price_oscillator(closes, 12, 26))
+                # PPO (Percentage Price Oscillator) - pas Price Oscillator !
+                ppo_result = self._safe_call(lambda: calculate_ppo(closes, 12, 26, 9))
+                if ppo_result and isinstance(ppo_result, dict):
+                    indicators['ppo'] = ppo_result.get('ppo_line')
             
             # ADX
             if len(closes) >= 14:
@@ -529,14 +533,26 @@ class IndicatorProcessor:
                         trend_alignment = max(-100, min(100, regime_result.trend_slope * 10))
                         
                         # Calculer momentum_score (0-100, où 50 = neutre)
-                        # Confidence donne la force (0-100), trend_slope donne la direction
-                        base_momentum = regime_result.confidence  # 0-100
-                        if regime_result.trend_slope < 0:
-                            # Tendance baissière: inverser pour obtenir 0-50 (50 - base_momentum/2)
-                            momentum_score = max(0, 50 - (base_momentum / 2))  # 0 à 50 en tendance baissière
-                        else:
-                            # Tendance haussière: 50 à 100 (50 + base_momentum/2)
-                            momentum_score = min(100, 50 + (base_momentum / 2))   # 50 à 100 en tendance haussière
+                        # Utiliser trend_slope et strength pour un momentum plus dynamique
+                        # trend_slope est généralement entre -10 et +10
+                        normalized_slope = max(-1, min(1, regime_result.trend_slope / 5))  # Normaliser entre -1 et 1
+                        
+                        # Calculer le momentum en fonction du slope ET de la force du régime
+                        # Base: 50 (neutre), puis ajuster selon la direction et la force
+                        strength_multiplier = 1.0  # MODERATE par défaut (neutre)
+                        regime_strength = str(regime_result.strength.value if hasattr(regime_result.strength, 'value') else regime_result.strength).upper()
+                        if regime_strength == 'EXTREME':
+                            strength_multiplier = 2.0  # Amplification maximale
+                        elif regime_strength == 'STRONG':
+                            strength_multiplier = 1.5  # Amplification forte
+                        elif regime_strength == 'MODERATE':
+                            strength_multiplier = 1.0  # Neutre
+                        elif regime_strength == 'WEAK':
+                            strength_multiplier = 0.5  # Atténuation
+                            
+                        # Score de -50 à +50 basé sur le slope, puis converti en 0-100
+                        momentum_deviation = normalized_slope * 50 * strength_multiplier
+                        momentum_score = max(0, min(100, 50 + momentum_deviation))
                         
                         indicators.update({
                             'market_regime': str(regime_result.regime_type.value if hasattr(regime_result.regime_type, 'value') else regime_result.regime_type).upper(),
@@ -547,25 +563,23 @@ class IndicatorProcessor:
                             'momentum_score': float(momentum_score)
                         })
                         
-                        # Calculer atr_percentile directement depuis les données disponibles
-                        if len(closes) >= 20:
-                            try:
-                                # Réutiliser la logique du RegimeDetector
-                                
-                                # Calculer ATRs pour les 20 dernières périodes
-                                atr_values = []
-                                for i in range(20, len(closes)):
-                                    atr_val = calculate_atr(highs[i-14:i+1], lows[i-14:i+1], closes[i-14:i+1], 14)
-                                    if atr_val:
-                                        atr_values.append(atr_val)
-                                
-                                if atr_values and len(atr_values) >= 20:
-                                    current_atr = atr_values[-1]
-                                    # Calculer percentile (position dans les 20 derniers)
-                                    atr_percentile = sum(1 for x in atr_values[-20:] if x <= current_atr) / 20 * 100
-                                    indicators['atr_percentile'] = float(atr_percentile)
-                            except Exception as e:
-                                logger.debug(f"Erreur calcul atr_percentile: {e}")
+                        # Calculer atr_percentile en utilisant la fonction dédiée
+                        try:
+                            atr_percentile = calculate_atr_percentile(
+                                highs=highs,
+                                lows=lows,
+                                closes=closes,
+                                period=14,
+                                lookback=100,
+                                max_lookback=500
+                            )
+                            if atr_percentile is not None:
+                                indicators['atr_percentile'] = float(atr_percentile)
+                            else:
+                                indicators['atr_percentile'] = 50.0  # Valeur neutre par défaut
+                        except Exception as e:
+                            logger.debug(f"Erreur calcul atr_percentile: {e}")
+                            indicators['atr_percentile'] = 50.0
                 except Exception as e:
                     logger.warning(f"RegimeDetector error: {e}")
                 

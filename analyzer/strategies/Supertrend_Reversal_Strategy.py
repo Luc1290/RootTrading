@@ -196,6 +196,22 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
             confidence_boost += 0.08  # Haute volatilité = reversals plus forts
             reason += " + volatilité"
         
+        # PÉNALITÉ VOLUME - Empêcher les boosts faciles sans volume
+        volume_ratio = values.get('volume_ratio')
+        if volume_ratio is not None:
+            try:
+                vol_ratio = float(volume_ratio)
+                if vol_ratio < 0.8:
+                    # Malus pour volume très faible
+                    confidence_boost -= 0.20
+                    reason += f" - volume très faible ({vol_ratio:.2f}x)"
+                elif vol_ratio < 1.1:
+                    # Limiter les boosts si volume insuffisant
+                    confidence_boost = min(confidence_boost, 0.10)
+                    reason += f" - boost limité par volume faible ({vol_ratio:.2f}x)"
+            except (ValueError, TypeError):
+                pass
+        
         # Calcul final
         confidence = min(1.0, self.base_confidence * (1 + confidence_boost))
         strength = self.get_strength_from_confidence(confidence)

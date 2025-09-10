@@ -53,6 +53,40 @@ services:
     container_name: roottrading-kafka-1
     ports:
     - 9092:9092
+    entrypoint: |
+      sh -c "
+        echo 'Vérification cohérence cluster Kafka/ZooKeeper...'
+        
+        # Attendre que ZooKeeper soit vraiment prêt
+        until echo srvr | nc zookeeper 2181 | grep -q 'Mode: standalone'; do
+          echo 'Attente ZooKeeper...'
+          sleep 2
+        done
+        
+        # Récupérer le cluster ID de ZooKeeper
+        ZK_CLUSTER_ID=$$(echo 'get /cluster/id' | /usr/bin/kafka-console-consumer --bootstrap-server zookeeper:2181 --topic __consumer_offsets --from-beginning --timeout-ms 1000 2>/dev/null | head -1 || echo '')
+        
+        META_FILE='/var/lib/kafka/data/meta.properties'
+        
+        # Si fichier meta existe, vérifier cohérence
+        if [ -f \"$$META_FILE\" ]; then
+          KAFKA_CLUSTER_ID=$$(grep 'cluster.id=' \"$$META_FILE\" | cut -d'=' -f2 2>/dev/null || echo '')
+          
+          if [ -n \"$$ZK_CLUSTER_ID\" ] && [ -n \"$$KAFKA_CLUSTER_ID\" ] && [ \"$$ZK_CLUSTER_ID\" != \"$$KAFKA_CLUSTER_ID\" ]; then
+            echo \"CONFLIT DÉTECTÉ: ZK_ID=$$ZK_CLUSTER_ID vs KAFKA_ID=$$KAFKA_CLUSTER_ID\"
+            echo 'Suppression meta.properties pour régénération propre...'
+            rm -f \"$$META_FILE\"
+            # Nettoyer aussi les logs de transaction qui peuvent être corrompus
+            rm -rf /var/lib/kafka/data/__consumer_offsets-* 2>/dev/null || true
+            rm -rf /var/lib/kafka/data/__transaction_state-* 2>/dev/null || true
+          else
+            echo 'Cluster IDs cohérents ou non disponibles - démarrage normal'
+          fi
+        fi
+        
+        echo 'Démarrage Kafka...'
+        exec /etc/confluent/docker/run
+      "
     environment:
       KAFKA_BROKER_ID: ${KAFKA_BROKER_ID:-1}
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -64,6 +98,10 @@ services:
       # CORRECTION: Configuration pour éviter les conflicts Zookeeper
       KAFKA_ZOOKEEPER_SESSION_TIMEOUT_MS: 18000  # 18s au lieu de 30s par défaut
       KAFKA_ZOOKEEPER_CONNECTION_TIMEOUT_MS: 12000  # 12s
+      # Gestion propre des shutdowns
+      KAFKA_CONTROLLED_SHUTDOWN_ENABLE: true
+      KAFKA_CONTROLLED_SHUTDOWN_MAX_RETRIES: 3
+      KAFKA_CONTROLLED_SHUTDOWN_RETRY_BACKOFF_MS: 5000
       # Nettoyage automatique
       KAFKA_LOG_CLEANUP_POLICY: delete
       KAFKA_LOG_RETENTION_HOURS: 24

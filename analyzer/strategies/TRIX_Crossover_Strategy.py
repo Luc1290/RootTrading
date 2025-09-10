@@ -259,10 +259,10 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                 roc_val = float(roc_10)
                 if trix_direction in ['bullish', 'strong_bullish', 'extreme_bullish'] and roc_val > self.min_roc_confirmation:
                     alignment_score += 0.12  # Réduit de 0.15
-                    alignment_indicators.append(f"ROC haussier ({roc_val*100:.1f}%)")
+                    alignment_indicators.append(f"ROC haussier ({roc_val:.2f}%)")  # ROC déjà en %
                 elif trix_direction in ['bearish', 'strong_bearish', 'extreme_bearish'] and roc_val < -self.min_roc_confirmation:
                     alignment_score += 0.12  # Réduit de 0.15
-                    alignment_indicators.append(f"ROC baissier ({roc_val*100:.1f}%)")
+                    alignment_indicators.append(f"ROC baissier ({roc_val:.2f}%)")  # ROC déjà en %
             except (ValueError, TypeError):
                 pass
                 
@@ -384,7 +384,7 @@ class TRIX_Crossover_Strategy(BaseStrategy):
         # Score alignment momentum - RÉDUIT
         confidence_boost += alignment_data['score'] * 0.20  # Réduit de 0.3
         
-        reason = f"TRIX {trix_direction} ({trix_data['trix_value']:.4f})"
+        reason = f"TRIX {trix_direction} ({trix_data['trix_value']:.4f})"  # TRIX est un oscillateur, pas un %
         
         if alignment_data['indicators']:
             reason += f" + {alignment_data['indicators'][0]}"

@@ -200,17 +200,29 @@ def calculate_ppo(prices: Union[List[float], np.ndarray, pd.Series],
     
     if TALIB_AVAILABLE:
         try:
-            ppo_line, ppo_signal, ppo_hist = talib.PPO(
+            # PPO retourne seulement la ligne PPO, pas signal ni histogram
+            ppo_line = talib.PPO(
                 prices_array,
                 fastperiod=fast_period,
                 slowperiod=slow_period
             )
             
-            return {
-                'ppo_line': float(ppo_line[-1]) if not np.isnan(ppo_line[-1]) else None,
-                'ppo_signal': float(ppo_signal[-1]) if not np.isnan(ppo_signal[-1]) else None,
-                'ppo_histogram': float(ppo_hist[-1]) if not np.isnan(ppo_hist[-1]) else None
-            }
+            # Calculer signal et histogram manuellement
+            if len(ppo_line) >= signal_period:
+                ppo_signal = talib.EMA(ppo_line, timeperiod=signal_period)
+                ppo_hist = ppo_line - ppo_signal
+                
+                return {
+                    'ppo_line': float(ppo_line[-1]) if not np.isnan(ppo_line[-1]) else None,
+                    'ppo_signal': float(ppo_signal[-1]) if len(ppo_signal) > 0 and not np.isnan(ppo_signal[-1]) else None,
+                    'ppo_histogram': float(ppo_hist[-1]) if len(ppo_hist) > 0 and not np.isnan(ppo_hist[-1]) else None
+                }
+            else:
+                return {
+                    'ppo_line': float(ppo_line[-1]) if not np.isnan(ppo_line[-1]) else None,
+                    'ppo_signal': None,
+                    'ppo_histogram': None
+                }
         except Exception as e:
             logger.warning(f"TA-Lib PPO error: {e}, using fallback")
     

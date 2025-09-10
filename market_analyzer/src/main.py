@@ -183,14 +183,24 @@ async def shutdown(signal_type, loop):
         except Exception as e:
             logger.error(f"❌ Erreur arrêt DataListener: {e}")
     
-    # Attendre un peu pour que les connexions se ferment
-    await asyncio.sleep(0.1)
+    # Attendre plus longtemps pour que toutes les connexions DB se ferment
+    await asyncio.sleep(1.0)
+    
+    # Annuler toutes les tâches pendantes
+    try:
+        pending_tasks = [task for task in asyncio.all_tasks(loop) if not task.done() and task != asyncio.current_task()]
+        if pending_tasks:
+            logger.info(f"Annulation de {len(pending_tasks)} tâches pendantes...")
+            for task in pending_tasks:
+                task.cancel()
+            # Attendre que les tâches se terminent
+            await asyncio.gather(*pending_tasks, return_exceptions=True)
+    except Exception as e:
+        logger.warning(f"Erreur lors de l'annulation des tâches: {e}")
     
     logger.info("Market Analyzer terminé")
-    logger.info("Boucle asyncio fermée")
     
-    # Arrêter la boucle asyncio EN DERNIER
-    loop.stop()
+    # NE PAS appeler loop.stop() ici - laisser le main() se terminer naturellement
 
 async def main():
     """Fonction principale du Market Analyzer."""
@@ -221,9 +231,9 @@ async def main():
         if stats['missing_analyses'] > 0:
             logger.info(f"⚠️ {stats['missing_analyses']} données non analysées détectées")
             logger.info("💡 Démarrage du traitement historique automatique...")
-            
-            # Utiliser la méthode optimisée qui traite par symbole et dans l'ordre
-            await data_listener.process_historical_optimized(limit=1000000)
+
+            # LIMITÉ à 100k données max au démarrage pour éviter saturation DB
+            await data_listener.process_historical_optimized(limit=100000)
         else:
             logger.info("✅ Toutes les données sont analysées")
         
@@ -231,9 +241,14 @@ async def main():
         final_stats = await data_listener.get_stats()
         logger.info(f"📊 Couverture: {final_stats['coverage_percent']}% ({final_stats['total_analyzer_data']}/{final_stats['total_market_data']})")
         
-        # Attendre que l'écoute temps réel continue
+        # Attendre que l'écoute temps réel continue ou que l'arrêt soit demandé
         logger.info("✅ Traitement historique terminé - écoute temps réel active")
-        await listening_task
+        
+        # Boucle d'attente au lieu d'attendre le listening_task qui peut ne jamais se terminer
+        while running:
+            await asyncio.sleep(1)
+            
+        logger.info("📟 Arrêt demandé - terminaison en cours...")
         
     except Exception as e:
         logger.error(f"❌ Erreur critique: {e}")
