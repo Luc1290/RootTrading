@@ -137,7 +137,6 @@ class ContextManager:
         # Vérifier le cache (pour optimiser les performances)
         if cache_key in self.context_cache:
             cached_context = self.context_cache[cache_key]
-            # TODO: Implémenter vérification TTL si nécessaire
             
         try:
             # Récupérer les composants du contexte

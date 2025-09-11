@@ -500,7 +500,6 @@ def _calculate_adx_series_manual(highs: np.ndarray,
     recalculates everything from scratch. For large datasets or massive
     backtests, this creates a bottleneck.
     
-    TODO: Optimize with incremental/rolling calculations for O(n) complexity.
     """
     adx_series: List[Optional[float]] = []
     plus_di_series: List[Optional[float]] = []

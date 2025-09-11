@@ -692,7 +692,6 @@ class UniverseManager:
             scores = {}
             
             # TEMPORAIRE: Forcer DB car Redis n'a pas les données de marché
-            # TODO: Trouver les bonnes clés Redis utilisées par Gateway/Analyzer
             if False and len(all_symbols) > 10 or not self.db_pool:
                 logger.info(f"Utilisation Redis pour {len(all_symbols)} symboles (éviter requête DB lente)")
                 for symbol in all_symbols:
