@@ -7,3 +7,8 @@ CLAUDE.md
 /.mypy_cache/
 /.ruff_cache/
 /rootia/
+__pycache__/
+/dcv/
+/opcode/
+/node_modules/
+
