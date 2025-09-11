@@ -281,18 +281,20 @@ class IntelligentSignalBuffer:
         buy_count = len(buy_signals)
         sell_count = len(sell_signals)
         
+        wave_total = buy_count + sell_count  # PATCH E: taille totale de la vague
+        
         # Si une seule direction, pas de conflit
         if buy_count > 0 and sell_count == 0:
             logger.info(f"✅ {symbol}: BUY gagne par défaut ({buy_count} signaux)")
             self.stats['wave_no_conflicts'] += 1
             # NOUVEAU: Retourner les signaux BUY originaux directement
-            return self._prepare_winning_signals(buy_signals, 1.0, 0.0)
+            return self._prepare_winning_signals(buy_signals, 1.0, 0.0, wave_total)
             
         if sell_count > 0 and buy_count == 0:
             logger.info(f"✅ {symbol}: SELL gagne par défaut ({sell_count} signaux)")
             self.stats['wave_no_conflicts'] += 1
             # NOUVEAU: Retourner les signaux SELL originaux directement
-            return self._prepare_winning_signals(sell_signals, 1.0, 0.0)
+            return self._prepare_winning_signals(sell_signals, 1.0, 0.0, wave_total)
             
         # Conflit détecté : appliquer les critères de choix
         logger.warning(f"🤼 CONFLIT {symbol}: {buy_count} BUY vs {sell_count} SELL")
@@ -315,11 +317,11 @@ class IntelligentSignalBuffer:
         if buy_score > sell_score:
             logger.info(f"🟢 {symbol}: BUY gagne ({buy_score:.3f} vs {sell_score:.3f})")
             # NOUVEAU: Retourner les signaux BUY originaux pour validation de consensus
-            return self._prepare_winning_signals(buy_signals, buy_score, sell_score)
+            return self._prepare_winning_signals(buy_signals, buy_score, sell_score, wave_total)
         else:
             logger.info(f"🔴 {symbol}: SELL gagne ({sell_score:.3f} vs {buy_score:.3f})")
             # NOUVEAU: Retourner les signaux SELL originaux pour validation de consensus
-            return self._prepare_winning_signals(sell_signals, sell_score, buy_score)
+            return self._prepare_winning_signals(sell_signals, sell_score, buy_score, wave_total)
     
     def _get_min_diff_threshold(self, buy_count: int, sell_count: int) -> float:
         """
@@ -342,11 +344,13 @@ class IntelligentSignalBuffer:
         elif total >= 10:  # Nombre moyen de signaux
             return 0.05   # 5% standard
         else:  # Peu de signaux = besoin de plus de certitude
-            return 0.08   # 8% pour éviter les faux positifs
+            return 0.05   # PATCH: 8%→5% pour récupérer plus de vagues
             
     def _calculate_signal_strength(self, signals: List[Dict[str, Any]]) -> float:
         """
         Calcule le score de force d'un groupe de signaux selon les critères pondérés.
+        
+        PATCH C: Harmonisé 30/30/25/15 + plancher de qualité
         
         Args:
             signals: Liste des signaux du même côté
@@ -366,6 +370,14 @@ class IntelligentSignalBuffer:
         confidences = [s.get('confidence', 0.5) for s in signals]
         avg_confidence = sum(confidences) / len(confidences)
         
+        # PATCH C: Plancher de qualité - pénaliser les signaux tièdes
+        quality_floor = 0.55
+        if avg_confidence < quality_floor:
+            # Atténue le score global si qualité médiocre
+            penalty = (quality_floor - avg_confidence) * 0.4
+        else:
+            penalty = 0.0
+        
         # Critère 3: Diversité des familles de stratégies (25% du score)
         unique_families = set()
         for signal in signals:
@@ -383,18 +395,18 @@ class IntelligentSignalBuffer:
         # Normaliser sur base de 1000 (1d)
         timeframe_score = min(1.0, max_tf_priority / 1000.0)
         
-        # Score final pondéré avec diversité des familles
+        # Score final pondéré (30/30/25/15) avec pénalité qualité
         final_score = (
-            strategies_score * 0.3 +
-            avg_confidence * 0.3 +
+            strategies_score * 0.30 +
+            avg_confidence   * 0.30 +
             family_diversity_score * 0.25 +
-            timeframe_score * 0.15
-        )
+            timeframe_score  * 0.15
+        ) - penalty
                       
-        return final_score
+        return max(0.0, final_score)  # Ne pas aller en négatif
         
     def _prepare_winning_signals(self, winning_signals: List[Dict[str, Any]], 
-                                winning_score: float, losing_score: float) -> List[Dict[str, Any]]:
+                                winning_score: float, losing_score: float, wave_total: int = None) -> List[Dict[str, Any]]:
         """
         NOUVEAU: Prépare les signaux gagnants en ajoutant les métadonnées de résolution de conflit.
         Contrairement à _create_consensus_signal, cette méthode préserve les signaux originaux
@@ -422,6 +434,11 @@ class IntelligentSignalBuffer:
             if 'metadata' not in enriched_signal:
                 enriched_signal['metadata'] = {}
                 
+            # PATCH F: Propager la volatilité vers adaptive_consensus
+            vr = signal.get('volatility_regime') or (signal.get('metadata') or {}).get('volatility_regime')
+            if vr:
+                enriched_signal['metadata']['volatility_regime'] = vr
+            
             # Enrichir avec les informations de vague
             enriched_signal['metadata'].update({
                 'wave_resolution': {
@@ -429,7 +446,7 @@ class IntelligentSignalBuffer:
                     'winning_score': winning_score,
                     'losing_score': losing_score,
                     'conflict_resolved': losing_score > 0,  # True si il y avait un conflit
-                    'total_wave_signals': len(winning_signals),
+                    'total_wave_signals': wave_total or len(winning_signals),  # PATCH E: vraie taille vague
                     'resolution_timestamp': datetime.utcnow().isoformat()
                 }
             })
@@ -543,7 +560,13 @@ class IntelligentSignalBuffer:
         """
         async with self.buffer_lock:
             symbol = signal.get('symbol', 'UNKNOWN')
+            side = signal.get('side')
             now = datetime.utcnow()
+            
+            # PATCH D: Exclure side=None dès l'entrée (veto/filtres)
+            if side is None:
+                logger.debug(f"🚫 Signal veto/filtre ignoré pour {symbol} (side=None)")
+                return
             
             # Ajouter au buffer de vague pour ce symbole
             self.symbol_wave_buffer[symbol].append(signal)

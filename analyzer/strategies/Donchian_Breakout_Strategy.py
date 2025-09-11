@@ -24,18 +24,19 @@ class Donchian_Breakout_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres Donchian DURCIS crypto (moins de faux signaux)
-        self.breakout_threshold = 0.010   # 1.0% pour breakout confirmé
-        self.min_distance_threshold = 0.005  # Distance minimum 0.5%
+        # Paramètres Donchian ASSOUPLIS crypto (signaux réalistes)
+        self.breakout_threshold = 0.006   # 0.6% pour breakout confirmé (réduit)
+        self.min_distance_threshold = 0.001  # Distance minimum 0.1% (assoupli)
         self.volume_confirmation = 1.0    # Pas de filtre strict initial
-        self.min_adx_strength = 15        # ADX minimum seuil de rejet
+        self.min_adx_strength = 12        # ADX minimum seuil de rejet (assoupli)
         self.momentum_threshold = 40      # Seuil momentum
         
         # Paramètres breakout plus réalistes crypto
-        self.early_breakout_threshold = 0.005  # 0.5% pour signaux précoces
-        self.strong_breakout_threshold = 0.020  # 2.0% pour breakouts forts
-        self.min_volume_breakout = 1.2         # Volume minimum unifié
+        self.early_breakout_threshold = 0.003  # 0.3% pour signaux précoces (assoupli)
+        self.strong_breakout_threshold = 0.015  # 1.5% pour breakouts forts (ajusté)
+        self.min_volume_breakout = 1.10         # Volume minimum unifié (assoupli)
         self.extreme_volume_threshold = 2.5    # Volume extrême pour gros breakouts
+        self.donchian_period = 20              # Période pour canal Donchian pur
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs."""
@@ -64,13 +65,14 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             'volatility_regime': self.indicators.get('volatility_regime'),
             # RSI pour timing des breakouts
             'rsi_14': self.indicators.get('rsi_14'),
-            # Confluence
+            # Confluence et régime de marché
             'signal_strength': self.indicators.get('signal_strength'),
-            'confluence_score': self.indicators.get('confluence_score')
+            'confluence_score': self.indicators.get('confluence_score'),
+            'market_regime': self.indicators.get('market_regime')
         }
         
     def _get_current_price_data(self) -> Dict[str, Optional[float]]:
-        """Récupère les données de prix actuelles."""
+        """Récupère les données de prix actuelles et précédentes."""
         try:
             if self.data and 'close' in self.data and self.data['close'] and \
                'high' in self.data and self.data['high'] and \
@@ -78,13 +80,37 @@ class Donchian_Breakout_Strategy(BaseStrategy):
                'volume' in self.data and self.data['volume']:
                 return {
                     'current_price': float(self.data['close'][-1]),
+                    'previous_price': float(self.data['close'][-2]) if len(self.data['close']) >= 2 else None,
                     'current_high': float(self.data['high'][-1]),
                     'current_low': float(self.data['low'][-1]),
                     'current_volume': float(self.data['volume'][-1])
                 }
         except (IndexError, ValueError, TypeError):
             pass
-        return {'current_price': None, 'current_high': None, 'current_low': None, 'current_volume': None}
+        return {'current_price': None, 'previous_price': None, 'current_high': None, 'current_low': None, 'current_volume': None}
+        
+    def _calculate_donchian_levels(self, period: int = None) -> Dict[str, Optional[float]]:
+        """Calcule les niveaux Donchian purs depuis les données OHLC."""
+        if period is None:
+            period = self.donchian_period
+            
+        try:
+            highs = self.data.get('high', [])
+            lows = self.data.get('low', [])
+            
+            if highs and lows and len(highs) >= period and len(lows) >= period:
+                # Prendre les N dernières valeurs
+                recent_highs = [float(h) for h in highs[-period:]]
+                recent_lows = [float(l) for l in lows[-period:]]
+                
+                return {
+                    'donchian_high': max(recent_highs),
+                    'donchian_low': min(recent_lows)
+                }
+        except (ValueError, TypeError):
+            pass
+            
+        return {'donchian_high': None, 'donchian_low': None}
         
     def generate_signal(self) -> Dict[str, Any]:
         """
@@ -112,6 +138,7 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         
         # Vérification des données essentielles
         current_price = price_data['current_price']
+        previous_price = price_data['previous_price']
         current_high = price_data['current_high']
         current_low = price_data['current_low']
         current_volume = price_data['current_volume']
@@ -125,14 +152,31 @@ class Donchian_Breakout_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
-        # Récupération PURE Donchian - PAS de fallback BB (incohérent)
+        # Récupération Donchian avec fallback pur
         try:
             nearest_resistance = float(values['nearest_resistance']) if _is_valid(values['nearest_resistance']) else None
             nearest_support = float(values['nearest_support']) if _is_valid(values['nearest_support']) else None
             resistance_strength = values.get('resistance_strength')
             support_strength = values.get('support_strength')
             
-            # Si pas de niveaux Donchian -> pas de signal (concept pur)
+            # Fallback Donchian pur si S/R manquent
+            if nearest_resistance is None and nearest_support is None:
+                donchian_levels = self._calculate_donchian_levels()
+                if donchian_levels['donchian_high'] is not None and donchian_levels['donchian_low'] is not None:
+                    nearest_resistance = donchian_levels['donchian_high']
+                    nearest_support = donchian_levels['donchian_low']
+                    resistance_strength = 'MODERATE'  # Par défaut pour Donchian pur
+                    support_strength = 'MODERATE'
+                else:
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": "Données insuffisantes pour canal Donchian",
+                        "metadata": {"strategy": self.name}
+                    }
+            
+            # Si toujours pas de niveaux après fallback
             if nearest_resistance is None and nearest_support is None:
                 return {
                     "side": None,
@@ -161,29 +205,36 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         if nearest_resistance is not None and nearest_resistance > 0:
             breakout_distance = (current_price - nearest_resistance) / nearest_resistance
             
-            # Breakout haussier avec niveaux progressifs
-            if breakout_distance >= self.breakout_threshold:
+            # Détection crossing (franchissement)
+            bull_cross = (previous_price is not None and 
+                         previous_price <= nearest_resistance < current_price)
+            
+            # Breakout haussier avec niveaux progressifs + crossing
+            if breakout_distance >= self.breakout_threshold or bull_cross:
                 signal_side = "BUY"
-                breakout_type = "resistance_breakout"
+                breakout_type = "resistance_cross" if bull_cross else "resistance_breakout"
                 
-                # Bonus selon force du breakout
-                if breakout_distance >= self.strong_breakout_threshold:  # >0.8%
+                # Bonus selon type et force du breakout
+                if bull_cross:
+                    reason = f"CROSS résistance {nearest_resistance:.2f} (Prix: {current_price:.2f})"
+                    confidence_boost += 0.18  # Cross détecté
+                elif breakout_distance >= self.strong_breakout_threshold:  # >1.5%
                     reason = f"Breakout fort résistance {nearest_resistance:.2f} (+{breakout_distance*100:.1f}%)"
                     confidence_boost += 0.25  # Breakout vraiment fort
-                elif breakout_distance >= self.breakout_threshold:  # >0.4%
+                elif breakout_distance >= self.breakout_threshold:  # >0.6%
                     reason = f"Breakout résistance {nearest_resistance:.2f} (+{breakout_distance*100:.1f}%)"
                     confidence_boost += 0.20  # Breakout confirmé
                     
-            # Détection précoce STRICTE (volume + ADX)
-            elif breakout_distance >= self.early_breakout_threshold:  # 0.5%
+            # Détection précoce ASSOUPLIE (volume + ADX)
+            elif breakout_distance >= self.early_breakout_threshold:  # 0.3%
                 volume_ratio = values.get('volume_ratio')
                 adx_check = values.get('adx_14')
-                if (volume_ratio is not None and _is_valid(volume_ratio) and float(volume_ratio) >= 1.5) and \
-                   (adx_check is not None and _is_valid(adx_check) and float(adx_check) >= 20):
+                if (volume_ratio is not None and _is_valid(volume_ratio) and float(volume_ratio) >= 1.3) and \
+                   (adx_check is not None and _is_valid(adx_check) and float(adx_check) >= 18):
                     signal_side = "BUY"
                     breakout_type = "early_resistance_breakout"
                     reason = f"Breakout précoce {nearest_resistance:.2f} (+{breakout_distance*100:.1f}%) + volume+ADX"
-                    confidence_boost += 0.12  # Réduit car plus strict
+                    confidence_boost += 0.15  # Augmenté car assoupli
                 
                 # Bonus si résistance était forte = breakout plus significatif
                 if resistance_strength is not None:
@@ -202,29 +253,36 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         if signal_side is None and nearest_support is not None and nearest_support > 0:
             breakdown_distance = (nearest_support - current_price) / nearest_support
             
-            # Breakdown baissier avec niveaux progressifs
-            if breakdown_distance >= self.breakout_threshold:
+            # Détection crossing (franchissement)
+            bear_cross = (previous_price is not None and 
+                         previous_price >= nearest_support > current_price)
+            
+            # Breakdown baissier avec niveaux progressifs + crossing
+            if breakdown_distance >= self.breakout_threshold or bear_cross:
                 signal_side = "SELL"
-                breakout_type = "support_breakdown"
+                breakout_type = "support_cross" if bear_cross else "support_breakdown"
                 
-                # Bonus selon force du breakdown
-                if breakdown_distance >= self.strong_breakout_threshold:  # >0.8%
+                # Bonus selon type et force du breakdown
+                if bear_cross:
+                    reason = f"CROSS support {nearest_support:.2f} (Prix: {current_price:.2f})"
+                    confidence_boost += 0.18  # Cross détecté
+                elif breakdown_distance >= self.strong_breakout_threshold:  # >1.5%
                     reason = f"Breakdown fort support {nearest_support:.2f} (-{breakdown_distance*100:.1f}%)"
                     confidence_boost += 0.25  # Breakdown vraiment fort
-                elif breakdown_distance >= self.breakout_threshold:  # >0.4%
+                elif breakdown_distance >= self.breakout_threshold:  # >0.6%
                     reason = f"Breakdown support {nearest_support:.2f} (-{breakdown_distance*100:.1f}%)"
                     confidence_boost += 0.20  # Breakdown confirmé
                     
-            # Détection précoce STRICTE (volume + ADX)
-            elif breakdown_distance >= self.early_breakout_threshold:  # 0.5%
+            # Détection précoce ASSOUPLIE (volume + ADX)
+            elif breakdown_distance >= self.early_breakout_threshold:  # 0.3%
                 volume_ratio = values.get('volume_ratio')
                 adx_check = values.get('adx_14')
-                if (volume_ratio is not None and _is_valid(volume_ratio) and float(volume_ratio) >= 1.5) and \
-                   (adx_check is not None and _is_valid(adx_check) and float(adx_check) >= 20):
+                if (volume_ratio is not None and _is_valid(volume_ratio) and float(volume_ratio) >= 1.3) and \
+                   (adx_check is not None and _is_valid(adx_check) and float(adx_check) >= 18):
                     signal_side = "SELL"
                     breakout_type = "early_support_breakdown"
                     reason = f"Breakdown précoce {nearest_support:.2f} (-{breakdown_distance*100:.1f}%) + volume+ADX"
-                    confidence_boost += 0.12  # Réduit car plus strict
+                    confidence_boost += 0.15  # Augmenté car assoupli
                 
                 # Bonus si support était fort = breakdown plus significatif
                 if support_strength is not None:
@@ -239,7 +297,35 @@ class Donchian_Breakout_Strategy(BaseStrategy):
                         confidence_boost += 0.10
                         reason += " - support modéré cassé"
                     
-        # Filtre anti-faux signaux : vérifier que le breakout est net - ASSOUPLI
+        # Filtre régime de marché - Autoriser TRANSITION sous conditions
+        if signal_side is not None:
+            market_regime = values.get('market_regime')
+            if market_regime == 'RANGING':
+                return {
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": f"Marché en range - pas de breakout Donchian",
+                    "metadata": {"strategy": self.name}
+                }
+            elif market_regime == 'TRANSITION':
+                # Autoriser TRANSITION si ADX≥18 ou volume≥1.3
+                adx_check = values.get('adx_14')
+                volume_ratio = values.get('volume_ratio')
+                transition_ok = False
+                if adx_check is not None and _is_valid(adx_check) and float(adx_check) >= 18:
+                    transition_ok = True
+                if volume_ratio is not None and _is_valid(volume_ratio) and float(volume_ratio) >= 1.3:
+                    transition_ok = True
+                if not transition_ok:
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": "Transition sans signes de poussée (ADX/volume) - on attend",
+                        "metadata": {"strategy": self.name}
+                    }
+        
         # FILTRAGE VOLUME EN AMONT (avant calculs de confiance)
         if signal_side is not None:
             volume_ratio = values.get('volume_ratio')
@@ -363,12 +449,12 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # RSI timing - REJET si extrêmes (pas de breakout en euphorie/panique)
+        # RSI timing - REJET si extrêmes assoupli (pas de breakout en euphorie/panique)
         if rsi_14 is not None and _is_valid(rsi_14):
             try:
                 rsi = float(rsi_14)
                 if signal_side == "BUY":
-                    if rsi > 85:  # Trop suracheté = rejet net
+                    if rsi > 88:  # Trop suracheté = rejet net (assoupli)
                         return {
                             "side": None,
                             "confidence": 0.0,
@@ -376,11 +462,11 @@ class Donchian_Breakout_Strategy(BaseStrategy):
                             "reason": f"Rejet breakout: RSI trop haut ({rsi:.1f}) - éviter euphorie",
                             "metadata": {"strategy": self.name}
                         }
-                    elif 55 <= rsi <= 80:  # Zone momentum optimale
+                    elif 55 <= rsi <= 85:  # Zone momentum optimale (élargie)
                         confidence_boost += 0.08
                         reason += f" + RSI momentum ({rsi:.1f})"
                 elif signal_side == "SELL":
-                    if rsi < 15:  # Trop survendu = rejet net
+                    if rsi < 12:  # Trop survendu = rejet net (assoupli)
                         return {
                             "side": None,
                             "confidence": 0.0,
@@ -388,7 +474,7 @@ class Donchian_Breakout_Strategy(BaseStrategy):
                             "reason": f"Rejet breakdown: RSI trop bas ({rsi:.1f}) - éviter capitulation",
                             "metadata": {"strategy": self.name}
                         }
-                    elif 20 <= rsi <= 45:  # Zone momentum optimale
+                    elif 15 <= rsi <= 45:  # Zone momentum optimale (élargie)
                         confidence_boost += 0.08
                         reason += f" + RSI momentum ({rsi:.1f})"
             except (ValueError, TypeError):

@@ -75,8 +75,8 @@ STRATEGY_FAMILIES = {
             'MultiTF_ConfluentEntry_Strategy',
             'Resistance_Rejection_Strategy'  # DÉPLACÉ: Rejection = analyse de structure/niveaux
         ],
-        'best_regimes': ['TRENDING_BULL', 'TRENDING_BEAR', 'RANGING'],
-        'acceptable_regimes': ['VOLATILE', 'TRANSITION', 'BREAKOUT_BULL', 'BREAKOUT_BEAR'],
+        'best_regimes': ['TRENDING_BULL', 'TRENDING_BEAR', 'RANGING', 'UNKNOWN', 'TRANSITION'],  # PATCH 4: +UNKNOWN/TRANSITION
+        'acceptable_regimes': ['VOLATILE', 'BREAKOUT_BULL', 'BREAKOUT_BEAR'],
         'poor_regimes': [],  # Adaptable à tous les régimes
         'characteristics': 'Analyse la structure de marché, très adaptable'
     },

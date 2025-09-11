@@ -28,23 +28,23 @@ class OBV_Crossover_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres OBV OPTIMISÉS WINRATE - Plus sélectifs
-        self.min_obv_ma_distance = 0.025       # Plus strict (1.8% -> 2.5%)
-        self.strong_separation_threshold = 0.05 # Plus strict (4% -> 5%)
-        self.extreme_separation_threshold = 0.10 # Plus strict (8% -> 10%)
+        # Paramètres OBV ASSOUPLIS - Réalistes pour intraday
+        self.min_obv_ma_distance = 0.01        # Assoupli (2.5% -> 1%)
+        self.strong_separation_threshold = 0.03 # Assoupli (5% -> 3%)
+        self.extreme_separation_threshold = 0.07 # Assoupli (10% -> 7%)
         
         # Volume plus exigeant
         self.min_volume_ratio = 1.2            # Réaliste (1.5x -> 1.2x)
         self.strong_volume_ratio = 2.5         # Plus strict (2x -> 2.5x)
         self.extreme_volume_ratio = 4.0        # Plus strict (3.5x -> 4x)
         
-        # Confluence plus stricte
-        self.min_confluence_score = 45         # Réaliste (55 -> 45)
-        self.strong_confluence_score = 70      # Plus strict (65 -> 70)
+        # Confluence assouplie
+        self.min_confluence_score = 30         # Assoupli (45 -> 30)
+        self.strong_confluence_score = 70      # Maintenu pour qualité
         
-        # Filtres plus stricts
-        self.min_confidence_threshold = 0.45   # Réaliste (60% -> 45%)
-        self.min_confirmations_required = 2    # Réaliste (3 -> 2 confirmations)
+        # Filtres assouplis
+        self.min_confidence_threshold = 0.35   # Assoupli (0.45 -> 0.35)
+        self.min_confirmations_required = 2    # Maintenu
         
         # Filtres marché réalistes - OBV parfait en RANGING pour accumulation
         self.blocked_market_regimes = ['VOLATILE']  # Seulement volatile
@@ -102,12 +102,12 @@ class OBV_Crossover_Strategy(BaseStrategy):
         if trend_strength and str(trend_strength).lower() in ['strong', 'very_strong', 'extreme']:
             confirmations += 1
             confirmation_details.append(f"tendance {trend_strength}")
-        elif trend_strength and str(trend_strength).lower() == 'moderate':
-            # Moderate acceptable mais pas de bonus
+        elif trend_strength and str(trend_strength).lower() in ['moderate', 'weak']:
+            # Moderate/weak acceptable mais pas de bonus (plus de rejet pour weak)
             pass
         else:
-            # Rejet direct si trend trop faible
-            return 0, ['tendance_insuffisante']
+            # Trend non défini ou nulle
+            pass
             
         # 2. Directional Bias - bonus mais pas obligatoire
         directional_bias = values.get('directional_bias')
@@ -122,7 +122,7 @@ class OBV_Crossover_Strategy(BaseStrategy):
         if volume_quality_score is not None:
             try:
                 vol_quality = float(volume_quality_score)
-                if vol_quality >= 65:  # Plus strict (50 -> 65)
+                if vol_quality >= 50:  # Assoupli (65 -> 50)
                     confirmations += 1
                     confirmation_details.append(f"volume qualité {vol_quality:.0f}")
             except (ValueError, TypeError):
@@ -133,8 +133,8 @@ class OBV_Crossover_Strategy(BaseStrategy):
         if obv_oscillator is not None:
             try:
                 obv_osc = float(obv_oscillator)
-                if (signal_side == "BUY" and obv_osc > 0.05) or \
-                   (signal_side == "SELL" and obv_osc < -0.05):  # Durci (0.02 -> 0.05)
+                if (signal_side == "BUY" and obv_osc > 0.02) or \
+                   (signal_side == "SELL" and obv_osc < -0.02):  # Assoupli (0.05 -> 0.02)
                     confirmations += 1
                     confirmation_details.append(f"OBV oscillator {obv_osc:.3f}")
             except (ValueError, TypeError):
@@ -190,10 +190,10 @@ class OBV_Crossover_Strategy(BaseStrategy):
         if rsi_14 is not None:
             try:
                 rsi = float(rsi_14)
-                if signal_side == "BUY" and 30 <= rsi <= 60:  # Plus strict encore
+                if signal_side == "BUY" and 30 <= rsi <= 65:  # Assoupli (60 -> 65)
                     confirmations += 1
                     confirmation_details.append(f"RSI favorable ({rsi:.1f})")
-                elif signal_side == "SELL" and 40 <= rsi <= 70:  # Plus strict encore
+                elif signal_side == "SELL" and 35 <= rsi <= 70:  # Assoupli (40 -> 35)
                     confirmations += 1
                     confirmation_details.append(f"RSI favorable ({rsi:.1f})")
             except (ValueError, TypeError):
@@ -257,14 +257,14 @@ class OBV_Crossover_Strategy(BaseStrategy):
                 }
             }
             
-        # 3. FILTRE: Volume minimum critique - OBV sans volume = inutile
+        # 3. FILTRE: Volume minimum critique - OBV sans volume = inutile (assoupli)
         volume_ratio = values.get('volume_ratio')
-        if volume_ratio is None or float(volume_ratio) < 1.0:
+        if volume_ratio is None or float(volume_ratio) < 0.8:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Volume insuffisant pour OBV ({volume_ratio}x < 1.0x)",
+                "reason": f"Volume insuffisant pour OBV ({volume_ratio}x < 0.8x)",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
@@ -273,14 +273,14 @@ class OBV_Crossover_Strategy(BaseStrategy):
                 }
             }
             
-        # 4. FILTRE: Confluence minimum critique
+        # 4. FILTRE: Confluence minimum critique (assoupli)
         confluence_score = values.get('confluence_score')
-        if confluence_score is None or float(confluence_score) < 40:
+        if confluence_score is None or float(confluence_score) < 30:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Confluence insuffisante pour OBV ({confluence_score} < 40)",
+                "reason": f"Confluence insuffisante pour OBV ({confluence_score} < 30)",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,
@@ -315,45 +315,34 @@ class OBV_Crossover_Strategy(BaseStrategy):
         base_confidence = 0.65  # Harmonisé avec autres stratégies
         confidence_boost = 0.0
         
-        # Déterminer direction avec rejet pour bias contradictoire fort
+        # Déterminer direction avec pénalité pour bias contradictoire
         directional_bias = values.get('directional_bias')
+        bias_penalty = 0.0
         
         if obv_above_ma:
             signal_side = "BUY"
             if directional_bias == 'BEARISH':
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": "Rejet OBV BUY: bias contradictoire (BEARISH)",
-                    "metadata": {"strategy": self.name, "directional_bias": directional_bias}
-                }
+                bias_penalty = -0.15  # Pénalité au lieu de rejet
             reason = f"OBV croise MA haussier ({obv:.0f} > {obv_ma:.0f})"
         else:
             signal_side = "SELL"
             if directional_bias == 'BULLISH':
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": "Rejet OBV SELL: bias contradictoire (BULLISH)",
-                    "metadata": {"strategy": self.name, "directional_bias": directional_bias}
-                }
+                bias_penalty = -0.15  # Pénalité au lieu de rejet
             reason = f"OBV croise MA baissier ({obv:.0f} < {obv_ma:.0f})"
             
         # === COMPTAGE CONFIRMATIONS STRICT ===
         
         confirmations_count, confirmation_details = self._count_confirmations(values, signal_side)
         
-        # REJET si trend insuffisant détecté dans _count_confirmations
-        if confirmation_details and confirmation_details[0] == 'tendance_insuffisante':
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Rejet OBV: tendance trop faible pour signal fiable",
-                "metadata": {"strategy": self.name, "trend_strength": values.get('trend_strength')}
-            }
+        # Plus de rejet pour trend insuffisant - géré dans _count_confirmations
+        # if confirmation_details and confirmation_details[0] == 'tendance_insuffisante':
+        #     return {
+        #         "side": None,
+        #         "confidence": 0.0,
+        #         "strength": "weak",
+        #         "reason": "Rejet OBV: tendance trop faible pour signal fiable",
+        #         "metadata": {"strategy": self.name, "trend_strength": values.get('trend_strength')}
+        #     }
         
         # REJET si aucune confirmation
         if confirmations_count == 0:
@@ -414,10 +403,11 @@ class OBV_Crossover_Strategy(BaseStrategy):
                 confidence_boost += 0.05
                 reason += f" + confluence correct ({conf_val:.0f})"
             
-        # Bonus confirmations - réduit
-        confirmation_bonus = min(confirmations_count * 0.04, 0.16)  # Max 16% pour 4+ confirmations
+        # Bonus confirmations - ajusté
+        confirmation_bonus = min(confirmations_count * 0.05, 0.20)  # Max 20% pour 4+ confirmations (légèrement augmenté)
         confidence_boost += confirmation_bonus
-        reason += f" + {confirmations_count} confirmations"
+        if confirmations_count > 0:
+            reason += f" + {confirmations_count} confirmations"
         
         # Bonus trend strength - seulement pour forts
         trend_strength = values.get('trend_strength')
@@ -451,13 +441,8 @@ class OBV_Crossover_Strategy(BaseStrategy):
                 reason += f" + marché {regime_str.lower()}"
             elif (signal_side == "BUY" and regime_str == "TRENDING_BEAR") or \
                  (signal_side == "SELL" and regime_str == "TRENDING_BULL"):
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Rejet OBV {signal_side}: régime contradictoire ({regime_str})",
-                    "metadata": {"strategy": self.name, "market_regime": regime_str}
-                }
+                confidence_boost -= 0.15  # Pénalité au lieu de rejet
+                reason += f" (régime contradictoire {regime_str})"
             elif regime_str == "RANGING":
                 confidence_boost += 0.08  # Bonus en range - OBV parfait pour accumulation
                 reason += " + marché ranging (accumulation OBV)"
@@ -465,7 +450,7 @@ class OBV_Crossover_Strategy(BaseStrategy):
         # === CALCUL FINAL AVEC PENALTIES RÉDUITES ===
         
         # Appliquer pénalités restantes (les rejets ont été traités en amont)
-        confidence_boost += confirmations_penalty
+        confidence_boost += confirmations_penalty + bias_penalty
         
         confidence = max(0.0, min(base_confidence * (1 + confidence_boost), 1.0))
         

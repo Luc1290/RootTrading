@@ -29,23 +29,23 @@ class HullMA_Slope_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # PARAMÈTRES CONTRARIAN OPTIMISÉS WINRATE
+        # PARAMÈTRES CONTRARIAN ASSOUPLIS pour plus de signaux
         self.hull_trend_threshold = 0.002      # 0.20% pente minimum (plus sélectif)
-        self.price_pullback_min = 0.008        # 0.8% pullback minimum (zone optimale)
-        self.price_pullback_max = 0.030        # 3.0% pullback maximum (réduit overextension)
-        self.price_bounce_min = 0.008          # 0.8% bounce minimum (zone optimale)
-        self.price_bounce_max = 0.030          # 3.0% bounce maximum (réduit overextension)
+        self.price_pullback_min = 0.004        # 0.4% pullback minimum (élargi)
+        self.price_pullback_max = 0.050        # 5.0% pullback maximum (élargi)
+        self.price_bounce_min = 0.004          # 0.4% bounce minimum (élargi)
+        self.price_bounce_max = 0.050          # 5.0% bounce maximum (élargi)
         
-        # Seuils oscillateurs STRICTS pour WINRATE
-        self.rsi_oversold_entry = 32           # RSI survente vraie zone (plus strict)
-        self.rsi_overbought_entry = 68         # RSI surachat vraie zone (plus strict)
+        # Seuils oscillateurs ASSOUPLIS pour plus de signaux
+        self.rsi_oversold_entry = 35           # RSI survente assoupli (35 vs 32)
+        self.rsi_overbought_entry = 65         # RSI surachat assoupli (65 vs 68)
         self.stoch_oversold_entry = 25         # Stoch survente extrême
         self.stoch_overbought_entry = 75       # Stoch surachat extrême
         
-        # Filtres qualité RÉALISTES pour CRYPTO
-        self.min_volume_ratio = 0.8            # Volume minimum ACCESSIBLE (réduction -33%)
-        self.min_confluence_score = 35         # Confluence minimum RÉALISTE (réduction -30%) 
-        self.min_confidence_threshold = 0.45   # Confidence minimum ACCESSIBLE (réduction -10%)
+        # Filtres qualité PLUS PERMISSIFS pour CRYPTO
+        self.min_volume_ratio = 0.8            # Volume minimum ACCESSIBLE
+        self.min_confluence_score = 15         # Confluence minimum ASSOUPLI (15 vs 35)
+        self.min_confidence_threshold = 0.45   # Confidence minimum ACCESSIBLE
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs."""
@@ -113,8 +113,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
             if trend_angle is not None:
                 try:
                     angle = float(trend_angle)
-                    # Convertir angle en pente normalisée - SEUIL DURCI
-                    angle_threshold_deg = 2.5  # 2.5 degrés minimum (plus strict)
+                    # Convertir angle en pente normalisée - SEUIL ASSOUPLI
+                    angle_threshold_deg = 1.2  # 1.2 degrés minimum (assoupli pour plus de signaux)
                     
                     if angle >= angle_threshold_deg:
                         return {
@@ -203,7 +203,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
             try:
                 rsi = float(rsi_14)
                 # REJET si RSI contradictoire (BUY avec RSI élevé = pas contrarian)
-                if rsi >= 70:  # RSI trop haut pour un BUY contrarian
+                if rsi >= 75:  # RSI trop haut pour un BUY contrarian (assoupli)
                     return {
                         'is_pullback': False,
                         'reason': f'RSI contradictoire pour BUY contrarian: {rsi:.1f} trop élevé (>70)',
@@ -218,7 +218,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                if momentum <= 40:  # Momentum VRAIMENT faible pour BUY
+                if momentum <= 45:  # Momentum faible pour BUY (assoupli)
                     oversold_signals += 1
                     oversold_details.append(f"momentum très faible ({momentum:.0f})")
             except (ValueError, TypeError):
@@ -236,14 +236,18 @@ class HullMA_Slope_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # CORRECTION: Assouplir de 2 à 1 confirmation minimum
-        if oversold_signals < 1:  # Au moins 1 confirmation (était 2)
-            return {
-                'is_pullback': False, 
-                'reason': f'Pullback détecté mais aucune confirmation ({oversold_signals}/1)',
-                'pullback_pct': pullback_pct,
-                'oversold_signals': oversold_signals
-            }
+        # Autoriser 0 confirmation si pullback optimal (1-2%)
+        if oversold_signals < 1:
+            if 0.01 <= pullback_pct <= 0.02:  # Zone optimale 1-2%
+                oversold_signals = 1  # Donner 1 confirmation artificielle
+                oversold_details.append("pullback optimal (1-2%)")
+            else:
+                return {
+                    'is_pullback': False, 
+                    'reason': f'Pullback détecté mais aucune confirmation ({oversold_signals}/1)',
+                    'pullback_pct': pullback_pct,
+                    'oversold_signals': oversold_signals
+                }
             
         return {
             'is_pullback': True,
@@ -284,7 +288,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
             try:
                 rsi = float(rsi_14)
                 # REJET si RSI contradictoire (SELL avec RSI faible = pas contrarian)
-                if rsi <= 30:  # RSI trop bas pour un SELL contrarian
+                if rsi <= 25:  # RSI trop bas pour un SELL contrarian (assoupli)
                     return {
                         'is_bounce': False,
                         'reason': f'RSI contradictoire pour SELL contrarian: {rsi:.1f} trop bas (<30)',
@@ -299,7 +303,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                if momentum >= 60:  # Momentum VRAIMENT élevé pour SELL
+                if momentum >= 55:  # Momentum élevé pour SELL (assoupli)
                     overbought_signals += 1
                     overbought_details.append(f"momentum très élevé ({momentum:.0f})")
             except (ValueError, TypeError):
@@ -317,14 +321,18 @@ class HullMA_Slope_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # CORRECTION: Assouplir de 2 à 1 confirmation minimum
-        if overbought_signals < 1:  # Au moins 1 confirmation (était 2)
-            return {
-                'is_bounce': False,
-                'reason': f'Bounce détecté mais aucune confirmation ({overbought_signals}/1)',
-                'bounce_pct': bounce_pct,
-                'overbought_signals': overbought_signals
-            }
+        # Autoriser 0 confirmation si bounce optimal (1-2%)
+        if overbought_signals < 1:
+            if 0.01 <= bounce_pct <= 0.02:  # Zone optimale 1-2%
+                overbought_signals = 1  # Donner 1 confirmation artificielle
+                overbought_details.append("bounce optimal (1-2%)")
+            else:
+                return {
+                    'is_bounce': False,
+                    'reason': f'Bounce détecté mais aucune confirmation ({overbought_signals}/1)',
+                    'bounce_pct': bounce_pct,
+                    'overbought_signals': overbought_signals
+                }
             
         return {
             'is_bounce': True,
@@ -387,8 +395,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
         else:
             try:
                 vol_val = float(volume_ratio)
-                if vol_val < 1.0:  # Volume sous la normale = problématique
-                    volume_penalty = -0.15  # Pénalité forte (contrarian besoin d'énergie)
+                if vol_val < 0.8:  # Volume sous la normale = problématique (assoupli)
+                    volume_penalty = -0.10  # Pénalité réduite (assoupli)
             except (ValueError, TypeError):
                 volume_penalty = -0.05
             
@@ -400,7 +408,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
         else:
             try:
                 conf_val = float(confluence_score)
-                if conf_val < 25:  # Confluence trop faible = rejet net
+                if conf_val < 15:  # Confluence trop faible = rejet net (assoupli)
                     return {
                         "side": None,
                         "confidence": 0.0,
@@ -408,8 +416,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
                         "reason": f"Rejet contrarian: confluence trop faible ({conf_val:.0f}) - signal bruité",
                         "metadata": {"strategy": self.name}
                     }
-                elif conf_val < self.min_confluence_score:  # 25-35
-                    confluence_penalty = -0.08  # Pénalité modérée
+                elif conf_val < self.min_confluence_score:  # 15-15 (plus de pénalité)
+                    confluence_penalty = 0.0  # Plus de pénalité pour confluence faible
             except (ValueError, TypeError):
                 confluence_penalty = -0.08
             
@@ -447,7 +455,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
         signal_side = None
         reason = ""
         opportunity_data = {}
-        base_confidence = 0.65  # Base RELEVÉE pour meilleur winrate (+50%)
+        base_confidence = 0.65 
         confidence_boost = 0.0
         
         if hull_trend['direction'] == 'bullish':

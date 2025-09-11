@@ -34,50 +34,92 @@ class AdaptiveConsensusAnalyzer:
     """
     
     def __init__(self):
-        # Consensus minimum par famille selon le régime
-        # OPTIMISÉ POUR SCALPING: Seuils réduits pour plus de réactivité
+        # Consensus minimum par famille selon le régime ET le side
+        # RECALIBRÉ: 28 stratégies opérationnelles après déblocage des 8 "muettes"
+        # SPOT ONLY: BUY = business principal, SELL = sortie/profits seulement
         self.regime_family_requirements = {
             'TRENDING_BULL': {
-                'trend_following': 2,  # Au moins 2 stratégies trend en bull
-                'breakout': 1,         # Au moins 1 breakout pour confirmation
-                'total_min': 3         # Réduit de 4->3 pour scalping réactif
+                'BUY': {
+                    'trend_following': 1,  # Réduit 2->1 (pas assez de signaux en réalité)
+                    'total_min': 3         # Réduit 4->3 (signaux rares mais de qualité)
+                },
+                'SELL': {
+                    'total_min': 2         # 2 stratégies suffisent pour sortir
+                }
             },
             'TRENDING_BEAR': {
-                'trend_following': 2,  # Au moins 2 stratégies trend en bear
-                'volume_based': 1,     # Volume important pour confirmer la baisse
-                'total_min': 3         # Réduit de 4->3 pour scalping réactif
+                'BUY': {
+                    'trend_following': 2,  # Très strict pour BUY contre-tendance
+                    'mean_reversion': 2,   # Exiger rebond légitime
+                    'total_min': 6         # 6 stratégies minimum (très strict)
+                },
+                'SELL': {
+                    'trend_following': 1,  # Facile de sortir en bear
+                    'total_min': 2         # 2 stratégies suffisent
+                }
             },
             'RANGING': {
-                'mean_reversion': 2,   # Au moins 2 mean reversion en ranging
-                'structure_based': 1,  # Structure pour support/résistance
-                'total_min': 3         # Maintenu à 3 (déjà optimal pour range)
+                'BUY': {
+                    'mean_reversion': 2,   # 2 mean-reversion minimum
+                    'structure_based': 1,  # Structure pour support
+                    'total_min': 4         # 4 stratégies pour BUY en range
+                },
+                'SELL': {
+                    'mean_reversion': 1,   # 1 reversion suffit pour sortir
+                    'total_min': 2         # 2 stratégies pour SELL
+                }
             },
             'VOLATILE': {
-                'breakout': 1,         # Breakout important en volatilité
-                'volume_based': 1,     # Volume pour confirmer les mouvements
-                'total_min': 3         # Réduit de 4->3 pour scalping volatil
+                'BUY': {
+                    'breakout': 2,         # 2 breakout minimum
+                    'volume_based': 1,     # Volume pour confirmer
+                    'total_min': 5         # 5 stratégies (volatilité = risque)
+                },
+                'SELL': {
+                    'volume_based': 1,     # Volume pour confirmer sortie
+                    'total_min': 2         # 2 stratégies suffisent
+                }
             },
             'BREAKOUT_BULL': {
-                'breakout': 2,         # Au moins 2 stratégies breakout en bull
-                'volume_based': 1,     # Volume pour confirmer le breakout
-                'total_min': 3         # Réduit de 4->3 pour scalping breakout
+                'BUY': {
+                    'breakout': 2,         # 2 breakout minimum
+                    'volume_based': 1,     # Volume crucial
+                    'total_min': 4         # 4 stratégies pour BUY breakout
+                },
+                'SELL': {
+                    'total_min': 2         # Facile de sortir en breakout bull
+                }
             },
             'BREAKOUT_BEAR': {
-                'breakout': 2,         # Au moins 2 stratégies breakout en bear
-                'trend_following': 1,  # Trend pour confirmer la direction
-                'volume_based': 1,     # Volume critique en bear breakout
-                'total_min': 4         # Réduit de 5->4 (reste plus strict en bear)
+                'BUY': {
+                    'breakout': 2,         # 2 breakout minimum
+                    'mean_reversion': 2,   # Rebond très confirmé
+                    'total_min': 7         # 7 stratégies (très dangereux)
+                },
+                'SELL': {
+                    'breakout': 1,         # 1 breakout suffit pour sortir
+                    'total_min': 2         # 2 stratégies suffisent
+                }
             },
             'TRANSITION': {
-                'trend_following': 1,  # Au moins 1 trend pour direction
-                'mean_reversion': 1,   # Au moins 1 reversion pour équilibre
-                'total_min': 3         # Réduit de 4->3 pour scalping transition
+                'BUY': {
+                    'trend_following': 1,  # Direction incertaine
+                    'mean_reversion': 1,   # Équilibre
+                    'total_min': 4         # 4 stratégies en transition
+                },
+                'SELL': {
+                    'total_min': 2         # 2 stratégies pour sortir
+                }
             },
             'UNKNOWN': {
-                'trend_following': 1,  # Au moins 1 trend
-                'mean_reversion': 1,   # Au moins 1 reversion
-                'breakout': 1,         # Au moins 1 breakout
-                'total_min': 3         # Réduit de 4->3 pour scalping incertain
+                'BUY': {
+                    'trend_following': 1,  # Au moins 1 trend
+                    'mean_reversion': 1,   # Au moins 1 reversion
+                    'total_min': 5         # 5 stratégies (inconnu = prudent)
+                },
+                'SELL': {
+                    'total_min': 2         # 2 stratégies pour sortir
+                }
             }
         }
         
@@ -94,7 +136,7 @@ class AdaptiveConsensusAnalyzer:
         }
         
     def analyze_adaptive_consensus(self, signals: List[Dict[str, Any]], 
-                                  market_regime: str, timeframe: str = None) -> Tuple[bool, Dict[str, Any]]:
+                                  market_regime: str, timeframe: str = None, volatility_regime: str = None) -> Tuple[bool, Dict[str, Any]]:
         """
         Analyse si un groupe de signaux forme un consensus adapté au régime.
         
@@ -111,6 +153,42 @@ class AdaptiveConsensusAnalyzer:
         if not signals:
             logger.info("🔍 Consensus: Aucun signal")
             return False, {'reason': 'Aucun signal'}
+            
+        # PATCH 1: Dériver la volatilité si non fournie
+        if volatility_regime is None:
+            # Tenter de lire depuis les signaux
+            for s in signals:
+                vr = (s.get('metadata') or {}).get('volatility_regime') or s.get('volatility_regime')
+                if vr:
+                    volatility_regime = vr
+                    break
+        vol_level = str(volatility_regime or 'normal').lower()
+        if vol_level not in ['low','normal','high','extreme']:
+            vol_level = 'normal'
+            
+        # PATCH 2: Filtrer dès le départ les signaux inutilisables
+        clean_signals = []
+        for sig in signals:
+            if sig.get('side') is None:   # veto / filtre => hors consensus
+                continue
+            # Normaliser strategy
+            strat = sig.get('strategy') or ((sig.get('metadata') or {}).get('strategy'))
+            if strat:
+                sig['strategy'] = strat
+            clean_signals.append(sig)
+            
+        if not clean_signals:
+            return False, {'reason': 'Uniquement des veto/None, aucun signal de side exploitable'}
+            
+        signals = clean_signals
+            
+        # Déterminer le side des signaux (tous doivent être du même side pour le consensus)
+        signal_sides = set(signal.get('side', 'BUY') for signal in signals)
+        if len(signal_sides) > 1:
+            return False, {'reason': f'Signaux de sides différents: {signal_sides}'}
+        
+        signal_side = signal_sides.pop()
+        logger.info(f"🔍 Side des signaux: {signal_side}, volatilité: {vol_level}")
             
         # Classifier les signaux par famille
         families_count = {}
@@ -143,19 +221,63 @@ class AdaptiveConsensusAnalyzer:
         total_strategies = len(signals)
         avg_adaptability = sum(adaptability_scores) / len(adaptability_scores) if adaptability_scores else 0
         
-        logger.info(f"🔍 Familles détectées: {families_count}")
-        logger.info(f"🔍 Scores adaptabilité: {adaptability_scores}")
+        # PATCH 3: Ajouter une qualité minimale (confiance)
+        conf = [float(s.get('confidence', 0)) for s in signals if s.get('confidence') is not None]
+        avg_conf = sum(conf)/len(conf) if conf else 0.0
+        hi_conf = sum(1 for c in conf if c >= 0.65)
         
-        # Obtenir les requirements pour ce régime
+        min_avg = 0.58 if signal_side == 'BUY' else 0.50
+        min_hi  = 2 if signal_side == 'BUY' else 1
+        if avg_conf < min_avg or hi_conf < min_hi:
+            # PATCH 5: Log précis des causes de rejet qualité
+            reason_parts = []
+            if avg_conf < min_avg:
+                reason_parts.append(f"avg_conf {avg_conf:.2f} < {min_avg:.2f}")
+            if hi_conf < min_hi:
+                reason_parts.append(f"hi_conf {hi_conf} < {min_hi}")
+            return False, {
+                'reason': f'Qualité insuffisante ({" & ".join(reason_parts)})',
+                'avg_confidence': avg_conf,
+                'hi_conf_count': hi_conf,
+                'families_count': families_count,
+                'total_strategies': total_strategies
+            }
+        
+        # Obtenir le régime (nécessaire pour les patches suivants)
         regime = market_regime.upper() if market_regime else 'UNKNOWN'
         if regime not in self.regime_family_requirements:
             regime = 'UNKNOWN'
-            
-        requirements = self.regime_family_requirements[regime]
-        logger.info(f"🔍 Requirements pour {regime}: {requirements}")
         
-        # Vérifier le minimum total
+        # PATCH 3: Ajouter proxy breakout pour TRENDING_BULL
+        if regime == 'TRENDING_BULL' and families_count.get('breakout', 0) == 0:
+            if 'trend_following' in families_count and 'volume_based' in families_count and avg_conf >= 0.90:
+                families_count['breakout_proxy'] = 1
+                logger.info(f"🚀 Proxy breakout ajouté (trend+volume+conf≥0.9)")
+        
+        logger.info(f"🔍 Familles détectées: {families_count}")
+        logger.info(f"🔍 Scores adaptabilité: {adaptability_scores}")
+        logger.info(f"🔍 Qualité: avg_conf={avg_conf:.2f}, hi_conf={hi_conf}")
+        
+        # Obtenir les requirements pour ce régime ET ce side
+            
+        regime_requirements = self.regime_family_requirements[regime]
+        if signal_side in regime_requirements:
+            requirements = regime_requirements[signal_side]
+        else:
+            # Fallback si le side n'existe pas (ancien format)
+            requirements = regime_requirements
+            
+        logger.info(f"🔍 Requirements pour {regime}/{signal_side}: {requirements}")
+        
+        # PATCH 2: Assouplir TRENDING_BULL/BUY si excellente qualité
         total_min = requirements.get('total_min', 6)
+        if regime == 'TRENDING_BULL' and signal_side == 'BUY':
+            family_diversity = len([f for f in families_count.keys() if f != 'unknown' and families_count[f] > 0])
+            if family_diversity >= 3 and avg_conf >= 0.90:
+                total_min = 3  # Assouplir 4→3 si excellente qualité
+                logger.info(f"🎯 Total_min assoupli 4→3 pour BULL/BUY: diversité={family_diversity}, avg_conf={avg_conf:.2f}")
+        
+        # Vérifier le minimum total  
         if total_strategies < total_min:
             return False, {
                 'reason': f'Pas assez de stratégies: {total_strategies} < {total_min}',
@@ -171,7 +293,12 @@ class AdaptiveConsensusAnalyzer:
             if family == 'total_min':
                 continue
                 
-            actual_count = families_count.get(family, 0)
+            # PATCH 3b: breakout_proxy compte comme breakout
+            if family == 'breakout':
+                actual_count = families_count.get('breakout', 0) + families_count.get('breakout_proxy', 0)
+            else:
+                actual_count = families_count.get(family, 0)
+                
             if actual_count < required_count:
                 missing_families.append(f"{family}: {actual_count}/{required_count}")
                 
@@ -181,14 +308,15 @@ class AdaptiveConsensusAnalyzer:
             consensus_strength_preview = self._calculate_preview_consensus_strength(families_count, regime)
             family_diversity = len([f for f in families_count.keys() if f != 'unknown' and families_count[f] > 0])
             
-            # Tolérance: Laisser passer même avec familles manquantes si bon signal global
-            can_bypass = (
-                avg_adaptability >= 0.6 or                    # Adaptabilité correcte
-                consensus_strength_preview >= 1.8 or           # Consensus raisonnable 
-                family_diversity >= 2 or                      # Au moins 2 familles différentes
-                total_strategies >= total_min + 1 or          # 1+ stratégie au dessus du minimum
-                len(missing_families) == 1                    # NOUVEAU: Tolérer si 1 seule famille manque
-            )
+            # PATCH 4: Bypass plus sûr - exige deux critères sur les cinq
+            criteria = 0
+            if avg_adaptability >= 0.6: criteria += 1
+            if consensus_strength_preview >= 1.9: criteria += 1   # léger relèvement
+            if family_diversity >= 2: criteria += 1
+            if total_strategies >= total_min + 1: criteria += 1
+            if len(missing_families) == 1: criteria += 1
+            
+            can_bypass = (criteria >= 2)
                          
             if can_bypass:
                 logger.info(f"✅ Familles manquantes TOLÉRÉES: {', '.join(missing_families)} - Diversité: {family_diversity}, adaptabilité: {avg_adaptability:.2f}")
@@ -200,6 +328,25 @@ class AdaptiveConsensusAnalyzer:
                     'avg_adaptability': avg_adaptability,
                     'family_diversity': family_diversity,
                     'consensus_preview': consensus_strength_preview
+                }
+        
+        # PATCH 5: SELL facile mais pas gratuit - vérifier au moins une famille optimale
+        # ASSOUPLI: Acceptable si famille "acceptable" au lieu de "best" uniquement
+        if signal_side == 'SELL':
+            best_family_hit = any(
+                (STRATEGY_FAMILIES.get(f, {}).get('best_regimes') or []).__contains__(regime)
+                for f,c in families_count.items() if c>0
+            )
+            acceptable_family_hit = any(
+                (STRATEGY_FAMILIES.get(f, {}).get('acceptable_regimes') or []).__contains__(regime)
+                for f,c in families_count.items() if c>0
+            )
+            if not best_family_hit and not acceptable_family_hit:
+                return False, {
+                    'reason': 'SELL sans famille optimale/acceptable au régime',
+                    'families_count': families_count,
+                    'regime': regime,
+                    'avg_confidence': avg_conf
                 }
             
         # Calculer le score de consensus pondéré
@@ -239,8 +386,8 @@ class AdaptiveConsensusAnalyzer:
             else:
                 volatility_level = 'normal'
         
-        # Utiliser la méthode dynamique pour calculer le seuil
-        min_consensus_strength = self.get_dynamic_consensus_threshold(regime, timeframe or '3m', volatility_level)
+        # Utiliser la méthode dynamique pour calculer le seuil  
+        min_consensus_strength = self.get_dynamic_consensus_threshold(regime, timeframe or '3m', vol_level)
         
         # Ajustement supplémentaire selon adaptabilité OPTIMISÉ SCALPING
         if avg_adaptability > 0.75:
@@ -249,6 +396,16 @@ class AdaptiveConsensusAnalyzer:
             min_consensus_strength *= 0.92  # Réduire de 8% pour bonne adaptabilité
         elif avg_adaptability < 0.4:
             min_consensus_strength *= 1.05  # Augmenter de 5% seulement (au lieu de 10%) pour rester réactif
+            
+        # PATCH 6: Bonus confiance - récompenser les packs très confiants
+        if avg_conf >= 0.66 and hi_conf >= 3:
+            min_consensus_strength *= 0.92   # -8%
+            logger.info(f"🎯 Bonus confiance appliqué: avg_conf={avg_conf:.2f}, hi_conf={hi_conf}")
+            
+        # PATCH 2b: Rabais spécial breakout manquant si excellente qualité
+        if missing_families == ['breakout: 0/1'] and avg_conf >= 0.90 and hi_conf >= 3:
+            min_consensus_strength *= 0.90  # -10% supplémentaire
+            logger.info(f"🚀 Rabais breakout manquant: avg_conf={avg_conf:.2f}, hi_conf={hi_conf}")
         
         # Si familles manquantes ont été TOLÉRÉES, être plus permissif sur consensus strength
         families_were_tolerated = missing_families and (
@@ -270,9 +427,13 @@ class AdaptiveConsensusAnalyzer:
             'families_count': families_count,
             'total_strategies': total_strategies,
             'avg_adaptability': avg_adaptability,
+            'avg_confidence': avg_conf,
+            'hi_conf_count': hi_conf,
             'consensus_strength': consensus_strength,
             'min_required_strength': min_consensus_strength,
             'regime': regime,
+            'signal_side': signal_side,
+            'volatility_level': vol_level,
             'missing_families': missing_families if missing_families else None
         }
         
@@ -324,12 +485,12 @@ class AdaptiveConsensusAnalyzer:
             Seuil de consensus ajusté (typiquement entre 1.6 et 3.3)
         """
         
-        # Seuils de base empiriques OPTIMISÉS SCALPING (nombre moyen de stratégies requises)
+        # Seuils de base empiriques RÉAJUSTÉS selon données réelles
         base_thresholds = {
-            '1m': 2.7,   # Réduit de 3.0->2.7 pour scalping ultra-court
-            '3m': 2.2,   # Réduit de 2.5->2.2 pour scalping court terme
-            '5m': 2.0,   # Réduit de 2.2->2.0 pour scalping moyen terme
-            '15m': 1.8,  # Réduit de 2.0->1.8 pour contexte scalping
+            '1m': 2.2,   # Réduit encore 2.7->2.2 
+            '3m': 1.8,   # Réduit encore 2.2->1.8 (signaux rares)
+            '5m': 1.6,   # Réduit encore 2.0->1.6 
+            '15m': 1.4,  # Réduit encore 1.8->1.4 
         }
         
         # Multiplicateurs selon volatilité (basés sur backtests)
@@ -365,6 +526,13 @@ class AdaptiveConsensusAnalyzer:
         """
         if not signals:
             return False, {'reason': 'Aucun signal'}
+            
+        # Déterminer le side des signaux (MTF post-conflit)
+        signal_sides = set(signal.get('side', 'BUY') for signal in signals)
+        if len(signal_sides) > 1:
+            return False, {'reason': f'Signaux MTF de sides différents: {signal_sides}'}
+        
+        signal_side = signal_sides.pop()
             
         # Utiliser le nombre original pour la validation du consensus
         # car ces stratégies étaient toutes d'accord avant la résolution de conflit
@@ -404,11 +572,17 @@ class AdaptiveConsensusAnalyzer:
         if regime not in self.regime_family_requirements:
             regime = 'UNKNOWN'
             
-        requirements = self.regime_family_requirements[regime]
+        # Obtenir les requirements selon le side (MTF)
+        regime_requirements = self.regime_family_requirements[regime]
+        if signal_side in regime_requirements:
+            requirements = regime_requirements[signal_side]
+        else:
+            # Fallback si le side n'existe pas (ancien format)
+            requirements = regime_requirements
         
-        # Réduire le minimum requis pour MTF post-conflit
-        # Car on sait qu'on avait plus de stratégies au départ
-        total_min = max(3, requirements.get('total_min', 6) - 2)  # -2 pour MTF post-conflit
+        # Ajuster le minimum pour MTF post-conflit
+        # Avec 28 stratégies actives, même après conflit on devrait avoir assez de signaux
+        total_min = requirements.get('total_min', 5)  # Garder le seuil standard car plus de stratégies
         
         # Vérifier avec le nombre effectif (original)
         if effective_strategy_count < total_min:
@@ -470,7 +644,7 @@ class AdaptiveConsensusAnalyzer:
         }
     
     def get_adjusted_min_strategies(self, market_regime: str, 
-                                   available_families: List[str]) -> int:
+                                   available_families: List[str], signal_side: str = 'BUY') -> int:
         """
         Retourne le nombre minimum de stratégies ajusté selon le régime et les familles disponibles.
         
@@ -485,20 +659,30 @@ class AdaptiveConsensusAnalyzer:
         if regime not in self.regime_family_requirements:
             regime = 'UNKNOWN'
             
-        base_min = self.regime_family_requirements[regime].get('total_min', 6)
+        # Obtenir les requirements selon le side
+        regime_requirements = self.regime_family_requirements[regime]
+        if signal_side in regime_requirements:
+            requirements = regime_requirements[signal_side]
+        else:
+            # Fallback si le side n'existe pas (ancien format)
+            requirements = regime_requirements
+            
+        base_min = requirements.get('total_min', 5)
         
-        # Ajuster selon les familles disponibles
+        # Ajuster selon les familles disponibles (avec 28 stratégies actives = plus d'exigence)
         optimal_families = 0
         for family in available_families:
             family_config = STRATEGY_FAMILIES.get(family, {})
             if regime in family_config.get('best_regimes', []):
                 optimal_families += 1
                 
-        # Si on a beaucoup de familles optimales, on peut réduire le minimum
-        if optimal_families >= 3:
-            return max(3, base_min - 1)
+        # Avec 28 stratégies, on peut être plus exigeant sur le consensus
+        if optimal_families >= 4:
+            return base_min              # Standard avec 4+ familles optimales
+        elif optimal_families >= 3:
+            return base_min + 1          # Légère augmentation avec 3 familles
         elif optimal_families >= 2:
-            return base_min
+            return base_min + 2          # Plus strict avec 2 familles seulement
         else:
-            # Peu de familles optimales, on augmente le minimum pour compenser
-            return base_min + 1
+            # Peu de familles optimales, on est très strict pour compenser
+            return base_min + 3

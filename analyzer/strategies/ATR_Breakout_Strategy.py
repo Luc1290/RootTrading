@@ -24,15 +24,15 @@ class ATR_Breakout_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres ATR et volatilité DURCIS pour vrais breakouts
-        self.atr_multiplier = 1.5          # Multiplicateur ATR pour zone de breakout  
-        self.volatility_threshold = 0.50   # Seuil volatilité 50% minimum (percentile)
-        self.resistance_proximity = 0.02   # 2% de proximité maximum (crypto précis)
-        self.support_proximity = 0.02      # 2% de proximité maximum
-        self.breakout_zone_ratio = 0.015   # 1.5% max zone breakout (limite zone ATR)
+        self.atr_multiplier = 1.0          # Multiplicateur ATR pour zone de breakout (réduit)
+        self.volatility_threshold = 50.0   # Seuil volatilité 50% minimum (percentile 0-100)
+        self.resistance_proximity = 0.03   # 3% de proximité maximum (plus réaliste)
+        self.support_proximity = 0.03      # 3% de proximité maximum
+        self.breakout_zone_ratio = 0.01    # 1% zone breakout (plus large)
         # Paramètres de tendance - ACTIVÉS pour filtrer
         self.trend_filter_enabled = True   # Filtre activé pour cohérence
         self.min_trend_strength = 0.20     # Force minimum de tendance pour breakout
-        self.min_adx_breakout = 20          # ADX minimum pour breakout valide
+        self.min_adx_breakout = 18          # ADX minimum pour breakout valide (assoupli)
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs ATR."""
@@ -71,6 +71,15 @@ class ATR_Breakout_Strategy(BaseStrategy):
             pass
         return None
         
+    def _get_previous_price(self) -> Optional[float]:
+        """Récupère le prix précédent pour détecter les crossings."""
+        try:
+            if self.data and 'close' in self.data and len(self.data['close']) >= 2:
+                return float(self.data['close'][-2])
+        except (IndexError, ValueError, TypeError):
+            pass
+        return None
+        
     def generate_signal(self) -> Dict[str, Any]:
         """
         Génère un signal basé sur ATR et les breakouts de volatilité.
@@ -86,6 +95,7 @@ class ATR_Breakout_Strategy(BaseStrategy):
             
         values = self._get_current_values()
         current_price = self._get_current_price()
+        prev_price = self._get_previous_price()
         
         # Helper pour valider les nombres (anti-NaN)
         def _is_valid(x):
@@ -118,6 +128,14 @@ class ATR_Breakout_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
+        # Normaliser atr_percentile si nécessaire (gestion échelle 0-1 vs 0-100)
+        if atr_percentile is not None:
+            ap = float(atr_percentile)
+            if ap <= 1.0:  # reçu en 0..1, convertir en 0..100
+                atr_percentile = ap * 100.0
+            else:
+                atr_percentile = ap
+        
         # Vérification de la volatilité - SEUIL DURCI pour vrais breakouts
         if atr_percentile is not None and atr_percentile < self.volatility_threshold:
             return {
@@ -175,15 +193,30 @@ class ATR_Breakout_Strategy(BaseStrategy):
             elif market_regime == 'TRENDING_BEAR':
                 is_downtrend = True
                 trend_confirmed = True
-            elif market_regime in ['RANGING', 'TRANSITION']:
-                # En ranging, pas de breakout - on attend une tendance
+            elif market_regime == 'RANGING':
+                # En ranging strict, pas de breakout
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": f"Marché en range ({market_regime}) - pas de breakout possible",
+                    "reason": f"Marché en range ({market_regime}) - pas de breakout",
                     "metadata": {"strategy": self.name}
                 }
+            elif market_regime == 'TRANSITION':
+                # Autoriser TRANSITION si ADX≥18 ou BB expansion
+                transition_ok = False
+                if _is_valid(adx_value) and float(adx_value) >= 18:
+                    transition_ok = True
+                if values.get('bb_expansion') is True:
+                    transition_ok = True
+                if not transition_ok:
+                    return {
+                        "side": None,
+                        "confidence": 0.0,
+                        "strength": "weak",
+                        "reason": "Transition sans signes de poussée (ADX/BB) - on attend",
+                        "metadata": {"strategy": self.name}
+                    }
         
         # Vérification trend_alignment pour renforcer la détection
         if trend_alignment is not None and _is_valid(trend_alignment):
@@ -210,23 +243,28 @@ class ATR_Breakout_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
         
-        # PURE BREAKOUT - Zone limitée (ATR + ratio max)
+        # PURE BREAKOUT - Zone élargie (ATR + ratio max)
         breakout_zone_atr = atr * self.atr_multiplier  # Zone ATR
-        breakout_zone_max = current_price * self.breakout_zone_ratio  # 1.5% max du prix
-        breakout_zone = min(breakout_zone_atr, breakout_zone_max)  # Prendre le plus petit
+        breakout_zone_max = current_price * self.breakout_zone_ratio  # 1% max du prix
+        breakout_zone = max(breakout_zone_atr, breakout_zone_max)  # Prendre le plus large
         
         if nearest_resistance is not None:
             try:
                 resistance_level = float(nearest_resistance)
-                distance_to_resistance = (current_price - resistance_level) / current_price
+                # Distance mesurée vs le niveau (plus logique)
+                distance_to_resistance = (current_price - resistance_level) / resistance_level
+                
+                # Détection par crossing + proximité
+                bull_cross = (prev_price is not None and prev_price <= resistance_level < current_price)
                 
                 # BREAKOUT HAUSSIER : Prix AU-DESSUS de la résistance + zone ATR
-                if is_uptrend and distance_to_resistance > 0 and distance_to_resistance <= self.resistance_proximity:
-                    # Vérifier si on est dans la zone de breakout limitée
-                    if current_price > resistance_level and current_price <= (resistance_level + breakout_zone):
+                if is_uptrend and (bull_cross or (distance_to_resistance > 0 and distance_to_resistance <= self.resistance_proximity)):
+                    # Vérifier si on est dans la zone de breakout élargie
+                    if current_price > resistance_level and current_price <= (resistance_level * (1 + breakout_zone / resistance_level)):
                         signal_side = "BUY"
                         proximity_type = "resistance_breakout"
-                        reason = f"BREAKOUT résistance {resistance_level:.2f} cassée (Prix: {current_price:.2f}, ATR: {atr:.4f})"
+                        cross_msg = " [CROSS]" if bull_cross else ""
+                        reason = f"BREAKOUT résistance {resistance_level:.2f} cassée{cross_msg} (Prix: {current_price:.2f}, ATR: {atr:.4f})"
                         confidence_boost += 0.20  # Confiance élevée pour vrai breakout
                     
                     # Bonus si résistance forte
@@ -244,15 +282,20 @@ class ATR_Breakout_Strategy(BaseStrategy):
         if signal_side is None and nearest_support is not None:
             try:
                 support_level = float(nearest_support)
-                distance_to_support = (support_level - current_price) / current_price
+                # Distance mesurée vs le niveau (plus logique)
+                distance_to_support = (support_level - current_price) / support_level
+                
+                # Détection par crossing + proximité
+                bear_cross = (prev_price is not None and prev_price >= support_level > current_price)
                 
                 # BREAKOUT BAISSIER : Prix EN-DESSOUS du support + zone ATR
-                if is_downtrend and distance_to_support > 0 and distance_to_support <= self.support_proximity:
-                    # Vérifier si on est dans la zone de breakout limitée
-                    if current_price < support_level and current_price >= (support_level - breakout_zone):
+                if is_downtrend and (bear_cross or (distance_to_support > 0 and distance_to_support <= self.support_proximity)):
+                    # Vérifier si on est dans la zone de breakout élargie
+                    if current_price < support_level and current_price >= (support_level * (1 - breakout_zone / support_level)):
                         signal_side = "SELL"
                         proximity_type = "support_breakout"
-                        reason = f"BREAKOUT support {support_level:.2f} cassé (Prix: {current_price:.2f}, ATR: {atr:.4f})"
+                        cross_msg = " [CROSS]" if bear_cross else ""
+                        reason = f"BREAKOUT support {support_level:.2f} cassé{cross_msg} (Prix: {current_price:.2f}, ATR: {atr:.4f})"
                         confidence_boost += 0.20  # Confiance élevée pour vrai breakout
                     
                     # Bonus si support fort
@@ -267,6 +310,20 @@ class ATR_Breakout_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
+        # Fallback quand S/R manquent : breakout Bollinger + ATR
+        if signal_side is None and (nearest_resistance is None or nearest_support is None):
+            bb_upper = values.get('bb_upper')
+            bb_lower = values.get('bb_lower')
+            if _is_valid(atr_percentile) and atr_percentile >= 60:
+                if bb_upper is not None and current_price > float(bb_upper) and is_uptrend:
+                    signal_side = "BUY"
+                    reason = f"Breakout BB haute + ATR élevé ({atr_percentile:.0f}%)"
+                    confidence_boost += 0.15
+                elif bb_lower is not None and current_price < float(bb_lower) and is_downtrend:
+                    signal_side = "SELL"
+                    reason = f"Breakdown BB basse + ATR élevé ({atr_percentile:.0f}%)"
+                    confidence_boost += 0.15
+        
         # Pas de breakout détecté
         if signal_side is None:
             return {
@@ -411,8 +468,8 @@ class ATR_Breakout_Strategy(BaseStrategy):
         if momentum_score is not None and _is_valid(momentum_score):
             try:
                 momentum = float(momentum_score)
-                # Rejet immédiat si momentum contraire au breakout
-                if signal_side == "BUY" and momentum <= 50:
+                # Rejet si momentum trop contraire au breakout (assoupli)
+                if signal_side == "BUY" and momentum < 48:
                     return {
                         "side": None,
                         "confidence": 0.0,
@@ -420,7 +477,7 @@ class ATR_Breakout_Strategy(BaseStrategy):
                         "reason": f"Rejet breakout haussier : momentum trop faible ({momentum:.0f})",
                         "metadata": {"strategy": self.name, "momentum_score": momentum}
                     }
-                elif signal_side == "SELL" and momentum >= 50:
+                elif signal_side == "SELL" and momentum > 52:
                     return {
                         "side": None,
                         "confidence": 0.0,

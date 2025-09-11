@@ -28,13 +28,13 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres RESSERCÉS pour sélectivité optimale
-        self.min_confluence_score = 40      # Rehaussé (30 -> 40)
-        self.strong_confluence_score = 65   # Rehaussé (50 -> 65)
-        self.min_trend_alignment = 0.25     # Rehaussé (0.15 -> 0.25)
-        self.strong_trend_alignment = 0.45  # Rehaussé (0.35 -> 0.45)
-        self.volume_confirmation_min = 1.0  # Rehaussé (0.8 -> 1.0) - minimum neutre
-        self.volume_strong = 1.8            # Rehaussé (1.5 -> 1.8)
+        # Paramètres ASSOUPLIS pour plus de signaux premium
+        self.min_confluence_score = 30      # Assoupli (40 -> 30)
+        self.strong_confluence_score = 65   # Maintenu pour la qualité
+        self.min_trend_alignment = 0.25     # Maintenu 
+        self.strong_trend_alignment = 0.45  # Maintenu
+        self.volume_confirmation_min = 0.5  # Assoupli (1.0 -> 0.5) - plus accessible
+        self.volume_strong = 1.8            # Maintenu
         
         # FILTRES ASSOUPLIS
         self.min_ma_count_required = 2      # Assoupli (4 -> 2)
@@ -298,10 +298,10 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         overbought_count = sum(1 for v in oscillators.values() if v == 'overbought')
         total_count = len(oscillators)
         
-        # Seuils RESSERCÉS pour sélectivité (70%)
-        if oversold_count >= total_count * 0.7:  # 70% des oscillateurs (ressercé)
+        # Seuils ASSOUPLIS pour plus de signaux (50%)
+        if oversold_count >= total_count * 0.5:  # 50% des oscillateurs (assoupli)
             return {'confluence': 'oversold', 'strength': oversold_count / total_count, 'count': total_count}
-        elif overbought_count >= total_count * 0.7:
+        elif overbought_count >= total_count * 0.5:
             return {'confluence': 'overbought', 'strength': overbought_count / total_count, 'count': total_count}
         else:
             # Pas de consensus majoritaire
@@ -421,20 +421,28 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         base_confidence = 0.65  # Harmonisé avec autres stratégies
         confidence_boost = 0.0
         
-        # LOGIQUE SIMPLIFIÉE ET SÉLECTIVE - Seulement setups parfaits
-        if ma_analysis['direction'] == "bullish" and ma_analysis['alignment_score'] >= 0.7:
-            # Setup haussier STRICT : MA parfaitement alignées + oscillateurs parfaits
+        # LOGIQUE ASSOUPLIE - Setups solides à parfaits
+        if ma_analysis['direction'] == "bullish" and ma_analysis['alignment_score'] >= 0.5:  # Assoupli 0.7 -> 0.5
+            # Setup haussier : MA bien alignées + oscillateurs consensus
             if osc_analysis['confluence'] == 'oversold':
                 signal_side = "BUY"
-                reason = f"Setup PARFAIT BUY: MA alignées ({ma_analysis['alignment_score']:.2f}) + oscillateurs consensus ({osc_analysis['strength']:.2f})"
-                confidence_boost += 0.30  # Boost unique pour setup parfait
+                if ma_analysis['alignment_score'] >= 0.7:
+                    reason = f"Setup PARFAIT BUY: MA parfaites ({ma_analysis['alignment_score']:.2f}) + oscillateurs consensus ({osc_analysis['strength']:.2f})"
+                    confidence_boost += 0.30  # Boost max pour parfait
+                else:
+                    reason = f"Setup SOLIDE BUY: MA alignées ({ma_analysis['alignment_score']:.2f}) + oscillateurs consensus ({osc_analysis['strength']:.2f})"
+                    confidence_boost += 0.20  # Boost réduit pour solide
             
-        elif ma_analysis['direction'] == "bearish" and ma_analysis['alignment_score'] >= 0.7:
-            # Setup baissier STRICT : MA parfaitement alignées + oscillateurs parfaits  
+        elif ma_analysis['direction'] == "bearish" and ma_analysis['alignment_score'] >= 0.5:  # Assoupli 0.7 -> 0.5
+            # Setup baissier : MA bien alignées + oscillateurs consensus  
             if osc_analysis['confluence'] == 'overbought':
                 signal_side = "SELL"
-                reason = f"Setup PARFAIT SELL: MA alignées ({ma_analysis['alignment_score']:.2f}) + oscillateurs consensus ({osc_analysis['strength']:.2f})"
-                confidence_boost += 0.30  # Boost unique pour setup parfait
+                if ma_analysis['alignment_score'] >= 0.7:
+                    reason = f"Setup PARFAIT SELL: MA parfaites ({ma_analysis['alignment_score']:.2f}) + oscillateurs consensus ({osc_analysis['strength']:.2f})"
+                    confidence_boost += 0.30  # Boost max pour parfait
+                else:
+                    reason = f"Setup SOLIDE SELL: MA alignées ({ma_analysis['alignment_score']:.2f}) + oscillateurs consensus ({osc_analysis['strength']:.2f})"
+                    confidence_boost += 0.20  # Boost réduit pour solide
                 
         # Pas d'alignement clair ou contradictoire
         if signal_side is None:
@@ -484,18 +492,13 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
             confidence_boost += 0.08
             reason += f" + ADX fort ({adx_value:.1f})"
             
-        # VALIDATION DIRECTIONAL BIAS - REJET si contradictoire
+        # VALIDATION DIRECTIONAL BIAS - PÉNALITÉ au lieu de rejet
         directional_bias = values.get('directional_bias')
         if directional_bias:
             if (signal_side == "BUY" and directional_bias == "BEARISH") or \
                (signal_side == "SELL" and directional_bias == "BULLISH"):
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Setup MultiTF rejeté - bias contradictoire ({directional_bias} vs {signal_side})",
-                    "metadata": {"strategy": self.name, "directional_bias": directional_bias, "signal_side": signal_side}
-                }
+                confidence_boost -= 0.15  # Pénalité au lieu de rejet
+                reason += f" (bias contradictoire {directional_bias})"
             elif (signal_side == "BUY" and directional_bias == "BULLISH") or \
                  (signal_side == "SELL" and directional_bias == "BEARISH"):
                 confidence_boost += 0.20  # Boost renforcé pour alignment parfait
@@ -506,16 +509,11 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         regime_strength = values.get('regime_strength')
         
         if market_regime and regime_strength == "STRONG":
-            # Rejets stricts sur régimes contradictoires FORTS
+            # PÉNALITÉS au lieu de rejets stricts sur régimes contradictoires FORTS
             if (signal_side == "BUY" and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]) or \
                (signal_side == "SELL" and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]):
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": f"Rejet {signal_side}: régime fort contradictoire ({market_regime})",
-                    "metadata": {"strategy": self.name, "market_regime": market_regime, "regime_strength": regime_strength}
-                }
+                confidence_boost -= 0.15  # Pénalité au lieu de rejet
+                reason += f" (régime contradictoire {market_regime})"
             # Confirmations régimes parfaits
             elif (signal_side == "BUY" and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]) or \
                  (signal_side == "SELL" and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]):
@@ -529,15 +527,10 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                # REJET si volume trop faible pour MultiTF
+                # REJET seulement si volume vraiment très faible
                 if vol_ratio < self.volume_confirmation_min:
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Volume insuffisant ({vol_ratio:.1f}x < {self.volume_confirmation_min:.1f}x) pour setup MultiTF",
-                        "metadata": {"strategy": self.name, "volume_ratio": vol_ratio}
-                    }
+                    confidence_boost -= 0.20  # Pénalité forte mais pas rejet total
+                    reason += f" (volume faible {vol_ratio:.1f}x)"
                 elif vol_ratio >= self.volume_strong * 1.5:  # Volume exceptionnel
                     confidence_boost += 0.18
                     reason += f" + volume EXCEPTIONNEL ({vol_ratio:.1f}x)"
@@ -559,13 +552,13 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         # Calcul final optimisé sans double calcul
         confidence = min(base_confidence * (1 + confidence_boost), 0.90)
         
-        # Filtre final STRICT pour sélectivité MultiTF
-        if confidence < 0.55:  # Seuil rehaussé pour qualité
+        # Filtre final ASSOUPLI pour plus de signaux
+        if confidence < 0.45:  # Seuil abaissé pour accessibilité (0.55 -> 0.45)
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Setup MultiTF rejeté - confiance insuffisante ({confidence:.2f} < 0.55)",
+                "reason": f"Setup MultiTF rejeté - confiance insuffisante ({confidence:.2f} < 0.45)",
                 "metadata": {
                     "strategy": self.name,
                     "rejected_signal": signal_side,

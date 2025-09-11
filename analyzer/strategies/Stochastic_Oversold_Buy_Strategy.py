@@ -26,11 +26,11 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres Stochastic DURCIS - Vrais oversolds
-        self.oversold_threshold = 18  # Seuil durci pour éviter bruit crypto
-        self.exit_oversold_threshold = 25  # Seuil exit maintenu
+        # Paramètres Stochastic ASSOUPLIS - Oversolds réalistes
+        self.oversold_threshold = 22  # Seuil assoupli pour plus de signaux
+        self.exit_oversold_threshold = 30  # Seuil exit assoupli
         self.overbought_threshold = 80  # Seuil de surachat standard
-        self.min_crossover_separation = 3  # Distance durcie pour éviter mini croisements
+        self.min_crossover_separation = 1.5  # Distance assouplie pour petits croisements
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs Stochastic et confirmation."""
@@ -137,46 +137,40 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
-        # REJETS CRITIQUES avant création signal
+        # Momentum faible = pénalité au lieu de rejet
+        momentum_penalty = 0.0
         momentum_score = values.get('momentum_score')
         if momentum_score is not None:
             try:
                 momentum_val = float(momentum_score)
-                if momentum_val < 40:  # Momentum trop faible = rejet
+                if momentum_val < 35:  # Momentum vraiment trop faible = rejet
                     return {
                         "side": None,
                         "confidence": 0.0,
                         "strength": "weak",
-                        "reason": f"Rejet BUY Stoch: momentum trop faible ({momentum_val})",
+                        "reason": f"Rejet BUY Stoch: momentum critique ({momentum_val})",
                         "metadata": {"strategy": self.name, "momentum_score": momentum_val}
                     }
+                elif momentum_val < 45:  # Momentum faible = pénalité
+                    momentum_penalty = -0.10
             except (ValueError, TypeError):
                 pass
         
-        # Bias contradictoire = rejet
+        # Bias contradictoire = pénalité au lieu de rejet
+        bias_penalty = 0.0
         directional_bias = values.get('directional_bias')
         if directional_bias == "BEARISH":
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Rejet BUY Stoch: bias contraire (BEARISH)",
-                "metadata": {"strategy": self.name, "directional_bias": directional_bias}
-            }
+            bias_penalty = -0.15  # Pénalité au lieu de rejet
         
-        # Market regime contradictoire = rejet
+        # Market regime contradictoire = pénalité au lieu de rejet
+        regime_penalty = 0.0
         market_regime = values.get('market_regime')
         if market_regime == "TRENDING_BEAR":
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Rejet BUY Stoch: marché baissier (falling knife)",
-                "metadata": {"strategy": self.name, "market_regime": market_regime}
-            }
+            regime_penalty = -0.20  # Pénalité forte mais pas rejet total
         
-        # Créer le signal d'achat avec confirmations
-        return self._create_oversold_buy_signal(values, current_price or 0.0, stoch_analysis, buy_condition)
+        # Créer le signal d'achat avec confirmations et pénalités
+        return self._create_oversold_buy_signal(values, current_price or 0.0, stoch_analysis, buy_condition, 
+                                              momentum_penalty + bias_penalty + regime_penalty)
         
     def _analyze_stochastic_conditions(self, values: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Analyse les conditions actuelles du Stochastic."""
@@ -272,11 +266,15 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         }
         
     def _create_oversold_buy_signal(self, values: Dict[str, Any], current_price: float,
-                                   stoch_analysis: Dict[str, Any], buy_condition: Dict[str, Any]) -> Dict[str, Any]:
+                                   stoch_analysis: Dict[str, Any], buy_condition: Dict[str, Any], 
+                                   external_penalties: float = 0.0) -> Dict[str, Any]:
         """Crée le signal d'achat oversold avec confirmations."""
         signal_side = "BUY"  # Stratégie uniquement orientée achat
-        base_confidence = 0.65  # Augmentée pour compenser pénalités
+        base_confidence = 0.55  # Abaissée pour plus d'accessibilité (0.65 -> 0.55)
         confidence_boost = 0.0
+        
+        # Appliquer les pénalités externes
+        confidence_boost += external_penalties
         
         stoch_k = stoch_analysis['stoch_k']
         stoch_d = stoch_analysis['stoch_d']
@@ -320,12 +318,12 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         if rsi_14 is not None:
             try:
                 rsi = float(rsi_14)
-                # RSI plus strict pour vrais oversolds
+                # RSI assoupli pour plus de cas
                 if rsi <= 25:  # RSI survente forte
                     confidence_boost += 0.12
                     reason_parts.append(f"RSI{rsi:.0f}")
-                elif rsi <= 30:  # RSI favorable durci
-                    confidence_boost += 0.06
+                elif rsi <= 30:  # RSI favorable (maintenu)
+                    confidence_boost += 0.08  # Légèrement augmenté
                 elif rsi >= 65:  # Seuil maintenu
                     confidence_boost -= 0.05  # Pénalité réduite
                     reason += f" RSI élevé ({rsi:.1f})"
@@ -337,11 +335,11 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         if williams_r is not None:
             try:
                 wr = float(williams_r)
-                if wr <= -85:  # Seuil plus strict (-85 au lieu de -80)
-                    confidence_boost += 0.08  # Réduit de 0.12
+                if wr <= -80:  # Seuil assoupli (-80 au lieu de -85)
+                    confidence_boost += 0.10  # Augmenté
                     reason += f" + Williams R survente forte ({wr:.1f})"
-                elif wr <= -70:  # Seuil plus strict (-70 au lieu de -60)
-                    confidence_boost += 0.05  # Réduit de 0.08
+                elif wr <= -65:  # Seuil assoupli (-65 au lieu de -70)
+                    confidence_boost += 0.06  # Augmenté
                     reason += f" + Williams R favorable ({wr:.1f})"
             except (ValueError, TypeError):
                 pass
@@ -391,11 +389,11 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
                 support = float(nearest_support)
                 distance_to_support = abs(current_price - support) / current_price
                 
-                if distance_to_support <= 0.015:  # Seuil plus strict (1.5% au lieu de 2%)
-                    confidence_boost += 0.10  # Réduit de 0.15
+                if distance_to_support <= 0.03:  # Seuil assoupli (3% au lieu de 1.5%)
+                    confidence_boost += 0.12  # Augmenté
                     reason += " + très proche support"
-                elif distance_to_support <= 0.03:  # Seuil réduit (3% au lieu de 5%)
-                    confidence_boost += 0.05  # Réduit de 0.08
+                elif distance_to_support <= 0.05:  # Seuil assoupli (5% au lieu de 3%)
+                    confidence_boost += 0.07  # Augmenté
                     reason += " + support proche"
             except (ValueError, TypeError):
                 pass
@@ -440,10 +438,12 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
                 if vol_ratio >= 2.0:  # Volume très élevé
                     confidence_boost += 0.12
                     reason += f" + volume exceptionnel ({vol_ratio:.1f}x)"
-                elif vol_ratio >= 1.5:  # Volume élevé
+                elif vol_ratio >= 1.2:  # Volume élevé (assoupli 1.5 -> 1.2)
                     confidence_boost += 0.08
                     reason += f" + volume élevé ({vol_ratio:.1f}x)"
-                # Volume <1.5x = neutre, pas de bonus
+                elif vol_ratio >= 1.0:  # Volume normal = petit bonus
+                    confidence_boost += 0.03
+                    reason += f" + volume normal ({vol_ratio:.1f}x)"
             except (ValueError, TypeError):
                 pass
                 
