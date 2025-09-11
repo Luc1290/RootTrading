@@ -65,7 +65,8 @@ class CoordinatorService:
         self.app.route('/health', methods=['GET'])(self.health_check)
         self.app.route('/diagnostic', methods=['GET'])(self.diagnostic)
         self.app.route('/status', methods=['GET'])(self.get_status)
-        self.app.route('/stats', methods=['GET'])(self.get_stats)   
+        self.app.route('/stats', methods=['GET'])(self.get_stats)
+        self.app.route('/universe', methods=['GET'])(self.get_universe)   
     
     def health_check(self):
         """
@@ -131,6 +132,25 @@ class CoordinatorService:
             }), 503
         
         return jsonify(self.coordinator.get_stats())
+    
+    def get_universe(self):
+        """
+        Récupère l'univers tradable actuel et les statistiques.
+        """
+        if not self.coordinator or not hasattr(self.coordinator, 'universe_manager'):
+            return jsonify({
+                "status": "not_initialized"
+            }), 503
+        
+        try:
+            universe_stats = self.coordinator.get_universe_stats()
+            return jsonify(universe_stats)
+        except Exception as e:
+            logger.error(f"Erreur récupération univers: {e}")
+            return jsonify({
+                "status": "error",
+                "error": str(e)
+            }), 500
     
     def _check_service_health(self, service_url):
         """
@@ -282,13 +302,23 @@ class CoordinatorService:
         logger.info("Arrêt du service Coordinator...")
         self.running = False
         
-        # Arrêter les composants
-        if self.redis_client:
-            self.redis_client.close()
-            self.redis_client = None
-        
+        # Arrêter les composants proprement
         if self.coordinator:
-            self.coordinator = None
+            try:
+                # Utiliser la méthode shutdown du coordinator pour un arrêt propre
+                self.coordinator.shutdown()
+            except Exception as e:
+                logger.error(f"Erreur arrêt coordinator: {e}")
+            finally:
+                self.coordinator = None
+        
+        if self.redis_client:
+            try:
+                self.redis_client.close()
+            except Exception as e:
+                logger.error(f"Erreur fermeture Redis: {e}")
+            finally:
+                self.redis_client = None
         
         logger.info("Service Coordinator terminé")
     
