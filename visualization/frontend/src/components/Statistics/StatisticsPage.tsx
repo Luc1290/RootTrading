@@ -398,12 +398,41 @@ function StatisticsPage() {
 
           <div className="chart-container">
             <div className="text-center">
-              <div className="text-2xl font-bold text-white">
+              <div className={`text-2xl font-bold ${
+                // Classification basée sur EV système global
+                (() => {
+                  const winRate = globalStats.winRate;
+                  const profitFactor = globalStats.profitFactor;
+                  const totalPnl = globalStats.totalPnl;
+                  
+                  // Système global: EV ≥ +0.07R, PF ≥ 1.25
+                  if (profitFactor >= 1.25 && totalPnl > 0) return 'text-green-400';
+                  if (profitFactor >= 1.15 && totalPnl > 0) return 'text-lime-400';
+                  if (profitFactor >= 1.05 && totalPnl >= 0) return 'text-yellow-400';
+                  if (profitFactor >= 1.0) return 'text-orange-400';
+                  return 'text-red-400';
+                })()
+              }`}>
                 {formatPercent(globalStats.winRate)}
               </div>
-              <div className="text-sm text-gray-400">Taux de Réussite</div>
-              <div className={`text-sm mt-1 ${globalStats.winRate >= 50 ? 'text-green-400' : 'text-red-400'}`}>
-                🎯 {globalStats.totalTrades} trades
+              <div className="text-sm text-gray-400">Win Rate Système</div>
+              <div className={`text-sm mt-1 ${
+                globalStats.profitFactor >= 1.25 ? 'text-green-400' :
+                globalStats.profitFactor >= 1.15 ? 'text-lime-400' :
+                globalStats.profitFactor >= 1.05 ? 'text-yellow-400' :
+                globalStats.profitFactor >= 1.0 ? 'text-orange-400' : 'text-red-400'
+              }`}>
+                🎯 {globalStats.totalTrades} trades • PF: {globalStats.profitFactor.toFixed(2)}
+              </div>
+              <div className="text-xs opacity-75 mt-1">
+                {(() => {
+                  const pf = globalStats.profitFactor;
+                  if (pf >= 1.25) return '💎 Système Optimal';
+                  if (pf >= 1.15) return '🟢 Très Performant';
+                  if (pf >= 1.05) return '🟡 Rentable';
+                  if (pf >= 1.0) return '🟠 Équilibre';
+                  return '🔴 À Optimiser';
+                })()}
               </div>
             </div>
           </div>
@@ -547,7 +576,10 @@ function StatisticsPage() {
                   <th className="text-right py-3 px-4 text-gray-300">Signaux Émis</th>
                   <th className="text-right py-3 px-4 text-gray-300">Trades Participés</th>
                   <th className="text-right py-3 px-4 text-gray-300">Taux Participation</th>
-                  <th className="text-right py-3 px-4 text-gray-300">Win Rate</th>
+                  <th className="text-right py-3 px-4 text-gray-300">
+                    Win Rate & Qualité
+                    <div className="text-xs font-normal opacity-75">WR% + PF/RR/EV</div>
+                  </th>
                   <th className="text-right py-3 px-4 text-gray-300">P&L Moy</th>
                   <th className="text-right py-3 px-4 text-gray-300">P&L Total</th>
                   <th className="text-right py-3 px-4 text-gray-300">Max Gain</th>
@@ -602,10 +634,94 @@ function StatisticsPage() {
                       )}
                     </td>
                     <td className={`py-3 px-4 text-right font-mono ${
-                      strategy.winRate >= 50 ? 'text-green-400' : 
-                      strategy.winRate > 0 ? 'text-orange-400' : 'text-gray-500'
+                      // Classification basée sur EV et Profit Factor selon famille de stratégie
+                      (() => {
+                        const trades = strategy.trades || 0;
+                        const winRate = strategy.winRate || 0;
+                        const avgPnl = strategy.avgPnl || 0;
+                        const totalPnl = strategy.totalPnl || 0;
+                        
+                        if (trades === 0) return 'text-gray-500';
+                        
+                        // Estimation du R:R et calcul de l'EV
+                        const profitFactor = totalPnl > 0 && strategy.max_loss ? 
+                          Math.abs(totalPnl / (strategy.max_loss * (100 - winRate) / 100)) : 1;
+                        const estimatedRR = strategy.max_gain && strategy.max_loss ? 
+                          Math.abs(strategy.max_gain / strategy.max_loss) : 1;
+                        
+                        // Classification par type de stratégie (basée sur le nom)
+                        const strategyName = strategy.strategy.toLowerCase();
+                        const isTrendFollowing = strategyName.includes('macd') || strategyName.includes('ema') || 
+                          strategyName.includes('adx') || strategyName.includes('hull') || strategyName.includes('breakout');
+                        const isMeanReversion = strategyName.includes('rsi') || strategyName.includes('stoch') || 
+                          strategyName.includes('williams') || strategyName.includes('bollinger') || strategyName.includes('oversold');
+                        const isLiquiditySweep = strategyName.includes('liquidity') || strategyName.includes('sweep');
+                        const isVolumeFlow = strategyName.includes('obv') || strategyName.includes('volume');
+                        const isMultiTF = strategyName.includes('multitf') || strategyName.includes('confluent');
+                        
+                        // Critères d'évaluation adaptés par famille
+                        if (isTrendFollowing || strategyName.includes('breakout')) {
+                          // Trend-following: 35-45% winrate avec R:R ≥ 1.6-2.2
+                          if (winRate >= 35 && estimatedRR >= 1.6 && avgPnl > 0) return 'text-green-400';
+                          if (winRate >= 30 && estimatedRR >= 2.0 && profitFactor >= 1.25) return 'text-lime-400';
+                          if (winRate >= 25 && profitFactor >= 1.1) return 'text-yellow-400';
+                        } else if (isMeanReversion) {
+                          // Mean-reversion: 55-65% winrate avec R:R ≈ 0.7-1.1
+                          if (winRate >= 55 && avgPnl > 0) return 'text-green-400';
+                          if (winRate >= 50 && profitFactor >= 1.2) return 'text-lime-400';
+                          if (winRate >= 45 && profitFactor >= 1.1) return 'text-yellow-400';
+                        } else if (isLiquiditySweep) {
+                          // Liquidity sweep: 52-60% avec R:R ≈ 1.2-1.6
+                          if (winRate >= 52 && estimatedRR >= 1.2 && avgPnl > 0) return 'text-green-400';
+                          if (winRate >= 48 && profitFactor >= 1.25) return 'text-lime-400';
+                          if (winRate >= 42 && profitFactor >= 1.1) return 'text-yellow-400';
+                        } else if (isVolumeFlow) {
+                          // Volume/OBV: 45-55% avec R:R ≈ 1.1-1.5
+                          if (winRate >= 45 && estimatedRR >= 1.1 && avgPnl > 0) return 'text-green-400';
+                          if (winRate >= 40 && profitFactor >= 1.2) return 'text-lime-400';
+                          if (winRate >= 35 && profitFactor >= 1.1) return 'text-yellow-400';
+                        } else if (isMultiTF) {
+                          // Multi-TF Confluence: 50-58% avec R:R ≈ 1.3-1.8
+                          if (winRate >= 50 && estimatedRR >= 1.3 && avgPnl > 0) return 'text-green-400';
+                          if (winRate >= 45 && profitFactor >= 1.3) return 'text-lime-400';
+                          if (winRate >= 40 && profitFactor >= 1.15) return 'text-yellow-400';
+                        } else {
+                          // Stratégie générique: utilise les seuils standards
+                          if (winRate >= 52 && profitFactor >= 1.20 && avgPnl > 0) return 'text-green-400'; // Core
+                          if (winRate >= 42 && estimatedRR >= 1.7 && profitFactor >= 1.25) return 'text-lime-400'; // Opportuniste
+                          if (winRate >= 35 && profitFactor >= 1.1) return 'text-yellow-400'; // Acceptable
+                        }
+                        
+                        // Par défaut: rouge si pas profitable, orange si limite
+                        return avgPnl >= 0 ? 'text-orange-400' : 'text-red-400';
+                      })()
                     }`}>
-                      {strategy.winRate > 0 ? formatPercent(strategy.winRate) : '-'}
+                      {strategy.winRate > 0 ? (
+                        <div>
+                          <div>{formatPercent(strategy.winRate)}</div>
+                          <div className="text-xs opacity-75">
+                            {(() => {
+                              const trades = strategy.trades || 0;
+                              const avgPnl = strategy.avgPnl || 0;
+                              const totalPnl = strategy.totalPnl || 0;
+                              
+                              if (trades === 0) return 'Pas de trades';
+                              
+                              // Estimation Profit Factor et R:R
+                              const estimatedPF = totalPnl > 0 && strategy.max_loss ? 
+                                Math.abs(totalPnl / (strategy.max_loss * (100 - strategy.winRate) / 100)) : 1;
+                              const estimatedRR = strategy.max_gain && strategy.max_loss ? 
+                                Math.abs(strategy.max_gain / strategy.max_loss) : 1;
+                              
+                              // Calcul EV approximatif en R
+                              const winRate = strategy.winRate / 100;
+                              const estimatedEV = (winRate * estimatedRR) - ((1 - winRate) * 1);
+                              
+                              return `PF:${estimatedPF.toFixed(1)} R:R:${estimatedRR.toFixed(1)} EV:${estimatedEV > 0 ? '+' : ''}${estimatedEV.toFixed(2)}R`;
+                            })()}
+                          </div>
+                        </div>
+                      ) : '-'}
                     </td>
                     <td className={`py-3 px-4 text-right font-mono ${
                       strategy.avgPnl >= 0 ? 'text-green-400' : 
@@ -665,9 +781,18 @@ function StatisticsPage() {
                       {formatCurrency(symbol.pnl)}
                     </td>
                     <td className={`py-3 px-4 text-right font-mono ${
-                      symbol.winRate >= 50 ? 'text-green-400' : 'text-red-400'
+                      // Évaluation basée sur PnL et nombre de trades pour fiabilité
+                      symbol.pnl > 0 && symbol.trades >= 5 ? 'text-green-400' :
+                      symbol.pnl > 0 && symbol.trades >= 2 ? 'text-lime-400' :
+                      symbol.winRate >= 50 && symbol.trades >= 3 ? 'text-yellow-400' :
+                      symbol.winRate > 0 ? 'text-orange-400' : 'text-red-400'
                     }`}>
-                      {formatPercent(symbol.winRate)}
+                      <div>{formatPercent(symbol.winRate)}</div>
+                      {symbol.trades >= 2 && (
+                        <div className="text-xs opacity-75">
+                          {symbol.trades} trades
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-right font-mono text-white">
                       {formatCurrency(symbol.lastPrice)}

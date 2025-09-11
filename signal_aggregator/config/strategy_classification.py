@@ -109,11 +109,29 @@ STRATEGY_FAMILIES = {
     }
 }
 
-# Mapping inverse : stratégie -> famille
+# Détection des doublons pour debug
+from collections import defaultdict
+_dups = defaultdict(list)
+for fam, cfg in STRATEGY_FAMILIES.items():
+    for s in cfg['strategies']:
+        _dups[s].append(fam)
+DUPLICATE_MEMBERSHIPS = {s: fams for s, fams in _dups.items() if len(fams) > 1}
+if DUPLICATE_MEMBERSHIPS:
+    print("⚠️  Doublons de familles détectés:", DUPLICATE_MEMBERSHIPS)
+
+# Mapping inverse : stratégie -> famille PRIMAIRE (évite l'écrasement silencieux)
 STRATEGY_TO_FAMILY = {}
 for family, config in STRATEGY_FAMILIES.items():
     for strategy in config['strategies']:
-        STRATEGY_TO_FAMILY[strategy] = family
+        # setdefault pour ne PAS écraser la famille primaire (première occurrence)
+        STRATEGY_TO_FAMILY.setdefault(strategy, family)
+
+# Mapping complet : stratégie -> toutes ses familles (pour features avancées)
+STRATEGY_FAMILY_TAGS = defaultdict(list)
+for family, cfg in STRATEGY_FAMILIES.items():
+    for s in cfg['strategies']:
+        if family not in STRATEGY_FAMILY_TAGS[s]:
+            STRATEGY_FAMILY_TAGS[s].append(family)
 
 # Configuration des ajustements de confidence selon le régime
 REGIME_CONFIDENCE_ADJUSTMENTS = {
@@ -193,7 +211,9 @@ REGIME_CONFIDENCE_ADJUSTMENTS = {
         'mean_reversion': {'BUY': 0.9, 'SELL': 0.9},
         'breakout': {'BUY': 0.9, 'SELL': 0.9},
         'volume_based': {'BUY': 0.9, 'SELL': 0.9},
-        'structure_based': {'BUY': 0.95, 'SELL': 0.95}     # Moins pénalisé car adaptable
+        'structure_based': {'BUY': 0.95, 'SELL': 0.95},    # Moins pénalisé car adaptable
+        'flow': {'BUY': 0.95, 'SELL': 0.95},               # Adaptable comme volume
+        'contrarian': {'BUY': 0.9, 'SELL': 0.9}            # Conservateur en régime inconnu
     }
 }
 
@@ -236,15 +256,45 @@ REGIME_MIN_CONFIDENCE = {
 
 def get_strategy_family(strategy_name: str) -> str:
     """
-    Retourne la famille d'une stratégie.
+    Retourne la famille PRIMAIRE d'une stratégie.
     
     Args:
         strategy_name: Nom de la stratégie
         
     Returns:
-        Famille de la stratégie ou 'unknown'
+        Famille primaire de la stratégie ou 'unknown'
     """
     return STRATEGY_TO_FAMILY.get(strategy_name, 'unknown')
+
+def get_canonical_family(family: str) -> str:
+    """
+    Retourne la famille canonique pour le comptage consensus.
+    Gère les équivalences (ex: flow -> volume_based).
+    
+    Args:
+        family: Famille à normaliser
+        
+    Returns:
+        Famille canonique pour le consensus
+    """
+    # Équivalences pour le consensus
+    equivalences = {
+        'flow': 'volume_based',  # flow compte comme volume_based
+        # Ajouter d'autres équivalences si nécessaire
+    }
+    return equivalences.get(family, family)
+
+def get_all_strategy_families(strategy_name: str) -> list:
+    """
+    Retourne toutes les familles d'une stratégie (primaire + secondaires).
+    
+    Args:
+        strategy_name: Nom de la stratégie
+        
+    Returns:
+        Liste des familles (vide si stratégie inconnue)
+    """
+    return STRATEGY_FAMILY_TAGS.get(strategy_name, [])
 
 def get_regime_adjustment(strategy_name: str, market_regime: str, signal_side: str) -> float:
     """
