@@ -104,36 +104,32 @@ class RSI_Cross_Strategy(BaseStrategy):
                 confidence_boost += 0.15
                 
         if signal_side:
-            # Base confidence comme PPO
-            base_confidence = 0.65
+            # Base confidence réduite pour plus d'accessibilité
+            base_confidence = 0.55
             
             # Ajustement avec momentum_score (format 0-100, 50=neutre) - CRYPTO OPTIMISÉ
             momentum_score = values.get('momentum_score', 50)
             if momentum_score:
                 try:
                     momentum_val = float(momentum_score)
-                    # Rejet momentum contradictoire
-                    if signal_side == "BUY" and momentum_val < 40:
-                        return {
-                            "side": None,
-                            "confidence": 0.0,
-                            "strength": "weak",
-                            "reason": f"Rejet RSI BUY: momentum trop faible ({momentum_val:.0f})",
-                            "metadata": {"strategy": self.name, "rsi_14": rsi_14, "momentum_score": momentum_val}
-                        }
-                    if signal_side == "SELL" and momentum_val > 60:
-                        return {
-                            "side": None,
-                            "confidence": 0.0,
-                            "strength": "weak",
-                            "reason": f"Rejet RSI SELL: momentum trop fort ({momentum_val:.0f})",
-                            "metadata": {"strategy": self.name, "rsi_14": rsi_14, "momentum_score": momentum_val}
-                        }
-                    # Bonus momentum si aligné
-                    if (signal_side == "BUY" and momentum_val > 55) or \
-                       (signal_side == "SELL" and momentum_val < 45):
-                        confidence_boost += 0.10
-                        reason += f" + momentum"
+                    # Pénalité momentum au lieu de rejet (momentum réel 49.5-50.5)
+                    momentum_penalty = 0.0
+                    if signal_side == "BUY" and momentum_val < 49.8:  # Sous moyenne
+                        momentum_penalty = -0.10
+                        reason += f" - momentum faible ({momentum_val:.1f})"
+                    elif signal_side == "SELL" and momentum_val > 50.2:  # Au-dessus moyenne
+                        momentum_penalty = -0.10
+                        reason += f" - momentum fort ({momentum_val:.1f})"
+                    else:
+                        momentum_penalty = 0.05  # Petit bonus si dans la bonne direction
+                    # Bonus momentum avec seuils réalistes
+                    if (signal_side == "BUY" and momentum_val > 50.3) or \
+                       (signal_side == "SELL" and momentum_val < 49.7):
+                        confidence_boost += 0.12  # Augmenté car plus rare
+                        reason += f" + momentum favorable"
+
+                    # Appliquer pénalité momentum
+                    confidence_boost += momentum_penalty
                 except (ValueError, TypeError):
                     pass
                     
@@ -151,45 +147,32 @@ class RSI_Cross_Strategy(BaseStrategy):
                     confidence_boost += 0.05
                     reason += f" et tendance {trend_str}"
                 
-            # Rejet bias contradictoire
+            # Pénalité bias au lieu de rejet
             directional_bias = values.get('directional_bias')
             if directional_bias:
                 if signal_side == "BUY" and directional_bias == "BEARISH":
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": "Rejet RSI BUY: bias contraire (BEARISH)",
-                        "metadata": {"strategy": self.name, "rsi_14": rsi_14, "directional_bias": directional_bias}
-                    }
-                if signal_side == "SELL" and directional_bias == "BULLISH":
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": "Rejet RSI SELL: bias contraire (BULLISH)",
-                        "metadata": {"strategy": self.name, "rsi_14": rsi_14, "directional_bias": directional_bias}
-                    }
-                # Bonus si aligné
-                if (signal_side == "BUY" and directional_bias == "BULLISH") or \
-                   (signal_side == "SELL" and directional_bias == "BEARISH"):
-                    confidence_boost += 0.10
-                    reason += " + bias"
+                    confidence_boost -= 0.15  # Pénalité au lieu de rejet
+                    reason += " - bias contraire"
+                elif signal_side == "SELL" and directional_bias == "BULLISH":
+                    confidence_boost -= 0.15  # Pénalité au lieu de rejet
+                    reason += " - bias contraire"
+                elif (signal_side == "BUY" and directional_bias == "BULLISH") or \
+                     (signal_side == "SELL" and directional_bias == "BEARISH"):
+                    confidence_boost += 0.15  # Bonus augmenté
+                    reason += " + bias aligné"
                     
             # Ajustement avec confluence_score (format 0-100)
             confluence_score = values.get('confluence_score', 0)
             if confluence_score:
                 try:
                     confluence_val = float(confluence_score)
-                    # Rejet confluence trop faible
-                    if confluence_val < 40:
-                        return {
-                            "side": None,
-                            "confidence": 0.0,
-                            "strength": "weak",
-                            "reason": f"Rejet RSI: confluence insuffisante ({confluence_val:.0f})",
-                            "metadata": {"strategy": self.name, "rsi_14": rsi_14, "confluence_score": confluence_val}
-                        }
+                    # Pénalité confluence faible au lieu de rejet
+                    if confluence_val < 35:  # Seuil plus bas
+                        confidence_boost -= 0.15
+                        reason += f" - confluence très faible ({confluence_val:.0f})"
+                    elif confluence_val < 45:
+                        confidence_boost -= 0.08
+                        reason += f" - confluence faible ({confluence_val:.0f})"
                     # Bonus confluence si bonne
                     if confluence_val > 60:
                         confidence_boost += 0.08
@@ -242,14 +225,14 @@ class RSI_Cross_Strategy(BaseStrategy):
                     confidence_boost -= 0.06  # Pénalité réduite (était -0.08)
                     reason += " avec divergence multi-TF modérée"
                     
-            # Filtre ADX pour éviter signaux en ranging (AJUSTÉ)
+            # ADX optionnel - pas de pénalité forte
             adx = values.get('adx_14')
-            if adx and float(adx) < 22:  # Seuil relevé pour éviter bruit
-                confidence_boost -= 0.10
-                reason += f" - ADX faible"
-            elif adx and float(adx) > 28:
-                confidence_boost += 0.12
+            if adx and float(adx) > 30:  # Seulement bonus si ADX très fort
+                confidence_boost += 0.08
                 reason += f" + ADX fort"
+            elif adx and float(adx) < 18:  # Pénalité seulement si ADX très faible
+                confidence_boost -= 0.05
+                reason += f" - ADX très faible"
             
             # Bonus volatilité optionnel
             atr_percentile = values.get('atr_percentile')
@@ -272,13 +255,13 @@ class RSI_Cross_Strategy(BaseStrategy):
             # Calcul confidence final
             confidence = min(base_confidence * (1 + confidence_boost), 1.0)  # Harmonisé avec autres strats
             
-            # Seuil final assoupli
-            if confidence < 0.40:
+            # Seuil final très assoupli
+            if confidence < 0.30:  # Très abaissé pour plus de signaux
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": f"Signal RSI rejeté - confiance insuffisante ({confidence:.2f} < 0.40)",
+                    "reason": f"Signal RSI rejeté - confiance critique ({confidence:.2f} < 0.30)",
                     "metadata": {
                         "strategy": self.name,
                         "symbol": self.symbol,

@@ -30,15 +30,15 @@ class TrailingSellManager:
         self.db_connection = db_connection
         
         # Configuration trailing sell - OPTIMISÉE avec ATR
-        self.base_min_gain_for_trailing = 0.003  # 0.3% base 
-        self.base_sell_margin = 0.008  # 0.8% marge base
-        self.max_drop_threshold = 0.010  # 1.0% de chute max depuis le pic - protection stricte
-        self.immediate_sell_drop = 0.015  # 1.5% de chute = vente immédiate - réaction rapide
+        self.base_min_gain_for_trailing = 0.005  # 0.5% base (augmenté de 0.3%)
+        self.base_sell_margin = 0.012  # 1.2% marge base (augmenté de 0.8%)
+        self.max_drop_threshold = 0.015  # 1.5% de chute max depuis le pic (augmenté de 1.0%)
+        self.immediate_sell_drop = 0.020  # 2.0% de chute = vente immédiate (augmenté de 1.5%)
         
-        # Configuration stop-loss adaptatif - ÉQUILIBRÉ : strict mais pas excessif
-        self.stop_loss_percent_base = 0.015  # 1.5% de base - strict mais raisonnable
-        self.stop_loss_percent_bullish = 0.018  # 1.8% en tendance haussière - équilibré
-        self.stop_loss_percent_strong_bullish = 0.022  # 2.2% en tendance très haussière - tolérant
+        # Configuration stop-loss adaptatif - PLUS STRICT pour couper les pertes rapidement
+        self.stop_loss_percent_base = 0.010  # 1.0% de base - très strict (réduit de 1.5%)
+        self.stop_loss_percent_bullish = 0.012  # 1.2% en tendance haussière (réduit de 1.8%)
+        self.stop_loss_percent_strong_bullish = 0.015  # 1.5% en tendance très haussière (réduit de 2.2%)
         
         logger.info("✅ TrailingSellManager initialisé")
     
@@ -102,15 +102,15 @@ class TrailingSellManager:
             logger.info(f"🔍 Position gagnante détectée: +{gain_percent*100:.2f}%, vérification take profit et trailing")
             
             # === TAKE PROFIT PROGRESSIF - RIDE LES PUMPS MAIS FERME EFFICACEMENT ===
-            # Désactiver temporairement le TP progressif si gain < 1% pour permettre sortie rapide
-            if gain_percent >= 0.01:  # Activer TP progressif seulement après +1%
+            # Désactiver temporairement le TP progressif si gain < 1.5% pour permettre sortie rapide
+            if gain_percent >= 0.015:  # Activer TP progressif seulement après +1.5%
                 should_take_profit, tp_reason = self._check_progressive_take_profit(symbol, gain_percent)
                 if should_take_profit:
                     logger.info(f"💰 TAKE PROFIT PROGRESSIF DÉCLENCHÉ: {tp_reason}")
                     self._cleanup_references(symbol)
                     return True, tp_reason
             else:
-                logger.debug(f"TP progressif désactivé pour {symbol} (gain {gain_percent*100:.2f}% < 1%)")
+                logger.debug(f"TP progressif désactivé pour {symbol} (gain {gain_percent*100:.2f}% < 1.5%)")
             
             
             # Seuils adaptatifs basés sur ATR
@@ -418,15 +418,15 @@ class TrailingSellManager:
                     'adaptive_sl': self.stop_loss_percent_base
                 }
             
-            # Calculer les seuils adaptatifs selon tes formules
-            # trailing_margin = clamp(0.6%, 1.5%, 0.8 * ATR%)
-            trailing_margin = max(0.006, min(0.015, 0.8 * atr_percent))
+            # Calculer les seuils adaptatifs selon tes formules - PLUS PERMISSIFS
+            # trailing_margin = clamp(0.8%, 2.0%, 1.0 * ATR%)
+            trailing_margin = max(0.008, min(0.020, 1.0 * atr_percent))
             
-            # activate_trailing_gain = max(0.3%, 0.2 * ATR%)  
-            activate_trailing_gain = max(0.003, 0.2 * atr_percent)
+            # activate_trailing_gain = max(0.5%, 0.3 * ATR%)  
+            activate_trailing_gain = max(0.005, 0.3 * atr_percent)
             
-            # adaptive_sl = max(1.5*ATR%, 1.5%) capped at 3.5%
-            adaptive_sl = min(0.035, max(1.5 * atr_percent, 0.015))
+            # adaptive_sl = max(1.2*ATR%, 1.0%) capped at 2.0% - PLUS STRICT
+            adaptive_sl = min(0.020, max(1.2 * atr_percent, 0.010))
             
             logger.debug(f"🧠 Seuils ATR pour {symbol}: trailing={trailing_margin*100:.2f}%, activation={activate_trailing_gain*100:.2f}%, SL={adaptive_sl*100:.2f}% (ATR={atr_percent*100:.2f}%)")
             
@@ -516,8 +516,8 @@ class TrailingSellManager:
             # Combiner ATR avec les autres facteurs
             adaptive_threshold = float(atr_based_sl) * float(regime_factor) * float(support_factor) * float(time_factor)
             
-            # Contraintes finales - conserve les bornes pour sécurité
-            adaptive_threshold = max(0.015, min(0.035, adaptive_threshold))  # 1.5%-3.5%
+            # Contraintes finales - bornes plus strictes pour couper les pertes rapidement
+            adaptive_threshold = max(0.008, min(0.020, adaptive_threshold))  # 0.8%-2.0% (réduit de 1.5%-3.5%)
             
             logger.debug(f"🧠 Stop-loss adaptatif ATR+analyse {symbol}: {adaptive_threshold*100:.2f}%")
             
@@ -790,8 +790,8 @@ class TrailingSellManager:
             historical_max_tp = current_tp_level
         
         # VENDRE si rechute significative depuis le palier max (tolérance plus large pour éviter sur-trading)
-        # Ex: palier 2% -> vendre si on descend sous 1.4% (2% - 30% de 2%)
-        tolerance_factor = 0.70  # Garde 70% du palier atteint (plus permissif)
+        # Ex: palier 2% -> vendre si on descend sous 1.6% (2% - 20% de 2%)
+        tolerance_factor = 0.80  # Garde 80% du palier atteint (plus permissif, était 70%)
         adjusted_threshold = historical_max_tp * tolerance_factor
         
         if gain_percent < adjusted_threshold:

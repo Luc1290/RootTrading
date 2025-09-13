@@ -28,10 +28,10 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres DURCIS pour vrais reversals
-        self.min_momentum_threshold = 55  # BUY si momentum > 55 (plus strict)
-        self.max_momentum_threshold = 45  # SELL si momentum < 45 (plus strict)
-        self.base_confidence = 0.65       # Base élevée maintenue
+        # Paramètres ASSOUPLIS pour reversals réalistes (momentum 49-54 observé)
+        self.min_momentum_threshold = 55  # BUY si momentum > 55 (assoupli de 55)
+        self.max_momentum_threshold = 45  # SELL si momentum < 45 (assoupli de 45)
+        self.base_confidence = 0.55       # Base réduite pour accessibilité
         
     def generate_signal(self) -> Dict[str, Any]:
         """Version ULTRA SIMPLIFIÉE pour crypto spot intraday."""
@@ -60,36 +60,26 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         
         # REJETS CRITIQUES avant signal
         
-        # Déterminer signal avec cohérence bias/momentum
+        # LOGIQUE REVERSAL ASSOUPLIE - Accepter les reversals naissants
         if directional_bias == 'BULLISH' and momentum_val > self.min_momentum_threshold:
             signal_side = "BUY"
             reason = "Reversal haussier cohérent (bias + momentum)"
             confidence_boost += 0.20  # Double confirmation
-            
-        elif directional_bias == 'BULLISH' and momentum_val <= self.min_momentum_threshold:
-            # Bias positif mais momentum faible = incohérent
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Rejet BUY: bias positif mais momentum faible ({momentum_val:.0f})",
-                "metadata": {"strategy": self.name}
-            }
-            
+
+        elif directional_bias == 'BULLISH' and momentum_val > 50:  # Assoupli: momentum > neutre
+            signal_side = "BUY"
+            reason = f"Reversal haussier naissant (bias positif, momentum {momentum_val:.1f})"
+            confidence_boost += 0.10  # Bonus réduit pour reversal naissant
+
         elif directional_bias == 'BEARISH' and momentum_val < self.max_momentum_threshold:
             signal_side = "SELL"
             reason = "Reversal baissier cohérent (bias + momentum)"
             confidence_boost += 0.20  # Double confirmation
-            
-        elif directional_bias == 'BEARISH' and momentum_val >= self.max_momentum_threshold:
-            # Bias négatif mais momentum élevé = incohérent
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Rejet SELL: bias négatif mais momentum élevé ({momentum_val:.0f})",
-                "metadata": {"strategy": self.name}
-            }
+
+        elif directional_bias == 'BEARISH' and momentum_val < 50:  # Assoupli: momentum < neutre
+            signal_side = "SELL"
+            reason = f"Reversal baissier naissant (bias négatif, momentum {momentum_val:.1f})"
+            confidence_boost += 0.10  # Bonus réduit pour reversal naissant
             
         elif momentum_val > self.min_momentum_threshold:
             signal_side = "BUY"
@@ -143,32 +133,30 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                 confidence_boost += 0.05  # Réduit
                 reason += " + trend modéré"
         
-        # Confluence score avec rejet
-        if conf_val < 40:  # Rejet direct si confluence trop faible
+        # Confluence score avec pénalité au lieu de rejet
+        if conf_val < 30:  # Seuil de rejet abaissé (40 -> 30)
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Rejet Supertrend: confluence insuffisante ({conf_val})",
+                "reason": f"Rejet Supertrend: confluence critique ({conf_val})",
                 "metadata": {"strategy": self.name, "confluence_score": conf_val}
             }
+        elif conf_val < 40:  # Pénalité pour confluence faible
+            confidence_boost -= 0.10
+            reason += f" - confluence faible ({conf_val:.0f})"
         elif conf_val >= 70:
             confidence_boost += 0.15
             reason += f" + confluence {conf_val:.0f}"
         elif conf_val >= 60:
             confidence_boost += 0.10
         
-        # Market regime avec rejets contradictoires
+        # Market regime avec pénalités au lieu de rejets stricts
         market_regime = values.get('market_regime')
         if (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or \
            (signal_side == "SELL" and market_regime == "TRENDING_BULL"):
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Rejet {signal_side}: régime contradictoire ({market_regime})",
-                "metadata": {"strategy": self.name, "market_regime": market_regime}
-            }
+            confidence_boost -= 0.25  # Pénalité forte mais pas rejet total
+            reason += f" - régime contradictoire ({market_regime})"
         elif market_regime == "RANGING":
             confidence_boost += 0.15  # Reversals excellents en ranging
             reason += " + ranging"
@@ -201,14 +189,13 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio < 0.8:
+                if vol_ratio < 0.5:  # Seuil plus strict pour malus
                     # Malus pour volume très faible
-                    confidence_boost -= 0.20
+                    confidence_boost -= 0.15  # Malus réduit
                     reason += f" - volume très faible ({vol_ratio:.2f}x)"
-                elif vol_ratio < 1.1:
-                    # Limiter les boosts si volume insuffisant
-                    confidence_boost = min(confidence_boost, 0.10)
-                    reason += f" - boost limité par volume faible ({vol_ratio:.2f}x)"
+                elif vol_ratio < 0.8:  # Pénalité légère
+                    confidence_boost -= 0.05
+                    reason += f" - volume faible ({vol_ratio:.2f}x)"
             except (ValueError, TypeError):
                 pass
         

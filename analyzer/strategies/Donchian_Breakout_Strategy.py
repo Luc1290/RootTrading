@@ -158,33 +158,27 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             nearest_support = float(values['nearest_support']) if _is_valid(values['nearest_support']) else None
             resistance_strength = values.get('resistance_strength')
             support_strength = values.get('support_strength')
-            
-            # Fallback Donchian pur si S/R manquent
-            if nearest_resistance is None and nearest_support is None:
+
+            # Valider que les valeurs ne sont pas à 0 (invalides)
+            if nearest_resistance is not None and nearest_resistance == 0:
+                nearest_resistance = None
+            if nearest_support is not None and nearest_support == 0:
+                nearest_support = None
+
+            # Fallback Donchian pur si S/R manquent ou invalides
+            if nearest_resistance is None or nearest_support is None:
                 donchian_levels = self._calculate_donchian_levels()
                 if donchian_levels['donchian_high'] is not None and donchian_levels['donchian_low'] is not None:
-                    nearest_resistance = donchian_levels['donchian_high']
-                    nearest_support = donchian_levels['donchian_low']
-                    resistance_strength = 'MODERATE'  # Par défaut pour Donchian pur
-                    support_strength = 'MODERATE'
-                else:
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": "Données insuffisantes pour canal Donchian",
-                        "metadata": {"strategy": self.name}
-                    }
+                    # Utiliser Donchian pour compléter les valeurs manquantes
+                    if nearest_resistance is None:
+                        nearest_resistance = donchian_levels['donchian_high']
+                        resistance_strength = 'MODERATE'  # Par défaut pour Donchian pur
+                    if nearest_support is None:
+                        nearest_support = donchian_levels['donchian_low']
+                        support_strength = 'MODERATE'
             
-            # Si toujours pas de niveaux après fallback
-            if nearest_resistance is None and nearest_support is None:
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": "Aucun niveau Donchian disponible - stratégie inapplicable",
-                    "metadata": {"strategy": self.name}
-                }
+            # Si toujours pas de niveaux après fallback, on peut continuer avec un seul niveau
+            # La stratégie peut fonctionner avec seulement support OU résistance
                 
         except (ValueError, TypeError) as e:
             return {
@@ -645,23 +639,14 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         """Valide que toutes les données requises sont présentes."""
         if not super().validate_data():
             return False
-            
-        # Pour cette stratégie, on a besoin au minimum des niveaux de support/résistance
-        required = ['nearest_support', 'nearest_resistance']
-        has_level = False
-        
-        for indicator in required:
-            if indicator in self.indicators and self.indicators[indicator] is not None:
-                has_level = True
-                break
-                
-        if not has_level:
-            logger.warning(f"{self.name}: Aucun niveau support/résistance disponible")
-            return False
-            
-        # Vérifier aussi qu'on a des données de prix
+
+        # Vérifier qu'on a des données de prix et au moins des high/low pour Donchian pur
         if not self.data or 'close' not in self.data or not self.data['close']:
             logger.warning(f"{self.name}: Données de prix manquantes")
             return False
-            
+
+        if 'high' not in self.data or not self.data['high'] or 'low' not in self.data or not self.data['low']:
+            logger.warning(f"{self.name}: Données high/low manquantes pour Donchian")
+            return False
+
         return True

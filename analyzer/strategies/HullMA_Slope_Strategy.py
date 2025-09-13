@@ -29,18 +29,16 @@ class HullMA_Slope_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # PARAMÈTRES CONTRARIAN ASSOUPLIS pour plus de signaux
-        self.hull_trend_threshold = 0.002      # 0.20% pente minimum (plus sélectif)
-        self.price_pullback_min = 0.004        # 0.4% pullback minimum (élargi)
-        self.price_pullback_max = 0.050        # 5.0% pullback maximum (élargi)
-        self.price_bounce_min = 0.004          # 0.4% bounce minimum (élargi)
-        self.price_bounce_max = 0.050          # 5.0% bounce maximum (élargi)
+        # PARAMÈTRES TREND-FOLLOWING RÉALISTES (abandon logique contrarian)
+        self.hull_trend_threshold_weak = 0.3   # 0.3° pour tendance faible (plus accessible)
+        self.hull_trend_threshold_strong = 1.2 # 1.2° pour tendance forte (maintenu)
+        # Pas de pullbacks/bounces - suivre les micro-tendances
         
-        # Seuils oscillateurs ASSOUPLIS pour plus de signaux
-        self.rsi_oversold_entry = 35           # RSI survente assoupli (35 vs 32)
-        self.rsi_overbought_entry = 65         # RSI surachat assoupli (65 vs 68)
-        self.stoch_oversold_entry = 25         # Stoch survente extrême
-        self.stoch_overbought_entry = 75       # Stoch surachat extrême
+        # Seuils oscillateurs TREND-FOLLOWING (plus momentum que contrarian)
+        self.rsi_bullish_min = 45              # RSI momentum haussier minimum
+        self.rsi_bearish_max = 55              # RSI momentum baissier maximum
+        self.momentum_bullish_min = 50.1       # Momentum > neutre pour BUY
+        self.momentum_bearish_max = 49.9       # Momentum < neutre pour SELL
         
         # Filtres qualité PLUS PERMISSIFS pour CRYPTO
         self.min_volume_ratio = 0.8            # Volume minimum ACCESSIBLE
@@ -113,20 +111,32 @@ class HullMA_Slope_Strategy(BaseStrategy):
             if trend_angle is not None:
                 try:
                     angle = float(trend_angle)
-                    # Convertir angle en pente normalisée - SEUIL ASSOUPLI
-                    angle_threshold_deg = 1.2  # 1.2 degrés minimum (assoupli pour plus de signaux)
-                    
-                    if angle >= angle_threshold_deg:
+                    # Seuils MICRO-TENDANCES plus accessibles
+                    if angle >= self.hull_trend_threshold_strong:  # 1.2°
                         return {
-                            'direction': 'bullish',
-                            'strength': 'strong' if angle >= 5.0 else 'moderate',
+                            'direction': 'strong_bullish',
+                            'strength': 'strong',
                             'reliable': True,
-                            'slope_proxy': angle / 45.0  # Normaliser
+                            'slope_proxy': angle / 45.0
                         }
-                    elif angle <= -angle_threshold_deg:
+                    elif angle >= self.hull_trend_threshold_weak:  # 0.3°
                         return {
-                            'direction': 'bearish', 
-                            'strength': 'strong' if angle <= -5.0 else 'moderate',
+                            'direction': 'weak_bullish',
+                            'strength': 'weak',
+                            'reliable': True,
+                            'slope_proxy': angle / 45.0
+                        }
+                    elif angle <= -self.hull_trend_threshold_strong:  # -1.2°
+                        return {
+                            'direction': 'strong_bearish',
+                            'strength': 'strong',
+                            'reliable': True,
+                            'slope_proxy': angle / 45.0
+                        }
+                    elif angle <= -self.hull_trend_threshold_weak:  # -0.3°
+                        return {
+                            'direction': 'weak_bearish',
+                            'strength': 'weak',
                             'reliable': True,
                             'slope_proxy': angle / 45.0
                         }
@@ -134,7 +144,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
                         return {
                             'direction': 'sideways',
                             'strength': 'flat',
-                            'reliable': True,
+                            'reliable': False,  # Pas de signal en sideways
                             'slope_proxy': angle / 45.0
                         }
                 except (ValueError, TypeError):
@@ -455,71 +465,122 @@ class HullMA_Slope_Strategy(BaseStrategy):
         signal_side = None
         reason = ""
         opportunity_data = {}
-        base_confidence = 0.65 
+        base_confidence = 0.55  # Réduit car approche plus accessible 
         confidence_boost = 0.0
         
-        if hull_trend['direction'] == 'bullish':
-            # Chercher PULLBACK dans tendance haussière
-            pullback_analysis = self._detect_pullback_opportunity(hull_trend, hull_val, price_val, values)
-            
-            # Gérer rejets RSI contradictoires
-            if pullback_analysis.get('rsi_rejection'):
-                return {
-                    "side": None,
-                    "confidence": 0.0,
-                    "strength": "weak",
-                    "reason": pullback_analysis['reason'],
-                    "metadata": {"strategy": self.name}
-                }
-                
-            if pullback_analysis['is_pullback']:
+        # NOUVELLE LOGIQUE TREND-FOLLOWING (abandon contrarian)
+        if hull_trend['direction'] in ['strong_bullish', 'weak_bullish']:
+            # SUIVRE la micro-tendance haussière Hull
+
+            # Vérifier momentum favorable
+            momentum_score = values.get('momentum_score', 50)
+            rsi_14 = values.get('rsi_14')
+
+            # Filtres momentum pour BUY
+            momentum_ok = False
+            rsi_ok = False
+            reason_parts = []
+
+            if momentum_score is not None:
+                try:
+                    momentum_val = float(momentum_score)
+                    if momentum_val >= self.momentum_bullish_min:  # > 50.1
+                        momentum_ok = True
+                        reason_parts.append(f"momentum {momentum_val:.1f}")
+                except (ValueError, TypeError):
+                    pass
+
+            if rsi_14 is not None:
+                try:
+                    rsi_val = float(rsi_14)
+                    if rsi_val >= self.rsi_bullish_min:  # >= 45
+                        rsi_ok = True
+                        reason_parts.append(f"RSI {rsi_val:.0f}")
+                except (ValueError, TypeError):
+                    pass
+
+            # Au moins 1 confirmation momentum nécessaire
+            if momentum_ok or rsi_ok:
                 signal_side = "BUY"
-                reason = f"CONTRARIAN BUY: {pullback_analysis['reason']} en tendance Hull haussière"
-                opportunity_data = pullback_analysis
-                confidence_boost += 0.35  # Bonus AUGMENTÉ pour vrais setups (+40%)
+                trend_label = "forte" if hull_trend['direction'] == 'strong_bullish' else "faible"
+                reason = f"TREND-FOLLOWING BUY: Hull tendance {trend_label} ({hull_trend.get('slope_proxy', 0):.3f})"
+                if reason_parts:
+                    reason += f" + {' + '.join(reason_parts)}"
+
+                # Bonus selon force tendance
+                if hull_trend['direction'] == 'strong_bullish':
+                    confidence_boost += 0.25  # Tendance forte
+                else:
+                    confidence_boost += 0.15  # Tendance faible
+
+                opportunity_data = {
+                    'trend_type': hull_trend['direction'],
+                    'momentum_score': momentum_score,
+                    'rsi_14': rsi_14,
+                    'confirmations': len(reason_parts)
+                }
             else:
                 return {
                     "side": None,
                     "confidence": 0.0,
-                    "strength": "weak", 
-                    "reason": f"Hull haussière mais pas de pullback valide: {pullback_analysis['reason']}",
-                    "metadata": {
-                        "strategy": self.name,
-                        "hull_trend": hull_trend,
-                        "pullback_analysis": pullback_analysis
-                    }
-                }
-                
-        elif hull_trend['direction'] == 'bearish':
-            # Chercher BOUNCE dans tendance baissière
-            bounce_analysis = self._detect_bounce_opportunity(hull_trend, hull_val, price_val, values)
-            
-            # Gérer rejets RSI contradictoires
-            if bounce_analysis.get('rsi_rejection'):
-                return {
-                    "side": None,
-                    "confidence": 0.0,
                     "strength": "weak",
-                    "reason": bounce_analysis['reason'],
-                    "metadata": {"strategy": self.name}
+                    "reason": f"Hull tendance haussière mais momentum défavorable (momentum:{momentum_score:.1f}, RSI:{rsi_14:.1f})",
+                    "metadata": {"strategy": self.name, "hull_trend": hull_trend}
                 }
-                
-            if bounce_analysis['is_bounce']:
+
+        elif hull_trend['direction'] in ['strong_bearish', 'weak_bearish']:
+            # SUIVRE la micro-tendance baissière Hull
+
+            momentum_score = values.get('momentum_score', 50)
+            rsi_14 = values.get('rsi_14')
+
+            momentum_ok = False
+            rsi_ok = False
+            reason_parts = []
+
+            if momentum_score is not None:
+                try:
+                    momentum_val = float(momentum_score)
+                    if momentum_val <= self.momentum_bearish_max:  # < 49.9
+                        momentum_ok = True
+                        reason_parts.append(f"momentum {momentum_val:.1f}")
+                except (ValueError, TypeError):
+                    pass
+
+            if rsi_14 is not None:
+                try:
+                    rsi_val = float(rsi_14)
+                    if rsi_val <= self.rsi_bearish_max:  # <= 55
+                        rsi_ok = True
+                        reason_parts.append(f"RSI {rsi_val:.0f}")
+                except (ValueError, TypeError):
+                    pass
+
+            if momentum_ok or rsi_ok:
                 signal_side = "SELL"
-                reason = f"CONTRARIAN SELL: {bounce_analysis['reason']} en tendance Hull baissière"
-                opportunity_data = bounce_analysis
-                confidence_boost += 0.35  # Bonus AUGMENTÉ pour vrais setups (+40%)
+                trend_label = "forte" if hull_trend['direction'] == 'strong_bearish' else "faible"
+                reason = f"TREND-FOLLOWING SELL: Hull tendance {trend_label} ({hull_trend.get('slope_proxy', 0):.3f})"
+                if reason_parts:
+                    reason += f" + {' + '.join(reason_parts)}"
+
+                if hull_trend['direction'] == 'strong_bearish':
+                    confidence_boost += 0.25
+                else:
+                    confidence_boost += 0.15
+
+                opportunity_data = {
+                    'trend_type': hull_trend['direction'],
+                    'momentum_score': momentum_score,
+                    'rsi_14': rsi_14,
+                    'confirmations': len(reason_parts)
+                }
             else:
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": f"Hull baissière mais pas de bounce valide: {bounce_analysis['reason']}",
-                    "metadata": {
-                        "strategy": self.name,
-                        "hull_trend": hull_trend,
-                        "bounce_analysis": bounce_analysis
-                    }
+                    "reason": f"Hull tendance baissière mais momentum défavorable (momentum:{momentum_score:.1f}, RSI:{rsi_14:.1f})",
+                    "metadata": {"strategy": self.name, "hull_trend": hull_trend}
                 }
                 
         else:  # sideways

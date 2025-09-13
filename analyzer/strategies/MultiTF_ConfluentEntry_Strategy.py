@@ -347,7 +347,10 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
             }
             
         # Vérification des scores minimums
-        if confluence_score is None or confluence_score < self.min_confluence_score:
+        if confluence_score is None:
+            confluence_score = 0.0  # Default si NULL
+
+        if confluence_score < self.min_confluence_score:
             return {
                 "side": None,
                 "confidence": 0.0,
@@ -360,6 +363,11 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         valid_strengths = ['WEAK', 'MODERATE', 'STRONG', 'VERY_STRONG']
         if signal_strength not in valid_strengths:
             signal_strength = 'WEAK'  # Default si invalide
+
+        # Pour MultiTF, on accepte seulement les signaux clairs (pas WEAK)
+        # Mais on assouplit en acceptant NULL comme MODERATE
+        if signal_strength is None:
+            signal_strength = 'MODERATE'  # Default optimiste si NULL
             
         # Vérification ADX pour tendance suffisante (déplacée ici)
         adx_14 = values.get('adx_14')
@@ -370,25 +378,15 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
         
-        # Signal strength ASSOUPLI - Accepter MODERATE
+        # Signal strength ASSOUPLI - Accepter WEAK avec pénalité
+        weak_signal_penalty = 0.0
         if signal_strength == 'WEAK':
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Signal strength trop faible ({signal_strength}) - minimum MODERATE",
-                "metadata": {"strategy": self.name, "signal_strength": signal_strength}
-            }
+            weak_signal_penalty = -0.20  # Pénalité au lieu de rejet
             
-        # Vérification trend_alignment
+        # Vérification trend_alignment avec pénalité au lieu de rejet
+        trend_penalty = 0.0
         if trend_alignment and trend_alignment < self.min_trend_alignment:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Alignement insuffisant ({trend_alignment:.1f} < {self.min_trend_alignment})",
-                "metadata": {"strategy": self.name, "trend_alignment": trend_alignment}
-            }
+            trend_penalty = -0.15  # Pénalité au lieu de rejet direct
             
         # ADX OPTIONNEL (require_adx_confirmation = False)
         if self.require_adx_confirmation and adx_value is not None and adx_value < self.min_adx_trend:
@@ -546,11 +544,11 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         # VALIDATION FINALE - Tous les autres indicateurs déjà validés
         # Plus de micros-ajustements - logique simplifiée focus winrate
                 
-        # Calcul final
-        raw_confidence = base_confidence * (1 + confidence_boost)
-        
+        # Calcul final avec toutes les pénalités
+        total_adjustment = confidence_boost + weak_signal_penalty + trend_penalty
+
         # Calcul final optimisé sans double calcul
-        confidence = min(base_confidence * (1 + confidence_boost), 0.90)
+        confidence = min(base_confidence * (1 + total_adjustment), 0.90)
         
         # Filtre final ASSOUPLI pour plus de signaux
         if confidence < 0.45:  # Seuil abaissé pour accessibilité (0.55 -> 0.45)

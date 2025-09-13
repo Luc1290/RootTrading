@@ -198,12 +198,14 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             support_strength_raw = values['support_strength']
             
             # Fallback support si nearest_support manque
-            if nearest_support is None:
-                # Utiliser le plus bas des 20 dernières barres comme fallback
+            if nearest_support is None or nearest_support == 0:  # Traiter 0 comme invalide
+                # Utiliser le plus bas récent comme support dynamique (8 barres minimum)
                 lows = self.data.get('low', [])
-                if lows and len(lows) >= 20:
+                if lows and len(lows) >= 8:  # Cohérent avec validation
                     try:
-                        nearest_support = min(float(low) for low in lows[-20:])
+                        # Prendre le min des 8-20 dernières barres selon disponibilité
+                        lookback = min(20, len(lows))
+                        nearest_support = min(float(low) for low in lows[-lookback:])
                         support_strength_raw = 'MODERATE'  # Force neutre pour fallback
                     except (ValueError, TypeError):
                         return {
@@ -506,9 +508,9 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             return False
             
         # Liquidity sweep nécessite un support FIXE ou fallback possible
-        if self.indicators.get('nearest_support') is None:
-            # Vérifier si on peut faire un fallback avec les données low
-            if not self.data or 'low' not in self.data or not self.data['low'] or len(self.data['low']) < 20:
+        if self.indicators.get('nearest_support') is None or self.indicators.get('nearest_support') == 0:
+            # Vérifier si on peut faire un fallback avec les données low (8 barres minimum)
+            if not self.data or 'low' not in self.data or not self.data['low'] or len(self.data['low']) < 8:
                 logger.warning(f"{self.name}: nearest_support manquant et données low insuffisantes pour fallback")
                 return False
                 

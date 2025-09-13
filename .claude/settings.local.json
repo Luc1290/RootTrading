@@ -26,7 +26,8 @@
       "Bash(mypy:*)",
       "Bash(ruff check:*)",
       "Bash(sed:*)",
-      "Bash(docker exec:*)"
+      "Bash(docker exec:*)",
+      "Bash(docker compose exec:*)"
     ],
     "deny": [
       "Kill Bash(Kill shell: *)"

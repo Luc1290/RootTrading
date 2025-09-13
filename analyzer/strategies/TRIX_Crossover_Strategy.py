@@ -212,20 +212,30 @@ class TRIX_Crossover_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum_val = float(momentum_score)
-                # momentum_score format 0-100, 50=neutre - SEUILS ULTRA STRICTS
-                # BUY impossible si momentum <45, SELL impossible si >55
+                # momentum_score RÉEL observé: 47.70-61.66, 99% entre 49.54-50.82
+                # Seulement 0.14% > 52, donc seuils très fins nécessaires
                 if trix_direction in ['bullish', 'strong_bullish', 'extreme_bullish']:
-                    if momentum_val < 45:  # Momentum trop faible pour BUY
-                        return {'is_aligned': False, 'score': 0, 'indicators': [f"Momentum trop faible pour BUY ({momentum_val:.1f})"]}
-                    elif momentum_val > 60:  # Seuil plus strict
+                    # Pas de rejet strict - momentum quasi-normal autour de 50
+                    if momentum_val > 50.5:  # Top 10% (p90=50.25, donc 50.5 est rare)
                         alignment_score += 0.20
                         alignment_indicators.append(f"Momentum haussier ({momentum_val:.1f})")
+                    elif momentum_val > 50.1:  # Au-dessus moyenne (50.04)
+                        alignment_score += 0.12
+                        alignment_indicators.append(f"Momentum favorable ({momentum_val:.1f})")
+                    elif momentum_val < 49.8:  # Sous moyenne mais pas critique
+                        alignment_score += 0.05  # Petit bonus quand même
+                        alignment_indicators.append(f"Momentum neutre-bas ({momentum_val:.1f})")
                 elif trix_direction in ['bearish', 'strong_bearish', 'extreme_bearish']:
-                    if momentum_val > 55:  # Momentum trop fort pour SELL
-                        return {'is_aligned': False, 'score': 0, 'indicators': [f"Momentum trop fort pour SELL ({momentum_val:.1f})"]}
-                    elif momentum_val < 40:  # Seuil plus strict
+                    # Pas de rejet strict - momentum quasi-normal autour de 50
+                    if momentum_val < 49.5:  # Bottom 10% (p10=49.84, donc 49.5 est rare)
                         alignment_score += 0.20
                         alignment_indicators.append(f"Momentum baissier ({momentum_val:.1f})")
+                    elif momentum_val < 49.9:  # En-dessous moyenne (50.04)
+                        alignment_score += 0.12
+                        alignment_indicators.append(f"Momentum défavorable ({momentum_val:.1f})")
+                    elif momentum_val > 50.2:  # Au-dessus moyenne mais pas critique
+                        alignment_score += 0.05  # Petit bonus quand même
+                        alignment_indicators.append(f"Momentum neutre-haut ({momentum_val:.1f})")
             except (ValueError, TypeError):
                 pass
                 
@@ -267,7 +277,7 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_aligned': alignment_score >= 0.35,  # Seuil légèrement réduit (0.35 au lieu de 0.4)
+            'is_aligned': alignment_score >= 0.15,  # Seuil très bas car momentum range très étroite
             'score': alignment_score,
             'indicators': alignment_indicators
         }

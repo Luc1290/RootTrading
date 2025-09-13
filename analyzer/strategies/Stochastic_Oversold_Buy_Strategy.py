@@ -176,13 +176,18 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         """Analyse les conditions actuelles du Stochastic."""
         stoch_k = values.get('stoch_k')
         stoch_d = values.get('stoch_d')
-        
+
         if stoch_k is None or stoch_d is None:
             return None
-            
+
         try:
             k_val = float(stoch_k)
             d_val = float(stoch_d)
+
+            # Filtrer les valeurs invalides (0.0 souvent = données corrompues)
+            if k_val == 0.0 and d_val == 0.0:
+                return None
+
         except (ValueError, TypeError):
             return None
             
@@ -242,22 +247,35 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         # Rejeter si en surachat
         if stoch_analysis['is_overbought']:
             return None
-            
+
         # Condition principale: oversold OU sortie d'oversold
         if not (stoch_analysis['is_oversold'] or stoch_analysis['is_exiting_oversold']):
             return None
-            
-        # Condition croisement: %K > %D
-        if not stoch_analysis['k_above_d']:
+
+        # ASSOUPLISSEMENT: Accepter les cas sans croisement si très oversold
+        k_val = stoch_analysis['stoch_k']
+        d_val = stoch_analysis['stoch_d']
+        very_oversold = k_val <= 15 and d_val <= 15  # Très profondement oversold
+
+        # Condition croisement ASSOUPLIE: %K > %D OU très oversold
+        if not stoch_analysis['k_above_d'] and not very_oversold:
             return None
-            
-        # Condition force du croisement
-        if stoch_analysis['crossover_strength'] < self.min_crossover_separation:
+
+        # Condition force du croisement ASSOUPLIE pour très oversold
+        min_separation = self.min_crossover_separation if not very_oversold else 0.5
+        if stoch_analysis['crossover_strength'] < min_separation:
             return None
             
         # Déterminer le type de signal
-        signal_quality = "strong" if stoch_analysis['is_oversold'] else "moderate"
-        signal_type = "oversold_bounce" if stoch_analysis['is_oversold'] else "oversold_exit"
+        if very_oversold:
+            signal_quality = "very_strong"
+            signal_type = "deep_oversold_bounce"
+        elif stoch_analysis['is_oversold']:
+            signal_quality = "strong"
+            signal_type = "oversold_bounce"
+        else:
+            signal_quality = "moderate"
+            signal_type = "oversold_exit"
         
         return {
             'signal_type': signal_type,
@@ -286,7 +304,10 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         reason_parts = []  # Limiter à 4-5 éléments max
         
         # Bonus selon le type de signal
-        if signal_quality == "strong":
+        if signal_quality == "very_strong":
+            confidence_boost += 0.25  # Bonus max pour très oversold
+            reason_parts.append("très profonde")
+        elif signal_quality == "strong":
             confidence_boost += 0.15
             reason_parts.append("profonde")
         else:
