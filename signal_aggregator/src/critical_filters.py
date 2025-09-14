@@ -14,19 +14,22 @@ class CriticalFilters:
     Filtres critiques minimalistes pour éviter les signaux vraiment dangereux.
     Focus sur les risques majeurs seulement.
     """
-    
-    def __init__(self):
-        # Filtres volatilité extrême (vraiment critique)
-        self.max_atr_percent = 0.15  # ATR > 15% = trop volatil
+
+    def __init__(self, db_connection=None):
+        self.db_connection = db_connection
+
+        # Seuils ATR dynamiques - calculés depuis l'univers actuel
+        self.atr_universe_multiplier = 3.0  # 3x médiane univers = volatilité extrême
+        self.fallback_max_atr_percent = 20.0  # Fallback 20% si calcul échoue (PEPE-friendly)
         self.extreme_bb_width_threshold = 0.12  # BB width > 12% = chaos
         
         # Filtres volume mort OPTIMISÉS SCALPING (exige plus de liquidité)
         self.min_volume_ratio = 0.30  # Volume < 30% moyenne = marché mort (durci pour scalping)
         self.min_volume_quality = 20   # Quality < 20% = données douteuses (durci pour scalping)
         
-        # Filtres conflits multi-timeframe majeurs
+        # Filtres conflits multi-timeframe - ajustés selon analyse
         self.max_conflicting_directions = 0.7  # > 70% contradictoire = problème
-        self.min_mtf_consistency = 0.3        # < 30% cohérence = chaos
+        self.min_mtf_consistency = 0.4        # 40% minimum (évite les cas 60% sell vs 40% buy)
         
         # Filtre anomalies système
         self.max_data_staleness_minutes = 10  # Données > 10min = problème technique
@@ -51,7 +54,7 @@ class CriticalFilters:
         if not regime_check[0]:
             return False, f"RÉGIME INCOMPATIBLE: {regime_check[1]}"
             
-        # FILTRE 1: Volatilité extrême dangereuse
+        # FILTRE 1: Volatilité extrême dangereuse (avec seuil dynamique)
         volatility_check = self._check_extreme_volatility(context)
         if not volatility_check[0]:
             return False, f"VOLATILITÉ EXTRÊME: {volatility_check[1]}"
@@ -155,42 +158,46 @@ class CriticalFilters:
                 if total_indicators > 0 and bearish_indicators / total_indicators > 0.5:
                     return False, f"Achat rejeté: {bearish_indicators}/{total_indicators} indicateurs baissiers en régime {market_regime}"
                     
-            # Prudence en transition
-            if market_regime == 'TRANSITION' and regime_confidence < 0.3:
-                return False, f"Achat rejeté: Transition faible (confidence {regime_confidence:.1f})"
+            # Prudence en transition (regime_confidence est en % 0-100)
+            if market_regime == 'TRANSITION' and regime_confidence < 30:
+                return False, f"Achat rejeté: Transition faible (confidence {regime_confidence:.0f}%)"
                 
         elif signal_side == 'SELL':
             # Les ventes sont OK dans tous les régimes (protection du capital)
             # Mais on peut être plus sélectif en régime haussier fort
             # OPTIMISÉ SCALPING: Inclut BREAKOUT_BULL pour éviter de shorter les rallyes explosifs
-            if market_regime in ['TRENDING_BULL', 'BREAKOUT_BULL'] and regime_confidence > 0.7:
+            if market_regime in ['TRENDING_BULL', 'BREAKOUT_BULL'] and regime_confidence > 70:  # confidence en %
                 # En bull fort ou breakout haussier, être très prudent avec les shorts
                 momentum_score = context.get('momentum_score', 50)
                 if momentum_score and float(momentum_score) > 70:
-                    return False, f"Vente risquée: {market_regime} fort (confidence {regime_confidence:.1f}) avec momentum {momentum_score:.0f}"
+                    return False, f"Vente risquée: {market_regime} fort (confidence {regime_confidence:.0f}%) avec momentum {momentum_score:.0f}"
                     
         return True, "Régime compatible"
         
     def _check_extreme_volatility(self, context: Dict[str, Any]) -> Tuple[bool, str]:
-        """Vérifie si la volatilité n'est pas dangereusement élevée."""
+        """Vérifie si la volatilité n'est pas dangereusement élevée avec seuil dynamique."""
         try:
-            # ATR relatif au prix
-            atr_14 = context.get('atr_14')
-            current_price = context.get('current_price')
-            
-            if atr_14 is not None and current_price is not None:
-                atr_percent = float(atr_14) / float(current_price)
-                if atr_percent > self.max_atr_percent:
-                    return False, f"ATR {atr_percent:.2%} > {self.max_atr_percent:.1%}"
+            # ATR dynamique basé sur l'univers
+            natr = context.get('natr')  # Normalized ATR déjà en %
+            if natr is not None:
+                natr_value = float(natr)
+
+                # Calculer seuil dynamique depuis l'univers
+                dynamic_threshold = self._get_dynamic_atr_threshold()
+
+                if natr_value > dynamic_threshold:
+                    return False, f"NATR {natr_value:.1f}% > seuil dynamique {dynamic_threshold:.1f}%"
                     
-            # BB width extrême
+            # BB width extrême - avec protection division par zéro
             bb_width = context.get('bb_width')
             bb_middle = context.get('bb_middle')
-            
-            if bb_width is not None and bb_middle is not None:
+
+            if bb_width is not None and bb_middle is not None and bb_middle > 0:
                 bb_width_percent = float(bb_width) / float(bb_middle)
                 if bb_width_percent > self.extreme_bb_width_threshold:
                     return False, f"BB width {bb_width_percent:.2%} > {self.extreme_bb_width_threshold:.1%}"
+            elif bb_middle is not None and bb_middle <= 0:
+                return False, f"BB middle invalide: {bb_middle} (données corrompues)"
                     
             # Volatilité régime
             volatility_regime = context.get('volatility_regime')
@@ -203,21 +210,26 @@ class CriticalFilters:
         return True, "Volatilité acceptable"
         
     def _check_volume_sufficiency(self, context: Dict[str, Any]) -> Tuple[bool, str]:
-        """Vérifie que le volume n'est pas mort."""
+        """Vérifie que le volume n'est pas mort avec logs détaillés."""
         try:
             # Volume ratio vs moyenne
             volume_ratio = context.get('volume_ratio')
+            relative_volume = context.get('relative_volume', volume_ratio)  # Fallback
+
             if volume_ratio is not None:
                 vol_ratio = float(volume_ratio)
                 if vol_ratio < self.min_volume_ratio:
-                    return False, f"Volume ratio {vol_ratio:.2f} < {self.min_volume_ratio}"
-                    
-            # Volume quality score
+                    return False, f"Volume mort: ratio {vol_ratio:.2f} < {self.min_volume_ratio} (relatif: {relative_volume:.2f})"
+
+            # Volume quality score avec valeurs brutes
             volume_quality = context.get('volume_quality_score')
+            avg_volume_20 = context.get('avg_volume_20')
+
             if volume_quality is not None:
                 vol_quality = float(volume_quality)
                 if vol_quality < self.min_volume_quality:
-                    return False, f"Volume quality {vol_quality:.0f} < {self.min_volume_quality}"
+                    avg_vol_info = f", avg_20j: {avg_volume_20:.0f}" if avg_volume_20 else ""
+                    return False, f"Volume quality {vol_quality:.0f}% < {self.min_volume_quality}%{avg_vol_info}"
                     
             # Pattern volume spécifique
             volume_pattern = context.get('volume_pattern')
@@ -249,7 +261,7 @@ class CriticalFilters:
             if total_count > 0:
                 max_direction_ratio = max(buy_count, sell_count) / total_count
                 if max_direction_ratio < self.min_mtf_consistency:
-                    return False, f"Cohérence directionnelle {max_direction_ratio:.1%} < {self.min_mtf_consistency:.1%}"
+                    return False, f"Cohérence directionnelle {max_direction_ratio:.1%} < {self.min_mtf_consistency:.1%} ({buy_count}B/{sell_count}S sur {total_count})"
                     
             # Confluence score générale
             confluence_score = context.get('confluence_score')
@@ -288,13 +300,59 @@ class CriticalFilters:
             logger.debug(f"Erreur check techniques: {e}")
             
         return True, "Pas d'anomalie technique critique"
-        
+
+    def _get_dynamic_atr_threshold(self) -> float:
+        """
+        Calcule un seuil ATR dynamique basé sur la médiane de l'univers actuel.
+        Évite de bloquer PEPE et autres cryptos naturellement volatiles.
+        """
+        try:
+            if not self.db_connection:
+                logger.warning("Pas de connexion DB disponible, utilisation fallback ATR")
+                return self.fallback_max_atr_percent
+
+            import psycopg2.extras
+
+            with self.db_connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                # Récupérer la médiane NATR des 20 dernières heures pour l'univers actuel
+                query = """
+                    SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY natr) as median_natr,
+                           percentile_cont(0.9) WITHIN GROUP (ORDER BY natr) as p90_natr
+                    FROM analyzer_data
+                    WHERE natr IS NOT NULL
+                        AND time >= NOW() - INTERVAL '20 hours'
+                        AND timeframe = '3m'
+                """
+                cursor.execute(query)
+                result = cursor.fetchone()
+
+                if result and result['median_natr']:
+                    median_natr = float(result['median_natr'])
+                    p90_natr = float(result['p90_natr']) if result['p90_natr'] else median_natr * 5
+
+                    # Seuil = médiane × multiplicateur, avec plancher raisonnable
+                    dynamic_threshold = max(
+                        median_natr * self.atr_universe_multiplier,
+                        p90_natr * 1.2,  # Au moins 20% au-dessus du P90
+                        5.0  # Plancher absolu 5% pour éviter de tout bloquer
+                    )
+
+                    logger.debug(f"ATR dynamique: médiane {median_natr:.2f}%, P90 {p90_natr:.2f}%, seuil {dynamic_threshold:.1f}%")
+                    return dynamic_threshold
+
+        except Exception as e:
+            logger.warning(f"Erreur calcul seuil ATR dynamique: {e}")
+
+        # Fallback sur valeur fixe (déjà en %)
+        return self.fallback_max_atr_percent
+
     def get_filter_stats(self) -> Dict[str, Any]:
         """Retourne les statistiques de configuration des filtres."""
         return {
-            'max_atr_percent': self.max_atr_percent,
+            'atr_universe_multiplier': self.atr_universe_multiplier,
+            'fallback_max_atr_percent': self.fallback_max_atr_percent,
             'min_volume_ratio': self.min_volume_ratio,
             'min_mtf_consistency': self.min_mtf_consistency,
             'filters_count': 4,
-            'description': 'Filtres critiques minimalistes - focus sur risques majeurs seulement'
+            'description': 'Filtres critiques optimisés - ATR dynamique, BB safe, volume détaillé'
         }

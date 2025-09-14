@@ -1,6 +1,7 @@
 """Universe Manager - Sélection dynamique des cryptos à trader"""
 
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Set, Optional, Tuple
 from dataclasses import dataclass, field
@@ -131,93 +132,67 @@ class UniverseManager:
             return PairScore(symbol, -1.0, 0, 0, 0, True, datetime.now())
     
     def _calculate_score_from_db(self, symbol: str) -> PairScore:
-        """Calcule le score depuis les données analyzer_data de la DB"""
+        """Calcule le score depuis analyzer_data (tout est déjà calculé)"""
         try:
-            # Utiliser le pool de connexions avec RealDictCursor
             from shared.src.db_pool import real_dict_cursor
-            
+
             with real_dict_cursor() as cursor:
-                # Récupérer les dernières données d'analyse pour ce symbole
+                # Récupérer toutes les données calculées depuis analyzer_data
                 query = """
-                    SELECT 
-                        a.*,
-                        m.close as current_price,
-                        m.volume as current_volume
-                    FROM analyzer_data a
-                    JOIN market_data m ON (a.time = m.time AND a.symbol = m.symbol AND a.timeframe = m.timeframe)
-                    WHERE a.symbol = %s 
-                    AND a.timeframe = '3m'
-                    ORDER BY a.time DESC
-                    LIMIT 1
+                    SELECT * FROM analyzer_data
+                    WHERE symbol = %s AND timeframe = '3m'
+                    ORDER BY time DESC LIMIT 1
                 """
                 cursor.execute(query, (symbol,))
                 data = cursor.fetchone()
-                
+
                 if not data:
                     logger.warning(f"Pas de données analyzer pour {symbol}")
                     return PairScore(symbol, -1.0, 0, 0, 0, True, datetime.now())
-                
-                # Extraire les métriques depuis analyzer_data
-                atr_pct = float(data['natr']) if data['natr'] else 0  # Normalized ATR
+
+                # Extraire métriques (tout est déjà calculé !)
+                atr_pct = float(data['natr']) if data['natr'] else 0
                 roc = (float(data['roc_10']) + float(data['roc_20'])) / 2 if data['roc_10'] and data['roc_20'] else 0
                 volume_ratio = float(data['volume_ratio']) if data['volume_ratio'] else 1.0
                 is_ranging = data['bb_squeeze'] if data['bb_squeeze'] is not None else False
-                adx = float(data['adx_14']) if data['adx_14'] else 0
-                
-                # Score de tendance basé sur les données DB
-                trend_score = 0.0
-                
-                # Utiliser ADX de la DB
-                if adx > 25:
-                    trend_score += 1.0
-                elif adx > 20:
-                    trend_score += 0.5
-                
-                # Utiliser le trend_strength de la DB
-                if data['trend_strength'] == 'VERY_STRONG':
-                    trend_score += 0.5
-                elif data['trend_strength'] == 'STRONG':
-                    trend_score += 0.3
-                
-                # Utiliser le regime de marché
-                if data['market_regime'] in ['TRENDING_BULL', 'BREAKOUT_BULL']:
-                    trend_score += 0.3
-                elif data['market_regime'] in ['TRENDING_BEAR', 'BREAKOUT_BEAR']:
-                    trend_score -= 0.3
-                
-                # Normaliser entre -1 et 1
-                trend_score = max(-1, min(1, trend_score))
-                
-                # Calculer les z-scores pour normalisation
-                all_scores = self._get_all_recent_scores()
-                
-                z_atr = self._calculate_zscore(atr_pct, 
-                                              [s.atr_pct for s in all_scores])
-                z_roc = self._calculate_zscore(roc, 
-                                              [s.roc for s in all_scores])
-                z_volume = self._calculate_zscore(volume_ratio, 
-                                                 [s.volume_ratio for s in all_scores])
-                
-                # Score final pondéré avec trend bias
+
+                # Calculer trend_score depuis données DB
+                trend_score = self._calculate_trend_score_from_db(data)
+
+                # Population pour z-scores
+                all_scores = self._get_all_scores_from_db()
+
+                # Z-scores (normalisation relative)
+                if len(all_scores) < 3:
+                    # Normalisation simple si pas assez de population
+                    z_atr = min(1.0, atr_pct / 2.0) if atr_pct > 0 else 0
+                    z_roc = min(1.0, abs(roc) / 5.0) * (1 if roc > 0 else -1)
+                    z_volume = min(2.0, volume_ratio) - 1.0
+                else:
+                    z_atr = self._calculate_zscore(atr_pct, [s.atr_pct for s in all_scores])
+                    z_roc = self._calculate_zscore(roc, [s.roc for s in all_scores])
+                    z_volume = self._calculate_zscore(volume_ratio, [s.volume_ratio for s in all_scores])
+
+                # Score final pondéré
                 score = (
                     z_atr * self.config['weights']['atr'] +
                     z_roc * self.config['weights']['roc'] +
                     z_volume * self.config['weights']['volume'] +
                     trend_score * self.config['weights']['trend']
                 )
-                
-                # Pénalité si en range
+
+                # Pénalité ranging (utiliser ADX de la DB)
                 if is_ranging:
-                    score -= 0.5
-                
-                # Bonus si confluence élevée dans la DB
-                if data['confluence_score'] and float(data['confluence_score']) > 70:
+                    adx = float(data['adx_14']) if data['adx_14'] else 0
+                    range_penalty = self._calculate_range_penalty(adx, atr_pct)
+                    score -= range_penalty
+
+                # Bonus DB
+                if data.get('confluence_score') and float(data['confluence_score']) > 70:
                     score += 0.3
-                
-                # Bonus si volume context favorable
-                if data['volume_context'] in ['BREAKOUT', 'PUMP_START']:
+                if data.get('volume_context') in ['BREAKOUT', 'PUMP_START']:
                     score += 0.2
-                
+
                 return PairScore(
                     symbol=symbol,
                     score=score,
@@ -231,141 +206,72 @@ class UniverseManager:
                         'z_roc': z_roc,
                         'z_volume': z_volume,
                         'trend_bias': trend_score,
-                        'adx': adx,
-                        'range_penalty': -0.5 if is_ranging else 0,
-                        'market_regime': data['market_regime'],
-                        'confluence_score': float(data['confluence_score']) if data['confluence_score'] else 0
+                        'market_regime': data.get('market_regime', 'UNKNOWN'),
+                        'confluence_score': float(data['confluence_score']) if data.get('confluence_score') else 0
                     }
                 )
-                
+
         except Exception as e:
             logger.error(f"Erreur récupération données DB pour {symbol}: {e}")
-            # Fallback sur calcul Redis si erreur DB
             return self._calculate_score_from_redis(symbol)
-    
-    def _calculate_score_from_redis(self, symbol: str) -> PairScore:
-        """Calcule le score depuis Redis (méthode originale comme fallback)"""
+
+    def _get_all_scores_from_db(self) -> List[PairScore]:
+        """Récupère les scores récents de toutes les paires depuis la DB"""
+        scores = []
+
         try:
-            # Récupérer les données depuis Redis
-            candles_key = f"candles:{symbol}:3m"
-            candles_data = self.redis.get(candles_key)
-            
-            if not candles_data:
-                logger.warning(f"Pas de données Redis pour {symbol}")
-                return PairScore(symbol, -1.0, 0, 0, 0, True, datetime.now())
-            
-            candles = json.loads(candles_data)
-            if len(candles) < 50:
-                return PairScore(symbol, -1.0, 0, 0, 0, True, datetime.now())
-            
-            # Extraire les prix et volumes
-            closes = [float(c['close']) for c in candles[-50:]]
-            highs = [float(c['high']) for c in candles[-50:]]
-            lows = [float(c['low']) for c in candles[-50:]]
-            volumes = [float(c['volume']) for c in candles[-50:]]
-            
-            # 1. ATR% (volatilité normalisée)
-            tr_list = []
-            for i in range(1, len(closes)):
-                tr = max(
-                    highs[i] - lows[i],
-                    abs(highs[i] - closes[i-1]),
-                    abs(lows[i] - closes[i-1])
-                )
-                tr_list.append(tr)
-            
-            atr = np.mean(tr_list[-self.config['atr_period']:])
-            atr_pct = (atr / closes[-1]) * 100
-            
-            # 2. ROC (momentum)
-            roc_fast = ((closes[-1] - closes[-self.config['roc_period_fast']]) / 
-                        closes[-self.config['roc_period_fast']]) * 100
-            roc_slow = ((closes[-1] - closes[-self.config['roc_period_slow']]) / 
-                        closes[-self.config['roc_period_slow']]) * 100
-            roc = (roc_fast + roc_slow) / 2
-            
-            # 3. Volume ratio
-            recent_volume = np.mean(volumes[-5:])
-            avg_volume = np.mean(volumes[-self.config['volume_period']:])
-            volume_ratio = recent_volume / avg_volume if avg_volume > 0 else 1.0
-            
-            # 4. Détection de range (Bollinger Bands squeeze)
-            ma20 = np.mean(closes[-20:])
-            std20 = np.std(closes[-20:])
-            bb_width = (2 * std20) / ma20 if ma20 > 0 else 0
-            is_ranging = bb_width < self.config['bb_squeeze_threshold']
-            
-            # 5. Calcul ADX pour trend bias (tendance directionnelle)
-            adx = self._calculate_adx(highs, lows, closes, period=14)
-            
-            # 6. Calcul de la pente EMA (trend direction)
-            ema_short = self._calculate_ema(closes, 9)
-            ema_long = self._calculate_ema(closes, 21)
-            if len(ema_short) >= 2 and len(ema_long) >= 2:
-                # Pente normalisée de l'EMA courte
-                ema_slope = ((ema_short[-1] - ema_short[-5]) / ema_short[-5]) * 100 if len(ema_short) > 5 else 0
-                # Signal de croisement EMA
-                ema_cross = 1.0 if ema_short[-1] > ema_long[-1] else -1.0
-            else:
-                ema_slope = 0
-                ema_cross = 0
-            
-            # Score de tendance combiné
-            trend_score = 0.0
-            if adx > 25:  # Tendance forte
-                trend_score += 1.0
-            elif adx > 20:  # Tendance modérée
-                trend_score += 0.5
-            
-            if abs(ema_slope) > 1.0:  # Pente significative
-                trend_score += 0.5 * np.sign(ema_slope) * ema_cross
-            
-            # Normaliser entre -1 et 1
-            trend_score = max(-1, min(1, trend_score))
-            
-            # Calculer les z-scores pour normalisation
-            all_scores = self._get_all_recent_scores()
-            
-            z_atr = self._calculate_zscore(atr_pct, 
-                                          [s.atr_pct for s in all_scores])
-            z_roc = self._calculate_zscore(roc, 
-                                          [s.roc for s in all_scores])
-            z_volume = self._calculate_zscore(volume_ratio, 
-                                             [s.volume_ratio for s in all_scores])
-            
-            # Score final pondéré avec trend bias
-            score = (
-                z_atr * self.config['weights']['atr'] +
-                z_roc * self.config['weights']['roc'] +
-                z_volume * self.config['weights']['volume'] +
-                trend_score * self.config['weights']['trend']  # Bonus/malus de tendance
-            )
-            
-            # Pénalité si en range
-            if is_ranging:
-                score -= 0.5
-            
-            return PairScore(
-                symbol=symbol,
-                score=score,
-                atr_pct=atr_pct,
-                roc=roc,
-                volume_ratio=volume_ratio,
-                is_ranging=is_ranging,
-                timestamp=datetime.now(),
-                components={
-                    'z_atr': z_atr,
-                    'z_roc': z_roc,
-                    'z_volume': z_volume,
-                    'trend_bias': trend_score,
-                    'adx': adx,
-                    'range_penalty': -0.5 if is_ranging else 0
-                }
-            )
-            
+            from shared.src.db_pool import real_dict_cursor
+
+            with real_dict_cursor() as cursor:
+                # Récupérer les données de toutes les paires des 15 dernières minutes
+                query = """
+                    SELECT DISTINCT ON (a.symbol)
+                        a.symbol,
+                        a.natr,
+                        a.roc_10,
+                        a.roc_20,
+                        a.volume_ratio,
+                        a.bb_squeeze,
+                        a.adx_14,
+                        a.trend_strength,
+                        a.market_regime
+                    FROM analyzer_data a
+                    WHERE a.timeframe = '3m'
+                    AND a.time > NOW() - INTERVAL '15 minutes'
+                    ORDER BY a.symbol, a.time DESC
+                """
+                cursor.execute(query)
+                results = cursor.fetchall()
+
+                for data in results:
+                    atr_pct = float(data['natr']) if data['natr'] else 0
+                    roc = (float(data['roc_10']) + float(data['roc_20'])) / 2 if data['roc_10'] and data['roc_20'] else 0
+                    volume_ratio = float(data['volume_ratio']) if data['volume_ratio'] else 1.0
+                    is_ranging = data['bb_squeeze'] if data['bb_squeeze'] is not None else False
+
+                    # Créer un PairScore basique pour la normalisation
+                    score = PairScore(
+                        symbol=data['symbol'],
+                        score=0.0,  # Sera calculé plus tard
+                        atr_pct=atr_pct,
+                        roc=roc,
+                        volume_ratio=volume_ratio,
+                        is_ranging=is_ranging,
+                        timestamp=datetime.now()
+                    )
+                    scores.append(score)
+
         except Exception as e:
-            logger.error(f"Erreur calcul score {symbol}: {e}")
-            return PairScore(symbol, -1.0, 0, 0, 0, True, datetime.now())
+            logger.debug(f"Erreur récupération population DB: {e}")
+            # Fallback sur cache Redis si erreur DB
+            scores = self._get_all_recent_scores()
+
+        return scores
+
+    def _calculate_score_from_redis(self, symbol: str) -> PairScore:
+        """Fallback minimal si pas de DB (ne devrait jamais arriver)"""
+        logger.error(f"Pas de données DB disponibles pour {symbol} - retour score par défaut")
+        return PairScore(symbol, -1.0, 0, 0, 0, True, datetime.now())
     
     def _calculate_zscore(self, value: float, population: List[float]) -> float:
         """Calcule le z-score d'une valeur par rapport à la population"""
@@ -379,230 +285,199 @@ class UniverseManager:
             return 0.0
         
         return (value - mean) / std
-    
-    def _calculate_ema(self, prices: List[float], period: int) -> List[float]:
-        """Calcule l'EMA (Exponential Moving Average)"""
-        if len(prices) < period:
-            return []
-        
-        ema = []
-        multiplier = 2 / (period + 1)
-        
-        # Première valeur = SMA
-        ema.append(np.mean(prices[:period]))
-        
-        # Calcul EMA pour le reste
-        for i in range(period, len(prices)):
-            ema_value = (prices[i] - ema[-1]) * multiplier + ema[-1]
-            ema.append(ema_value)
-        
-        return ema
-    
-    def _calculate_adx(self, highs: List[float], lows: List[float], closes: List[float], period: int = 14) -> float:
-        """Calcule l'ADX (Average Directional Index)"""
-        if len(highs) < period + 1:
-            return 0.0
-        
+
+    def _calculate_range_penalty(self, adx: float, atr_pct: float) -> float:
+        """Calcule la pénalité ranging basée sur ADX et ATR"""
+        base_penalty = 0.15
+
+        # Multiplicateur ADX
+        if adx < 10:
+            adx_multiplier = 2.0
+        elif adx < 15:
+            adx_multiplier = 1.5
+        elif adx < 20:
+            adx_multiplier = 1.0
+        else:
+            adx_multiplier = 0.5
+
+        # Ajustement ATR
+        if atr_pct < 0.5:
+            atr_adjustment = 1.5
+        elif atr_pct > 2.0:
+            atr_adjustment = 0.7
+        else:
+            atr_adjustment = 1.0
+
+        return min(base_penalty * adx_multiplier * atr_adjustment, 0.4)
+
+    def _get_forced_pairs(self) -> List[str]:
+        """Récupère les paires forcées (consensus fort) non expirées"""
+        forced_pairs = []
+        current_time = time.time()
+
         try:
-            # Calcul du True Range
-            tr_list = []
-            for i in range(1, len(closes)):
-                tr = max(
-                    highs[i] - lows[i],
-                    abs(highs[i] - closes[i-1]),
-                    abs(lows[i] - closes[i-1])
-                )
-                tr_list.append(tr)
-            
-            # Calcul +DM et -DM
-            plus_dm = []
-            minus_dm = []
-            for i in range(1, len(highs)):
-                high_diff = highs[i] - highs[i-1]
-                low_diff = lows[i-1] - lows[i]
-                
-                if high_diff > low_diff and high_diff > 0:
-                    plus_dm.append(high_diff)
-                else:
-                    plus_dm.append(0)
-                
-                if low_diff > high_diff and low_diff > 0:
-                    minus_dm.append(low_diff)
-                else:
-                    minus_dm.append(0)
-            
-            # Moyennes lissées
-            atr = np.mean(tr_list[-period:])
-            plus_di = 100 * np.mean(plus_dm[-period:]) / atr if atr > 0 else 0
-            minus_di = 100 * np.mean(minus_dm[-period:]) / atr if atr > 0 else 0
-            
-            # Calcul DX et ADX
-            di_sum = plus_di + minus_di
-            if di_sum > 0:
-                dx = 100 * abs(plus_di - minus_di) / di_sum
-            else:
-                dx = 0
-            
-            # ADX est la moyenne du DX (simplifié ici)
-            return dx
-            
+            # Chercher toutes les clés forced_pair:*
+            forced_keys = []
+            # Redis scan pattern pour trouver les clés - utiliser redis directement
+            for key in self.redis.redis.scan_iter(match="forced_pair:*"):
+                if isinstance(key, bytes):
+                    key = key.decode('utf-8')
+                forced_keys.append(key)
+
+            for key in forced_keys:
+                try:
+                    forced_until_str = self.redis.get(key)
+                    if forced_until_str:
+                        forced_until = float(forced_until_str)
+                        if current_time < forced_until:
+                            # Extraire le symbole de la clé
+                            symbol = key.replace("forced_pair:", "")
+                            forced_pairs.append(symbol)
+                        else:
+                            # Expirer la clé manuellement
+                            self.redis.delete(key)
+                            logger.debug(f"Forçage expiré supprimé: {key}")
+                except Exception as e:
+                    logger.error(f"Erreur traitement forçage {key}: {e}")
+
         except Exception as e:
-            logger.debug(f"Erreur calcul ADX: {e}")
-            return 0.0
-    
+            logger.error(f"Erreur récupération paires forcées: {e}")
+
+        return forced_pairs
+
     def _batch_calculate_scores_from_db(self, symbols: List[str]) -> Dict[str, PairScore]:
-        """Calcule tous les scores depuis la DB en une seule requête"""
+        """Calcule tous les scores depuis analyzer_data en batch"""
         scores = {}
-        
+
         try:
             from shared.src.db_pool import real_dict_cursor
-            
+
             with real_dict_cursor() as cursor:
-                # Requête JOIN comme dans visualization - market_data + analyzer_data
+                # Récupérer toutes les données calculées depuis analyzer_data
                 query = """
-                    SELECT DISTINCT ON (md.symbol)
-                        md.symbol,
-                        md.close,
-                        md.high,
-                        md.low,
-                        md.volume,
-                        md.time,
-                        -- Indicateurs depuis analyzer_data
-                        ad.natr,
-                        ad.roc_10,
-                        ad.roc_20,
-                        ad.volume_ratio,
-                        ad.bb_squeeze,
-                        ad.adx_14,
-                        ad.trend_strength,
-                        ad.market_regime,
-                        ad.confluence_score,
-                        ad.volume_context
-                    FROM market_data md
-                    LEFT JOIN analyzer_data ad ON (md.time = ad.time AND md.symbol = ad.symbol AND md.timeframe = ad.timeframe)
-                    WHERE md.symbol = ANY(%s)
-                    AND md.timeframe = '3m'
-                    AND md.time > NOW() - INTERVAL '15 minutes'
-                    ORDER BY md.symbol, md.time DESC
+                    SELECT DISTINCT ON (symbol)
+                        symbol, natr, roc_10, roc_20, volume_ratio, bb_squeeze,
+                        adx_14, trend_strength, trend_angle, directional_bias,
+                        market_regime, confluence_score, volume_context
+                    FROM analyzer_data
+                    WHERE symbol = ANY(%s) AND timeframe = '3m'
+                    AND time > NOW() - INTERVAL '15 minutes'
+                    ORDER BY symbol, time DESC
                 """
                 cursor.execute(query, (symbols,))
                 results = cursor.fetchall()
-                
-                # Extraire toutes les métriques d'abord pour calcul de z-scores
-                all_atr = []
-                all_roc = []
-                all_volume = []
-                raw_data = []
-                
-                for data in results:
-                    atr_pct = float(data['natr']) if data['natr'] else 0
-                    roc = (float(data['roc_10']) + float(data['roc_20'])) / 2 if data['roc_10'] and data['roc_20'] else 0
-                    volume_ratio = float(data['volume_ratio']) if data['volume_ratio'] else 1.0
-                    
-                    all_atr.append(atr_pct)
-                    all_roc.append(roc)
-                    all_volume.append(volume_ratio)
-                    raw_data.append(data)
-                
-                # Traiter chaque résultat avec z-scores
-                for i, data in enumerate(raw_data):
+
+                # Extraire toutes les métriques pour z-scores
+                all_atr = [float(r['natr']) if r['natr'] else 0 for r in results]
+                all_roc = [(float(r['roc_10']) + float(r['roc_20'])) / 2 if r['roc_10'] and r['roc_20'] else 0 for r in results]
+                all_volume = [float(r['volume_ratio']) if r['volume_ratio'] else 1.0 for r in results]
+
+                # Traiter chaque résultat
+                for i, data in enumerate(results):
                     symbol = data['symbol']
-                    
-                    # Métriques
                     atr_pct = all_atr[i]
                     roc = all_roc[i]
                     volume_ratio = all_volume[i]
                     is_ranging = data['bb_squeeze'] if data['bb_squeeze'] is not None else False
-                    adx = float(data['adx_14']) if data['adx_14'] else 0
-                    
-                    # Score de tendance
-                    trend_score = self._calculate_trend_score_from_db(data)
-                    
-                    # Calculer les z-scores
+
+                    # Z-scores
                     z_atr = self._calculate_zscore(atr_pct, all_atr)
                     z_roc = self._calculate_zscore(roc, all_roc)
                     z_volume = self._calculate_zscore(volume_ratio, all_volume)
-                    
-                    # Score final avec z-scores
+
+                    # Trend score et pénalités
+                    trend_score = self._calculate_trend_score_from_db(data)
+
+                    # Score final
                     score = (
                         z_atr * self.config['weights']['atr'] +
                         z_roc * self.config['weights']['roc'] +
                         z_volume * self.config['weights']['volume'] +
                         trend_score * self.config['weights']['trend']
                     )
-                    
-                    # Ajustements
+
+                    # Pénalité ranging
                     if is_ranging:
-                        score -= 0.5
-                    
-                    if data['confluence_score'] and float(data['confluence_score']) > 70:
+                        adx = float(data['adx_14']) if data['adx_14'] else 0
+                        score -= self._calculate_range_penalty(adx, atr_pct)
+
+                    # Bonus
+                    if data.get('confluence_score') and float(data['confluence_score']) > 70:
                         score += 0.3
-                    
-                    if data['volume_context'] in ['BREAKOUT', 'PUMP_START']:
+                    if data.get('volume_context') in ['BREAKOUT', 'PUMP_START']:
                         score += 0.2
-                    
+
                     scores[symbol] = PairScore(
-                        symbol=symbol,
-                        score=score,
-                        atr_pct=atr_pct,
-                        roc=roc,
-                        volume_ratio=volume_ratio,
-                        is_ranging=is_ranging,
+                        symbol=symbol, score=score, atr_pct=atr_pct, roc=roc,
+                        volume_ratio=volume_ratio, is_ranging=is_ranging,
                         timestamp=datetime.now(),
                         components={
-                            'z_atr': z_atr,
-                            'z_roc': z_roc,
-                            'z_volume': z_volume,
+                            'z_atr': z_atr, 'z_roc': z_roc, 'z_volume': z_volume,
                             'trend_bias': trend_score,
-                            'adx': adx,
-                            'range_penalty': -0.5 if is_ranging else 0,
-                            'market_regime': data['market_regime'],
-                            'confluence_score': float(data['confluence_score']) if data['confluence_score'] else 0
+                            'market_regime': data.get('market_regime', 'UNKNOWN')
                         }
                     )
-                    
-                    # Mettre en cache
-                    self.market_data_cache[symbol] = {
-                        'score': scores[symbol],
-                        'timestamp': datetime.now()
-                    }
-                
-                # Pour les symboles sans données DB, utiliser le fallback
+
+                    # Cache
+                    self.market_data_cache[symbol] = {'score': scores[symbol], 'timestamp': datetime.now()}
+
+                # Symboles manquants = score par défaut
                 for symbol in symbols:
                     if symbol not in scores:
-                        scores[symbol] = self._calculate_score_from_redis(symbol)
-                
+                        scores[symbol] = PairScore(symbol, -1.0, 0, 0, 0, True, datetime.now())
+
         except Exception as e:
             logger.error(f"Erreur batch calculate scores: {e}")
-            # Fallback complet sur Redis
+            # Fallback : score par défaut pour tous
             for symbol in symbols:
-                scores[symbol] = self._calculate_score_from_redis(symbol)
-        
+                scores[symbol] = PairScore(symbol, -1.0, 0, 0, 0, True, datetime.now())
+
         return scores
     
     def _calculate_trend_score_from_db(self, data: Dict) -> float:
-        """Calcule le score de tendance depuis les données DB"""
+        """Calcule le score de tendance depuis les données DB existantes"""
         trend_score = 0.0
-        
-        # ADX
+
+        # ADX (déjà calculé dans analyzer_data)
         adx = float(data['adx_14']) if data['adx_14'] else 0
         if adx > 25:
-            trend_score += 1.0
+            trend_score += 0.8
         elif adx > 20:
-            trend_score += 0.5
-        
+            trend_score += 0.4
+
         # Trend strength
         if data['trend_strength'] == 'VERY_STRONG':
             trend_score += 0.5
         elif data['trend_strength'] == 'STRONG':
             trend_score += 0.3
-        
-        # Market regime
-        if data['market_regime'] in ['TRENDING_BULL', 'BREAKOUT_BULL']:
+        elif data['trend_strength'] == 'MODERATE':
+            trend_score += 0.15
+
+        # Trend angle (pente de la tendance)
+        if data.get('trend_angle'):
+            angle = float(data['trend_angle'])
+            if abs(angle) > 0.5:
+                trend_score += 0.3 * np.sign(angle)
+            elif abs(angle) > 0.2:
+                trend_score += 0.15 * np.sign(angle)
+
+        # Directional bias
+        if data.get('directional_bias') == 'BULLISH':
+            trend_score += 0.2
+        elif data.get('directional_bias') == 'BEARISH':
+            trend_score -= 0.2
+
+        # Market regime (avec gestion NULL)
+        market_regime = data.get('market_regime')
+        if market_regime in ['TRENDING_BULL', 'BREAKOUT_BULL']:
             trend_score += 0.3
-        elif data['market_regime'] in ['TRENDING_BEAR', 'BREAKOUT_BEAR']:
+        elif market_regime in ['TRENDING_BEAR', 'BREAKOUT_BEAR']:
             trend_score -= 0.3
-        
+        elif market_regime == 'TRANSITION':
+            trend_score += 0.1  # Léger bonus pour transition
+        elif market_regime == 'RANGING':
+            trend_score *= 0.5  # Atténuer plutôt qu'annuler
+
         return max(-1, min(1, trend_score))
     
     def _get_all_recent_scores(self) -> List[PairScore]:
@@ -688,39 +563,34 @@ class UniverseManager:
             else:
                 all_symbols = symbols_data
             
-            # Calculer les scores (fallback sur Redis si DB trop lente)
-            scores = {}
-            
-            # TEMPORAIRE: Forcer DB car Redis n'a pas les données de marché
-            if False and len(all_symbols) > 10 or not self.db_pool:
-                logger.info(f"Utilisation Redis pour {len(all_symbols)} symboles (éviter requête DB lente)")
-                for symbol in all_symbols:
-                    try:
-                        score = self._calculate_score_from_redis(symbol)
-                        scores[symbol] = score
-                        
-                        # Mettre en cache
-                        self.market_data_cache[symbol] = {
-                            'score': score,
-                            'timestamp': datetime.now()
-                        }
-                    except Exception as e:
-                        logger.debug(f"Erreur calcul score Redis {symbol}: {e}")
-                        scores[symbol] = PairScore(symbol, -1.0, 0, 0, 0, True, datetime.now())
-            else:
-                # Utiliser la DB seulement pour un petit nombre de symboles
-                scores = self._batch_calculate_scores_from_db(all_symbols)
+            # Calculer les scores depuis analyzer_data (tout est déjà calculé)
+            if not self.db_pool:
+                logger.error("Pas de DB disponible - impossible de calculer les scores")
+                return self.core_pairs, {}
+
+            scores = self._batch_calculate_scores_from_db(all_symbols)
             
             # Enregistrer l'état actuel avant modification
             previous_universe = self.selected_universe.copy()
             
-            # Toujours inclure les paires core
+            # Toujours inclure les paires core (jamais retirées)
             selected = set(self.core_pairs)
-            
-            # Filtrer les satellites éligibles
+
+            # Ajouter les paires forcées (consensus fort) non expirées
+            forced_pairs = self._get_forced_pairs()
+            for forced_symbol in forced_pairs:
+                selected.add(forced_symbol)
+                logger.info(f"🚀 Paire forcée active: {forced_symbol}")
+
+            # Filtrer les satellites éligibles avec hard_risk
             eligible_satellites = []
             for symbol, score in scores.items():
                 if symbol not in self.core_pairs and score.score > -1:
+                    # Vérifier hard_risk avant hystérésis
+                    if self.check_hard_risk(symbol):
+                        logger.warning(f"Paire {symbol} exclue pour hard_risk (ATR spike + spread + slippage)")
+                        continue
+
                     # Appliquer hystérésis
                     if self.apply_hysteresis(symbol, score.score):
                         eligible_satellites.append((symbol, score.score))
@@ -786,7 +656,7 @@ class UniverseManager:
         except Exception as e:
             logger.error(f"Erreur check_hard_risk {symbol}: {e}")
             return False
-    
+
     def get_universe_stats(self) -> Dict:
         """Retourne les statistiques de l'univers"""
         stats = {
@@ -808,14 +678,20 @@ class UniverseManager:
         return stats
     
     def force_pair_selection(self, symbol: str, duration_minutes: int = 60) -> None:
-        """Force la sélection d'une paire pour test"""
+        """Force la sélection d'une paire pour consensus fort"""
+        # Stocker le forçage avec expiration
+        forced_until = time.time() + (duration_minutes * 60)
+        forced_key = f"forced_pair:{symbol}"
+        self.redis.set(forced_key, str(forced_until), expiration=duration_minutes * 60 + 60)  # +60s marge
+
+        # Ajouter à l'univers actuel
         self.selected_universe.add(symbol)
-        logger.info(f"Paire {symbol} forcée dans l'univers pour {duration_minutes} minutes")
-        
-        # Publier dans Redis
+        logger.info(f"Paire {symbol} forcée dans l'univers pour {duration_minutes} minutes (jusqu'à {time.strftime('%H:%M:%S', time.localtime(forced_until))})")
+
+        # Publier dans Redis avec TTL cohérent
         self.redis.set(
             "universe:selected",
             json.dumps(list(self.selected_universe)),
-            expiration=300
+            expiration=max(300, duration_minutes * 60)  # Au moins 5min, ou la durée demandée
         )
     

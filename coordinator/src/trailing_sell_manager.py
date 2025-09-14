@@ -5,6 +5,7 @@ Extrait du coordinator pour alléger le code et améliorer la maintenance.
 import logging
 import time
 import json
+import numpy as np
 from typing import Optional, Tuple, Dict, Any
 from datetime import datetime
 
@@ -33,7 +34,7 @@ class TrailingSellManager:
         self.base_min_gain_for_trailing = 0.005  # 0.5% base (augmenté de 0.3%)
         self.base_sell_margin = 0.012  # 1.2% marge base (augmenté de 0.8%)
         self.max_drop_threshold = 0.015  # 1.5% de chute max depuis le pic (augmenté de 1.0%)
-        self.immediate_sell_drop = 0.020  # 2.0% de chute = vente immédiate (augmenté de 1.5%)
+        self.immediate_sell_drop = 0.030  # 3.0% de chute = vente immédiate 
         
         # Configuration stop-loss adaptatif - PLUS STRICT pour couper les pertes rapidement
         self.stop_loss_percent_base = 0.010  # 1.0% de base - très strict (réduit de 1.5%)
@@ -70,35 +71,35 @@ class TrailingSellManager:
             precision = self._get_price_precision(current_price)
             logger.info(f"🔍 Prix entrée: {entry_price:.{precision}f}, Prix actuel: {current_price:.{precision}f}")
             
-            # Calculer la performance actuelle
-            loss_percent = (entry_price - current_price) / entry_price
-            
+            # Calculer la performance actuelle (positif = gain, négatif = perte)
+            performance_percent = (current_price - entry_price) / entry_price
+
             # Récupérer et afficher le prix max historique dès le début
             historical_max = self._get_and_update_max_price(symbol, current_price, entry_price)
             drop_from_max = (historical_max - current_price) / historical_max
             logger.info(f"📊 Prix max historique: {historical_max:.{precision}f}, Chute depuis max: {drop_from_max*100:.2f}%")
-            
+
             # === STOP-LOSS ADAPTATIF INTELLIGENT ===
             adaptive_threshold = self._calculate_adaptive_threshold(symbol, entry_price, entry_time_epoch)
-            
-            # Afficher gain ou perte selon le signe
-            if loss_percent < 0:
-                logger.info(f"🧠 Stop-loss adaptatif pour {symbol}: {adaptive_threshold*100:.2f}% (gain actuel: {abs(loss_percent)*100:.2f}%)")
+
+            # Affichage clair selon performance
+            if performance_percent >= 0:
+                logger.info(f"🧠 Stop-loss adaptatif pour {symbol}: {adaptive_threshold*100:.2f}% (gain actuel: +{performance_percent*100:.2f}%)")
             else:
-                logger.info(f"🧠 Stop-loss adaptatif pour {symbol}: {adaptive_threshold*100:.2f}% (perte actuelle: {loss_percent*100:.2f}%)")
-            
-            # Si perte dépasse le seuil adaptatif : SELL immédiat
-            if loss_percent >= adaptive_threshold:
-                logger.info(f"📉 Stop-loss adaptatif déclenché pour {symbol}: perte {loss_percent*100:.2f}% ≥ seuil {adaptive_threshold*100:.2f}%")
-                return True, f"Stop-loss adaptatif déclenché (perte {loss_percent*100:.2f}% ≥ {adaptive_threshold*100:.2f}%)"
-            
+                logger.info(f"🧠 Stop-loss adaptatif pour {symbol}: {adaptive_threshold*100:.2f}% (perte actuelle: {abs(performance_percent)*100:.2f}%)")
+
+            # Si perte dépasse le seuil adaptatif : SELL immédiat (perte = performance négative)
+            if performance_percent < 0 and abs(performance_percent) >= adaptive_threshold:
+                logger.info(f"📉 Stop-loss adaptatif déclenché pour {symbol}: perte {abs(performance_percent)*100:.2f}% ≥ seuil {adaptive_threshold*100:.2f}%")
+                return True, f"Stop-loss adaptatif déclenché (perte {abs(performance_percent)*100:.2f}% ≥ {adaptive_threshold*100:.2f}%)"
+
             # Si position perdante mais dans la tolérance : garder
-            if current_price <= entry_price:
-                logger.info(f"🟡 Position perdante mais dans tolérance pour {symbol}: perte {loss_percent*100:.2f}% < seuil {adaptive_threshold*100:.2f}%")
-                return False, f"Position perdante mais dans tolérance (perte {loss_percent*100:.2f}% < {adaptive_threshold*100:.2f}%)"
-            
+            if performance_percent < 0:
+                logger.info(f"🟡 Position perdante mais dans tolérance pour {symbol}: perte {abs(performance_percent)*100:.2f}% < seuil {adaptive_threshold*100:.2f}%")
+                return False, f"Position perdante mais dans tolérance (perte {abs(performance_percent)*100:.2f}% < {adaptive_threshold*100:.2f}%)"
+
             # === POSITION GAGNANTE : TAKE PROFIT BINAIRE + TRAILING SELL ===
-            gain_percent = (current_price - entry_price) / entry_price
+            gain_percent = performance_percent  # Maintenant cohérent (positif = gain)
             logger.info(f"🔍 Position gagnante détectée: +{gain_percent*100:.2f}%, vérification take profit et trailing")
             
             # === TAKE PROFIT PROGRESSIF - RIDE LES PUMPS MAIS FERME EFFICACEMENT ===
@@ -341,8 +342,8 @@ class TrailingSellManager:
                 "price": price,
                 "timestamp": int(time.time() * 1000)
             }
-            # TTL de 2 heures pour éviter les références obsolètes
-            self.redis_client.set(ref_key, json.dumps(ref_data), expiration=7200)
+            # TTL de 24 heures pour éviter les références obsolètes (positions crypto peuvent durer)
+            self.redis_client.set(ref_key, json.dumps(ref_data), expiration=86400)
         except Exception as e:
             logger.error(f"Erreur mise à jour sell reference pour {symbol}: {e}")
     
@@ -398,49 +399,70 @@ class TrailingSellManager:
     
     def _get_atr_based_thresholds(self, symbol: str) -> Dict[str, float]:
         """
-        Calcule les seuils adaptatifs basés sur l'ATR pour trailing et activation.
-        
+        Calcule les seuils adaptatifs OPTIMISÉS pour maximiser les gains en haussier.
+
         Args:
             symbol: Symbole à analyser
-            
+
         Returns:
             Dict avec trailing_margin, activate_trailing_gain, adaptive_sl
         """
         try:
-            # Récupérer ATR depuis l'analyse
+            # Récupérer ATR et données de marché
             atr_percent = self._get_atr_percentage(symbol)
-            
+            market_regime = self._get_market_regime(symbol)
+
             if atr_percent is None:
-                logger.debug(f"Pas d'ATR pour {symbol}, seuils par défaut")
+                logger.debug(f"Pas d'ATR pour {symbol}, seuils par défaut optimisés")
                 return {
-                    'trailing_margin': self.base_sell_margin,
-                    'activate_trailing_gain': self.base_min_gain_for_trailing,
+                    'trailing_margin': 0.015,  # 1.5% par défaut (plus large)
+                    'activate_trailing_gain': 0.012,  # 1.2% activation (plus tardive)
                     'adaptive_sl': self.stop_loss_percent_base
                 }
-            
-            # Calculer les seuils adaptatifs selon tes formules - PLUS PERMISSIFS
-            # trailing_margin = clamp(0.8%, 2.0%, 1.0 * ATR%)
-            trailing_margin = max(0.008, min(0.020, 1.0 * atr_percent))
-            
-            # activate_trailing_gain = max(0.5%, 0.3 * ATR%)  
-            activate_trailing_gain = max(0.005, 0.3 * atr_percent)
-            
-            # adaptive_sl = max(1.2*ATR%, 1.0%) capped at 2.0% - PLUS STRICT
+
+            # === ACTIVATION TRAILING : Plus tardive pour laisser respirer ===
+            # Base 1.2% minimum, augmentée selon ATR
+            activate_trailing_gain = max(0.012, 0.8 * atr_percent)  # Min 1.2% au lieu de 0.5%
+
+            # === MARGES TRAILING : Adaptatives au régime de marché ===
+            base_trailing_margin = max(0.012, 1.2 * atr_percent)  # Base 1.2% min au lieu de 0.8%
+
+            # Multiplicateurs selon le régime (optimisés pour gains)
+            regime_multipliers = {
+                'TRENDING_BULL': 1.8,     # Bull fort = marges très larges (ride les pumps)
+                'BREAKOUT_BULL': 1.6,     # Breakout = marges larges
+                'RANGING': 1.0,           # Range = marges normales
+                'TRANSITION': 1.2,        # Transition = légèrement plus large
+                'TRENDING_BEAR': 0.8,     # Bear = marges plus strictes
+                'VOLATILE': 1.4,          # Volatile = marges modérément larges
+                'BREAKOUT_BEAR': 0.7      # Bear breakout = très strict
+            }
+
+            regime_factor = regime_multipliers.get(market_regime, 1.2)  # Défaut légèrement optimiste
+            trailing_margin = base_trailing_margin * regime_factor
+
+            # Contraintes finales optimisées
+            trailing_margin = max(0.012, min(0.035, trailing_margin))  # 1.2% à 3.5% (élargi)
+            activate_trailing_gain = max(0.012, min(0.025, activate_trailing_gain))  # 1.2% à 2.5%
+
+            # Stop-loss adaptatif inchangé (déjà optimisé)
             adaptive_sl = min(0.020, max(1.2 * atr_percent, 0.010))
-            
-            logger.debug(f"🧠 Seuils ATR pour {symbol}: trailing={trailing_margin*100:.2f}%, activation={activate_trailing_gain*100:.2f}%, SL={adaptive_sl*100:.2f}% (ATR={atr_percent*100:.2f}%)")
-            
+
+            logger.debug(f"🚀 Seuils OPTIMISÉS {symbol}: trailing={trailing_margin*100:.2f}%, "
+                        f"activation={activate_trailing_gain*100:.2f}%, SL={adaptive_sl*100:.2f}% "
+                        f"(ATR={atr_percent*100:.2f}%, régime={market_regime})")
+
             return {
                 'trailing_margin': trailing_margin,
                 'activate_trailing_gain': activate_trailing_gain,
                 'adaptive_sl': adaptive_sl
             }
-            
+
         except Exception as e:
-            logger.error(f"Erreur calcul seuils ATR {symbol}: {e}")
+            logger.error(f"Erreur calcul seuils optimisés {symbol}: {e}")
             return {
-                'trailing_margin': self.base_sell_margin,
-                'activate_trailing_gain': self.base_min_gain_for_trailing, 
+                'trailing_margin': 0.015,  # Fallback optimisé
+                'activate_trailing_gain': 0.012,
                 'adaptive_sl': self.stop_loss_percent_base
             }
     
@@ -479,7 +501,39 @@ class TrailingSellManager:
         except Exception as e:
             logger.error(f"Erreur récupération ATR {symbol}: {e}")
             return None
-    
+
+    def _get_market_regime(self, symbol: str) -> str:
+        """
+        Récupère le régime de marché actuel pour un symbole.
+
+        Args:
+            symbol: Symbole à analyser
+
+        Returns:
+            Régime de marché ou 'UNKNOWN'
+        """
+        if not self.db_connection:
+            return 'UNKNOWN'
+
+        try:
+            with self.db_connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT market_regime
+                    FROM analyzer_data
+                    WHERE symbol = %s AND timeframe = '1m'
+                    AND market_regime IS NOT NULL
+                    ORDER BY time DESC
+                    LIMIT 1
+                """, (symbol,))
+
+                result = cursor.fetchone()
+                if result and result[0]:
+                    return result[0]
+                return 'UNKNOWN'
+        except Exception as e:
+            logger.error(f"Erreur récupération régime marché {symbol}: {e}")
+            return 'UNKNOWN'
+
     def _calculate_adaptive_threshold(self, symbol: str, entry_price: float, 
                                      entry_time: float) -> float:
         """
@@ -512,9 +566,16 @@ class TrailingSellManager:
             regime_factor = self._calculate_regime_factor(analysis)
             support_factor = self._calculate_support_factor(analysis, entry_price)
             time_factor = self._calculate_time_factor(entry_time)
-            
-            # Combiner ATR avec les autres facteurs
-            adaptive_threshold = float(atr_based_sl) * float(regime_factor) * float(support_factor) * float(time_factor)
+
+            # Combiner ATR avec moyenne pondérée (éviter l'écrasement par produit)
+            # ATR = base (60%), régime = important (25%), support/temps = modéré (15%)
+            weighted_factor = (
+                0.60 * 1.0 +  # ATR base (neutre à 1.0)
+                0.25 * regime_factor +
+                0.10 * support_factor +
+                0.05 * time_factor
+            )
+            adaptive_threshold = float(atr_based_sl) * float(weighted_factor)
             
             # Contraintes finales - bornes plus strictes pour couper les pertes rapidement
             adaptive_threshold = max(0.008, min(0.020, adaptive_threshold))  # 0.8%-2.0% (réduit de 1.5%-3.5%)

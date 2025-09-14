@@ -44,7 +44,8 @@ class AdaptiveConsensusAnalyzer:
                     'total_min': 3         # Réduit 4->3 (signaux rares mais de qualité)
                 },
                 'SELL': {
-                    'total_min': 2         # 2 stratégies suffisent pour sortir
+                    'total_min': 3,        # Durci 2->3 pour éviter sorties prématurées en bull
+                    'trend_following': 1   # Au moins 1 trend pour confirmer retournement
                 }
             },
             'TRENDING_BEAR': {
@@ -87,7 +88,8 @@ class AdaptiveConsensusAnalyzer:
                     'total_min': 4         # 4 stratégies pour BUY breakout
                 },
                 'SELL': {
-                    'total_min': 2         # Facile de sortir en breakout bull
+                    'total_min': 3,        # Durci 2->3 pour rally explosifs
+                    'volume_based': 1      # Volume pour confirmer essoufflement
                 }
             },
             'BREAKOUT_BEAR': {
@@ -154,7 +156,7 @@ class AdaptiveConsensusAnalyzer:
             logger.info("🔍 Consensus: Aucun signal")
             return False, {'reason': 'Aucun signal'}
             
-        # PATCH 1: Dériver la volatilité si non fournie
+        # Normaliser et unifier volatility_regime
         if volatility_regime is None:
             # Tenter de lire depuis les signaux
             for s in signals:
@@ -162,6 +164,8 @@ class AdaptiveConsensusAnalyzer:
                 if vr:
                     volatility_regime = vr
                     break
+
+        # UNIFIÉ: Une seule logique de normalisation
         vol_level = str(volatility_regime or 'normal').lower()
         if vol_level not in ['low','normal','high','extreme']:
             vol_level = 'normal'
@@ -249,13 +253,13 @@ class AdaptiveConsensusAnalyzer:
             regime = 'UNKNOWN'
         
         # PATCH 3: Ajouter proxy breakout pour TRENDING_BULL
-        if regime == 'TRENDING_BULL' and families_count.get('breakout', 0) == 0:
+        if regime in ['TRENDING_BULL', 'BREAKOUT_BULL'] and families_count.get('breakout', 0) == 0:
             if 'trend_following' in families_count and 'volume_based' in families_count and avg_conf >= 0.90:
                 families_count['breakout_proxy'] = 1
-                logger.info(f"🚀 Proxy breakout ajouté (trend+volume+conf≥0.9)")
+                logger.debug(f"🚀 Proxy breakout ajouté pour {regime} (trend+volume+conf≥0.9)")
         
-        logger.info(f"🔍 Familles détectées: {families_count}")
-        logger.info(f"🔍 Scores adaptabilité: {adaptability_scores}")
+        logger.debug(f"🔍 Familles détectées: {families_count}")
+        logger.debug(f"🔍 Scores adaptabilité: {adaptability_scores}")
         logger.info(f"🔍 Qualité: avg_conf={avg_conf:.2f}, hi_conf={hi_conf}")
         
         # Obtenir les requirements pour ce régime ET ce side
@@ -267,7 +271,7 @@ class AdaptiveConsensusAnalyzer:
             # Fallback si le side n'existe pas (ancien format)
             requirements = regime_requirements
             
-        logger.info(f"🔍 Requirements pour {regime}/{signal_side}: {requirements}")
+        logger.debug(f"🔍 Requirements pour {regime}/{signal_side}: {requirements}")
         
         # PATCH 2: Assouplir TRENDING_BULL/BUY si excellente qualité
         total_min = requirements.get('total_min', 6)
@@ -308,15 +312,17 @@ class AdaptiveConsensusAnalyzer:
             consensus_strength_preview = self._calculate_preview_consensus_strength(families_count, regime)
             family_diversity = len([f for f in families_count.keys() if f != 'unknown' and families_count[f] > 0])
             
-            # PATCH 4: Bypass plus sûr - exige deux critères sur les cinq
+            # PATCH 4: Bypass durci - exige plus de critères si confidence faible
             criteria = 0
             if avg_adaptability >= 0.6: criteria += 1
-            if consensus_strength_preview >= 1.9: criteria += 1   # léger relèvement
+            if consensus_strength_preview >= 1.9: criteria += 1
             if family_diversity >= 2: criteria += 1
             if total_strategies >= total_min + 1: criteria += 1
             if len(missing_families) == 1: criteria += 1
-            
-            can_bypass = (criteria >= 2)
+
+            # Durcir si confidence médiocre
+            min_criteria = 3 if avg_conf < 0.7 else 2
+            can_bypass = (criteria >= min_criteria)
                          
             if can_bypass:
                 logger.info(f"✅ Familles manquantes TOLÉRÉES: {', '.join(missing_families)} - Diversité: {family_diversity}, adaptabilité: {avg_adaptability:.2f}")
@@ -330,8 +336,7 @@ class AdaptiveConsensusAnalyzer:
                     'consensus_preview': consensus_strength_preview
                 }
         
-        # PATCH 5: SELL facile mais pas gratuit - vérifier au moins une famille optimale
-        # ASSOUPLI: Acceptable si famille "acceptable" au lieu de "best" uniquement
+        # PATCH 5: SELL renforcé - toujours exiger une famille acceptable minimum
         if signal_side == 'SELL':
             best_family_hit = any(
                 (STRATEGY_FAMILIES.get(f, {}).get('best_regimes') or []).__contains__(regime)
@@ -344,6 +349,15 @@ class AdaptiveConsensusAnalyzer:
             if not best_family_hit and not acceptable_family_hit:
                 return False, {
                     'reason': 'SELL sans famille optimale/acceptable au régime',
+                    'families_count': families_count,
+                    'regime': regime,
+                    'avg_confidence': avg_conf
+                }
+
+            # En bull fort, durcir encore plus les SELL
+            if regime in ['TRENDING_BULL', 'BREAKOUT_BULL'] and not best_family_hit:
+                return False, {
+                    'reason': f'SELL en {regime} sans famille OPTIMALE (seulement acceptable)',
                     'families_count': families_count,
                     'regime': regime,
                     'avg_confidence': avg_conf
@@ -373,18 +387,8 @@ class AdaptiveConsensusAnalyzer:
         # Décision finale basée sur la force du consensus RAISONNABLE
         # RÉALISTE: Basé sur les vraies données observées (3-10 stratégies simultanées)
         
-        # Déterminer le niveau de volatilité pour ajustement dynamique
-        volatility_level = 'normal'  # Par défaut
-        if 'volatility_regime' in locals():
-            vol_regime_lower = volatility_regime.lower() if volatility_regime else 'normal'
-            if vol_regime_lower in ['low']:
-                volatility_level = 'low'
-            elif vol_regime_lower in ['high']:
-                volatility_level = 'high'
-            elif vol_regime_lower in ['extreme']:
-                volatility_level = 'extreme'
-            else:
-                volatility_level = 'normal'
+        # Utiliser vol_level déjà normalisé (supprime la duplication)
+        volatility_level = vol_level  # Réutiliser la valeur déjà calculée
         
         # Utiliser la méthode dynamique pour calculer le seuil  
         min_consensus_strength = self.get_dynamic_consensus_threshold(regime, timeframe or '3m', vol_level)
@@ -643,8 +647,9 @@ class AdaptiveConsensusAnalyzer:
             'mtf_consensus_bonus': 'Applied - reduced thresholds for post-conflict MTF signals'
         }
     
-    def get_adjusted_min_strategies(self, market_regime: str, 
-                                   available_families: List[str], signal_side: str = 'BUY') -> int:
+    def get_adjusted_min_strategies(self, market_regime: str,
+                                   available_families: List[str], signal_side: str = 'BUY',
+                                   avg_confidence: float = None) -> int:
         """
         Retourne le nombre minimum de stratégies ajusté selon le régime et les familles disponibles.
         
@@ -676,13 +681,22 @@ class AdaptiveConsensusAnalyzer:
             if regime in family_config.get('best_regimes', []):
                 optimal_families += 1
                 
+        # Prendre en compte la confidence pour ajuster dynamiquement
+        confidence_bonus = 0
+        if avg_confidence is not None:
+            if avg_confidence >= 0.9:
+                confidence_bonus = -1  # Assouplir si excellente confidence
+            elif avg_confidence < 0.6:
+                confidence_bonus = +1  # Durcir si confidence médiocre
+
         # Avec 28 stratégies, on peut être plus exigeant sur le consensus
         if optimal_families >= 4:
-            return base_min              # Standard avec 4+ familles optimales
+            adjustment = 0              # Standard avec 4+ familles optimales
         elif optimal_families >= 3:
-            return base_min + 1          # Légère augmentation avec 3 familles
+            adjustment = 1              # Légère augmentation avec 3 familles
         elif optimal_families >= 2:
-            return base_min + 2          # Plus strict avec 2 familles seulement
+            adjustment = 2              # Plus strict avec 2 familles seulement
         else:
-            # Peu de familles optimales, on est très strict pour compenser
-            return base_min + 3
+            adjustment = 3              # Peu de familles optimales, très strict
+
+        return max(base_min, base_min + adjustment + confidence_bonus)

@@ -35,19 +35,20 @@ class SimpleSignalAggregatorService:
     Logic: Buffer + Consensus adaptatif + Filtres critiques + Done !
     """
     
-    def __init__(self, context_manager, database_manager=None):
+    def __init__(self, context_manager, database_manager=None, db_connection=None):
         """
         Initialise le service d'agrégation simplifié.
-        
+
         Args:
-            context_manager: Gestionnaire de contexte de marché  
+            context_manager: Gestionnaire de contexte de marché
             database_manager: Gestionnaire de base de données (optionnel)
+            db_connection: Connexion directe à la DB (pour filtres critiques)
         """
         self.context_manager = context_manager
         self.database_manager = database_manager
-        
+
         # Composant principal simplifié
-        self.signal_processor = SimpleSignalProcessor(context_manager, database_manager)
+        self.signal_processor = SimpleSignalProcessor(context_manager, database_manager, db_connection)
         
         # Buffer intelligent - OPTIMISÉ POUR RAPIDITÉ avec système de vague
         self.signal_buffer = IntelligentSignalBuffer(

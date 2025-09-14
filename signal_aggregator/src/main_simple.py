@@ -66,8 +66,9 @@ class SimpleSignalAggregatorApp:
         
         # Service d'agrégation simplifié
         self.aggregator_service = SimpleSignalAggregatorService(
-            self.context_manager, 
-            self.database_manager
+            self.context_manager,
+            self.database_manager,
+            self.db_connection  # Passer la connexion DB pour les filtres critiques
         )
         
         # Web server pour health checks
@@ -79,10 +80,38 @@ class SimpleSignalAggregatorApp:
         """Établit la connexion à la base de données."""
         try:
             self.db_connection = psycopg2.connect(**self.db_config)
+            self.db_connection.autocommit = True  # Important pour éviter les transactions bloquées
             logger.info("✅ Connexion DB établie")
         except Exception as e:
             logger.error(f"❌ Erreur connexion DB: {e}")
             raise
+
+    def ensure_db_connection(self):
+        """Vérifie et recrée la connexion DB si nécessaire."""
+        try:
+            # Tester si la connexion est toujours valide
+            if self.db_connection.closed:
+                logger.warning("Connexion DB fermée, reconnexion...")
+                self.db_connection = psycopg2.connect(**self.db_config)
+                self.db_connection.autocommit = True
+                logger.info("✅ Reconnexion DB réussie")
+                return self.db_connection
+
+            # Tester avec une requête simple
+            with self.db_connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+            return self.db_connection
+
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+            logger.warning(f"Connexion DB invalide: {e}, reconnexion...")
+            try:
+                self.db_connection = psycopg2.connect(**self.db_config)
+                self.db_connection.autocommit = True
+                logger.info("✅ Reconnexion DB réussie")
+                return self.db_connection
+            except Exception as reconnect_error:
+                logger.error(f"❌ Échec reconnexion DB: {reconnect_error}")
+                raise
             
     async def setup_web_server(self):
         """Configure le serveur web pour les health checks."""

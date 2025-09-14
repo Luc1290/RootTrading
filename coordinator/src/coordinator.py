@@ -8,6 +8,7 @@ import json
 import asyncio
 import threading
 import os
+import numpy as np
 from typing import Dict, Any, Optional
 from shared.src.db_pool import DBConnectionPool
 
@@ -52,7 +53,7 @@ class Coordinator:
         
         # Configuration dynamique basée sur l'USDC disponible
         self.fee_rate = 0.001  # 0.1% de frais estimés par trade
-        
+
         # Allocation basée USDC - optimisée pour 9 positions max (6 core + 3 satellites)
         self.base_allocation_usdc_percent = 10.0  # 10% de l'USDC disponible (9x10=90% max)
         self.strong_allocation_usdc_percent = 12.0 # 12% pour signaux forts
@@ -60,6 +61,28 @@ class Coordinator:
         self.weak_allocation_usdc_percent = 7.0   # 7% pour signaux faibles
         self.usdc_safety_margin = 0.98            # Garde 2% d'USDC en sécurité
         self.min_absolute_trade_usdc = 1.0        # 1 USDC minimum (allow small position exits)
+
+        # Configuration des seuils de force de signal (centralisée)
+        self.signal_strength_config = {
+            # Seuils pour consensus override (BUY fort = ajout immédiat à l'univers)
+            'consensus_override': {
+                'min_force': 2.0,  # Force minimum (au lieu de 2.5 arbitraire)
+                'min_strategies': 5,  # Stratégies minimum (au lieu de 6 arbitraire)
+            },
+            # Seuils pour catégorisation de force (allocation)
+            'categorization': {
+                'very_strong_threshold': 12.0,  # Au lieu de 20
+                'strong_threshold': 8.0,        # Au lieu de 15
+                'moderate_threshold': 4.0,      # Au lieu de 10
+                # En dessous = WEAK
+            },
+            # Seuils pour consensus SELL forcé
+            'consensus_sell': {
+                'min_strategies': 4,  # Au lieu de 5
+                'min_strength': 1.8,  # Au lieu de 2.0
+                'loss_multiplier': 0.6  # Perte = -0.6×ATR% pour forcer
+            }
+        }
         
         # Initialiser le pool de connexions DB
         self._init_db_pool()
@@ -154,6 +177,132 @@ class Coordinator:
             default_symbols = ["BTCUSDC", "ETHUSDC"]
             self.redis_client.set("trading:symbols", json.dumps(default_symbols))
             logger.info(f"Symboles par défaut configurés: {default_symbols}")
+
+    def _calculate_unified_signal_strength(self, signal: StrategySignal) -> tuple[float, int, float]:
+        """
+        Calcule la force du signal de manière unifiée.
+
+        Args:
+            signal: Signal à analyser
+
+        Returns:
+            tuple[force, strategy_count, avg_confidence]: Force calculée, nombre de stratégies, confiance moyenne
+        """
+        try:
+            # Méthode 1 (prioritaire) : Depuis metadata (consensus multi-stratégies)
+            if signal.metadata:
+                consensus_strength = signal.metadata.get('consensus_strength', 0)
+                strategies_count = signal.metadata.get('strategies_count', signal.metadata.get('strategy_count', 1))
+                avg_confidence = signal.metadata.get('avg_confidence', signal.metadata.get('confidence', 0.5))
+
+                if consensus_strength > 0 and strategies_count > 1:
+                    # Formule améliorée : donner plus de poids aux stratégies multiples
+                    # Force = consensus × √(strategies) × confidence
+                    # √(strategies) pour éviter explosion linéaire, mais récompenser diversité
+                    force = consensus_strength * (strategies_count ** 0.5) * avg_confidence
+                    logger.debug(f"Force consensus: {consensus_strength} × √{strategies_count} × {avg_confidence:.2f} = {force:.2f}")
+                    return force, strategies_count, avg_confidence
+
+            # Méthode 2 : Signal unique avec confidence
+            if hasattr(signal, 'confidence') and signal.confidence and signal.confidence >= 50:
+                # Convertir confidence (0-100) en force (0-3)
+                force = (signal.confidence / 100) * 2.0  # Max 2.0 pour signal unique
+                return force, 1, signal.confidence / 100
+
+            # Méthode 3 : Enum strength
+            if hasattr(signal, 'strength'):
+                strength_map = {
+                    SignalStrength.VERY_STRONG: 2.5,
+                    SignalStrength.STRONG: 2.0,
+                    SignalStrength.MODERATE: 1.5,
+                    SignalStrength.WEAK: 1.0
+                }
+                force = strength_map.get(signal.strength, 1.0)
+                return force, 1, 0.7  # Confiance par défaut pour enum
+
+            # Fallback : signal basique
+            return 1.0, 1, 0.5
+
+        except Exception as e:
+            logger.error(f"Erreur calcul force signal: {e}")
+            return 1.0, 1, 0.5
+
+    def _categorize_signal_strength(self, force: float) -> str:
+        """
+        Catégorise la force du signal pour l'allocation.
+
+        Args:
+            force: Force calculée
+
+        Returns:
+            Catégorie: VERY_STRONG, STRONG, MODERATE, WEAK
+        """
+        thresholds = self.signal_strength_config['categorization']
+
+        if force >= thresholds['very_strong_threshold']:
+            return "VERY_STRONG"
+        elif force >= thresholds['strong_threshold']:
+            return "STRONG"
+        elif force >= thresholds['moderate_threshold']:
+            return "MODERATE"
+        else:
+            return "WEAK"
+
+    def _check_consensus_sell_override(self, signal: StrategySignal, entry_price: float) -> tuple[bool, str]:
+        """
+        Vérifie si un consensus SELL fort doit bypasser le trailing stop.
+
+        Args:
+            signal: Signal de vente
+            entry_price: Prix d'entrée de la position
+
+        Returns:
+            tuple[should_force_sell, reason]: True si vente forcée autorisée
+        """
+        try:
+            # Calculer la force du signal
+            signal_force, strategies_count, avg_confidence = self._calculate_unified_signal_strength(signal)
+
+            # Récupérer les seuils de configuration
+            config = self.signal_strength_config['consensus_sell']
+            min_strategies = config['min_strategies']
+            min_strength = config['min_strength']
+            loss_multiplier = config['loss_multiplier']
+
+            # Vérifier si c'est un signal de consensus
+            signal_type = signal.metadata.get('type', '') if signal.metadata else ''
+
+            # Calculer la perte actuelle
+            current_loss_pct = ((signal.price - entry_price) / entry_price) * 100
+
+            # Récupérer l'ATR pour seuil dynamique
+            atr_pct = self.trailing_manager._get_atr_percentage(signal.symbol)
+            if not atr_pct:
+                atr_pct = 1.5  # Valeur par défaut si ATR indisponible
+
+            loss_threshold = -loss_multiplier * atr_pct  # Seuil = -0.6×ATR%
+
+            # Conditions pour forcer la vente
+            is_consensus = signal_type == 'CONSENSUS'
+            has_enough_strategies = strategies_count >= min_strategies
+            has_enough_strength = signal_force >= min_strength
+            has_significant_loss = current_loss_pct < loss_threshold
+
+            if is_consensus and has_enough_strategies and has_enough_strength and has_significant_loss:
+                reason = (f"CONSENSUS_SELL_FORCED: {strategies_count} stratégies, "
+                         f"force {signal_force:.1f}, perte {current_loss_pct:.2f}% < seuil {loss_threshold:.2f}%")
+                return True, reason
+
+            # Log des cas où consensus fort mais pas assez de perte
+            elif is_consensus and has_enough_strategies and has_enough_strength:
+                logger.info(f"📊 Consensus fort mais perte insuffisante {signal.symbol}: "
+                           f"{current_loss_pct:.2f}% > {loss_threshold:.2f}% - trailing continue")
+
+            return False, "Conditions consensus sell non remplies"
+
+        except Exception as e:
+            logger.error(f"Erreur vérification consensus sell: {e}")
+            return False, f"Erreur: {e}"
             
     def _mark_signal_as_processed(self, signal_id: int) -> bool:
         """
@@ -237,54 +386,48 @@ class Coordinator:
                 return
             
             # CONSENSUS BUY OVERRIDE: Forcer l'ajout à l'univers si consensus très fort
-            # La force est dans metadata['force'], strategy_count aussi
-            signal_force = signal.metadata.get('force', 0) if signal.metadata else 0
-            strategy_count = signal.metadata.get('strategy_count', 0) if signal.metadata else 0
-            
-            # Alternative: utiliser confidence si force n'est pas dans metadata
-            if signal_force == 0 and signal.confidence and signal.confidence >= 80:
-                signal_force = signal.confidence / 30  # Convertir confidence en force approximative
-            
-            # Alternative: utiliser strength (enum) si disponible
-            if signal_force == 0 and hasattr(signal, 'strength') and signal.strength == SignalStrength.VERY_STRONG:
-                signal_force = 3.0  # Considérer VERY_STRONG comme force 3.0
-            
-            if (signal.side == OrderSide.BUY and 
-                signal_force >= 2.5 and 
-                strategy_count >= 6):
-                
-                logger.warning(f"🚀 CONSENSUS BUY TRÈS FORT détecté pour {signal.symbol}")
-                logger.warning(f"   → {strategy_count} stratégies, force {signal_force}")
+            signal_force, strategy_count, avg_confidence = self._calculate_unified_signal_strength(signal)
+
+            # Vérifier si on doit bypasser l'hystérésis pour un consensus fort
+            min_force = self.signal_strength_config['consensus_override']['min_force']
+            min_strategies = self.signal_strength_config['consensus_override']['min_strategies']
+
+            if (signal.side == OrderSide.BUY and
+                signal_force >= min_force and
+                strategy_count >= min_strategies):
+
+                logger.warning(f"🚀 CONSENSUS BUY FORT détecté pour {signal.symbol}")
+                logger.warning(f"   → {strategy_count} stratégies, force {signal_force:.2f}")
                 logger.warning(f"   → Ajout immédiat à l'univers tradable (bypass hystérésis)")
-                
-                # Forcer l'ajout à l'univers tradable
-                self.universe_manager.force_pair_selection(signal.symbol, duration_minutes=60)
+
+                # Forcer l'ajout à l'univers tradable pour 45 minutes (éviter exposition trop longue)
+                self.universe_manager.force_pair_selection(signal.symbol, duration_minutes=45)
             
-            # Vérifier l'efficacité du trade (logique simplifiée)
-            is_efficient, efficiency_reason = self._check_trade_efficiency(signal)
-            
-            if not is_efficient:
-                logger.warning(f"❌ Signal rejeté: {efficiency_reason}")
-                self.stats["signals_rejected"] += 1
-                
-                # Marquer le signal comme traité même s'il est rejeté
-                if signal.metadata and 'db_id' in signal.metadata:
-                    db_id = signal.metadata['db_id']
-                    self._mark_signal_as_processed(db_id)
-                
-                return
-            
-            # Calculer la quantité à trader
+            # Calculer la quantité à trader UNE SEULE FOIS
             quantity = self._calculate_quantity(signal)
             if not quantity or quantity <= 0:
                 logger.error("Impossible de calculer la quantité")
                 self.stats["signals_rejected"] += 1
-                
+
                 # Marquer le signal comme traité même en cas d'erreur
                 if signal.metadata and 'db_id' in signal.metadata:
                     db_id = signal.metadata['db_id']
                     self._mark_signal_as_processed(db_id)
-                
+
+                return
+
+            # Vérifier l'efficacité du trade avec la quantité calculée
+            is_efficient, efficiency_reason = self._check_trade_efficiency(signal, quantity)
+
+            if not is_efficient:
+                logger.warning(f"❌ Signal rejeté: {efficiency_reason}")
+                self.stats["signals_rejected"] += 1
+
+                # Marquer le signal comme traité même s'il est rejeté
+                if signal.metadata and 'db_id' in signal.metadata:
+                    db_id = signal.metadata['db_id']
+                    self._mark_signal_as_processed(db_id)
+
                 return
             
             # Préparer l'ordre pour le trader (MARKET pour exécution immédiate)
@@ -377,61 +520,29 @@ class Coordinator:
                 
             else:  # SELL
                 # FILTRE TRAILING SELL: Vérifier si on doit vendre maintenant (AVANT balance)
-                # Récupérer les infos de la position active pour le trailing sell
                 active_positions = self.service_client.get_active_cycles(signal.symbol)
                 if active_positions:
                     position = active_positions[0]
                     entry_price = float(position.get('entry_price', 0))
                     entry_time = position.get('timestamp')
-                    
-                    # EXCEPTION : Si signal de consensus fort ET position perdante significative
-                    force_sell = False
-                    if signal.metadata:
-                        strategies_count = signal.metadata.get('strategies_count', 0)
-                        consensus_strength = signal.metadata.get('consensus_strength', 0)
-                        signal_type = signal.metadata.get('type', '')
-                        
-                        # Calculer la perte en %
-                        current_loss_pct = ((signal.price - entry_price) / entry_price) * 100
-                        
-                        # Récupérer l'ATR pour le seuil dynamique
-                        atr_pct = self.trailing_manager._get_atr_percentage(signal.symbol)
-                        if not atr_pct:
-                            atr_pct = 1.5  # Valeur par défaut si ATR indisponible
-                        
-                        loss_threshold = -0.6 * atr_pct  # Seuil de perte = -0.6×ATR%
-                        
-                        # Forcer la vente si consensus fort ET perte significative
-                        if (signal_type == 'CONSENSUS' and 
-                            strategies_count >= 5 and 
-                            consensus_strength >= 2.0 and
-                            current_loss_pct < loss_threshold):
-                            logger.warning(f"⚠️ CONSENSUS FORT + PERTE SIGNIFICATIVE détectés pour {signal.symbol}")
-                            logger.warning(f"   → {strategies_count} stratégies, force {consensus_strength:.1f}")
-                            logger.warning(f"   → Perte: {current_loss_pct:.2f}% < seuil {loss_threshold:.2f}% (-0.6×ATR)")
-                            logger.warning(f"   → SELL forcé autorisé")
-                            force_sell = True
-                        elif signal_type == 'CONSENSUS' and strategies_count >= 5:
-                            logger.info(f"📊 Consensus fort mais position pas assez perdante: {current_loss_pct:.2f}% > {loss_threshold:.2f}%")
-                            logger.info(f"   → SELL forcé refusé, laisse le trailing gérer")
+
+                    # Vérifier si consensus SELL fort doit bypasser le trailing
+                    force_sell, sell_reason = self._check_consensus_sell_override(signal, entry_price)
                     
                     if not force_sell:
-                        should_sell, sell_reason = self.trailing_manager.check_trailing_sell(
+                        should_sell, trailing_reason = self.trailing_manager.check_trailing_sell(
                             symbol=signal.symbol,
                             current_price=signal.price,
                             entry_price=entry_price,
                             entry_time=entry_time
                         )
                         if not should_sell:
-                            # Journalisation détaillée de la raison du refus
-                            logger.info(f"📝 SELL refusé pour {signal.symbol} - Raison: {sell_reason}")
-                            return False, sell_reason
+                            logger.info(f"📝 SELL refusé pour {signal.symbol} - Raison: {trailing_reason}")
+                            return False, trailing_reason
                         else:
-                            # Journalisation si le trailing autorise la vente
-                            logger.info(f"✅ SELL autorisé par trailing pour {signal.symbol} - Raison: {sell_reason}")
+                            logger.info(f"✅ SELL autorisé par trailing pour {signal.symbol} - Raison: {trailing_reason}")
                     else:
-                        # Journalisation du SELL forcé par consensus
-                        logger.warning(f"🔥 SELL_FORCED_BY_CONSENSUS pour {signal.symbol}")
+                        logger.warning(f"🔥 {sell_reason}")  # sell_reason contient déjà le détail
                 else:
                     # Pas de position active, autoriser le SELL
                     logger.info(f"✅ Pas de position active pour {signal.symbol}, SELL autorisé (NO_POSITION)")
@@ -456,23 +567,19 @@ class Coordinator:
             logger.error(f"Erreur vérification faisabilité: {str(e)}")
             return False, f"Erreur: {str(e)}"
     
-    def _check_trade_efficiency(self, signal: StrategySignal) -> tuple[bool, str]:
+    def _check_trade_efficiency(self, signal: StrategySignal, quantity: float) -> tuple[bool, str]:
         """
         Vérifications basiques pour l'exécution du trade.
         Le Coordinator EXÉCUTE, il ne décide pas de la stratégie.
-        
+
         Args:
             signal: Signal à analyser
-            
+            quantity: Quantité pré-calculée à trader
+
         Returns:
             (is_efficient, reason)
         """
         try:
-            # Calculer la quantité et valeur du trade
-            quantity = self._calculate_quantity(signal)
-            if not quantity:
-                return False, "Impossible de calculer la quantité"
-            
             # Valeur totale du trade
             trade_value = quantity * signal.price
             
@@ -520,34 +627,12 @@ class Coordinator:
                     usdc_balance = next((b.get('free', 0) for b in balances if b.get('asset') == 'USDC'), 0)
                     total_capital = sum(b.get('value_usdc', 0) for b in balances)
                 
-                # ALLOCATION USDC MULTI-CRYPTO : Pourcentages adaptés pour 22 cryptos
-                
-                # Ajuster selon la force du signal (calculée depuis consensus_strength et strategies_count)
-                strength_category = "MODERATE"  # Par défaut
-                
-                if signal.metadata:
-                    logger.debug(f"🔍 Métadonnées {signal.symbol}: {signal.metadata}")
-                    
-                    # Calculer force basée sur consensus_strength et strategies_count
-                    consensus_strength = signal.metadata.get('consensus_strength', 0)
-                    strategies_count = signal.metadata.get('strategies_count', 1)
-                    avg_confidence = signal.metadata.get('avg_confidence', 0.5)
-                    
-                    # Formule de force : consensus_strength * strategies_count * avg_confidence
-                    force_score = consensus_strength * strategies_count * avg_confidence
-                    
-                    # Catégorisation basée sur le score de force
-                    if force_score >= 20:
-                        strength_category = "VERY_STRONG"
-                    elif force_score >= 15:
-                        strength_category = "STRONG" 
-                    elif force_score >= 10:
-                        strength_category = "MODERATE"
-                    else:
-                        strength_category = "WEAK"
-                    
-                    logger.info(f"💪 Force calculée {signal.symbol}: score={force_score:.1f} → {strength_category} "
-                               f"(consensus:{consensus_strength}, strategies:{strategies_count}, conf:{avg_confidence:.2f})")
+                # ALLOCATION USDC : Utiliser le calcul de force unifié
+                signal_force, strategies_count, avg_confidence = self._calculate_unified_signal_strength(signal)
+                strength_category = self._categorize_signal_strength(signal_force)
+
+                logger.info(f"💪 Force calculée {signal.symbol}: {signal_force:.2f} → {strength_category} "
+                           f"(strategies:{strategies_count}, conf:{avg_confidence:.2f})")
                 
                 # Allocation selon la force calculée
                 if strength_category == "VERY_STRONG":
@@ -573,7 +658,12 @@ class Coordinator:
                 logger.info(f"💰 {signal.symbol} - USDC dispo: {usdc_balance:.0f}€, "
                            f"allocation: {allocation_percent:.0f}% = {trade_amount:.0f}€ "
                            f"(force: {strength_category}) [POSITIONS AUGMENTÉES]")
-                
+
+                # Vérifier que le prix est valide avant division
+                if not signal.price or signal.price <= 0:
+                    logger.error(f"Prix invalide pour {signal.symbol}: {signal.price}")
+                    return None
+
                 # Convertir en quantité
                 quantity = trade_amount / signal.price
                 

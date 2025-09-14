@@ -18,15 +18,22 @@ class ContextManager:
     def __init__(self, db_connection):
         """
         Initialise le gestionnaire de contexte.
-        
+
         Args:
-            db_connection: Connexion à la base de données
+            db_connection: Connexion à la base de données ou config DB
         """
-        self.db_connection = db_connection
+        # Si c'est une connexion, on la garde pour compatibilité
+        # Si c'est un dict de config, on créera des connexions à la volée
+        if isinstance(db_connection, dict):
+            self.db_config = db_connection
+            self.db_connection = None
+        else:
+            self.db_connection = db_connection
+            self.db_config = None
         
-        # Cache pour optimiser les requêtes répétées
+        # Cache pour optimiser les requêtes répétées avec TTL dynamique
         self.context_cache = {}
-        self.cache_ttl = 60  # Durée de vie du cache en secondes
+        self.base_cache_ttl = 5  # TTL de base en secondes
         
     def get_unified_market_regime(self, symbol: str, signal_timeframe: str = None) -> Dict[str, Any]:
         """
@@ -52,18 +59,22 @@ class ContextManager:
         cache_key = f"regime_unified_{symbol}"
         
         try:
-            with self.db_connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            # Créer un curseur sans utiliser le context manager de transaction
+            cursor = self.db_connection.cursor(cursor_factory=RealDictCursor)
+            try:
                 # Récupérer le régime du timeframe de référence (plus récent)
                 cursor.execute("""
-                    SELECT market_regime, regime_strength, regime_confidence, 
+                    SELECT market_regime, regime_strength, regime_confidence,
                            directional_bias, volatility_regime, time
-                    FROM analyzer_data 
+                    FROM analyzer_data
                     WHERE symbol = %s AND timeframe = %s
-                    ORDER BY time DESC 
+                    ORDER BY time DESC
                     LIMIT 1
                 """, (symbol, reference_timeframe))
-                
+
                 regime_data = cursor.fetchone()
+            finally:
+                cursor.close()
                 
                 if regime_data:
                     return {
@@ -78,16 +89,20 @@ class ContextManager:
                 else:
                     # Fallback si pas de données 3m
                     logger.warning(f"Pas de régime 3m pour {symbol}, fallback sur 1m")
-                    cursor.execute("""
-                        SELECT market_regime, regime_strength, regime_confidence,
-                               directional_bias, volatility_regime, time
-                        FROM analyzer_data 
-                        WHERE symbol = %s AND timeframe = '1m'
-                        ORDER BY time DESC 
-                        LIMIT 1
-                    """, (symbol,))
-                    
-                    fallback_data = cursor.fetchone()
+                    cursor = self.db_connection.cursor(cursor_factory=RealDictCursor)
+                    try:
+                        cursor.execute("""
+                            SELECT market_regime, regime_strength, regime_confidence,
+                                   directional_bias, volatility_regime, time
+                            FROM analyzer_data
+                            WHERE symbol = %s AND timeframe = '1m'
+                            ORDER BY time DESC
+                            LIMIT 1
+                        """, (symbol,))
+
+                        fallback_data = cursor.fetchone()
+                    finally:
+                        cursor.close()
                     if fallback_data:
                         return {
                             'market_regime': fallback_data['market_regime'],
@@ -121,6 +136,16 @@ class ContextManager:
                 'regime_timestamp': None
             }
 
+    def _get_dynamic_cache_ttl(self, timeframe: str) -> int:
+        """Calcule TTL dynamique selon timeframe pour éviter contexte périmé."""
+        timeframe_seconds = {
+            '1m': 60, '3m': 180, '5m': 300,
+            '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400
+        }
+        tf_sec = timeframe_seconds.get(timeframe, 180)
+        # TTL = max(5s, timeframe_seconds / 2) pour scalping réactif
+        return max(self.base_cache_ttl, tf_sec // 2)
+
     def get_market_context(self, symbol: str, timeframe: str) -> Dict[str, Any]:
         """
         Récupère le contexte de marché complet pour un symbole et timeframe.
@@ -134,9 +159,18 @@ class ContextManager:
         """
         cache_key = f"{symbol}_{timeframe}"
         
-        # Vérifier le cache (pour optimiser les performances)
+        # Vérifier le cache avec TTL dynamique
+        import time
+        current_time = time.time()
+        dynamic_ttl = self._get_dynamic_cache_ttl(timeframe)
+
         if cache_key in self.context_cache:
-            cached_context = self.context_cache[cache_key]
+            cached_context, cache_timestamp = self.context_cache[cache_key]
+            if current_time - cache_timestamp < dynamic_ttl:
+                return cached_context
+            else:
+                # Cache expiré, le supprimer
+                del self.context_cache[cache_key]
             
         try:
             # Récupérer les composants du contexte
@@ -187,12 +221,16 @@ class ContextManager:
             if market_structure and 'current_price' in market_structure:
                 context['current_price'] = market_structure['current_price']  # Prix actuel au niveau racine
             
-            # Fallback pour current_price si absent
-            if 'current_price' not in context and ohlcv_data:
-                context['current_price'] = ohlcv_data[-1]['close'] if ohlcv_data else 0
-            
-            # Mise en cache du contexte
-            self.context_cache[cache_key] = context
+            # Fallback pour current_price si absent - avec protection ohlcv vide
+            if 'current_price' not in context:
+                if ohlcv_data and len(ohlcv_data) > 0:
+                    context['current_price'] = ohlcv_data[-1]['close']
+                else:
+                    logger.warning(f"Pas de données OHLCV pour {symbol} {timeframe}, current_price = 0")
+                    context['current_price'] = 0
+
+            # Mise en cache avec timestamp
+            self.context_cache[cache_key] = (context, current_time)
             
             return context
             
@@ -213,16 +251,19 @@ class ContextManager:
             Liste des données OHLCV
         """
         try:
-            with self.db_connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor = self.db_connection.cursor(cursor_factory=RealDictCursor)
+            try:
                 cursor.execute("""
                     SELECT time, open, high, low, close, volume, quote_asset_volume
-                    FROM market_data 
-                    WHERE symbol = %s AND timeframe = %s 
-                    ORDER BY time DESC 
+                    FROM market_data
+                    WHERE symbol = %s AND timeframe = %s
+                    ORDER BY time DESC
                     LIMIT %s
                 """, (symbol, timeframe, limit))
-                
+
                 rows = cursor.fetchall()
+            finally:
+                cursor.close()
                 
                 return [
                     {
@@ -253,15 +294,18 @@ class ContextManager:
             Dict des indicateurs avec conversion de type robuste
         """
         try:
-            with self.db_connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor = self.db_connection.cursor(cursor_factory=RealDictCursor)
+            try:
                 cursor.execute("""
-                    SELECT * FROM analyzer_data 
-                    WHERE symbol = %s AND timeframe = %s 
-                    ORDER BY time DESC 
+                    SELECT * FROM analyzer_data
+                    WHERE symbol = %s AND timeframe = %s
+                    ORDER BY time DESC
                     LIMIT 1
                 """, (symbol, timeframe))
-                
+
                 row = cursor.fetchone()
+            finally:
+                cursor.close()
                 if not row:
                     return {}
                     
@@ -297,19 +341,21 @@ class ContextManager:
     def _get_market_structure(self, symbol: str, timeframe: str) -> Dict[str, Any]:
         """
         Analyse la structure de marché (support/résistance, pivots, etc.).
-        
+
         Args:
             symbol: Symbole
             timeframe: Timeframe
-            
+
         Returns:
             Dict de la structure de marché
         """
         try:
             # Récupérer les données de prix récentes pour analyser la structure
             ohlcv_data = self._get_ohlcv_data(symbol, timeframe, 50)
-            
-            if not ohlcv_data:
+
+            # PROTECTION: Vérifier que ohlcv_data n'est pas vide
+            if not ohlcv_data or len(ohlcv_data) == 0:
+                logger.warning(f"Pas de données OHLCV pour structure {symbol} {timeframe}")
                 return {}
                 
             # Extraction des prix pour analyse
@@ -346,18 +392,20 @@ class ContextManager:
     def _get_volume_profile(self, symbol: str, timeframe: str) -> Dict[str, Any]:
         """
         Analyse le profil de volume.
-        
+
         Args:
             symbol: Symbole
             timeframe: Timeframe
-            
+
         Returns:
             Dict du profil de volume
         """
         try:
             ohlcv_data = self._get_ohlcv_data(symbol, timeframe, 50)
-            
-            if not ohlcv_data:
+
+            # PROTECTION: Vérifier que ohlcv_data n'est pas vide
+            if not ohlcv_data or len(ohlcv_data) == 0:
+                logger.warning(f"Pas de données OHLCV pour volume profile {symbol} {timeframe}")
                 return {}
                 
             volumes = [candle['volume'] for candle in ohlcv_data]
@@ -414,23 +462,26 @@ class ContextManager:
     def _get_correlation_context(self, symbol: str) -> Dict[str, Any]:
         """
         Récupère le contexte de corrélation avec d'autres actifs.
-        
+        DÉSACTIVÉ pour le moment car non implémenté.
+
         Args:
             symbol: Symbole
-            
+
         Returns:
-            Dict du contexte de corrélation
+            Dict vide (fonctionnalité désactivée)
         """
         try:
-            # Pour l'instant, retourner un contexte basique
-            # Plus tard, on pourra implémenter des corrélations réelles
-            correlation_context = {
-                'major_pairs_sentiment': 'neutral',
-                'sector_correlation': 'neutral',
-                'market_wide_sentiment': 'neutral'
-            }
-            
-            return correlation_context
+            # DÉSACTIVÉ: Corrélations non implémentées, retourner dict vide
+            # pour éviter de donner de fausses informations
+            return {}
+
+            # Ancien code commenté:
+            # correlation_context = {
+            #     'major_pairs_sentiment': 'neutral',
+            #     'sector_correlation': 'neutral',
+            #     'market_wide_sentiment': 'neutral'
+            # }
+            # return correlation_context
             
         except Exception as e:
             logger.error(f"Erreur contexte corrélation {symbol}: {e}")
@@ -462,10 +513,21 @@ class ContextManager:
                 # Pour les prix bas, utiliser des niveaux de 1
                 base = float(int(price))
                 levels.extend([base, base + 1.0, base - 1.0])
-            else:
-                # Pour les très petits prix, utiliser des décimales
+            elif price >= 1:
+                # Pour les prix autour de 1, utiliser des décimales
                 base = round(price, 1)
                 levels.extend([base, base + 0.1, base - 0.1])
+            else:
+                # MICRO-CAPS: Adaptation dynamique pour prix < 1 (PEPE, etc.)
+                # Déterminer le nombre de décimales significatives
+                import math
+                if price > 0:
+                    significant_digits = max(2, -int(math.floor(math.log10(price))) + 1)
+                    base = round(price, significant_digits)
+                    step = 10 ** (-significant_digits + 1)  # Un ordre de grandeur plus grand
+                    levels.extend([base, base + step, base - step])
+                else:
+                    levels = [0.1]  # Fallback pour prix = 0
                 
             # Filtrer les niveaux négatifs et trier
             levels = [level for level in levels if level > 0]
@@ -532,26 +594,29 @@ class ContextManager:
         timeframes_to_try = fallback_sequence.get(original_timeframe, ['3m', '1m'])
         
         try:
-            with self.db_connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor = self.db_connection.cursor(cursor_factory=RealDictCursor)
+            try:
                 for fallback_tf in timeframes_to_try:
                     cursor.execute("""
-                        SELECT volume_quality_score, volume_ratio 
-                        FROM analyzer_data 
-                        WHERE symbol = %s AND timeframe = %s 
+                        SELECT volume_quality_score, volume_ratio
+                        FROM analyzer_data
+                        WHERE symbol = %s AND timeframe = %s
                           AND volume_quality_score IS NOT NULL
-                        ORDER BY time DESC 
+                        ORDER BY time DESC
                         LIMIT 1
                     """, (symbol, fallback_tf))
-                    
+
                     result = cursor.fetchone()
                     if result and result['volume_quality_score'] is not None:
                         vol_quality = float(result['volume_quality_score'])
                         logger.debug(f"Volume quality fallback {symbol}: {original_timeframe} -> {fallback_tf} = {vol_quality}")
                         return vol_quality
-                        
-                # Si aucun fallback trouvé, calculer une estimation basique
-                logger.warning(f"Aucun volume_quality_score trouvé pour {symbol}, estimation par défaut")
-                return self._estimate_volume_quality(symbol)
+            finally:
+                cursor.close()
+
+            # Si aucun fallback trouvé, calculer une estimation basique
+            logger.warning(f"Aucun volume_quality_score trouvé pour {symbol}, estimation par défaut")
+            return self._estimate_volume_quality(symbol)
                 
         except Exception as e:
             logger.error(f"Erreur fallback volume quality {symbol}: {e}")
@@ -568,17 +633,20 @@ class ContextManager:
             Estimation de volume_quality_score (20-80)
         """
         try:
-            with self.db_connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor = self.db_connection.cursor(cursor_factory=RealDictCursor)
+            try:
                 # Prendre volume_ratio récent de n'importe quel timeframe
                 cursor.execute("""
-                    SELECT volume_ratio 
-                    FROM analyzer_data 
+                    SELECT volume_ratio
+                    FROM analyzer_data
                     WHERE symbol = %s AND volume_ratio IS NOT NULL
-                    ORDER BY time DESC 
+                    ORDER BY time DESC
                     LIMIT 5
                 """, (symbol,))
-                
+
                 results = cursor.fetchall()
+            finally:
+                cursor.close()
                 if results:
                     vol_ratios = [float(row['volume_ratio']) for row in results if row['volume_ratio']]
                     avg_vol_ratio = sum(vol_ratios) / len(vol_ratios)
@@ -591,14 +659,14 @@ class ContextManager:
                     elif avg_vol_ratio >= 1.0:
                         return 35.0  # Volume normal = qualité acceptable
                     else:
-                        return 20.0  # Volume faible = qualité basse mais pas 0
+                        return 22.0  # Volume faible = P10 réel (bas mais valide)
                         
-                # Fallback ultime
-                return 25.0  # Valeur conservatrice qui passe le filtre (> 15)
+                # Fallback ultime basé sur P10 réel
+                return 22.0  # P10 = 10% plus bas de la distribution réelle
                 
         except Exception as e:
             logger.error(f"Erreur estimation volume quality {symbol}: {e}")
-            return 25.0  # Valeur safe qui passe le filtre
+            return 22.0  # P10 réel, reste dans les bornes DB
             
     def clear_cache(self):
         """Vide le cache du contexte."""
@@ -615,5 +683,6 @@ class ContextManager:
         return {
             'cache_size': len(self.context_cache),
             'cached_symbols': list(set(key.split('_')[0] for key in self.context_cache.keys())),
-            'cache_ttl': self.cache_ttl
+            'base_cache_ttl': self.base_cache_ttl,
+            'cache_strategy': 'dynamic_ttl_per_timeframe'
         }
