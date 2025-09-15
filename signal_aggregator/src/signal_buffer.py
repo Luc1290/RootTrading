@@ -12,7 +12,7 @@ import sys
 import os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from config.strategy_classification import get_strategy_family
+from signal_aggregator.src.strategy_classification import get_strategy_family
 
 logger = logging.getLogger(__name__)
 

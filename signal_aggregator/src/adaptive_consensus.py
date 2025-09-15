@@ -13,7 +13,7 @@ import sys
 import os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../config'))
-from config.strategy_classification import (
+from signal_aggregator.src.strategy_classification import (
     get_strategy_family,
     is_strategy_optimal_for_regime,
     is_strategy_acceptable_for_regime,
@@ -50,9 +50,9 @@ class AdaptiveConsensusAnalyzer:
             },
             'TRENDING_BEAR': {
                 'BUY': {
-                    'trend_following': 2,  # Très strict pour BUY contre-tendance
+                    'trend_following': 1,  # Assoupli pour permettre rebonds
                     'mean_reversion': 2,   # Exiger rebond légitime
-                    'total_min': 6         # 6 stratégies minimum (très strict)
+                    'total_min': 4         # 4 stratégies au lieu de 6 - plus de rebonds
                 },
                 'SELL': {
                     'trend_following': 1,  # Facile de sortir en bear
@@ -72,9 +72,9 @@ class AdaptiveConsensusAnalyzer:
             },
             'VOLATILE': {
                 'BUY': {
-                    'breakout': 2,         # 2 breakout minimum
+                    'breakout': 1,         # 1 breakout suffit en volatilité
                     'volume_based': 1,     # Volume pour confirmer
-                    'total_min': 5         # 5 stratégies (volatilité = risque)
+                    'total_min': 3         # 3 stratégies au lieu de 5 - plus d'opportunités
                 },
                 'SELL': {
                     'volume_based': 1,     # Volume pour confirmer sortie
@@ -94,9 +94,9 @@ class AdaptiveConsensusAnalyzer:
             },
             'BREAKOUT_BEAR': {
                 'BUY': {
-                    'breakout': 2,         # 2 breakout minimum
+                    'breakout': 1,         # 1 breakout peut suffire
                     'mean_reversion': 2,   # Rebond très confirmé
-                    'total_min': 7         # 7 stratégies (très dangereux)
+                    'total_min': 5         # 5 stratégies au lieu de 7 - moins restrictif
                 },
                 'SELL': {
                     'breakout': 1,         # 1 breakout suffit pour sortir

@@ -31,7 +31,7 @@ PGHOST = os.getenv("PGHOST", "db")
 PGPORT = int(os.getenv("PGPORT", 5432))
 
 # Ajouter des paramètres pour le pool de connexions
-DB_MIN_CONNECTIONS = int(os.getenv("DB_MIN_CONNECTIONS", "1"))
+DB_MIN_CONNECTIONS = int(os.getenv("DB_MIN_CONNECTIONS", "5"))
 DB_MAX_CONNECTIONS = int(os.getenv("DB_MAX_CONNECTIONS", "50"))
 
 def get_db_config() -> Dict[str, Any]:

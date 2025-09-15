@@ -30,11 +30,11 @@ class TrailingSellManager:
         self.service_client = service_client
         self.db_connection = db_connection
         
-        # Configuration trailing sell - OPTIMISÉE avec ATR
-        self.base_min_gain_for_trailing = 0.005  # 0.5% base (augmenté de 0.3%)
-        self.base_sell_margin = 0.012  # 1.2% marge base (augmenté de 0.8%)
-        self.max_drop_threshold = 0.015  # 1.5% de chute max depuis le pic (augmenté de 1.0%)
-        self.immediate_sell_drop = 0.030  # 3.0% de chute = vente immédiate 
+        # Configuration trailing sell - ASSOUPLIE pour éviter sorties prématurées
+        self.base_min_gain_for_trailing = 0.008  # 0.8% base - laisse le trade respirer
+        self.base_sell_margin = 0.015  # 1.5% marge base - tolère plus de volatilité
+        self.max_drop_threshold = 0.020  # 2.0% de chute max depuis le pic - moins sensible
+        self.immediate_sell_drop = 0.025  # 2.5% de chute = vente immédiate - urgence seulement
         
         # Configuration stop-loss adaptatif - PLUS STRICT pour couper les pertes rapidement
         self.stop_loss_percent_base = 0.010  # 1.0% de base - très strict (réduit de 1.5%)
@@ -103,15 +103,15 @@ class TrailingSellManager:
             logger.info(f"🔍 Position gagnante détectée: +{gain_percent*100:.2f}%, vérification take profit et trailing")
             
             # === TAKE PROFIT PROGRESSIF - RIDE LES PUMPS MAIS FERME EFFICACEMENT ===
-            # Désactiver temporairement le TP progressif si gain < 1.5% pour permettre sortie rapide
-            if gain_percent >= 0.015:  # Activer TP progressif seulement après +1.5%
+            # Activer le TP progressif seulement sur gains significatifs pour éviter sur-trading
+            if gain_percent >= 0.02:  # Activer TP progressif à partir de +2% (évite sorties prématurées)
                 should_take_profit, tp_reason = self._check_progressive_take_profit(symbol, gain_percent)
                 if should_take_profit:
                     logger.info(f"💰 TAKE PROFIT PROGRESSIF DÉCLENCHÉ: {tp_reason}")
                     self._cleanup_references(symbol)
                     return True, tp_reason
             else:
-                logger.debug(f"TP progressif désactivé pour {symbol} (gain {gain_percent*100:.2f}% < 1.5%)")
+                logger.debug(f"TP progressif désactivé pour {symbol} (gain {gain_percent*100:.2f}% < 2.0%)")
             
             
             # Seuils adaptatifs basés sur ATR
@@ -809,8 +809,20 @@ class TrailingSellManager:
         Returns:
             (should_sell, reason)
         """
-        # Paliers de take profit ÉQUILIBRÉS - garde les seuils rentables après frais
-        tp_levels = [0.10, 0.08, 0.06, 0.05, 0.04, 0.03, 0.025, 0.02, 0.015, 0.012, 0.010, 0.008]  # Garde 0.8% et 1.0%, supprimé 0.6% et 0.4%
+        # Paliers de take profit OPTIMISÉS pour scalping crypto - capture rapide des gains
+        tp_levels = [
+            0.15,   # 15% - gains exceptionnels
+            0.10,   # 10% - gains très importants
+            0.07,   # 7% - gains importants
+            0.05,   # 5% - bon gain
+            0.035,  # 3.5% - gain solide
+            0.025,  # 2.5% - gain correct
+            0.018,  # 1.8% - gain décent
+            0.012,  # 1.2% - petit gain
+            0.008,  # 0.8% - gain minimal (couvre les frais)
+            0.006,  # 0.6% - micro gain (ajouté pour sortie rapide)
+            0.004   # 0.4% - sortie de sécurité (ajouté)
+        ]
         
         # Trouver le palier le plus élevé atteint actuellement
         current_tp_level = None
@@ -850,9 +862,15 @@ class TrailingSellManager:
             logger.info(f"🎯 Nouveau palier TP pour {symbol}: +{current_tp_level*100:.1f}% (était +{historical_max_tp*100:.1f}%)")
             historical_max_tp = current_tp_level
         
-        # VENDRE si rechute significative depuis le palier max (tolérance plus large pour éviter sur-trading)
-        # Ex: palier 2% -> vendre si on descend sous 1.6% (2% - 20% de 2%)
-        tolerance_factor = 0.80  # Garde 80% du palier atteint (plus permissif, était 70%)
+        # VENDRE si rechute significative depuis le palier max - tolérance ASSOUPLIE pour éviter sur-trading
+        # Laisse plus de marge pour que le prix respire
+        if historical_max_tp >= 0.05:  # Gros gains (>5%)
+            tolerance_factor = 0.75  # Garde 75% du palier (très tolérant)
+        elif historical_max_tp >= 0.02:  # Gains moyens (2-5%)
+            tolerance_factor = 0.80  # Garde 80% du palier (tolérant)
+        else:  # Petits gains (<2%)
+            tolerance_factor = 0.85  # Garde 85% du palier (modérément tolérant)
+
         adjusted_threshold = historical_max_tp * tolerance_factor
         
         if gain_percent < adjusted_threshold:
