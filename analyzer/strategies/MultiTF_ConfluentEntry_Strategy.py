@@ -402,14 +402,14 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         # Analyse des oscillateurs avec validation stricte
         osc_analysis = self._analyze_oscillator_confluence(values)
         
+        signal_side = None
+        reason = ""
+
         # Oscillateurs ASSOUPLIS - Pénalité au lieu de rejet
         oscillator_penalty = 0.0
         if osc_analysis['confluence'] == 'insufficient':
             oscillator_penalty = -0.15  # Pénalité au lieu de rejet total
             reason += f" (oscill. insuffisants {osc_analysis['count']}/{self.min_oscillator_count})"
-        
-        signal_side = None
-        reason = ""
         base_confidence = 0.65  # Harmonisé avec autres stratégies
         confidence_boost = 0.0
         

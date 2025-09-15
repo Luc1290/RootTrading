@@ -7,7 +7,7 @@ import logging
 from typing import Dict, Any, Optional, List
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from .field_converters import FieldConverter
+from field_converters import FieldConverter
 
 logger = logging.getLogger(__name__)
 
@@ -561,14 +561,17 @@ class ContextManager:
         try:
             htf_data = {}
 
-            # Récupérer données 1h (direction)
+            # Récupérer données 1h (direction) - JOIN avec market_data pour le close
             cursor = self.db_connection.cursor()
             try:
                 cursor.execute("""
-                    SELECT close, ema_26, ema_99
-                    FROM analyzer_data
-                    WHERE symbol = %s AND timeframe = '1h'
-                    ORDER BY time DESC
+                    SELECT md.close, ad.ema_26, ad.ema_99
+                    FROM analyzer_data ad
+                    JOIN market_data md ON ad.time = md.time
+                        AND ad.symbol = md.symbol
+                        AND ad.timeframe = md.timeframe
+                    WHERE ad.symbol = %s AND ad.timeframe = '1h'
+                    ORDER BY ad.time DESC
                     LIMIT 1
                 """, (symbol,))
 

@@ -355,7 +355,7 @@ class SimpleSignalAggregatorService:
         """Monitore la santé du service."""
         while True:
             try:
-                await asyncio.sleep(30)  # Check toutes les 30s
+                await asyncio.sleep(300)  # Check toutes les 5 minutes
                 
                 # Log stats périodiques avec métriques de vague
                 if self.stats['signals_received'] > 0:
