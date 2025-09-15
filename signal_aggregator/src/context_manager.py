@@ -7,7 +7,7 @@ import logging
 from typing import Dict, Any, Optional, List
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from field_converters import FieldConverter
+from .field_converters import FieldConverter
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ class ContextManager:
                 reference_timeframe = "15m"  # Long terme
         else:
             reference_timeframe = "3m"  # Par défaut
-        cache_key = f"regime_unified_{symbol}"
+        # cache_key = f"regime_unified_{symbol}"  # Non utilisé actuellement
         
         try:
             # Créer un curseur sans utiliser le context manager de transaction
@@ -75,18 +75,18 @@ class ContextManager:
                 regime_data = cursor.fetchone()
             finally:
                 cursor.close()
-                
-                if regime_data:
-                    return {
-                        'market_regime': regime_data['market_regime'],
-                        'regime_strength': regime_data['regime_strength'], 
-                        'regime_confidence': regime_data['regime_confidence'],
-                        'directional_bias': regime_data['directional_bias'],
-                        'volatility_regime': regime_data['volatility_regime'],
-                        'regime_source': f"{reference_timeframe}_unified",
-                        'regime_timestamp': regime_data['time']
-                    }
-                else:
+
+            if regime_data:
+                return {
+                    'market_regime': regime_data['market_regime'],
+                    'regime_strength': regime_data['regime_strength'],
+                    'regime_confidence': regime_data['regime_confidence'],
+                    'directional_bias': regime_data['directional_bias'],
+                    'volatility_regime': regime_data['volatility_regime'],
+                    'regime_source': f"{reference_timeframe}_unified",
+                    'regime_timestamp': regime_data['time']
+                }
+            else:
                     # Fallback si pas de données 3m
                     logger.warning(f"Pas de régime 3m pour {symbol}, fallback sur 1m")
                     cursor = self.db_connection.cursor(cursor_factory=RealDictCursor)
@@ -113,8 +113,8 @@ class ContextManager:
                             'regime_source': "1m_fallback",
                             'regime_timestamp': fallback_data['time']
                         }
-                        
-                return {
+
+            return {
                     'market_regime': 'UNKNOWN',
                     'regime_strength': 0.5,
                     'regime_confidence': 50.0,
@@ -180,6 +180,9 @@ class ContextManager:
             volume_profile = self._get_volume_profile(symbol, timeframe)
             multi_timeframe = self._get_multi_timeframe_context(symbol)
             correlation_data = self._get_correlation_context(symbol)
+
+            # Récupérer les données HTF pour validation MTF stricte
+            htf_data = self._get_htf_validation_data(symbol)
             
             # Récupérer le régime unifié (3m de référence) 
             unified_regime = self.get_unified_market_regime(symbol)
@@ -205,6 +208,10 @@ class ContextManager:
                 # Ajouter le régime original sous un autre nom pour référence
                 if original_regime:
                     context['timeframe_regime'] = original_regime
+
+            # Ajouter les données HTF au contexte pour validation MTF
+            if htf_data:
+                context.update(htf_data)
             
             # OVERRIDE: FORCER le régime unifié après l'update des indicators
             # IMPORTANT: Doit être APRÈS context.update(indicators) pour ne pas être écrasé
@@ -264,19 +271,19 @@ class ContextManager:
                 rows = cursor.fetchall()
             finally:
                 cursor.close()
-                
-                return [
-                    {
-                        'timestamp': row['time'],
-                        'open': float(row['open']),
-                        'high': float(row['high']),
-                        'low': float(row['low']),
-                        'close': float(row['close']),
-                        'volume': float(row['volume']),
-                        'quote_volume': float(row['quote_asset_volume'])
-                    }
-                    for row in reversed(rows)  # Ordre chronologique
-                ]
+
+            return [
+                {
+                    'timestamp': row['time'],
+                    'open': float(row['open']),
+                    'high': float(row['high']),
+                    'low': float(row['low']),
+                    'close': float(row['close']),
+                    'volume': float(row['volume']),
+                    'quote_volume': float(row['quote_asset_volume'])
+                }
+                for row in reversed(rows)  # Ordre chronologique
+            ]
                 
         except Exception as e:
             logger.error(f"Erreur récupération OHLCV {symbol} {timeframe}: {e}")
@@ -306,8 +313,9 @@ class ContextManager:
                 row = cursor.fetchone()
             finally:
                 cursor.close()
-                if not row:
-                    return {}
+
+            if not row:
+                return {}
                     
                 # Conversion des indicateurs via FieldConverter
                 raw_indicators = {}
@@ -539,6 +547,66 @@ class ContextManager:
             logger.error(f"Erreur niveaux psychologiques: {e}")
             return []
             
+    def _get_htf_validation_data(self, symbol: str) -> Dict[str, Any]:
+        """
+        Récupère les données Higher TimeFrame pour validation MTF stricte.
+        Inclut: EMAs 1h, ATR 15m et sa moyenne.
+
+        Args:
+            symbol: Symbole à analyser
+
+        Returns:
+            Dict avec données HTF pour validation
+        """
+        try:
+            htf_data = {}
+
+            # Récupérer données 1h (direction)
+            cursor = self.db_connection.cursor()
+            try:
+                cursor.execute("""
+                    SELECT close, ema_26, ema_99
+                    FROM analyzer_data
+                    WHERE symbol = %s AND timeframe = '1h'
+                    ORDER BY time DESC
+                    LIMIT 1
+                """, (symbol,))
+
+                result_1h = cursor.fetchone()
+                if result_1h:
+                    htf_data['htf_close_1h'] = float(result_1h[0]) if result_1h[0] else None
+                    htf_data['htf_ema20_1h'] = float(result_1h[1]) if result_1h[1] else None  # Utilise ema_26 comme proxy
+                    htf_data['htf_ema100_1h'] = float(result_1h[2]) if result_1h[2] else None  # Utilise ema_99 comme proxy
+
+                # Récupérer ATR 15m actuel et historique (volatilité)
+                cursor.execute("""
+                    SELECT atr_14
+                    FROM analyzer_data
+                    WHERE symbol = %s AND timeframe = '15m'
+                      AND atr_14 IS NOT NULL
+                    ORDER BY time DESC
+                    LIMIT 50
+                """, (symbol,))
+
+                results_15m = cursor.fetchall()
+                if results_15m and len(results_15m) >= 10:
+                    # ATR actuel
+                    htf_data['mtf_atr15m'] = float(results_15m[0][0]) if results_15m[0][0] else None
+
+                    # Moyenne ATR historique
+                    historical_atrs = [float(r[0]) for r in results_15m if r[0]]
+                    if historical_atrs:
+                        htf_data['mtf_atr15m_ma'] = sum(historical_atrs) / len(historical_atrs)
+
+            finally:
+                cursor.close()
+
+            return htf_data
+
+        except Exception as e:
+            logger.error(f"Erreur récupération données HTF {symbol}: {e}")
+            return {}
+
     def _calculate_volume_trend(self, volumes: List[float]) -> str:
         """
         Calcule la tendance du volume.
@@ -647,7 +715,8 @@ class ContextManager:
                 results = cursor.fetchall()
             finally:
                 cursor.close()
-                if results:
+
+            if results:
                     vol_ratios = [float(row['volume_ratio']) for row in results if row['volume_ratio']]
                     avg_vol_ratio = sum(vol_ratios) / len(vol_ratios)
                     
@@ -660,9 +729,9 @@ class ContextManager:
                         return 35.0  # Volume normal = qualité acceptable
                     else:
                         return 22.0  # Volume faible = P10 réel (bas mais valide)
-                        
-                # Fallback ultime basé sur P10 réel
-                return 22.0  # P10 = 10% plus bas de la distribution réelle
+
+            # Fallback ultime basé sur P10 réel
+            return 22.0  # P10 = 10% plus bas de la distribution réelle
                 
         except Exception as e:
             logger.error(f"Erreur estimation volume quality {symbol}: {e}")

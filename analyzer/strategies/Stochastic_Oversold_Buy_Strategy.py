@@ -137,21 +137,18 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
-        # Momentum faible = pénalité au lieu de rejet
+        # Momentum ASSOUPLI - Pénalités graduées au lieu de rejets
         momentum_penalty = 0.0
         momentum_score = values.get('momentum_score')
         if momentum_score is not None:
             try:
                 momentum_val = float(momentum_score)
-                if momentum_val < 35:  # Momentum vraiment trop faible = rejet
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": f"Rejet BUY Stoch: momentum critique ({momentum_val})",
-                        "metadata": {"strategy": self.name, "momentum_score": momentum_val}
-                    }
-                elif momentum_val < 45:  # Momentum faible = pénalité
+                # PLUS de rejet dur - seulement pénalités graduées
+                if momentum_val < 20:  # Seuil critique abaissé (35 -> 20)
+                    momentum_penalty = -0.20  # Pénalité forte mais pas rejet
+                elif momentum_val < 35:  # Momentum très faible
+                    momentum_penalty = -0.15
+                elif momentum_val < 45:  # Momentum faible
                     momentum_penalty = -0.10
             except (ValueError, TypeError):
                 pass
@@ -173,9 +170,14 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
                                               momentum_penalty + bias_penalty + regime_penalty)
         
     def _analyze_stochastic_conditions(self, values: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Analyse les conditions actuelles du Stochastic."""
+        """Analyse les conditions actuelles du Stochastic avec fallbacks."""
         stoch_k = values.get('stoch_k')
         stoch_d = values.get('stoch_d')
+
+        # Fallback sur Fast Stochastic si standard manquant
+        if stoch_k is None or stoch_d is None:
+            stoch_k = values.get('stoch_fast_k')
+            stoch_d = values.get('stoch_fast_d')
 
         if stoch_k is None or stoch_d is None:
             return None
@@ -184,9 +186,8 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
             k_val = float(stoch_k)
             d_val = float(stoch_d)
 
-            # Filtrer les valeurs invalides (0.0 souvent = données corrompues)
-            if k_val == 0.0 and d_val == 0.0:
-                return None
+            # SUPPRIMÉ : 0.0 peut être une survente extrême légitime !
+            # Stoch = 0 = survente maximale, pas corruption
 
         except (ValueError, TypeError):
             return None
@@ -385,23 +386,26 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
                 
         # Contexte de tendance - directional_bias déjà traité en rejet
         trend_strength = values.get('trend_strength')
-        
+        directional_bias = values.get('directional_bias')  # CORRECTION: variable manquante
+
         # Directional bias déjà vérifié en amont, ici que BULLISH ou NEUTRAL
         if directional_bias == "BULLISH":
             confidence_boost += 0.10
             reason += " + bias haussier"
-            
+
         if trend_strength is not None:
-            # trend_strength selon schéma: WEAK, MODERATE, STRONG, VERY_STRONG
-            if trend_strength in ['VERY_STRONG']:
+            # trend_strength DB format: weak/absent/strong/very_strong/extreme (lowercase)
+            trend_str = str(trend_strength).lower()
+            if trend_str in ['extreme', 'very_strong']:
                 confidence_boost += 0.12
                 reason += f" + tendance très forte ({trend_strength})"
-            elif trend_strength == 'STRONG':
+            elif trend_str == 'strong':
                 confidence_boost += 0.08
                 reason += f" + tendance forte ({trend_strength})"
-            elif trend_strength in ['MODERATE', 'WEAK']:
+            elif trend_str == 'weak':
                 confidence_boost += 0.03
-                reason += f" + tendance modérée ({trend_strength})"
+                reason += f" + tendance faible ({trend_strength})"
+            # 'absent' = pas de bonus
                 
         # Support proche pour confluence
         nearest_support = values.get('nearest_support')
@@ -560,15 +564,18 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         if not super().validate_data():
             return False
             
-        # Au minimum, il faut stoch_k et stoch_d
-        required = ['stoch_k', 'stoch_d']
-        
-        for indicator in required:
-            if indicator not in self.indicators:
-                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
-                return False
-            if self.indicators[indicator] is None:
-                logger.warning(f"{self.name}: Indicateur null: {indicator}")
-                return False
+        # Validation ASSOUPLIE avec fallbacks possibles
+        # Vérifier si on a au moins un Stochastic (standard ou fast)
+        stoch_available = (
+            (self.indicators.get('stoch_k') is not None and self.indicators.get('stoch_d') is not None) or
+            (self.indicators.get('stoch_fast_k') is not None and self.indicators.get('stoch_fast_d') is not None)
+        )
+
+        if not stoch_available:
+            logger.warning(f"{self.name}: Aucun Stochastic disponible (ni standard ni fast)")
+            return False
+
+        # TODO: Ajouter fallback calcul Stochastic depuis OHLC si nécessaire
+        # Pour l'instant, on exige au moins un type disponible
                 
         return True

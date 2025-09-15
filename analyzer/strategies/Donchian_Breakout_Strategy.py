@@ -165,17 +165,19 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             if nearest_support is not None and nearest_support == 0:
                 nearest_support = None
 
-            # Fallback Donchian pur si S/R manquent ou invalides
+            # Fallback Donchian ROBUSTE avec périodes adaptées
             if nearest_resistance is None or nearest_support is None:
-                donchian_levels = self._calculate_donchian_levels()
-                if donchian_levels['donchian_high'] is not None and donchian_levels['donchian_low'] is not None:
-                    # Utiliser Donchian pour compléter les valeurs manquantes
-                    if nearest_resistance is None:
-                        nearest_resistance = donchian_levels['donchian_high']
-                        resistance_strength = 'MODERATE'  # Par défaut pour Donchian pur
-                    if nearest_support is None:
-                        nearest_support = donchian_levels['donchian_low']
-                        support_strength = 'MODERATE'
+                # Essayer plusieurs périodes : 20, 14, 10, 7 jours
+                for period in [20, 14, 10, 7]:
+                    donchian_levels = self._calculate_donchian_levels(period)
+                    if donchian_levels['donchian_high'] is not None and donchian_levels['donchian_low'] is not None:
+                        if nearest_resistance is None:
+                            nearest_resistance = donchian_levels['donchian_high']
+                            resistance_strength = 'MODERATE'  # Par défaut pour Donchian pur
+                        if nearest_support is None:
+                            nearest_support = donchian_levels['donchian_low']
+                            support_strength = 'MODERATE'
+                        break  # Sortir dès qu'on a des valeurs
             
             # Si toujours pas de niveaux après fallback, on peut continuer avec un seul niveau
             # La stratégie peut fonctionner avec seulement support OU résistance
@@ -199,9 +201,9 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         if nearest_resistance is not None and nearest_resistance > 0:
             breakout_distance = (current_price - nearest_resistance) / nearest_resistance
             
-            # Détection crossing (franchissement)
-            bull_cross = (previous_price is not None and 
-                         previous_price <= nearest_resistance < current_price)
+            # Détection crossing ASSOUPLIE (franchissement avec tolérance)
+            bull_cross = (previous_price is not None and
+                         previous_price <= nearest_resistance * 1.001 and current_price >= nearest_resistance * 0.999)
             
             # Breakout haussier avec niveaux progressifs + crossing
             if breakout_distance >= self.breakout_threshold or bull_cross:
@@ -247,9 +249,9 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         if signal_side is None and nearest_support is not None and nearest_support > 0:
             breakdown_distance = (nearest_support - current_price) / nearest_support
             
-            # Détection crossing (franchissement)
-            bear_cross = (previous_price is not None and 
-                         previous_price >= nearest_support > current_price)
+            # Détection crossing ASSOUPLIE (franchissement avec tolérance)
+            bear_cross = (previous_price is not None and
+                         previous_price >= nearest_support * 0.999 and current_price <= nearest_support * 1.001)
             
             # Breakdown baissier avec niveaux progressifs + crossing
             if breakdown_distance >= self.breakout_threshold or bear_cross:
@@ -291,48 +293,39 @@ class Donchian_Breakout_Strategy(BaseStrategy):
                         confidence_boost += 0.10
                         reason += " - support modéré cassé"
                     
-        # Filtre régime de marché - Autoriser TRANSITION sous conditions
+        # Filtre régime de marché ASSOUPLI - Donchian fonctionne justement sur cassures de ranges !
         if signal_side is not None:
             market_regime = values.get('market_regime')
-            if market_regime == 'RANGING':
+            # RANGING supprimé : Donchian est fait pour casser les ranges !
+            # Seul rejet : bear market trop fort
+            if market_regime in ['TRENDING_BEAR'] and values.get('regime_strength') == 'STRONG':
+                # Pénalité au lieu de rejet total
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": f"Marché en range - pas de breakout Donchian",
+                    "reason": f"Marché baissier fort - éviter les breakouts haussiers",
                     "metadata": {"strategy": self.name}
                 }
-            elif market_regime == 'TRANSITION':
-                # Autoriser TRANSITION si ADX≥18 ou volume≥1.3
-                adx_check = values.get('adx_14')
-                volume_ratio = values.get('volume_ratio')
-                transition_ok = False
-                if adx_check is not None and _is_valid(adx_check) and float(adx_check) >= 18:
-                    transition_ok = True
-                if volume_ratio is not None and _is_valid(volume_ratio) and float(volume_ratio) >= 1.3:
-                    transition_ok = True
-                if not transition_ok:
-                    return {
-                        "side": None,
-                        "confidence": 0.0,
-                        "strength": "weak",
-                        "reason": "Transition sans signes de poussée (ADX/volume) - on attend",
-                        "metadata": {"strategy": self.name}
-                    }
+            # TRANSITION autorisé sans conditions (suppression des garde-fous)
         
-        # FILTRAGE VOLUME EN AMONT (avant calculs de confiance)
+        # VOLUME ASSOUPLI - Pénalité au lieu de rejet total
+        volume_penalty = 0.0
         if signal_side is not None:
             volume_ratio = values.get('volume_ratio')
             if volume_ratio is not None and _is_valid(volume_ratio):
                 vol_ratio = float(volume_ratio)
-                if vol_ratio < self.min_volume_breakout:  # Rejet unifié si volume insuffisant
+                if vol_ratio < 0.8:  # Seuil critique abaissé pour rejet total
                     return {
                         "side": None,
                         "confidence": 0.0,
                         "strength": "weak",
-                        "reason": f"Breakout rejeté : volume insuffisant ({vol_ratio:.2f}x < {self.min_volume_breakout}x)",
+                        "reason": f"Volume critique ({vol_ratio:.2f}x < 0.8x)",
                         "metadata": {"strategy": self.name, "volume_ratio": vol_ratio}
                     }
+                elif vol_ratio < self.min_volume_breakout:  # Pénalité au lieu de rejet
+                    volume_penalty = -0.15
+                    reason += f" (volume faible {vol_ratio:.2f}x)"
                 
         # Pas de breakout détecté ou filtré
         if signal_side is None:
@@ -406,7 +399,7 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             except (ValueError, TypeError):
                 pass
                 
-        # Confirmation avec trend_strength (VARCHAR: weak/absent/strong/very_strong/extreme)
+        # Confirmation avec trend_strength (DB: weak/absent/strong/very_strong/extreme - lowercase!)
         trend_strength = values.get('trend_strength')
         if trend_strength is not None:
             trend_str = str(trend_strength).lower()
@@ -416,9 +409,11 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             elif trend_str == 'strong':
                 confidence_boost += 0.10
                 reason += f" + trend {trend_str}"
-            elif trend_str in ['moderate', 'present']:
-                confidence_boost += 0.05
+            # Ajouter les vraies valeurs DB manquantes
+            elif trend_str == 'weak':  # Valeur DB réelle
+                confidence_boost += 0.02
                 reason += f" + trend {trend_str}"
+            # 'absent' = pas de bonus (tendance absente)
                 
         directional_bias = values.get('directional_bias')
         if directional_bias:
@@ -541,16 +536,20 @@ class Donchian_Breakout_Strategy(BaseStrategy):
             confidence_boost += 0.05
             reason += " (vol. high)"
             
-        # Signal strength (VARCHAR: WEAK/MODERATE/STRONG/VERY_WEAK)
+        # Signal strength (DB: WEAK/MODERATE/STRONG/VERY_STRONG/VERY_WEAK - UPPERCASE)
         signal_strength_calc = values.get('signal_strength')
         if signal_strength_calc is not None:
             sig_str = str(signal_strength_calc).upper()
-            if sig_str == 'STRONG':
+            if sig_str == 'VERY_STRONG':
+                confidence_boost += 0.15
+                reason += " + signal très fort"
+            elif sig_str == 'STRONG':
                 confidence_boost += 0.10
                 reason += " + signal fort"
             elif sig_str == 'MODERATE':
                 confidence_boost += 0.05
                 reason += " + signal modéré"
+            # WEAK et VERY_WEAK = pas de bonus (signal faible)
                 
         # Confluence score UNIFIÉE (pas d'asymétrie BUY/SELL)
         confluence_score = values.get('confluence_score')
@@ -593,13 +592,16 @@ class Donchian_Breakout_Strategy(BaseStrategy):
                 
         # Pas d'ajustement ATR supplémentaire (déjà traité plus haut)
         
-        # Vérification finale : seuil minimum de confiance
-        if confidence < 0.35:
+        # Appliquer pénalité volume
+        confidence = max(0.0, confidence + volume_penalty)
+
+        # Seuil final ABAISSÉ pour plus de signaux
+        if confidence < 0.25:  # Abaissé de 0.35 à 0.25
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Signal trop faible (conf: {confidence:.2f} < 0.35)",
+                "reason": f"Signal trop faible (conf: {confidence:.2f} < 0.25)",
                 "metadata": {"strategy": self.name, "symbol": self.symbol}
             }
             

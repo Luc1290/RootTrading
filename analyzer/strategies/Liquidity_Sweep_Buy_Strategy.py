@@ -203,10 +203,13 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
                 lows = self.data.get('low', [])
                 if lows and len(lows) >= 8:  # Cohérent avec validation
                     try:
-                        # Prendre le min des 8-20 dernières barres selon disponibilité
-                        lookback = min(20, len(lows))
-                        nearest_support = min(float(low) for low in lows[-lookback:])
-                        support_strength_raw = 'MODERATE'  # Force neutre pour fallback
+                        # Fallback support amélioré : utiliser percentile 10% au lieu du minimum
+                        lookback = min(15, len(lows))
+                        recent_lows = [float(low) for low in lows[-lookback:]]
+                        import numpy as np
+                        # Percentile 10% pour éviter les mèches extrêmes
+                        nearest_support = float(np.percentile(recent_lows, 10))
+                        support_strength_raw = 'WEAK'  # Plus réaliste pour fallback
                     except (ValueError, TypeError):
                         return {
                             "side": None,
@@ -445,16 +448,20 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             confidence_boost += 0.05
             reason += " (marché en transition)"
             
-        # Signal strength (VARCHAR: WEAK/MODERATE/STRONG)
+        # Signal strength (DB: WEAK/MODERATE/STRONG/VERY_STRONG/VERY_WEAK - UPPERCASE)
         signal_strength_calc = values.get('signal_strength')
         if signal_strength_calc is not None:
             sig_str = str(signal_strength_calc).upper()
-            if sig_str == 'STRONG':
+            if sig_str == 'VERY_STRONG':
+                confidence_boost += 0.15
+                reason += " + signal très fort"
+            elif sig_str == 'STRONG':
                 confidence_boost += 0.10
                 reason += " + signal fort"
             elif sig_str == 'MODERATE':
                 confidence_boost += 0.05
                 reason += " + signal modéré"
+            # WEAK et VERY_WEAK = pas de bonus (signal faible)
                 
         confluence_score = values.get('confluence_score')
         if confluence_score is not None:

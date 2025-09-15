@@ -27,7 +27,8 @@
       "Bash(ruff check:*)",
       "Bash(sed:*)",
       "Bash(docker exec:*)",
-      "Bash(docker compose exec:*)"
+      "Bash(docker compose exec:*)",
+      "Bash(docker exec roottrading-db-1 psql -U postgres -c "\l")"
     ],
     "deny": [
       "Kill Bash(Kill shell: *)"

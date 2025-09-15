@@ -346,28 +346,26 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name}
             }
             
-        # Vérification des scores minimums
+        # Confluence score ASSOUPLI avec fallback intelligent
         if confluence_score is None:
-            confluence_score = 0.0  # Default si NULL
+            confluence_score = 40.0  # Default optimiste au lieu de 0.0
 
-        if confluence_score < self.min_confluence_score:
+        # Seuil confluence ABAISSÉ pour plus de signaux
+        min_confluence_dynamic = 20 if confluence_score == 40.0 else self.min_confluence_score  # 20 pour fallback, 30 pour valeurs réelles
+
+        if confluence_score < min_confluence_dynamic:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Confluence insuffisante ({confluence_score:.1f} < {self.min_confluence_score})",
+                "reason": f"Confluence insuffisante ({confluence_score:.1f} < {min_confluence_dynamic})",
                 "metadata": {"strategy": self.name, "confluence_score": confluence_score}
             }
             
-        # Vérification signal_strength valide
+        # Signal_strength ULTRA-ASSOUPLI avec fallback
         valid_strengths = ['WEAK', 'MODERATE', 'STRONG', 'VERY_STRONG']
-        if signal_strength not in valid_strengths:
-            signal_strength = 'WEAK'  # Default si invalide
-
-        # Pour MultiTF, on accepte seulement les signaux clairs (pas WEAK)
-        # Mais on assouplit en acceptant NULL comme MODERATE
-        if signal_strength is None:
-            signal_strength = 'MODERATE'  # Default optimiste si NULL
+        if signal_strength not in valid_strengths or signal_strength is None:
+            signal_strength = 'MODERATE'  # Default optimiste pour valeurs manquantes/invalides
             
         # Vérification ADX pour tendance suffisante (déplacée ici)
         adx_14 = values.get('adx_14')
@@ -404,43 +402,56 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         # Analyse des oscillateurs avec validation stricte
         osc_analysis = self._analyze_oscillator_confluence(values)
         
-        # REJET si oscillateurs insuffisants
+        # Oscillateurs ASSOUPLIS - Pénalité au lieu de rejet
+        oscillator_penalty = 0.0
         if osc_analysis['confluence'] == 'insufficient':
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": f"Oscillateurs insuffisants ({osc_analysis['count']}/{self.min_oscillator_count}) ou consensus faible",
-                "metadata": {"strategy": self.name, "osc_analysis": osc_analysis}
-            }
+            oscillator_penalty = -0.15  # Pénalité au lieu de rejet total
+            reason += f" (oscill. insuffisants {osc_analysis['count']}/{self.min_oscillator_count})"
         
         signal_side = None
         reason = ""
         base_confidence = 0.65  # Harmonisé avec autres stratégies
         confidence_boost = 0.0
         
-        # LOGIQUE ASSOUPLIE - Setups solides à parfaits
-        if ma_analysis['direction'] == "bullish" and ma_analysis['alignment_score'] >= 0.5:  # Assoupli 0.7 -> 0.5
-            # Setup haussier : MA bien alignées + oscillateurs consensus
-            if osc_analysis['confluence'] == 'oversold':
+        # LOGIQUE ULTRA-ASSOUPLIE - Accepté même les setups neutres
+        if ma_analysis['direction'] == "bullish" and ma_analysis['alignment_score'] >= 0.3:  # Encore plus assoupli 0.5 -> 0.3
+            # Setup haussier
+            if osc_analysis['confluence'] in ['oversold', 'insufficient']:  # Accepté même insufficient
                 signal_side = "BUY"
                 if ma_analysis['alignment_score'] >= 0.7:
-                    reason = f"Setup PARFAIT BUY: MA parfaites ({ma_analysis['alignment_score']:.2f}) + oscillateurs consensus ({osc_analysis['strength']:.2f})"
-                    confidence_boost += 0.30  # Boost max pour parfait
+                    reason = f"Setup PARFAIT BUY: MA parfaites ({ma_analysis['alignment_score']:.2f})"
+                    confidence_boost += 0.30
+                elif ma_analysis['alignment_score'] >= 0.5:
+                    reason = f"Setup SOLIDE BUY: MA alignées ({ma_analysis['alignment_score']:.2f})"
+                    confidence_boost += 0.20
                 else:
-                    reason = f"Setup SOLIDE BUY: MA alignées ({ma_analysis['alignment_score']:.2f}) + oscillateurs consensus ({osc_analysis['strength']:.2f})"
-                    confidence_boost += 0.20  # Boost réduit pour solide
-            
-        elif ma_analysis['direction'] == "bearish" and ma_analysis['alignment_score'] >= 0.5:  # Assoupli 0.7 -> 0.5
-            # Setup baissier : MA bien alignées + oscillateurs consensus  
-            if osc_analysis['confluence'] == 'overbought':
+                    reason = f"Setup FAIBLE BUY: MA partielles ({ma_analysis['alignment_score']:.2f})"
+                    confidence_boost += 0.10
+
+        elif ma_analysis['direction'] == "bearish" and ma_analysis['alignment_score'] >= 0.3:
+            # Setup baissier
+            if osc_analysis['confluence'] in ['overbought', 'insufficient']:
                 signal_side = "SELL"
                 if ma_analysis['alignment_score'] >= 0.7:
-                    reason = f"Setup PARFAIT SELL: MA parfaites ({ma_analysis['alignment_score']:.2f}) + oscillateurs consensus ({osc_analysis['strength']:.2f})"
-                    confidence_boost += 0.30  # Boost max pour parfait
+                    reason = f"Setup PARFAIT SELL: MA parfaites ({ma_analysis['alignment_score']:.2f})"
+                    confidence_boost += 0.30
+                elif ma_analysis['alignment_score'] >= 0.5:
+                    reason = f"Setup SOLIDE SELL: MA alignées ({ma_analysis['alignment_score']:.2f})"
+                    confidence_boost += 0.20
                 else:
-                    reason = f"Setup SOLIDE SELL: MA alignées ({ma_analysis['alignment_score']:.2f}) + oscillateurs consensus ({osc_analysis['strength']:.2f})"
-                    confidence_boost += 0.20  # Boost réduit pour solide
+                    reason = f"Setup FAIBLE SELL: MA partielles ({ma_analysis['alignment_score']:.2f})"
+                    confidence_boost += 0.10
+
+        # NOUVEAU : Accepter même les directions neutres si oscillateurs forts
+        elif ma_analysis['direction'] == "neutral" and osc_analysis['confluence'] != 'insufficient':
+            if osc_analysis['confluence'] == 'oversold' and osc_analysis['strength'] >= 0.6:
+                signal_side = "BUY"
+                reason = f"Setup NEUTRE BUY: Oscillateurs survente ({osc_analysis['strength']:.2f})"
+                confidence_boost += 0.08
+            elif osc_analysis['confluence'] == 'overbought' and osc_analysis['strength'] >= 0.6:
+                signal_side = "SELL"
+                reason = f"Setup NEUTRE SELL: Oscillateurs surachat ({osc_analysis['strength']:.2f})"
+                confidence_boost += 0.08
                 
         # Pas d'alignement clair ou contradictoire
         if signal_side is None:
@@ -506,17 +517,40 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         market_regime = values.get('market_regime')
         regime_strength = values.get('regime_strength')
         
-        if market_regime and regime_strength == "STRONG":
-            # PÉNALITÉS au lieu de rejets stricts sur régimes contradictoires FORTS
-            if (signal_side == "BUY" and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]) or \
-               (signal_side == "SELL" and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]):
-                confidence_boost -= 0.15  # Pénalité au lieu de rejet
-                reason += f" (régime contradictoire {market_regime})"
-            # Confirmations régimes parfaits
-            elif (signal_side == "BUY" and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]) or \
-                 (signal_side == "SELL" and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]):
-                confidence_boost += 0.15
-                reason += f" + régime PARFAIT ({market_regime})"
+        if market_regime and regime_strength:
+            regime_str = str(regime_strength).upper()
+
+            # Gestion par force du régime (STRONG/MODERATE/WEAK)
+            if regime_str == "STRONG":
+                # PÉNALITÉS au lieu de rejets stricts sur régimes contradictoires FORTS
+                if (signal_side == "BUY" and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]) or \
+                   (signal_side == "SELL" and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]):
+                    confidence_boost -= 0.15  # Pénalité au lieu de rejet
+                    reason += f" (régime contradictoire {market_regime} FORT)"
+                # Confirmations régimes parfaits
+                elif (signal_side == "BUY" and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]) or \
+                     (signal_side == "SELL" and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]):
+                    confidence_boost += 0.15
+                    reason += f" + régime PARFAIT ({market_regime} FORT)"
+
+            elif regime_str == "MODERATE":
+                # Régimes modérés : pénalités plus douces
+                if (signal_side == "BUY" and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]) or \
+                   (signal_side == "SELL" and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]):
+                    confidence_boost -= 0.08  # Pénalité réduite
+                    reason += f" (régime contradictoire {market_regime} modéré)"
+                elif (signal_side == "BUY" and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]) or \
+                     (signal_side == "SELL" and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]):
+                    confidence_boost += 0.08
+                    reason += f" + régime aligné ({market_regime} modéré)"
+
+            elif regime_str == "WEAK":
+                # Régimes faibles : impact minimal
+                if (signal_side == "BUY" and market_regime in ["TRENDING_BULL", "BREAKOUT_BULL"]) or \
+                   (signal_side == "SELL" and market_regime in ["TRENDING_BEAR", "BREAKOUT_BEAR"]):
+                    confidence_boost += 0.03  # Bonus minimal
+                    reason += f" + régime aligné ({market_regime} faible)"
+                # Pas de pénalité pour les contradictions faibles
                 
         # VALIDATION VOLUME STRICTE avec rejet
         volume_ratio = values.get('volume_ratio')
@@ -550,13 +584,16 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         # Calcul final optimisé sans double calcul
         confidence = min(base_confidence * (1 + total_adjustment), 0.90)
         
-        # Filtre final ASSOUPLI pour plus de signaux
-        if confidence < 0.45:  # Seuil abaissé pour accessibilité (0.55 -> 0.45)
+        # Appliquer pénalité oscillateurs
+        confidence = max(0.0, confidence + oscillator_penalty)
+
+        # Seuil final ULTRA-ABAISSÉ pour maximum de signaux
+        if confidence < 0.30:  # Abaissé de 0.45 à 0.30
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Setup MultiTF rejeté - confiance insuffisante ({confidence:.2f} < 0.45)",
+                "reason": f"Setup MultiTF rejeté - confiance critique ({confidence:.2f} < 0.30)",
                 "metadata": {
                     "strategy": self.name,
                     "rejected_signal": signal_side,
@@ -594,22 +631,15 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
         if not super().validate_data():
             return False
             
-        required = ['confluence_score', 'signal_strength']
-        
-        for indicator in required:
-            if indicator not in self.indicators:
-                logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
-                return False
-            if self.indicators[indicator] is None:
-                logger.warning(f"{self.name}: Indicateur null: {indicator}")
-                return False
+        # ASSOUPLI : confluence_score et signal_strength optionnels avec fallbacks
+        # Plus de rejet dur pour indicateurs manquants au boot
                 
-        # Vérifier qu'on a au moins quelques moyennes mobiles
+        # Vérifier qu'on a au moins quelques moyennes mobiles (ASSOUPLI)
         ma_indicators = ['ema_7', 'ema_12', 'ema_26', 'ema_50', 'sma_20', 'sma_50']
         ma_available = sum(1 for ma in ma_indicators if ma in self.indicators and self.indicators[ma] is not None)
-        
-        if ma_available < 3:
-            logger.warning(f"{self.name}: Pas assez de moyennes mobiles ({ma_available}/6)")
+
+        if ma_available < 1:  # Réduit de 3 à 1 - Une seule MA suffit au boot
+            logger.warning(f"{self.name}: Aucune moyenne mobile ({ma_available}/6)")
             return False
             
         return True
