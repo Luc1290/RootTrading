@@ -425,12 +425,28 @@ class CriticalFilters:
             elif close_1h < ema100_1h and ema20_1h < ema100_1h:
                 htf_direction = 'SELL'  # Tendance baissière
             else:
-                # Zone neutre/transition - pas de trade
-                return False, f"Zone neutre 1h (Close:{close_1h:.4f}, EMA20:{ema20_1h:.4f}, EMA100:{ema100_1h:.4f})"
+                # Zone neutre/transition - vérifier règle fail-safe LTF
+                failsafe_valid, failsafe_reason = self._check_failsafe_ltf_alignment(signal_side, context)
+                if failsafe_valid:
+                    logger.info(f"✅ FAIL-SAFE LTF activée: HTF neutre mais LTF alignés - {failsafe_reason}")
+                    return True, f"Fail-safe LTF: {failsafe_reason}"
+                else:
+                    return False, f"Zone neutre 1h rejetée: {failsafe_reason} (Close:{close_1h:.4f}, EMA20:{ema20_1h:.4f}, EMA100:{ema100_1h:.4f})"
 
             # Vérifier que le signal est dans le bon sens
             if signal_side != htf_direction:
-                return False, f"Signal {signal_side} contre tendance 1h {htf_direction}"
+                # 🚀 PRIORITÉ #1: Signal exceptionnel (fail-safe)
+                failsafe_valid, failsafe_reason = self._check_failsafe_ltf_alignment(signal_side, context)
+                if failsafe_valid:
+                    logger.info(f"✅ FAIL-SAFE OVERRIDE: HTF {htf_direction} vs signal {signal_side} - {failsafe_reason}")
+                    return True, f"Fail-safe override: {failsafe_reason}"
+
+                # 🔄 PRIORITÉ #2: HTF REVERSAL WINDOW (breadth flip)
+                if self._check_htf_reversal_window(signal_side, context, close_1h, ema20_1h, ema100_1h):
+                    return True, "HTF reversal window: breadth flip détecté"
+
+                # ❌ REJET: Aucune exception trouvée
+                return False, f"Signal {signal_side} contre tendance 1h {htf_direction} (fail-safe: {failsafe_reason})"
 
             logger.info(f"✅ Direction HTF validée: {signal_side} aligné avec 1h {htf_direction}")
             return True, "Direction HTF valide"
@@ -474,6 +490,8 @@ class CriticalFilters:
         Vérifie que l'entrée se fait sur un pullback 3m dans le bon sens.
         BUY: Prix touche EMA20(3m) tout en restant > EMA100(3m)
         SELL: Prix touche EMA20(3m) tout en restant < EMA100(3m)
+
+        V3: Momentum Fast-Lane - Bypass timing si consensus ultra-fort + TRENDING_BULL
         """
         try:
             if not signals:
@@ -483,14 +501,28 @@ class CriticalFilters:
             if not signal_side:
                 return True, "Direction non définie"
 
+            # Récupération des métriques de consensus pour fast-lane
+            consensus_strength = context.get('consensus_strength', 0.5)
+            consensus_regime = context.get('consensus_regime', 'UNKNOWN')
+            is_failsafe = context.get('is_failsafe_trade', False)
+            wave_winner = context.get('wave_winner', False)
+
+            # 🚀 MOMENTUM FAST-LANE: Bypass timing si conditions exceptionnelles
+            if (consensus_strength >= 0.80 and
+                consensus_regime in ['TRENDING_BULL', 'BREAKOUT_BULL'] and
+                signal_side == 'BUY'):
+
+                logger.info(f"🚀 MOMENTUM FAST-LANE activée: consensus {consensus_strength:.2f}, régime {consensus_regime}")
+                return True, f"Momentum fast-lane: {consensus_strength:.2f} @ {consensus_regime}"
+
             # Utiliser les EMAs du contexte actuel (3m)
             current_price = context.get('current_price', 0)
-            # Utiliser ema_26 comme proxy pour ema_20, ema_99 pour ema_100
-            ema20_3m = context.get('ema_20') or context.get('ema_26')  # Fallback sur ema_26
-            ema100_3m = context.get('ema_100') or context.get('ema_99')  # Fallback sur ema_99
+            # Utiliser directement les EMAs disponibles en DB
+            ema20_3m = context.get('ema_26')  # ema_26 comme proxy pour ema_20
+            ema100_3m = context.get('ema_99')  # ema_99 comme proxy pour ema_100
 
             if not all([current_price, ema20_3m, ema100_3m]):
-                logger.warning("EMAs 3m manquantes pour timing pullback (même avec fallback)")
+                logger.warning("EMAs 3m manquantes pour timing pullback")
                 return True, "EMAs 3m manquantes"
 
             current_price = float(current_price)
@@ -498,28 +530,92 @@ class CriticalFilters:
             ema100_3m = float(ema100_3m)
 
             distance_to_ema20 = abs(current_price - ema20_3m)
-            price_pct = current_price * self.pullback_tolerance  # Tolérance configurable
+
+            # A. ATR FLOOR DYNAMIQUE : Respiration basée sur volatilité 15m
+            atr15m_ratio = context.get('mtf_atr15m_ratio', 1.0)  # ratio vs moyenne
+            volatility_level = context.get('volatility_level', 'normal')  # low/normal/high/extreme
+
+            # Boost volatilité selon niveau
+            vol_boost_map = {'low': 1.0, 'normal': 1.1, 'high': 1.3, 'extreme': 1.5}
+            vol_boost = vol_boost_map.get(volatility_level, 1.0)
+
+            # ATR floor : tolérance minimale basée sur volatilité (0.30% - 0.75%)
+            atr_floor_pct = min(0.0075, max(0.0030, 0.0060 * atr15m_ratio)) * vol_boost
+
+            # Tolérance de base
+            base_tolerance = self.pullback_tolerance
+
+            # Assouplissement progressif pour signaux forts
+            if consensus_strength >= 0.75:
+                # Consensus fort: +100% de tolérance (25bp → 50bp)
+                adaptive_tolerance = base_tolerance * 2.0
+            elif consensus_strength >= 0.70:
+                # Consensus correct: +50% de tolérance (25bp → 37.5bp)
+                adaptive_tolerance = base_tolerance * 1.5
+            elif consensus_strength >= 0.65:
+                # Consensus acceptable: +25% de tolérance (25bp → 31.25bp)
+                adaptive_tolerance = base_tolerance * 1.25
+            else:
+                adaptive_tolerance = base_tolerance
+
+            # Bonus supplémentaire si trade fail-safe validé
+            if is_failsafe:
+                adaptive_tolerance *= 1.3  # +30% bonus fail-safe (augmenté)
+
+            # Bonus wave winner (signal dominant de la vague)
+            if wave_winner:
+                adaptive_tolerance *= 1.2  # +20% bonus wave winner
+
+            # Appliquer l'ATR floor (garantir respiration minimale)
+            final_tolerance = max(adaptive_tolerance, atr_floor_pct)
+
+            price_pct = current_price * final_tolerance
+            tolerance_bp = int(final_tolerance * 10000)
+
+            logger.info(f"📊 Tolérance pullback calculée: {tolerance_bp}bp (base:{base_tolerance*10000:.0f}bp → adaptive:{adaptive_tolerance*10000:.0f}bp → final:{tolerance_bp}bp, ATR floor:{atr_floor_pct*10000:.0f}bp)")
+
+            # B. RECENT TOUCH : Vérifier si prix a touché EMA20 récemment
+            bars_since_touch = context.get('bars_since_ema20_touch_3m')
+            if bars_since_touch is not None and bars_since_touch <= 8:
+                logger.info(f"📈 RECENT TOUCH: Prix a touché EMA20 il y a {bars_since_touch} bougies")
+                return True, f"Momentum après touch EMA20 ({bars_since_touch} bars)"
 
             if signal_side == 'BUY':
                 # Pour BUY: Prix proche EMA20 ET au-dessus EMA100
                 if current_price < ema100_3m:
                     return False, f"Prix {current_price:.4f} < EMA100(3m) {ema100_3m:.4f}"
 
-                # Vérifier pullback vers EMA20 (tolérance configurable)
+                # Vérifier pullback vers EMA20 (tolérance adaptative)
                 if distance_to_ema20 > price_pct:
-                    return False, f"Prix trop loin EMA20: {distance_to_ema20:.4f} > {price_pct:.4f} ({self.pullback_tolerance_bp}bp)"
+                    # C. MOMENTUM PROPRE : Bypass pullback si conditions exceptionnelles
+                    momentum_bypass = self._check_momentum_bypass(
+                        signal_side, context, consensus_strength, wave_winner,
+                        distance_to_ema20, final_tolerance, current_price, ema100_3m
+                    )
+                    if momentum_bypass[0]:
+                        return True, momentum_bypass[1]
+                    else:
+                        return False, f"TIMING 3M INVALIDE: Prix trop loin EMA20: {distance_to_ema20:.4f} > {price_pct:.4f} ({tolerance_bp}bp, consensus:{consensus_strength:.2f})"
 
             elif signal_side == 'SELL':
                 # Pour SELL: Prix proche EMA20 ET en-dessous EMA100
                 if current_price > ema100_3m:
                     return False, f"Prix {current_price:.4f} > EMA100(3m) {ema100_3m:.4f}"
 
-                # Vérifier pullback vers EMA20
+                # Vérifier pullback vers EMA20 (tolérance adaptative)
                 if distance_to_ema20 > price_pct:
-                    return False, f"Prix trop loin EMA20: {distance_to_ema20:.4f} > {price_pct:.4f}"
+                    return False, f"TIMING 3M INVALIDE: Prix trop loin EMA20: {distance_to_ema20:.4f} > {price_pct:.4f} ({tolerance_bp}bp, consensus:{consensus_strength:.2f})"
 
-            logger.info(f"✅ Timing pullback 3m validé: {signal_side} à {current_price:.4f}")
-            return True, "Timing pullback valide"
+            # Mini-log détaillé pour audit
+            entry_style = context.get('entry_style', 'pullback')
+            bars_since_touch = context.get('bars_since_ema20_touch_3m', 'N/A')
+            vol_level = context.get('volatility_level', 'normal')
+
+            logger.info(f"✅ Timing pullback 3m validé: {signal_side} à {current_price:.4f} "
+                       f"(tolerance={tolerance_bp}bp, atr15m_ratio={atr15m_ratio:.2f}, "
+                       f"entry_style={entry_style}, bars_since_touch={bars_since_touch}, vol={vol_level})")
+
+            return True, f"Timing pullback valide ({tolerance_bp}bp, {entry_style})"
 
         except Exception as e:
             logger.error(f"Erreur check pullback timing: {e}")
@@ -557,18 +653,50 @@ class CriticalFilters:
             sl_estimated = max(swing_distance, 0.7 * atr) if swing_distance > 0 else 0.7 * atr
             tp_estimated = 1.5 * atr
 
-            # Vérifier que SL est valide
+            # Vérifier que SL est valide et protéger division par zéro
             if sl_estimated <= 0:
                 return False, f"SL estimé invalide: {sl_estimated:.4f}"
 
-            # Calculer Risk/Reward
-            risk_reward = tp_estimated / sl_estimated
+            # Calculer Risk/Reward avec protection division par zéro
+            risk_reward = tp_estimated / sl_estimated if sl_estimated > 0 else 0
 
-            # Vérifier minimum R/R
-            if risk_reward < self.min_risk_reward:
-                return False, f"R/R {risk_reward:.2f} < {self.min_risk_reward}"
+            # R/R dynamique selon régime et volatilité
+            market_regime = context.get('market_regime', 'UNKNOWN')
+            volatility_level = context.get('volatility_level', 'normal')
 
-            logger.info(f"✅ Risk/Reward OK: {risk_reward:.2f} (SL:{sl_estimated:.4f}, TP:{tp_estimated:.4f})")
+            if market_regime == 'TRENDING_BULL':
+                if volatility_level in ['low', 'normal']:
+                    min_rr = 1.8  # Plus souple en bull calme
+                else:  # high/extreme
+                    min_rr = 2.0  # Standard en bull volatil
+            else:  # RANGING, BEAR, etc.
+                if volatility_level in ['extreme']:
+                    min_rr = 2.2  # Plus strict en volatilité extrême
+                else:
+                    min_rr = 2.0  # Standard
+
+            logger.info(f"📊 Seuil R/R dynamique calculé: {min_rr:.1f} (régime: {market_regime}, volatilité: {volatility_level})")
+
+            # Vérifier minimum R/R dynamique
+            if risk_reward < min_rr:
+                return False, f"R/R {risk_reward:.2f} < {min_rr:.1f} (regime:{market_regime}, vol:{volatility_level})"
+
+            # Format adaptatif selon la taille des prix
+            current_price = context.get('current_price', 0)
+            if current_price > 10:
+                # Prix > 10 : 2 décimales
+                sl_fmt = f"{sl_estimated:.2f}"
+                tp_fmt = f"{tp_estimated:.2f}"
+            elif current_price > 1:
+                # Prix 1-10 : 4 décimales
+                sl_fmt = f"{sl_estimated:.4f}"
+                tp_fmt = f"{tp_estimated:.4f}"
+            else:
+                # Prix < 1 : 6 décimales
+                sl_fmt = f"{sl_estimated:.6f}"
+                tp_fmt = f"{tp_estimated:.6f}"
+
+            logger.info(f"✅ Risk/Reward OK: {risk_reward:.2f} (SL:{sl_fmt}, TP:{tp_fmt})")
             return True, f"R/R valide: {risk_reward:.2f}"
 
         except Exception as e:
@@ -593,3 +721,253 @@ class CriticalFilters:
             'filters_count': 8 if self.strict_mtf_enabled else 4,
             'description': 'Mode Shaolin: Validation MTF stricte 1h/15m/3m - Max 3 trades/jour'
         }
+
+    def _check_failsafe_ltf_alignment(self, signal_side: str, context: Dict[str, Any]) -> Tuple[bool, str]:
+        """
+        Règle fail-safe améliorée: autorise le trade quand HTF neutre SI signaux exceptionnels.
+        V2: Plus intelligent et adaptatif selon la force du consensus.
+        """
+        try:
+            # Récupérer les métriques consensus (injectées par signal_processor)
+            consensus_strength = context.get('consensus_strength', 0.5)
+            wave_winner = context.get('wave_winner', False)
+            market_regime = context.get('market_regime', 'NEUTRAL')
+            strategies_count = context.get('total_strategies', 0)
+
+            # NOUVELLE LOGIQUE: Fail-safe progressive selon force du signal
+            # Plus le consensus est fort, moins on est restrictif
+
+            # 1. Vérifier signal exceptionnel (wave_winner + consensus fort)
+            if not wave_winner:
+                return False, "Fail-safe: nécessite wave_winner"
+
+            # Seuil adaptatif selon volatilité
+            volatility_level = context.get('volatility_level', 'normal')
+            if volatility_level in ['low', 'normal']:
+                min_consensus = 0.70  # Plus souple en vol faible/normale
+            else:  # high/extreme
+                min_consensus = 0.75  # Plus strict en vol élevée
+
+            logger.info(f"📊 Seuil consensus fail-safe calculé: {min_consensus:.2f} (volatilité: {volatility_level})")
+
+            if consensus_strength < min_consensus:
+                return False, f"Fail-safe: consensus {consensus_strength:.2f} < {min_consensus:.2f} requis (vol:{volatility_level})"
+
+            if strategies_count < 6:
+                return False, f"Fail-safe: {strategies_count} stratégies < 6 requises"
+
+            # 2. Vérifier cohérence directionnelle de base (assouplie pour rebonds)
+            directional_bias = context.get('directional_bias', 'NEUTRAL')
+            momentum_score = context.get('momentum_score', 50)
+            consensus_regime = context.get('consensus_regime', market_regime)  # Utiliser consensus_regime si dispo
+
+            # Seuils adaptatifs selon consensus strength
+            momentum_threshold_buy = 55 if consensus_strength >= 0.80 else 52  # Assoupli
+            momentum_threshold_sell = 45 if consensus_strength >= 0.80 else 48
+
+            logger.info(f"📊 Seuils momentum calculés: BUY>{momentum_threshold_buy}, SELL<{momentum_threshold_sell} (consensus: {consensus_strength:.2f})")
+
+            ltf_aligned = False
+            if signal_side == 'BUY':
+                # Logique assouplie pour rebonds: si momentum > seuil, accepter même avec bias BEARISH
+                momentum_ok = momentum_score and float(momentum_score) > momentum_threshold_buy
+                bias_ok = directional_bias in ['BULLISH', 'NEUTRAL']
+
+                # CAS SPÉCIAL: Rebond avec consensus très fort (≥0.80) + momentum positif
+                strong_rebound = (consensus_strength >= 0.80 and momentum_ok and
+                                 float(momentum_score) > 50)  # Au-dessus de la neutralité
+
+                ltf_aligned = bias_ok or strong_rebound
+
+                # Bonus si régime favorable (utiliser consensus_regime)
+                if consensus_regime in ['TRENDING_BULL', 'BREAKOUT_BULL'] and consensus_strength >= 0.80:
+                    ltf_aligned = True  # Override si conditions exceptionnelles
+            elif signal_side == 'SELL':
+                momentum_ok = momentum_score and float(momentum_score) < momentum_threshold_sell
+                bias_ok = directional_bias in ['BEARISH', 'NEUTRAL']
+
+                strong_breakdown = (consensus_strength >= 0.80 and momentum_ok and
+                                   float(momentum_score) < 50)  # En-dessous de la neutralité
+
+                ltf_aligned = bias_ok or strong_breakdown
+
+                if consensus_regime in ['TRENDING_BEAR', 'BREAKOUT_BEAR'] and consensus_strength >= 0.80:
+                    ltf_aligned = True
+
+            if not ltf_aligned:
+                debug_info = f"bias:{directional_bias}, mom:{momentum_score}, consensus:{consensus_strength:.2f}"
+                if signal_side == 'BUY' and 'strong_rebound' in locals() and strong_rebound:
+                    debug_info += ", strong_rebound:YES"
+                return False, f"LTF non alignés ({debug_info})"
+
+            # 3. Vérifier volatilité suffisante (adaptatif selon force consensus)
+            current_atr = context.get('mtf_atr15m') or context.get('atr_14')
+            avg_atr = context.get('mtf_atr15m_ma') or context.get('atr_14_ma')
+            market_regime = context.get('market_regime', 'NEUTRAL')
+            total_strats = context.get('total_strategies', 0)
+
+            if current_atr and avg_atr:
+                atr_ratio = float(current_atr) / float(avg_atr)
+
+                # Seuil adaptatif intelligent
+                required_atr = 1.05  # Base fail-safe
+
+                # Assouplissement selon contexte
+                if market_regime == 'RANGING':
+                    required_atr -= 0.03  # 1.02 (ATR plus bas en range)
+
+                if consensus_strength >= 0.95 and total_strats >= 10:
+                    required_atr -= 0.05  # Super-consensus exceptionnel (-5 bp de plus)
+                elif consensus_strength >= 0.90 and total_strats >= 8:
+                    required_atr -= 0.04  # Consensus exceptionnel
+                elif consensus_strength >= 0.85:
+                    required_atr -= 0.03  # Consensus très fort
+                elif consensus_strength >= 0.80:
+                    required_atr -= 0.02  # Consensus fort
+
+                # Garde-fous: jamais < 1.00
+                required_atr = max(1.00, round(required_atr, 2))
+
+                if atr_ratio < required_atr:
+                    return False, f"ATR ratio {atr_ratio:.2f} < {required_atr:.2f}x requis (regime:{market_regime}, consensus:{consensus_strength:.2f})"
+            # On ne bloque plus si ATR manquant (trop restrictif)
+
+            # 4. Vérifier R:R minimal (assoupli pour scalping)
+            atr = current_atr or context.get('atr_14')
+            if atr:
+                atr = float(atr)
+                # R:R adaptatif: 1.8 si consensus >= 0.80, sinon 2.0
+                sl_estimated = 0.8 * atr
+                tp_estimated = 1.5 * atr if consensus_strength >= 0.80 else 1.6 * atr
+                risk_reward = tp_estimated / sl_estimated if sl_estimated > 0 else 0
+
+                min_rr = 1.8 if consensus_strength >= 0.80 else 2.0
+                if risk_reward < min_rr:
+                    return False, f"R:R {risk_reward:.2f} < {min_rr} requis"
+
+            # 5. Traçabilité du trade fail-safe
+            context['is_failsafe_trade'] = True  # Tag pour analyse post-trade
+
+            # Message de succès avec détails
+            rebound_flag = " [REBOUND]" if signal_side == 'BUY' and directional_bias == 'BEARISH' and consensus_strength >= 0.80 else ""
+            success_msg = f"🚀 FAIL-SAFE V2{rebound_flag}: consensus={consensus_strength:.2f}, strats={strategies_count}, regime={consensus_regime or market_regime}"
+            logger.info(f"✅ {success_msg} pour {signal_side}")
+            return True, success_msg
+
+        except Exception as e:
+            logger.error(f"Erreur fail-safe LTF: {e}")
+            return False, f"Erreur fail-safe: {e}"
+
+    def _check_htf_reversal_window(self, signal_side: str, context: Dict[str, Any],
+                                  close_1h: float, ema20_1h: float, ema100_1h: float) -> bool:
+        """
+        Détecte les fenêtres de retournement HTF (breadth flip).
+
+        Conditions pour autoriser le passage quand 1h pas encore aligné :
+        - Consensus ultra-fort (≥0.95) + wave_winner
+        - Beaucoup d'autres signaux déclenchés (≥10 stratégies)
+        - 1h "soft SELL" : proche EMA20 ou pente EMA20 positive
+        - Quota : max 1 trade/symbole/60min
+        """
+        try:
+            # Vérifier conditions de base pour reversal window
+            consensus_strength = context.get('consensus_strength', 0.5)
+            wave_winner = context.get('wave_winner', False)
+            total_strategies = context.get('total_strategies', 0)
+            consensus_regime = context.get('consensus_regime', 'UNKNOWN')
+
+            # Conditions strictes pour breadth flip
+            if not (consensus_strength >= 0.95 and
+                   wave_winner and
+                   total_strategies >= 10 and
+                   signal_side == 'BUY' and
+                   consensus_regime in ['TRENDING_BULL', 'TRANSITION', 'RANGING']):
+                return False
+
+            # Vérifier si le 1h est "soft SELL" (pas encore vraiment baissier)
+            atr_1h = context.get('htf_atr_1h', 0)
+            if atr_1h:
+                atr_1h = float(atr_1h)
+                # Condition 1: Close proche EMA20 (dans 0.25*ATR)
+                distance_to_ema20 = abs(close_1h - ema20_1h)
+                close_near_ema20 = distance_to_ema20 <= (0.25 * atr_1h)
+
+                # Condition 2: Pente EMA20 positive (simulée par proximité avec EMA100)
+                ema20_trending_up = ema20_1h >= (ema100_1h * 0.999)  # EMA20 pas en chute libre
+
+                if close_near_ema20 or ema20_trending_up:
+                    # TODO: Vérifier quota 1 trade/symbole/60min
+                    # (nécessiterait un cache en mémoire ou DB check)
+
+                    logger.info(f"🔄 HTF REVERSAL WINDOW activée: close_near_ema20={close_near_ema20}, "
+                              f"ema20_trending_up={ema20_trending_up}, consensus={consensus_strength:.2f}")
+
+                    # Marquer le trade comme reversal pour tracking
+                    context['htf_reversal_window'] = True
+                    return True
+
+            return False
+
+        except Exception as e:
+            logger.error(f"Erreur HTF reversal window: {e}")
+            return False
+
+    def _check_momentum_bypass(self, signal_side: str, context: Dict[str, Any],
+                              consensus_strength: float, wave_winner: bool,
+                              distance_to_ema20: float, tolerance: float,
+                              current_price: float, ema100_3m: float) -> Tuple[bool, str]:
+        """
+        Bypass pullback timing pour momentum propre avec conditions ultra-bornées.
+
+        Conditions :
+        - Régime TRENDING_BULL/BREAKOUT_BULL + consensus ≥0.95 + wave_winner
+        - Volume ratio ≥1.3 + price > EMA100 + pente EMA20 positive
+        - Dépassement limité : distance ≤ tolerance + 0.20%
+        - Cooldown 30-60min par symbole (TODO)
+        """
+        try:
+            consensus_regime = context.get('consensus_regime', 'UNKNOWN')
+            volume_ratio = context.get('volume_ratio', 1.0)
+
+            # Conditions strictes pour momentum bypass
+            if not (consensus_strength >= 0.95 and
+                   wave_winner and
+                   signal_side == 'BUY' and
+                   consensus_regime in ['TRENDING_BULL', 'BREAKOUT_BULL']):
+                return False, "Momentum bypass: conditions de base non remplies"
+
+            # Vérifier volume et structure
+            if volume_ratio < 1.3:
+                return False, f"Momentum bypass: volume {volume_ratio:.2f} < 1.3x requis"
+
+            if current_price <= ema100_3m:
+                return False, f"Momentum bypass: prix {current_price:.4f} ≤ EMA100 {ema100_3m:.4f}"
+
+            # Simuler pente EMA20 positive (proxy : EMA26 stable/croissante)
+            ema20_3m = context.get('ema_26', 0)
+            if ema20_3m:
+                ema20_vs_ema100_ratio = float(ema20_3m) / ema100_3m
+                if ema20_vs_ema100_ratio < 1.001:  # EMA20 pas vraiment au-dessus EMA100
+                    return False, f"Momentum bypass: EMA20 pas en pente positive ({ema20_vs_ema100_ratio:.4f})"
+
+            # Vérifier dépassement limité (tolerance + 20bp max)
+            max_overshoot = tolerance + 0.0020  # +0.20%
+            distance_pct = distance_to_ema20 / current_price
+            if distance_pct > max_overshoot:
+                return False, f"Momentum bypass: dépassement {distance_pct:.4f} > {max_overshoot:.4f} max"
+
+            # TODO: Vérifier cooldown 30-60min par symbole
+            # (nécessiterait cache mémoire ou DB check)
+
+            logger.info(f"🚀 MOMENTUM BYPASS activé: distance={distance_pct:.4f}, "
+                      f"vol={volume_ratio:.2f}, regime={consensus_regime}")
+
+            # Marquer pour audit
+            context['entry_style'] = 'momentum'
+            context['momentum_bypass'] = True
+
+            return True, f"EntryStyle=momentum (skip pullback, distance={distance_pct:.4f})"
+
+        except Exception as e:
+            logger.error(f"Erreur momentum bypass: {e}")
+            return False, f"Momentum bypass error: {e}"

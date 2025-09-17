@@ -316,31 +316,34 @@ class ContextManager:
 
             if not row:
                 return {}
-                    
-                # Conversion des indicateurs via FieldConverter
-                raw_indicators = {}
-                for key, value in row.items():
-                    if key not in ['time', 'symbol', 'timeframe', 'analysis_timestamp', 'analyzer_version']:
-                        raw_indicators[key] = value
-                
-                # Utiliser le convertisseur pour harmoniser les types
-                indicators = FieldConverter.convert_indicators(raw_indicators)
-                
-                # FALLBACK pour volume_quality_score si manquant (critique pour filtres)
-                if not indicators.get('volume_quality_score') or indicators.get('volume_quality_score') == 0:
-                    fallback_volume_quality = self._get_volume_quality_fallback(symbol, timeframe)
-                    if fallback_volume_quality is not None:
-                        indicators['volume_quality_score'] = fallback_volume_quality
-                        logger.info(f"✅ Volume quality fallback {symbol} {timeframe}: {fallback_volume_quality}")
 
-                # Log temporaire pour debug
-                logger.debug(f"Indicateurs récupérés pour {symbol} {timeframe}: {len(indicators)} champs")
-                if 'atr_14' in indicators:
-                    logger.debug(f"ATR_14 trouvé: {indicators['atr_14']}")
-                if 'atr_percentile' in indicators:
-                    logger.debug(f"ATR_percentile trouvé: {indicators['atr_percentile']}")
-                
-                return indicators
+            # Conversion des indicateurs via FieldConverter
+            raw_indicators = {}
+            for key, value in row.items():
+                if key not in ['time', 'symbol', 'timeframe', 'analysis_timestamp', 'analyzer_version']:
+                    raw_indicators[key] = value
+
+            # Utiliser le convertisseur pour harmoniser les types
+            indicators = FieldConverter.convert_indicators(raw_indicators)
+
+            # FALLBACK pour volume_quality_score si manquant (critique pour filtres)
+            if not indicators.get('volume_quality_score') or indicators.get('volume_quality_score') == 0:
+                fallback_volume_quality = self._get_volume_quality_fallback(symbol, timeframe)
+                if fallback_volume_quality is not None:
+                    indicators['volume_quality_score'] = fallback_volume_quality
+                    logger.info(f"✅ Volume quality fallback {symbol} {timeframe}: {fallback_volume_quality}")
+
+            # ENRICHISSEMENT: Ajouter indicateurs calculés manquants
+            self._enrich_indicators(indicators, symbol, timeframe, cursor)
+
+            # Log temporaire pour debug
+            logger.debug(f"Indicateurs récupérés pour {symbol} {timeframe}: {len(indicators)} champs")
+            if 'atr_14' in indicators:
+                logger.debug(f"ATR_14 trouvé: {indicators['atr_14']}")
+            if 'atr_percentile' in indicators:
+                logger.debug(f"ATR_percentile trouvé: {indicators['atr_percentile']}")
+
+            return indicators
                 
         except Exception as e:
             logger.error(f"Erreur récupération indicateurs {symbol} {timeframe}: {e}")
@@ -561,11 +564,11 @@ class ContextManager:
         try:
             htf_data = {}
 
-            # Récupérer données 1h (direction) - JOIN avec market_data pour le close
+            # Récupérer données 1h (direction + ATR) - JOIN avec market_data pour le close
             cursor = self.db_connection.cursor()
             try:
                 cursor.execute("""
-                    SELECT md.close, ad.ema_26, ad.ema_99
+                    SELECT md.close, ad.ema_26, ad.ema_99, ad.atr_14
                     FROM analyzer_data ad
                     JOIN market_data md ON ad.time = md.time
                         AND ad.symbol = md.symbol
@@ -580,6 +583,7 @@ class ContextManager:
                     htf_data['htf_close_1h'] = float(result_1h[0]) if result_1h[0] else None
                     htf_data['htf_ema20_1h'] = float(result_1h[1]) if result_1h[1] else None  # Utilise ema_26 comme proxy
                     htf_data['htf_ema100_1h'] = float(result_1h[2]) if result_1h[2] else None  # Utilise ema_99 comme proxy
+                    htf_data['htf_atr_1h'] = float(result_1h[3]) if result_1h[3] else None  # ATR 1h pour reversal window
 
                 # Récupérer ATR 15m actuel et historique (volatilité)
                 cursor.execute("""
@@ -600,6 +604,10 @@ class ContextManager:
                     historical_atrs = [float(r[0]) for r in results_15m if r[0]]
                     if historical_atrs:
                         htf_data['mtf_atr15m_ma'] = sum(historical_atrs) / len(historical_atrs)
+
+                        # Calculer ratio ATR 15m pour les filtres
+                        if htf_data.get('mtf_atr15m') and htf_data['mtf_atr15m_ma'] > 0:
+                            htf_data['mtf_atr15m_ratio'] = htf_data['mtf_atr15m'] / htf_data['mtf_atr15m_ma']
 
             finally:
                 cursor.close()
@@ -739,6 +747,84 @@ class ContextManager:
         except Exception as e:
             logger.error(f"Erreur estimation volume quality {symbol}: {e}")
             return 22.0  # P10 réel, reste dans les bornes DB
+
+    def _enrich_indicators(self, indicators: Dict[str, Any], symbol: str, timeframe: str, cursor) -> None:
+        """
+        Enrichit les indicateurs avec des champs calculés manquants.
+
+        Args:
+            indicators: Dict des indicateurs à enrichir
+            symbol: Symbole
+            timeframe: Timeframe
+            cursor: Curseur DB réutilisable
+        """
+        try:
+            # 1. VOLATILITY_LEVEL basé sur volatility_regime
+            volatility_regime = indicators.get('volatility_regime', 'normal')
+            if volatility_regime in ['extreme_chaos', 'chaotic']:
+                indicators['volatility_level'] = 'extreme'
+            elif volatility_regime in ['high', 'elevated']:
+                indicators['volatility_level'] = 'high'
+            elif volatility_regime in ['normal', 'stable']:
+                indicators['volatility_level'] = 'normal'
+            else:
+                indicators['volatility_level'] = 'low'
+
+            # 2. BARS_SINCE_EMA20_TOUCH_3M : Calcul optimisé si timeframe = 3m
+            if timeframe == '3m':
+                indicators['bars_since_ema20_touch_3m'] = self._calculate_bars_since_ema20_touch(symbol, cursor)
+
+            # 3. VOLUME_RATIO mapping depuis relative_volume
+            if 'relative_volume' in indicators and not indicators.get('volume_ratio'):
+                indicators['volume_ratio'] = indicators['relative_volume']
+
+        except Exception as e:
+            logger.error(f"Erreur enrichissement indicateurs {symbol} {timeframe}: {e}")
+
+    def _calculate_bars_since_ema20_touch(self, symbol: str, cursor) -> Optional[int]:
+        """
+        Calcule le nombre de bougies depuis le dernier touch de l'EMA20 (3m).
+
+        Args:
+            symbol: Symbole
+            cursor: Curseur DB
+
+        Returns:
+            Nombre de bougies ou None si pas trouvé
+        """
+        try:
+            # Récupérer les 15 dernières bougies 3m avec prix et EMA26 (proxy EMA20)
+            cursor.execute("""
+                SELECT md.close, ad.ema_26, md.time
+                FROM market_data md
+                JOIN analyzer_data ad ON md.time = ad.time
+                    AND md.symbol = ad.symbol
+                    AND md.timeframe = ad.timeframe
+                WHERE md.symbol = %s AND md.timeframe = '3m'
+                    AND ad.ema_26 IS NOT NULL
+                ORDER BY md.time DESC
+                LIMIT 15
+            """, (symbol,))
+
+            rows = cursor.fetchall()
+            if not rows or len(rows) < 3:
+                return None
+
+            # Chercher la dernière fois où le prix était proche de l'EMA20 (±0.5%)
+            for i, row in enumerate(rows):
+                close_price = float(row[0]) if row[0] else 0
+                ema20 = float(row[1]) if row[1] else 0
+
+                if close_price > 0 and ema20 > 0:
+                    distance_pct = abs(close_price - ema20) / close_price
+                    if distance_pct <= 0.005:  # Touch = distance ≤ 0.5%
+                        return i
+
+            return 15  # Plus de 15 bougies depuis dernier touch
+
+        except Exception as e:
+            logger.error(f"Erreur calcul bars_since_ema20_touch {symbol}: {e}")
+            return None
             
     def clear_cache(self):
         """Vide le cache du contexte."""

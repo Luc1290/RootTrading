@@ -383,7 +383,22 @@ class AdaptiveConsensusAnalyzer:
             total_weight += weight
             
         consensus_strength = weighted_score / max(1, total_weight)
-        
+
+        # PÉNALITÉ DIVERSITÉ PROGRESSIVE : Réduction lissée selon nombre de familles
+        unique_families = len([f for f in families_count.keys() if f != 'unknown' and families_count[f] > 0])
+        if unique_families < 3:
+            # Pénalité progressive : -25% pour 1 famille, -15% pour 2 familles
+            if unique_families == 1:
+                diversity_penalty = 0.75  # -25% pour mono-famille
+            elif unique_families == 2:
+                diversity_penalty = 0.85  # -15% pour bi-famille
+            else:
+                diversity_penalty = 0.95  # -5% pour edge case
+
+            consensus_strength *= diversity_penalty
+            penalty_pct = int((1 - diversity_penalty) * 100)
+            logger.info(f"🎯 Pénalité diversité progressive: {unique_families} familles < 3 (-{penalty_pct}%)")
+
         # Décision finale basée sur la force du consensus RAISONNABLE
         # RÉALISTE: Basé sur les vraies données observées (3-10 stratégies simultanées)
         

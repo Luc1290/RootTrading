@@ -221,7 +221,24 @@ class SimpleSignalProcessor:
                     self.stats['rejections_by_regime'][market_regime] = 0
                 self.stats['rejections_by_regime'][market_regime] += 1
                 
-                logger.info(f"❌ Consensus rejeté {symbol} {side}: {consensus_analysis.get('reason') if consensus_analysis else 'None'}")
+                # Construire un message de rejet informatif
+                if consensus_analysis:
+                    reason = consensus_analysis.get('reason')
+                    if not reason:
+                        # Déduire la raison du rejet depuis les données
+                        strength = consensus_analysis.get('consensus_strength', 0)
+                        min_required = consensus_analysis.get('min_required_strength', 0)
+                        if strength < min_required:
+                            reason = f"Consensus faible: {strength:.2f} < {min_required:.2f}"
+                        else:
+                            reason = "Consensus rejeté"
+
+                    details = consensus_analysis.get('details', '')
+                    rejection_msg = f"{reason}" + (f" - {details}" if details else "")
+                else:
+                    rejection_msg = "Analyse de consensus indisponible"
+
+                logger.info(f"❌ Consensus rejeté {symbol} {side}: {rejection_msg}")
                 self.stats['consensus_rejected'] += 1
                 return None
             
@@ -243,6 +260,12 @@ class SimpleSignalProcessor:
             logger.info(f"📊 Consensus strength: brute={consensus_strength:.2f}, normalisée={normalized_confidence:.2f}")
                 
             # ÉTAPE 2: Filtres critiques seulement (éviter les vrais dangers)
+            # Enrichir le contexte avec les métriques de consensus pour fail-safe
+            context['consensus_strength'] = normalized_confidence  # Version normalisée
+            context['wave_winner'] = is_wave_winner
+            context['total_strategies'] = len(signals)
+            context['consensus_regime'] = market_regime  # Éviter d'écraser market_regime du context_manager
+
             filters_pass, filter_reason = self.critical_filters.apply_critical_filters(
                 signals, context
             )
@@ -440,6 +463,7 @@ class SimpleSignalProcessor:
                 # Traçabilité et signaux post-vague
                 'consensus_id': consensus_id,
                 'is_wave_winner': is_wave_winner,
+                'is_failsafe_trade': context.get('is_failsafe_trade', False),  # Tag spécial pour fail-safe
                 
                 # Contexte de marché
                 'volume_ratio': context.get('volume_ratio'),
