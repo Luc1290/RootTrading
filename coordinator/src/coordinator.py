@@ -342,19 +342,19 @@ class Coordinator:
     def process_signal(self, channel: str, data: Dict[str, Any]) -> None:
         """
         Traite un signal reçu via Redis.
-        
+
         Args:
             channel: Canal Redis
             data: Données du signal
         """
         try:
             self.stats["signals_received"] += 1
-            
+
             # Parser le signal
             try:
                 if 'side' in data and isinstance(data['side'], str):
                     data['side'] = OrderSide(data['side'])
-                    
+
                 signal = StrategySignal(**data)
             except ValueError as e:
                 logger.error(f"❌ Erreur parsing signal: {e}")
@@ -370,40 +370,39 @@ class Coordinator:
                 logger.info(f"DB ID trouvé dans signal: {signal.metadata['db_id']}")
             else:
                 logger.warning("Pas de db_id trouvé dans les métadonnées du signal")
-            
-            # Vérifier la faisabilité
+
+            # CONSENSUS BUY OVERRIDE: Vérifier AVANT la faisabilité pour permettre le bypass
+            # Cela permet d'ajouter à l'univers AVANT de vérifier si c'est tradable
+            if signal.side == OrderSide.BUY:
+                signal_force, strategy_count, avg_confidence = self._calculate_unified_signal_strength(signal)
+
+                # Vérifier si on doit bypasser l'hystérésis pour un consensus fort
+                min_force = self.signal_strength_config['consensus_override']['min_force']
+                min_strategies = self.signal_strength_config['consensus_override']['min_strategies']
+
+                if signal_force >= min_force and strategy_count >= min_strategies:
+                    logger.warning(f"🚀 CONSENSUS BUY FORT détecté pour {signal.symbol}")
+                    logger.warning(f"   → {strategy_count} stratégies, force {signal_force:.2f}")
+                    logger.warning(f"   → Ajout immédiat à l'univers tradable (bypass hystérésis)")
+
+                    # Forcer l'ajout à l'univers tradable pour 45 minutes
+                    self.universe_manager.force_pair_selection(signal.symbol, duration_minutes=45)
+
+            # Vérifier la faisabilité (APRÈS le consensus override pour que l'univers soit à jour)
             is_feasible, reason = self._check_feasibility(signal)
-            
+
             if not is_feasible:
                 logger.warning(f"❌ Signal rejeté: {reason}")
                 self.stats["signals_rejected"] += 1
-                
+
                 # Marquer le signal comme traité même s'il est rejeté
                 if signal.metadata and 'db_id' in signal.metadata:
                     db_id = signal.metadata['db_id']
                     self._mark_signal_as_processed(db_id)
-                
+
                 return
             
-            # CONSENSUS BUY OVERRIDE: Forcer l'ajout à l'univers si consensus très fort
-            signal_force, strategy_count, avg_confidence = self._calculate_unified_signal_strength(signal)
-
-            # Vérifier si on doit bypasser l'hystérésis pour un consensus fort
-            min_force = self.signal_strength_config['consensus_override']['min_force']
-            min_strategies = self.signal_strength_config['consensus_override']['min_strategies']
-
-            if (signal.side == OrderSide.BUY and
-                signal_force >= min_force and
-                strategy_count >= min_strategies):
-
-                logger.warning(f"🚀 CONSENSUS BUY FORT détecté pour {signal.symbol}")
-                logger.warning(f"   → {strategy_count} stratégies, force {signal_force:.2f}")
-                logger.warning(f"   → Ajout immédiat à l'univers tradable (bypass hystérésis)")
-
-                # Forcer l'ajout à l'univers tradable pour 45 minutes (éviter exposition trop longue)
-                self.universe_manager.force_pair_selection(signal.symbol, duration_minutes=45)
-            
-            # Calculer la quantité à trader UNE SEULE FOIS
+            # Calculer la quantité à trader (la force a déjà été calculée si BUY)
             quantity = self._calculate_quantity(signal)
             if not quantity or quantity <= 0:
                 logger.error("Impossible de calculer la quantité")
@@ -628,7 +627,16 @@ class Coordinator:
                     total_capital = sum(b.get('value_usdc', 0) for b in balances)
                 
                 # ALLOCATION USDC : Utiliser le calcul de force unifié
-                signal_force, strategies_count, avg_confidence = self._calculate_unified_signal_strength(signal)
+                # Réutiliser le calcul déjà fait si disponible dans metadata
+                if signal.metadata and 'calculated_force' in signal.metadata:
+                    # Force déjà calculée lors du consensus override
+                    signal_force = signal.metadata['calculated_force']
+                    strategies_count = signal.metadata.get('strategies_count', 1)
+                    avg_confidence = signal.metadata.get('avg_confidence', signal.confidence)
+                else:
+                    # Calculer maintenant si pas déjà fait
+                    signal_force, strategies_count, avg_confidence = self._calculate_unified_signal_strength(signal)
+
                 strength_category = self._categorize_signal_strength(signal_force)
 
                 logger.info(f"💪 Force calculée {signal.symbol}: {signal_force:.2f} → {strength_category} "
@@ -646,13 +654,36 @@ class Coordinator:
                 
                 # Calculer le montant basé sur l'USDC disponible
                 trade_amount = usdc_balance * (allocation_percent / 100)
-                
+
                 # Limiter par la marge de sécurité USDC
                 max_usdc_usable = usdc_balance * self.usdc_safety_margin  # 98% de l'USDC
                 trade_amount = min(trade_amount, max_usdc_usable)
-                
+
                 # Mais toujours respecter le minimum absolu Binance
                 trade_amount = max(self.min_absolute_trade_usdc, trade_amount)
+
+                # NOUVEAU: Si USDC insuffisant, essayer de libérer des fonds en vendant la pire position
+                if trade_amount > usdc_balance:
+                    logger.warning(f"💰 USDC insuffisant pour {signal.symbol}: besoin {trade_amount:.2f}, disponible {usdc_balance:.2f}")
+                    freed_usdc = self._free_usdc_by_selling_worst_position(trade_amount - usdc_balance)
+
+                    if freed_usdc > 0:
+                        # Recalculer l'USDC disponible après vente
+                        updated_balances = self.service_client.get_all_balances()
+                        if updated_balances:
+                            if isinstance(updated_balances, dict):
+                                usdc_balance = updated_balances.get('USDC', {}).get('free', 0)
+                            else:
+                                usdc_balance = next((b.get('free', 0) for b in updated_balances if b.get('asset') == 'USDC'), 0)
+
+                            logger.info(f"✅ USDC libéré: {freed_usdc:.2f}, nouveau solde: {usdc_balance:.2f}")
+
+                        # Recalculer le montant de trade avec le nouvel USDC
+                        trade_amount = min(trade_amount, usdc_balance * self.usdc_safety_margin)
+                    else:
+                        logger.warning(f"❌ Impossible de libérer assez d'USDC pour {signal.symbol}")
+                        # Continuer avec l'USDC disponible
+                        trade_amount = usdc_balance * self.usdc_safety_margin
                 
                 # Log pour debug positions augmentées
                 logger.info(f"💰 {signal.symbol} - USDC dispo: {usdc_balance:.0f}€, "
@@ -1018,6 +1049,139 @@ class Coordinator:
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'arrêt du Coordinator: {e}")
     
+    def _free_usdc_by_selling_worst_position(self, usdc_needed: float) -> float:
+        """
+        Libère de l'USDC en vendant la position avec la pire performance.
+
+        Args:
+            usdc_needed: Montant d'USDC à libérer
+
+        Returns:
+            Montant d'USDC effectivement libéré
+        """
+        try:
+            # Récupérer toutes les positions actives
+            active_cycles = self.service_client.get_all_active_cycles()
+            if not active_cycles:
+                logger.warning("Aucune position active à vendre pour libérer de l'USDC")
+                return 0.0
+
+            # Récupérer les balances actuelles
+            balances = self.service_client.get_all_balances()
+            if not balances:
+                logger.error("Impossible de récupérer les balances")
+                return 0.0
+
+            # Analyser chaque position pour trouver la pire
+            worst_position = None
+            worst_performance = float('inf')  # On cherche la plus grosse perte (performance négative)
+            all_positions_positive = True
+
+            for cycle in active_cycles:
+                try:
+                    symbol = cycle.get('symbol')
+                    entry_price = float(cycle.get('entry_price', 0))
+                    if not symbol or not entry_price:
+                        continue
+
+                    # Récupérer le prix actuel
+                    current_price = self.trailing_manager.get_current_price(symbol)
+                    if not current_price:
+                        continue
+
+                    # Calculer la performance en %
+                    performance_pct = ((current_price - entry_price) / entry_price) * 100
+
+                    # Récupérer la valeur de la position
+                    base_asset = self._get_base_asset(symbol)
+                    if isinstance(balances, dict):
+                        quantity = balances.get(base_asset, {}).get('free', 0)
+                    else:
+                        quantity = next((b.get('free', 0) for b in balances if b.get('asset') == base_asset), 0)
+
+                    position_value = quantity * current_price
+
+                    # Ignorer les positions trop petites (< 5 USDC)
+                    if position_value < 5.0:
+                        continue
+
+                    logger.info(f"📊 Position {symbol}: {performance_pct:+.2f}% (valeur: {position_value:.2f} USDC)")
+
+                    # Vérifier si cette position est négative
+                    if performance_pct < 0:
+                        all_positions_positive = False
+
+                    # Sélectionner la position avec la pire performance
+                    if performance_pct < worst_performance:
+                        worst_performance = performance_pct
+                        worst_position = {
+                            'symbol': symbol,
+                            'cycle': cycle,
+                            'performance_pct': performance_pct,
+                            'value_usdc': position_value,
+                            'quantity': quantity,
+                            'current_price': current_price
+                        }
+
+                except Exception as e:
+                    logger.error(f"Erreur analyse position {cycle}: {e}")
+                    continue
+
+            # NOUVELLE LOGIQUE : Ne vendre que si il y a des positions en perte
+            if all_positions_positive:
+                logger.info("💚 Toutes les positions sont gagnantes - Pas de vente automatique")
+                logger.info(f"💔 USDC insuffisant ({usdc_needed:.2f} requis) mais on garde les gains")
+                return 0.0
+
+            # Vendre la pire position uniquement si elle est négative
+            if worst_position and worst_position['performance_pct'] < 0 and worst_position['value_usdc'] >= usdc_needed * 0.8:
+                logger.warning(f"🔥 VENTE AUTO de la position en PERTE: {worst_position['symbol']} "
+                             f"({worst_position['performance_pct']:+.2f}%, {worst_position['value_usdc']:.2f} USDC)")
+
+                # Créer un ordre de vente d'urgence
+                order_data = {
+                    "symbol": worst_position['symbol'],
+                    "side": "SELL",
+                    "quantity": float(worst_position['quantity']),
+                    "price": None,  # Ordre MARKET
+                    "strategy": "AUTO_LIQUIDATION_WORST",
+                    "timestamp": int(time.time() * 1000),
+                    "metadata": {
+                        "auto_liquidation": True,
+                        "reason": "Libération USDC - Position en perte",
+                        "performance_pct": worst_position['performance_pct'],
+                        "usdc_needed": usdc_needed
+                    }
+                }
+
+                # Envoyer l'ordre
+                order_id = self.service_client.create_order(order_data)
+                if order_id:
+                    logger.warning(f"✅ Ordre de liquidation créé: {order_id}")
+                    self.stats["orders_sent"] += 1
+
+                    # Attendre un peu pour que l'ordre s'exécute
+                    time.sleep(2)
+
+                    return worst_position['value_usdc']
+                else:
+                    logger.error(f"❌ Échec ordre de liquidation pour {worst_position['symbol']}")
+                    return 0.0
+            else:
+                if worst_position and worst_position['performance_pct'] >= 0:
+                    logger.info(f"💚 Pire position {worst_position['symbol']} est gagnante "
+                               f"({worst_position['performance_pct']:+.2f}%) - Pas de vente")
+                elif worst_position:
+                    logger.warning(f"💔 Position en perte {worst_position['symbol']} trop petite "
+                                 f"({worst_position['value_usdc']:.2f} USDC < {usdc_needed * 0.8:.2f} requis)")
+                else:
+                    logger.warning("Aucune position éligible pour liquidation trouvée")
+                return 0.0
+
+        except Exception as e:
+            logger.error(f"Erreur libération USDC: {e}")
+            return 0.0
+
     def get_universe_stats(self) -> Dict[str, Any]:
         """Retourne les statistiques de l'univers tradable"""
         if self.universe_manager:

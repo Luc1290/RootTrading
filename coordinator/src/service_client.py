@@ -67,21 +67,21 @@ class ServiceClient:
     Gère les retry, circuit breakers et cache.
     """
     
-    def __init__(self, trader_url: str = "http://trader:5002", 
+    def __init__(self, trader_url: str = "http://trader:5002",
                  portfolio_url: str = "http://portfolio:8000",
                  analyzer_url: str = "http://analyzer:8001"):
         """
         Initialise le client de services.
-        
+
         Args:
             trader_url: URL du service Trader
             portfolio_url: URL du service Portfolio
             analyzer_url: URL du service Analyzer
         """
         self.endpoints = {
-            "trader": ServiceEndpoint("trader", trader_url, timeout=10.0),
-            "portfolio": ServiceEndpoint("portfolio", portfolio_url, timeout=5.0),
-            "analyzer": ServiceEndpoint("analyzer", analyzer_url, timeout=5.0)
+            "trader": ServiceEndpoint("trader", trader_url, timeout=15.0),
+            "portfolio": ServiceEndpoint("portfolio", portfolio_url, timeout=15.0),
+            "analyzer": ServiceEndpoint("analyzer", analyzer_url, timeout=10.0)
         }
         
         # Circuit breakers par service
