@@ -47,10 +47,10 @@ class Resistance_Rejection_Strategy(BaseStrategy):
         self.strong_rejection_volume = 1.5           # Volume 1.5x pour rejet fort
         self.momentum_reversal_threshold = -0.2      # Momentum devient négatif
         
-        # Paramètres RSI/oscillateurs - DURCIS
-        self.overbought_rsi_threshold = 65           # RSI surachat plus strict
-        self.extreme_overbought_threshold = 72       # RSI extrême
-        self.williams_r_overbought = -30             # Williams %R plus strict
+        # Paramètres RSI/oscillateurs basés sur données DB réelles
+        self.overbought_rsi_threshold = 60           # RSI P75 (25% des cas) au lieu de 65 (6%)
+        self.extreme_overbought_threshold = 68       # RSI entre P90-Max pour être accessible
+        self.williams_r_overbought = -25             # Williams %R légèrement durci
         
         # Paramètres de résistance
         self.min_resistance_strength = 0.5           # Force minimum résistance
@@ -186,7 +186,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_rejection': rejection_score >= 0.35,  # Seuil durci pour réduire faux signaux
+            'is_rejection': rejection_score >= 0.40,  # Seuil durci de 0.35 à 0.40 pour réduire SELL
             'score': rejection_score,
             'indicators': rejection_indicators,
             'resistance_level': resistance_level,
@@ -241,11 +241,11 @@ class Resistance_Rejection_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum_val = float(momentum_score)
-                if momentum_val <= 45:  # Momentum vraiment faible
-                    exhaustion_score += 0.2
+                if momentum_val <= 48:  # Momentum vraiment faible (10 cas en DB)
+                    exhaustion_score += 0.25  # Bonus augmenté car très rare
                     exhaustion_indicators.append(f"Momentum très affaibli ({momentum_val:.1f})")
-                elif momentum_val <= 55:  # Momentum affaibli
-                    exhaustion_score += 0.15
+                elif momentum_val <= 49.5:  # Momentum affaibli (P10)
+                    exhaustion_score += 0.18
                     exhaustion_indicators.append(f"Momentum affaibli ({momentum_val:.1f})")
             except (ValueError, TypeError):
                 pass
@@ -262,7 +262,7 @@ class Resistance_Rejection_Strategy(BaseStrategy):
                 pass
                 
         return {
-            'is_exhausted': exhaustion_score >= 0.15,  # Seuil très assoupli pour crypto
+            'is_exhausted': exhaustion_score >= 0.20,  # Seuil durci de 0.15 à 0.20
             'score': exhaustion_score,
             'indicators': exhaustion_indicators
         }
@@ -405,12 +405,12 @@ class Resistance_Rejection_Strategy(BaseStrategy):
             raw_confidence = min(1.0, raw_confidence)  # Clamp à 100%
             
             # Vérification seuil minimum
-            if raw_confidence < 0.40:  # Seuil minimum durci 40%
+            if raw_confidence < 0.48:  # Seuil minimum durci à 48% pour SELL
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
-                    "reason": f"Signal rejet résistance trop faible (conf: {raw_confidence:.2f} < 0.40)",
+                    "reason": f"Signal rejet résistance trop faible (conf: {raw_confidence:.2f} < 0.48)",
                     "metadata": {
                         "strategy": self.name,
                         "symbol": self.symbol,
@@ -516,11 +516,11 @@ class Resistance_Rejection_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum_val = float(momentum_score)
-                if momentum_val >= 55:  # Momentum haussier
-                    continuation_score += 0.2
+                if momentum_val >= 51:  # Momentum haussier assoupli (médiane=50.02)
+                    continuation_score += 0.25  # Bonus augmenté
                     continuation_indicators.append(f"Momentum haussier ({momentum_val:.1f})")
-                elif momentum_val >= 50:  # Momentum neutre-haussier
-                    continuation_score += 0.1
+                elif momentum_val >= 49.8:  # Momentum neutre-haussier
+                    continuation_score += 0.15  # Bonus augmenté
                     continuation_indicators.append(f"Momentum neutre ({momentum_val:.1f})")
             except (ValueError, TypeError):
                 pass
@@ -530,8 +530,8 @@ class Resistance_Rejection_Strategy(BaseStrategy):
         if rsi_14 is not None:
             try:
                 rsi_val = float(rsi_14)
-                if 45 <= rsi_val <= 70:  # Zone favorable pour BUY
-                    continuation_score += 0.15
+                if 40 <= rsi_val <= 65:  # Zone favorable BUY élargie (P25-P75)
+                    continuation_score += 0.18  # Bonus augmenté
                     continuation_indicators.append(f"RSI favorable ({rsi_val:.1f})")
                 elif rsi_val < 35:  # Trop survendu = risqué
                     continuation_score -= 0.1
@@ -541,13 +541,16 @@ class Resistance_Rejection_Strategy(BaseStrategy):
         # Vérifier directional bias
         directional_bias = values.get('directional_bias')
         if directional_bias == "BULLISH":
-            continuation_score += 0.2
+            continuation_score += 0.25  # Bonus augmenté
             continuation_indicators.append("Bias haussier")
+        elif directional_bias == "NEUTRAL":
+            continuation_score += 0.12  # Nouveau bonus pour NEUTRAL
+            continuation_indicators.append("Bias neutre favorable")
         elif directional_bias == "BEARISH":
-            continuation_score -= 0.15
+            continuation_score -= 0.10  # Pénalité réduite
             
         return {
-            'is_continuation': continuation_score >= 0.4,  # Seuil pour signal BUY
+            'is_continuation': continuation_score >= 0.32,  # Seuil assoupli pour plus de BUY
             'score': continuation_score,
             'indicators': continuation_indicators,
             'key_level': key_level,
@@ -597,12 +600,12 @@ class Resistance_Rejection_Strategy(BaseStrategy):
         confidence = min(1.0, self.calculate_confidence(base_confidence, 1.0 + confidence_boost))
         
         # Seuil minimum pour BUY
-        if confidence < 0.45:
+        if confidence < 0.42:  # Seuil assoupli pour favoriser BUY
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
-                "reason": f"Continuation BUY trop faible (conf: {confidence:.2f} < 0.45)",
+                "reason": f"Continuation BUY trop faible (conf: {confidence:.2f} < 0.42)",
                 "metadata": {
                     "strategy": self.name,
                     "symbol": self.symbol,

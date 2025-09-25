@@ -67,6 +67,15 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
         self.max_atr_spike = 0.10                # ATR maximum 10% (vs 15% cataclysme)
         self.support_proximity_threshold = 0.020 # 2% support bonus plus strict
         
+    def _get_current_price(self) -> Optional[float]:
+        """Récupère le prix actuel depuis les données OHLCV."""
+        try:
+            if self.data and 'close' in self.data and self.data['close']:
+                return float(self.data['close'][-1])
+        except (IndexError, ValueError, TypeError):
+            pass
+        return None
+
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
         return {
@@ -426,21 +435,17 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
             try:
                 atr_val = float(atr_14)
                 # Récupérer prix actuel pour calculer ATR relatif
-                current_price = None
-                if 'close' in self.data and self.data['close']:
-                    try:
-                        current_price = float(self.data['close'][-1])
-                        atr_relative = atr_val / current_price
-                        if atr_relative > self.max_atr_spike:
-                            return {
-                                "side": None,
-                                "confidence": 0.0,
-                                "strength": "weak",
-                                "reason": f"Volatilité excessive (ATR: {atr_relative*100:.1f}% > {self.max_atr_spike*100:.1f}%)",
-                                "metadata": {"strategy": self.name, "atr_relative": atr_relative}
-                            }
-                    except (IndexError, ValueError, TypeError):
-                        pass
+                current_price = self._get_current_price()
+                if current_price is not None:
+                    atr_relative = atr_val / current_price
+                    if atr_relative > self.max_atr_spike:
+                        return {
+                            "side": None,
+                            "confidence": 0.0,
+                            "strength": "weak",
+                            "reason": f"Volatilité excessive (ATR: {atr_relative*100:.1f}% > {self.max_atr_spike*100:.1f}%)",
+                            "metadata": {"strategy": self.name, "atr_relative": atr_relative}
+                        }
             except (ValueError, TypeError):
                 pass
                 
@@ -540,13 +545,7 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
             support_strength = values.get('support_strength')
             if nearest_support is not None:
                 try:
-                    current_price = None
-                    if 'close' in self.data and self.data['close']:
-                        try:
-                            current_price = float(self.data['close'][-1])
-                        except (IndexError, ValueError, TypeError):
-                            pass
-                        
+                    current_price = self._get_current_price()
                     if current_price is not None:
                         support_val = float(nearest_support)
                         distance_to_support = abs(current_price - support_val) / support_val

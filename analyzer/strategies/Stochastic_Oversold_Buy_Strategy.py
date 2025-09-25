@@ -387,6 +387,7 @@ class Stochastic_Oversold_Buy_Strategy(BaseStrategy):
         # Contexte de tendance - directional_bias déjà traité en rejet
         trend_strength = values.get('trend_strength')
         directional_bias = values.get('directional_bias')  # CORRECTION: variable manquante
+        market_regime = values.get('market_regime')  # AJOUT: récupérer market_regime
 
         # Directional bias déjà vérifié en amont, ici que BULLISH ou NEUTRAL
         if directional_bias == "BULLISH":

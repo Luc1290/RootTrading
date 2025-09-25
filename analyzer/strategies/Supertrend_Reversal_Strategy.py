@@ -28,9 +28,9 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres ASSOUPLIS pour reversals réalistes (momentum 49-54 observé)
-        self.min_momentum_threshold = 55  # BUY si momentum > 55 (assoupli de 55)
-        self.max_momentum_threshold = 45  # SELL si momentum < 45 (assoupli de 45)
+        # Paramètres basés sur données DB réelles (momentum médiane=50.02)
+        self.min_momentum_threshold = 50.5  # BUY si momentum > 50.5 (18% des cas)
+        self.max_momentum_threshold = 49.5  # SELL si momentum < 49.5 (18% des cas)
         self.base_confidence = 0.55       # Base réduite pour accessibilité
         
     def generate_signal(self) -> Dict[str, Any]:
@@ -133,8 +133,8 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                 confidence_boost += 0.05  # Réduit
                 reason += " + trend modéré"
         
-        # Confluence score avec pénalité au lieu de rejet
-        if conf_val < 30:  # Seuil de rejet abaissé (40 -> 30)
+        # Confluence score avec seuils accessibles
+        if conf_val < 25:  # Seuil de rejet très bas (rare mais existant)
             return {
                 "side": None,
                 "confidence": 0.0,
@@ -142,14 +142,15 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
                 "reason": f"Rejet Supertrend: confluence critique ({conf_val})",
                 "metadata": {"strategy": self.name, "confluence_score": conf_val}
             }
-        elif conf_val < 40:  # Pénalité pour confluence faible
-            confidence_boost -= 0.10
-            reason += f" - confluence faible ({conf_val:.0f})"
-        elif conf_val >= 70:
+        elif conf_val < 35:  # Pénalité pour confluence très faible
+            confidence_boost -= 0.12
+            reason += f" - confluence très faible ({conf_val:.0f})"
+        elif conf_val >= 60:  # Assoupli de 70 à 60 pour bonus
             confidence_boost += 0.15
-            reason += f" + confluence {conf_val:.0f}"
-        elif conf_val >= 60:
-            confidence_boost += 0.10
+            reason += f" + confluence élevée {conf_val:.0f}"
+        elif conf_val >= 55:
+            confidence_boost += 0.08
+            reason += f" + confluence correcte {conf_val:.0f}"
         
         # Market regime avec pénalités au lieu de rejets stricts
         market_regime = values.get('market_regime')
@@ -169,12 +170,12 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         if rsi_14:
             try:
                 rsi_val = float(rsi_14)
-                if signal_side == "BUY" and rsi_val <= 30:  # Plus strict
-                    confidence_boost += 0.12  # Oversold = bon timing BUY
-                    reason += f" + RSI {rsi_val:.0f}"
-                elif signal_side == "SELL" and rsi_val >= 70:  # Plus strict
-                    confidence_boost += 0.12  # Overbought = bon timing SELL
-                    reason += f" + RSI {rsi_val:.0f}"
+                if signal_side == "BUY" and rsi_val <= 35:  # Assoupli de 30 à 35 (plus d'opportunités)
+                    confidence_boost += 0.15  # Bonus augmenté car plus accessible
+                    reason += f" + RSI oversold {rsi_val:.0f}"
+                elif signal_side == "SELL" and rsi_val >= 65:  # Assoupli de 70 à 65
+                    confidence_boost += 0.15  # Bonus augmenté car plus accessible
+                    reason += f" + RSI overbought {rsi_val:.0f}"
             except (ValueError, TypeError):
                 pass
         
@@ -189,12 +190,12 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio < 0.5:  # Seuil plus strict pour malus
-                    # Malus pour volume très faible
-                    confidence_boost -= 0.15  # Malus réduit
-                    reason += f" - volume très faible ({vol_ratio:.2f}x)"
-                elif vol_ratio < 0.8:  # Pénalité légère
-                    confidence_boost -= 0.05
+                if vol_ratio < 0.3:  # Seuil assoupli de 0.5 à 0.3 pour malus
+                    # Malus pour volume vraiment très faible
+                    confidence_boost -= 0.12  # Malus réduit
+                    reason += f" - volume extrêmement faible ({vol_ratio:.2f}x)"
+                elif vol_ratio < 0.6:  # Pénalité assouplie de 0.8 à 0.6
+                    confidence_boost -= 0.03  # Pénalité réduite
                     reason += f" - volume faible ({vol_ratio:.2f}x)"
             except (ValueError, TypeError):
                 pass

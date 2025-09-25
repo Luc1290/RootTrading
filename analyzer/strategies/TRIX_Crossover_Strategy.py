@@ -32,25 +32,25 @@ class TRIX_Crossover_Strategy(BaseStrategy):
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         
-        # Paramètres TRIX simulé OPTIMISÉS
-        self.trix_bullish_threshold = 0.007     # Seuil haussier durci à 0.7% (moins de bruit)
-        self.trix_bearish_threshold = -0.007    # Seuil baissier durci à -0.7%
-        self.neutral_zone = 0.003               # Zone neutre réduite à 0.3% (déclenche + tôt)
-        self.strong_trix_threshold = 0.02       # TRIX fort réduit de 5% à 2%
-        self.extreme_trix_threshold = 0.08      # TRIX extrême réduit de 15% à 8%
+        # Paramètres TRIX simulé ASSOUPLIS basés sur données réelles DB
+        self.trix_bullish_threshold = 0.0004    # Seuil haussier 0.04% (médiane ROC)
+        self.trix_bearish_threshold = -0.0004   # Seuil baissier -0.04%
+        self.neutral_zone = 0.0002              # Zone neutre 0.02% (très petite)
+        self.strong_trix_threshold = 0.01       # TRIX fort réduit à 1%
+        self.extreme_trix_threshold = 0.03      # TRIX extrême réduit à 3%
 
         # Paramètres crossover signal line
         self.signal_line_crossover = True       # Utiliser DEMA comme signal line
         self.min_tema_dema_separation = 0.0005  # Séparation réduite à 0.05% avec fresh cross
         
         # Paramètres momentum confirmation
-        self.momentum_alignment_required = True  # Momentum doit être aligné
-        self.min_roc_confirmation = 0.002       # ROC minimum réduit de 0.5% à 0.2%
+        self.momentum_alignment_required = False # Désactiver l'exigence d'alignement strict
+        self.min_roc_confirmation = 0.001       # ROC minimum réduit à 0.1%
         
-        # Paramètres filtrage  
-        self.min_trend_strength = 'MODERATE'    # Trend strength minimum plus strict
-        self.volume_confirmation_threshold = 1.4 # Volume confirmation durci
-        self.strong_volume_threshold = 2.0      # Volume fort pour bonus major
+        # Paramètres filtrage
+        self.min_trend_strength = 'WEAK'        # Accepter même les trends faibles
+        self.volume_confirmation_threshold = 1.2 # Volume confirmation assoupli
+        self.strong_volume_threshold = 1.8      # Volume fort assoupli
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pré-calculés."""
@@ -467,22 +467,22 @@ class TRIX_Crossover_Strategy(BaseStrategy):
         if roc_10 is not None:
             try:
                 r = float(roc_10)
-                # N'achète pas une roquette: 0.2% < ROC10 < 2.5%
-                if signal_side == "BUY" and not (0.002 <= r <= 0.025):
+                # ROC bounds assouplis: -0.1% < ROC10 < 5% pour BUY
+                if signal_side == "BUY" and not (-0.001 <= r <= 0.05):
                     return {
                         "side": None,
                         "confidence": 0.0,
                         "strength": "weak",
-                        "reason": f"ROC {'trop faible' if r < 0.002 else 'trop fort'} ({r:.3%})",
+                        "reason": f"ROC {'trop faible' if r < -0.001 else 'trop fort'} ({r:.3%})",
                         "metadata": {"strategy": self.name}
                     }
                 # Pour SELL, ROC doit être négatif mais pas extrême
-                elif signal_side == "SELL" and not (-0.025 <= r <= -0.002):
+                elif signal_side == "SELL" and not (-0.05 <= r <= 0.001):
                     return {
                         "side": None,
                         "confidence": 0.0,
                         "strength": "weak",
-                        "reason": f"ROC {'trop faible' if r > -0.002 else 'trop fort'} ({r:.3%})",
+                        "reason": f"ROC {'trop faible' if r > 0.001 else 'trop fort'} ({r:.3%})",
                         "metadata": {"strategy": self.name}
                     }
             except (ValueError, TypeError):
@@ -501,8 +501,8 @@ class TRIX_Crossover_Strategy(BaseStrategy):
                     ema12_val = float(ema_12)
                     atr_val = float(atr_14)
 
-                    # Détection sur-extension: prix > EMA12 * 1.0045 OU prix - EMA12 > 1*ATR
-                    overextended = (close_val > ema12_val * 1.0045) or (close_val - ema12_val > atr_val * 1.0)
+                    # Détection sur-extension assouplie: prix > EMA12 * 1.01 OU prix - EMA12 > 1.5*ATR
+                    overextended = (close_val > ema12_val * 1.01) or (close_val - ema12_val > atr_val * 1.5)
 
                     if overextended:
                         return {
@@ -542,7 +542,7 @@ class TRIX_Crossover_Strategy(BaseStrategy):
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
-                if vol_ratio < 0.85:  # Volume trop faible = pas de marché
+                if vol_ratio < 0.5:  # Volume vraiment trop faible = pas de marché
                     return {
                         "side": None,
                         "confidence": 0.0,
@@ -577,7 +577,7 @@ class TRIX_Crossover_Strategy(BaseStrategy):
         if confluence_score is not None:
             try:
                 conf_val = float(confluence_score)
-                if conf_val < 40:  # NOUVEAU: Rejet confluence faible
+                if conf_val < 25:  # Confluence minimum assouplie
                     return {
                         "side": None,
                         "confidence": 0.0,

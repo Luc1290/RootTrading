@@ -25,13 +25,13 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
     
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
-        # Paramètres Range Breakout - SEUILS DURCIS POUR FIABILITÉ
-        self.min_range_width = 0.01   # Largeur minimum (1%) - durci
-        self.max_range_width = 0.15   # Largeur maximum (15%) - resserré
-        self.breakout_threshold = 0.005  # Distance minimum (0.5%) - durci
-        self.volume_breakout_threshold = 1.5  # Volume minimum (1.5x) - durci
-        self.retest_tolerance = 0.008   # Tolérance retest (0.8%) - maintenu
-        self.min_confirmations = 2      # DURCI: Minimum 2 confirmations obligatoires
+        # Paramètres Range Breakout ASSOUPLIS selon données DB réelles
+        self.min_range_width = 0.008   # Largeur minimum (0.8%) - assoupli
+        self.max_range_width = 0.20   # Largeur maximum (20%) - élargi
+        self.breakout_threshold = 0.003  # Distance minimum (0.3%) - assoupli
+        self.volume_breakout_threshold = 1.2  # Volume minimum (1.2x) - réaliste
+        self.retest_tolerance = 0.01   # Tolérance retest (1%) - élargi
+        self.min_confirmations = 2      # Maintenu mais avec seuils accessibles
         
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pour range breakout."""
@@ -333,10 +333,10 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
-                # Format 0-100, 50=neutre - SEUILS DURCIS
-                if breakout_type == "BULLISH" and momentum > 60:  # Durci: 60
+                # Format 0-100, 50=neutre - SEUILS RÉALISTES selon DB
+                if breakout_type == "BULLISH" and momentum > 50.5:  # 18% des cas (P90=50.8)
                     confirmations['momentum_confirmed'] = True
-                elif breakout_type == "BEARISH" and momentum < 40:  # Durci: 40
+                elif breakout_type == "BEARISH" and momentum < 49.5:  # 18% des cas (P10=49.4)
                     confirmations['momentum_confirmed'] = True
             except (ValueError, TypeError):
                 pass
@@ -363,7 +363,7 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
                 plus_val = float(plus_di) if plus_di is not None else 0.0
                 minus_val = float(minus_di) if minus_di is not None else 0.0
                 
-                if adx > 25:  # Tendance confirmée (durci)
+                if adx > 20:  # Tendance confirmée (46% des cas au lieu de 22%)
                     if breakout_type == "BULLISH" and plus_val > minus_val:
                         confirmations['trend_confirmed'] = True
                     elif breakout_type == "BEARISH" and minus_val > plus_val:

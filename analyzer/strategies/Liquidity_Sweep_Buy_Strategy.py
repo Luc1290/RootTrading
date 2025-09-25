@@ -5,6 +5,7 @@ Liquidity_Sweep_Buy_Strategy - Stratégie basée sur les liquidity sweeps haussi
 from typing import Dict, Any, Optional
 from .base_strategy import BaseStrategy
 import logging
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,15 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         }
         return strength_map.get(str(strength_str).upper(), 0.3)
         
+    def _get_current_price(self) -> Optional[float]:
+        """Récupère le prix actuel depuis les données OHLCV."""
+        try:
+            if self.data and 'close' in self.data and self.data['close']:
+                return float(self.data['close'][-1])
+        except (IndexError, ValueError, TypeError):
+            pass
+        return None
+
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs."""
         return {
@@ -83,8 +93,8 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         """Récupère les données de prix et volume pour analyse sweep (7 barres)."""
         try:
             if self.data and all(key in self.data for key in ['close', 'low', 'high', 'volume']) and \
-               all(len(self.data[key]) >= 8 for key in ['close', 'low', 'high', 'volume']):  # 8 pour avoir 7 barres précédentes
-                
+               all(isinstance(self.data[key], list) and len(self.data[key]) >= 8 for key in ['close', 'low', 'high', 'volume']):  # 8 pour avoir 7 barres précédentes
+
                 return {
                     'current_price': float(self.data['close'][-1]),
                     'current_low': float(self.data['low'][-1]),
@@ -206,7 +216,6 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
                         # Fallback support amélioré : utiliser percentile 10% au lieu du minimum
                         lookback = min(15, len(lows))
                         recent_lows = [float(low) for low in lows[-lookback:]]
-                        import numpy as np
                         # Percentile 10% pour éviter les mèches extrêmes
                         nearest_support = float(np.percentile(recent_lows, 10))
                         support_strength_raw = 'WEAK'  # Plus réaliste pour fallback
