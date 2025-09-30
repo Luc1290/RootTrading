@@ -202,28 +202,50 @@ class ContextManager:
             
             # Exposer les champs critiques au niveau racine pour compatibilité validators
             if indicators:
-                # Sauvegarder le régime du timeframe original avant update
+                # IMPORTANT: Préserver TOUS les régimes pour éviter la confusion
                 original_regime = indicators.get('market_regime')
+                original_regime_strength = indicators.get('regime_strength')
+                original_regime_confidence = indicators.get('regime_confidence')
+                original_directional_bias = indicators.get('directional_bias')
+                original_volatility_regime = indicators.get('volatility_regime')
+
                 context.update(indicators)  # Tous les indicateurs au niveau racine
-                # Ajouter le régime original sous un autre nom pour référence
+
+                # Sauvegarder le régime original du timeframe
                 if original_regime:
                     context['timeframe_regime'] = original_regime
+                    context['timeframe_regime_strength'] = original_regime_strength
+                    context['timeframe_regime_confidence'] = original_regime_confidence
+                    context['timeframe_directional_bias'] = original_directional_bias
+                    context['timeframe_volatility_regime'] = original_volatility_regime
 
             # Ajouter les données HTF au contexte pour validation MTF
             if htf_data:
                 context.update(htf_data)
-            
-            # OVERRIDE: FORCER le régime unifié après l'update des indicators
-            # IMPORTANT: Doit être APRÈS context.update(indicators) pour ne pas être écrasé
+
+            # NOUVELLE APPROCHE: Ajouter le régime unifié SANS ÉCRASER l'original
+            # Les validateurs peuvent choisir quel régime utiliser
             if unified_regime:
-                context.update({
-                    'market_regime': unified_regime['market_regime'],          # Régime unifié (3m) - FORCE L'OVERRIDE
-                    'regime_strength': unified_regime['regime_strength'],      
-                    'regime_confidence': unified_regime['regime_confidence'],
-                    'directional_bias': unified_regime['directional_bias'],
-                    'volatility_regime': unified_regime['volatility_regime'],
-                    'regime_source': unified_regime['regime_source']           # Pour debugging
-                })
+                # Stocker le régime unifié dans des champs séparés
+                context['unified_regime'] = unified_regime['market_regime']
+                context['unified_regime_strength'] = unified_regime['regime_strength']
+                context['unified_regime_confidence'] = unified_regime['regime_confidence']
+                context['unified_directional_bias'] = unified_regime['directional_bias']
+                context['unified_volatility_regime'] = unified_regime['volatility_regime']
+                context['regime_source'] = unified_regime['regime_source']
+
+                # PAR DÉFAUT: Utiliser le régime du timeframe SAUF si très faible confidence
+                if original_regime_confidence and float(original_regime_confidence) < 30:
+                    # Si le régime du timeframe a une confidence très faible, préférer l'unifié
+                    context['market_regime'] = unified_regime['market_regime']
+                    context['regime_strength'] = unified_regime['regime_strength']
+                    context['regime_confidence'] = unified_regime['regime_confidence']
+                    context['directional_bias'] = unified_regime['directional_bias']
+                    context['volatility_regime'] = unified_regime['volatility_regime']
+                    context['regime_decision'] = 'unified_used_low_confidence'
+                else:
+                    # Garder le régime original du timeframe par défaut
+                    context['regime_decision'] = 'timeframe_regime_kept'
             
             if market_structure and 'current_price' in market_structure:
                 context['current_price'] = market_structure['current_price']  # Prix actuel au niveau racine
@@ -553,7 +575,7 @@ class ContextManager:
     def _get_htf_validation_data(self, symbol: str) -> Dict[str, Any]:
         """
         Récupère les données Higher TimeFrame pour validation MTF stricte.
-        Inclut: EMAs 1h, ATR 15m et sa moyenne.
+        Inclut: EMAs 15m, ATR 15m et sa moyenne.
 
         Args:
             symbol: Symbole à analyser
@@ -564,7 +586,7 @@ class ContextManager:
         try:
             htf_data = {}
 
-            # Récupérer données 1h (direction + ATR) - JOIN avec market_data pour le close
+            # Récupérer données 15m (direction + ATR) - JOIN avec market_data pour le close
             cursor = self.db_connection.cursor()
             try:
                 cursor.execute("""
@@ -573,17 +595,17 @@ class ContextManager:
                     JOIN market_data md ON ad.time = md.time
                         AND ad.symbol = md.symbol
                         AND ad.timeframe = md.timeframe
-                    WHERE ad.symbol = %s AND ad.timeframe = '1h'
+                    WHERE ad.symbol = %s AND ad.timeframe = '15m'
                     ORDER BY ad.time DESC
                     LIMIT 1
                 """, (symbol,))
 
-                result_1h = cursor.fetchone()
-                if result_1h:
-                    htf_data['htf_close_1h'] = float(result_1h[0]) if result_1h[0] else None
-                    htf_data['htf_ema20_1h'] = float(result_1h[1]) if result_1h[1] else None  # Utilise ema_26 comme proxy
-                    htf_data['htf_ema100_1h'] = float(result_1h[2]) if result_1h[2] else None  # Utilise ema_99 comme proxy
-                    htf_data['htf_atr_1h'] = float(result_1h[3]) if result_1h[3] else None  # ATR 1h pour reversal window
+                result_15m = cursor.fetchone()
+                if result_15m:
+                    htf_data['htf_close_15m'] = float(result_15m[0]) if result_15m[0] else None
+                    htf_data['htf_ema20_15m'] = float(result_15m[1]) if result_15m[1] else None  # Utilise ema_26 comme proxy
+                    htf_data['htf_ema100_15m'] = float(result_15m[2]) if result_15m[2] else None  # Utilise ema_99 comme proxy
+                    htf_data['htf_atr_15m'] = float(result_15m[3]) if result_15m[3] else None  # ATR 15m pour reversal window
 
                 # Récupérer ATR 15m actuel et historique (volatilité)
                 cursor.execute("""

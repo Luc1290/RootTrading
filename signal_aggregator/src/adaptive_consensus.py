@@ -107,7 +107,7 @@ class AdaptiveConsensusAnalyzer:
                 'BUY': {
                     'trend_following': 1,  # Direction incertaine
                     'mean_reversion': 1,   # Équilibre
-                    'total_min': 4         # 4 stratégies en transition
+                    'total_min': 3         # Réduit 4->3 (plus flexible en transition)
                 },
                 'SELL': {
                     'total_min': 2         # 2 stratégies pour sortir
@@ -247,8 +247,33 @@ class AdaptiveConsensusAnalyzer:
                 'total_strategies': total_strategies
             }
         
-        # Obtenir le régime (nécessaire pour les patches suivants)
-        regime = market_regime.upper() if market_regime else 'UNKNOWN'
+        # AMÉLIORATION: Choisir intelligemment entre régime timeframe et unifié
+        # Priorité: 1) Régime timeframe si confidence OK, 2) Régime unifié si disponible, 3) UNKNOWN
+        timeframe_regime = signal_sides.pop() if 'timeframe_regime' in locals() else None
+
+        # Si on a les deux régimes dans le contexte (depuis les métadonnées)
+        has_unified = any(s.get('metadata', {}).get('unified_regime') for s in signals)
+        has_timeframe = any(s.get('metadata', {}).get('timeframe_regime') for s in signals)
+
+        if has_timeframe and has_unified:
+            # Chercher la confidence du régime timeframe
+            timeframe_conf = next((s.get('metadata', {}).get('timeframe_regime_confidence', 0)
+                                  for s in signals if s.get('metadata', {}).get('timeframe_regime_confidence')), 0)
+
+            # Si confidence timeframe > 40%, l'utiliser, sinon utiliser unifié
+            if timeframe_conf > 40:
+                regime = next((s.get('metadata', {}).get('timeframe_regime', market_regime)
+                             for s in signals if s.get('metadata', {}).get('timeframe_regime')), market_regime)
+                logger.debug(f"Utilisation régime TIMEFRAME: {regime} (conf: {timeframe_conf})")
+            else:
+                regime = next((s.get('metadata', {}).get('unified_regime', market_regime)
+                             for s in signals if s.get('metadata', {}).get('unified_regime')), market_regime)
+                logger.debug(f"Utilisation régime UNIFIÉ: {regime} (timeframe conf trop faible: {timeframe_conf})")
+        else:
+            # Fallback sur le régime standard
+            regime = market_regime.upper() if market_regime else 'UNKNOWN'
+
+        regime = regime.upper() if regime else 'UNKNOWN'
         if regime not in self.regime_family_requirements:
             regime = 'UNKNOWN'
         
@@ -281,8 +306,29 @@ class AdaptiveConsensusAnalyzer:
                 total_min = 3  # Assouplir 4→3 si excellente qualité
                 logger.info(f"🎯 Total_min assoupli 4→3 pour BULL/BUY: diversité={family_diversity}, avg_conf={avg_conf:.2f}")
         
-        # Vérifier le minimum total  
-        if total_strategies < total_min:
+        # AJUSTEMENT SPÉCIAL TRANSITION: Override si momentum fort
+        if regime == 'TRANSITION' and signal_side == 'BUY':
+            momentum_score = None
+            # Chercher le momentum dans les métadonnées des signaux
+            for sig in signals:
+                if sig.get('metadata', {}).get('momentum_score'):
+                    momentum_score = float(sig['metadata']['momentum_score'])
+                    break
+
+            # Override si momentum > 55 avec au moins 3 stratégies (au lieu de 4)
+            if momentum_score and momentum_score > 55 and total_strategies >= 3:
+                logger.info(f"✅ TRANSITION override: momentum {momentum_score:.1f} > 55 avec {total_strategies} stratégies")
+                # Continue sans bloquer sur total_min
+            elif total_strategies < total_min:
+                return False, {
+                    'reason': f'Pas assez de stratégies: {total_strategies} < {total_min}',
+                    'families_count': families_count,
+                    'total_strategies': total_strategies,
+                    'required_min': total_min,
+                    'avg_adaptability': avg_adaptability,
+                    'momentum_score': momentum_score if momentum_score else 'N/A'
+                }
+        elif total_strategies < total_min:
             return False, {
                 'reason': f'Pas assez de stratégies: {total_strategies} < {total_min}',
                 'families_count': families_count,
@@ -504,12 +550,12 @@ class AdaptiveConsensusAnalyzer:
             Seuil de consensus ajusté (typiquement entre 1.6 et 3.3)
         """
         
-        # Seuils de base empiriques RÉAJUSTÉS selon données réelles
+        # Seuils de base empiriques AJUSTÉS MODÉRÉMENT pour équilibrer protection/opportunités
         base_thresholds = {
-            '1m': 2.2,   # Réduit encore 2.7->2.2 
-            '3m': 1.8,   # Réduit encore 2.2->1.8 (signaux rares)
-            '5m': 1.6,   # Réduit encore 2.0->1.6 
-            '15m': 1.4,  # Réduit encore 1.8->1.4 
+            '1m': 2.0,   # Réduit 2.2->2.0 (légère baisse)
+            '3m': 1.6,   # Réduit 1.8->1.6 (timeframe principal, ajustement modéré)
+            '5m': 1.5,   # Réduit 1.6->1.5 (légère baisse)
+            '15m': 1.3,  # Réduit 1.4->1.3 (légère baisse)
         }
         
         # Multiplicateurs selon volatilité (basés sur backtests)

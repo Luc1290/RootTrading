@@ -38,9 +38,9 @@ class CriticalFilters:
         # Mode Shaolin : Peu de trades mais très propres (1-3/jour)
         self.strict_mtf_enabled = True  # Activer validation stricte
 
-        # Paramètres filtre directionnel 1h
-        self.htf_ema_fast = 20    # EMA rapide pour trend 1h
-        self.htf_ema_slow = 100   # EMA lente pour trend 1h
+        # Paramètres filtre directionnel 15m (changé de 1h)
+        self.htf_ema_fast = 20    # EMA rapide pour trend 15m
+        self.htf_ema_slow = 100   # EMA lente pour trend 15m
 
         # Paramètres volatilité 15m
         self.mtf_atr_lookback = 50  # Période pour moyenne ATR
@@ -53,6 +53,13 @@ class CriticalFilters:
         import os
         self.pullback_tolerance_bp = int(os.environ.get('STRICT_PULLBACK_BP', '25'))  # 25 bp par défaut (0.25%)
         self.pullback_tolerance = self.pullback_tolerance_bp / 10000  # Conversion en ratio
+
+        # ========== SYSTÈME DE QUOTA TRADES ==========
+        # Cache en mémoire pour les quotas (symbol → last_trade_time)
+        self.trade_quota_cache = {}
+        self.quota_cooldown_minutes = 15  # 15 minutes entre TOUS les trades par symbole
+        self.cache_cleanup_interval = 300  # Nettoyer le cache toutes les 5 min
+        self.last_cache_cleanup = 0
         
     def apply_critical_filters(self, signals: List[Dict[str, Any]],
                               context: Dict[str, Any]) -> Tuple[bool, str]:
@@ -69,29 +76,65 @@ class CriticalFilters:
         if not signals:
             return False, "Aucun signal à valider"
 
-        # ========== VALIDATION MTF STRICTE (PRIORITAIRE) ==========
+        # ========== QUOTA GLOBAL TOUS TRADES (15MIN PAR SYMBOLE) ==========
+        symbol = context.get('symbol', 'UNKNOWN')
+        if not self._check_trade_quota_available(symbol):
+            return False, f"QUOTA TRADE BLOQUÉ: {symbol} déjà tradé dans les {self.quota_cooldown_minutes} dernières minutes"
+
+        # ========== VALIDATION MTF ADAPTATIVE (INTELLIGENTE) ==========
         if self.strict_mtf_enabled:
-            symbol = context.get('symbol', 'UNKNOWN')
+            volatility_level = context.get('volatility_level', 'normal')
+            market_regime = context.get('market_regime', 'UNKNOWN')
+            consensus_strength = context.get('consensus_strength', 0.5)
 
-            # FILTRE MTF 1: Direction 1h (filtre principal)
-            htf_direction_check = self._check_htf_direction(signals, context)
-            if not htf_direction_check[0]:
-                return False, f"DIRECTION 1H INVALIDE: {htf_direction_check[1]}"
+            # Mode adaptatif selon conditions de marché
+            # PROTECTION MAXIMALE en volatilité extrême ou régime très incertain
+            apply_full_mtf = (
+                volatility_level in ['extreme'] or
+                (volatility_level == 'high' and market_regime in ['BREAKOUT_BEAR', 'VOLATILE']) or
+                (market_regime == 'UNKNOWN' and consensus_strength < 0.6)
+            )
 
-            # FILTRE MTF 2: Volatilité 15m suffisante
-            mtf_volatility_check = self._check_mtf_volatility(context)
-            if not mtf_volatility_check[0]:
-                return False, f"VOLATILITÉ 15M INSUFFISANTE: {mtf_volatility_check[1]}"
+            if apply_full_mtf:
+                # MODE STRICT : Tous les filtres MTF (protection maximale)
+                logger.info(f"🛡️ MODE MTF STRICT activé: vol={volatility_level}, regime={market_regime}")
 
-            # FILTRE MTF 3: Timing pullback 3m
-            ltf_timing_check = self._check_ltf_pullback_timing(signals, context)
-            if not ltf_timing_check[0]:
-                return False, f"TIMING 3M INVALIDE: {ltf_timing_check[1]}"
+                # FILTRE MTF 1: Direction 15m (filtre principal)
+                htf_direction_check = self._check_htf_direction(signals, context)
+                if not htf_direction_check[0]:
+                    return False, f"DIRECTION 15M INVALIDE: {htf_direction_check[1]}"
 
-            # FILTRE MTF 4: Risk/Reward minimum
-            rr_check = self._check_min_risk_reward(context)
-            if not rr_check[0]:
-                return False, f"RISK/REWARD INSUFFISANT: {rr_check[1]}"
+                # FILTRE MTF 2: Volatilité 15m suffisante
+                mtf_volatility_check = self._check_mtf_volatility(context)
+                if not mtf_volatility_check[0]:
+                    return False, f"VOLATILITÉ 15M INSUFFISANTE: {mtf_volatility_check[1]}"
+
+                # FILTRE MTF 3: Timing pullback 3m
+                ltf_timing_check = self._check_ltf_pullback_timing(signals, context)
+                if not ltf_timing_check[0]:
+                    return False, f"TIMING 3M INVALIDE: {ltf_timing_check[1]}"
+
+                # FILTRE MTF 4: Risk/Reward minimum
+                rr_check = self._check_min_risk_reward(context)
+                if not rr_check[0]:
+                    return False, f"RISK/REWARD INSUFFISANT: {rr_check[1]}"
+
+            else:
+                # MODE ALLÉGÉ : Filtres essentiels seulement (plus d'opportunités)
+                logger.info(f"⚡ MODE MTF ALLÉGÉ activé: vol={volatility_level}, regime={market_regime}")
+
+                # FILTRE ESSENTIEL 1: Direction 15m reste obligatoire
+                htf_direction_check = self._check_htf_direction(signals, context)
+                if not htf_direction_check[0]:
+                    return False, f"DIRECTION 15M INVALIDE: {htf_direction_check[1]}"
+
+                # FILTRE ESSENTIEL 2: Risk/Reward minimum
+                rr_check = self._check_min_risk_reward(context)
+                if not rr_check[0]:
+                    return False, f"RISK/REWARD INSUFFISANT: {rr_check[1]}"
+
+                # Skip volatilité 15m et timing pullback en marché calme/normal
+                logger.info("✅ Filtres volatilité 15m et timing 3m SKIPPÉS (mode allégé)")
 
         # ========== FILTRES CLASSIQUES (SECONDAIRES) ==========
         # FILTRE 0: Régime de marché - PAS D'ACHAT EN TENDANCE BAISSIÈRE
@@ -118,7 +161,11 @@ class CriticalFilters:
         technical_check = self._check_technical_anomalies(context)
         if not technical_check[0]:
             return False, f"ANOMALIE TECHNIQUE: {technical_check[1]}"
-            
+
+        # ========== RÉSERVATION QUOTA (TOUS FILTRES PASSÉS) ==========
+        # Réserver le quota maintenant que tous les filtres sont validés
+        self._reserve_trade_quota(symbol)
+
         return True, "Tous les filtres critiques passés"
         
     def _check_market_regime_compatibility(self, signals: List[Dict[str, Any]], 
@@ -135,11 +182,22 @@ class CriticalFilters:
         if not signal_side:
             return True, "Direction non définie"
             
-        # Récupérer le régime de marché
-        market_regime = context.get('market_regime', 'UNKNOWN')
-        # regime_strength est un string en DB, pas un float
-        regime_strength_str = context.get('regime_strength', 'weak')
-        regime_confidence = context.get('regime_confidence', 0.0)
+        # AMÉLIORATION: Utiliser le bon régime selon la situation
+        # Préférer le régime du timeframe sauf si confidence < 30%
+        timeframe_confidence = context.get('timeframe_regime_confidence', 100)
+
+        if context.get('timeframe_regime') and float(timeframe_confidence) >= 30:
+            # Utiliser le régime du timeframe (plus précis pour le signal)
+            market_regime = context.get('timeframe_regime', 'UNKNOWN')
+            regime_strength_str = context.get('timeframe_regime_strength', 'weak')
+            regime_confidence = context.get('timeframe_regime_confidence', 0.0)
+            logger.debug(f"Utilisation régime TIMEFRAME: {market_regime} (conf: {regime_confidence})")
+        else:
+            # Fallback sur régime unifié ou standard
+            market_regime = context.get('unified_regime', context.get('market_regime', 'UNKNOWN'))
+            regime_strength_str = context.get('unified_regime_strength', context.get('regime_strength', 'weak'))
+            regime_confidence = context.get('unified_regime_confidence', context.get('regime_confidence', 0.0))
+            logger.debug(f"Utilisation régime UNIFIÉ/STANDARD: {market_regime} (conf: {regime_confidence})")
         
         # RÈGLES STRICTES MAIS PERMETTANT LES REBONDS
         if signal_side == 'BUY':
@@ -151,23 +209,40 @@ class CriticalFilters:
                 williams_r = context.get('williams_r', -50)
                 volume_ratio = context.get('volume_ratio', 1.0)
                 
-                # Conditions pour permettre un rebond
+                # Conditions pour permettre un rebond (AJUSTÉ MODÉRÉMENT)
                 oversold_conditions = 0
+                strong_oversold = 0  # Conditions très oversold
+
                 if rsi_14 and float(rsi_14) < 30:  # RSI oversold
                     oversold_conditions += 1
+                    if float(rsi_14) < 25:  # RSI très oversold
+                        strong_oversold += 1
+
                 if stoch_rsi and float(stoch_rsi) < 20:  # StochRSI oversold
                     oversold_conditions += 1
+                    if float(stoch_rsi) < 15:  # StochRSI très oversold
+                        strong_oversold += 1
+
                 if williams_r and float(williams_r) < -80:  # Williams %R oversold
                     oversold_conditions += 1
+                    if float(williams_r) < -85:  # Williams %R très oversold
+                        strong_oversold += 1
+
                 if volume_ratio and float(volume_ratio) > 1.5:  # Volume spike (capitulation)
                     oversold_conditions += 1
-                    
-                # Permettre le rebond si au moins 3 conditions oversold
-                if oversold_conditions < 3:
-                    return False, f"Achat en {market_regime} rejeté: seulement {oversold_conditions}/3 conditions oversold"
+                    if float(volume_ratio) > 2.0:  # Volume spike majeur
+                        strong_oversold += 1
+
+                # AJUSTEMENT PRUDENT:
+                # - 2 conditions normales + 1 forte OU
+                # - 3 conditions normales (comme avant)
+                min_conditions = 2 if strong_oversold >= 1 else 3
+
+                if oversold_conditions < min_conditions:
+                    return False, f"Achat en {market_regime} rejeté: {oversold_conditions}/{min_conditions} conditions oversold (fort: {strong_oversold})"
                 else:
                     # Signal de rebond potentiel accepté mais avec prudence
-                    logger.info(f"⚠️ REBOND POTENTIEL détecté en {market_regime}: {oversold_conditions} conditions oversold")
+                    logger.info(f"⚠️ REBOND POTENTIEL détecté en {market_regime}: {oversold_conditions} conditions oversold (dont {strong_oversold} fortes)")
                 
             # Prudence en régime inconnu avec indicateurs baissiers
             if market_regime == 'UNKNOWN':
@@ -203,9 +278,13 @@ class CriticalFilters:
                 if total_indicators > 0 and bearish_indicators / total_indicators > 0.5:
                     return False, f"Achat rejeté: {bearish_indicators}/{total_indicators} indicateurs baissiers en régime {market_regime}"
                     
-            # Prudence en transition (regime_confidence est en % 0-100)
-            if market_regime == 'TRANSITION' and regime_confidence < 30:
-                return False, f"Achat rejeté: Transition faible (confidence {regime_confidence:.0f}%)"
+            # Prudence en transition MAIS permettre si momentum positif
+            if market_regime == 'TRANSITION':
+                momentum_score = context.get('momentum_score', 50)
+                if regime_confidence < 30 and float(momentum_score) < 55:
+                    return False, f"Achat rejeté: Transition faible (conf {regime_confidence:.0f}%, momentum {momentum_score:.0f})"
+                elif float(momentum_score) >= 55:
+                    logger.info(f"✅ TRANSITION acceptée: momentum {momentum_score:.0f} > 55")
                 
         elif signal_side == 'SELL':
             # Les ventes sont OK dans tous les régimes (protection du capital)
@@ -394,8 +473,8 @@ class CriticalFilters:
     def _check_htf_direction(self, signals: List[Dict[str, Any]],
                             context: Dict[str, Any]) -> Tuple[bool, str]:
         """
-        Vérifie que le signal est dans le sens de la tendance 1h.
-        Utilise EMA20 et EMA100 sur le 1h pour déterminer la direction.
+        Vérifie que le signal est dans le sens de la tendance 15m.
+        Utilise EMA20 et EMA100 sur le 15m pour déterminer la direction.
         """
         try:
             if not signals:
@@ -405,24 +484,24 @@ class CriticalFilters:
             if not signal_side:
                 return True, "Direction non définie"
 
-            # Utiliser les données du context (injectées par context_manager)
-            close_1h = context.get('htf_close_1h')
-            ema20_1h = context.get('htf_ema20_1h')  # Utilise ema_26 comme proxy pour ema_20
-            ema100_1h = context.get('htf_ema100_1h')  # Utilise ema_99 comme proxy pour ema_100
+            # Utiliser les données du context (15m au lieu de 1h)
+            close_15m = context.get('htf_close_15m')
+            ema20_15m = context.get('htf_ema20_15m')  # Utilise ema_26 comme proxy pour ema_20
+            ema100_15m = context.get('htf_ema100_15m')  # Utilise ema_99 comme proxy pour ema_100
 
-            if not all([close_1h, ema20_1h, ema100_1h]):
-                logger.warning("EMAs 1h manquantes dans le contexte")
-                return True, "EMAs 1h manquantes"  # On laisse passer si pas de données
+            if not all([close_15m, ema20_15m, ema100_15m]):
+                logger.warning("EMAs 15m manquantes dans le contexte")
+                return True, "EMAs 15m manquantes"  # On laisse passer si pas de données
 
-            close_1h = float(close_1h)
-            ema20_1h = float(ema20_1h)
-            ema100_1h = float(ema100_1h)
+            close_15m = float(close_15m)
+            ema20_15m = float(ema20_15m)
+            ema100_15m = float(ema100_15m)
 
-            # Déterminer la direction HTF
+            # Déterminer la direction HTF (15m)
             htf_direction = None
-            if close_1h > ema100_1h and ema20_1h > ema100_1h:
+            if close_15m > ema100_15m and ema20_15m > ema100_15m:
                 htf_direction = 'BUY'  # Tendance haussière
-            elif close_1h < ema100_1h and ema20_1h < ema100_1h:
+            elif close_15m < ema100_15m and ema20_15m < ema100_15m:
                 htf_direction = 'SELL'  # Tendance baissière
             else:
                 # Zone neutre/transition - vérifier règle fail-safe LTF
@@ -431,7 +510,7 @@ class CriticalFilters:
                     logger.info(f"✅ FAIL-SAFE LTF activée: HTF neutre mais LTF alignés - {failsafe_reason}")
                     return True, f"Fail-safe LTF: {failsafe_reason}"
                 else:
-                    return False, f"Zone neutre 1h rejetée: {failsafe_reason} (Close:{close_1h:.4f}, EMA20:{ema20_1h:.4f}, EMA100:{ema100_1h:.4f})"
+                    return False, f"Zone neutre 15m rejetée: {failsafe_reason} (Close:{close_15m:.4f}, EMA20:{ema20_15m:.4f}, EMA100:{ema100_15m:.4f})"
 
             # Vérifier que le signal est dans le bon sens
             if signal_side != htf_direction:
@@ -442,13 +521,13 @@ class CriticalFilters:
                     return True, f"Fail-safe override: {failsafe_reason}"
 
                 # 🔄 PRIORITÉ #2: HTF REVERSAL WINDOW (breadth flip)
-                if self._check_htf_reversal_window(signal_side, context, close_1h, ema20_1h, ema100_1h):
+                if self._check_htf_reversal_window(signal_side, context, close_15m, ema20_15m, ema100_15m):
                     return True, "HTF reversal window: breadth flip détecté"
 
                 # ❌ REJET: Aucune exception trouvée
-                return False, f"Signal {signal_side} contre tendance 1h {htf_direction} (fail-safe: {failsafe_reason})"
+                return False, f"Signal {signal_side} contre tendance 15m {htf_direction} (fail-safe: {failsafe_reason})"
 
-            logger.info(f"✅ Direction HTF validée: {signal_side} aligné avec 1h {htf_direction}")
+            logger.info(f"✅ Direction HTF validée: {signal_side} aligné avec 15m {htf_direction}")
             return True, "Direction HTF valide"
 
         except Exception as e:
@@ -705,6 +784,8 @@ class CriticalFilters:
 
     def get_filter_stats(self) -> Dict[str, Any]:
         """Retourne les statistiques de configuration des filtres."""
+        quota_stats = self.get_quota_stats()
+
         return {
             'mode': 'STRICT_MTF' if self.strict_mtf_enabled else 'STANDARD',
             'atr_universe_multiplier': self.atr_universe_multiplier,
@@ -712,14 +793,16 @@ class CriticalFilters:
             'min_volume_ratio': self.min_volume_ratio,
             'min_mtf_consistency': self.min_mtf_consistency,
             'strict_mtf_params': {
+                'htf_timeframe': '15m',  # Mis à jour de 1h vers 15m
                 'htf_ema_fast': self.htf_ema_fast,
                 'htf_ema_slow': self.htf_ema_slow,
                 'min_atr_ratio': self.mtf_min_atr_ratio,
                 'min_risk_reward': self.min_risk_reward,
                 'pullback_tolerance_bp': self.pullback_tolerance_bp
             },
+            'trade_quota': quota_stats,
             'filters_count': 8 if self.strict_mtf_enabled else 4,
-            'description': 'Mode Shaolin: Validation MTF stricte 1h/15m/3m - Max 3 trades/jour'
+            'description': 'Mode Scalping: Validation MTF stricte 15m/3m + Quota 15min/symbole - Optimisé crypto'
         }
 
     def _check_failsafe_ltf_alignment(self, signal_side: str, context: Dict[str, Any]) -> Tuple[bool, str]:
@@ -859,15 +942,15 @@ class CriticalFilters:
             return False, f"Erreur fail-safe: {e}"
 
     def _check_htf_reversal_window(self, signal_side: str, context: Dict[str, Any],
-                                  close_1h: float, ema20_1h: float, ema100_1h: float) -> bool:
+                                  close_15m: float, ema20_15m: float, ema100_15m: float) -> bool:
         """
         Détecte les fenêtres de retournement HTF (breadth flip).
 
-        Conditions pour autoriser le passage quand 1h pas encore aligné :
+        Conditions pour autoriser le passage quand 15m pas encore aligné :
         - Consensus ultra-fort (≥0.95) + wave_winner
         - Beaucoup d'autres signaux déclenchés (≥10 stratégies)
-        - 1h "soft SELL" : proche EMA20 ou pente EMA20 positive
-        - Quota : max 1 trade/symbole/60min
+        - 15m "soft SELL" : proche EMA20 ou pente EMA20 positive
+        Note: Quota global 15min/symbole déjà vérifié en amont
         """
         try:
             # Vérifier conditions de base pour reversal window
@@ -884,21 +967,19 @@ class CriticalFilters:
                    consensus_regime in ['TRENDING_BULL', 'TRANSITION', 'RANGING']):
                 return False
 
-            # Vérifier si le 1h est "soft SELL" (pas encore vraiment baissier)
-            atr_1h = context.get('htf_atr_1h', 0)
-            if atr_1h:
-                atr_1h = float(atr_1h)
+            # Vérifier si le 15m est "soft SELL" (pas encore vraiment baissier)
+            atr_15m = context.get('htf_atr_15m', 0)
+            if atr_15m:
+                atr_15m = float(atr_15m)
                 # Condition 1: Close proche EMA20 (dans 0.25*ATR)
-                distance_to_ema20 = abs(close_1h - ema20_1h)
-                close_near_ema20 = distance_to_ema20 <= (0.25 * atr_1h)
+                distance_to_ema20 = abs(close_15m - ema20_15m)
+                close_near_ema20 = distance_to_ema20 <= (0.25 * atr_15m)
 
                 # Condition 2: Pente EMA20 positive (simulée par proximité avec EMA100)
-                ema20_trending_up = ema20_1h >= (ema100_1h * 0.999)  # EMA20 pas en chute libre
+                ema20_trending_up = ema20_15m >= (ema100_15m * 0.999)  # EMA20 pas en chute libre
 
                 if close_near_ema20 or ema20_trending_up:
-                    # TODO: Vérifier quota 1 trade/symbole/60min
-                    # (nécessiterait un cache en mémoire ou DB check)
-
+                    # Le quota est déjà vérifié globalement au début de apply_critical_filters
                     logger.info(f"🔄 HTF REVERSAL WINDOW activée: close_near_ema20={close_near_ema20}, "
                               f"ema20_trending_up={ema20_trending_up}, consensus={consensus_strength:.2f}")
 
@@ -971,3 +1052,147 @@ class CriticalFilters:
         except Exception as e:
             logger.error(f"Erreur momentum bypass: {e}")
             return False, f"Momentum bypass error: {e}"
+
+    def _check_trade_quota_available(self, symbol: str) -> bool:
+        """
+        Vérifie si le quota de trade est disponible pour ce symbole.
+        Utilise cache + DB pour performances et persistance.
+
+        Args:
+            symbol: Symbole à vérifier
+
+        Returns:
+            True si quota disponible, False sinon
+        """
+        try:
+            import time
+            current_time = time.time()
+
+            # Nettoyer le cache périodiquement
+            self._cleanup_quota_cache(current_time)
+
+            # 1. Vérifier d'abord le cache (plus rapide)
+            if symbol in self.trade_quota_cache:
+                last_trade_time = self.trade_quota_cache[symbol]
+                if current_time - last_trade_time < (self.quota_cooldown_minutes * 60):
+                    # Quota non disponible selon le cache
+                    return False
+                else:
+                    # Cache expiré, supprimer l'entrée
+                    del self.trade_quota_cache[symbol]
+
+            # 2. Vérifier dans la DB (source de vérité)
+            if self.db_connection:
+                try:
+                    cursor = self.db_connection.cursor()
+                    try:
+                        # Chercher le dernier trade (TOUS TYPES) dans les 15 dernières minutes
+                        cursor.execute("""
+                            SELECT MAX(created_at) as last_trade
+                            FROM trade_cycles
+                            WHERE symbol = %s
+                              AND created_at >= NOW() - INTERVAL '%s minutes'
+                        """, (symbol, self.quota_cooldown_minutes))
+
+                        result = cursor.fetchone()
+                        if result and result[0]:
+                            # Trade récent trouvé, quota non disponible
+                            # Mettre à jour le cache
+                            import calendar
+                            last_trade_timestamp = calendar.timegm(result[0].timetuple())
+                            self.trade_quota_cache[symbol] = last_trade_timestamp
+
+                            logger.debug(f"Quota DB: dernier trade {symbol} à {result[0]}")
+                            return False
+
+                    finally:
+                        cursor.close()
+                except Exception as e:
+                    logger.warning(f"Erreur vérification quota DB pour {symbol}: {e}")
+                    # En cas d'erreur DB, utiliser seulement le cache (fail-safe)
+
+            # 3. Quota disponible
+            return True
+
+        except Exception as e:
+            logger.error(f"Erreur check quota {symbol}: {e}")
+            return True  # En cas d'erreur, ne pas bloquer le trade
+
+    def _reserve_trade_quota(self, symbol: str):
+        """
+        Réserve le quota pour ce symbole (mise à jour du cache).
+        La DB sera mise à jour lors de la création du trade_cycle.
+
+        Args:
+            symbol: Symbole à réserver
+        """
+        try:
+            import time
+            current_time = time.time()
+
+            # Mettre à jour le cache
+            self.trade_quota_cache[symbol] = current_time
+
+            logger.info(f"✅ Quota réservé pour {symbol} (cache mis à jour)")
+
+        except Exception as e:
+            logger.error(f"Erreur réservation quota {symbol}: {e}")
+
+    def _cleanup_quota_cache(self, current_time: float):
+        """
+        Nettoie le cache des entrées expirées.
+
+        Args:
+            current_time: Timestamp actuel
+        """
+        try:
+            # Nettoyer seulement toutes les 5 minutes
+            if current_time - self.last_cache_cleanup < self.cache_cleanup_interval:
+                return
+
+            expired_symbols = []
+            quota_timeout = self.quota_cooldown_minutes * 60
+
+            for symbol, last_trade_time in self.trade_quota_cache.items():
+                if current_time - last_trade_time >= quota_timeout:
+                    expired_symbols.append(symbol)
+
+            # Supprimer les entrées expirées
+            for symbol in expired_symbols:
+                del self.trade_quota_cache[symbol]
+
+            if expired_symbols:
+                logger.debug(f"Cache quota nettoyé: {len(expired_symbols)} entrées expirées")
+
+            self.last_cache_cleanup = current_time
+
+        except Exception as e:
+            logger.error(f"Erreur nettoyage cache quota: {e}")
+
+    def get_quota_stats(self) -> Dict[str, Any]:
+        """
+        Retourne les statistiques du système de quota.
+
+        Returns:
+            Dict des statistiques
+        """
+        try:
+            import time
+            current_time = time.time()
+
+            active_quotas = {}
+            for symbol, last_trade_time in self.trade_quota_cache.items():
+                remaining_seconds = max(0, (self.quota_cooldown_minutes * 60) - (current_time - last_trade_time))
+                if remaining_seconds > 0:
+                    active_quotas[symbol] = int(remaining_seconds / 60)  # Minutes restantes
+
+            return {
+                'cooldown_minutes': self.quota_cooldown_minutes,
+                'cache_size': len(self.trade_quota_cache),
+                'active_quotas': active_quotas,
+                'cache_cleanup_interval': self.cache_cleanup_interval
+            }
+
+        except Exception as e:
+            logger.error(f"Erreur stats quota: {e}")
+            return {}

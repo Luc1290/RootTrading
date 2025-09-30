@@ -36,10 +36,10 @@ class TrailingSellManager:
         self.max_drop_threshold = 0.020  # 2.0% de chute max depuis le pic - moins sensible
         self.immediate_sell_drop = 0.025  # 2.5% de chute = vente immédiate - urgence seulement
         
-        # Configuration stop-loss adaptatif - PLUS STRICT pour couper les pertes rapidement
-        self.stop_loss_percent_base = 0.010  # 1.0% de base - très strict (réduit de 1.5%)
-        self.stop_loss_percent_bullish = 0.012  # 1.2% en tendance haussière (réduit de 1.8%)
-        self.stop_loss_percent_strong_bullish = 0.015  # 1.5% en tendance très haussière (réduit de 2.2%)
+        # Configuration stop-loss adaptatif - ÉQUILIBRÉ : coupe faux signaux, préserve vrais trades
+        self.stop_loss_percent_base = 0.016  # 1.6% de base - coupe faux signaux sans bruits normaux
+        self.stop_loss_percent_bullish = 0.018  # 1.8% en tendance haussière - laisse respirer
+        self.stop_loss_percent_strong_bullish = 0.020  # 2.0% en tendance très haussière - capture pumps
         
         logger.info("✅ TrailingSellManager initialisé")
     
@@ -102,23 +102,34 @@ class TrailingSellManager:
             gain_percent = performance_percent  # Maintenant cohérent (positif = gain)
             logger.info(f"🔍 Position gagnante détectée: +{gain_percent*100:.2f}%, vérification take profit et trailing")
             
-            # === TAKE PROFIT PROGRESSIF - RIDE LES PUMPS MAIS FERME EFFICACEMENT ===
-            # Activer le TP progressif seulement sur gains significatifs pour éviter sur-trading
-            if gain_percent >= 0.02:  # Activer TP progressif à partir de +2% (évite sorties prématurées)
+            # === TAKE PROFIT PROGRESSIF INTELLIGENT ===
+            # Récupérer les données une seule fois
+            atr_based_thresholds = self._get_atr_based_thresholds(symbol)
+            market_regime = self._get_market_regime(symbol)
+            atr_percent = self._get_atr_percentage(symbol) or 0.02
+
+            # Mode PUMP RIDER : désactiver TP progressif sur crypto volatiles en bull fort
+            pump_rider_mode = (
+                market_regime in ['TRENDING_BULL', 'BREAKOUT_BULL'] and
+                atr_percent > 0.025 and  # Volatilité élevée (>2.5%)
+                gain_percent >= 0.03     # Déjà +3% minimum
+            )
+
+            if pump_rider_mode:
+                logger.info(f"🚀 MODE PUMP RIDER activé pour {symbol}: TP progressif DÉSACTIVÉ (gain {gain_percent*100:.2f}%, ATR {atr_percent*100:.1f}%)")
+            elif gain_percent >= 0.025:  # Activer TP progressif à partir de +2.5%
                 should_take_profit, tp_reason = self._check_progressive_take_profit(symbol, gain_percent)
                 if should_take_profit:
                     logger.info(f"💰 TAKE PROFIT PROGRESSIF DÉCLENCHÉ: {tp_reason}")
                     self._cleanup_references(symbol)
                     return True, tp_reason
             else:
-                logger.debug(f"TP progressif désactivé pour {symbol} (gain {gain_percent*100:.2f}% < 2.0%)")
-            
-            
-            # Seuils adaptatifs basés sur ATR
-            atr_based_thresholds = self._get_atr_based_thresholds(symbol)
+                logger.debug(f"TP progressif désactivé pour {symbol} (gain {gain_percent*100:.2f}% < 2.5%)")
+
+            # Utiliser les seuils déjà récupérés
             min_gain_for_trailing = atr_based_thresholds['activate_trailing_gain']
             sell_margin = atr_based_thresholds['trailing_margin']
-            
+
             logger.info(f"📊 Seuils ATR pour {symbol}: activation={min_gain_for_trailing*100:.2f}%, marge={sell_margin*100:.2f}%")
             
             # Vérifier si le gain minimum est atteint pour activer le trailing
@@ -416,13 +427,13 @@ class TrailingSellManager:
                 logger.debug(f"Pas d'ATR pour {symbol}, seuils par défaut optimisés")
                 return {
                     'trailing_margin': 0.015,  # 1.5% par défaut (plus large)
-                    'activate_trailing_gain': 0.012,  # 1.2% activation (plus tardive)
+                    'activate_trailing_gain': 0.020,  # 2.0% activation (focus vrais gains)
                     'adaptive_sl': self.stop_loss_percent_base
                 }
 
-            # === ACTIVATION TRAILING : Plus tardive pour laisser respirer ===
-            # Base 1.2% minimum, augmentée selon ATR
-            activate_trailing_gain = max(0.012, 0.8 * atr_percent)  # Min 1.2% au lieu de 0.5%
+            # === ACTIVATION TRAILING : RETARDÉE pour laisser les pumps se développer ===
+            # Base 2.0% minimum - focus sur vrais gains, pas micro-scalp
+            activate_trailing_gain = max(0.020, 1.0 * atr_percent)  # Min 2.0% - laisse respirer
 
             # === MARGES TRAILING : Adaptatives au régime de marché ===
             base_trailing_margin = max(0.012, 1.2 * atr_percent)  # Base 1.2% min au lieu de 0.8%
@@ -441,12 +452,12 @@ class TrailingSellManager:
             regime_factor = regime_multipliers.get(market_regime, 1.2)  # Défaut légèrement optimiste
             trailing_margin = base_trailing_margin * regime_factor
 
-            # Contraintes finales optimisées
+            # Contraintes finales équilibrées
             trailing_margin = max(0.012, min(0.035, trailing_margin))  # 1.2% à 3.5% (élargi)
-            activate_trailing_gain = max(0.012, min(0.025, activate_trailing_gain))  # 1.2% à 2.5%
+            activate_trailing_gain = max(0.020, min(0.040, activate_trailing_gain))  # 2.0% à 4.0% - focus gains réels
 
-            # Stop-loss adaptatif inchangé (déjà optimisé)
-            adaptive_sl = min(0.020, max(1.2 * atr_percent, 0.010))
+            # Stop-loss adaptatif équilibré
+            adaptive_sl = min(0.025, max(1.2 * atr_percent, 0.016))
 
             logger.debug(f"🚀 Seuils OPTIMISÉS {symbol}: trailing={trailing_margin*100:.2f}%, "
                         f"activation={activate_trailing_gain*100:.2f}%, SL={adaptive_sl*100:.2f}% "
@@ -461,8 +472,8 @@ class TrailingSellManager:
         except Exception as e:
             logger.error(f"Erreur calcul seuils optimisés {symbol}: {e}")
             return {
-                'trailing_margin': 0.015,  # Fallback optimisé
-                'activate_trailing_gain': 0.012,
+                'trailing_margin': 0.015,  # Fallback équilibré
+                'activate_trailing_gain': 0.020,  # Focus gains réels
                 'adaptive_sl': self.stop_loss_percent_base
             }
     
@@ -577,8 +588,8 @@ class TrailingSellManager:
             )
             adaptive_threshold = float(atr_based_sl) * float(weighted_factor)
             
-            # Contraintes finales - bornes plus strictes pour couper les pertes rapidement
-            adaptive_threshold = max(0.008, min(0.020, adaptive_threshold))  # 0.8%-2.0% (réduit de 1.5%-3.5%)
+            # Contraintes finales équilibrées - coupe faux signaux, préserve vrais trades
+            adaptive_threshold = max(0.014, min(0.025, adaptive_threshold))  # 1.4%-2.5% - équilibré
             
             logger.debug(f"🧠 Stop-loss adaptatif ATR+analyse {symbol}: {adaptive_threshold*100:.2f}%")
             
@@ -633,15 +644,15 @@ class TrailingSellManager:
         strength = analysis.get('regime_strength', 'WEAK')
         confidence = float(analysis.get('regime_confidence', 50))
         
-        # CORRECTION : logique inversée - plus strict en bear = seuil plus PETIT
+        # ÉQUILIBRÉ : couper faux signaux bear mais pas sur-restrictif
         regime_multipliers = {
             'TRENDING_BULL': 1.2,      # Bull = plus tolérant (seuil plus large)
             'BREAKOUT_BULL': 1.1,      # Breakout bull = modérément tolérant
             'RANGING': 1.0,            # Range = neutre
-            'TRANSITION': 0.9,         # Transition = légèrement strict
-            'TRENDING_BEAR': 0.6,      # Bear = plus strict (seuil plus petit)
-            'VOLATILE': 0.7,           # Volatile = strict
-            'BREAKOUT_BEAR': 0.5       # Breakout bear = très strict
+            'TRANSITION': 0.95,        # Transition = légèrement strict
+            'TRENDING_BEAR': 0.85,     # Bear = strict mais pas excessif (était 0.6)
+            'VOLATILE': 0.9,           # Volatile = légèrement strict (était 0.7)
+            'BREAKOUT_BEAR': 0.75      # Breakout bear = strict (était 0.5)
         }
         
         base_factor = regime_multipliers.get(regime, 1.0)
@@ -809,19 +820,13 @@ class TrailingSellManager:
         Returns:
             (should_sell, reason)
         """
-        # Paliers de take profit OPTIMISÉS pour scalping crypto - capture rapide des gains
+        # Paliers TP SIMPLIFIÉS - focus gains réels, stop micro-trading destructeur
         tp_levels = [
-            0.15,   # 15% - gains exceptionnels
-            0.10,   # 10% - gains très importants
-            0.07,   # 7% - gains importants
-            0.05,   # 5% - bon gain
-            0.035,  # 3.5% - gain solide
-            0.025,  # 2.5% - gain correct
-            0.018,  # 1.8% - gain décent
-            0.012,  # 1.2% - petit gain
-            0.008,  # 0.8% - gain minimal (couvre les frais)
-            0.006,  # 0.6% - micro gain (ajouté pour sortie rapide)
-            0.004   # 0.4% - sortie de sécurité (ajouté)
+            0.12,   # 12% - gains exceptionnels (pump majeur)
+            0.08,   # 8% - gains très importants
+            0.05,   # 5% - gains importants
+            0.03,   # 3% - gain solide
+            0.02    # 2% - gain minimal viable (couvre frais + marge)
         ]
         
         # Trouver le palier le plus élevé atteint actuellement

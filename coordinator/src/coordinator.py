@@ -54,13 +54,13 @@ class Coordinator:
         # Configuration dynamique basée sur l'USDC disponible
         self.fee_rate = 0.001  # 0.1% de frais estimés par trade
 
-        # Allocation basée USDC - optimisée pour 9 positions max (6 core + 3 satellites)
-        self.base_allocation_usdc_percent = 10.0  # 10% de l'USDC disponible (9x10=90% max)
-        self.strong_allocation_usdc_percent = 12.0 # 12% pour signaux forts
-        self.max_allocation_usdc_percent = 15.0   # 15% maximum pour VERY_STRONG
-        self.weak_allocation_usdc_percent = 7.0   # 7% pour signaux faibles
+        # Allocation basée USDC - AUGMENTÉE pour positions plus importantes
+        self.base_allocation_usdc_percent = 18.0  # 18% de l'USDC disponible (était 10%)
+        self.strong_allocation_usdc_percent = 22.0 # 22% pour signaux forts (était 12%)
+        self.max_allocation_usdc_percent = 28.0   # 28% maximum pour VERY_STRONG (était 15%)
+        self.weak_allocation_usdc_percent = 12.0   # 12% pour signaux faibles (était 7%)
         self.usdc_safety_margin = 0.98            # Garde 2% d'USDC en sécurité
-        self.min_absolute_trade_usdc = 1.0        # 1 USDC minimum (allow small position exits)
+        self.min_absolute_trade_usdc = 15.0        # 15 USDC minimum - évite micro-positions (était 1 USDC)
 
         # Configuration des seuils de force de signal (centralisée)
         self.signal_strength_config = {
@@ -124,7 +124,7 @@ class Coordinator:
         # Démarrer la mise à jour de l'univers
         self.start_universe_update()
         
-        logger.info(f"✅ Coordinator initialisé - Allocation USDC: {self.weak_allocation_usdc_percent}-{self.max_allocation_usdc_percent}% (positions plus grosses pour TP/SL)")
+        logger.info(f"✅ Coordinator initialisé - Allocation USDC AUGMENTÉE: {self.weak_allocation_usdc_percent}-{self.max_allocation_usdc_percent}% (min: {self.min_absolute_trade_usdc} USDC)")
         
         # Stats
         self.stats = {
@@ -510,7 +510,7 @@ class Coordinator:
                     usdc_balance = next((b.get('free', 0) for b in balances if b.get('asset') == 'USDC'), 0)
                 
                 if usdc_balance < self.min_absolute_trade_usdc:
-                    return False, f"Balance USDC insuffisante: {usdc_balance:.2f} < {self.min_absolute_trade_usdc}"
+                    return False, f"Balance USDC insuffisante: {usdc_balance:.2f} < {self.min_absolute_trade_usdc} (minimum augmenté)"
                 
                 # Vérifier s'il y a déjà un cycle actif pour ce symbole
                 active_cycle = self._check_active_cycle(signal.symbol)
@@ -558,7 +558,7 @@ class Coordinator:
                 # Vérifier la valeur en USDC
                 value_usdc = crypto_balance * signal.price
                 if value_usdc < self.min_absolute_trade_usdc:
-                    return False, f"Valeur trop faible: {value_usdc:.2f} USDC"
+                    return False, f"Valeur position trop faible: {value_usdc:.2f} USDC < {self.min_absolute_trade_usdc} USDC (minimum augmenté)"
             
             return True, "OK"
             
@@ -584,7 +584,7 @@ class Coordinator:
             
             # Filtre 1: Valeur minimum du trade (simple)
             if trade_value < self.min_absolute_trade_usdc:
-                return False, f"Trade trop petit: {trade_value:.2f} USDC < {self.min_absolute_trade_usdc:.2f} USDC (minimum Binance)"
+                return False, f"Trade trop petit: {trade_value:.2f} USDC < {self.min_absolute_trade_usdc:.2f} USDC (minimum augmenté pour éviter micro-positions)"
             
             # Filtre 2: Ratio frais/valeur acceptable
             estimated_fees = trade_value * self.fee_rate * 2  # Aller-retour
@@ -688,7 +688,7 @@ class Coordinator:
                 # Log pour debug positions augmentées
                 logger.info(f"💰 {signal.symbol} - USDC dispo: {usdc_balance:.0f}€, "
                            f"allocation: {allocation_percent:.0f}% = {trade_amount:.0f}€ "
-                           f"(force: {strength_category}) [POSITIONS AUGMENTÉES]")
+                           f"(force: {strength_category}) [POSITIONS ×1.8 AUGMENTÉES]")
 
                 # Vérifier que le prix est valide avant division
                 if not signal.price or signal.price <= 0:
