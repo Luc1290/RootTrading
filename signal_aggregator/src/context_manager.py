@@ -41,7 +41,7 @@ class ContextManager:
         
         Args:
             symbol: Symbole à analyser
-            signal_timeframe: Timeframe du signal pour adapter le régime
+            signal_timeframe: Timeframe du signal pour adapter le régime    
             
         Returns:
             Dict contenant le régime unifié et ses métadonnées
@@ -49,13 +49,13 @@ class ContextManager:
         # Adapter le régime de référence au timeframe du signal
         if signal_timeframe:
             if signal_timeframe in ['1m', '3m']:
-                reference_timeframe = "3m"   # Court terme
+                reference_timeframe = "15m"   # Court terme
             elif signal_timeframe in ['5m', '15m']:
-                reference_timeframe = "5m"   # Moyen terme  
+                reference_timeframe = "15m"   # Moyen terme  
             else:
                 reference_timeframe = "15m"  # Long terme
         else:
-            reference_timeframe = "3m"  # Par défaut
+            reference_timeframe = "15m"  # Par défaut
         # cache_key = f"regime_unified_{symbol}"  # Non utilisé actuellement
         
         try:
@@ -184,8 +184,8 @@ class ContextManager:
             # Récupérer les données HTF pour validation MTF stricte
             htf_data = self._get_htf_validation_data(symbol)
             
-            # Récupérer le régime unifié (3m de référence) 
-            unified_regime = self.get_unified_market_regime(symbol)
+            # Récupérer le régime unifié (15m de référence) 
+            unified_regime = self.get_unified_market_regime(symbol, signal_timeframe=timeframe)
             
             # Construire le contexte avec champs racine pour compatibility
             context = {
