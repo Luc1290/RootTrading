@@ -29,17 +29,14 @@ class TrailingSellManager:
         self.redis_client = redis_client
         self.service_client = service_client
         self.db_connection = db_connection
-        
-        # Configuration trailing sell - ASSOUPLIE pour éviter sorties prématurées
-        self.base_min_gain_for_trailing = 0.008  # 0.8% base - laisse le trade respirer
-        self.base_sell_margin = 0.015  # 1.5% marge base - tolère plus de volatilité
-        self.max_drop_threshold = 0.020  # 2.0% de chute max depuis le pic - moins sensible
-        self.immediate_sell_drop = 0.025  # 2.5% de chute = vente immédiate - urgence seulement
-        
+
         # Configuration stop-loss adaptatif - ÉQUILIBRÉ : coupe faux signaux, préserve vrais trades
         self.stop_loss_percent_base = 0.016  # 1.6% de base - coupe faux signaux sans bruits normaux
         self.stop_loss_percent_bullish = 0.018  # 1.8% en tendance haussière - laisse respirer
         self.stop_loss_percent_strong_bullish = 0.020  # 2.0% en tendance très haussière - capture pumps
+
+        # Note: Trailing sell utilise désormais _get_adaptive_trailing_margin() (ligne 931+)
+        # Plus de seuils fixes, tout est adaptatif selon le gain atteint
         
         logger.info("✅ TrailingSellManager initialisé")
     
@@ -131,50 +128,45 @@ class TrailingSellManager:
             sell_margin = atr_based_thresholds['trailing_margin']
 
             logger.info(f"📊 Seuils ATR pour {symbol}: activation={min_gain_for_trailing*100:.2f}%, marge={sell_margin*100:.2f}%")
-            
+
             # Vérifier si le gain minimum est atteint pour activer le trailing
             if gain_percent < min_gain_for_trailing:
                 logger.info(f"📊 Gain insuffisant pour trailing ({gain_percent*100:.2f}% < {min_gain_for_trailing*100:.2f}%), position continue")
                 return False, f"Gain insuffisant pour activer le trailing ({gain_percent*100:.2f}% < {min_gain_for_trailing*100:.2f}%)"
-            
+
             # Prix max déjà récupéré plus haut
             logger.info(f"🎯 TRAILING LOGIC: Utilisation du prix MAX ({historical_max:.{precision}f}) pour décision, PAS le prix d'entrée")
-            
+
+            # === TRAILING ADAPTATIF PROGRESSIF ===
+            # Calculer le gain depuis le max (pour savoir à quel palier on est)
+            max_gain_from_entry = (historical_max - entry_price) / entry_price
+
+            # Marge adaptative : plus on a monté, plus on serre le trailing
+            adaptive_margin = self._get_adaptive_trailing_margin(max_gain_from_entry)
+            logger.info(f"🎯 TRAILING ADAPTATIF: max_gain={max_gain_from_entry*100:.2f}%, marge={adaptive_margin*100:.2f}%")
+
             # Récupérer le prix SELL précédent
             previous_sell_price = self._get_previous_sell_price(symbol)
             logger.info(f"🔍 Prix SELL précédent: {previous_sell_price}")
-            
+
             # === DÉCISION DE VENTE BASÉE SUR LE PRIX MAX ===
-            
-            # Si chute importante depuis le max (>2.0%), vendre immédiatement
-            if drop_from_max >= self.immediate_sell_drop:
+
+            # Si chute importante depuis le max (utiliser marge adaptative), vendre immédiatement
+            if drop_from_max >= adaptive_margin:
                 logger.warning(f"📉 CHUTE IMPORTANTE depuis max ({drop_from_max*100:.2f}%), SELL IMMÉDIAT!")
                 self._cleanup_references(symbol)
                 return True, f"Chute de {drop_from_max*100:.2f}% depuis max {historical_max:.{precision}f}, SELL immédiat"
             
             if previous_sell_price is None:
-                # Premier SELL gagnant : on est déjà à +1% minimum, donc on tolère la chute configurée
-                if drop_from_max > sell_margin:  # Si déjà chuté selon marge ATR depuis le max
-                    logger.info(f"⚠️ Premier SELL mais déjà {drop_from_max*100:.2f}% sous le max historique")
-                    
-                    # Si chute atteint le seuil normal (>1.5%), vendre
-                    if drop_from_max >= self.max_drop_threshold:
-                        logger.info(f"📉 Chute significative depuis max, SELL!")
-                        self._cleanup_references(symbol)
-                        return True, f"Chute de {drop_from_max*100:.2f}% depuis max {historical_max:.{precision}f}, SELL exécuté"
-                
-                # Sinon stocker comme référence
+                # Premier SELL : déjà protégé par adaptive_margin ligne 158
+                # On stocke juste la référence pour le trailing classique
                 self._update_sell_reference(symbol, current_price)
-                logger.info(f"🎯 Premier SELL @ {current_price:.{precision}f} stocké (max: {historical_max:.{precision}f})")
+                logger.info(f"🎯 Premier SELL @ {current_price:.{precision}f} stocké (max: {historical_max:.{precision}f}, marge adaptative: {adaptive_margin*100:.2f}%)")
                 return False, f"Premier SELL stocké, max historique: {historical_max:.{precision}f}"
-            
-            # === SELL SUIVANTS : LOGIQUE CLASSIQUE + VÉRIFICATION MAX ===
-            
-            # D'abord vérifier la chute depuis le max
-            if drop_from_max >= self.max_drop_threshold:
-                logger.warning(f"📉 Chute de {drop_from_max*100:.2f}% depuis max, SELL!")
-                self._cleanup_references(symbol)
-                return True, f"Chute de {drop_from_max*100:.2f}% depuis max {historical_max:.{precision}f}"
+
+            # === SELL SUIVANTS : TRAILING DÉJÀ PROTÉGÉ PAR ADAPTIVE_MARGIN LIGNE 158 ===
+            # Cette section ne devrait être atteinte que si drop_from_max < adaptive_margin
+            # Donc on fait juste le trailing classique sur le previous_sell_price
             
             # Ensuite logique classique de trailing avec marge ATR
             sell_threshold = previous_sell_price * (1 - sell_margin)
@@ -919,7 +911,36 @@ class TrailingSellManager:
             logger.info(f"🧹 Palier TP max supprimé pour {symbol}")
         except Exception as e:
             logger.error(f"Erreur suppression palier TP pour {symbol}: {e}")
-    
+
+    def _get_adaptive_trailing_margin(self, max_gain_percent: float) -> float:
+        """
+        Calcule une marge de trailing adaptative selon le gain maximum atteint.
+        Plus le gain est élevé, plus la marge est serrée pour protéger les profits.
+
+        Args:
+            max_gain_percent: Gain maximum atteint depuis l'entrée (ex: 0.02 = 2%)
+
+        Returns:
+            Marge de tolérance à la baisse depuis le max (ex: 0.005 = 0.5%)
+        """
+        # Paliers progressifs : plus on monte, plus on protège
+        if max_gain_percent >= 0.08:    # Gain ≥ 8% (exceptionnel)
+            margin = 0.004  # Tolérance 0.4% seulement (verrouiller gains)
+        elif max_gain_percent >= 0.05:  # Gain 5-8% (très bon)
+            margin = 0.006  # Tolérance 0.6%
+        elif max_gain_percent >= 0.03:  # Gain 3-5% (bon)
+            margin = 0.008  # Tolérance 0.8%
+        elif max_gain_percent >= 0.02:  # Gain 2-3% (solide)
+            margin = 0.010  # Tolérance 1.0%
+        elif max_gain_percent >= 0.015: # Gain 1.5-2% (correct)
+            margin = 0.012  # Tolérance 1.2%
+        elif max_gain_percent >= 0.01:  # Gain 1-1.5% (début)
+            margin = 0.014  # Tolérance 1.4%
+        else:                            # Gain < 1%
+            margin = 0.015  # Tolérance 1.5% (large pour respirer)
+
+        return margin
+
     def _cleanup_references(self, symbol: str) -> None:
         """
         Nettoie toutes les références pour un symbole après une vente.

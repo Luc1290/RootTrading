@@ -28,9 +28,6 @@ class StatisticsService:
         self.cache = {}
         self.cache_ttl = 60  # Cache TTL en secondes
         
-        # Facteur de correction pour ajuster aux profits réels (inclut frais, etc.)
-        self.pnl_correction_factor = 0.525  # Basé sur données réelles: 42€/80€
-        
     async def get_global_statistics(self) -> Dict[str, Any]:
         """
         Récupère les statistiques globales du système.
@@ -43,28 +40,30 @@ class StatisticsService:
             results = await asyncio.gather(
                 self._get_portfolio_summary(),
                 self._get_trading_activity_24h(),
-                self._get_performance_metrics(),
+                self._get_performance_metrics_24h(),
+                self._get_unrealized_pnl(),
                 self._get_cycle_statistics(),
                 self._get_signal_statistics(),
                 return_exceptions=True
             )
-            
+
             portfolio = results[0] if not isinstance(results[0], Exception) else {}
             activity = results[1] if not isinstance(results[1], Exception) else {}
             performance = results[2] if not isinstance(results[2], Exception) else {}
-            cycles = results[3] if not isinstance(results[3], Exception) else {}
-            signals = results[4] if not isinstance(results[4], Exception) else {}
-            
-            # Appliquer la correction aux profits pour refléter les frais et coûts réels
-            raw_pnl = performance.get('pnl_30d', 0)
-            corrected_pnl = raw_pnl * self.pnl_correction_factor
-            
+            unrealized = results[3] if not isinstance(results[3], Exception) else {}
+            cycles = results[4] if not isinstance(results[4], Exception) else {}
+            signals = results[5] if not isinstance(results[5], Exception) else {}
+
+            # PnL total = réalisé (trades complétés 24h) + non réalisé (positions actives)
+            realized_pnl_24h = performance.get('pnl_24h', 0)
+            unrealized_pnl = unrealized.get('total_unrealized_pnl', 0)
+            total_pnl = realized_pnl_24h + unrealized_pnl
+
             # Formater selon le format attendu par le frontend
             return {
                 'totalTrades': activity.get('trades_24h', 0),
                 'totalVolume': activity.get('volume_24h', 0),
-                'totalPnl': corrected_pnl,
-                'totalPnlRaw': raw_pnl,  # Garder la valeur brute pour référence
+                'totalPnl': total_pnl,
                 'winRate': performance.get('win_rate', 0),
                 'profitFactor': performance.get('profit_factor', 0),
                 'avgTradeSize': activity.get('volume_24h', 0) / max(activity.get('trades_24h', 1), 1),
@@ -72,11 +71,10 @@ class StatisticsService:
                 'activePositions': cycles.get('cycles_24h', {}).get('active_buy', 0),
                 'availableBalance': portfolio.get('total_balance', 0),
                 'totalBalance': portfolio.get('total_value_usdc', 0),
-                'unrealizedPnl': 0,  # À calculer si nécessaire
-                'realizedPnl': corrected_pnl,
-                'totalWins': performance.get('total_wins', 0) * self.pnl_correction_factor,
-                'totalLosses': performance.get('total_losses', 0) * self.pnl_correction_factor,
-                'correctionFactor': self.pnl_correction_factor,
+                'unrealizedPnl': unrealized_pnl,
+                'realizedPnl': realized_pnl_24h,
+                'totalWins': performance.get('total_wins', 0),
+                'totalLosses': performance.get('total_losses', 0),
                 'timestamp': datetime.utcnow().isoformat()
             }
             
@@ -739,20 +737,20 @@ class StatisticsService:
             }
         return {}
     
-    async def _get_performance_metrics(self) -> Dict[str, Any]:
-        """Calcule les métriques de performance globales."""
+    async def _get_performance_metrics_24h(self) -> Dict[str, Any]:
+        """Calcule les métriques de performance des dernières 24h."""
         query = """
             WITH recent_cycles AS (
-                SELECT 
+                SELECT
                     profit_loss,
                     profit_loss_percent,
                     status
                 FROM trade_cycles
-                WHERE completed_at >= NOW() - INTERVAL '30 days'
+                WHERE completed_at >= NOW() - INTERVAL '24 hours'
                     AND status = 'completed'
             )
-            SELECT 
-                SUM(profit_loss) as total_pnl_30d,
+            SELECT
+                SUM(profit_loss) as total_pnl_24h,
                 AVG(profit_loss_percent) as avg_pnl_percent,
                 COUNT(*) as total_cycles,
                 SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as winning_cycles,
@@ -763,30 +761,67 @@ class StatisticsService:
             FROM recent_cycles;
         """
         result = await self.data_manager.execute_query(query)
-        
+
         if result:
             row = result[0]
             win_rate = 0
             if row['total_cycles'] and row['total_cycles'] > 0:
                 win_rate = (row['winning_cycles'] / row['total_cycles']) * 100
-            
+
             # Calculer le Profit Factor
             profit_factor = 0
             if row['total_losses'] and float(row['total_losses']) > 0:
                 profit_factor = float(row['total_wins'] or 0) / float(row['total_losses'])
-            
+
             return {
-                'pnl_30d': float(row['total_pnl_30d'] or 0),
+                'pnl_24h': float(row['total_pnl_24h'] or 0),
                 'avg_pnl_percent': float(row['avg_pnl_percent'] or 0),
                 'win_rate': round(win_rate, 2),
                 'profit_factor': round(profit_factor, 2),
-                'total_cycles_30d': row['total_cycles'] or 0,
+                'total_cycles_24h': row['total_cycles'] or 0,
                 'best_trade': float(row['best_trade'] or 0),
                 'worst_trade': float(row['worst_trade'] or 0),
                 'total_wins': float(row['total_wins'] or 0),
                 'total_losses': float(row['total_losses'] or 0)
             }
         return {}
+
+    async def _get_unrealized_pnl(self) -> Dict[str, Any]:
+        """Calcule le PnL non réalisé des positions actives."""
+        query = """
+            WITH active_positions AS (
+                SELECT
+                    tc.symbol,
+                    tc.entry_price,
+                    tc.quantity,
+                    md.close as current_price
+                FROM trade_cycles tc
+                LEFT JOIN LATERAL (
+                    SELECT close
+                    FROM market_data
+                    WHERE symbol = tc.symbol AND timeframe = '5m'
+                    ORDER BY time DESC
+                    LIMIT 1
+                ) md ON true
+                WHERE tc.status = 'active_buy'
+            )
+            SELECT
+                SUM((current_price - entry_price) * quantity) as total_unrealized_pnl,
+                COUNT(*) as active_positions_count,
+                AVG(((current_price - entry_price) / entry_price) * 100) as avg_unrealized_pnl_percent
+            FROM active_positions
+            WHERE current_price IS NOT NULL;
+        """
+        result = await self.data_manager.execute_query(query)
+
+        if result and result[0]:
+            row = result[0]
+            return {
+                'total_unrealized_pnl': float(row['total_unrealized_pnl'] or 0),
+                'active_positions_count': row['active_positions_count'] or 0,
+                'avg_unrealized_pnl_percent': round(float(row['avg_unrealized_pnl_percent'] or 0), 2)
+            }
+        return {'total_unrealized_pnl': 0, 'active_positions_count': 0, 'avg_unrealized_pnl_percent': 0}
     
     async def _get_cycle_statistics(self) -> Dict[str, Any]:
         """Récupère les statistiques sur les cycles de trading."""

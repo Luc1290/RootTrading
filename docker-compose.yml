@@ -56,34 +56,46 @@ services:
     entrypoint: |
       sh -c "
         echo 'Vérification cohérence cluster Kafka/ZooKeeper...'
-        
+
         # Attendre que ZooKeeper soit vraiment prêt
         until echo srvr | nc zookeeper 2181 | grep -q 'Mode: standalone'; do
           echo 'Attente ZooKeeper...'
           sleep 2
         done
-        
+
+        # CORRECTION: Nettoyer systématiquement les états de producteur au redémarrage
+        # pour éviter les conflits OutOfOrderSequenceException
+        if [ -d '/var/lib/kafka/data' ]; then
+          echo 'Nettoyage des états de producteur et transactions...'
+          rm -rf /var/lib/kafka/data/__transaction_state-* 2>/dev/null || true
+
+          # Supprimer les snapshots de producteurs
+          find /var/lib/kafka/data -name '*.snapshot' -delete 2>/dev/null || true
+          find /var/lib/kafka/data -name 'producer-state' -delete 2>/dev/null || true
+
+          echo 'Nettoyage terminé'
+        fi
+
         # Récupérer le cluster ID de ZooKeeper
         ZK_CLUSTER_ID=$$(echo 'get /cluster/id' | /usr/bin/kafka-console-consumer --bootstrap-server zookeeper:2181 --topic __consumer_offsets --from-beginning --timeout-ms 1000 2>/dev/null | head -1 || echo '')
-        
+
         META_FILE='/var/lib/kafka/data/meta.properties'
-        
+
         # Si fichier meta existe, vérifier cohérence
         if [ -f \"$$META_FILE\" ]; then
           KAFKA_CLUSTER_ID=$$(grep 'cluster.id=' \"$$META_FILE\" | cut -d'=' -f2 2>/dev/null || echo '')
-          
+
           if [ -n \"$$ZK_CLUSTER_ID\" ] && [ -n \"$$KAFKA_CLUSTER_ID\" ] && [ \"$$ZK_CLUSTER_ID\" != \"$$KAFKA_CLUSTER_ID\" ]; then
             echo \"CONFLIT DÉTECTÉ: ZK_ID=$$ZK_CLUSTER_ID vs KAFKA_ID=$$KAFKA_CLUSTER_ID\"
             echo 'Suppression meta.properties pour régénération propre...'
             rm -f \"$$META_FILE\"
-            # Nettoyer aussi les logs de transaction qui peuvent être corrompus
+            # Nettoyer aussi les logs de consumer offsets
             rm -rf /var/lib/kafka/data/__consumer_offsets-* 2>/dev/null || true
-            rm -rf /var/lib/kafka/data/__transaction_state-* 2>/dev/null || true
           else
             echo 'Cluster IDs cohérents ou non disponibles - démarrage normal'
           fi
         fi
-        
+
         echo 'Démarrage Kafka...'
         exec /etc/confluent/docker/run
       "
@@ -102,6 +114,11 @@ services:
       KAFKA_CONTROLLED_SHUTDOWN_ENABLE: true
       KAFKA_CONTROLLED_SHUTDOWN_MAX_RETRIES: 3
       KAFKA_CONTROLLED_SHUTDOWN_RETRY_BACKOFF_MS: 5000
+      # CORRECTION: Durée de vie des producer IDs optimisée
+      # 24h = suffisant pour survivre aux redémarrages mais pas trop long
+      # Les producteurs actifs renouvellent automatiquement leur ID
+      KAFKA_TRANSACTIONAL_ID_EXPIRATION_MS: 86400000  # 24 heures
+      KAFKA_PRODUCER_ID_EXPIRATION_MS: 86400000  # 24 heures
       # Nettoyage automatique
       KAFKA_LOG_CLEANUP_POLICY: delete
       KAFKA_LOG_RETENTION_HOURS: 24

@@ -154,22 +154,22 @@ function PortfolioPanel() {
         </div>
         
         <div className="bg-dark-200 rounded-lg p-3">
-          <div className="text-gray-400 text-sm">P&L Total</div>
-          <div className={`text-xl font-bold ${(metrics?.total_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {formatCurrency(metrics?.total_pnl || 0)}
-          </div>
-          <div className={`text-sm ${(metrics?.total_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {formatPercentage(metrics?.total_pnl_percentage || 0)}
-          </div>
-        </div>
-        
-        <div className="bg-dark-200 rounded-lg p-3">
-          <div className="text-gray-400 text-sm">P&L Journalier</div>
-          <div className={`text-lg font-bold ${(metrics?.daily_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+          <div className="text-gray-400 text-sm">P&L Aujourd'hui</div>
+          <div className={`text-xl font-bold ${(metrics?.daily_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
             {formatCurrency(metrics?.daily_pnl || 0)}
           </div>
           <div className={`text-sm ${(metrics?.daily_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
             {formatPercentage(metrics?.daily_pnl_percentage || 0)}
+          </div>
+        </div>
+
+        <div className="bg-dark-200 rounded-lg p-3">
+          <div className="text-gray-400 text-sm">P&L Total (All-Time)</div>
+          <div className={`text-lg font-bold ${(metrics?.total_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {formatCurrency(metrics?.total_pnl || 0)}
+          </div>
+          <div className={`text-sm ${(metrics?.total_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {formatPercentage(metrics?.total_pnl_percentage || 0)}
           </div>
         </div>
         

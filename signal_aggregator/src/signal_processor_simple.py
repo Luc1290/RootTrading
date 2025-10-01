@@ -125,13 +125,10 @@ class SimpleSignalProcessor:
     
     def _get_dynamic_cache_ttl(self, timeframe: str) -> int:
         """Calcule TTL dynamique basé sur le timeframe."""
-        timeframe_seconds = {
-            '1m': 60, '3m': 180, '5m': 300,
-            '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400
-        }
-        tf_sec = timeframe_seconds.get(timeframe, 180)  # Défaut 3m
-        # TTL = max(5s, timeframe/3) pour éviter sur-cache sur long TF
-        return max(self.base_cache_ttl, tf_sec // 3)
+        if timeframe in ('1m','3m'): return 5
+        if timeframe == '5m': return 15
+        if timeframe == '15m': return 30
+        return 60  # défaut raisonnable au-delà
 
     async def _get_cached_context(self, symbol: str, timeframe: str) -> Optional[Dict[str, Any]]:
         """Récupère le contexte avec cache TTL dynamique."""

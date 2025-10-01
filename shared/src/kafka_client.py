@@ -180,7 +180,7 @@ class KafkaClientPool:
     def _create_producer(self) -> Producer:
         """
         Crée et configure un producteur Kafka.
-        
+
         Returns:
             Instance Producer Kafka
         """
@@ -199,8 +199,12 @@ class KafkaClientPool:
             'retry.backoff.ms': 200,
             'max.in.flight.requests.per.connection': 5,
             'enable.idempotence': True,
+            # CORRECTION: Attendre confirmation des leaders avant de continuer
+            # pour éviter les conflits de séquence après restart
+            'request.timeout.ms': 30000,  # 30s timeout
+            'delivery.timeout.ms': 120000,  # 2min total timeout
         }
-        
+
         try:
             producer = Producer(conf)
             logger.info(f"✅ Producteur Kafka créé pour {self.broker}")
@@ -440,7 +444,7 @@ class KafkaClientPool:
         except BufferError:
             logger.warning("⚠️ File d'attente du producteur pleine, vidage...")
             self.producer.flush(timeout=10.0)
-            
+
             # Réessayer
             self.producer.produce(
                 topic=topic,
@@ -449,7 +453,43 @@ class KafkaClientPool:
                 headers=headers,
                 callback=self._delivery_callback
             )
-        
+
+        except KafkaException as e:
+            error_msg = str(e).replace('{', '{{').replace('}', '}}')
+
+            # CORRECTION: Si erreur FATAL, recréer le producteur
+            if '_FATAL' in str(e) or 'Fatal error' in str(e):
+                logger.error(f"❌ Erreur FATALE Kafka détectée, recréation du producteur: {error_msg}")
+
+                # Fermer l'ancien producteur
+                try:
+                    if self._producer:
+                        self._producer.flush(timeout=5.0)
+                except:
+                    pass
+
+                # Recréer un nouveau producteur
+                self._producer = None
+                time.sleep(1.0)  # Pause avant recréation
+
+                try:
+                    # Réessayer avec le nouveau producteur
+                    self.producer.produce(
+                        topic=topic,
+                        key=serialized_key,
+                        value=serialized_value,
+                        headers=headers,
+                        callback=self._delivery_callback
+                    )
+                    logger.info("✅ Message reproduit avec succès après recréation du producteur")
+                    return
+                except Exception as retry_error:
+                    logger.error(f"❌ Échec après recréation du producteur: {str(retry_error)}")
+
+            logger.error(f"❌ Erreur lors de la production du message: {error_msg}")
+            self.metrics.record_delivery_failure()
+            raise
+
         except Exception as e:
             error_msg = str(e).replace('{', '{{').replace('}', '}}')
             logger.error(f"❌ Erreur lors de la production du message: {error_msg}")

@@ -67,7 +67,7 @@ class UniverseManager:
             # XRP = Ripple, énorme volume, bonne volatilité
             # ADA = Cardano, stable et liquide
             # LINK = Chainlink, oracle leader, patterns fiables
-            'core_pairs': ['BTCUSDC', 'ETHUSDC', 'SOLUSDC', 'XRPUSDC', 'ADAUSDC', 'LINKUSDC'],
+            'core_pairs': ['BTCUSDC', 'ETHUSDC', 'SOLUSDC', 'XRPUSDC', 'ADAUSDC', 'LINKUSDC', 'NEARUSDC', 'AAVEUSDC', 'DOGEUSDC'],
             
             # Nombre max de satellites (en plus des core)
             'max_satellites': 6,  # 6 core + 6 satellites = 12 cryptos max

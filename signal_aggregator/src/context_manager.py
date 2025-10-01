@@ -138,13 +138,10 @@ class ContextManager:
 
     def _get_dynamic_cache_ttl(self, timeframe: str) -> int:
         """Calcule TTL dynamique selon timeframe pour éviter contexte périmé."""
-        timeframe_seconds = {
-            '1m': 60, '3m': 180, '5m': 300,
-            '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400
-        }
-        tf_sec = timeframe_seconds.get(timeframe, 180)
-        # TTL = max(5s, timeframe_seconds / 2) pour scalping réactif
-        return max(self.base_cache_ttl, tf_sec // 2)
+        if timeframe in ('1m','3m'): return 5
+        if timeframe == '5m': return 15
+        if timeframe == '15m': return 30
+        return 60  # défaut raisonnable au-delà
 
     def get_market_context(self, symbol: str, timeframe: str) -> Dict[str, Any]:
         """
