@@ -738,8 +738,8 @@ class IndicatorProcessor:
             return strength_map.get(strength.value.upper(), 0)
         return strength_map.get(str(strength).upper(), 0)
     
-    def _sanitize_numeric_value(self, value, max_abs_value=1e11):
-        """Sanitise une valeur numérique pour éviter les débordements DB (precision 20, scale 8)."""
+    def _sanitize_numeric_value(self, value, max_abs_value=1e19):
+        """Sanitise une valeur numérique pour éviter les débordements DB (DECIMAL(28,8) -> max ~1e19)."""
         if value is None:
             return None
         

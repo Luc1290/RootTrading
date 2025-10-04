@@ -549,82 +549,58 @@ class UniverseManager:
         return state.is_selected
     
     def update_universe(self) -> Tuple[Set[str], Dict[str, PairScore]]:
-        """Met à jour l'univers tradable"""
+        """Met à jour l'univers tradable - TOUS LES SYMBOLES EN PERMANENCE"""
         try:
             # Récupérer tous les symboles
             symbols_data = self.redis.get("trading:symbols")
             if not symbols_data:
                 logger.warning("Pas de symboles configurés")
-                return self.core_pairs, {}
-            
+                return set(), {}
+
             # symbols_data peut être une string JSON ou déjà une liste
             if isinstance(symbols_data, str):
                 all_symbols = json.loads(symbols_data)
             else:
                 all_symbols = symbols_data
-            
-            # Calculer les scores depuis analyzer_data (tout est déjà calculé)
-            if not self.db_pool:
-                logger.error("Pas de DB disponible - impossible de calculer les scores")
-                return self.core_pairs, {}
 
-            scores = self._batch_calculate_scores_from_db(all_symbols)
-            
+            # Calculer les scores depuis analyzer_data (pour le monitoring seulement)
+            scores = {}
+            if self.db_pool:
+                scores = self._batch_calculate_scores_from_db(all_symbols)
+
+            # TOUS LES SYMBOLES SONT SÉLECTIONNÉS EN PERMANENCE
+            selected = set(all_symbols)
+
             # Enregistrer l'état actuel avant modification
             previous_universe = self.selected_universe.copy()
-            
-            # Toujours inclure les paires core (jamais retirées)
-            selected = set(self.core_pairs)
 
-            # Ajouter les paires forcées (consensus fort) non expirées
-            forced_pairs = self._get_forced_pairs()
-            for forced_symbol in forced_pairs:
-                selected.add(forced_symbol)
-                logger.info(f"🚀 Paire forcée active: {forced_symbol}")
-
-            # Filtrer les satellites éligibles avec hard_risk
-            eligible_satellites = []
-            for symbol, score in scores.items():
-                if symbol not in self.core_pairs and score.score > -1:
-                    # Vérifier hard_risk avant hystérésis
-                    if self.check_hard_risk(symbol):
-                        logger.warning(f"Paire {symbol} exclue pour hard_risk (ATR spike + spread + slippage)")
-                        continue
-
-                    # Appliquer hystérésis
-                    if self.apply_hysteresis(symbol, score.score):
-                        eligible_satellites.append((symbol, score.score))
-            
-            # Sélectionner les meilleurs satellites
-            eligible_satellites.sort(key=lambda x: x[1], reverse=True)
-            for symbol, _ in eligible_satellites[:self.config['max_satellites']]:
-                selected.add(symbol)
-            
             # Mettre à jour l'univers
             self.selected_universe = selected
             self.last_update = datetime.now()
-            
+
             # Publier dans Redis
             self.redis.set(
                 "universe:selected",
                 json.dumps(list(selected)),
                 expiration=180  # TTL 3 minutes
             )
-            
-            # Log les changements (utiliser previous_universe)
+
+            # Log les changements
             added = selected - previous_universe
             removed = previous_universe - selected
-            
+
             if added:
-                logger.info(f"Paires ajoutées à l'univers: {added}")
+                logger.info(f"✅ Symboles ajoutés à l'univers: {added}")
             if removed:
-                logger.info(f"Paires retirées de l'univers: {removed}")
-            
+                logger.info(f"❌ Symboles retirés de l'univers: {removed}")
+
+            logger.info(f"📊 Univers complet: {len(selected)} symboles actifs en permanence")
+
             return selected, scores
-            
+
         except Exception as e:
             logger.error(f"Erreur update_universe: {e}")
-            return self.core_pairs, {}
+            return set(), {}
     
     def is_pair_tradable(self, symbol: str) -> bool:
         """Vérifie si une paire peut ouvrir de nouvelles positions"""
