@@ -37,6 +37,26 @@ function Header() {
                 📈 Dashboard
               </Link>
               <Link
+                to="/manual-trading"
+                className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
+                  location.pathname === '/manual-trading'
+                    ? 'bg-primary-500 text-white'
+                    : 'text-primary-100 hover:bg-primary-500/20 hover:text-white'
+                }`}
+              >
+                🎯 Trading Manuel
+              </Link>
+              <Link
+                to="/position-tracker"
+                className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
+                  location.pathname === '/position-tracker'
+                    ? 'bg-primary-500 text-white'
+                    : 'text-primary-100 hover:bg-primary-500/20 hover:text-white'
+                }`}
+              >
+                📊 Positions
+              </Link>
+              <Link
                 to="/signals"
                 className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
                   location.pathname === '/signals'

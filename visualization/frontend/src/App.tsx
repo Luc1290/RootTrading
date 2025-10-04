@@ -6,6 +6,8 @@ import Dashboard from '@/components/Dashboard';
 import SignalsPage from '@/components/Signals/SignalsPage';
 import CyclesPage from '@/components/Cycles/CyclesPage';
 import StatisticsPage from '@/components/Statistics/StatisticsPage';
+import ManualTradingPage from '@/components/ManualTrading/ManualTradingPage';
+import PositionTrackerPage from '@/components/ManualTrading/PositionTrackerPage';
 
 function App() {
   return (
@@ -17,6 +19,8 @@ function App() {
             <Route path="/signals" element={<SignalsPage />} />
             <Route path="/cycles" element={<CyclesPage />} />
             <Route path="/statistics" element={<StatisticsPage />} />
+            <Route path="/manual-trading" element={<ManualTradingPage />} />
+            <Route path="/position-tracker" element={<PositionTrackerPage />} />
           </Routes>
         </Layout>
       </Router>

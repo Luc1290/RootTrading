@@ -330,6 +330,7 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
         stabilization_indicators = []
         
         # Momentum score amélioration (format 0-100, 50=neutre)
+        # LOGIQUE COHÉRENTE : après crash, momentum remonte progressivement (35-55 zone valide)
         momentum_score = values.get('momentum_score')
         if momentum_score is not None:
             try:
@@ -340,9 +341,12 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
                 elif momentum_val >= self.momentum_reversal_threshold:
                     stabilization_score += 0.25
                     stabilization_indicators.append(f"Momentum reversal ({momentum_val:.1f})")
-                elif momentum_val >= 50:  # Au moins neutre
+                elif momentum_val >= 45:  # Neutre-faible acceptable après crash
                     stabilization_score += 0.12
-                    stabilization_indicators.append(f"Momentum neutre ({momentum_val:.1f})")
+                    stabilization_indicators.append(f"Momentum stabilisé ({momentum_val:.1f})")
+                elif momentum_val >= 35:  # Momentum faible OK après crash récent
+                    stabilization_score += 0.08
+                    stabilization_indicators.append(f"Momentum post-crash ({momentum_val:.1f})")
             except (ValueError, TypeError):
                 pass
                 
@@ -462,17 +466,18 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
                     "metadata": {"strategy": self.name, "directional_bias": directional_bias, "trend_strength": trend_strength}
                 }
                 
-        # Filtre momentum contradictoire AVANT détection
+        # Filtre momentum inversé : rejeter si trop haut (pas de crash récent)
         momentum_score = values.get('momentum_score')
         if momentum_score is not None:
             try:
                 momentum_val = float(momentum_score)
-                if momentum_val < 40:  # Momentum trop faible = rejet
+                # LOGIQUE INVERSÉE : momentum élevé = pas de crash = rejet
+                if momentum_val > 65:  # Momentum trop fort = pas de spike baissier
                     return {
                         "side": None,
                         "confidence": 0.0,
                         "strength": "weak",
-                        "reason": f"Rejet BUY spike: momentum trop faible ({momentum_val})",
+                        "reason": f"Rejet BUY spike: momentum trop fort ({momentum_val:.1f}) - pas de crash",
                         "metadata": {"strategy": self.name, "momentum_score": momentum_val}
                     }
             except (ValueError, TypeError):
@@ -511,13 +516,13 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
         # Conditions MINIMUM flexibles (au moins 2 sur 4)
         conditions_met = sum([
             price_spike_analysis['is_price_spike'],
-            volume_spike_analysis['is_volume_spike'], 
+            volume_spike_analysis['is_volume_spike'],
             oversold_analysis['is_oversold'],
             stabilization_analysis['is_stabilized']
         ])
-        
-        # Signal BUY si score suffisant ET minimum 2 conditions (RÉVOLUTIONNÉ)
-        if spike_total_score >= 0.25 and conditions_met >= 3 and volume_quality_ok:
+
+        # Signal BUY si score suffisant ET minimum 2 conditions (ASSOUPLI pour crypto intraday)
+        if spike_total_score >= 0.25 and conditions_met >= 2 and volume_quality_ok:
 
             base_confidence = 0.65  # Base conservative pour stratégie spike
             confidence_boost = 0.0
@@ -529,10 +534,14 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
             confidence_boost += stabilization_analysis['score'] * 0.25
             
             reason = f"Spike reaction BUY: "
-            reason += f"{price_spike_analysis['indicators'][0]}"
-            reason += f" + {volume_spike_analysis['indicators'][0]}"
-            reason += f" + {oversold_analysis['indicators'][0]}"
-            reason += f" + {stabilization_analysis['indicators'][0]}"
+            if price_spike_analysis['indicators']:
+                reason += f"{price_spike_analysis['indicators'][0]}"
+            if volume_spike_analysis['indicators']:
+                reason += f" + {volume_spike_analysis['indicators'][0]}"
+            if oversold_analysis['indicators']:
+                reason += f" + {oversold_analysis['indicators'][0]}"
+            if stabilization_analysis['indicators']:
+                reason += f" + {stabilization_analysis['indicators'][0]}"
             
             # Anomaly detected (confirmation système) - BONUS FORT
             anomaly_detected = values.get('anomaly_detected')
@@ -655,8 +664,8 @@ class Spike_Reaction_Buy_Strategy(BaseStrategy):
             missing_conditions.append(f"Volume quality insuffisant ({volume_quality_score:.1f} < {self.min_volume_quality})")
         if spike_total_score < 0.25:
             missing_conditions.append(f"Score total insuffisant ({spike_total_score:.2f} < 0.25)")
-        if conditions_met < 3:
-            missing_conditions.append(f"Conditions insuffisantes ({conditions_met}/4 < 3)")
+        if conditions_met < 2:
+            missing_conditions.append(f"Conditions insuffisantes ({conditions_met}/4 < 2)")
             
         return {
             "side": None,

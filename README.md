@@ -5,7 +5,7 @@ RootTrading est un écosystème de trading cryptographique automatisé, conçu a
 
 ## 🎯 Objectifs
 - **Trading automatisé** : Exécution de stratégies de trading crypto sans intervention manuelle
-- **Multi-stratégies** : Support de 15+ stratégies techniques simultanées
+- **Multi-stratégies** : Support de 28 stratégies techniques simultanées
 - **Gestion des risques** : Contrôles intégrés et trailing stops intelligents
 - **Monitoring temps réel** : Dashboard web et métriques de performance
 - **Architecture scalable** : Microservices containerisés avec Docker
@@ -55,7 +55,7 @@ RootTrading est un écosystème de trading cryptographique automatisé, conçu a
 ### 🧠 Signal Processing
 | Service | Port | Description |
 |---------|------|-------------|
-| **Analyzer** | 5012 | Exécution des stratégies de trading (15+ stratégies) |
+| **Analyzer** | 5012 | Exécution des stratégies de trading (28 stratégies) |
 | **Signal Aggregator** | 5013 | Consensus et validation des signaux |
 
 ### 💰 Trading & Portfolio
@@ -128,31 +128,80 @@ Le système trade 22 cryptomonnaies par défaut :
 
 ## 📋 Stratégies de Trading
 
-### Stratégies techniques (15+)
-1. **ADX Direction** : Tendance basée sur l'ADX
-2. **ATR Breakout** : Cassures avec volatilité
-3. **Bollinger Touch** : Touches des bandes
-4. **CCI Reversal** : Retournements CCI
-5. **Donchian Breakout** : Cassures des canaux
-6. **EMA Cross** : Croisements moyennes mobiles
-7. **Hull MA Slope** : Pente Hull Moving Average
-8. **MACD Crossover** : Signaux MACD
-9. **OBV Crossover** : Volume/Prix divergence
-10. **Parabolic SAR** : Retournements SAR
-11. **PPO Crossover** : Price Percentage Oscillator
+### 28 Stratégies Actives
 
-### Stratégies avancées
-- **Liquidity Sweep** : Détection sweeps de liquidité
-- **Multi-TF Confluent** : Confluence multi-timeframes
-- **Pump & Dump Detection** : Détection patterns anormaux
+#### Stratégies de Tendance (7)
+1. **ADX Direction** : Tendance basée sur l'ADX
+2. **EMA Cross** : Croisements moyennes mobiles exponentielles
+3. **Hull MA Slope** : Pente Hull Moving Average
+4. **MACD Crossover** : Signaux MACD classiques
+5. **Supertrend Reversal** : Retournements Supertrend
+6. **TEMA Slope** : Triple EMA direction
+7. **TRIX Crossover** : Triple EMA oscillator
+
+#### Stratégies de Momentum (8)
+8. **CCI Reversal** : Retournements Commodity Channel Index
+9. **PPO Crossover** : Price Percentage Oscillator
+10. **ROC Threshold** : Rate of Change avec seuils
+11. **RSI Cross** : Croisements RSI avec niveaux
+12. **Stochastic Oversold Buy** : Stochastique survendu
+13. **StochRSI Rebound** : Rebond StochRSI
+14. **Williams R Rebound** : Williams %R reversal
+15. **ZScore Extreme Reversal** : Z-Score extrêmes
+
+#### Stratégies de Volatilité (4)
+16. **ATR Breakout** : Cassures avec Average True Range
+17. **Bollinger Touch** : Touches des bandes de Bollinger
+18. **Donchian Breakout** : Cassures des canaux de Donchian
+19. **Range Breakout Confirmation** : Validation cassures de range
+
+#### Stratégies de Support/Résistance (4)
+20. **Parabolic SAR Bounce** : Rebonds Parabolic SAR
+21. **Resistance Rejection** : Rejets de résistances
+22. **Support Breakout** : Cassures de supports
+23. **VWAP Support/Resistance** : Niveaux VWAP dynamiques
+
+#### Stratégies de Volume (2)
+24. **OBV Crossover** : On-Balance Volume divergences
+25. **Spike Reaction Buy** : Réactions aux pics de volume
+
+#### Stratégies Avancées (4)
+26. **Liquidity Sweep Buy** : Détection sweeps de liquidité
+27. **Multi-TF Confluent Entry** : Confluence multi-timeframes
+28. **Pump & Dump Pattern** : Détection patterns anormaux
 
 ## 🛡️ Gestion des Risques
 
 ### Contrôles automatiques
-- **Stop-loss dynamiques** : 2% par défaut, ajustables
-- **Position sizing** : Limitation par actif (1000 USDT max)
+- **Stop-loss adaptatifs** : 1.2-1.8% dynamiques (ATR + régime de marché)
+- **Trailing sell intelligent** : Activation à +1.5%, marges adaptatives 0.8-1.5%
+- **Breakeven protection** : +1.2% → entry+fees, +2.0% → entry+0.2%
+- **Position sizing** : Limitation par actif (1000 USDC max)
 - **Daily loss limit** : Limitation des pertes journalières
 - **Concentration limits** : Max 5 positions simultanées
+
+### Trailing Sell Intelligent
+
+Le système utilise un trailing sell adaptatif multi-niveaux optimisé pour le scalp :
+
+**Activation progressive** :
+- Breakeven niveau 1 : +1.2% → stop @ entry + 2×fees (protection perte)
+- Breakeven niveau 2 : +2.0% → stop @ entry + 0.2% (profit garanti)
+- Trailing activé : +1.5% → marges adaptatives selon palier
+
+**Marges adaptatives dynamiques** :
+- Palier ≥8% : marge 0.4% (protection stricte des gros gains)
+- Palier 5-8% : marge 0.6%
+- Palier 3-5% : marge 0.8%
+- Palier 2-3% : marge 1.0%
+- Palier 1.5-2% : marge 1.2%
+- Palier <1.5% : marge 1.5% (laisser respirer)
+
+**Protection avancée** :
+- Clés Redis par `position_id` (évite collisions multi-positions)
+- TTL 7 jours avec refresh automatique
+- Pump rider mode : désactive TP progressif sur gains >5% rapides (<10min)
+- TP progressif inversé : strict sur gros gains, permissif sur petits
 
 ### Validation multi-niveaux
 1. **Analyzer** : Validation technique des signaux
@@ -263,7 +312,7 @@ RootTrading/
 
 ### Limites actuelles
 - **22 symboles** simultanés maximum
-- **15+ stratégies** par symbole
+- **28 stratégies** par symbole
 - **5 positions** ouvertes simultanément
 - **Mode SPOT uniquement** (pas de futures/margin)
 
@@ -316,5 +365,7 @@ MIT License - Voir LICENSE file pour les détails.
 
 ---
 
-**RootTrading v1.0** - Système de trading crypto automatisé  
-🚀 Développé avec passion pour la communauté crypto
+**RootTrading v1.0.9.908** - Système de trading crypto automatisé
+📅 Dernière mise à jour : 2025-10-02
+🔧 Trailing Sell v2.0 (optimisé scalp intraday)
+🚀 28 stratégies actives | Architecture microservices | Gestion risques avancée

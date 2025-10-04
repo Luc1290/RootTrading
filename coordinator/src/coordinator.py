@@ -524,16 +524,18 @@ class Coordinator:
                     position = active_positions[0]
                     entry_price = float(position.get('entry_price', 0))
                     entry_time = position.get('timestamp')
+                    position_id = str(position.get('id', f"pos_{signal.symbol}"))  # ID unique de position
 
                     # Vérifier si consensus SELL fort doit bypasser le trailing
                     force_sell, sell_reason = self._check_consensus_sell_override(signal, entry_price)
-                    
+
                     if not force_sell:
                         should_sell, trailing_reason = self.trailing_manager.check_trailing_sell(
                             symbol=signal.symbol,
                             current_price=signal.price,
                             entry_price=entry_price,
-                            entry_time=entry_time
+                            entry_time=entry_time,
+                            position_id=position_id
                         )
                         if not should_sell:
                             logger.info(f"📝 SELL refusé pour {signal.symbol} - Raison: {trailing_reason}")
@@ -896,11 +898,12 @@ class Coordinator:
             entry_price = float(cycle.get('entry_price', 0))
             entry_time = cycle.get('timestamp')
             cycle_id = cycle.get('id')
-            
+            position_id = str(cycle_id) if cycle_id else f"pos_{symbol}"  # ID unique de position
+
             if not symbol or not entry_price:
                 logger.warning(f"⚠️ Données cycle incomplètes: {cycle}")
                 return
-            
+
             # Convertir timestamp en epoch si nécessaire
             if isinstance(entry_time, str):
                 from datetime import datetime
@@ -908,36 +911,37 @@ class Coordinator:
                 entry_time_epoch = entry_time_dt.timestamp()
             else:
                 entry_time_epoch = float(entry_time) if entry_time else time.time()
-            
+
             # Récupérer le prix actuel via TrailingSellManager
             current_price = self.trailing_manager.get_current_price(symbol)
             if not current_price:
                 logger.warning(f"Prix actuel indisponible pour {symbol} - skip monitoring")
                 return
-            
+
             # Vérifier le hard risk en premier (forçage absolu)
             if self.universe_manager.check_hard_risk(symbol):
                 logger.warning(f"🚨 HARD RISK détecté pour {symbol} - vente forcée!")
-                self._execute_emergency_sell(symbol, current_price, str(cycle_id) if cycle_id else "unknown", "HARD_RISK")
+                self._execute_emergency_sell(symbol, current_price, position_id, "HARD_RISK")
                 return
-            
+
             # Utiliser le TrailingSellManager pour vérifier si on doit vendre
             should_sell, sell_reason = self.trailing_manager.check_trailing_sell(
                 symbol=symbol,
                 current_price=current_price,
                 entry_price=entry_price,
-                entry_time=entry_time_epoch
+                entry_time=entry_time_epoch,
+                position_id=position_id
             )
             
             if should_sell:
                 logger.warning(f"🚨 AUTO-SELL DÉCLENCHÉ pour {symbol}: {sell_reason}")
                 # Déclencher vente d'urgence
-                self._execute_emergency_sell(symbol, current_price, str(cycle_id) if cycle_id else "unknown", sell_reason)
+                self._execute_emergency_sell(symbol, current_price, position_id, sell_reason)
                 return
             
             # Mettre à jour le prix max si position gagnante
             if current_price > entry_price:
-                self.trailing_manager.update_max_price_if_needed(symbol, current_price)
+                self.trailing_manager.update_max_price_if_needed(symbol, current_price, position_id)
             
                 
         except Exception as e:

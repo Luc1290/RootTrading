@@ -34,9 +34,13 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         
     def _convert_support_strength_to_score(self, strength_str: str) -> float:
         """Convertit support_strength string en score numérique."""
+        # Si déjà converti en float par main.py, le retourner directement
+        if isinstance(strength_str, (int, float)):
+            return float(strength_str)
+
         strength_map = {
             'WEAK': 0.2,
-            'MODERATE': 0.5, 
+            'MODERATE': 0.5,
             'STRONG': 0.8,
             'MAJOR': 1.0
         }
@@ -191,6 +195,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         Génère un signal basé sur les liquidity sweeps haussiers.
         """
         if not self.validate_data():
+            logger.debug(f"[{self.symbol}] Liquidity_Sweep rejet: validate_data() failed")
             return {
                 "side": None,
                 "confidence": 0.0,
@@ -260,6 +265,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             
         # Vérification force du support
         if support_strength_score is not None and support_strength_score < self.support_strength_min:
+            logger.info(f"[{self.symbol}] Liquidity_Sweep rejet: support trop faible - strength={support_strength_raw} ({support_strength_score:.2f} < {self.support_strength_min})")
             return {
                 "side": None,
                 "confidence": 0.0,
@@ -276,8 +282,9 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             
         # Détection du liquidity sweep setup
         sweep_analysis = self._detect_liquidity_sweep_setup(price_data, nearest_support)
-        
+
         if not sweep_analysis['is_sweep']:
+            logger.debug(f"[{self.symbol}] Liquidity_Sweep: {sweep_analysis['reason']} - support={nearest_support:.2f}, price={current_price:.2f}")
             return {
                 "side": None,
                 "confidence": 0.0,
@@ -327,6 +334,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             try:
                 vol_ratio = float(volume_ratio)
                 if vol_ratio < 0.7:  # Volume trop faible = rejet immédiat (assoupli)
+                    logger.info(f"[{self.symbol}] Liquidity_Sweep rejet: volume trop faible ({vol_ratio:.2f}x < 0.7x)")
                     return {
                         "side": None,
                         "confidence": 0.0,
@@ -365,6 +373,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
             try:
                 rsi = float(rsi_14)
                 if rsi > 70:  # RSI trop haut = rejet BUY sweep (assoupli)
+                    logger.info(f"[{self.symbol}] Liquidity_Sweep rejet: RSI trop haut ({rsi:.1f} > 70)")
                     return {
                         "side": None,
                         "confidence": 0.0,
