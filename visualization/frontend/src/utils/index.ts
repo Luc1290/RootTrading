@@ -19,7 +19,20 @@ export function formatCurrency(amount: number, currency: string = 'USDC'): strin
   if (amount === undefined || amount === null || isNaN(amount)) {
     return `0.00 ${currency}`;
   }
-  return `${formatNumber(amount, 2)} ${currency}`;
+
+  // Formater intelligemment selon la valeur
+  let decimals = 2;
+  if (amount >= 1) {
+    decimals = 2;  // BTC, ETH, etc: $67,543.21
+  } else if (amount >= 0.01) {
+    decimals = 4;  // SOL, etc: $0.1234
+  } else if (amount >= 0.0001) {
+    decimals = 6;  // DOGE, etc: $0.123456
+  } else {
+    decimals = 8;  // PEPE, SHIB, etc: $0.12345678
+  }
+
+  return `${formatNumber(amount, decimals)} ${currency}`;
 }
 
 export function formatPercent(value: number): string {

@@ -124,12 +124,12 @@ function PositionTrackerPage() {
     }
   };
 
-  // Auto-refresh toutes les 10 secondes
+  // Auto-refresh toutes les 60 secondes
   useEffect(() => {
     if (!autoRefresh) return;
 
     updatePrices();
-    const interval = setInterval(updatePrices, 10000);
+    const interval = setInterval(updatePrices, 60000);
 
     return () => clearInterval(interval);
   }, [positions, autoRefresh]);

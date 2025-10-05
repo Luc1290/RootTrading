@@ -38,7 +38,7 @@ interface TradingOpportunity {
   targets: { tp1: number; tp2: number; tp3: number };
   stopLoss: number;
   recommendedSize: { min: number; max: number };
-  action: 'BUY_NOW' | 'WAIT' | 'WAIT_PULLBACK' | 'WAIT_BREAKOUT' | 'WAIT_OVERSOLD' | 'SELL_OVERBOUGHT' | 'AVOID';
+  action: 'BUY_NOW' | 'WAIT' | 'WAIT_PULLBACK' | 'WAIT_BREAKOUT' | 'WAIT_OVERSOLD' | 'WAIT_QUALITY_GATE' | 'SELL_OVERBOUGHT' | 'AVOID';
   reason: string;
   estimatedHoldTime?: string;
 }
@@ -64,7 +64,7 @@ function ManualTradingPage() {
 
       // Pour chaque symbole, récupérer signaux + données techniques
       const opportunitiesData = await Promise.all(
-        symbols.slice(0, 15).map(async (symbol) => {
+        symbols.map(async (symbol) => {
           try {
             // Récupérer signaux et market data en parallèle
             const [signalsData, marketData] = await Promise.all([
@@ -84,7 +84,7 @@ function ManualTradingPage() {
               currentPrice,
               signals24h: signalsData.signals_count || 0,
               signalsConfidence: signalsData.avg_confidence || 0,
-              momentum: signalsData.momentum_score || 0,
+              momentum: signalsData.score_details?.momentum || 0,  // Score momentum calculé (/35)
               volumeRatio: signalsData.volume_ratio || 0,
               regime: signalsData.market_regime || 'UNKNOWN',
               adx: signalsData.adx,
@@ -114,9 +114,9 @@ function ManualTradingPage() {
         })
       );
 
-      // Filtrer les nulls et trier par score
+      // Filtrer les nulls seulement (garder même score 0 pour voir les WAIT_QUALITY_GATE)
       const validOpportunities = opportunitiesData
-        .filter((opp): opp is TradingOpportunity => opp !== null && opp.score > 0)
+        .filter((opp): opp is TradingOpportunity => opp !== null)
         .sort((a, b) => b.score - a.score);
 
       setOpportunities(validOpportunities);
@@ -134,13 +134,13 @@ function ManualTradingPage() {
     loadOpportunities();
   }, []);
 
-  // Auto-refresh toutes les 30 secondes
+  // Auto-refresh toutes les 60 secondes
   useEffect(() => {
     if (!autoRefresh) return;
 
     const interval = setInterval(() => {
       loadOpportunities();
-    }, 30000);
+    }, 60000);
 
     return () => clearInterval(interval);
   }, [autoRefresh]);
@@ -164,8 +164,23 @@ function ManualTradingPage() {
       case 'WAIT_PULLBACK': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50';
       case 'WAIT_BREAKOUT': return 'bg-blue-500/20 text-blue-400 border-blue-500/50';
       case 'WAIT_OVERSOLD': return 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50';
+      case 'WAIT_QUALITY_GATE': return 'bg-orange-500/20 text-orange-400 border-orange-500/50';
       case 'AVOID': return 'bg-gray-700/20 text-gray-500 border-gray-700/50';
       default: return 'bg-gray-500/20 text-gray-400 border-gray-500/50';
+    }
+  };
+
+  const getActionText = (action: string) => {
+    switch (action) {
+      case 'BUY_NOW': return 'ACHETER MAINTENANT ✅';
+      case 'SELL_OVERBOUGHT': return 'VENDRE - Trop haut 📈';
+      case 'WAIT': return 'ATTENDRE ⏳';
+      case 'WAIT_PULLBACK': return 'ATTENDRE QUE ÇA BAISSE 📉';
+      case 'WAIT_BREAKOUT': return 'ATTENDRE QUE ÇA MONTE 📈';
+      case 'WAIT_OVERSOLD': return 'ATTENDRE QUE ÇA REMONTE 🔄';
+      case 'WAIT_QUALITY_GATE': return 'BLOQUÉ - SETUP POURRI 🚫';
+      case 'AVOID': return 'NE PAS TOUCHER ❌';
+      default: return action;
     }
   };
 
@@ -177,17 +192,19 @@ function ManualTradingPage() {
       case 'WAIT_PULLBACK': return '🟡';
       case 'WAIT_BREAKOUT': return '🔵';
       case 'WAIT_OVERSOLD': return '🔵';
+      case 'WAIT_QUALITY_GATE': return '🚫';
       case 'AVOID': return '⚫';
       default: return '⚪';
     }
   };
 
   const getScoreColor = (score: number) => {
-    if (score >= 90) return 'text-emerald-400';
-    if (score >= 80) return 'text-green-400';
-    if (score >= 70) return 'text-lime-400';
-    if (score >= 60) return 'text-yellow-400';
-    if (score >= 50) return 'text-orange-400';
+    // Ajusté pour score sur 142 (au lieu de 100)
+    if (score >= 120) return 'text-emerald-400';  // 120/142 = 85%
+    if (score >= 105) return 'text-green-400';    // 105/142 = 74%
+    if (score >= 90) return 'text-lime-400';      // 90/142 = 63%
+    if (score >= 75) return 'text-yellow-400';    // 75/142 = 53%
+    if (score >= 60) return 'text-orange-400';    // 60/142 = 42%
     return 'text-red-400';
   };
 
@@ -243,17 +260,23 @@ function ManualTradingPage() {
               <span className="text-sm text-gray-400">USDC</span>
             </div>
 
-            {/* Toggle auto-refresh */}
-            <button
-              onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`px-4 py-2 rounded-lg transition-colors ${
-                autoRefresh
-                  ? 'bg-green-500/20 text-green-400 border border-green-500/50'
-                  : 'bg-gray-500/20 text-gray-400 border border-gray-500/50'
-              }`}
-            >
-              {autoRefresh ? '🔄 Auto' : '⏸️ Manuel'}
-            </button>
+            {/* Toggle auto-refresh (switch style) */}
+            <div className="flex items-center space-x-3">
+              <span className="text-sm text-gray-400">Auto-refresh (60s)</span>
+              <button
+                onClick={() => setAutoRefresh(!autoRefresh)}
+                aria-label={autoRefresh ? "Désactiver auto-refresh" : "Activer auto-refresh"}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  autoRefresh ? 'bg-green-500' : 'bg-gray-600'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    autoRefresh ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
 
             <button
               onClick={handleRefresh}
@@ -303,16 +326,16 @@ function ManualTradingPage() {
         <div className="chart-container">
           <div className="text-center">
             <div className="text-3xl font-bold text-blue-400">
-              {opportunities.filter(o => o.score >= 60).length}
+              {opportunities.filter(o => o.score >= 85).length}
             </div>
-            <div className="text-sm text-gray-400">⭐ Score ≥ 60</div>
+            <div className="text-sm text-gray-400">⭐ Score ≥ 85 (60%)</div>
           </div>
         </div>
       </div>
 
       {/* Liste des opportunités */}
       <div className="space-y-4">
-        {opportunities.slice(0, 10).map((opp, index) => {
+        {opportunities.map((opp, index) => {
           const tp1Gain = calculatePotentialGain(opp.currentPrice, opp.targets.tp1, capitalSize);
           const tp2Gain = calculatePotentialGain(opp.currentPrice, opp.targets.tp2, capitalSize);
           const slLoss = calculatePotentialGain(opp.currentPrice, opp.stopLoss, capitalSize);
@@ -332,7 +355,7 @@ function ManualTradingPage() {
                     <div>
                       <div className="text-xl font-bold text-white">{opp.symbol}</div>
                       <div className={`text-2xl font-mono font-bold ${getScoreColor(opp.score)}`}>
-                        {opp.score}/100
+                        {opp.score}/142
                       </div>
                     </div>
                   </div>
@@ -341,7 +364,7 @@ function ManualTradingPage() {
                 {/* Colonne 2: Action & Prix */}
                 <div className="col-span-3">
                   <div className={`inline-block px-4 py-2 rounded-lg border font-bold mb-3 ${getActionColor(opp.action)}`}>
-                    {getActionIcon(opp.action)} {opp.action.replace('_', ' ')}
+                    {getActionIcon(opp.action)} {getActionText(opp.action)}
                   </div>
                   <div className="space-y-1">
                     <div className="text-sm text-gray-400">Prix actuel</div>
@@ -412,20 +435,21 @@ function ManualTradingPage() {
                     <div>
                       <div className="text-xs text-gray-400">Momentum</div>
                       <div className={`text-lg font-bold ${
-                        opp.momentum >= 70 ? 'text-green-400' :
-                        opp.momentum >= 50 ? 'text-yellow-400' : 'text-orange-400'
+                        opp.momentum >= 25 ? 'text-green-400' :
+                        opp.momentum >= 18 ? 'text-yellow-400' : 'text-orange-400'
                       }`}>
-                        {opp.momentum.toFixed(0)}/100
+                        {opp.momentum.toFixed(0)}/35
                       </div>
                     </div>
                     <div>
-                      <div className="text-xs text-gray-400">Volume Ratio</div>
+                      <div className="text-xs text-gray-400">Volume Score</div>
                       <div className={`text-lg font-bold ${
-                        opp.volumeRatio >= 2.0 ? 'text-green-400' :
-                        opp.volumeRatio >= 1.5 ? 'text-yellow-400' : 'text-orange-400'
+                        (opp.score_details?.volume || 0) >= 20 ? 'text-green-400' :
+                        (opp.score_details?.volume || 0) >= 12 ? 'text-yellow-400' : 'text-orange-400'
                       }`}>
-                        {opp.volumeRatio.toFixed(1)}x
+                        {(opp.score_details?.volume || 0).toFixed(0)}/32
                       </div>
+                      <div className="text-xs text-gray-500">Ratio: {opp.volumeRatio.toFixed(1)}x</div>
                     </div>
                   </div>
                 </div>

@@ -34,6 +34,9 @@ RUN pip install --no-cache-dir -r /app/requirements-shared.txt && \
 # Copy shared modules
 COPY shared /app/shared
 
+# Copy notifications module
+COPY notifications /app/notifications
+
 # Copy application code
 COPY visualization/src/ ./src/
 
