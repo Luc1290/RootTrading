@@ -867,10 +867,11 @@ class SupportResistanceDetector:
         """
         supports = [l for l in levels if l.price < current_price and l.level_type in [LevelType.SUPPORT, LevelType.TRENDLINE]]
         resistances = [l for l in levels if l.price > current_price and l.level_type in [LevelType.RESISTANCE, LevelType.TRENDLINE]]
-        
-        # Trier par proximité et force
-        supports.sort(key=lambda x: (-self._strength_to_number(x.strength), x.distance_from_price))
-        resistances.sort(key=lambda x: (-self._strength_to_number(x.strength), x.distance_from_price))
+
+        # Trier par DISTANCE d'abord (scalping nécessite niveaux les plus proches)
+        # Puis par force comme critère secondaire
+        supports.sort(key=lambda x: (x.distance_from_price, -self._strength_to_number(x.strength)))
+        resistances.sort(key=lambda x: (x.distance_from_price, -self._strength_to_number(x.strength)))
         
         return {
             'nearest_support': supports[0].to_dict() if supports else None,

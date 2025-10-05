@@ -42,25 +42,36 @@ class OpportunityCalculator:
         # ============================================================
         # GATE A - R/R MINIMAL (CRITIQUE pour SPOT)
         # ============================================================
+        nearest_support = self.safe_float(ad.get('nearest_support'))
         nearest_resistance = self.safe_float(ad.get('nearest_resistance'))
         bb_position = self.safe_float(ad.get('bb_position'), 0.5)
 
         # Calcul distances TP/SL pour scalping SPOT
-        # Target: 1-1.5%, SL: max 0.7% (besoin R/R ≥ 1.30)
+        # Target: 1% minimum (scalping conservateur)
         tp1_dist = max(0.01, atr_percent * 1.2)   # Target minimum 1% OU 1.2x ATR
-        sl_dist = max(0.007, atr_percent * 0.7)   # SL maximum 0.7% OU 0.7x ATR (tight stop)
+
+        # SL intelligent: utiliser nearest_support si disponible, sinon ATR
+        if nearest_support > 0 and current_price > nearest_support:
+            sl_dist = max(0.007, (current_price - nearest_support) / current_price)
+        else:
+            sl_dist = max(0.007, atr_percent * 0.7)   # Fallback ATR
 
         rr_ratio = tp1_dist / sl_dist if sl_dist > 0 else 0
 
-        # Refuse si R/R < 1.40 (besoin bon reward/risk pour scalping)
+        # R/R minimal strict pour SPOT
         if rr_ratio < 1.40:
-            return False, f"❌ Gate A (R/R): Ratio {rr_ratio:.2f} < 1.40 (reward insuffisant) | TP:{tp1_dist*100:.2f}% vs SL:{sl_dist*100:.2f}%"
+            sl_basis = "support" if (nearest_support > 0 and current_price > nearest_support) else "ATR"
+            return False, f"❌ Gate A (R/R): Ratio {rr_ratio:.2f} < 1.40 (reward insuffisant) | TP:{tp1_dist*100:.2f}% vs SL:{sl_dist*100:.2f}% (base:{sl_basis})"
 
-        # Refuse SEULEMENT si résistance TRÈS proche ET prix déjà haut dans BB + overbought
+        # Refuse si résistance < TP1 distance (impossible d'atteindre target)
         if nearest_resistance > 0:
             dist_to_resistance_pct = ((float(nearest_resistance) - float(current_price)) / float(current_price)) * 100
 
-            # Critère plus strict: résistance < 0.3% ET BB > 0.95 ET (RSI > 70 OU MFI > 75)
+            # Gate CRITIQUE: résistance plus proche que notre target
+            if dist_to_resistance_pct < (tp1_dist * 100):
+                return False, f"❌ Gate A (Résistance): Résistance à {dist_to_resistance_pct:.2f}% < Target {tp1_dist*100:.2f}% → Impossible d'atteindre TP1"
+
+            # Gate secondaire: résistance TRÈS proche + prix déjà haut + overbought
             rsi = self.safe_float(ad.get('rsi_14'), 50)
             mfi = self.safe_float(ad.get('mfi_14'), 50)
 
@@ -103,12 +114,51 @@ class OpportunityCalculator:
         # ✅ Tous les gates passés
         return True, f"✅ Quality Gates OK | R/R:{rr_ratio:.2f} | Vol:{rel_volume:.1f}x | Context:{vol_context or 'N/A'}"
 
+    def _check_higher_timeframe(self, higher_tf: Optional[dict]) -> tuple[bool, str]:
+        """
+        Vérifie l'alignement du timeframe supérieur (5m)
+        Pour scalping 1m, le 5m doit confirmer la direction (pas de contre-tendance)
+
+        Returns:
+            (is_aligned, reason)
+        """
+        # Si pas de données 5m, on accepte (mode dégradé)
+        if not higher_tf:
+            return True, "✅ 5m: données indisponibles (mode dégradé)"
+
+        rsi_5m = self.safe_float(higher_tf.get('rsi_14'), 50)
+        macd_trend_5m = higher_tf.get('macd_trend')
+        regime_5m = higher_tf.get('market_regime', 'UNKNOWN')
+        plus_di_5m = self.safe_float(higher_tf.get('plus_di'))
+        minus_di_5m = self.safe_float(higher_tf.get('minus_di'))
+
+        # Critères d'alignement 5m (au moins 1 critère bullish + pas de régime baissier fort)
+        is_bullish = (
+            macd_trend_5m == 'BULLISH' or
+            rsi_5m > 50 or
+            plus_di_5m > minus_di_5m
+        )
+
+        is_bear_regime = regime_5m in ['TRENDING_BEAR', 'BREAKOUT_BEAR']
+
+        # Rejet si contre-tendance forte (régime baissier + aucun indicateur bullish)
+        if is_bear_regime and not is_bullish:
+            return False, f"🟡 5m contre-tendance forte: Régime={regime_5m}, RSI={rsi_5m:.0f}, MACD={macd_trend_5m or 'N/A'}, +DI={plus_di_5m:.0f} vs -DI={minus_di_5m:.0f}"
+
+        # Rejet si TOUS les indicateurs baissiers
+        if not is_bullish:
+            return False, f"🟡 5m tous indicateurs baissiers: RSI={rsi_5m:.0f}<50, MACD={macd_trend_5m or 'BEARISH'}, -DI>{plus_di_5m:.0f}"
+
+        # ✅ Contexte 5m acceptable
+        return True, f"✅ 5m aligné: Régime={regime_5m}, RSI={rsi_5m:.0f}, MACD={macd_trend_5m or 'N/A'}"
+
     def calculate_opportunity(
         self,
         symbol: str,
         current_price: float,
         analyzer_data: Optional[dict],
-        signals_data: Optional[dict]
+        signals_data: Optional[dict],
+        higher_tf: Optional[dict] = None
     ) -> dict:
         """
         Calcule l'opportunité de trading pour un symbole
@@ -116,8 +166,9 @@ class OpportunityCalculator:
         Args:
             symbol: Symbole à analyser
             current_price: Prix actuel
-            analyzer_data: Données techniques de l'analyzer
+            analyzer_data: Données techniques de l'analyzer (1m)
             signals_data: Données des signaux de trading
+            higher_tf: Données techniques du timeframe supérieur (5m) pour validation contexte
 
         Returns:
             dict: Opportunité complète avec score, action, targets, etc.
@@ -134,14 +185,32 @@ class OpportunityCalculator:
         signals_count = int(signals_data.get('count', 0)) if signals_data else 0
         avg_confidence = self.safe_float(signals_data.get('avg_conf')) if signals_data else 0
 
-        # Calculer ATR en pourcentage
+        # Calculer ATR en pourcentage avec fallback intelligent
         atr_value = self.safe_float(ad.get('atr_14'))
-        atr_percent = (atr_value / current_price) if current_price > 0 and atr_value > 0 else 0.015
+        natr = self.safe_float(ad.get('natr'))  # Normalized ATR (déjà en %)
+
+        if atr_value > 0 and current_price > 0:
+            atr_percent = atr_value / current_price
+        elif natr > 0:
+            atr_percent = natr / 100.0  # natr est en pourcentage
+        else:
+            # Pas de données ATR fiables → ne pas trader
+            return {
+                "symbol": symbol,
+                "score": 0,
+                "action": "WAIT_DATA",
+                "reason": "ATR/NATR indisponibles → volatilité non mesurable, setup invalide"
+            }
 
         # ============================================================
         # QUALITY GATES - Vérifie mais ne bloque PAS le scoring (juste l'action)
         # ============================================================
         gate_passed, gate_reason = self._check_quality_gates(ad, current_price, atr_percent)
+
+        # ============================================================
+        # MULTI-TIMEFRAME GATE - Vérifier contexte 5m si disponible
+        # ============================================================
+        higher_tf_ok, higher_tf_reason = self._check_higher_timeframe(higher_tf)
 
         # ============================================================
         # 1. TREND QUALITY (25 points)
@@ -203,10 +272,14 @@ class OpportunityCalculator:
         if not gate_passed:
             action = "WAIT_QUALITY_GATE"
             reason = gate_reason
+        # Si higher TF non aligné, forcer WAIT_HIGHER_TF
+        elif not higher_tf_ok:
+            action = "WAIT_HIGHER_TF"
+            reason = higher_tf_reason
         else:
             action, reason = self._determine_action(
                 ad, total_score, trend_score, momentum_score, volume_score,
-                price_action_score, current_price
+                price_action_score, current_price, institutional_score
             )
 
         # Calcul zones et targets
@@ -565,8 +638,6 @@ class OpportunityCalculator:
         stoch_d = self.safe_float(ad.get('stoch_d'))
         stoch_signal = ad.get('stoch_signal')
         mfi = self.safe_float(ad.get('mfi_14'))
-        macd_hist = self.safe_float(ad.get('macd_histogram'))
-        macd_trend = ad.get('macd_trend')
 
         vol_quality = self.safe_float(ad.get('volume_quality_score'))
         vol_context = ad.get('volume_context')
@@ -585,12 +656,35 @@ class OpportunityCalculator:
         signal_strength = ad.get('signal_strength')
         pattern_conf = self.safe_float(ad.get('pattern_confidence'))
 
+        # Calculer les points réels pour les explications
+        williams_r = self.safe_float(ad.get('williams_r'))
+        cci_20 = self.safe_float(ad.get('cci_20'))
+        roc_10 = self.safe_float(ad.get('roc_10'))
+        obv_osc = self.safe_float(ad.get('obv_oscillator'))
+
+        # Points Trend (seuils réels: 45/35/28/22)
+        adx_pts = 10 if adx>45 else 8 if adx>35 else 5 if adx>28 else 2 if adx>22 else 0
+        di_pts = 8 if (plus_di>minus_di and plus_di>28) else 5 if (plus_di>minus_di and plus_di>23) else 3 if plus_di>minus_di else 0
+        regime_pts = 7 if (regime in ['TRENDING_BULL','BREAKOUT_BULL'] and regime_conf>85) else 4 if (regime in ['TRENDING_BULL','BREAKOUT_BULL'] and regime_conf>70) else 0
+
+        # Points Momentum (seuils réels: Williams 6pts, CCI 6pts, ROC 5pts, Stoch 5pts)
+        rsi_pts = 8 if (52<rsi_14<68 and rsi_14>rsi_21) else 4 if (45<rsi_14<58) else 3 if rsi_14<28 else 0
+        stoch_pts = 5 if (stoch_signal=='BUY' or (stoch_k>stoch_d and stoch_k>25)) else 3 if stoch_k>55 else 0
+        williams_pts = 6 if (-30<williams_r<-10) else 3 if (-50<williams_r<-30) else 4 if williams_r<-80 else 0
+        cci_pts = 6 if (50<cci_20<150) else 3 if (0<cci_20<50) else 4 if cci_20<-100 else 0
+        roc_pts = 5 if roc_10>0.15 else 3 if roc_10>0.05 else 0
+        mfi_pts = 5 if (52<mfi<78) else 3 if (42<mfi<62) else 0
+
+        # Points Volume (seuils réels: quality≥55→8pts, OBV>100→7pts)
+        vol_quality_pts = min(8, ((vol_quality - 55) / 45) * 8) if vol_quality>55 else 0
+        obv_pts = 7 if obv_osc>100 else 4 if obv_osc>0 else 2 if obv_osc>-200 else 0
+
         return {
-            "trend": f"ADX:{adx:.1f} ({'+10pts' if adx>40 else '+8pts' if adx>30 else '+5pts' if adx>25 else '+2pts' if adx>20 else '0pt'}), DI+:{plus_di:.1f} vs DI-:{minus_di:.1f} ({'+8pts' if plus_di>minus_di and plus_di>25 else '+5pts' if plus_di>minus_di and plus_di>20 else '+3pts' if plus_di>minus_di else '0pt'}), Régime:{regime} conf:{regime_conf:.0f}% ({'+7pts' if regime in ['TRENDING_BULL','BREAKOUT_BULL'] and regime_conf>80 else '+4pts' if regime in ['TRENDING_BULL','BREAKOUT_BULL'] and regime_conf>60 else '0pt'})",
-            "momentum": f"RSI14:{rsi_14:.1f} vs RSI21:{rsi_21:.1f} ({'+8pts' if 50<rsi_14<70 and rsi_14>rsi_21 else '+4pts' if 40<rsi_14<60 else '+3pts' if rsi_14<30 else '0pt'}), Stoch:{stoch_k:.1f}/{stoch_d:.1f} signal:{stoch_signal or 'N/A'} ({'+7pts' if stoch_signal=='BUY' or (stoch_k>stoch_d and stoch_k>20) else '+4pts' if stoch_k>50 else '0pt'}), MFI:{mfi:.1f} ({'+5pts' if 50<mfi<80 else '+3pts' if 40<mfi<60 else '0pt'}), MACD hist:{macd_hist:.4f} trend:{macd_trend or 'N/A'} ({'+5pts' if macd_trend=='BULLISH' and macd_hist>0 else '+3pts' if macd_hist>0 else '0pt'})",
-            "volume": f"Quality:{vol_quality:.0f}/100 (+{min(8, (vol_quality/100)*8):.1f}pts), Context:{vol_context or 'N/A'} ({'+7pts' if vol_context=='ACCUMULATION' else '+6pts' if vol_context=='BREAKOUT' else '0pt'}), Rel.volume:{rel_volume:.2f}x ({'+5pts' if rel_volume>2.0 else '+3pts' if rel_volume>1.5 else '+2pts' if rel_volume>1.2 else '0pt'})",
-            "price_action": f"Support:{nearest_support:.4f} ({support_strength or 'N/A'}), Resistance:{nearest_resistance:.4f} ({resistance_strength or 'N/A'}), Break prob:{break_prob:.0f}% ({'+6pts' if break_prob>70 else '+4pts' if break_prob>50 else '0pt'}), BB pos:{bb_position:.2f} squeeze:{bb_squeeze} expansion:{bb_expansion}",
-            "consensus": f"Confluence:{confluence:.0f}/100 (+{min(5, (confluence/100)*5):.1f}pts), Signal strength:{signal_strength or 'N/A'} ({'+3pts' if signal_strength=='STRONG' else '+2pts' if signal_strength=='MODERATE' else '0pt'}), Pattern conf:{pattern_conf:.0f}% ({'+2pts' if pattern_conf>70 else '+1pt' if pattern_conf>50 else '0pt'})"
+            "trend": f"ADX:{adx:.1f} (+{adx_pts}pts), DI+:{plus_di:.1f} vs DI-:{minus_di:.1f} (+{di_pts}pts), Régime:{regime} conf:{regime_conf:.0f}% (+{regime_pts}pts)",
+            "momentum": f"RSI14:{rsi_14:.1f} vs RSI21:{rsi_21:.1f} (+{rsi_pts}pts), Stoch:{stoch_k:.1f}/{stoch_d:.1f} (+{stoch_pts}pts), Williams:{williams_r:.1f} (+{williams_pts}pts), CCI:{cci_20:.1f} (+{cci_pts}pts), ROC:{roc_10:.3f} (+{roc_pts}pts), MFI:{mfi:.1f} (+{mfi_pts}pts)",
+            "volume": f"Quality:{vol_quality:.0f}/100 (+{vol_quality_pts:.1f}pts), OBV osc:{obv_osc:.0f} (+{obv_pts}pts), Context:{vol_context or 'N/A'}, Rel.volume:{rel_volume:.2f}x",
+            "price_action": f"Support:{nearest_support:.4f} ({support_strength or 'N/A'}), Resistance:{nearest_resistance:.4f} ({resistance_strength or 'N/A'}), Break prob:{break_prob:.0f}%, BB pos:{bb_position:.2f} squeeze:{bb_squeeze} expansion:{bb_expansion}",
+            "consensus": f"Confluence:{confluence:.0f}/100 (+{min(5, (confluence/100)*5):.1f}pts), Signal strength:{signal_strength or 'N/A'}, Pattern conf:{pattern_conf:.0f}%"
         }
 
     def _determine_action(
@@ -601,7 +695,8 @@ class OpportunityCalculator:
         momentum_score: float,
         volume_score: float,
         price_action_score: float,
-        current_price: float
+        current_price: float,
+        institutional_score: float
     ) -> tuple[str, str]:
         """Détermine l'action recommandée et la raison"""
 
@@ -668,7 +763,6 @@ class OpportunityCalculator:
         # ============================================================
         # 3. CRITÈRES BUY NOW - OPTIMISÉS POUR SCALPING (score sur 142 pts)
         # ============================================================
-        institutional_score = self.safe_float(ad.get('institutional_score', 0))
         obv_osc = self.safe_float(ad.get('obv_oscillator'))
 
         buy_criteria = {

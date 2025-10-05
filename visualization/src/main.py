@@ -328,7 +328,7 @@ async def get_trading_opportunity(symbol: str):
             """
             signals_data = await conn.fetchrow(signals_query, symbol)
 
-            # Récupérer TOUTES les données techniques pertinentes
+            # Récupérer TOUTES les données techniques pertinentes (1m pour signal, 5m pour contexte)
             analyzer_query = """
                 SELECT
                     -- Regime & Trend
@@ -370,7 +370,7 @@ async def get_trading_opportunity(symbol: str):
                     pattern_detected, pattern_confidence, signal_strength, confluence_score,
 
                     -- Volatility
-                    atr_14, volatility_regime, atr_percentile,
+                    atr_14, natr, volatility_regime, atr_percentile,
 
                     -- Moving Averages
                     ema_7, ema_12, ema_26, ema_50, ema_99, sma_20, sma_50,
@@ -381,11 +381,12 @@ async def get_trading_opportunity(symbol: str):
 
                 FROM analyzer_data
                 WHERE symbol = $1
-                AND timeframe = '1m'
+                AND timeframe = $2
                 ORDER BY time DESC
                 LIMIT 1
             """
-            analyzer_data = await conn.fetchrow(analyzer_query, symbol)
+            analyzer_data_1m = await conn.fetchrow(analyzer_query, symbol, '1m')
+            analyzer_data_5m = await conn.fetchrow(analyzer_query, symbol, '5m')
 
             # Récupérer prix actuel
             price_query = """
@@ -408,15 +409,17 @@ async def get_trading_opportunity(symbol: str):
             current_price = float(price_data['close'])
 
             # Convertir les données DB en dict
-            analyzer_dict = dict(analyzer_data) if analyzer_data else {}
+            analyzer_dict_1m = dict(analyzer_data_1m) if analyzer_data_1m else {}
+            analyzer_dict_5m = dict(analyzer_data_5m) if analyzer_data_5m else None
             signals_dict = dict(signals_data) if signals_data else {}
 
-            # Calculer l'opportunité via le calculateur
+            # Calculer l'opportunité via le calculateur (avec contexte 5m)
             response_data = opportunity_calculator.calculate_opportunity(
                 symbol=symbol,
                 current_price=current_price,
-                analyzer_data=analyzer_dict,
-                signals_data=signals_dict
+                analyzer_data=analyzer_dict_1m,
+                signals_data=signals_dict,
+                higher_tf=analyzer_dict_5m
             )
 
             # Envoyer notification Telegram uniquement pour les signaux BUY
