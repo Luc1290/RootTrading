@@ -53,13 +53,6 @@ class CriticalFilters:
         import os
         self.pullback_tolerance_bp = int(os.environ.get('STRICT_PULLBACK_BP', '25'))  # 25 bp par défaut (0.25%)
         self.pullback_tolerance = self.pullback_tolerance_bp / 10000  # Conversion en ratio
-
-        # ========== SYSTÈME DE QUOTA TRADES ==========
-        # Cache en mémoire pour les quotas (symbol → last_trade_time)
-        self.trade_quota_cache = {}
-        self.quota_cooldown_minutes = 15  # 15 minutes entre TOUS les trades par symbole
-        self.cache_cleanup_interval = 300  # Nettoyer le cache toutes les 5 min
-        self.last_cache_cleanup = 0
         
     def apply_critical_filters(self, signals: List[Dict[str, Any]],
                               context: Dict[str, Any]) -> Tuple[bool, str]:
@@ -75,11 +68,6 @@ class CriticalFilters:
         """
         if not signals:
             return False, "Aucun signal à valider"
-
-        # ========== QUOTA GLOBAL TOUS TRADES (15MIN PAR SYMBOLE) ==========
-        symbol = context.get('symbol', 'UNKNOWN')
-        if not self._check_trade_quota_available(symbol):
-            return False, f"QUOTA TRADE BLOQUÉ: {symbol} déjà tradé dans les {self.quota_cooldown_minutes} dernières minutes"
 
         # ========== VALIDATION MTF ADAPTATIVE (INTELLIGENTE) ==========
         if self.strict_mtf_enabled:
@@ -162,10 +150,7 @@ class CriticalFilters:
         if not technical_check[0]:
             return False, f"ANOMALIE TECHNIQUE: {technical_check[1]}"
 
-        # ========== RÉSERVATION QUOTA (TOUS FILTRES PASSÉS) ==========
-        # Réserver le quota maintenant que tous les filtres sont validés
-        self._reserve_trade_quota(symbol)
-
+        # Tous les filtres critiques sont passés
         return True, "Tous les filtres critiques passés"
         
     def _check_market_regime_compatibility(self, signals: List[Dict[str, Any]], 
@@ -1037,9 +1022,6 @@ class CriticalFilters:
             if distance_pct > max_overshoot:
                 return False, f"Momentum bypass: dépassement {distance_pct:.4f} > {max_overshoot:.4f} max"
 
-            # TODO: Vérifier cooldown 30-60min par symbole
-            # (nécessiterait cache mémoire ou DB check)
-
             logger.info(f"🚀 MOMENTUM BYPASS activé: distance={distance_pct:.4f}, "
                       f"vol={volume_ratio:.2f}, regime={consensus_regime}")
 
@@ -1053,146 +1035,3 @@ class CriticalFilters:
             logger.error(f"Erreur momentum bypass: {e}")
             return False, f"Momentum bypass error: {e}"
 
-    def _check_trade_quota_available(self, symbol: str) -> bool:
-        """
-        Vérifie si le quota de trade est disponible pour ce symbole.
-        Utilise cache + DB pour performances et persistance.
-
-        Args:
-            symbol: Symbole à vérifier
-
-        Returns:
-            True si quota disponible, False sinon
-        """
-        try:
-            import time
-            current_time = time.time()
-
-            # Nettoyer le cache périodiquement
-            self._cleanup_quota_cache(current_time)
-
-            # 1. Vérifier d'abord le cache (plus rapide)
-            if symbol in self.trade_quota_cache:
-                last_trade_time = self.trade_quota_cache[symbol]
-                if current_time - last_trade_time < (self.quota_cooldown_minutes * 60):
-                    # Quota non disponible selon le cache
-                    return False
-                else:
-                    # Cache expiré, supprimer l'entrée
-                    del self.trade_quota_cache[symbol]
-
-            # 2. Vérifier dans la DB (source de vérité)
-            if self.db_connection:
-                try:
-                    cursor = self.db_connection.cursor()
-                    try:
-                        # Chercher le dernier trade (TOUS TYPES) dans les 15 dernières minutes
-                        cursor.execute("""
-                            SELECT MAX(created_at) as last_trade
-                            FROM trade_cycles
-                            WHERE symbol = %s
-                              AND created_at >= NOW() - INTERVAL '%s minutes'
-                        """, (symbol, self.quota_cooldown_minutes))
-
-                        result = cursor.fetchone()
-                        if result and result[0]:
-                            # Trade récent trouvé, quota non disponible
-                            # Mettre à jour le cache
-                            import calendar
-                            last_trade_timestamp = calendar.timegm(result[0].timetuple())
-                            self.trade_quota_cache[symbol] = last_trade_timestamp
-
-                            logger.debug(f"Quota DB: dernier trade {symbol} à {result[0]}")
-                            return False
-
-                    finally:
-                        cursor.close()
-                except Exception as e:
-                    logger.warning(f"Erreur vérification quota DB pour {symbol}: {e}")
-                    # En cas d'erreur DB, utiliser seulement le cache (fail-safe)
-
-            # 3. Quota disponible
-            return True
-
-        except Exception as e:
-            logger.error(f"Erreur check quota {symbol}: {e}")
-            return True  # En cas d'erreur, ne pas bloquer le trade
-
-    def _reserve_trade_quota(self, symbol: str):
-        """
-        Réserve le quota pour ce symbole (mise à jour du cache).
-        La DB sera mise à jour lors de la création du trade_cycle.
-
-        Args:
-            symbol: Symbole à réserver
-        """
-        try:
-            import time
-            current_time = time.time()
-
-            # Mettre à jour le cache
-            self.trade_quota_cache[symbol] = current_time
-
-            logger.info(f"✅ Quota réservé pour {symbol} (cache mis à jour)")
-
-        except Exception as e:
-            logger.error(f"Erreur réservation quota {symbol}: {e}")
-
-    def _cleanup_quota_cache(self, current_time: float):
-        """
-        Nettoie le cache des entrées expirées.
-
-        Args:
-            current_time: Timestamp actuel
-        """
-        try:
-            # Nettoyer seulement toutes les 5 minutes
-            if current_time - self.last_cache_cleanup < self.cache_cleanup_interval:
-                return
-
-            expired_symbols = []
-            quota_timeout = self.quota_cooldown_minutes * 60
-
-            for symbol, last_trade_time in self.trade_quota_cache.items():
-                if current_time - last_trade_time >= quota_timeout:
-                    expired_symbols.append(symbol)
-
-            # Supprimer les entrées expirées
-            for symbol in expired_symbols:
-                del self.trade_quota_cache[symbol]
-
-            if expired_symbols:
-                logger.debug(f"Cache quota nettoyé: {len(expired_symbols)} entrées expirées")
-
-            self.last_cache_cleanup = current_time
-
-        except Exception as e:
-            logger.error(f"Erreur nettoyage cache quota: {e}")
-
-    def get_quota_stats(self) -> Dict[str, Any]:
-        """
-        Retourne les statistiques du système de quota.
-
-        Returns:
-            Dict des statistiques
-        """
-        try:
-            import time
-            current_time = time.time()
-
-            active_quotas = {}
-            for symbol, last_trade_time in self.trade_quota_cache.items():
-                remaining_seconds = max(0, (self.quota_cooldown_minutes * 60) - (current_time - last_trade_time))
-                if remaining_seconds > 0:
-                    active_quotas[symbol] = int(remaining_seconds / 60)  # Minutes restantes
-
-            return {
-                'cooldown_minutes': self.quota_cooldown_minutes,
-                'cache_size': len(self.trade_quota_cache),
-                'active_quotas': active_quotas,
-                'cache_cleanup_interval': self.cache_cleanup_interval
-            }
-
-        except Exception as e:
-            logger.error(f"Erreur stats quota: {e}")
-            return {}

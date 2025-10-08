@@ -1,8 +1,8 @@
 """
-Calculateur d'opportunités de trading manuel - VERSION OPTIMISÉE v2.0
-Analyse multi-critères pour signaux BUY/WAIT/AVOID sur timeframe 1m/5m scalping
-Optimisé pour SPOT avec target 1%+ en 5-30min
-Utilise TOUS les 108+ indicateurs disponibles en DB
+Calculateur d'opportunités HYBRIDE - Version Scalping SPOT v3.0
+Mix optimal de opportunity_calculator_simple + scalp_entry_simple
+4 conditions critiques + 2 modes (conservative/momentum)
+Optimisé pour capturer setups 1m/5m avec gestion intelligente des résistances
 """
 import logging
 from typing import Optional
@@ -12,117 +12,463 @@ logger = logging.getLogger(__name__)
 
 class OpportunityCalculator:
     """
-    Calcule le score d'opportunité de trading basé sur 6 piliers OPTIMISÉS:
-    - Trend Quality (25 pts)
-    - Momentum Confluence (35 pts) ↑ Ajout Williams %R, CCI, ROC
-    - Volume Validation (32 pts) ↑ Ajout OBV, Trade Intensity, Spikes
-    - Price Action (20 pts) ↑ Ajout VWAP bands, Volume Profile POC
-    - Consensus & Signals (10 pts)
-    - Institutional Flow (20 pts) ★ NOUVEAU - Smart Money tracking
+    Calculateur optimisé pour scalping SPOT 1m/5m en BULL MARKET
 
-    Total: 142 points (au lieu de 100)
-    Optimisé pour scalping SPOT 1m/5m avec détection institutionnelle
-    Seuils calibrés pour réduire les faux signaux
+    Architecture:
+    - Base: 4 conditions critiques TOUTES requises (pas de scoring arbitraire)
+    - Innovation: Résistance ADAPTATIVE (momentum fort → casse les résistances)
+
+    ✅ 1. VOLUME BREAKOUT - Volume explosif + OBV positif
+    ✅ 2. MOMENTUM ALIGNMENT - RSI/Williams/MACD/CCI alignés (3/4 minimum)
+    ✅ 3. TREND QUALITY - ADX >20, +DI > -DI, régime bull
+    ✅ 4. SMART RESISTANCE - Ignore résistance si momentum/volume assez fort
+
+    Philosophie: En bull market ATH, les résistances sont faites pour être cassées.
+    Si ADX >25 ou volume spike >2x → on achète la force, pas la faiblesse.
+
+    Actions: BUY_NOW, WAIT (avec raison précise)
     """
+
+    def __init__(self):
+        """
+        Calculateur d'opportunités avec logique momentum adaptative
+        Les résistances sont ignorées si le momentum est assez fort pour les casser
+        """
+        pass
 
     @staticmethod
     def safe_float(value, default=0.0):
         """Convertir en float avec fallback"""
         return float(value) if value is not None else default
 
+    def calculate_opportunity(
+        self,
+        symbol: str,
+        current_price: float,
+        analyzer_data: Optional[dict],
+        signals_data: Optional[dict] = None,
+        higher_tf: Optional[dict] = None
+    ) -> dict:
+        """
+        Évalue si c'est LE moment d'acheter (scalping 1m/5m)
+
+        Args:
+            symbol: Symbole à analyser
+            current_price: Prix actuel
+            analyzer_data: Données techniques (1m)
+            signals_data: (optionnel) Données signaux
+            higher_tf: (optionnel) Données 5m pour validation contexte
+
+        Returns:
+            dict avec action BUY_NOW ou WAIT et raison détaillée
+        """
+        if not analyzer_data:
+            return {
+                "symbol": symbol,
+                "action": "WAIT",
+                "reason": "❌ Pas de données techniques",
+                "conditions": {
+                    "volume_breakout": False,
+                    "momentum_alignment": False,
+                    "trend_quality": False,
+                    "no_resistance": False
+                },
+                "current_price": current_price,
+                "targets": {
+                    "tp1": current_price * 1.01,
+                    "tp1_percent": 1.0,
+                    "tp2": current_price * 1.015,
+                    "tp2_percent": 1.5
+                },
+                "stop_loss": current_price * 0.988,
+                "stop_loss_percent": 1.2,
+                "estimated_hold_time": "N/A",
+                "market_regime": "UNKNOWN",
+                "volume_context": None,
+                "raw_data": {
+                    "rsi": None,
+                    "adx": None,
+                    "mfi": None,
+                    "obv_osc": None,
+                    "rel_volume": 0.0,
+                    "volume_quality_score": None,
+                    "nearest_resistance": None
+                }
+            }
+
+        ad = analyzer_data
+
+        # Calculer ATR en pourcentage avec fallback
+        atr_value = self.safe_float(ad.get('atr_14'))
+        natr = self.safe_float(ad.get('natr'))
+
+        if atr_value > 0 and current_price > 0:
+            atr_percent = atr_value / current_price
+        elif natr > 0:
+            atr_percent = natr / 100.0
+        else:
+            return {
+                "symbol": symbol,
+                "action": "WAIT",
+                "reason": "❌ ATR/NATR indisponibles → volatilité non mesurable",
+                "conditions": {
+                    "volume_breakout": False,
+                    "momentum_alignment": False,
+                    "trend_quality": False,
+                    "no_resistance": False
+                },
+                "current_price": current_price,
+                "targets": {
+                    "tp1": current_price * 1.01,
+                    "tp1_percent": 1.0,
+                    "tp2": current_price * 1.015,
+                    "tp2_percent": 1.5
+                },
+                "stop_loss": current_price * 0.988,
+                "stop_loss_percent": 1.2,
+                "estimated_hold_time": "N/A",
+                "market_regime": ad.get('market_regime', 'UNKNOWN'),
+                "volume_context": ad.get('volume_context'),
+                "raw_data": {
+                    "rsi": self.safe_float(ad.get('rsi_14')),
+                    "adx": self.safe_float(ad.get('adx_14')),
+                    "mfi": self.safe_float(ad.get('mfi_14')),
+                    "obv_osc": self.safe_float(ad.get('obv_oscillator')),
+                    "rel_volume": self.safe_float(ad.get('relative_volume'), 0.0),
+                    "volume_quality_score": self.safe_float(ad.get('volume_quality_score')),
+                    "nearest_resistance": self.safe_float(ad.get('nearest_resistance'))
+                }
+            }
+
+        # ===========================================================
+        # QUALITY GATES PRÉ-VALIDATION (blocage immédiat)
+        # ===========================================================
+        gate_passed, gate_reason = self._check_quality_gates(ad, current_price, atr_percent)
+        if not gate_passed:
+            return {
+                "symbol": symbol,
+                "action": "WAIT_QUALITY_GATE",
+                "reason": gate_reason,
+                "conditions": {
+                    "volume_breakout": False,
+                    "momentum_alignment": False,
+                    "trend_quality": False,
+                    "no_resistance": False
+                },
+                "current_price": current_price,
+                "targets": {
+                    "tp1": round(current_price * 1.01, 8),
+                    "tp1_percent": 1.0,
+                    "tp2": round(current_price * 1.015, 8),
+                    "tp2_percent": 1.5
+                },
+                "stop_loss": round(current_price * 0.988, 8),
+                "stop_loss_percent": 1.2,
+                "estimated_hold_time": "N/A",
+                "market_regime": ad.get('market_regime', 'UNKNOWN'),
+                "volume_context": ad.get('volume_context'),
+                "raw_data": {
+                    "rsi": self.safe_float(ad.get('rsi_14')),
+                    "adx": self.safe_float(ad.get('adx_14')),
+                    "mfi": self.safe_float(ad.get('mfi_14')),
+                    "obv_osc": self.safe_float(ad.get('obv_oscillator')),
+                    "rel_volume": self.safe_float(ad.get('relative_volume'), 0.0),
+                    "volume_quality_score": self.safe_float(ad.get('volume_quality_score')),
+                    "nearest_resistance": self.safe_float(ad.get('nearest_resistance'))
+                }
+            }
+
+        # ===========================================================
+        # HIGHER TIMEFRAME VALIDATION (5m)
+        # ===========================================================
+        htf_ok, htf_reason = self._check_higher_timeframe(higher_tf)
+        if not htf_ok:
+            return {
+                "symbol": symbol,
+                "action": "WAIT_HIGHER_TF",
+                "reason": htf_reason,
+                "conditions": {
+                    "volume_breakout": False,
+                    "momentum_alignment": False,
+                    "trend_quality": False,
+                    "no_resistance": False
+                },
+                "current_price": current_price,
+                "targets": {
+                    "tp1": round(current_price * 1.01, 8),
+                    "tp1_percent": 1.0,
+                    "tp2": round(current_price * 1.015, 8),
+                    "tp2_percent": 1.5
+                },
+                "stop_loss": round(current_price * 0.988, 8),
+                "stop_loss_percent": 1.2,
+                "estimated_hold_time": "N/A",
+                "market_regime": ad.get('market_regime', 'UNKNOWN'),
+                "volume_context": ad.get('volume_context'),
+                "raw_data": {
+                    "rsi": self.safe_float(ad.get('rsi_14')),
+                    "adx": self.safe_float(ad.get('adx_14')),
+                    "mfi": self.safe_float(ad.get('mfi_14')),
+                    "obv_osc": self.safe_float(ad.get('obv_oscillator')),
+                    "rel_volume": self.safe_float(ad.get('relative_volume'), 0.0),
+                    "volume_quality_score": self.safe_float(ad.get('volume_quality_score')),
+                    "nearest_resistance": self.safe_float(ad.get('nearest_resistance'))
+                }
+            }
+
+        # ===========================================================
+        # CONDITION 1: VOLUME BREAKOUT ⚡
+        # ===========================================================
+        volume_ok, volume_reason = self._check_volume_breakout(ad)
+
+        # ===========================================================
+        # CONDITION 2: MOMENTUM ALIGNMENT 📈
+        # ===========================================================
+        momentum_ok, momentum_reason = self._check_momentum_alignment(ad)
+
+        # ===========================================================
+        # CONDITION 3: TREND QUALITY 📊
+        # ===========================================================
+        trend_ok, trend_reason = self._check_trend_quality(ad)
+
+        # ===========================================================
+        # CONDITION 4: NO RESISTANCE BLOCK 🚀
+        # ===========================================================
+        resistance_ok, resistance_reason = self._check_no_resistance_block(
+            ad, current_price, atr_percent
+        )
+
+        # ===========================================================
+        # PATH ALTERNATIF: PRE-BREAKOUT SNIPER 🎯
+        # ===========================================================
+        # Détecte compression + accumulation AVANT le spike
+        prebreakout_ok, prebreakout_reason = self._check_prebreakout_setup(ad, atr_percent)
+
+        # ===========================================================
+        # DÉCISION FINALE
+        # ===========================================================
+        conditions = {
+            "volume_breakout": volume_ok,
+            "momentum_alignment": momentum_ok,
+            "trend_quality": trend_ok,
+            "no_resistance": resistance_ok
+        }
+
+        all_conditions_met = all(conditions.values())
+
+        # Path A: Pump Catcher (4/4 conditions) OU Path B: Pre-Breakout Setup
+        if all_conditions_met or prebreakout_ok:
+            # 🎯 SETUP PARFAIT - ACHETER MAINTENANT
+            action = "BUY_NOW"
+
+            # Zone d'entrée optimale (pullback hint)
+            entry_hint = self._pullback_entry_hint(ad, current_price)
+
+            if all_conditions_met:
+                # Path A: Pump Catcher confirmé
+                reason = (
+                    f"🎯 PUMP CATCHER - Les 4 conditions réunies:\n"
+                    f"✅ Volume: {volume_reason}\n"
+                    f"✅ Momentum: {momentum_reason}\n"
+                    f"✅ Trend: {trend_reason}\n"
+                    f"✅ Résistance: {resistance_reason}\n"
+                    f"📍 Entrée: {entry_hint}"
+                )
+            else:
+                # Path B: Pre-Breakout Setup
+                reason = (
+                    f"🎯 PRE-BREAKOUT SNIPER - Setup anticipation:\n"
+                    f"{prebreakout_reason}\n"
+                    f"📍 Entrée: {entry_hint}"
+                )
+                # Marquer prebreakout comme condition spéciale
+                conditions["prebreakout_sniper"] = True
+        else:
+            # ⏸️ ATTENDRE - Indiquer ce qui manque
+            action = "WAIT"
+            missing = []
+            if not volume_ok:
+                missing.append(f"❌ Volume: {volume_reason}")
+            if not momentum_ok:
+                missing.append(f"❌ Momentum: {momentum_reason}")
+            if not trend_ok:
+                missing.append(f"❌ Trend: {trend_reason}")
+            if not resistance_ok:
+                missing.append(f"❌ Résistance: {resistance_reason}")
+
+            reason = f"⏸️ ATTENDRE - Conditions manquantes:\n" + "\n".join(missing)
+
+        # Calculer targets basiques
+        tp1 = current_price * (1 + max(0.01, atr_percent * 0.8))
+        tp2 = current_price * (1 + max(0.015, atr_percent * 1.2))
+
+        # SL intelligent: support si dispo, sinon ATR
+        nearest_support = self.safe_float(ad.get('nearest_support'))
+        if nearest_support > 0 and current_price > nearest_support:
+            sl_dist = max(0.007, (current_price - nearest_support) / current_price)
+        else:
+            sl_dist = max(0.007, atr_percent * 0.7)
+
+        stop_loss = current_price * (1 - sl_dist)
+
+        # Estimation durée hold
+        hold_time = self._estimate_hold_time(ad, atr_percent)
+
+        return {
+            "symbol": symbol,
+            "action": action,
+            "reason": reason,
+            "conditions": conditions,
+            "current_price": current_price,
+            "targets": {
+                "tp1": round(tp1, 8),
+                "tp1_percent": round(((tp1 - current_price) / current_price) * 100, 2),
+                "tp2": round(tp2, 8),
+                "tp2_percent": round(((tp2 - current_price) / current_price) * 100, 2)
+            },
+            "stop_loss": round(stop_loss, 8),
+            "stop_loss_percent": round(sl_dist * 100, 2),
+            "estimated_hold_time": hold_time,
+            "market_regime": ad.get('market_regime', 'UNKNOWN'),
+            "volume_context": ad.get('volume_context'),
+            # Données clés pour debugging
+            "raw_data": {
+                "rsi": self.safe_float(ad.get('rsi_14'), 50),
+                "adx": self.safe_float(ad.get('adx_14')),
+                "mfi": self.safe_float(ad.get('mfi_14')),
+                "obv_osc": self.safe_float(ad.get('obv_oscillator')),
+                "rel_volume": self.safe_float(ad.get('relative_volume'), 1.0),
+                "volume_quality_score": self.safe_float(ad.get('volume_quality_score')),
+                "nearest_resistance": self.safe_float(ad.get('nearest_resistance'))
+            }
+        }
+
     def _check_quality_gates(self, ad: dict, current_price: float, atr_percent: float) -> tuple[bool, str]:
         """
-        3 Quality Gates qui court-circuitent AVANT le scoring
-        Élimine les setups médiocres dès le départ (SPOT = pas de short, exit rapide obligatoire)
+        QUALITY GATES pré-validation (blocage immédiat sans calcul)
+
+        Gates critiques pour SPOT:
+        - Gate Volume: refuse DISTRIBUTION forte ou volume mort
+        - Gate Surachat: refuse si overbought extrême (RSI >75 ou MFI >80)
+        - Gate R/R: refuse si R/R <1.4 ou résistance < target (impossible TP1)
 
         Returns:
             (gate_passed, reason)
         """
-
         # ============================================================
-        # GATE A - R/R MINIMAL (CRITIQUE pour SPOT)
-        # ============================================================
-        nearest_support = self.safe_float(ad.get('nearest_support'))
-        nearest_resistance = self.safe_float(ad.get('nearest_resistance'))
-        bb_position = self.safe_float(ad.get('bb_position'), 0.5)
-
-        # Calcul distances TP/SL pour scalping SPOT
-        # Target: 1% minimum (scalping conservateur)
-        tp1_dist = max(0.01, atr_percent * 1.2)   # Target minimum 1% OU 1.2x ATR
-
-        # SL intelligent: utiliser nearest_support si disponible, sinon ATR
-        if nearest_support > 0 and current_price > nearest_support:
-            sl_dist = max(0.007, (current_price - nearest_support) / current_price)
-        else:
-            sl_dist = max(0.007, atr_percent * 0.7)   # Fallback ATR
-
-        rr_ratio = tp1_dist / sl_dist if sl_dist > 0 else 0
-
-        # R/R minimal strict pour SPOT
-        if rr_ratio < 1.40:
-            sl_basis = "support" if (nearest_support > 0 and current_price > nearest_support) else "ATR"
-            return False, f"❌ Gate A (R/R): Ratio {rr_ratio:.2f} < 1.40 (reward insuffisant) | TP:{tp1_dist*100:.2f}% vs SL:{sl_dist*100:.2f}% (base:{sl_basis})"
-
-        # Refuse si résistance < TP1 distance (impossible d'atteindre target)
-        if nearest_resistance > 0:
-            dist_to_resistance_pct = ((float(nearest_resistance) - float(current_price)) / float(current_price)) * 100
-
-            # Gate CRITIQUE: résistance plus proche que notre target
-            if dist_to_resistance_pct < (tp1_dist * 100):
-                return False, f"❌ Gate A (Résistance): Résistance à {dist_to_resistance_pct:.2f}% < Target {tp1_dist*100:.2f}% → Impossible d'atteindre TP1"
-
-            # Gate secondaire: résistance TRÈS proche + prix déjà haut + overbought
-            rsi = self.safe_float(ad.get('rsi_14'), 50)
-            mfi = self.safe_float(ad.get('mfi_14'), 50)
-
-            if dist_to_resistance_pct < 0.3 and bb_position > 0.95 and (rsi > 70 or mfi > 75):
-                return False, f"❌ Gate A (Résistance): Collé au plafond {dist_to_resistance_pct:.1f}% + BB {bb_position:.2f} + Overbought → Bloqué"
-
-        # ============================================================
-        # GATE B - VOLUME ABSOLU (confirmation obligatoire)
+        # GATE 1: VOLUME ABSOLU
         # ============================================================
         vol_context = ad.get('volume_context')
         rel_volume = self.safe_float(ad.get('relative_volume'), 1.0)
         obv_osc = self.safe_float(ad.get('obv_oscillator'))
         vol_pattern = ad.get('volume_pattern')
 
-        # Refuse DISTRIBUTION (vente institutionnelle forte)
-        if vol_context == 'DISTRIBUTION' and rel_volume > 1.5:
-            return False, f"❌ Gate B (Volume): Context DISTRIBUTION avec volume {rel_volume:.1f}x → Smart money sort massivement"
+        # Refuse contextes baissiers (valeurs réelles de VolumeContextType en UPPERCASE)
+        bearish_contexts = ['REVERSAL_PATTERN', 'DEEP_OVERSOLD']
+        if vol_context in bearish_contexts and rel_volume > 1.2:
+            return False, f"❌ Gate Volume: {vol_context} {rel_volume:.1f}x → Smart money sort"
 
-        # Refuse si volume relatif < 0.5x (vraiment mort)
+        # Refuse volume mort
         if rel_volume < 0.5:
-            return False, f"❌ Gate B (Volume): Rel volume {rel_volume:.2f}x < 0.5x → Marché mort"
+            return False, f"❌ Gate Volume: {rel_volume:.2f}x < 0.5x → Marché mort"
 
-        # Refuse si OBV négatif + volume déclinant (momentum mort)
+        # Refuse OBV négatif + volume déclinant (valeurs réelles de VolumePatternType en UPPERCASE)
         if obv_osc < -200 and vol_pattern == 'DECLINING':
-            return False, f"❌ Gate B (OBV): OBV {obv_osc:.0f} + volume DECLINING → Momentum mort"
+            return False, f"❌ Gate Volume: OBV {obv_osc:.0f} + DECLINING → Momentum mort"
 
         # ============================================================
-        # GATE C - VWAP POSITION (référence institutionnelle)
+        # GATE 2: SURACHAT EXTRÊME
         # ============================================================
-        vwap = self.safe_float(ad.get('vwap_quote_10'))
-        vwap_upper = self.safe_float(ad.get('vwap_upper_band'))
+        rsi = self.safe_float(ad.get('rsi_14'), 50)
+        mfi = self.safe_float(ad.get('mfi_14'), 50)
+        k = self.safe_float(ad.get('stoch_k'))
+        d = self.safe_float(ad.get('stoch_d'))
+        bb_pos = self.safe_float(ad.get('bb_position'), 0.5)
 
-        # Refuse si prix > VWAP upper band ET résistance proche (overbought + plafonné)
-        if vwap_upper > 0 and float(current_price) > float(vwap_upper):
-            if nearest_resistance > 0:
-                dist_to_resistance_pct = ((float(nearest_resistance) - float(current_price)) / float(current_price)) * 100
-                if dist_to_resistance_pct < 1.0:  # Résistance < 1%
-                    return False, f"❌ Gate C (VWAP): Prix > VWAP upper + résistance {dist_to_resistance_pct:.1f}% → Overbought plafonné"
+        # Seuils tolérants pour bull market (on achète la force)
+        # Si ADX >30 + volume fort, on tolère plus de surachat
+        adx = self.safe_float(ad.get('adx_14'))
+        rel_volume = self.safe_float(ad.get('relative_volume'), 1.0)
+        plus_di = self.safe_float(ad.get('plus_di'))
+        minus_di = self.safe_float(ad.get('minus_di'))
+        regime = ad.get('market_regime', 'UNKNOWN')
 
-        # ✅ Tous les gates passés
-        return True, f"✅ Quality Gates OK | R/R:{rr_ratio:.2f} | Vol:{rel_volume:.1f}x | Context:{vol_context or 'N/A'}"
+        strong_market = adx > 30 and rel_volume > 1.5
+
+        # Exception bull fort: TRENDING_BULL avec dominance directionnelle forte (plus_di > 2x minus_di)
+        # → On tolère MFI élevé car momentum buying peut persister
+        bull_dominance = (
+            regime == 'TRENDING_BULL' and
+            plus_di > 30 and
+            minus_di > 0 and
+            (plus_di / minus_di) > 2.0
+        )
+
+        # PUMP CATCHING MODE: Si volume spike + momentum directionnel fort
+        # → Ignorer Stochastic et BB Position (ils restent saturés pendant les pumps)
+        # → Prioriser le momentum directionnel (ADX + Plus DI dominance)
+        pump_catching = (
+            rel_volume > 1.5 and
+            adx > 20 and
+            plus_di > 25 and
+            minus_di > 0 and
+            (plus_di / minus_di) > 1.8 and
+            regime in ['TRENDING_BULL', 'BREAKOUT_BULL']
+        )
+
+        if pump_catching:
+            # Mode PUMP CATCHING: ignore Stochastic/BB, garde RSI/MFI pour protection extrême
+            rsi_lim, mfi_lim, stoch_lim, bb_lim = 82, 88, 999, 1.30  # Stoch/BB pratiquement désactivés
+        elif strong_market:
+            # Marché fort: tolère plus de surachat
+            rsi_lim, mfi_lim, stoch_lim, bb_lim = 82, 85, 95, 1.08
+        elif bull_dominance:
+            # Bull dominant: tolère MFI élevé mais garde RSI strict
+            rsi_lim, mfi_lim, stoch_lim, bb_lim = 75, 88, 92, 1.05
+        else:
+            # Marché normal: seuils standards
+            rsi_lim, mfi_lim, stoch_lim, bb_lim = 75, 80, 90, 1.02
+
+        if rsi > rsi_lim or mfi > mfi_lim or (k > stoch_lim and d > stoch_lim) or bb_pos > bb_lim:
+            return False, f"❌ Gate Surachat: RSI {rsi:.0f}/{rsi_lim}, MFI {mfi:.0f}/{mfi_lim}, Stoch {k:.0f}/{d:.0f}, BB {bb_pos:.2f}"
+
+        # ============================================================
+        # GATE 3: R/R MINIMAL
+        # ============================================================
+        nearest_support = self.safe_float(ad.get('nearest_support'))
+        nearest_resistance = self.safe_float(ad.get('nearest_resistance'))
+
+        # Target minimum
+        tp_dist = max(0.01, atr_percent * 0.8)
+
+        # SL intelligent
+        if nearest_support > 0 and current_price > nearest_support:
+            sl_dist = max(0.007, (current_price - nearest_support) / current_price)
+            sl_basis = "support"
+        else:
+            sl_dist = max(0.007, atr_percent * 0.7)
+            sl_basis = "ATR"
+
+        rr_ratio = tp_dist / sl_dist if sl_dist > 0 else 0
+
+        # R/R minimum strict (mais pas de gate résistance - géré dans condition 4 avec bypass intelligents)
+        if rr_ratio < 1.4:
+            return False, f"❌ Gate R/R: {rr_ratio:.2f} < 1.40 (TP {tp_dist*100:.2f}% vs SL {sl_dist*100:.2f}%, base {sl_basis})"
+
+        # Gate résistance SUPPRIMÉ - check fait dans _check_smart_resistance avec bypass momentum/volume
+        # Ceci évite de bloquer les setups avec strong momentum qui vont casser la résistance
+
+        return True, f"✅ Quality Gates OK | R/R {rr_ratio:.2f} | Vol {rel_volume:.1f}x"
 
     def _check_higher_timeframe(self, higher_tf: Optional[dict]) -> tuple[bool, str]:
         """
-        Vérifie l'alignement du timeframe supérieur (5m)
-        Pour scalping 1m, le 5m doit confirmer la direction (pas de contre-tendance)
+        Vérifie alignement timeframe supérieur (5m)
+        Pour scalping 1m, le 5m doit confirmer la direction
 
         Returns:
             (is_aligned, reason)
         """
-        # Si pas de données 5m, on accepte (mode dégradé)
+        # Pas de données 5m = mode dégradé OK
         if not higher_tf:
             return True, "✅ 5m: données indisponibles (mode dégradé)"
 
@@ -132,7 +478,7 @@ class OpportunityCalculator:
         plus_di_5m = self.safe_float(higher_tf.get('plus_di'))
         minus_di_5m = self.safe_float(higher_tf.get('minus_di'))
 
-        # Critères d'alignement 5m (au moins 1 critère bullish + pas de régime baissier fort)
+        # Au moins 1 critère bullish + pas de régime baissier fort
         is_bullish = (
             macd_trend_5m == 'BULLISH' or
             rsi_5m > 50 or
@@ -141,744 +487,559 @@ class OpportunityCalculator:
 
         is_bear_regime = regime_5m in ['TRENDING_BEAR', 'BREAKOUT_BEAR']
 
-        # Rejet si contre-tendance forte (régime baissier + aucun indicateur bullish)
+        # Rejet si contre-tendance forte
         if is_bear_regime and not is_bullish:
-            return False, f"🟡 5m contre-tendance forte: Régime={regime_5m}, RSI={rsi_5m:.0f}, MACD={macd_trend_5m or 'N/A'}, +DI={plus_di_5m:.0f} vs -DI={minus_di_5m:.0f}"
+            return False, f"🟡 5m contre-tendance: {regime_5m}, RSI {rsi_5m:.0f}, MACD {macd_trend_5m or 'N/A'}"
 
-        # Rejet si TOUS les indicateurs baissiers
+        # Rejet si TOUS baissiers
         if not is_bullish:
-            return False, f"🟡 5m tous indicateurs baissiers: RSI={rsi_5m:.0f}<50, MACD={macd_trend_5m or 'BEARISH'}, -DI>{plus_di_5m:.0f}"
+            return False, f"🟡 5m baissier: RSI {rsi_5m:.0f}<50, MACD {macd_trend_5m or 'BEARISH'}"
 
-        # ✅ Contexte 5m acceptable
-        return True, f"✅ 5m aligné: Régime={regime_5m}, RSI={rsi_5m:.0f}, MACD={macd_trend_5m or 'N/A'}"
+        return True, f"✅ 5m aligné: {regime_5m}, RSI {rsi_5m:.0f}"
 
-    def calculate_opportunity(
-        self,
-        symbol: str,
-        current_price: float,
-        analyzer_data: Optional[dict],
-        signals_data: Optional[dict],
-        higher_tf: Optional[dict] = None
-    ) -> dict:
+    def _check_volume_breakout(self, ad: dict) -> tuple[bool, str]:
         """
-        Calcule l'opportunité de trading pour un symbole
+        CONDITION 1: Volume Breakout
 
-        Args:
-            symbol: Symbole à analyser
-            current_price: Prix actuel
-            analyzer_data: Données techniques de l'analyzer (1m)
-            signals_data: Données des signaux de trading
-            higher_tf: Données techniques du timeframe supérieur (5m) pour validation contexte
+        Critères:
+        - Volume relatif >1.5x OU spike >2x
+        - Context: ACCUMULATION, BREAKOUT, PUMP_START, ou SUSTAINED_HIGH
+        - OBV oscillator >0 (buying pressure)
 
         Returns:
-            dict: Opportunité complète avec score, action, targets, etc.
+            (is_valid, reason)
         """
-        if not analyzer_data:
-            return {
-                "symbol": symbol,
-                "score": 0,
-                "action": "AVOID",
-                "reason": "Pas de données techniques disponibles"
-            }
+        rel_volume = self.safe_float(ad.get('relative_volume'), 1.0)
+        vol_spike = self.safe_float(ad.get('volume_spike_multiplier'), 1.0)
+        vol_context = ad.get('volume_context')
+        obv_osc = self.safe_float(ad.get('obv_oscillator'))
+        vol_quality = self.safe_float(ad.get('volume_quality_score'), 50.0)
 
-        ad = analyzer_data
-        signals_count = int(signals_data.get('count', 0)) if signals_data else 0
-        avg_confidence = self.safe_float(signals_data.get('avg_conf')) if signals_data else 0
+        # Contexts bullish (valeurs réelles de VolumeContextType enum en UPPERCASE depuis DB)
+        good_contexts = [
+            'BREAKOUT',              # Breakout confirmé
+            'PUMP_START',            # Début pump
+            'OVERSOLD_BOUNCE',       # Rebond oversold
+            'CONSOLIDATION_BREAK',   # Sortie consolidation
+            'TREND_CONTINUATION'     # Continuation tendance
+        ]
 
-        # Calculer ATR en pourcentage avec fallback intelligent
-        atr_value = self.safe_float(ad.get('atr_14'))
-        natr = self.safe_float(ad.get('natr'))  # Normalized ATR (déjà en %)
+        # Vérifier volume élevé
+        volume_high = rel_volume > 1.5 or vol_spike > 2.0
 
-        if atr_value > 0 and current_price > 0:
-            atr_percent = atr_value / current_price
-        elif natr > 0:
-            atr_percent = natr / 100.0  # natr est en pourcentage
-        else:
-            # Pas de données ATR fiables → ne pas trader
-            return {
-                "symbol": symbol,
-                "score": 0,
-                "action": "WAIT_DATA",
-                "reason": "ATR/NATR indisponibles → volatilité non mesurable, setup invalide"
-            }
+        # Vérifier context favorable
+        context_ok = vol_context in good_contexts
 
-        # ============================================================
-        # QUALITY GATES - Vérifie mais ne bloque PAS le scoring (juste l'action)
-        # ============================================================
-        gate_passed, gate_reason = self._check_quality_gates(ad, current_price, atr_percent)
+        # Vérifier OBV positif
+        obv_positive = obv_osc > 0
 
-        # ============================================================
-        # MULTI-TIMEFRAME GATE - Vérifier contexte 5m si disponible
-        # ============================================================
-        higher_tf_ok, higher_tf_reason = self._check_higher_timeframe(higher_tf)
+        # Vérifier qualité minimum
+        quality_ok = vol_quality > 45
 
-        # ============================================================
-        # 1. TREND QUALITY (25 points)
-        # ============================================================
-        trend_score = self._calculate_trend_score(ad)
+        if volume_high and context_ok and obv_positive and quality_ok:
+            return True, f"Vol {rel_volume:.1f}x, Spike {vol_spike:.1f}x, {vol_context}, OBV +{obv_osc:.0f}, Qual {vol_quality:.0f}"
 
-        # ============================================================
-        # 2. MOMENTUM CONFLUENCE (35 points) ↑ OPTIMISÉ
-        # ============================================================
-        momentum_score = self._calculate_momentum_score(ad)
+        # Raison du rejet
+        issues = []
+        if not volume_high:
+            issues.append(f"Vol faible ({rel_volume:.1f}x, spike {vol_spike:.1f}x)")
+        if not context_ok:
+            issues.append(f"Context {vol_context or 'UNKNOWN'}")
+        if not obv_positive:
+            issues.append(f"OBV {obv_osc:.0f}")
+        if not quality_ok:
+            issues.append(f"Qualité {vol_quality:.0f}/100")
 
-        # ============================================================
-        # 3. VOLUME VALIDATION (32 points) ↑ OPTIMISÉ
-        # ============================================================
-        volume_score = self._calculate_volume_score(ad)
+        return False, " | ".join(issues)
 
-        # ============================================================
-        # 4. PRICE ACTION (20 points) ↑ OPTIMISÉ
-        # ============================================================
-        price_action_score = self._calculate_price_action_score(ad, current_price)
+    def _check_momentum_alignment(self, ad: dict) -> tuple[bool, str]:
+        """
+        CONDITION 2: Momentum Alignment
 
-        # ============================================================
-        # 5. CONSENSUS & SIGNALS (10 points)
-        # ============================================================
-        consensus_score = self._calculate_consensus_score(ad)
+        Critères (AU MOINS 3/4):
+        - RSI entre 45-75 (zone bullish sans overbought)
+        - Williams %R >-50 (momentum positif)
+        - MACD trend = BULLISH
+        - CCI >0 (momentum positif)
 
-        # ============================================================
-        # 6. INSTITUTIONAL FLOW (20 points) ★ NOUVEAU
-        # ============================================================
-        institutional_score = self._calculate_institutional_flow(ad, current_price)
+        Returns:
+            (is_valid, reason)
+        """
+        rsi = self.safe_float(ad.get('rsi_14'), 50)
+        williams = self.safe_float(ad.get('williams_r'))
+        macd_trend = ad.get('macd_trend')
+        cci = self.safe_float(ad.get('cci_20'))
+        macd_hist = self.safe_float(ad.get('macd_histogram'))
 
-        # ============================================================
-        # SCORE TOTAL (142 points max)
-        # ============================================================
-        total_score = trend_score + momentum_score + volume_score + price_action_score + consensus_score + institutional_score
-
-        # ============================================================
-        # ESTIMATION DURÉE DE HOLD (scalping 5m)
-        # ============================================================
-        estimated_hold_time = self._estimate_hold_time(ad, atr_percent, momentum_score)
-
-        # Détails des composantes
-        score_details = {
-            "trend": round(trend_score, 1),
-            "momentum": round(momentum_score, 1),
-            "volume": round(volume_score, 1),
-            "price_action": round(price_action_score, 1),
-            "consensus": round(consensus_score, 1),
-            "institutional": round(institutional_score, 1)
+        # Vérifier chaque indicateur
+        checks = {
+            'rsi': 45 < rsi < 75,
+            'williams': williams > -50,
+            'macd': macd_trend == 'BULLISH',
+            'cci': cci > 0
         }
 
-        # Explication détaillée de chaque pilier
-        score_explanation = self._build_score_explanation(ad, score_details)
+        valid_count = sum(checks.values())
 
-        # ============================================================
-        # DÉTERMINATION ACTION
-        # ============================================================
-        # Si quality gate échoué, forcer WAIT_QUALITY_GATE (mais garder le score)
-        if not gate_passed:
-            action = "WAIT_QUALITY_GATE"
-            reason = gate_reason
-        # Si higher TF non aligné, forcer WAIT_HIGHER_TF
-        elif not higher_tf_ok:
-            action = "WAIT_HIGHER_TF"
-            reason = higher_tf_reason
-        else:
-            action, reason = self._determine_action(
-                ad, total_score, trend_score, momentum_score, volume_score,
-                price_action_score, current_price, institutional_score
-            )
+        if valid_count >= 3:
+            # Au moins 3/4 conditions remplies
+            indicators = []
+            if checks['rsi']:
+                indicators.append(f"RSI {rsi:.0f}")
+            if checks['williams']:
+                indicators.append(f"Williams {williams:.0f}")
+            if checks['macd']:
+                indicators.append("MACD bullish")
+            if checks['cci']:
+                indicators.append(f"CCI +{cci:.0f}")
 
-        # Calcul zones et targets
-        entry_min = current_price * 0.998
-        entry_max = current_price * 1.002
+            return True, " | ".join(indicators) + f" ({valid_count}/4 ✓)"
 
-        tp1 = current_price * (1 + max(0.01, atr_percent * 0.7))
-        tp2 = current_price * (1 + max(0.015, atr_percent * 1.0))
-        tp3 = current_price * (1 + max(0.02, atr_percent * 1.5))
+        # Pas assez d'indicateurs alignés
+        issues = []
+        if not checks['rsi']:
+            if rsi > 75:
+                issues.append(f"RSI overbought ({rsi:.0f})")
+            else:
+                issues.append(f"RSI faible ({rsi:.0f})")
+        if not checks['williams']:
+            issues.append(f"Williams {williams:.0f}")
+        if not checks['macd']:
+            issues.append(f"MACD {macd_trend or 'UNKNOWN'}")
+        if not checks['cci']:
+            issues.append(f"CCI {cci:.0f}")
 
-        stop_loss = current_price * (1 - max(0.012, atr_percent * 1.2))
+        return False, " | ".join(issues) + f" ({valid_count}/4 seulement)"
 
-        # Taille position recommandée basée sur volatilité
-        if atr_percent < 0.01:
-            rec_min, rec_max = 5000, 10000  # Faible volatilité
-        elif atr_percent < 0.02:
-            rec_min, rec_max = 3000, 7000   # Volatilité moyenne
-        else:
-            rec_min, rec_max = 2000, 5000   # Haute volatilité
+    def _check_trend_quality(self, ad: dict) -> tuple[bool, str]:
+        """
+        CONDITION 3: Trend Quality
 
-        # Préparer la réponse
-        return {
-            "symbol": symbol,
-            "score": round(total_score, 1),
-            "score_details": score_details,
-            "score_explanation": score_explanation,
-            "signals_count": signals_count,
-            "avg_confidence": avg_confidence,
-            "momentum_score": self.safe_float(ad.get('momentum_score')),
-            "volume_ratio": self.safe_float(ad.get('volume_ratio'), 1.0),
-            "market_regime": ad.get('market_regime', 'UNKNOWN'),
-            "adx": self.safe_float(ad.get('adx_14')),
-            "rsi": self.safe_float(ad.get('rsi_14'), 50),
-            "mfi": self.safe_float(ad.get('mfi_14')),
-            "volume_context": ad.get('volume_context'),
-            "volume_quality_score": self.safe_float(ad.get('volume_quality_score')),
-            "nearest_support": self.safe_float(ad.get('nearest_support')),
-            "nearest_resistance": self.safe_float(ad.get('nearest_resistance')),
-            "break_probability": self.safe_float(ad.get('break_probability')),
-            "entry_zone": {
-                "min": round(entry_min, 8),
-                "max": round(entry_max, 8)
-            },
-            "targets": {
-                "tp1": round(tp1, 8),
-                "tp2": round(tp2, 8),
-                "tp3": round(tp3, 8)
-            },
-            "stop_loss": round(stop_loss, 8),
-            "recommended_size": {
-                "min": rec_min,
-                "max": rec_max
-            },
-            "action": action,
-            "reason": reason,
-            "estimated_hold_time": estimated_hold_time
-        }
+        Critères:
+        - ADX >20 (tendance confirmée)
+        - +DI > -DI (direction haussière)
+        - Régime: TRENDING_BULL ou BREAKOUT_BULL
 
-    def _calculate_trend_score(self, ad: dict) -> float:
-        """Calcule le score de tendance (max 25 pts) - Seuils ajustés pour 1m"""
-        trend_score = 0
-
-        # ADX - Force de tendance (max 10 pts) - Seuils plus hauts pour 1m
+        Returns:
+            (is_valid, reason)
+        """
         adx = self.safe_float(ad.get('adx_14'))
-        if adx > 45:  # Plus strict (était 40)
-            trend_score += 10
-        elif adx > 35:  # Plus strict (était 30)
-            trend_score += 8
-        elif adx > 28:  # Plus strict (était 25)
-            trend_score += 5
-        elif adx > 22:  # Plus strict (était 20)
-            trend_score += 2
-
-        # Directional Movement - Alignement (max 8 pts) - Plus strict
         plus_di = self.safe_float(ad.get('plus_di'))
         minus_di = self.safe_float(ad.get('minus_di'))
-        if plus_di > minus_di and plus_di > 28:  # Plus strict (était 25)
-            trend_score += 8
-        elif plus_di > minus_di and plus_di > 23:  # Plus strict (était 20)
-            trend_score += 5
-        elif plus_di > minus_di:
-            trend_score += 3
-
-        # Regime confidence (max 7 pts) - Plus strict sur confidence
-        regime_conf = self.safe_float(ad.get('regime_confidence'))
         regime = ad.get('market_regime', 'UNKNOWN')
-        if regime in ['TRENDING_BULL', 'BREAKOUT_BULL'] and regime_conf > 85:  # Plus strict (était 80)
-            trend_score += 7
-        elif regime in ['TRENDING_BULL', 'BREAKOUT_BULL'] and regime_conf > 70:  # Plus strict (était 60)
-            trend_score += 4
 
-        return trend_score
+        if adx < 20:
+            return False, f"ADX {adx:.1f} < 20"
 
-    def _calculate_momentum_score(self, ad: dict) -> float:
-        """Calcule le score de momentum (max 35 pts) - OPTIMISÉ avec oscillateurs avancés"""
-        momentum_score = 0
+        if plus_di <= minus_di:
+            return False, f"-DI {minus_di:.1f} >= +DI {plus_di:.1f}"
 
-        # RSI - Position et alignement (max 8 pts)
-        rsi_14 = self.safe_float(ad.get('rsi_14'), 50)
-        rsi_21 = self.safe_float(ad.get('rsi_21'), 50)
-        if 52 < rsi_14 < 68 and rsi_14 > rsi_21:
-            momentum_score += 8
-        elif 45 < rsi_14 < 58:
-            momentum_score += 4
-        elif rsi_14 < 28:  # Oversold = opportunité
-            momentum_score += 3
+        if regime in ('TRENDING_BEAR', 'BREAKOUT_BEAR'):
+            return False, f"Régime {regime}"
 
-        # Williams %R (max 6 pts) ★ NOUVEAU - Plus sensible que Stochastic
-        williams_r = self.safe_float(ad.get('williams_r'))
-        if -30 < williams_r < -10:  # Zone achat optimale
-            momentum_score += 6
-        elif -50 < williams_r < -30:  # Zone neutre positive
-            momentum_score += 3
-        elif williams_r < -80:  # Deep oversold = rebond probable
-            momentum_score += 4
+        return True, f"ADX {adx:.1f}, +DI {plus_di:.1f} > -DI {minus_di:.1f}, {regime}"
 
-        # CCI (max 6 pts) ★ NOUVEAU - Détection extrêmes
-        cci_20 = self.safe_float(ad.get('cci_20'))
-        if 50 < cci_20 < 150:  # Momentum positif sans overbought
-            momentum_score += 6
-        elif 0 < cci_20 < 50:  # Momentum positif léger
-            momentum_score += 3
-        elif cci_20 < -100:  # Extreme oversold
-            momentum_score += 4
-
-        # ROC (max 5 pts) ★ NOUVEAU - Rate of Change instantané
-        roc_10 = self.safe_float(ad.get('roc_10'))
-        if roc_10 > 0.15:  # +0.15% momentum fort
-            momentum_score += 5
-        elif roc_10 > 0.05:  # Momentum positif
-            momentum_score += 3
-
-        # Stochastic (max 5 pts) - Légèrement réduit car Williams fait mieux
-        stoch_k = self.safe_float(ad.get('stoch_k'))
-        stoch_d = self.safe_float(ad.get('stoch_d'))
-        stoch_signal = ad.get('stoch_signal')
-        if stoch_signal == 'BUY' or (stoch_k > stoch_d and stoch_k > 25):
-            momentum_score += 5
-        elif stoch_k > 55:
-            momentum_score += 3
-
-        # MFI - Money Flow (max 5 pts)
-        mfi = self.safe_float(ad.get('mfi_14'))
-        if 52 < mfi < 78:
-            momentum_score += 5
-        elif 42 < mfi < 62:
-            momentum_score += 3
-
-        return min(momentum_score, 35)  # Cap à 35 pts
-
-    def _calculate_volume_score(self, ad: dict) -> float:
-        """Calcule le score de volume (max 32 pts) - OPTIMISÉ avec OBV, Spikes, Intensity"""
-        volume_score = 0
-
-        # Volume Quality Score (max 8 pts)
-        vol_quality = self.safe_float(ad.get('volume_quality_score'))
-        if vol_quality > 55:
-            volume_score += min(8, ((vol_quality - 55) / 45) * 8)
-
-        # OBV Oscillator (max 7 pts) ★ NOUVEAU - Divergence price/volume
-        obv_osc = self.safe_float(ad.get('obv_oscillator'))
-        if obv_osc > 100:  # Fort momentum OBV
-            volume_score += 7
-        elif obv_osc > 0:  # OBV positif
-            volume_score += 4
-        elif obv_osc > -200:  # OBV légèrement négatif
-            volume_score += 2
-
-        # Volume Spike Multiplier (max 6 pts) ★ NOUVEAU - Détection explosions volume
-        spike = self.safe_float(ad.get('volume_spike_multiplier'), 1.0)
-        if spike > 2.5:  # Spike massif
-            volume_score += 6
-        elif spike > 1.8:  # Spike significatif
-            volume_score += 4
-        elif spike > 1.3:  # Spike léger
-            volume_score += 2
-
-        # Trade Intensity (max 5 pts) ★ NOUVEAU - Nb trades vs moyenne
-        intensity = self.safe_float(ad.get('trade_intensity'), 1.0)
-        if intensity > 1.5:  # Activité intense
-            volume_score += 5
-        elif intensity > 1.2:  # Activité élevée
-            volume_score += 3
-        elif intensity > 0.8:  # Activité normale
-            volume_score += 1
-
-        # Volume Context (max 6 pts)
-        vol_context = ad.get('volume_context')
-        if vol_context == 'ACCUMULATION':
-            volume_score += 6
-        elif vol_context == 'BREAKOUT':
-            volume_score += 5
-        elif vol_context in ['PUMP_START', 'SUSTAINED_HIGH']:
-            volume_score += 4
-        elif vol_context == 'DISTRIBUTION':
-            volume_score += 0  # Négatif
-
-        return min(volume_score, 32)  # Cap à 32 pts
-
-    def _calculate_price_action_score(self, ad: dict, current_price: float) -> float:
-        """Calcule le score de price action (max 20 pts) - OPTIMISÉ avec VWAP et Volume Profile"""
-        price_action_score = 0
-
-        # VWAP Bands (max 7 pts) ★ NOUVEAU - Référence institutionnelle
-        vwap = self.safe_float(ad.get('vwap_quote_10'))  # Quote VWAP plus précis
-        vwap_lower = self.safe_float(ad.get('vwap_lower_band'))
-        vwap_upper = self.safe_float(ad.get('vwap_upper_band'))
-
-        if vwap_lower > 0 and current_price > 0:
-            dist_to_vwap_lower = abs(current_price - vwap_lower) / vwap_lower
-            if dist_to_vwap_lower < 0.003:  # <0.3% de lower band = rebond probable
-                price_action_score += 7
-            elif dist_to_vwap_lower < 0.006:  # <0.6%
-                price_action_score += 4
-            elif current_price > vwap > 0:  # Au-dessus VWAP = bullish
-                price_action_score += 2
-
-        # Volume Profile POC (max 6 pts) ★ NOUVEAU - Point of Control
-        poc = self.safe_float(ad.get('volume_profile_poc'))
-        if poc > 0:
-            dist_to_poc = abs(current_price - poc) / poc
-            if dist_to_poc > 0.015:  # >1.5% du POC = probable retour vers POC
-                price_action_score += 6
-            elif dist_to_poc > 0.01:  # >1%
-                price_action_score += 4
-
-        # Distance au support/résistance (max 4 pts) - Réduit car VWAP fait mieux
-        nearest_support = self.safe_float(ad.get('nearest_support'))
-        support_strength = ad.get('support_strength')
-        if nearest_support > 0:
-            dist_to_support = ((current_price - nearest_support) / nearest_support) * 100
-            if 0.5 < dist_to_support < 2 and support_strength in ['STRONG', 'MAJOR']:
-                price_action_score += 4
-            elif 0.5 < dist_to_support < 3:
-                price_action_score += 2
-
-        # Bollinger position & squeeze (max 3 pts) - Réduit
-        bb_position = self.safe_float(ad.get('bb_position'), 0.5)
-        bb_expansion = ad.get('bb_expansion', False)
-        bb_squeeze = ad.get('bb_squeeze', False)
-
-        if bb_expansion and 0.3 < bb_position < 0.7:
-            price_action_score += 3
-        elif bb_squeeze:
-            price_action_score += 2
-
-        return min(price_action_score, 20)  # Cap à 20 pts
-
-    def _calculate_consensus_score(self, ad: dict) -> float:
-        """Calcule le score de consensus (max 10 pts)"""
-        consensus_score = 0
-
-        # Confluence score de l'analyzer (max 5 pts)
-        confluence = self.safe_float(ad.get('confluence_score'))
-        consensus_score += min(5, (confluence / 100) * 5)
-
-        # Signal strength (max 3 pts)
-        signal_strength = ad.get('signal_strength')
-        if signal_strength == 'STRONG':
-            consensus_score += 3
-        elif signal_strength == 'MODERATE':
-            consensus_score += 2
-
-        # Pattern confidence (max 2 pts)
-        pattern_conf = self.safe_float(ad.get('pattern_confidence'))
-        if pattern_conf > 70:
-            consensus_score += 2
-        elif pattern_conf > 50:
-            consensus_score += 1
-
-        return consensus_score
-
-    def _calculate_institutional_flow(self, ad: dict, current_price: float) -> float:
-        """Calcule le score de flux institutionnel (max 20 pts) ★ NOUVEAU PILIER
-        Détecte l'entrée du smart money via OBV, trade size, intensity
+    def _check_no_resistance_block(
+        self, ad: dict, current_price: float, atr_percent: float
+    ) -> tuple[bool, str]:
         """
-        score = 0
+        CONDITION 4: Smart Resistance (LOGIQUE ADAPTATIVE ★)
 
-        # OBV vs Price Divergence (max 8 pts)
-        obv_osc = self.safe_float(ad.get('obv_oscillator'))
-        if obv_osc > 200:  # OBV très fort
-            score += 8
-        elif obv_osc > 100:  # OBV fort
-            score += 6
-        elif obv_osc > 0:  # OBV positif
-            score += 3
-        elif obv_osc < -300:  # OBV très négatif = sell-off
-            score += 0
+        PHILOSOPHIE BULL MARKET:
+        Les résistances sont faites pour être cassées en bull market fort.
+        On refuse SEULEMENT si résistance proche + momentum FAIBLE.
 
-        # Trade Size moyen (max 6 pts) - Détecte institutionnels
-        avg_trade = self.safe_float(ad.get('avg_trade_size'))
-        if avg_trade > 0.25:  # Très gros trades
-            score += 6
-        elif avg_trade > 0.15:  # Gros trades
-            score += 4
-        elif avg_trade > 0.08:  # Trades moyens
-            score += 2
+        LOGIQUE:
+        1. Si ADX >25 + régime BULL → IGNORE résistance (on achète la force)
+        2. Si volume spike >2x → IGNORE résistance (breakout confirmé)
+        3. Si résistance loin (>1.5%) → OK
+        4. Sinon → Vérifie critères breakout stricts
 
-        # Trade Intensity (max 6 pts) - Confirmation par nb trades
-        intensity = self.safe_float(ad.get('trade_intensity'), 1.0)
-        if intensity > 2.0:  # Activité extrême
-            score += 6
-        elif intensity > 1.5:  # Forte activité
-            score += 4
-        elif intensity > 1.2:  # Activité élevée
-            score += 2
+        Returns:
+            (is_valid, reason)
+        """
+        nearest_resistance = self.safe_float(ad.get('nearest_resistance'))
+        break_prob = self.safe_float(ad.get('break_probability'))
 
-        return min(score, 20)  # Cap à 20 pts
+        # Pas de résistance = OK
+        if nearest_resistance <= 0 or current_price <= 0:
+            return True, "Aucune résistance détectée"
 
-    def _estimate_hold_time(self, ad: dict, atr_percent: float, momentum_score: float) -> str:
-        """Estime la durée de hold basée sur volatilité et momentum - Ajusté pour scalping 1m rapide"""
+        dist_pct = ((nearest_resistance - current_price) / current_price) * 100
+
+        # Données momentum
+        adx = self.safe_float(ad.get('adx_14'))
+        plus_di = self.safe_float(ad.get('plus_di'))
+        minus_di = self.safe_float(ad.get('minus_di'))
         regime = ad.get('market_regime', 'UNKNOWN')
+        vol_spike = self.safe_float(ad.get('volume_spike_multiplier'), 1.0)
+        bb_expansion = ad.get('bb_expansion')
+        rel_volume = self.safe_float(ad.get('relative_volume'), 1.0)
+        trend_alignment = self.safe_float(ad.get('trend_alignment'), 0)
+        macd_hist = self.safe_float(ad.get('macd_histogram'))
 
-        # Durées réduites pour scalping 1m (target 1-2% en 15-30min max)
-        hold_time_min = 5
-        hold_time_max = 30  # Réduit de 45 à 30
+        # ===========================================================
+        # PRIORITÉ 1: Momentum FORT → Résistance ignorée
+        # ===========================================================
+        strong_momentum = (
+            adx > 25 and
+            plus_di > minus_di and
+            regime in ['TRENDING_BULL', 'BREAKOUT_BULL']
+        )
 
-        # Ajuster selon volatilité (ATR) - Durées plus courtes
+        if strong_momentum:
+            return True, f"Résistance {dist_pct:.1f}% mais MOMENTUM FORT (ADX {adx:.0f}, +DI {plus_di:.0f}, {regime}) → cassure probable"
+
+        # ===========================================================
+        # PRIORITÉ 2: Volume BREAKOUT → Résistance ignorée
+        # ===========================================================
+        breakout_volume = vol_spike > 2.0
+
+        if breakout_volume:
+            return True, f"Résistance {dist_pct:.1f}% mais BREAKOUT VOLUME (spike {vol_spike:.1f}x) → cassure probable"
+
+        # ===========================================================
+        # PRIORITÉ 3: Résistance loin → OK
+        # ===========================================================
+        if dist_pct > 1.5:
+            return True, f"Résistance à {dist_pct:.1f}% (assez loin)"
+
+        # ===========================================================
+        # PRIORITÉ 4: Résistance proche + momentum FAIBLE → Critères stricts
+        # ===========================================================
+        # Si on arrive ici: résistance <1.5% + ADX <25 + volume spike <2x
+        # On vérifie si les conditions de breakout sont quand même remplies
+
+        issues = []
+
+        if regime not in ('TRENDING_BULL', 'BREAKOUT_BULL'):
+            issues.append(f"Régime {regime}")
+
+        if not bb_expansion:
+            issues.append("Pas expansion BB")
+
+        if rel_volume < 1.3:
+            issues.append(f"Volume {rel_volume:.1f}x < 1.3x")
+
+        if adx < 20:
+            issues.append(f"ADX {adx:.0f} < 20")
+
+        if trend_alignment > 0 and trend_alignment < 60:
+            issues.append(f"EMA {trend_alignment:.0f}% < 60%")
+
+        if macd_hist <= 0:
+            issues.append("MACD hist ≤0")
+
+        # Si trop d'éléments manquent, refuse
+        if len(issues) >= 3:
+            return False, f"Résistance {dist_pct:.1f}% + momentum faible: " + " | ".join(issues)
+
+        # Sinon, vérifie acceptance au-dessus résistance
+        if current_price <= nearest_resistance * 1.001:
+            return False, f"Résistance {dist_pct:.1f}%, besoin acceptance >0.1% au-dessus ({nearest_resistance * 1.001:.8f})"
+
+        # Si on passe tous les critères, OK
+        return True, f"Résistance {dist_pct:.1f}% mais setup breakout validé (vol {rel_volume:.1f}x, ADX {adx:.0f}, BB expansion)"
+
+    def _pullback_entry_hint(self, ad: dict, price: float) -> str:
+        """
+        Donne une micro-zone d'achat sur repli (9-EMA/VWAP)
+        Utilisé en mode momentum pour optimiser entrée
+        """
+        ema_7 = self.safe_float(ad.get('ema_7'))
+        vwap = self.safe_float(ad.get('vwap_quote_10')) or self.safe_float(ad.get('vwap_10'))
+
+        hint = []
+        if ema_7 > 0 and price > ema_7:
+            hint.append(f"retour 7-EMA≈{ema_7:.6f}")
+        if vwap > 0 and price > vwap:
+            hint.append(f"ou VWAP≈{vwap:.6f}")
+
+        if not hint:
+            return "entrer par tranches (DCA court)"
+
+        return "pullback léger sur " + " / ".join(hint)
+
+    def _estimate_hold_time(self, ad: dict, atr_percent: float) -> str:
+        """
+        Estime durée de hold basée sur volatilité et régime
+        Ajusté pour scalping 1m rapide
+        """
+        regime = ad.get('market_regime', 'UNKNOWN')
+        adx = self.safe_float(ad.get('adx_14'))
+
+        # Durées par défaut scalping 1m
+        hold_min = 5
+        hold_max = 30
+
+        # Ajuster selon volatilité
         if atr_percent > 0.025:  # Haute volatilité
-            hold_time_min = 3  # Très rapide
-            hold_time_max = 15  # Sortir vite
-        elif atr_percent > 0.015:  # Volatilité moyenne
-            hold_time_min = 7
-            hold_time_max = 20
-        else:  # Faible volatilité
-            hold_time_min = 12
-            hold_time_max = 30
-
-        # Ajuster selon momentum
-        if momentum_score > 20:  # Fort momentum
-            hold_time_max = min(hold_time_max, 20)  # Sortir avant retournement
-        elif momentum_score < 15:  # Momentum faible
-            hold_time_min = max(hold_time_min, 10)  # Attendre confirmation
+            hold_min = 3
+            hold_max = 15
+        elif atr_percent > 0.015:  # Moyenne
+            hold_min = 7
+            hold_max = 20
+        else:  # Faible
+            hold_min = 12
+            hold_max = 30
 
         # Ajuster selon régime
         if regime == 'BREAKOUT_BULL':
-            hold_time_min = 3  # Sortir TRÈS vite sur breakout
-            hold_time_max = 12
+            hold_min = 3
+            hold_max = 12
         elif regime == 'TRENDING_BULL':
-            hold_time_min = 10
-            hold_time_max = 25
+            hold_min = 10
+            hold_max = 25
 
-        return f"{hold_time_min}-{hold_time_max} min"
+        # Ajuster selon ADX (momentum fort = sortir plus vite)
+        if adx > 40:
+            hold_max = min(hold_max, 15)
 
-    def _build_score_explanation(self, ad: dict, score_details: dict) -> dict:
-        """Construit l'explication détaillée de chaque pilier"""
-        adx = self.safe_float(ad.get('adx_14'))
-        plus_di = self.safe_float(ad.get('plus_di'))
-        minus_di = self.safe_float(ad.get('minus_di'))
-        regime_conf = self.safe_float(ad.get('regime_confidence'))
-        regime = ad.get('market_regime', 'UNKNOWN')
+        return f"{hold_min}-{hold_max} min"
 
-        rsi_14 = self.safe_float(ad.get('rsi_14'), 50)
-        rsi_21 = self.safe_float(ad.get('rsi_21'), 50)
-        stoch_k = self.safe_float(ad.get('stoch_k'))
-        stoch_d = self.safe_float(ad.get('stoch_d'))
-        stoch_signal = ad.get('stoch_signal')
-        mfi = self.safe_float(ad.get('mfi_14'))
+    def _check_prebreakout_setup(self, ad: dict, atr_percent: float) -> tuple[bool, str]:
+        """
+        PRE-BREAKOUT SNIPER: Détecte compression + accumulation AVANT le spike
 
-        vol_quality = self.safe_float(ad.get('volume_quality_score'))
-        vol_context = ad.get('volume_context')
-        rel_volume = self.safe_float(ad.get('relative_volume'), 1.0)
+        Critères (TOUS requis):
+        1. Bollinger Squeeze (BB width <0.8% = compression)
+        2. Volume declining OU normal (0.4-1.2x) MAIS OBV monte (accumulation silencieuse)
+        3. RSI neutre 40-60 (pas encore parti)
+        4. ATR faible ou déclinant (volatilité contractée)
+        5. Plus DI commence à croiser Minus DI (changement imminent)
+        6. Prix proche support ou consolidation (pas extended)
 
-        nearest_support = self.safe_float(ad.get('nearest_support'))
-        nearest_resistance = self.safe_float(ad.get('nearest_resistance'))
-        support_strength = ad.get('support_strength')
-        resistance_strength = ad.get('resistance_strength')
-        break_prob = self.safe_float(ad.get('break_probability'))
-        bb_position = self.safe_float(ad.get('bb_position'), 0.5)
+        Returns:
+            (is_valid, reason)
+        """
+        # 1. BOLLINGER SQUEEZE
+        bb_width = self.safe_float(ad.get('bb_width'), 999)
         bb_squeeze = ad.get('bb_squeeze', False)
-        bb_expansion = ad.get('bb_expansion', False)
+        bb_pos = self.safe_float(ad.get('bb_position'), 0.5)
 
-        confluence = self.safe_float(ad.get('confluence_score'))
-        signal_strength = ad.get('signal_strength')
-        pattern_conf = self.safe_float(ad.get('pattern_confidence'))
+        # Squeeze = BB width <0.8% OU flag squeeze = True
+        squeeze_active = bb_squeeze or bb_width < 0.008
 
-        # Calculer les points réels pour les explications
-        williams_r = self.safe_float(ad.get('williams_r'))
-        cci_20 = self.safe_float(ad.get('cci_20'))
-        roc_10 = self.safe_float(ad.get('roc_10'))
+        if not squeeze_active:
+            return False, f"Pas de squeeze (BB width {bb_width*100:.2f}%)"
+
+        # 2. VOLUME DECLINING + OBV MONTANT (Accumulation silencieuse)
+        rel_volume = self.safe_float(ad.get('relative_volume'), 1.0)
+        vol_pattern = ad.get('volume_pattern')
         obv_osc = self.safe_float(ad.get('obv_oscillator'))
 
-        # Points Trend (seuils réels: 45/35/28/22)
-        adx_pts = 10 if adx>45 else 8 if adx>35 else 5 if adx>28 else 2 if adx>22 else 0
-        di_pts = 8 if (plus_di>minus_di and plus_di>28) else 5 if (plus_di>minus_di and plus_di>23) else 3 if plus_di>minus_di else 0
-        regime_pts = 7 if (regime in ['TRENDING_BULL','BREAKOUT_BULL'] and regime_conf>85) else 4 if (regime in ['TRENDING_BULL','BREAKOUT_BULL'] and regime_conf>70) else 0
+        # Volume faible/normal (pas de spike encore)
+        volume_quiet = 0.4 <= rel_volume <= 1.2
 
-        # Points Momentum (seuils réels: Williams 6pts, CCI 6pts, ROC 5pts, Stoch 5pts)
-        rsi_pts = 8 if (52<rsi_14<68 and rsi_14>rsi_21) else 4 if (45<rsi_14<58) else 3 if rsi_14<28 else 0
-        stoch_pts = 5 if (stoch_signal=='BUY' or (stoch_k>stoch_d and stoch_k>25)) else 3 if stoch_k>55 else 0
-        williams_pts = 6 if (-30<williams_r<-10) else 3 if (-50<williams_r<-30) else 4 if williams_r<-80 else 0
-        cci_pts = 6 if (50<cci_20<150) else 3 if (0<cci_20<50) else 4 if cci_20<-100 else 0
-        roc_pts = 5 if roc_10>0.15 else 3 if roc_10>0.05 else 0
-        mfi_pts = 5 if (52<mfi<78) else 3 if (42<mfi<62) else 0
+        # OBV monte (smart money accumule)
+        obv_positive = obv_osc > 100
 
-        # Points Volume (seuils réels: quality≥55→8pts, OBV>100→7pts)
-        vol_quality_pts = min(8, ((vol_quality - 55) / 45) * 8) if vol_quality>55 else 0
-        obv_pts = 7 if obv_osc>100 else 4 if obv_osc>0 else 2 if obv_osc>-200 else 0
+        if not (volume_quiet and obv_positive):
+            return False, f"Volume {rel_volume:.1f}x, OBV {obv_osc:.0f} → Pas d'accumulation silencieuse"
 
-        return {
-            "trend": f"ADX:{adx:.1f} (+{adx_pts}pts), DI+:{plus_di:.1f} vs DI-:{minus_di:.1f} (+{di_pts}pts), Régime:{regime} conf:{regime_conf:.0f}% (+{regime_pts}pts)",
-            "momentum": f"RSI14:{rsi_14:.1f} vs RSI21:{rsi_21:.1f} (+{rsi_pts}pts), Stoch:{stoch_k:.1f}/{stoch_d:.1f} (+{stoch_pts}pts), Williams:{williams_r:.1f} (+{williams_pts}pts), CCI:{cci_20:.1f} (+{cci_pts}pts), ROC:{roc_10:.3f} (+{roc_pts}pts), MFI:{mfi:.1f} (+{mfi_pts}pts)",
-            "volume": f"Quality:{vol_quality:.0f}/100 (+{vol_quality_pts:.1f}pts), OBV osc:{obv_osc:.0f} (+{obv_pts}pts), Context:{vol_context or 'N/A'}, Rel.volume:{rel_volume:.2f}x",
-            "price_action": f"Support:{nearest_support:.4f} ({support_strength or 'N/A'}), Resistance:{nearest_resistance:.4f} ({resistance_strength or 'N/A'}), Break prob:{break_prob:.0f}%, BB pos:{bb_position:.2f} squeeze:{bb_squeeze} expansion:{bb_expansion}",
-            "consensus": f"Confluence:{confluence:.0f}/100 (+{min(5, (confluence/100)*5):.1f}pts), Signal strength:{signal_strength or 'N/A'}, Pattern conf:{pattern_conf:.0f}%"
-        }
+        # 3. RSI NEUTRE (40-60)
+        rsi = self.safe_float(ad.get('rsi_14'), 50)
 
-    def _determine_action(
-        self,
-        ad: dict,
-        total_score: float,
-        trend_score: float,
-        momentum_score: float,
-        volume_score: float,
-        price_action_score: float,
-        current_price: float,
-        institutional_score: float
-    ) -> tuple[str, str]:
-        """Détermine l'action recommandée et la raison"""
+        rsi_neutral = 40 <= rsi <= 60
 
-        # Extraction des données nécessaires
-        rsi_14 = self.safe_float(ad.get('rsi_14'), 50)
-        mfi = self.safe_float(ad.get('mfi_14'))
-        stoch_k = self.safe_float(ad.get('stoch_k'))
-        stoch_d = self.safe_float(ad.get('stoch_d'))
-        bb_position = self.safe_float(ad.get('bb_position'), 0.5)
+        if not rsi_neutral:
+            return False, f"RSI {rsi:.0f} pas neutre (besoin 40-60)"
 
-        adx = self.safe_float(ad.get('adx_14'))
+        # 4. ATR FAIBLE (Volatilité contractée)
+        natr = self.safe_float(ad.get('natr'))
+        atr_percentile = self.safe_float(ad.get('atr_percentile'))
+
+        # ATR bas = volatilité contractée (avant explosion)
+        atr_low = atr_percentile < 40 or natr < 1.5
+
+        if not atr_low:
+            return False, f"ATR pas contracté (percentile {atr_percentile:.0f}%, NATR {natr:.1f})"
+
+        # 5. PLUS DI COMMENCE À CROISER MINUS DI
         plus_di = self.safe_float(ad.get('plus_di'))
         minus_di = self.safe_float(ad.get('minus_di'))
+        adx = self.safe_float(ad.get('adx_14'))
 
+        # Plus DI proche ou commence à dépasser Minus DI
+        # Ratio >0.9 = proche du croisement
+        di_crossing = (plus_di / minus_di) > 0.9 if minus_di > 0 else False
+
+        # ADX faible (pas encore en tendance, mais va démarrer)
+        adx_low = 15 < adx < 30
+
+        if not (di_crossing and adx_low):
+            return False, f"DI pas en croisement (ratio {plus_di/minus_di if minus_di > 0 else 0:.2f}, ADX {adx:.0f})"
+
+        # 6. PRIX PAS EXTENDED (BB position <0.7)
+        if bb_pos > 0.7:
+            return False, f"Prix extended (BB pos {bb_pos:.2f} >0.7)"
+
+        # 7. RÉGIME ACCEPTABLE (pas bear fort)
         regime = ad.get('market_regime', 'UNKNOWN')
-        regime_conf = self.safe_float(ad.get('regime_confidence'))
 
-        vol_quality = self.safe_float(ad.get('volume_quality_score'))
-        vol_context = ad.get('volume_context')
-        rel_volume = self.safe_float(ad.get('relative_volume'), 1.0)
+        good_regimes = ['RANGING', 'TRANSITION', 'TRENDING_BULL', 'VOLATILE']
 
-        bb_width = self.safe_float(ad.get('bb_width'), 0.0)
-        bb_squeeze = ad.get('bb_squeeze', False)
+        if regime not in good_regimes:
+            return False, f"Régime {regime} pas adapté"
 
-        nearest_resistance = self.safe_float(ad.get('nearest_resistance'))
+        # TOUS LES CRITÈRES PASSÉS
+        return True, (
+            f"✅ BB Squeeze {bb_width*100:.2f}% | "
+            f"✅ Vol {rel_volume:.1f}x + OBV +{obv_osc:.0f} (accumulation) | "
+            f"✅ RSI {rsi:.0f} neutre | "
+            f"✅ ATR contracté (p{atr_percentile:.0f}) | "
+            f"✅ DI croisement imminent ({plus_di:.0f}/{minus_di:.0f}) | "
+            f"✅ ADX {adx:.0f} prêt à exploser"
+        )
 
-        # ============================================================
-        # 1. VÉRIFIER OVERBOUGHT (priorité absolue)
-        # ============================================================
-        is_overbought = False
-        overbought_reasons = []
 
-        if rsi_14 > 75:
-            is_overbought = True
-            overbought_reasons.append(f"RSI {rsi_14:.0f}")
+# ===========================================================
+# EXEMPLE D'UTILISATION
+# ===========================================================
+if __name__ == "__main__":
+    # CAS 1: Résistance proche + momentum FAIBLE → BLOQUÉ
+    print("\n" + "="*70)
+    print("CAS 1: Résistance proche + MOMENTUM FAIBLE → WAIT")
+    print("="*70)
 
-        if mfi > 80:
-            is_overbought = True
-            overbought_reasons.append(f"MFI {mfi:.0f}")
+    calc = OpportunityCalculator()
 
-        if stoch_k > 90 and stoch_d > 90:
-            is_overbought = True
-            overbought_reasons.append(f"Stoch {stoch_k:.0f}")
+    weak_data = {
+        # Volume OK mais pas exceptionnel
+        'relative_volume': 1.6,
+        'volume_spike_multiplier': 1.4,
+        'volume_context': 'oversold_bounce',  # Contexte réel
+        'obv_oscillator': 80,
+        'volume_quality_score': 58,
 
-        if bb_position > 1.0:
-            is_overbought = True
-            overbought_reasons.append(f"BB overshoot")
+        # Momentum OK
+        'rsi_14': 58,
+        'williams_r': -35,
+        'macd_trend': 'BULLISH',
+        'cci_20': 45,
+        'macd_histogram': 0.0002,
 
-        if is_overbought:
-            score_breakdown = f"Trend:{trend_score:.0f}/25 | Momentum:{momentum_score:.0f}/25 | Volume:{volume_score:.0f}/20"
-            indicators_detail = f"ADX:{adx:.1f}, RSI:{rsi_14:.1f}, MFI:{mfi:.1f}, Stoch:{stoch_k:.1f}/{stoch_d:.1f}, BB pos:{bb_position:.2f}"
-            reason = f"🔴 SURACHETÉ ({score_breakdown}) | {indicators_detail} | " + " + ".join(overbought_reasons) + " → Correction imminente probable, VENDRE ou éviter l'achat"
-            return "SELL_OVERBOUGHT", reason
+        # Trend OK mais ADX faible
+        'adx_14': 22,  # ADX <25
+        'plus_di': 24,
+        'minus_di': 20,
+        'market_regime': 'TRENDING_BULL',
 
-        # ============================================================
-        # 2. VÉRIFIER OVERSOLD
-        # ============================================================
-        if rsi_14 < 30 and stoch_k < 20:
-            score_breakdown = f"Score:{total_score:.0f}/100 (Trend:{trend_score:.0f} | Momentum:{momentum_score:.0f} | Volume:{volume_score:.0f})"
-            indicators_detail = f"RSI:{rsi_14:.1f} (seuil:<30), Stoch:{stoch_k:.1f} (seuil:<20), MFI:{mfi:.1f}"
-            reason = f"🔵 SURVENDU ({score_breakdown}) | {indicators_detail} | Zone de rebond potentiel → Attendre signal d'inversion (RSI>35, volume en hausse, bougie verte)"
-            return "WAIT_OVERSOLD", reason
+        # RÉSISTANCE PROCHE + momentum pas assez fort
+        'nearest_resistance': 1.0860,  # 0.93% plus haut
+        'break_probability': 45,
+        'nearest_support': 1.0720,
+        'bb_position': 0.65,
 
-        # ============================================================
-        # 3. CRITÈRES BUY NOW - OPTIMISÉS POUR SCALPING (score sur 142 pts)
-        # ============================================================
-        obv_osc = self.safe_float(ad.get('obv_oscillator'))
+        'atr_14': 0.0012,
+        'natr': None
+    }
 
-        buy_criteria = {
-            "score_high": total_score >= 95,  # 95/142 = ~67% (équivalent 70/100)
-            "trend_strong": trend_score >= 15,
-            "volume_confirmed": volume_score >= 18,  # 18/32 = 56%
-            "momentum_aligned": momentum_score >= 20,  # 20/35 = 57%
-            "institutional_flow": institutional_score >= 12,  # ★ NOUVEAU - Smart money présent
-            "regime_bull": regime in ['TRENDING_BULL', 'BREAKOUT_BULL'],
-            "adx_trending": adx > 25,
-            "not_overbought": rsi_14 < 68,
-            "vol_quality": vol_quality > 55,
-            "obv_positive": obv_osc > 0,  # ★ NOUVEAU - OBV positif
-            "confluence": self.safe_float(ad.get('confluence_score')) > 65
-        }
+    result1 = calc.calculate_opportunity(
+        symbol="BTCUSDC",
+        current_price=1.0760,
+        analyzer_data=weak_data
+    )
 
-        buy_score = sum(buy_criteria.values())
+    print(f"ACTION: {result1['action']}")
+    print(f"\n{result1['reason']}")
+    print(f"\nConditions: {result1['conditions']}")
 
-        if buy_score >= 9:  # 9/11 critères
-            score_breakdown = f"Trend:{trend_score:.0f}/25 | Momentum:{momentum_score:.0f}/35 | Volume:{volume_score:.0f}/32 | Instit:{institutional_score:.0f}/20"
-            detail_parts = [
-                f"ADX:{adx:.1f} (+DI:{plus_di:.1f} vs -DI:{minus_di:.1f})",
-                f"RSI:{rsi_14:.1f}",
-                f"OBV osc:{obv_osc:.0f}",  # ★ NOUVEAU
-                f"Stoch:{stoch_k:.1f}/{stoch_d:.1f}"
-            ]
-            if vol_context:
-                detail_parts.append(f"Vol:{vol_context} (qual:{vol_quality:.0f})")
-            if regime:
-                detail_parts.append(f"Régime:{regime} ({regime_conf:.0f}%)")
+    # CAS 2: Résistance proche + MOMENTUM FORT → PASSE
+    print("\n" + "="*70)
+    print("CAS 2: Résistance proche + MOMENTUM FORT → BUY_NOW")
+    print("="*70)
 
-            reason = f"💎 EXCELLENT ({buy_score}/11 critères, {total_score:.0f}/142 pts) | {score_breakdown} | " + " | ".join(detail_parts)
-            return "BUY_NOW", reason
+    strong_data = {
+        # Volume BREAKOUT
+        'relative_volume': 2.4,
+        'volume_spike_multiplier': 3.1,  # Spike massif >2x
+        'volume_context': 'breakout',  # Contexte réel (lowercase)
+        'obv_oscillator': 220,
+        'volume_quality_score': 78,
 
-        if buy_score >= 7 and total_score >= 80:  # 7/11 critères + score 80/142 (~56%)
-            score_breakdown = f"Trend:{trend_score:.0f}/25 | Momentum:{momentum_score:.0f}/35 | Volume:{volume_score:.0f}/32 | Instit:{institutional_score:.0f}/20"
+        # Momentum FORT
+        'rsi_14': 66,
+        'williams_r': -22,
+        'macd_trend': 'BULLISH',
+        'cci_20': 95,
+        'macd_histogram': 0.0008,
 
-            good_parts = []
-            missing_parts = []
+        # Trend FORT
+        'adx_14': 38,  # ADX >25 ✅
+        'plus_di': 35,
+        'minus_di': 15,
+        'market_regime': 'TRENDING_BULL',
+        'trend_alignment': 75,
 
-            if trend_score >= 15:
-                good_parts.append(f"✓Trend (ADX:{adx:.1f}, +DI:{plus_di:.1f})")
-            else:
-                missing_parts.append(f"✗Trend faible ({trend_score:.0f}/25)")
+        # RÉSISTANCE PROCHE mais momentum ÉCRASE
+        'nearest_resistance': 1.0860,  # Même résistance 0.93%
+        'break_probability': 45,
+        'nearest_support': 1.0720,
+        'bb_position': 0.68,
+        'bb_expansion': True,
 
-            if volume_score >= 18:
-                good_parts.append(f"✓Volume (qual:{vol_quality:.0f}, {vol_context or 'N/A'})")
-            else:
-                missing_parts.append(f"✗Volume ({volume_score:.0f}/32)")
+        # Données pour pullback hint
+        'ema_7': 1.0745,
+        'vwap_quote_10': 1.0735,
 
-            if momentum_score >= 20:
-                good_parts.append(f"✓Momentum (RSI:{rsi_14:.1f}, Williams:{self.safe_float(ad.get('williams_r')):.0f})")
-            else:
-                missing_parts.append(f"✗Momentum ({momentum_score:.0f}/35)")
+        'atr_14': 0.0012,
+        'natr': None
+    }
 
-            if institutional_score >= 12:
-                good_parts.append(f"✓Institutionnel (OBV:{obv_osc:.0f})")
-            else:
-                missing_parts.append(f"✗Flux institutionnel faible ({institutional_score:.0f}/20)")
+    result2 = calc.calculate_opportunity(
+        symbol="BTCUSDC",
+        current_price=1.0760,
+        analyzer_data=strong_data
+    )
 
-            all_details = good_parts + missing_parts
-            reason = f"✅ BON ({buy_score}/11 critères, {total_score:.0f}/142 pts) | {score_breakdown} | " + " | ".join(all_details)
-            return "BUY_NOW", reason
+    print(f"ACTION: {result2['action']}")
+    print(f"\n{result2['reason']}")
+    print(f"\nConditions: {result2['conditions']}")
+    print(f"Hold time: {result2['estimated_hold_time']}")
 
-        # ============================================================
-        # 4. CRITÈRES WAIT - AJUSTÉ (score sur 142 pts)
-        # ============================================================
-        if total_score >= 60:  # 60/142 = ~42%
-            score_breakdown = f"Trend:{trend_score:.0f}/25 | Momentum:{momentum_score:.0f}/35 | Volume:{volume_score:.0f}/32 | Instit:{institutional_score:.0f}/20"
-            indicators_detail = f"ADX:{adx:.1f}, RSI:{rsi_14:.1f}, OBV:{obv_osc:.0f}, Williams:{self.safe_float(ad.get('williams_r')):.0f}"
+    # CAS 3: Résistance loin → OK même avec momentum faible
+    print("\n" + "="*70)
+    print("CAS 3: Résistance LOIN (>1.5%) → BUY_NOW même si momentum normal")
+    print("="*70)
 
-            missing_for_buy = []
-            if total_score < 95:
-                missing_for_buy.append(f"Score {total_score:.0f}/95 requis")
-            if trend_score < 15:
-                missing_for_buy.append(f"Trend faible ({trend_score:.0f}/15)")
-            if volume_score < 18:
-                missing_for_buy.append(f"Volume faible ({volume_score:.0f}/18)")
-            if momentum_score < 20:
-                missing_for_buy.append(f"Momentum faible ({momentum_score:.0f}/20)")
-            if institutional_score < 12:
-                missing_for_buy.append(f"Flux institutionnel faible ({institutional_score:.0f}/12)")
+    far_resistance_data = {
+        # Volume normal
+        'relative_volume': 1.7,
+        'volume_spike_multiplier': 1.5,
+        'volume_context': 'neutral',  # Contexte réel (lowercase)
+        'obv_oscillator': 100,
+        'volume_quality_score': 60,
 
-            if bb_squeeze:
-                reason = f"🟡 {score_breakdown} | {indicators_detail} | BB squeeze (BB width:{bb_width:.4f}) → Volatilité imminente | Manque: " + ", ".join(missing_for_buy if missing_for_buy else ["Attendre direction"])
-                return "WAIT_BREAKOUT", reason
-            elif vol_context == 'DISTRIBUTION':
-                reason = f"🟡 {score_breakdown} | {indicators_detail} | Distribution (vente institutionnelle, vol qual:{vol_quality:.0f}) → Attendre accumulation | Manque: " + ", ".join(missing_for_buy)
-                return "WAIT", reason
-            elif nearest_resistance > 0:
-                dist_to_resistance = ((nearest_resistance - current_price) / current_price) * 100
-                if dist_to_resistance < 1:
-                    reason = f"🟡 {score_breakdown} | {indicators_detail} | Résistance {nearest_resistance:.4f} à {dist_to_resistance:.1f}% → Attendre cassure | Manque: " + ", ".join(missing_for_buy)
-                    return "WAIT", reason
+        # Momentum OK
+        'rsi_14': 60,
+        'williams_r': -30,
+        'macd_trend': 'BULLISH',
+        'cci_20': 50,
+        'macd_histogram': 0.0003,
 
-            reason = f"🟡 {score_breakdown} | {indicators_detail} | Manque: " + ", ".join(missing_for_buy if missing_for_buy else ["Confluence insuffisante"])
-            return "WAIT", reason
+        # Trend normal
+        'adx_14': 23,
+        'plus_di': 25,
+        'minus_di': 19,
+        'market_regime': 'TRENDING_BULL',
 
-        # ============================================================
-        # 5. AVOID
-        # ============================================================
-        score_breakdown = f"Trend:{trend_score:.0f}/25 | Momentum:{momentum_score:.0f}/35 | Volume:{volume_score:.0f}/32 | Instit:{institutional_score:.0f}/20"
+        # RÉSISTANCE LOIN
+        'nearest_resistance': 1.0920,  # 1.49% plus haut (juste <1.5%)
+        'break_probability': 50,
+        'nearest_support': 1.0720,
+        'bb_position': 0.60,
 
-        weak_points = []
-        if trend_score < 8:
-            weak_points.append(f"Trend faible ({trend_score:.0f}/25, ADX:{adx:.0f})")
-        if momentum_score < 12:
-            weak_points.append(f"Momentum faible ({momentum_score:.0f}/35, RSI:{rsi_14:.0f}, Williams:{self.safe_float(ad.get('williams_r')):.0f})")
-        if volume_score < 10:
-            weak_points.append(f"Volume insuffisant ({volume_score:.0f}/32, qual:{vol_quality:.0f}, OBV osc:{obv_osc:.0f})")
-        if institutional_score < 6:
-            weak_points.append(f"Pas de flux institutionnel ({institutional_score:.0f}/20)")
-        if price_action_score < 6:
-            weak_points.append(f"Price action faible ({price_action_score:.0f}/20)")
-        if regime in ['TRENDING_BEAR', 'BREAKOUT_BEAR']:
-            weak_points.append(f"Régime baissier ({regime})")
+        'atr_14': 0.0012,
+        'natr': None
+    }
 
-        reason = f"⚫ AVOID ({total_score:.0f}/142 pts) | {score_breakdown} | " + " | ".join(weak_points if weak_points else ["Setup défavorable"])
-        return "AVOID", reason
+    result3 = calc.calculate_opportunity(
+        symbol="BTCUSDC",
+        current_price=1.0760,
+        analyzer_data=far_resistance_data
+    )
+
+    print(f"ACTION: {result3['action']}")
+    print(f"\n{result3['reason']}")
+    print(f"\nConditions: {result3['conditions']}")

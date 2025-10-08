@@ -10,12 +10,16 @@ interface ManualPosition {
   quantity: number;
   entryDate: string;
   notes?: string;
+  maxPrice?: number;  // Prix max atteint pendant la position
+  maxPriceDate?: string;  // Date du prix max
 }
 
 interface PositionWithPrice extends ManualPosition {
   currentPrice: number;
   pnlPercent: number;
   pnlUsdc: number;
+  maxPnlPercent?: number;  // P&L max atteint (%)
+  maxPnlUsdc?: number;  // P&L max atteint (USDC)
   signal?: {
     action: string;
     reason: string;
@@ -76,6 +80,27 @@ function PositionTrackerPage() {
             const pnlPercent = ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
             const pnlUsdc = (currentPrice - pos.entryPrice) * pos.quantity;
 
+            // Mettre à jour le prix max si dépassé
+            let updatedMaxPrice = pos.maxPrice || pos.entryPrice;
+            let updatedMaxPriceDate = pos.maxPriceDate;
+
+            if (currentPrice > updatedMaxPrice) {
+              updatedMaxPrice = currentPrice;
+              updatedMaxPriceDate = new Date().toISOString();
+
+              // Sauvegarder le nouveau max dans localStorage
+              const updatedPositions = positions.map(p =>
+                p.id === pos.id
+                  ? { ...p, maxPrice: updatedMaxPrice, maxPriceDate: updatedMaxPriceDate }
+                  : p
+              );
+              savePositions(updatedPositions);
+            }
+
+            // Calculer P&L max
+            const maxPnlPercent = ((updatedMaxPrice - pos.entryPrice) / pos.entryPrice) * 100;
+            const maxPnlUsdc = (updatedMaxPrice - pos.entryPrice) * pos.quantity;
+
             // Calculer temps écoulé depuis ouverture
             const entryTime = new Date(pos.entryDate).getTime();
             const now = Date.now();
@@ -93,6 +118,10 @@ function PositionTrackerPage() {
               currentPrice,
               pnlPercent,
               pnlUsdc,
+              maxPrice: updatedMaxPrice,
+              maxPriceDate: updatedMaxPriceDate,
+              maxPnlPercent,
+              maxPnlUsdc,
               signal: signalData ? {
                 action: signalData.action,
                 reason: signalData.reason,
@@ -465,25 +494,38 @@ function PositionTrackerPage() {
                   )}
                 </div>
 
-                {/* PnL % */}
+                {/* PnL Actuel */}
                 <div>
-                  <div className="text-xs text-gray-400">PnL %</div>
+                  <div className="text-xs text-gray-400">PnL Actuel</div>
                   <div className={`text-xl font-bold mt-1 ${
                     isProfit ? 'text-green-400' : 'text-red-400'
                   }`}>
                     {isProfit ? '+' : ''}{pos.pnlPercent.toFixed(2)}%
                   </div>
-                </div>
-
-                {/* PnL USDC */}
-                <div>
-                  <div className="text-xs text-gray-400">PnL USDC</div>
-                  <div className={`text-xl font-bold mt-1 ${
+                  <div className={`text-sm mt-1 ${
                     isProfit ? 'text-green-400' : 'text-red-400'
                   }`}>
                     {isProfit ? '+' : ''}{pos.pnlUsdc.toFixed(2)} USDC
                   </div>
                 </div>
+
+                {/* PnL Max (Prix Peak) */}
+                {pos.maxPnlPercent !== undefined && pos.maxPnlPercent > pos.pnlPercent && (
+                  <div className="border-l-2 border-yellow-500 pl-3">
+                    <div className="text-xs text-yellow-400 flex items-center gap-1">
+                      🏆 Max Atteint
+                    </div>
+                    <div className="text-lg font-bold text-yellow-400 mt-1">
+                      +{pos.maxPnlPercent.toFixed(2)}%
+                    </div>
+                    <div className="text-sm text-yellow-300 mt-1">
+                      +{pos.maxPnlUsdc?.toFixed(2)} USDC
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      @ {pos.maxPrice?.toFixed(8)}
+                    </div>
+                  </div>
+                )}
 
                 {/* Valeur position */}
                 <div>
@@ -494,6 +536,48 @@ function PositionTrackerPage() {
                   <div className="text-xs text-gray-400 mt-1">
                     {pos.quantity.toFixed(8)} tokens
                   </div>
+                </div>
+              </div>
+
+              {/* Suggestions TP (Take Profit) */}
+              <div className="mt-4 pt-4 border-t border-gray-700">
+                <div className="text-xs text-gray-400 mb-3">🎯 Suggestions Take Profit</div>
+                <div className="grid grid-cols-3 gap-3">
+                  {[0.5, 1.0, 2.0].map(tpPercent => {
+                    const tpPrice = pos.entryPrice * (1 + tpPercent / 100);
+                    const tpUsdc = (tpPrice - pos.entryPrice) * pos.quantity;
+                    const reached = pos.currentPrice >= tpPrice;
+                    const maxReached = (pos.maxPrice || 0) >= tpPrice;
+
+                    return (
+                      <div
+                        key={tpPercent}
+                        className={`rounded-lg p-3 border-2 ${
+                          reached
+                            ? 'bg-green-900/20 border-green-500'
+                            : maxReached
+                            ? 'bg-yellow-900/20 border-yellow-500'
+                            : 'bg-dark-300 border-gray-600'
+                        }`}
+                      >
+                        <div className="text-xs font-semibold text-gray-300">
+                          TP +{tpPercent}%
+                        </div>
+                        <div className="text-sm font-bold text-white mt-1">
+                          {tpPrice.toFixed(8)}
+                        </div>
+                        <div className="text-sm text-green-400 font-semibold mt-1">
+                          +{tpUsdc.toFixed(2)} USDC
+                        </div>
+                        {reached && (
+                          <div className="text-xs text-green-400 mt-1">✅ Atteint</div>
+                        )}
+                        {!reached && maxReached && (
+                          <div className="text-xs text-yellow-400 mt-1">⚠️ Était atteint</div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

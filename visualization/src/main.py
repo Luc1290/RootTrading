@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from typing import Optional
 from datetime import datetime
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -41,7 +42,7 @@ async def lifespan(app: FastAPI):
     chart_service = ChartService(data_manager)
     websocket_hub = WebSocketHub(data_manager)
     statistics_service = StatisticsService(data_manager)
-    opportunity_calculator = OpportunityCalculator()
+    opportunity_calculator = OpportunityCalculator()  # Logique momentum adaptative: ignore résistances si ADX >25 ou volume spike >2x
 
     asyncio.create_task(websocket_hub.start())
 
@@ -428,20 +429,21 @@ async def get_trading_opportunity(symbol: str):
                     from notifications.telegram_service import get_notifier
                     notifier = get_notifier()
 
-                    # Récupérer le vrai score momentum depuis score_details
-                    score_details = response_data.get("score_details", {})
-                    momentum_score = score_details.get("momentum", 0)
+                    # Calculer un score basé sur les conditions (0-4 → 0-100)
+                    conditions = response_data.get("conditions", {})
+                    conditions_met = sum(1 for v in conditions.values() if v)
+                    score = (conditions_met / 4.0) * 100  # 4/4 = 100 points
 
                     notifier.send_buy_signal(
                         symbol=symbol,
-                        score=response_data["score"],
+                        score=score,
                         price=current_price,
                         action=response_data["action"],
                         targets=response_data["targets"],
                         stop_loss=response_data["stop_loss"],
                         reason=response_data["reason"],
-                        momentum=momentum_score,  # Vrai score momentum (/35)
-                        volume_ratio=response_data.get("volume_ratio", 1.0),
+                        momentum=response_data.get("raw_data", {}).get("adx", 0),  # ADX comme proxy momentum
+                        volume_ratio=response_data.get("raw_data", {}).get("rel_volume", 1.0),
                         regime=response_data.get("market_regime", "UNKNOWN"),
                         estimated_hold_time=response_data.get("estimated_hold_time", "N/A")
                     )
@@ -452,6 +454,101 @@ async def get_trading_opportunity(symbol: str):
 
     except Exception as e:
         logger.error(f"Error getting trading opportunity for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/automatic-signals/{symbol}")
+async def get_automatic_signals(symbol: str):
+    """
+    Get automatic trading signals from signal_aggregator for comparison.
+    Returns the most recent validated signal and aggregated stats.
+    """
+    try:
+        if data_manager is None or not data_manager.postgres_pool:
+            raise HTTPException(status_code=503, detail="Data manager not available")
+
+        async with data_manager.postgres_pool.acquire() as conn:
+            # Récupérer les signaux validés récents (dernières 15 minutes)
+            signals_query = """
+                SELECT
+                    symbol,
+                    side,
+                    confidence,
+                    strategy,
+                    metadata,
+                    created_at
+                FROM trading_signals
+                WHERE symbol = $1
+                  AND created_at > NOW() - INTERVAL '15 minutes'
+                ORDER BY created_at DESC
+            """
+            signals = await conn.fetch(signals_query, symbol)
+
+            if not signals:
+                return {
+                    "symbol": symbol,
+                    "has_signal": False,
+                    "validated": False,
+                    "message": "Aucun signal validé dans les 15 dernières minutes"
+                }
+
+            # Compter les stratégies uniques et calculer consensus
+            strategies = set()
+            total_confidence = 0
+            buy_count = 0
+            sell_count = 0
+            consensus_strength = 0
+            metadata_latest = {}
+
+            for signal in signals:
+                strategies.add(signal['strategy'])
+                total_confidence += float(signal['confidence'])
+
+                if signal['side'] == 'BUY':
+                    buy_count += 1
+                else:
+                    sell_count += 1
+
+                # Récupérer métadonnées du signal le plus récent
+                if signal == signals[0] and signal['metadata']:
+                    # Parser JSON si c'est une string, sinon utiliser directement
+                    try:
+                        if isinstance(signal['metadata'], str):
+                            metadata_latest = json.loads(signal['metadata'])
+                        else:
+                            metadata_latest = signal['metadata']
+                        consensus_strength = metadata_latest.get('consensus_strength', 0)
+                    except (json.JSONDecodeError, TypeError, AttributeError):
+                        logger.warning(f"Could not parse metadata for {symbol}: {signal['metadata']}")
+                        metadata_latest = {}
+
+            avg_confidence = total_confidence / len(signals) if signals else 0
+            strategies_count = len(strategies)
+
+            # Déterminer le side dominant
+            dominant_side = "BUY" if buy_count > sell_count else "SELL" if sell_count > buy_count else "NEUTRAL"
+
+            # Status validé si consensus fort (au moins 3 stratégies)
+            validated = strategies_count >= 3 and abs(buy_count - sell_count) >= 2
+
+            return {
+                "symbol": symbol,
+                "has_signal": True,
+                "validated": validated,
+                "side": dominant_side,
+                "confidence": round(avg_confidence, 2),
+                "consensus_strength": round(consensus_strength, 2) if consensus_strength else None,
+                "strategies_count": strategies_count,
+                "strategies": list(strategies),
+                "signals_count": len(signals),
+                "buy_signals": buy_count,
+                "sell_signals": sell_count,
+                "last_signal_time": signals[0]['created_at'].isoformat() if signals else None,
+                "metadata": metadata_latest,
+                "rejection_reason": None if validated else "Consensus faible ou signaux contradictoires"
+            }
+
+    except Exception as e:
+        logger.error(f"Error getting automatic signals for {symbol}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/available-indicators")
@@ -547,6 +644,82 @@ async def get_strategy_comparison():
         logger.error(f"Error getting strategy comparison: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/top-signals")
+async def get_top_signals(
+    timeframe_minutes: int = 15,
+    limit: int = 50
+):
+    """Get all trading signals ranked by net signal strength (BUY - SELL)"""
+    try:
+        if data_manager is None or not data_manager.postgres_pool:
+            raise HTTPException(status_code=503, detail="Data manager not available")
+
+        async with data_manager.postgres_pool.acquire() as conn:
+            query = """
+                WITH signal_counts AS (
+                    SELECT
+                        symbol,
+                        side,
+                        COUNT(DISTINCT strategy) as strategy_count,
+                        AVG(confidence) as avg_confidence,
+                        MAX(timestamp) as last_signal_time
+                    FROM trading_signals
+                    WHERE timestamp > NOW() - INTERVAL '1 minute' * $1
+                    GROUP BY symbol, side
+                ),
+                buy_signals AS (
+                    SELECT
+                        symbol,
+                        strategy_count as buy_count,
+                        avg_confidence as buy_confidence,
+                        last_signal_time as buy_time
+                    FROM signal_counts WHERE side = 'BUY'
+                ),
+                sell_signals AS (
+                    SELECT
+                        symbol,
+                        strategy_count as sell_count,
+                        avg_confidence as sell_confidence,
+                        last_signal_time as sell_time
+                    FROM signal_counts WHERE side = 'SELL'
+                )
+                SELECT
+                    COALESCE(b.symbol, s.symbol) as symbol,
+                    COALESCE(b.buy_count, 0) as buy_count,
+                    COALESCE(s.sell_count, 0) as sell_count,
+                    COALESCE(b.buy_confidence, 0) as buy_confidence,
+                    COALESCE(s.sell_confidence, 0) as sell_confidence,
+                    GREATEST(COALESCE(b.buy_time, '1970-01-01'), COALESCE(s.sell_time, '1970-01-01')) as last_signal_time,
+                    (COALESCE(b.buy_count, 0) - COALESCE(s.sell_count, 0)) as net_signal
+                FROM buy_signals b
+                FULL OUTER JOIN sell_signals s ON b.symbol = s.symbol
+                ORDER BY net_signal DESC
+                LIMIT $2
+            """
+
+            rows = await conn.fetch(query, timeframe_minutes, limit)
+
+            top_signals = []
+            for row in rows:
+                net = row['net_signal']
+                dominant_side = 'BUY' if net > 0 else ('SELL' if net < 0 else 'NEUTRAL')
+
+                top_signals.append({
+                    "symbol": row['symbol'],
+                    "buy_count": row['buy_count'],
+                    "sell_count": row['sell_count'],
+                    "buy_confidence": float(row['buy_confidence']),
+                    "sell_confidence": float(row['sell_confidence']),
+                    "net_signal": net,
+                    "dominant_side": dominant_side,
+                    "last_signal_time": row['last_signal_time'].isoformat() if row['last_signal_time'] else None
+                })
+
+            return {"signals": top_signals, "timeframe_minutes": timeframe_minutes}
+    except Exception as e:
+        logger.error(f"Error getting top signals: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/trade-cycles")
 async def get_trade_cycles(
     symbol: Optional[str] = None,
@@ -557,7 +730,7 @@ async def get_trade_cycles(
     try:
         if data_manager is None:
             raise HTTPException(status_code=503, detail="Data service not available")
-        
+
         cycles = await data_manager.get_trade_cycles(
             symbol=symbol,
             status=status,
