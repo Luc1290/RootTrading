@@ -140,23 +140,9 @@ export function useAllChartData(
     [symbol, interval, limit],
     {
       onSuccess: (data) => {
-        console.log('Setting chart data in store:', {
-          hasMarketData: !!data.marketData,
-          hasIndicators: !!data.indicators,
-          hasSignals: !!data.signals,
-          symbol,
-          interval
-        });
-        
-        if (data.marketData) {
-          setMarketData(data.marketData);
-        }
-        if (data.indicators) {
-          setIndicators(data.indicators);
-        }
-        if (data.signals) {
-          setSignals(data.signals);
-        }
+        if (data.marketData) setMarketData(data.marketData);
+        if (data.indicators) setIndicators(data.indicators);
+        if (data.signals) setSignals(data.signals);
       },
       onError: (error) => {
         console.error('Failed to fetch chart data:', error);

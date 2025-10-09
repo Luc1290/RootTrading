@@ -8,9 +8,10 @@ import type { TradeCycle } from '@/components/Cycles/CyclesPage';
 
 interface MarketChartProps {
   height?: number;
+  useStore?: any; // Store custom optionnel
 }
 
-function MarketChart({ height = 750 }: MarketChartProps) {
+function MarketChart({ height = 750, useStore }: MarketChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -19,7 +20,7 @@ function MarketChart({ height = 750 }: MarketChartProps) {
     ema26?: ISeriesApi<'Line'>;
     ema99?: ISeriesApi<'Line'>;
   }>({});
-  
+
   // État pour l'infobulle des signaux
   const [tooltip, setTooltip] = useState<{
     visible: boolean;
@@ -41,12 +42,15 @@ function MarketChart({ height = 750 }: MarketChartProps) {
     sell?: ISeriesApi<'Line'>;
   }>({});
   const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Utiliser le store custom si fourni, sinon le store global
+  const defaultStore = useChartStore();
+  const store = useStore ? useStore() : defaultStore;
+  const { marketData, signals, indicators, config, zoomState, setZoomState, setIsUserInteracting } = store;
   
-  const { marketData, signals, indicators, config, zoomState, setZoomState, setIsUserInteracting } = useChartStore();
-  
-  // État pour les cycles de trading
-  const [tradeCycles, setTradeCycles] = useState<TradeCycle[]>([]);
-  const cycleSeriesRef = useRef<(ISeriesApi<'Line'> | ISeriesApi<'Area'>)[]>([]);
+  // Cycles désactivés pour performance
+  // const [tradeCycles, setTradeCycles] = useState<TradeCycle[]>([]);
+  // const cycleSeriesRef = useRef<(ISeriesApi<'Line'> | ISeriesApi<'Area'>)[]>([]);
   
   // Configuration de la précision basée sur le symbole
   const getPriceFormat = () => {
@@ -163,21 +167,21 @@ function MarketChart({ height = 750 }: MarketChartProps) {
     };
   }, [height]);
   
-  // Récupérer les cycles de trading pour le symbole actuel
-  useEffect(() => {
-    const loadCycles = async () => {
-      try {
-        const response = await apiService.getTradeCycles(config.symbol);
-        setTradeCycles(response.cycles);
-      } catch (error) {
-        console.error('Error loading trade cycles:', error);
-      }
-    };
-    
-    if (config.symbol) {
-      loadCycles();
-    }
-  }, [config.symbol]);
+  // Cycles désactivés pour performance
+  // useEffect(() => {
+  //   const loadCycles = async () => {
+  //     try {
+  //       const response = await apiService.getTradeCycles(config.symbol);
+  //       setTradeCycles(response.cycles);
+  //     } catch (error) {
+  //       console.error('Error loading trade cycles:', error);
+  //     }
+  //   };
+  //
+  //   if (config.symbol) {
+  //     loadCycles();
+  //   }
+  // }, [config.symbol]);
   
   // Nettoyage complet lors du changement de symbole ou interval
   useEffect(() => {
@@ -211,17 +215,17 @@ function MarketChart({ height = 750 }: MarketChartProps) {
       });
       signalSeriesRef.current = {};
       
-      // Nettoyer les séries de cycles
-      cycleSeriesRef.current.forEach(series => {
-        if (chartRef.current) {
-          try {
-            chartRef.current.removeSeries(series);
-          } catch (e) {
-            console.warn('Error removing cycle series:', e);
-          }
-        }
-      });
-      cycleSeriesRef.current = [];
+      // Cycles désactivés
+      // cycleSeriesRef.current.forEach(series => {
+      //   if (chartRef.current) {
+      //     try {
+      //       chartRef.current.removeSeries(series);
+      //     } catch (e) {
+      //       console.warn('Error removing cycle series:', e);
+      //     }
+      //   }
+      // });
+      // cycleSeriesRef.current = [];
       
     } catch (error) {
       console.error('Error during chart cleanup:', error);
@@ -239,15 +243,15 @@ function MarketChart({ height = 750 }: MarketChartProps) {
       high: marketData.high[index],
       low: marketData.low[index],
       close: marketData.close[index],
-    })).filter((item) => 
-      item.open != null && 
-      item.high != null && 
-      item.low != null && 
+    })).filter((item: CandlestickData) =>
+      item.open != null &&
+      item.high != null &&
+      item.low != null &&
       item.close != null &&
-      !isNaN(item.open) &&
-      !isNaN(item.high) &&
-      !isNaN(item.low) &&
-      !isNaN(item.close)
+      !isNaN(item.open as number) &&
+      !isNaN(item.high as number) &&
+      !isNaN(item.low as number) &&
+      !isNaN(item.close as number)
     ) as CandlestickData[];
     
     candlestickSeriesRef.current.setData(candlestickData);
@@ -279,12 +283,12 @@ function MarketChart({ height = 750 }: MarketChartProps) {
       const ema7Data: LineData[] = marketData.timestamps.map((timestamp: string, index: number) => ({
         time: Math.floor(new Date(timestamp).getTime() / 1000) as Time,
         value: indicators.ema_7![index],
-      })).filter((item) => item.value !== null && item.value !== undefined) as LineData[];
-      
+      })).filter((item: LineData) => item.value !== null && item.value !== undefined) as LineData[];
+
       ema7Series.setData(ema7Data);
       emaSeriesRef.current.ema7 = ema7Series;
     }
-    
+
     // EMA 26
     if (config.emaToggles.ema26 && indicators.ema_26 && marketData?.timestamps) {
       const ema26Series = chartRef.current.addLineSeries({
@@ -295,16 +299,16 @@ function MarketChart({ height = 750 }: MarketChartProps) {
         lineStyle: 0, // Solid line
         priceLineVisible: false, // Hide price line
       });
-      
+
       const ema26Data: LineData[] = marketData.timestamps.map((timestamp: string, index: number) => ({
         time: Math.floor(new Date(timestamp).getTime() / 1000) as Time,
         value: indicators.ema_26![index],
-      })).filter((item) => item.value !== null && item.value !== undefined) as LineData[];
-      
+      })).filter((item: LineData) => item.value !== null && item.value !== undefined) as LineData[];
+
       ema26Series.setData(ema26Data);
       emaSeriesRef.current.ema26 = ema26Series;
     }
-    
+
     // EMA 99
     if (config.emaToggles.ema99 && indicators.ema_99 && marketData?.timestamps) {
       const ema99Series = chartRef.current.addLineSeries({
@@ -315,11 +319,11 @@ function MarketChart({ height = 750 }: MarketChartProps) {
         lineStyle: 0, // Solid line
         priceLineVisible: false, // Hide price line
       });
-      
+
       const ema99Data: LineData[] = marketData.timestamps.map((timestamp: string, index: number) => ({
         time: Math.floor(new Date(timestamp).getTime() / 1000) as Time,
         value: indicators.ema_99![index],
-      })).filter((item) => item.value !== null && item.value !== undefined) as LineData[];
+      })).filter((item: LineData) => item.value !== null && item.value !== undefined) as LineData[];
       
       ema99Series.setData(ema99Data);
       emaSeriesRef.current.ema99 = ema99Series;
@@ -367,14 +371,14 @@ function MarketChart({ height = 750 }: MarketChartProps) {
     // Créer un mapping des signaux par timestamp pour la recherche rapide
     // Utiliser un tableau pour chaque timestamp pour gérer les signaux multiples
     const signalMap = new Map();
-    filteredBuySignals.forEach(signal => {
+    filteredBuySignals.forEach((signal: any) => {
       const time = Math.floor(new Date(signal.timestamp).getTime() / 1000);
       if (!signalMap.has(time)) {
         signalMap.set(time, []);
       }
       signalMap.get(time).push({ ...signal, type: 'buy' });
     });
-    filteredSellSignals.forEach(signal => {
+    filteredSellSignals.forEach((signal: any) => {
       const time = Math.floor(new Date(signal.timestamp).getTime() / 1000);
       if (!signalMap.has(time)) {
         signalMap.set(time, []);
@@ -382,56 +386,14 @@ function MarketChart({ height = 750 }: MarketChartProps) {
       signalMap.get(time).push({ ...signal, type: 'sell' });
     });
 
-    console.log('Signal map created:', signalMap.size, 'timestamps with', 
-      [...signalMap.values()].reduce((acc, arr) => acc + arr.length, 0), 'total signals');
+    // Log removed for performance
 
     // Appliquer tous les marqueurs à la série candlestick
     const allMarkers = [...buyMarkers, ...sellMarkers].sort((a, b) => (a.time as number) - (b.time as number));
     candlestickSeriesRef.current.setMarkers(allMarkers as any);
-    
-    // Utiliser l'API native pour détecter les survols
-    chartRef.current.subscribeCrosshairMove((param) => {
-      // Vérifier l'état épinglé en temps réel
-      setTooltip(currentTooltip => {
-        // Si le tooltip est épinglé ou qu'on le survole, ne pas le changer
-        if (currentTooltip.isPinned || currentTooltip.isHoveringTooltip) {
-          return currentTooltip;
-        }
-        
-        if (!param.time || !chartContainerRef.current) {
-          return { ...currentTooltip, visible: false };
-        }
-        
-        const timeValue = param.time as number;
-        
-        // Chercher les signaux les plus proches (tolérance de ±30 secondes)
-        let nearestSignals = null;
-        let minDistance = Infinity;
-        const tolerance = 30; // 30 secondes de tolérance
-        
-        for (const [signalTime, signalArray] of signalMap.entries()) {
-          const distance = Math.abs(signalTime - timeValue);
-          if (distance <= tolerance && distance < minDistance) {
-            minDistance = distance;
-            nearestSignals = signalArray;
-          }
-        }
-        
-        if (nearestSignals && param.point) {
-          console.log('Showing tooltip for signals:', nearestSignals);
-          return {
-            visible: true,
-            x: param.point!.x,
-            y: param.point!.y,
-            signal: nearestSignals,
-            isHoveringTooltip: false,
-            isPinned: false, // Nouveau signal = pas épinglé
-          };
-        } else {
-          return { ...currentTooltip, visible: false };
-        }
-      });
-    });
+
+    // Hover désactivé pour performance - seulement clic
+    // chartRef.current.subscribeCrosshairMove((param) => { ... });
 
     // Ajouter la gestion du clic pour épingler le tooltip
     chartRef.current.subscribeClick((param) => {
@@ -474,138 +436,11 @@ function MarketChart({ height = 750 }: MarketChartProps) {
     });
   }, [signals, config.signalFilter]);
   
-  // Afficher les cycles de trading sur le graphique
-  useEffect(() => {
-    if (!chartRef.current || !marketData || !marketData.timestamps || tradeCycles.length === 0) return;
-    
-    // Nettoyer les anciennes séries de cycles
-    cycleSeriesRef.current.forEach(series => {
-      if (chartRef.current) {
-        try {
-          chartRef.current.removeSeries(series);
-        } catch (e) {
-          console.warn('Error removing cycle series:', e);
-        }
-      }
-    });
-    cycleSeriesRef.current = [];
-    
-    // Créer des zones colorées pour chaque cycle
-    tradeCycles.forEach(cycle => {
-      if (!cycle.entry_price || !chartRef.current) return;
-      
-      // Déterminer les timestamps de début et fin
-      const startTime = Math.floor(new Date(cycle.created_at).getTime() / 1000) as Time;
-      let endTime: Time;
-      
-      if (cycle.completed_at) {
-        endTime = Math.floor(new Date(cycle.completed_at).getTime() / 1000) as Time;
-      } else {
-        // Si le cycle est actif, étendre jusqu'au dernier timestamp disponible
-        endTime = Math.floor(new Date(marketData.timestamps[marketData.timestamps.length - 1]).getTime() / 1000) as Time;
-      }
-      
-      // Créer une série de lignes pour marquer la période
-      const topLineSeries = chartRef.current.addLineSeries({
-        color: cycle.status === 'completed' 
-          ? (cycle.profit_loss && cycle.profit_loss > 0 ? 'rgba(0, 255, 136, 0.6)' : 'rgba(255, 68, 68, 0.6)')
-          : 'rgba(33, 150, 243, 0.6)',
-        lineWidth: 2,
-        lineStyle: LineStyle.Solid,
-        priceScaleId: 'right',
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
-      });
-      
-      const bottomLineSeries = chartRef.current.addLineSeries({
-        color: cycle.status === 'completed' 
-          ? (cycle.profit_loss && cycle.profit_loss > 0 ? 'rgba(0, 255, 136, 0.6)' : 'rgba(255, 68, 68, 0.6)')
-          : 'rgba(33, 150, 243, 0.6)',
-        lineWidth: 2,
-        lineStyle: LineStyle.Solid,
-        priceScaleId: 'right',
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
-      });
-      
-      // Trouver les prix min et max dans cette période
-      const pricesInPeriod = marketData.timestamps
-        .map((ts, idx) => {
-          const time = Math.floor(new Date(ts).getTime() / 1000);
-          const startTimeNum = startTime as number;
-          const endTimeNum = endTime as number;
-          if (time >= startTimeNum && time <= endTimeNum) {
-            return {
-              high: marketData.high[idx],
-              low: marketData.low[idx]
-            };
-          }
-          return null;
-        })
-        .filter(p => p !== null);
-      
-      if (pricesInPeriod.length > 0) {
-        const maxPrice = Math.max(...pricesInPeriod.map(p => p!.high));
-        const minPrice = Math.min(...pricesInPeriod.map(p => p!.low));
-        const padding = (maxPrice - minPrice) * 0.1;
-        
-        // Créer les lignes supérieures et inférieures
-        topLineSeries.setData([
-          { time: startTime, value: maxPrice + padding },
-          { time: endTime, value: maxPrice + padding }
-        ]);
-        
-        bottomLineSeries.setData([
-          { time: startTime, value: minPrice - padding },
-          { time: endTime, value: minPrice - padding }
-        ]);
-        
-        // Créer une zone remplie entre les deux lignes
-        if (chartRef.current) {
-          const fillSeries = chartRef.current.addAreaSeries({
-            topColor: cycle.status === 'completed' 
-              ? (cycle.profit_loss && cycle.profit_loss > 0 ? 'rgba(0, 255, 136, 0.25)' : 'rgba(255, 68, 68, 0.25)')
-              : 'rgba(33, 150, 243, 0.25)',
-            bottomColor: cycle.status === 'completed' 
-              ? (cycle.profit_loss && cycle.profit_loss > 0 ? 'rgba(0, 255, 136, 0.05)' : 'rgba(255, 68, 68, 0.05)')
-              : 'rgba(33, 150, 243, 0.05)',
-            lineColor: cycle.status === 'completed' 
-              ? (cycle.profit_loss && cycle.profit_loss > 0 ? 'rgba(0, 255, 136, 0.7)' : 'rgba(255, 68, 68, 0.7)')
-              : 'rgba(33, 150, 243, 0.7)',
-            lineWidth: 2,
-            lineStyle: LineStyle.Solid,
-            priceScaleId: 'right',
-            priceLineVisible: false,
-            lastValueVisible: false,
-            crosshairMarkerVisible: false,
-          });
-          
-          // Données pour remplir la zone
-          const areaData = [];
-          const startTimeNum = startTime as number;
-          const endTimeNum = endTime as number;
-          for (let i = 0; i < marketData.timestamps.length; i++) {
-            const time = Math.floor(new Date(marketData.timestamps[i]).getTime() / 1000);
-            if (time >= startTimeNum && time <= endTimeNum) {
-              areaData.push({
-                time: time as Time,
-                value: marketData.high[i] * 1.01 // Légèrement au-dessus du prix
-              });
-            }
-          }
-          
-          if (areaData.length > 0) {
-            fillSeries.setData(areaData);
-            cycleSeriesRef.current.push(fillSeries);
-          }
-        }
-        
-        cycleSeriesRef.current.push(topLineSeries, bottomLineSeries);
-      }
-    });
-  }, [tradeCycles, marketData]);
+  // Cycles désactivés pour performance
+  // useEffect(() => {
+  //   if (!chartRef.current || !marketData || !marketData.timestamps || tradeCycles.length === 0) return;
+  //   ...code désactivé...
+  // }, [tradeCycles, marketData]);
   
   // Application du zoom
   useEffect(() => {
@@ -666,34 +501,6 @@ function MarketChart({ height = 750 }: MarketChartProps) {
       {/* Tooltip avec zone de connexion */}
       {tooltip.visible && tooltip.signal && (
         <>
-          {/* Zone invisible de connexion entre la flèche et le tooltip - seulement si pas épinglé */}
-          {!tooltip.isPinned && (
-            <div
-              className="absolute pointer-events-auto"
-              style={{
-                left: Math.min(tooltip.x - 30, tooltip.x - 125), // Zone large autour du tooltip
-                top: tooltip.y - 120,
-                width: Math.max(60, 250), // Largeur adaptative
-                height: 120,
-                zIndex: 999,
-                // Débogage : décommenter pour voir la zone
-                // backgroundColor: 'rgba(255, 0, 0, 0.2)',
-              }}
-              onMouseEnter={() => {
-                if (tooltipTimeoutRef.current) {
-                  clearTimeout(tooltipTimeoutRef.current);
-                  tooltipTimeoutRef.current = null;
-                }
-                setTooltip(prev => ({ ...prev, isHoveringTooltip: true }));
-              }}
-              onMouseLeave={() => {
-                setTooltip(prev => ({ ...prev, isHoveringTooltip: false }));
-                tooltipTimeoutRef.current = setTimeout(() => {
-                  setTooltip(prev => ({ ...prev, visible: false }));
-                }, 300);
-              }}
-            />
-          )}
           
           {/* Infobulle des signaux */}
           <div
@@ -709,32 +516,6 @@ function MarketChart({ height = 750 }: MarketChartProps) {
               pointerEvents: 'auto',
               zIndex: 1000,
               borderColor: tooltip.isPinned ? '#3b82f6' : '#4b5563', // Bordure bleue si épinglé
-            }}
-            onWheel={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onMouseEnter={() => {
-              if (tooltipTimeoutRef.current) {
-                clearTimeout(tooltipTimeoutRef.current);
-                tooltipTimeoutRef.current = null;
-              }
-              setTooltip(prev => ({ ...prev, isHoveringTooltip: true }));
-            }}
-            onMouseLeave={() => {
-              // Vérifier l'état épinglé au moment de l'événement
-              setTooltip(prev => {
-                if (prev.isPinned) {
-                  // Si épinglé, ne rien changer
-                  return prev;
-                } else {
-                  // Si pas épinglé, programmer la fermeture
-                  tooltipTimeoutRef.current = setTimeout(() => {
-                    setTooltip(state => ({ ...state, visible: false }));
-                  }, 300);
-                  return { ...prev, isHoveringTooltip: false };
-                }
-              });
             }}
           >
           <div className="text-sm space-y-2">
@@ -853,23 +634,6 @@ function MarketChart({ height = 750 }: MarketChartProps) {
         </div>
       </div>
       
-      {/* Légende des cycles - repositionnée en bas à gauche */}
-      <div className="absolute bottom-2 left-2 z-10 bg-black/70 backdrop-blur-sm rounded-md px-2 py-1.5 text-xs">
-        <div className="flex items-center space-x-3">
-          <div className="flex items-center space-x-1">
-            <div className="w-2 h-2 bg-blue-500/40 rounded"></div>
-            <span className="text-gray-300 text-xs">Actif</span>
-          </div>
-          <div className="flex items-center space-x-1">
-            <div className="w-2 h-2 bg-green-500/40 rounded"></div>
-            <span className="text-gray-300 text-xs">Gain</span>
-          </div>
-          <div className="flex items-center space-x-1">
-            <div className="w-2 h-2 bg-red-500/40 rounded"></div>
-            <span className="text-gray-300 text-xs">Perte</span>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

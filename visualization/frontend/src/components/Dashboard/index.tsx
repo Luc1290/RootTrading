@@ -1,211 +1,120 @@
-import React, { memo, useState, useMemo, useEffect } from 'react';
-import Controls from '@/components/Controls';
-import MarketChart from '@/components/Charts/MarketChart';
-import VolumeChart from '@/components/Charts/VolumeChart';
-import RSIChart from '@/components/Charts/RSIChart';
-import MACDChart from '@/components/Charts/MACDChart';
-import VWAPChart from '@/components/Charts/VWAPChart';
-import RegimeInfo from '@/components/Charts/RegimeInfo';
-import PerformanceChart from '@/components/Charts/PerformanceChart';
-import { GlobalStatusMessage } from '@/components/Common/StatusMessage';
-import PortfolioPanel from '@/components/Trading/PortfolioPanel';
-import PositionsPanel from '@/components/Trading/PositionsPanel';
-import TradeHistoryPanel from '@/components/Trading/TradeHistoryPanel';
-import AlertsPanel from '@/components/Trading/AlertsPanel';
-import RecentOrdersPanel from '@/components/Trading/RecentOrdersPanel';
-import MultiTimeframeChart from '@/components/Charts/MultiTimeframeChart';
-import OrderBookPanel from '@/components/Trading/OrderBookPanel';
-import { useChart } from '@/hooks/useChart';
-import toast from 'react-hot-toast';
+import React, { useState, useEffect } from 'react';
+import CryptoSection from './CryptoSection';
+import { apiService } from '@/services/api';
 
-// Composants memoizés pour optimiser les performances
-const MemoizedMarketChart = memo(MarketChart);
-const MemoizedVolumeChart = memo(VolumeChart);
-const MemoizedRSIChart = memo(RSIChart);
-const MemoizedMACDChart = memo(MACDChart);
-const MemoizedVWAPChart = memo(VWAPChart);
-const MemoizedPerformanceChart = memo(PerformanceChart);
-const MemoizedMultiTimeframeChart = memo(MultiTimeframeChart);
+interface TopSignal {
+  symbol: string;
+  net_signal: number;
+  buy_count: number;
+  sell_count: number;
+  dominant_side: string;
+  last_signal_time: string;
+}
 
-// Composants de trading memoizés
-const MemoizedRegimeInfo = memo(RegimeInfo);
-const MemoizedPortfolioPanel = memo(PortfolioPanel);
-const MemoizedPositionsPanel = memo(PositionsPanel);
-const MemoizedTradeHistoryPanel = memo(TradeHistoryPanel);
-const MemoizedAlertsPanel = memo(AlertsPanel);
-const MemoizedOrderBookPanel = memo(OrderBookPanel);
-const MemoizedRecentOrdersPanel = memo(RecentOrdersPanel);
+interface CryptoWithSignal {
+  symbol: string;
+  netSignal: number;
+  buyCount: number;
+  sellCount: number;
+}
 
 function Dashboard() {
-  const [activeTab, setActiveTab] = useState('main');
-  
-  const { isLoading, apiError, marketData } = useChart({
-    autoUpdate: true,
-    updateInterval: 30000, // 30s au lieu de 10s pour réduire la charge
-    enableWebSocket: true,
-  });
-  
-  // Afficher les erreurs API
-  useEffect(() => {
-    if (apiError) {
-      toast.error(`Erreur API: ${apiError}`, {
-        duration: 5000,
-        position: 'top-center'
+  const [allCryptos, setAllCryptos] = useState<CryptoWithSignal[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Charger TOUTES les cryptos configurées + leurs signaux
+  const loadAllCryptos = async () => {
+    try {
+      setLoading(true);
+
+      // 1. Récupérer toutes les cryptos configurées
+      const configuredResponse = await apiService.getConfiguredSymbols();
+      const allSymbols = configuredResponse.symbols.map(s => s.endsWith('USDC') ? s : s + 'USDC');
+
+      // 2. Récupérer les signaux récents
+      const signalsResponse = await fetch('/api/top-signals?timeframe_minutes=15&limit=100');
+      const signalsData = await signalsResponse.json();
+      const signalsMap = new Map<string, TopSignal>(
+        (signalsData.signals || []).map((s: TopSignal) => [s.symbol, s])
+      );
+
+      // 3. Combiner : toutes les cryptos avec leurs signaux (0 si pas de signaux)
+      const cryptosWithSignals = allSymbols.map(symbol => {
+        const signal = signalsMap.get(symbol);
+        return {
+          symbol,
+          netSignal: signal?.net_signal || 0,
+          buyCount: signal?.buy_count || 0,
+          sellCount: signal?.sell_count || 0,
+        };
       });
+
+      // 4. Trier par net_signal DESC (les plus de signaux BUY en premier)
+      cryptosWithSignals.sort((a, b) => b.netSignal - a.netSignal);
+
+      setAllCryptos(cryptosWithSignals);
+    } catch (error) {
+      console.error('Erreur chargement cryptos:', error);
+    } finally {
+      setLoading(false);
     }
-  }, [apiError]);
-  
-  // Log de débogage pour les données
+  };
+
   useEffect(() => {
-    console.log('Dashboard - Market data status:', {
-      hasMarketData: !!marketData,
-      timestamps: marketData?.timestamps?.length || 0,
-      activeTab
-    });
-  }, [marketData, activeTab]);
-  
-  // Contenu des onglets memoizé pour optimiser les performances
-  const tabContent = useMemo(() => {
-    switch (activeTab) {
-      case 'main':
-        return (
-          <div className="grid grid-cols-12 gap-6">
-            {/* Colonne gauche - Graphiques essentiels */}
-            <div className="col-span-12 lg:col-span-8 xl:col-span-9 space-y-6">
-              {/* Graphique principal */}
-              <div className="chart-container">
-                <div className="chart-title">📈 Graphique de Marché</div>
-                <MemoizedMarketChart />
-              </div>
-              
-              {/* Graphique de volume */}
-              <div className="chart-container">
-                <div className="chart-title">📉 Volume</div>
-                <MemoizedVolumeChart />
-              </div>
-              
-              {/* Indicateurs essentiels */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="chart-container">
-                  <div className="chart-title">📉 RSI</div>
-                  <MemoizedRSIChart />
-                </div>
-                <div className="chart-container">
-                  <div className="chart-title">📉 MACD</div>
-                  <MemoizedMACDChart />
-                </div>
-              </div>
-            </div>
-            
-            {/* Colonne droite - Infos essentielles */}
-            <div className="col-span-12 lg:col-span-4 xl:col-span-3 space-y-6">
-              <div className="chart-container">
-                <div className="chart-title">🎯 Market Regime</div>
-                <MemoizedRegimeInfo />
-              </div>
-              <div className="chart-container">
-                <div className="chart-title">💼 Portfolio</div>
-                <MemoizedPortfolioPanel />
-              </div>
-              <div className="chart-container">
-                <div className="chart-title">📊 Positions</div>
-                <MemoizedPositionsPanel />
-              </div>
-            </div>
-          </div>
-        );
-        
-      case 'advanced':
-        return (
-          <div className="grid grid-cols-12 gap-6">
-            <div className="col-span-12 lg:col-span-8 space-y-6">
-              <div className="chart-container">
-                <div className="chart-title">📈 VWAP Analysis</div>
-                <MemoizedVWAPChart />
-              </div>
-              <div className="chart-container">
-                <div className="chart-title">🕐 Timeframes Multiples</div>
-                <MemoizedMultiTimeframeChart />
-              </div>
-              <div className="chart-container">
-                <div className="chart-title">💰 Performance</div>
-                <MemoizedPerformanceChart />
-              </div>
-            </div>
-            <div className="col-span-12 lg:col-span-4 space-y-6">
-              <div className="chart-container">
-                <div className="chart-title">📈 Historique Trades</div>
-                <MemoizedTradeHistoryPanel />
-              </div>
-              <div className="chart-container">
-                <div className="chart-title">🚨 Alertes</div>
-                <MemoizedAlertsPanel />
-              </div>
-            </div>
-          </div>
-        );
-        
-      case 'trading':
-        return (
-          <div className="grid grid-cols-12 gap-6">
-            <div className="col-span-12 lg:col-span-6 space-y-6">
-              <div className="chart-container">
-                <div className="chart-title">📋 Carnet d'Ordres</div>
-                <MemoizedOrderBookPanel />
-              </div>
-            </div>
-            <div className="col-span-12 lg:col-span-6 space-y-6">
-              <div className="chart-container">
-                <div className="chart-title">⚡ Ordres Récents</div>
-                <MemoizedRecentOrdersPanel />
-              </div>
-            </div>
-          </div>
-        );
-        
-      default:
-        return null;
-    }
-  }, [activeTab]);
+    loadAllCryptos();
+    // Auto-refresh désactivé pour performance
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="flex items-center space-x-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
+          <span className="text-white text-lg">Chargement des cryptos...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <Controls />
-      <GlobalStatusMessage />
-      
-      {/* Navigation par onglets pour réduire la charge */}
-      <div className="border-b border-gray-700">
-        <nav className="flex space-x-8">
-          {[
-            { id: 'main', label: '📊 Principal', desc: 'Graphiques essentiels' },
-            { id: 'advanced', label: '📈 Avancé', desc: 'Analyses approfondies' },
-            { id: 'trading', label: '💰 Trading', desc: 'Ordres et carnet' }
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
-                activeTab === tab.id
-                  ? 'border-primary-500 text-primary-500'
-                  : 'border-transparent text-gray-400 hover:text-gray-300'
-              }`}
-            >
-              <div>{tab.label}</div>
-              <div className="text-xs opacity-75">{tab.desc}</div>
-            </button>
-          ))}
-        </nav>
+    <div className="space-y-8 p-6">
+      {/* En-tête */}
+      <div className="bg-dark-200 border border-gray-700 rounded-lg p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-white mb-2">
+              📊 Dashboard Multi-Crypto
+            </h1>
+            <p className="text-gray-400">
+              {allCryptos.length} cryptos configurées • {allCryptos.filter(c => c.netSignal > 0).length} avec signaux BUY récents (15min)
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={loadAllCryptos}
+            disabled={loading}
+            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+          >
+            {loading ? '⏳ Chargement...' : '🔄 Rafraîchir'}
+          </button>
+        </div>
       </div>
-      
-      {/* Contenu de l'onglet actif */}
-      {tabContent}
-      
-      {/* Overlay de loading */}
-      {isLoading && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-dark-200 border border-gray-700 rounded-lg p-6 flex items-center space-x-3">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-500"></div>
-            <span className="text-white font-medium">Mise à jour des données...</span>
+
+      {/* Sections par crypto */}
+      {allCryptos.map((crypto) => (
+        <CryptoSection
+          key={crypto.symbol}
+          symbol={crypto.symbol}
+          netSignal={crypto.netSignal}
+          buyCount={crypto.buyCount}
+          sellCount={crypto.sellCount}
+        />
+      ))}
+
+      {allCryptos.length === 0 && (
+        <div className="text-center py-12">
+          <div className="text-gray-400 text-lg">
+            Aucune crypto configurée
           </div>
         </div>
       )}

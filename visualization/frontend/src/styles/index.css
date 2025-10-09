@@ -59,6 +59,21 @@
   .chart-title {
     @apply text-lg font-semibold mb-4 text-white flex items-center gap-2;
   }
+
+  .chart-market {
+    @apply w-full;
+    height: 700px;
+  }
+
+  .chart-volume {
+    @apply w-full;
+    height: 200px;
+  }
+
+  .chart-indicator {
+    @apply w-full;
+    height: 200px;
+  }
   
   .status-indicator {
     @apply px-3 py-1 rounded-full text-sm font-medium;

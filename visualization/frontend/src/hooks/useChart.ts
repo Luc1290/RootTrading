@@ -55,81 +55,44 @@ export function useChart(options: UseChartOptions = {}) {
   const { refetch, data: chartData, loading: apiLoading, error: apiError } = useAllChartData(
     config.symbol,
     config.interval,
-    config.limit
+    500
   );
   
-  // Log API errors
-  useEffect(() => {
-    if (apiError) {
-      console.error('API Error in useChart:', apiError);
-    }
-  }, [apiError]);
-  
-  // Update store when data is loaded
-  useEffect(() => {
-    if (chartData && !apiLoading) {
-      console.log('Chart data loaded:', {
-        marketData: chartData.marketData ? 'OK' : 'Missing',
-        indicators: chartData.indicators ? 'OK' : 'Missing',
-        signals: chartData.signals ? 'OK' : 'Missing'
-      });
-    }
-  }, [chartData, apiLoading]);
+  // Logs désactivés pour performance
   
   const { subscribe, unsubscribe, isConnected } = useWebSocket({
-    autoConnect: enableWebSocket,
-    onMessage: (message) => {
-      if (message.type === 'update') {
-        // Traiter les mises à jour en temps réel
-        console.log('Real-time update:', message.data);
-        // Ici on pourrait mettre à jour les données sans refetch complet
-      }
-    },
+    autoConnect: false, // Désactivé pour performance
+    onMessage: (message) => {},
   });
   
-  // Fonction de mise à jour avec debounce et limite basée sur l'intervalle
+  // Fonction de mise à jour optimisée
   const debouncedUpdate = useCallback(
     debounce(async () => {
       if (isUserInteracting || apiLoading) return;
-      
-      // Ne pas actualiser plus souvent que l'intervalle des données
+
       const now = Date.now();
       const intervalMs = getIntervalMs(config.interval);
-      if (lastUpdate && (now - lastUpdate.getTime()) < intervalMs) {
-        console.log('Skipping update - too frequent for interval:', config.interval);
-        return;
-      }
-      
-      console.log('Updating chart data for:', config.symbol, config.interval);
+      if (lastUpdate && (now - lastUpdate.getTime()) < intervalMs) return;
+
       setIsLoading(true);
       try {
         await refetch();
         setLastUpdate(new Date());
-        console.log('Chart data updated successfully');
-      } catch (error) {
-        console.error('Error updating chart data:', error);
       } finally {
         setIsLoading(false);
       }
-    }, 2000),
+    }, 3000),
     [refetch, isUserInteracting, setIsLoading, setLastUpdate, config.interval, lastUpdate, apiLoading]
   );
   
-  // Force update function with cancellation protection
+  // Force update optimisé
   const forceUpdate = useCallback(async () => {
-    if (isLoading || apiLoading) {
-      console.log('Update already in progress, skipping...');
-      return;
-    }
-    
-    console.log('Force updating chart data for:', config.symbol, config.interval);
+    if (isLoading || apiLoading) return;
+
     setIsLoading(true);
     try {
       await refetch();
       setLastUpdate(new Date());
-      console.log('Force update completed successfully');
-    } catch (error) {
-      console.error('Error forcing chart update:', error);
     } finally {
       setIsLoading(false);
     }

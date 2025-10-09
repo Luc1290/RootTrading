@@ -219,30 +219,31 @@ class ApiService {
     return this.getIndicators(symbol, 'ema', interval, limit);
   }
   
-  // Méthodes combinées
+  // Méthodes combinées - OPTIMISÉ (avec signaux)
   async getAllChartData(
     symbol: TradingSymbol,
     interval: TimeInterval,
-    limit: number = 2880
+    limit: number = 500
   ): Promise<{
     marketData: MarketData;
     indicators: Indicators;
     signals: { buy: TradingSignal[]; sell: TradingSignal[] };
   }> {
     try {
+      // 3 appels : market, indicateurs (ema+rsi+macd), signaux
       const [marketResponse, indicatorsResponse, signalsResponse] = await Promise.all([
         this.getMarketData(symbol, interval, limit),
-        this.getIndicators(symbol, 'rsi,macd,ema,vwap', interval, limit),
+        this.getIndicators(symbol, 'ema,rsi,macd', interval, limit),
         this.getTradingSignals(symbol),
       ]);
-      
+
       return {
         marketData: marketResponse.data,
         indicators: indicatorsResponse.indicators || {},
         signals: signalsResponse.signals,
       };
     } catch (error) {
-      console.error('Error fetching all chart data:', error);
+      console.error('Error fetching chart data:', error);
       throw error;
     }
   }

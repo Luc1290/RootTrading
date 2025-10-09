@@ -5,17 +5,20 @@ import { formatNumber } from '@/utils';
 
 interface MACDChartProps {
   height?: number;
+  useStore?: any;
 }
 
-function MACDChart({ height = 200 }: MACDChartProps) {
+function MACDChart({ height = 200, useStore }: MACDChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const macdSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const signalSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const histogramSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const zeroLineRef = useRef<ISeriesApi<'Line'> | null>(null);
-  
-  const { marketData, indicators, zoomState, config } = useChartStore();
+
+  const defaultStore = useChartStore();
+  const store = useStore ? useStore() : defaultStore;
+  const { marketData, indicators, zoomState, config } = store;
   
   // Initialisation du graphique
   useEffect(() => {
@@ -153,21 +156,21 @@ function MACDChart({ height = 200 }: MACDChartProps) {
       const macdData: LineData[] = marketData.timestamps.map((timestamp: string, index: number) => ({
         time: Math.floor(new Date(timestamp).getTime() / 1000) as Time,
         value: indicators.macd![index],
-      })).filter((item) => item.value !== null && item.value !== undefined) as LineData[];
-      
+      })).filter((item: LineData) => item.value !== null && item.value !== undefined) as LineData[];
+
       macdSeriesRef.current.setData(macdData);
     }
-    
+
     // Ligne Signal
     if (indicators.macd_signal && signalSeriesRef.current) {
       const signalData: LineData[] = marketData.timestamps.map((timestamp: string, index: number) => ({
         time: Math.floor(new Date(timestamp).getTime() / 1000) as Time,
         value: indicators.macd_signal![index],
-      })).filter((item) => item.value !== null && item.value !== undefined) as LineData[];
-      
+      })).filter((item: LineData) => item.value !== null && item.value !== undefined) as LineData[];
+
       signalSeriesRef.current.setData(signalData);
     }
-    
+
     // Histogramme
     if (indicators.macd_histogram && histogramSeriesRef.current) {
       const histogramData: HistogramData[] = marketData.timestamps.map((timestamp: string, index: number) => {
@@ -177,7 +180,7 @@ function MACDChart({ height = 200 }: MACDChartProps) {
           value: value,
           color: value >= 0 ? '#00ff00' : '#ff0000',
         };
-      }).filter((item) => item.value !== null && item.value !== undefined) as HistogramData[];
+      }).filter((item: HistogramData) => item.value !== null && item.value !== undefined) as HistogramData[];
       
       histogramSeriesRef.current.setData(histogramData);
     }
@@ -198,7 +201,7 @@ function MACDChart({ height = 200 }: MACDChartProps) {
       try {
         chartRef.current.timeScale().fitContent();
       } catch (error) {
-        console.warn('Error fitting content:', error);
+        // Ignore zoom errors silently
       }
       return;
     }
@@ -219,7 +222,7 @@ function MACDChart({ height = 200 }: MACDChartProps) {
           to: zoomState.xRange[1] as Time,
         });
       } catch (error) {
-        console.warn('Error setting visible range:', error);
+        // Ignore zoom errors silently
       }
     }
   }, [zoomState.xRange, marketData]);

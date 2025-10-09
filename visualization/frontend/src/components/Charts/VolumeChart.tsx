@@ -5,14 +5,17 @@ import { formatVolume } from '@/utils';
 
 interface VolumeChartProps {
   height?: number;
+  useStore?: any;
 }
 
-function VolumeChart({ height = 150 }: VolumeChartProps) {
+function VolumeChart({ height = 150, useStore }: VolumeChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
-  
-  const { marketData, zoomState, config } = useChartStore();
+
+  const defaultStore = useChartStore();
+  const store = useStore ? useStore() : defaultStore;
+  const { marketData, zoomState, config } = store;
   
   // Initialisation du graphique
   useEffect(() => {
@@ -104,10 +107,10 @@ function VolumeChart({ height = 150 }: VolumeChartProps) {
         value: marketData.volume[index],
         color: isUp ? '#26a69a' : '#ef5350',
       };
-    }).filter((item) => 
-      item.value != null && 
-      !isNaN(item.value) &&
-      item.value >= 0
+    }).filter((item: HistogramData) =>
+      item.value != null &&
+      !isNaN(item.value as number) &&
+      (item.value as number) >= 0
     ) as HistogramData[];
     
     volumeSeriesRef.current.setData(volumeData);
@@ -143,7 +146,7 @@ function VolumeChart({ height = 150 }: VolumeChartProps) {
           to: zoomState.xRange[1] as Time,
         });
       } catch (error) {
-        console.warn('Error setting visible range:', error);
+        // Ignore zoom errors silently
       }
     }
   }, [zoomState.xRange, marketData]);

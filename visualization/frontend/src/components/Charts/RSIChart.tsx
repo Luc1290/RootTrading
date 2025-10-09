@@ -5,17 +5,20 @@ import { formatNumber } from '@/utils';
 
 interface RSIChartProps {
   height?: number;
+  useStore?: any;
 }
 
-function RSIChart({ height = 200 }: RSIChartProps) {
+function RSIChart({ height = 200, useStore }: RSIChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const rsiSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const overboughtLineRef = useRef<ISeriesApi<'Line'> | null>(null);
   const oversoldLineRef = useRef<ISeriesApi<'Line'> | null>(null);
   const neutralLineRef = useRef<ISeriesApi<'Line'> | null>(null);
-  
-  const { marketData, indicators, zoomState, config } = useChartStore();
+
+  const defaultStore = useChartStore();
+  const store = useStore ? useStore() : defaultStore;
+  const { marketData, indicators, zoomState, config } = store;
   
   // Initialisation du graphique
   useEffect(() => {
@@ -142,7 +145,7 @@ function RSIChart({ height = 200 }: RSIChartProps) {
     const rsiData = marketData.timestamps.map((timestamp: string, index: number) => ({
       time: Math.floor(new Date(timestamp).getTime() / 1000) as Time,
       value: indicators.rsi![index],
-    })).filter((item) => item.value !== null && item.value !== undefined) as LineData[];
+    })).filter((item: LineData) => item.value !== null && item.value !== undefined) as LineData[];
     
     rsiSeriesRef.current.setData(rsiData);
     
@@ -188,7 +191,7 @@ function RSIChart({ height = 200 }: RSIChartProps) {
           to: zoomState.xRange[1] as Time,
         });
       } catch (error) {
-        console.warn('Error setting visible range:', error);
+        // Ignore zoom errors silently
       }
     }
   }, [zoomState.xRange, marketData]);

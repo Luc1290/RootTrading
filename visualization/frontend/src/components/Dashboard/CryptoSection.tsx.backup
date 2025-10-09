@@ -1,0 +1,283 @@
+import React, { memo, useEffect } from 'react';
+import { useCryptoData } from '@/hooks/useCryptoData';
+import { formatNumber } from '@/utils';
+import { useChartStore } from '@/stores/useChartStore';
+import MarketChart from '@/components/Charts/MarketChart';
+import VolumeChart from '@/components/Charts/VolumeChart';
+import RSIChart from '@/components/Charts/RSIChart';
+import MACDChart from '@/components/Charts/MACDChart';
+
+interface CryptoSectionProps {
+  symbol: string;
+  netSignal: number;
+  buyCount: number;
+  sellCount: number;
+}
+
+function CryptoSection({ symbol, netSignal, buyCount, sellCount }: CryptoSectionProps) {
+  const [interval, setInterval] = React.useState<string>('1m');
+  const [limit, setLimit] = React.useState<number>(5000);
+  const { data, loading } = useCryptoData(symbol as any, interval, limit);
+
+  const marketChartRef = useRef<HTMLDivElement>(null);
+  const volumeChartRef = useRef<HTMLDivElement>(null);
+  const rsiChartRef = useRef<HTMLDivElement>(null);
+  const macdChartRef = useRef<HTMLDivElement>(null);
+
+  // Market Chart
+  useEffect(() => {
+    if (!data || !marketChartRef.current) return;
+
+    const chart = createChart(marketChartRef.current, {
+      width: marketChartRef.current.clientWidth,
+      height: 700,
+      layout: {
+        background: { type: ColorType.Solid, color: '#1a1a1a' },
+        textColor: '#ffffff',
+      },
+      grid: {
+        vertLines: { color: '#333333' },
+        horzLines: { color: '#333333' },
+      },
+      crosshair: {
+        mode: 1,
+        vertLine: { color: '#888888', width: 1, style: 2 },
+        horzLine: { color: '#888888', width: 1, style: 2 },
+      },
+      rightPriceScale: {
+        borderColor: '#444444',
+        textColor: '#ffffff',
+        scaleMargins: { top: 0.15, bottom: 0.35 },
+        autoScale: true,
+      },
+      timeScale: {
+        borderColor: '#444444',
+        timeVisible: true,
+        secondsVisible: false,
+      },
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: true,
+      },
+      handleScale: {
+        axisPressedMouseMove: true,
+        mouseWheel: true,
+        pinch: true,
+      },
+    });
+
+    const candleSeries = chart.addCandlestickSeries({
+      upColor: '#26a69a',
+      downColor: '#ef5350',
+      borderVisible: false,
+      wickUpColor: '#26a69a',
+      wickDownColor: '#ef5350',
+    });
+
+    const candles: CandlestickData[] = data.marketData.timestamps.map((ts: string, i: number) => ({
+      time: Math.floor(new Date(ts).getTime() / 1000) as Time,
+      open: data.marketData.open[i],
+      high: data.marketData.high[i],
+      low: data.marketData.low[i],
+      close: data.marketData.close[i],
+    }));
+    candleSeries.setData(candles);
+
+    // Signaux
+    if (data.signals) {
+      const markers = [
+        ...(data.signals.buy || []).map((s: any) => ({
+          time: Math.floor(new Date(s.timestamp).getTime() / 1000),
+          position: 'belowBar' as const,
+          color: '#00ff88',
+          shape: 'arrowUp' as const,
+        })),
+        ...(data.signals.sell || []).map((s: any) => ({
+          time: Math.floor(new Date(s.timestamp).getTime() / 1000),
+          position: 'aboveBar' as const,
+          color: '#ff4444',
+          shape: 'arrowDown' as const,
+        })),
+      ];
+      candleSeries.setMarkers(markers as any);
+    }
+
+    // Auto-fit content on load
+    chart.timeScale().fitContent();
+
+    // Handle resize
+    const handleResize = () => {
+      if (marketChartRef.current) {
+        chart.applyOptions({ width: marketChartRef.current.clientWidth });
+      }
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      chart.remove();
+    };
+  }, [data]);
+
+  // Volume Chart
+  useEffect(() => {
+    if (!data || !volumeChartRef.current) return;
+
+    const chart = createChart(volumeChartRef.current, {
+      width: volumeChartRef.current.clientWidth,
+      height: 200,
+      layout: { background: { type: ColorType.Solid, color: '#1a1a1a' }, textColor: '#fff' },
+      grid: { vertLines: { color: '#333' }, horzLines: { color: '#333' } },
+    });
+
+    const volumeSeries = chart.addHistogramSeries({ color: '#26a69a' });
+    const volumes: HistogramData[] = data.marketData.timestamps.map((ts: string, i: number) => ({
+      time: Math.floor(new Date(ts).getTime() / 1000) as Time,
+      value: data.marketData.volume[i],
+      color: data.marketData.close[i] >= data.marketData.open[i] ? '#26a69a' : '#ef5350',
+    }));
+    volumeSeries.setData(volumes);
+
+    return () => chart.remove();
+  }, [data]);
+
+  // RSI Chart
+  useEffect(() => {
+    if (!data?.indicators?.rsi || !rsiChartRef.current) return;
+
+    const chart = createChart(rsiChartRef.current, {
+      width: rsiChartRef.current.clientWidth,
+      height: 200,
+      layout: { background: { type: ColorType.Solid, color: '#1a1a1a' }, textColor: '#fff' },
+      grid: { vertLines: { color: '#333' }, horzLines: { color: '#333' } },
+    });
+
+    const rsiSeries = chart.addLineSeries({ color: '#2196F3', lineWidth: 2 });
+    const rsiData: LineData[] = data.marketData.timestamps
+      .map((ts: string, i: number) => ({
+        time: Math.floor(new Date(ts).getTime() / 1000) as Time,
+        value: data.indicators.rsi[i],
+      }))
+      .filter((d: any) => d.value != null);
+    rsiSeries.setData(rsiData);
+
+    return () => chart.remove();
+  }, [data]);
+
+  // MACD Chart
+  useEffect(() => {
+    if (!data?.indicators?.macd || !macdChartRef.current) return;
+
+    const chart = createChart(macdChartRef.current, {
+      width: macdChartRef.current.clientWidth,
+      height: 200,
+      layout: { background: { type: ColorType.Solid, color: '#1a1a1a' }, textColor: '#fff' },
+      grid: { vertLines: { color: '#333' }, horzLines: { color: '#333' } },
+    });
+
+    const macdSeries = chart.addLineSeries({ color: '#2196F3', lineWidth: 2 });
+    const macdData: LineData[] = data.marketData.timestamps
+      .map((ts: string, i: number) => ({
+        time: Math.floor(new Date(ts).getTime() / 1000) as Time,
+        value: data.indicators.macd[i],
+      }))
+      .filter((d: any) => d.value != null);
+    macdSeries.setData(macdData);
+
+    return () => chart.remove();
+  }, [data]);
+
+  if (loading) {
+    return (
+      <div className="bg-dark-200 border border-gray-700 rounded-lg p-4">
+        <div className="text-white">Chargement {symbol}...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4 pb-8 border-b-4 border-gray-700">
+      {/* En-tête crypto */}
+      <div className="bg-dark-200 border border-gray-700 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <h2 className="text-2xl font-bold text-white">{symbol}</h2>
+            <div className={`text-xl font-bold ${netSignal > 0 ? 'text-green-400' : 'text-red-400'}`}>
+              {netSignal > 0 ? `+${netSignal}` : netSignal}
+            </div>
+            {data && (
+              <div className="text-lg text-gray-300">
+                {formatNumber(data.marketData.close[data.marketData.close.length - 1], 4)} USDC
+              </div>
+            )}
+          </div>
+          <div className="flex items-center space-x-4">
+            {/* Timeframe selector */}
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-400 text-sm">Timeframe:</span>
+              <select
+                value={interval}
+                onChange={(e) => setInterval(e.target.value)}
+                aria-label="Sélectionner le timeframe"
+                className="bg-dark-300 text-white border border-gray-600 rounded px-2 py-1 text-sm"
+              >
+                <option value="1m">1m</option>
+                <option value="5m">5m</option>
+                <option value="15m">15m</option>
+                <option value="30m">30m</option>
+                <option value="1h">1h</option>
+                <option value="4h">4h</option>
+                <option value="1d">1d</option>
+              </select>
+            </div>
+            {/* Candles limit */}
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-400 text-sm">Bougies:</span>
+              <select
+                value={limit}
+                onChange={(e) => setLimit(Number(e.target.value))}
+                aria-label="Sélectionner le nombre de bougies"
+                className="bg-dark-300 text-white border border-gray-600 rounded px-2 py-1 text-sm"
+              >
+                <option value="500">500</option>
+                <option value="1000">1000</option>
+                <option value="2000">2000</option>
+                <option value="5000">5000</option>
+              </select>
+            </div>
+            <div className="flex items-center space-x-2 text-lg">
+              <span className="text-green-400 font-bold">{buyCount} 🟢</span>
+              <span className="text-red-400 font-bold">{sellCount} 🔴</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Market + Signaux */}
+      <div className="chart-container">
+        <div className="chart-title">📈 Market + Signaux</div>
+        <div ref={marketChartRef} className="chart-market" />
+      </div>
+
+      {/* Volume */}
+      <div className="chart-container">
+        <div className="chart-title">📊 Volume</div>
+        <div ref={volumeChartRef} className="chart-volume" />
+      </div>
+
+      {/* RSI + MACD */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="chart-container">
+          <div className="chart-title">📉 RSI</div>
+          <div ref={rsiChartRef} className="chart-indicator" />
+        </div>
+        <div className="chart-container">
+          <div className="chart-title">📉 MACD</div>
+          <div ref={macdChartRef} className="chart-indicator" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default memo(CryptoSection);
