@@ -21,13 +21,45 @@ interface AutoSignal {
 interface TradingOpportunity {
   symbol: string;
   currentPrice: number;
-  // Nouvelles données conditions-based (pas de score)
+
+  // Système PRO - Score & Grade
+  score?: {
+    total: number;
+    grade: string;
+    confidence: number;
+  };
+
+  // Catégories PRO (score détaillé par catégorie)
+  categoryScores?: {
+    trend?: { score: number; confidence: number };
+    momentum?: { score: number; confidence: number };
+    volume?: { score: number; confidence: number };
+    volatility?: { score: number; confidence: number };
+    support_resistance?: { score: number; confidence: number };
+    pattern?: { score: number; confidence: number };
+    confluence?: { score: number; confidence: number };
+  };
+
+  // Validation
+  validation?: {
+    all_passed: boolean;
+    overall_score: number;
+  };
+
+  // Détails validation (pour afficher les problèmes)
+  validationDetails?: {
+    blocking_issues?: string[];
+    warnings?: string[];
+  };
+
+  // Ancien système (rétrocompatibilité)
   conditions?: {
     volume_breakout: boolean;
     momentum_alignment: boolean;
     trend_quality: boolean;
     no_resistance: boolean;
   };
+
   // Données techniques
   signals24h: number;
   signalsConfidence: number;
@@ -41,16 +73,35 @@ interface TradingOpportunity {
   nearest_support?: number;
   nearest_resistance?: number;
   break_probability?: number;
+
+  // Pricing PRO
+  pricing?: {
+    current_price: number;
+    entry_optimal: number;
+    entry_aggressive: number;
+  };
+
+  // Risk PRO
+  risk?: {
+    rr_ratio: number;
+    risk_level: string;
+    max_position_size_pct: number;
+  };
+
   // Targets
   entryZone: { min: number; max: number };
-  targets: { tp1: number; tp2: number; tp3?: number };
-  stopLoss: number;
+  targets: { tp1: number | { price: number; percent: number }; tp2: number | { price: number; percent: number }; tp3?: number | { price: number; percent: number } };
+  stopLoss: number | { price: number; percent: number };
   recommendedSize: { min: number; max: number };
+
   // Action
-  action: 'BUY_NOW' | 'WAIT' | 'WAIT_HIGHER_TF' | 'WAIT_QUALITY_GATE';
+  action: 'BUY_NOW' | 'BUY_DCA' | 'WAIT' | 'AVOID' | 'WAIT_HIGHER_TF' | 'WAIT_QUALITY_GATE';
   reason: string;
+  reasons?: string[];
+  warnings?: string[];
+  recommendations?: string[];
   estimatedHoldTime?: string;
-  autoSignal?: AutoSignal; // Signaux automatiques
+  autoSignal?: AutoSignal;
 }
 
 function ManualTradingPage() {
@@ -98,32 +149,98 @@ function ManualTradingPage() {
 
             const currentPrice = marketData.data.close[marketData.data.close.length - 1] || 0;
 
+            // Extraire targets (nouveau format PRO ou ancien format)
+            const tp1 = signalsData.targets?.tp1?.price || signalsData.targets?.tp1 || currentPrice * 1.01;
+            const tp2 = signalsData.targets?.tp2?.price || signalsData.targets?.tp2 || currentPrice * 1.015;
+            const tp3 = signalsData.targets?.tp3?.price || signalsData.targets?.tp3;
+            const stopLoss = signalsData.stop_loss?.price || signalsData.stop_loss || currentPrice * 0.988;
+
+            // Construire entry zone (PRO ou ancien)
+            const entryOptimal = signalsData.pricing?.entry_optimal || currentPrice * 0.998;
+            const entryAggressive = signalsData.pricing?.entry_aggressive || currentPrice;
+
+            // Extraire les raw_data du debug (analyzer_data complet)
+            const rawData = signalsData.debug?.raw_data || {};
+
+            // Extraire les catégories de score
+            const categoryScores = signalsData.debug?.score_details?.category_scores ? {
+              trend: {
+                score: signalsData.debug.score_details.category_scores.trend?.score || 0,
+                confidence: signalsData.debug.score_details.category_scores.trend?.confidence || 0
+              },
+              momentum: {
+                score: signalsData.debug.score_details.category_scores.momentum?.score || 0,
+                confidence: signalsData.debug.score_details.category_scores.momentum?.confidence || 0
+              },
+              volume: {
+                score: signalsData.debug.score_details.category_scores.volume?.score || 0,
+                confidence: signalsData.debug.score_details.category_scores.volume?.confidence || 0
+              },
+              volatility: {
+                score: signalsData.debug.score_details.category_scores.volatility?.score || 0,
+                confidence: signalsData.debug.score_details.category_scores.volatility?.confidence || 0
+              },
+              support_resistance: {
+                score: signalsData.debug.score_details.category_scores.support_resistance?.score || 0,
+                confidence: signalsData.debug.score_details.category_scores.support_resistance?.confidence || 0
+              },
+              pattern: {
+                score: signalsData.debug.score_details.category_scores.pattern?.score || 0,
+                confidence: signalsData.debug.score_details.category_scores.pattern?.confidence || 0
+              },
+              confluence: {
+                score: signalsData.debug.score_details.category_scores.confluence?.score || 0,
+                confidence: signalsData.debug.score_details.category_scores.confluence?.confidence || 0
+              }
+            } : undefined;
+
+            // Extraire les détails de validation
+            const validationDetails = signalsData.debug?.validation_details ? {
+              blocking_issues: signalsData.debug.validation_details.blocking_issues || [],
+              warnings: signalsData.debug.validation_details.warnings || []
+            } : undefined;
+
             return {
               symbol,
               currentPrice,
+
+              // Système PRO
+              score: signalsData.score,
+              categoryScores,
+              validation: signalsData.validation,
+              validationDetails,
+              pricing: signalsData.pricing,
+              risk: signalsData.risk,
+
+              // Ancien système (rétrocompatibilité)
               conditions: signalsData.conditions,
+
               signals24h: signalsData.signals_count || 0,
-              signalsConfidence: signalsData.avg_confidence || 0,
-              volumeRatio: signalsData.raw_data?.rel_volume || 0,
-              regime: signalsData.market_regime || 'UNKNOWN',
-              adx: signalsData.raw_data?.adx,
-              rsi: signalsData.raw_data?.rsi,
-              mfi: signalsData.raw_data?.mfi,
-              volume_context: signalsData.volume_context,
-              volume_quality_score: signalsData.raw_data?.volume_quality_score,
-              nearest_support: signalsData.nearest_support,
-              nearest_resistance: signalsData.raw_data?.nearest_resistance,
-              break_probability: signalsData.break_probability,
-              entryZone: signalsData.entry_zone || { min: currentPrice * 0.998, max: currentPrice * 1.002 },
-              targets: signalsData.targets || {
-                tp1: currentPrice * 1.01,
-                tp2: currentPrice * 1.015,
-              },
-              stopLoss: signalsData.stop_loss || currentPrice * 0.988,
-              recommendedSize: signalsData.recommended_size || { min: 3000, max: 7000 },
+              signalsConfidence: signalsData.avg_confidence || signalsData.confidence || 0,
+              volumeRatio: rawData.relative_volume || rawData.rel_volume || 1.0,
+              regime: signalsData.context?.market_regime || 'UNKNOWN',
+              adx: rawData.adx_14,
+              rsi: rawData.rsi_14,
+              mfi: rawData.mfi_14,
+              volume_context: signalsData.context?.volume_context,
+              volume_quality_score: rawData.volume_quality_score,
+              nearest_support: rawData.nearest_support,
+              nearest_resistance: rawData.nearest_resistance,
+              break_probability: rawData.break_probability,
+
+              entryZone: { min: entryOptimal, max: entryAggressive },
+              targets: { tp1, tp2, tp3 },
+              stopLoss,
+              recommendedSize: signalsData.risk ?
+                { min: capitalSize * (signalsData.risk.max_position_size_pct / 100) * 0.8, max: capitalSize * (signalsData.risk.max_position_size_pct / 100) } :
+                { min: 3000, max: 7000 },
+
               action: signalsData.action || 'WAIT',
-              reason: signalsData.reason || 'Analyse en cours',
-              estimatedHoldTime: signalsData.estimated_hold_time,
+              reason: signalsData.reasons?.[0] || signalsData.reason || 'Analyse en cours',
+              reasons: signalsData.reasons,
+              warnings: signalsData.warnings,
+              recommendations: signalsData.recommendations,
+              estimatedHoldTime: signalsData.timing?.estimated_hold_time,
               autoSignal: autoSignals || undefined
             } as TradingOpportunity;
           } catch (err) {
@@ -253,6 +370,7 @@ function ManualTradingPage() {
   const getActionColor = (action: string) => {
     switch (action) {
       case 'BUY_NOW': return 'bg-green-500/20 text-green-400 border-green-500/50';
+      case 'BUY_DCA': return 'bg-blue-500/20 text-blue-400 border-blue-500/50';
       case 'SELL_OVERBOUGHT': return 'bg-red-500/20 text-red-400 border-red-500/50';
       case 'WAIT': return 'bg-gray-500/20 text-gray-300 border-gray-500/50';
       case 'WAIT_PULLBACK': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50';
@@ -267,9 +385,11 @@ function ManualTradingPage() {
   const getActionText = (action: string) => {
     switch (action) {
       case 'BUY_NOW': return 'ACHETER MAINTENANT ✅';
+      case 'BUY_DCA': return 'ACHETER EN DCA 📊';
       case 'WAIT': return 'ATTENDRE ⏳';
       case 'WAIT_HIGHER_TF': return 'ATTENDRE - 5m pas aligné 📊';
       case 'WAIT_QUALITY_GATE': return 'BLOQUÉ - SETUP POURRI 🚫';
+      case 'AVOID': return 'ÉVITER 🚫';
       default: return action;
     }
   };
@@ -277,10 +397,24 @@ function ManualTradingPage() {
   const getActionIcon = (action: string) => {
     switch (action) {
       case 'BUY_NOW': return '🟢';
+      case 'BUY_DCA': return '🔵';
       case 'WAIT': return '⚪';
       case 'WAIT_HIGHER_TF': return '🟡';
       case 'WAIT_QUALITY_GATE': return '🚫';
+      case 'AVOID': return '🔴';
       default: return '⚪';
+    }
+  };
+
+  const getGradeColor = (grade: string) => {
+    switch (grade) {
+      case 'S': return 'text-pink-400';
+      case 'A': return 'text-green-400';
+      case 'B': return 'text-blue-400';
+      case 'C': return 'text-yellow-400';
+      case 'D': return 'text-orange-400';
+      case 'F': return 'text-red-400';
+      default: return 'text-gray-400';
     }
   };
 
@@ -475,9 +609,15 @@ function ManualTradingPage() {
       {/* Liste des opportunités */}
       <div className="space-y-4">
         {opportunities.map((opp, index) => {
-          const tp1Gain = calculatePotentialGain(opp.currentPrice, opp.targets.tp1, capitalSize);
-          const tp2Gain = calculatePotentialGain(opp.currentPrice, opp.targets.tp2, capitalSize);
-          const slLoss = calculatePotentialGain(opp.currentPrice, opp.stopLoss, capitalSize);
+          // Extraire les prix (support ancien et nouveau format)
+          const tp1Price = typeof opp.targets.tp1 === 'number' ? opp.targets.tp1 : opp.targets.tp1.price;
+          const tp2Price = typeof opp.targets.tp2 === 'number' ? opp.targets.tp2 : opp.targets.tp2.price;
+          const tp3Price = opp.targets.tp3 ? (typeof opp.targets.tp3 === 'number' ? opp.targets.tp3 : opp.targets.tp3.price) : null;
+          const slPrice = typeof opp.stopLoss === 'number' ? opp.stopLoss : opp.stopLoss.price;
+
+          const tp1Gain = calculatePotentialGain(opp.currentPrice, tp1Price, capitalSize);
+          const tp2Gain = calculatePotentialGain(opp.currentPrice, tp2Price, capitalSize);
+          const slLoss = calculatePotentialGain(opp.currentPrice, slPrice, capitalSize);
 
           return (
             <div
@@ -485,7 +625,7 @@ function ManualTradingPage() {
               className="bg-dark-200 border border-gray-700 rounded-lg p-6 hover:border-primary-500/50 transition-colors"
             >
               <div className="grid grid-cols-12 gap-6">
-                {/* Colonne 1: Rang & Symbole & Conditions */}
+                {/* Colonne 1: Rang & Symbole & Score */}
                 <div className="col-span-2">
                   <div className="flex items-center space-x-3">
                     <div className="text-4xl font-bold text-gray-600">
@@ -493,11 +633,22 @@ function ManualTradingPage() {
                     </div>
                     <div>
                       <div className="text-xl font-bold text-white">{opp.symbol}</div>
-                      {opp.conditions && (
+                      {/* Système PRO: Score + Grade */}
+                      {opp.score ? (
+                        <div className="flex items-center space-x-2">
+                          <div className={`text-2xl font-mono font-bold ${getGradeColor(opp.score.grade)}`}>
+                            {opp.score?.total?.toFixed(0) || 'N/A'}/100
+                          </div>
+                          <div className={`text-3xl font-bold ${getGradeColor(opp.score.grade)}`}>
+                            {opp.score.grade}
+                          </div>
+                        </div>
+                      ) : opp.conditions ? (
+                        /* Ancien système: Conditions */
                         <div className={`text-2xl font-mono font-bold ${getConditionsColor(Object.values(opp.conditions).filter(Boolean).length)}`}>
                           {Object.values(opp.conditions).filter(Boolean).length}/4 ✓
                         </div>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -553,26 +704,98 @@ function ManualTradingPage() {
                     <div className="space-y-1">
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-green-400">TP1 (+{tp1Gain.percent.toFixed(1)}%)</span>
-                        <span className="font-mono text-sm text-green-400">{formatCurrency(opp.targets.tp1)}</span>
+                        <span className="font-mono text-sm text-green-400">{formatCurrency(tp1Price)}</span>
                         <span className="font-bold text-green-400">+{formatCurrency(tp1Gain.amount)}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-green-400">TP2 (+{tp2Gain.percent.toFixed(1)}%)</span>
-                        <span className="font-mono text-sm text-green-400">{formatCurrency(opp.targets.tp2)}</span>
+                        <span className="font-mono text-sm text-green-400">{formatCurrency(tp2Price)}</span>
                         <span className="font-bold text-green-400">+{formatCurrency(tp2Gain.amount)}</span>
                       </div>
+                      {tp3Price && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-green-400">TP3 (+{((tp3Price - opp.currentPrice) / opp.currentPrice * 100).toFixed(1)}%)</span>
+                          <span className="font-mono text-sm text-green-400">{formatCurrency(tp3Price)}</span>
+                          <span className="font-bold text-green-400">+{formatCurrency((tp3Price - opp.currentPrice) * (capitalSize / opp.currentPrice))}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between items-center border-t border-gray-700 pt-1">
                         <span className="text-xs text-red-400">SL ({slLoss.percent.toFixed(1)}%)</span>
-                        <span className="font-mono text-sm text-red-400">{formatCurrency(opp.stopLoss)}</span>
+                        <span className="font-mono text-sm text-red-400">{formatCurrency(slPrice)}</span>
                         <span className="font-bold text-red-400">{formatCurrency(slLoss.amount)}</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Colonne 5: Conditions détaillées */}
+                {/* Colonne 5: Catégories PRO ou Conditions Legacy */}
                 <div className="col-span-2">
-                  {opp.conditions ? (
+                  {opp.categoryScores ? (
+                    <div className="space-y-2">
+                      <div className="text-xs text-gray-400 font-semibold mb-2">📊 Catégories PRO</div>
+                      <div className="space-y-1">
+                        {/* Trend */}
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-gray-400">📈 Trend</span>
+                          <span className={`text-xs font-bold ${
+                            opp.categoryScores.trend!.score >= 70 ? 'text-green-400' :
+                            opp.categoryScores.trend!.score >= 50 ? 'text-yellow-400' :
+                            opp.categoryScores.trend!.score >= 30 ? 'text-orange-400' : 'text-red-400'
+                          }`}>
+                            {opp.categoryScores.trend!.score.toFixed(0)}%
+                          </span>
+                        </div>
+                        {/* Momentum */}
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-gray-400">⚡ Momentum</span>
+                          <span className={`text-xs font-bold ${
+                            opp.categoryScores.momentum!.score >= 70 ? 'text-green-400' :
+                            opp.categoryScores.momentum!.score >= 50 ? 'text-yellow-400' :
+                            opp.categoryScores.momentum!.score >= 30 ? 'text-orange-400' : 'text-red-400'
+                          }`}>
+                            {opp.categoryScores.momentum!.score.toFixed(0)}%
+                          </span>
+                        </div>
+                        {/* Volume */}
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-gray-400">🔊 Volume</span>
+                          <span className={`text-xs font-bold ${
+                            opp.categoryScores.volume!.score >= 70 ? 'text-green-400' :
+                            opp.categoryScores.volume!.score >= 50 ? 'text-yellow-400' :
+                            opp.categoryScores.volume!.score >= 30 ? 'text-orange-400' : 'text-red-400'
+                          }`}>
+                            {opp.categoryScores.volume!.score.toFixed(0)}%
+                          </span>
+                        </div>
+                        {/* Volatility */}
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-gray-400">💥 Volatility</span>
+                          <span className={`text-xs font-bold ${
+                            opp.categoryScores.volatility!.score >= 70 ? 'text-green-400' :
+                            opp.categoryScores.volatility!.score >= 50 ? 'text-yellow-400' :
+                            opp.categoryScores.volatility!.score >= 30 ? 'text-orange-400' : 'text-red-400'
+                          }`}>
+                            {opp.categoryScores.volatility!.score.toFixed(0)}%
+                          </span>
+                        </div>
+                        {/* Support/Resistance */}
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-gray-400">🎯 S/R</span>
+                          <span className={`text-xs font-bold ${
+                            opp.categoryScores.support_resistance!.score >= 70 ? 'text-green-400' :
+                            opp.categoryScores.support_resistance!.score >= 50 ? 'text-yellow-400' :
+                            opp.categoryScores.support_resistance!.score >= 30 ? 'text-orange-400' : 'text-red-400'
+                          }`}>
+                            {opp.categoryScores.support_resistance!.score.toFixed(0)}%
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-2">
+                        Vol: {opp.volumeRatio?.toFixed(1) || 'N/A'}x | ADX: {opp.adx?.toFixed(0) || 'N/A'} | RSI: {opp.rsi?.toFixed(0) || 'N/A'}
+                      </div>
+                    </div>
+                  ) : opp.conditions ? (
+                    /* Legacy: Conditions anciennes */
                     <div className="space-y-2">
                       <div className="text-xs text-gray-400 font-semibold mb-2">4 Conditions Critiques</div>
                       <div className="space-y-1">
@@ -590,20 +813,84 @@ function ManualTradingPage() {
                         </div>
                       </div>
                       <div className="text-xs text-gray-500 mt-2">
-                        Vol: {opp.volumeRatio.toFixed(1)}x | ADX: {opp.adx?.toFixed(0) || 'N/A'} | RSI: {opp.rsi?.toFixed(0) || 'N/A'}
+                        Vol: {opp.volumeRatio?.toFixed(1) || 'N/A'}x | ADX: {opp.adx?.toFixed(0) || 'N/A'} | RSI: {opp.rsi?.toFixed(0) || 'N/A'}
                       </div>
                     </div>
                   ) : (
-                    <div className="text-xs text-gray-500">Conditions non disponibles</div>
+                    <div className="text-xs text-gray-500 italic">Données non disponibles</div>
                   )}
                 </div>
               </div>
 
-              {/* Raison / Conseil */}
+              {/* Raison / Conseil + Risk PRO */}
               <div className="mt-4 pt-4 border-t border-gray-700">
-                <div className="text-sm text-gray-400">
-                  💡 <span className="font-medium">{opp.reason}</span>
+                {/* Afficher les problèmes de validation si présents */}
+                {opp.validationDetails && opp.validationDetails.blocking_issues && opp.validationDetails.blocking_issues.length > 0 && (
+                  <div className="mb-3 p-3 bg-red-500/10 border border-red-500/30 rounded">
+                    <div className="text-xs font-semibold text-red-400 mb-2">
+                      🚫 Validation échouée - Problèmes bloquants:
+                    </div>
+                    <div className="space-y-1">
+                      {opp.validationDetails.blocking_issues.map((issue, idx) => (
+                        <div key={idx} className="text-xs text-red-300">
+                          • {issue}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-400 flex-1">
+                    💡 <span className="font-medium">{opp.reason}</span>
+                  </div>
+                  {/* Système PRO: Risk metrics */}
+                  {opp.risk && (
+                    <div className="flex items-center space-x-4 text-xs">
+                      <div className="flex items-center space-x-1">
+                        <span className="text-gray-400">R/R:</span>
+                        <span className={`font-bold ${opp.risk.rr_ratio >= 2.5 ? 'text-green-400' : opp.risk.rr_ratio >= 1.5 ? 'text-yellow-400' : 'text-red-400'}`}>
+                          {opp.risk?.rr_ratio?.toFixed(2) || 'N/A'}
+                        </span>
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <span className="text-gray-400">Risk:</span>
+                        <span className={`font-bold ${
+                          opp.risk.risk_level === 'LOW' ? 'text-green-400' :
+                          opp.risk.risk_level === 'MEDIUM' ? 'text-yellow-400' : 'text-red-400'
+                        }`}>
+                          {opp.risk.risk_level}
+                        </span>
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <span className="text-gray-400">Max Position:</span>
+                        <span className="font-bold text-blue-400">
+                          {opp.risk?.max_position_size_pct?.toFixed(1) || 'N/A'}%
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
+                {/* Recommendations PRO */}
+                {opp.recommendations && opp.recommendations.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {opp.recommendations.map((rec, idx) => (
+                      <div key={idx} className="text-xs text-blue-400">
+                        ➤ {rec}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* Warnings PRO */}
+                {opp.warnings && opp.warnings.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {opp.warnings.slice(0, 3).map((warn, idx) => (
+                      <div key={idx} className="text-xs text-orange-400">
+                        ⚠️ {warn}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* NEW: Comparaison Auto vs Manuel */}
@@ -700,10 +987,10 @@ function ManualTradingPage() {
                 </div>
               )}
 
-              {/* Détails techniques additionnels (collapsible) */}
-              <details className="mt-3 pt-3 border-t border-gray-700">
+              {/* Détails techniques additionnels (visible par défaut) */}
+              <details className="mt-3 pt-3 border-t border-gray-700" open>
                 <summary className="cursor-pointer text-xs text-blue-400 hover:text-blue-300 font-medium">
-                  📊 Voir les détails techniques complets
+                  📊 Détails techniques complets
                 </summary>
                 <div className="mt-3 space-y-2 text-xs bg-gray-800 p-3 rounded">
                   <div className="grid grid-cols-3 gap-4">
@@ -719,7 +1006,7 @@ function ManualTradingPage() {
                     </div>
                     <div>
                       <div className="text-blue-400 font-bold mb-1">🔊 Volume</div>
-                      <div className="text-gray-300">Ratio: {opp.volumeRatio.toFixed(2)}x</div>
+                      <div className="text-gray-300">Ratio: {opp.volumeRatio?.toFixed(2) || 'N/A'}x</div>
                       <div className="text-gray-300">Context: {opp.volume_context || 'N/A'}</div>
                       <div className="text-gray-300">Quality: {opp.volume_quality_score?.toFixed(0) || 'N/A'}/100</div>
                     </div>
@@ -729,14 +1016,14 @@ function ManualTradingPage() {
                       <div className="text-purple-400 font-bold mb-1">🎯 Support / Résistance</div>
                       <div className="grid grid-cols-2 gap-2">
                         {opp.nearest_support && (
-                          <div className="text-gray-300">Support: {opp.nearest_support.toFixed(6)}</div>
+                          <div className="text-gray-300">Support: {opp.nearest_support?.toFixed(6) || 'N/A'}</div>
                         )}
                         {opp.nearest_resistance && (
-                          <div className="text-gray-300">Résistance: {opp.nearest_resistance.toFixed(6)}</div>
+                          <div className="text-gray-300">Résistance: {opp.nearest_resistance?.toFixed(6) || 'N/A'}</div>
                         )}
                       </div>
                       {opp.break_probability !== undefined && (
-                        <div className="text-gray-300 mt-1">Break prob: {opp.break_probability.toFixed(0)}%</div>
+                        <div className="text-gray-300 mt-1">Break prob: {opp.break_probability?.toFixed(0) || 'N/A'}%</div>
                       )}
                     </div>
                   )}
@@ -795,7 +1082,7 @@ function ManualTradingPage() {
 
               return (
               <div
-                key={signal.symbol}
+                key={`${signal.symbol}-${index}`}
                 onClick={() => window.open(binanceUrl, '_blank')}
                 className={`bg-dark-300 border border-gray-600 rounded-lg p-3 ${hoverColor} transition-all cursor-pointer hover:scale-102 hover:shadow-lg`}
                 title={`Cliquez pour ouvrir ${baseAsset}/USDC sur Binance`}

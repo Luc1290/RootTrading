@@ -48,7 +48,10 @@ class TelegramNotifier:
         momentum: Optional[float] = None,
         volume_ratio: Optional[float] = None,
         regime: Optional[str] = None,
-        estimated_hold_time: Optional[str] = None
+        estimated_hold_time: Optional[str] = None,
+        grade: Optional[str] = None,
+        rr_ratio: Optional[float] = None,
+        risk_level: Optional[str] = None
     ) -> bool:
         """
         Envoie une notification Telegram pour un signal BUY
@@ -57,14 +60,17 @@ class TelegramNotifier:
             symbol: Symbole de la crypto (ex: BTCUSDC)
             score: Score du signal (0-100)
             price: Prix actuel
-            action: Action recommandée
-            targets: Dict avec tp1, tp2, tp3
+            action: Action recommandée (BUY_NOW, BUY_DCA, etc.)
+            targets: Dict avec tp1, tp2, tp3 (optionnel)
             stop_loss: Prix du stop loss
             reason: Raison du signal
             momentum: Score de momentum (optionnel)
             volume_ratio: Ratio de volume (optionnel)
             regime: Régime de marché (optionnel)
             estimated_hold_time: Durée de hold estimée (optionnel)
+            grade: Grade S/A/B/C/D/F (optionnel, système PRO)
+            rr_ratio: Ratio Risk/Reward (optionnel, système PRO)
+            risk_level: Niveau de risque LOW/MEDIUM/HIGH (optionnel, système PRO)
 
         Returns:
             True si notification envoyée, False sinon
@@ -77,7 +83,7 @@ class TelegramNotifier:
         # Construire le message
         message = self._build_message(
             symbol, score, price, action, targets, stop_loss, reason,
-            momentum, volume_ratio, regime, estimated_hold_time
+            momentum, volume_ratio, regime, estimated_hold_time, grade, rr_ratio, risk_level
         )
 
         # Envoyer la notification
@@ -117,13 +123,17 @@ class TelegramNotifier:
         momentum: Optional[float],
         volume_ratio: Optional[float],
         regime: Optional[str],
-        estimated_hold_time: Optional[str]
+        estimated_hold_time: Optional[str],
+        grade: Optional[str],
+        rr_ratio: Optional[float],
+        risk_level: Optional[str]
     ) -> str:
         """Construit le message formaté pour Telegram"""
 
-        # Emoji et titre selon l'action
+        # Emoji et titre selon l'action (PRO: BUY_DCA ajouté)
         action_config = {
             "BUY_NOW": {"emoji": "🟢", "title": "SIGNAL BUY", "score_emojis": True},
+            "BUY_DCA": {"emoji": "🔵", "title": "SIGNAL BUY DCA", "score_emojis": True},
             "WAIT_PULLBACK": {"emoji": "🟡", "title": "ATTENDRE BAISSE", "score_emojis": False},
             "WAIT_BREAKOUT": {"emoji": "🔵", "title": "ATTENDRE CASSURE", "score_emojis": False},
             "WAIT_OVERSOLD": {"emoji": "🔵", "title": "ATTENDRE REBOND", "score_emojis": False},
@@ -134,14 +144,14 @@ class TelegramNotifier:
 
         config = action_config.get(action, {"emoji": "⚪", "title": action, "score_emojis": False})
 
-        # Emoji selon le score (seulement pour BUY_NOW) - Ajusté pour /142
+        # Emoji selon le score (seulement pour BUY_NOW) - Score sur 100
         score_emoji = ""
         if config["score_emojis"]:
-            if score >= 120:  # 120/142 = 85%
+            if score >= 85:  # 85/100 = 85%
                 score_emoji = " 🔥🔥🔥"
-            elif score >= 105:  # 105/142 = 74%
+            elif score >= 74:  # 74/100 = 74%
                 score_emoji = " 🔥🔥"
-            elif score >= 90:   # 90/142 = 63%
+            elif score >= 63:   # 63/100 = 63%
                 score_emoji = " 🔥"
 
         # Formater le prix intelligemment selon sa valeur
@@ -174,7 +184,7 @@ class TelegramNotifier:
         message = f"""{config['emoji']} <b>{config['title']}</b>{score_emoji}
 
 <b>{symbol}</b>
-📊 Score: <b>{score:.0f}/142</b>{score_emoji}
+📊 Score: <b>{score:.0f}/100</b>{score_emoji}
 💰 Prix: <b>{price_str}</b>
 
 <b>🎯 TARGETS:</b>

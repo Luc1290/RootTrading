@@ -16,7 +16,7 @@ from data_manager import DataManager
 from chart_service import ChartService
 from websocket_hub import WebSocketHub
 from statistics_service import StatisticsService
-from opportunity_calculator import OpportunityCalculator
+from opportunity_calculator_pro import OpportunityCalculatorPro
 
 # Ajouter le path pour accéder au module notifications
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
@@ -28,7 +28,7 @@ data_manager: Optional[DataManager] = None
 chart_service: Optional[ChartService] = None
 websocket_hub: Optional[WebSocketHub] = None
 statistics_service: Optional[StatisticsService] = None
-opportunity_calculator: Optional[OpportunityCalculator] = None
+opportunity_calculator: Optional[OpportunityCalculatorPro] = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
     chart_service = ChartService(data_manager)
     websocket_hub = WebSocketHub(data_manager)
     statistics_service = StatisticsService(data_manager)
-    opportunity_calculator = OpportunityCalculator()  # Logique momentum adaptative: ignore résistances si ADX >25 ou volume spike >2x
+    opportunity_calculator = OpportunityCalculatorPro()  # PRO: Scoring 7 catégories + Validation 4 niveaux + 108 indicateurs
 
     asyncio.create_task(websocket_hub.start())
 
@@ -332,6 +332,9 @@ async def get_trading_opportunity(symbol: str):
             # Récupérer TOUTES les données techniques pertinentes (1m pour signal, 5m pour contexte)
             analyzer_query = """
                 SELECT
+                    -- Data Quality & Performance
+                    data_quality, anomaly_detected, cache_hit_ratio,
+
                     -- Regime & Trend
                     market_regime, regime_confidence, regime_strength, trend_alignment,
 
@@ -345,27 +348,28 @@ async def get_trading_opportunity(symbol: str):
                     stoch_k, stoch_d, stoch_rsi, stoch_divergence, stoch_signal,
 
                     -- MACD
-                    macd_line, macd_signal, macd_histogram, ppo, macd_trend,
+                    macd_line, macd_signal, macd_histogram, ppo, macd_trend, macd_signal_cross,
 
                     -- Bollinger & Keltner
                     bb_position, bb_width, bb_squeeze, bb_expansion, bb_breakout_direction,
+                    bb_lower,
 
                     -- Money Flow
                     mfi_14,
 
                     -- Volume Analysis
                     volume_ratio, volume_context, volume_quality_score, volume_pattern,
-                    relative_volume, volume_spike_multiplier, trade_intensity,
+                    relative_volume, volume_spike_multiplier, trade_intensity, volume_buildup_periods,
 
                     -- OBV & Accumulation
                     obv, obv_oscillator, ad_line,
 
                     -- VWAP
-                    vwap_10, vwap_upper_band, vwap_lower_band,
+                    vwap_10, vwap_quote_10, vwap_upper_band, vwap_lower_band,
 
                     -- Support/Resistance
                     nearest_support, nearest_resistance, support_strength, resistance_strength,
-                    break_probability,
+                    break_probability, pivot_count,
 
                     -- Pattern & Signal
                     pattern_detected, pattern_confidence, signal_strength, confluence_score,
@@ -414,38 +418,48 @@ async def get_trading_opportunity(symbol: str):
             analyzer_dict_5m = dict(analyzer_data_5m) if analyzer_data_5m else None
             signals_dict = dict(signals_data) if signals_data else {}
 
-            # Calculer l'opportunité via le calculateur (avec contexte 5m)
-            response_data = opportunity_calculator.calculate_opportunity(
+            # Calculer l'opportunité via le calculateur PRO (avec contexte 5m)
+            opportunity = opportunity_calculator.calculate_opportunity(
                 symbol=symbol,
                 current_price=current_price,
                 analyzer_data=analyzer_dict_1m,
-                signals_data=signals_dict,
-                higher_tf=analyzer_dict_5m
+                higher_tf_data=analyzer_dict_5m,
+                signals_data=signals_dict
             )
 
+            # Convertir en dict pour l'API
+            response_data = opportunity_calculator.to_dict(opportunity)
+
             # Envoyer notification Telegram uniquement pour les signaux BUY
-            if response_data.get("action") == "BUY_NOW":
+            if opportunity.action == "BUY_NOW":
                 try:
                     from notifications.telegram_service import get_notifier
                     notifier = get_notifier()
 
-                    # Calculer un score basé sur les conditions (0-4 → 0-100)
-                    conditions = response_data.get("conditions", {})
-                    conditions_met = sum(1 for v in conditions.values() if v)
-                    score = (conditions_met / 4.0) * 100  # 4/4 = 100 points
+                    # Score PRO (0-100 direct)
+                    score = opportunity.score.total_score
 
                     notifier.send_buy_signal(
                         symbol=symbol,
                         score=score,
                         price=current_price,
-                        action=response_data["action"],
-                        targets=response_data["targets"],
-                        stop_loss=response_data["stop_loss"],
-                        reason=response_data["reason"],
-                        momentum=response_data.get("raw_data", {}).get("adx", 0),  # ADX comme proxy momentum
-                        volume_ratio=response_data.get("raw_data", {}).get("rel_volume", 1.0),
-                        regime=response_data.get("market_regime", "UNKNOWN"),
-                        estimated_hold_time=response_data.get("estimated_hold_time", "N/A")
+                        action=opportunity.action,
+                        targets={
+                            'tp1': opportunity.tp1,
+                            'tp1_percent': opportunity.tp1_percent,
+                            'tp2': opportunity.tp2,
+                            'tp2_percent': opportunity.tp2_percent,
+                            'tp3': opportunity.tp3 if opportunity.tp3 else 0
+                        },
+                        stop_loss=opportunity.stop_loss,
+                        reason="\n".join(opportunity.reasons),
+                        momentum=analyzer_dict_1m.get('adx_14', 0),
+                        volume_ratio=analyzer_dict_1m.get('relative_volume', 1.0),
+                        regime=opportunity.market_regime,
+                        estimated_hold_time=opportunity.estimated_hold_time,
+                        grade=opportunity.score.grade,
+                        rr_ratio=opportunity.rr_ratio,
+                        risk_level=opportunity.risk_level
                     )
                 except Exception as e:
                     logger.warning(f"Erreur envoi notification Telegram pour {symbol}: {e}")
