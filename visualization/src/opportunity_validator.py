@@ -380,12 +380,18 @@ class OpportunityValidator:
         details['sl_distance_pct'] = sl_dist * 100
         details['sl_basis'] = sl_basis
 
-        # Calculer TP distance
-        tp_dist = max(0.01, atr_percent * 0.8)
-        details['tp_distance_pct'] = tp_dist * 100
+        # Calculer TP distance (utiliser multiplier plus agressif pour validation)
+        # TP1 conservateur: 0.8 ATR, TP2 modéré: 1.2 ATR
+        # Pour validation, on vérifie que TP2 (moderate) donne un R/R acceptable
+        tp_dist_conservative = max(0.01, atr_percent * 0.8)
+        tp_dist_moderate = max(0.015, atr_percent * 1.2)
 
-        # R/R Ratio
-        rr_ratio = tp_dist / sl_dist if sl_dist > 0 else 0
+        details['tp1_distance_pct'] = tp_dist_conservative * 100
+        details['tp2_distance_pct'] = tp_dist_moderate * 100
+
+        # R/R Ratio - Utiliser TP2 (moderate) pour validation
+        # Cela permet de valider les setups où TP2 est atteignable
+        rr_ratio = tp_dist_moderate / sl_dist if sl_dist > 0 else 0
 
         if rr_ratio < 1.5:
             return ValidationResult(
@@ -421,8 +427,8 @@ class OpportunityValidator:
 
             details['resistance_distance_pct'] = res_dist_pct
 
-            # Vérifier si TP atteignable
-            if tp_dist * 100 > res_dist_pct:
+            # Vérifier si TP atteignable (utiliser TP2 pour cohérence avec le R/R)
+            if tp_dist_moderate * 100 > res_dist_pct:
                 warnings.append("⚠️ TP au-delà de la résistance")
                 score -= 10
 
@@ -499,8 +505,9 @@ class OpportunityValidator:
         rel_volume = self.safe_float(ad.get('relative_volume'), 1.0)
         obv_osc = self.safe_float(ad.get('obv_oscillator'))
 
-        # Volume trop faible = rejet
-        if rel_volume < 0.8:
+        # Volume trop faible = rejet (seuil ajusté pour crypto 1m)
+        # Ancien seuil 0.8x était trop strict, nouveau seuil 0.5x
+        if rel_volume < 0.5:
             return ValidationResult(
                 level=ValidationLevel.ENTRY_TIMING,
                 passed=False,
@@ -509,6 +516,11 @@ class OpportunityValidator:
                 details=details,
                 warnings=[]
             )
+
+        # Warning si volume modéré (0.5-0.8x)
+        if rel_volume < 0.8:
+            warnings.append(f"⚠️ Volume modéré: {rel_volume:.2f}x")
+            score -= 10
 
         # OBV négatif fort = warning
         if obv_osc < -200:

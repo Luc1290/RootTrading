@@ -100,7 +100,7 @@ class RegimeDetector:
     
     def detect_regime(self,
                      highs: Union[List[float], np.ndarray],
-                     lows: Union[List[float], np.ndarray], 
+                     lows: Union[List[float], np.ndarray],
                      closes: Union[List[float], np.ndarray],
                      volumes: Union[List[float], np.ndarray],
                      symbol: Optional[str] = None,
@@ -108,19 +108,19 @@ class RegimeDetector:
                      enable_cache: bool = True) -> MarketRegime:
         """
         Détecte le régime de marché actuel.
-        
+
         Args:
             highs: Prix hauts
-            lows: Prix bas  
+            lows: Prix bas
             closes: Prix de clôture
             volumes: Volumes
             symbol: Trading symbol for cached indicators (enables performance boost)
             include_analysis: Inclure l'analyse détaillée
             enable_cache: Whether to use cached indicators
-            
+
         Returns:
             MarketRegime détecté
-            
+
         Notes:
             - When symbol provided, uses cached indicators (5-10x faster)
             - Automatic fallback to non-cached if symbol not provided
@@ -131,13 +131,13 @@ class RegimeDetector:
             lows = np.array(lows, dtype=float)
             closes = np.array(closes, dtype=float)
             volumes = np.array(volumes, dtype=float)
-            
+
             if len(closes) < self.lookback_period:
                 return self._unknown_regime()
-            
+
             # Analyses principales
             volatility_analysis = self._analyze_volatility(highs, lows, closes, symbol, enable_cache)
-            trend_analysis = self._analyze_trend(closes, symbol, enable_cache)
+            trend_analysis = self._analyze_trend(highs, lows, closes, symbol, enable_cache)  # Passer highs/lows pour ADX
             momentum_analysis = self._analyze_momentum(closes, symbol, enable_cache)
             volume_analysis = self._analyze_volume(volumes)
             structure_analysis = self._analyze_market_structure(highs, lows, closes)
@@ -227,11 +227,18 @@ class RegimeDetector:
             'regime': volatility_regime
         }
     
-    def _analyze_trend(self, closes: np.ndarray, symbol: Optional[str] = None, enable_cache: bool = True) -> Dict:
+    def _analyze_trend(self, highs: np.ndarray, lows: np.ndarray, closes: np.ndarray,
+                       symbol: Optional[str] = None, enable_cache: bool = True) -> Dict:
         """Analyse la tendance."""
         from ..indicators.trend.moving_averages import calculate_ema_series  # type: ignore
-        from ..indicators.trend.adx import calculate_adx  # type: ignore
-        
+        from ..indicators.trend.adx import calculate_adx, calculate_adx_full  # type: ignore
+
+        # === CALCUL ADX (prioritaire pour classification régime) ===
+        adx_full = calculate_adx_full(highs, lows, closes, period=14)
+        adx_value = adx_full.get('adx', 0) or 0
+        plus_di = adx_full.get('plus_di', 0) or 0
+        minus_di = adx_full.get('minus_di', 0) or 0
+
         # Définir les périodes EMA localement
         ema_periods = {
             'fast': 7,
@@ -306,12 +313,15 @@ class RegimeDetector:
         
         # Force de tendance (distance entre EMAs)
         ema_spread = abs(current['fast'] - current['slow']) / current['medium']
-        
+
         return {
             'direction': direction,
             'slope': slope,
             'strength': min(ema_spread * 100, 100),  # 0-100
-            'ema_alignment': direction in ['bullish', 'bearish', 'bullish_partial', 'bearish_partial']  # Accepter les alignements partiels
+            'ema_alignment': direction in ['bullish', 'bearish', 'bullish_partial', 'bearish_partial'],  # Accepter les alignements partiels
+            'adx': adx_value,  # ADX pour classification régime
+            'plus_di': plus_di,
+            'minus_di': minus_di
         }
     
     def _analyze_momentum(self, closes: np.ndarray, symbol: Optional[str] = None, enable_cache: bool = True) -> Dict:
@@ -446,8 +456,14 @@ class RegimeDetector:
     def _determine_regime_type(self, volatility: Dict, trend: Dict, momentum: Dict, structure: Dict) -> RegimeType:
         """Détermine le type de régime avec logique optimisée pour crypto."""
 
+        # Extraire ADX
+        adx = trend.get('adx', 0)
+        plus_di = trend.get('plus_di', 0)
+        minus_di = trend.get('minus_di', 0)
+
         # Log pour comprendre la détection de régime
-        logger.info(f"🔍 Régime - Volatilité: {volatility['regime']}, Trend: {trend['direction']}, "
+        logger.info(f"🔍 Régime - ADX: {adx:.1f}, +DI: {plus_di:.1f}, -DI: {minus_di:.1f}, "
+                   f"Volatilité: {volatility['regime']}, Trend: {trend['direction']}, "
                    f"Slope: {trend['slope']:.3f}, EMA align: {trend['ema_alignment']}, "
                    f"Momentum: {momentum['direction']}, cohérent: {momentum['coherent']}, "
                    f"force: {momentum['strength']}")
@@ -464,65 +480,52 @@ class RegimeDetector:
             if structure['structure'] == 'wide_range':
                 return RegimeType.VOLATILE
 
-        # === PRIORITÉ 2: RANGING (marché latéral) ===
-        if (volatility['regime'] == 'low' and
-            structure['structure'] in ['tight_range', 'normal_range'] and
-            abs(trend['slope']) < 0.05):  # Seuil très bas pour range
+        # === PRIORITÉ 2: RANGING (marché latéral) basé sur ADX ===
+        # ADX < 20 = pas de tendance = RANGING
+        if adx < 20:
             return RegimeType.RANGING
 
-        # === PRIORITÉ 3: TENDANCES CLAIRES ===
-
-        # Cas 1: Alignement parfait (trend + momentum cohérents)
-        if trend['ema_alignment'] and momentum['coherent']:
-            if trend['direction'] in ['bullish', 'bullish_partial'] and momentum['direction'] == 'bullish':
-                return RegimeType.TRENDING_BULL
-            elif trend['direction'] in ['bearish', 'bearish_partial'] and momentum['direction'] == 'bearish':
-                return RegimeType.TRENDING_BEAR
-
-        # Cas 2: Trend fort même avec divergence momentum (NORMAL en crypto!)
-        if abs(trend['slope']) > 0.08:  # Seuil abaissé à 0.08 (au lieu de 0.1)
-            # Divergence trend/momentum = TRANSITION mais on garde la direction dominante
-            if trend['slope'] > 0.08:
-                # Trend haussier
-                if momentum['direction'] == 'bearish' and momentum['strength'] > 50:
-                    # Forte divergence = transition
-                    return RegimeType.TRANSITION
-                # Sinon trending bull même avec momentum opposé faible
-                return RegimeType.TRENDING_BULL
-            elif trend['slope'] < -0.08:
-                # Trend baissier
-                if momentum['direction'] == 'bullish' and momentum['strength'] > 50:
-                    # Forte divergence = transition
-                    return RegimeType.TRANSITION
-                # Sinon trending bear même avec momentum opposé faible
-                return RegimeType.TRENDING_BEAR
-
-        # Cas 3: Momentum fort seul (peut indiquer un retournement)
-        if momentum['strength'] > 50:
-            if momentum['direction'] == 'bullish':
-                # Si trend neutre/faible mais momentum bullish fort = début de tendance
-                if trend['slope'] > -0.05:  # Pas fortement baissier
-                    return RegimeType.TRENDING_BULL
-                else:
-                    return RegimeType.TRANSITION  # Retournement possible
-            elif momentum['direction'] == 'bearish':
-                if trend['slope'] < 0.05:  # Pas fortement haussier
-                    return RegimeType.TRENDING_BEAR
-                else:
-                    return RegimeType.TRANSITION  # Retournement possible
-
-        # Cas 4: Signaux mixtes ou faibles = TRANSITION (plus UNKNOWN)
-        # En crypto, les transitions sont fréquentes et normales
-        if abs(trend['slope']) > 0.03 or momentum['strength'] > 20:
+        # ADX 20-25 = tendance faible = TRANSITION
+        if adx < 25:
             return RegimeType.TRANSITION
 
-        # Cas 5: Marché vraiment plat/mort
-        if abs(trend['slope']) < 0.03 and momentum['strength'] < 20:
-            return RegimeType.RANGING
+        # === PRIORITÉ 3: TENDANCES CLAIRES (ADX >= 25) ===
 
-        # Ne devrait presque jamais arriver maintenant
-        logger.debug(f"Régime par défaut TRANSITION - trend slope: {trend.get('slope'):.4f}, momentum: {momentum.get('strength')}")
-        return RegimeType.TRANSITION  # Mieux que UNKNOWN
+        # ADX >= 25 = Tendance confirmée
+        # Utiliser +DI vs -DI pour déterminer direction
+        if adx >= 25:
+            # ADX >= 40 = Tendance très forte = TRENDING
+            if adx >= 40:
+                if plus_di > minus_di:
+                    return RegimeType.TRENDING_BULL
+                else:
+                    return RegimeType.TRENDING_BEAR
+
+            # ADX 25-40 = Tendance confirmée
+            # Vérifier alignement EMA + Momentum
+            if plus_di > minus_di:
+                # Direction bullish selon DI
+                if momentum['direction'] == 'bullish' or trend['direction'] in ['bullish', 'bullish_partial']:
+                    return RegimeType.TRENDING_BULL
+                else:
+                    # Divergence DI/momentum = possiblement début breakout ou transition
+                    if momentum['strength'] > 50:
+                        return RegimeType.TRANSITION
+                    return RegimeType.TRENDING_BULL  # Suivre ADX/DI
+            else:
+                # Direction bearish selon DI
+                if momentum['direction'] == 'bearish' or trend['direction'] in ['bearish', 'bearish_partial']:
+                    return RegimeType.TRENDING_BEAR
+                else:
+                    # Divergence DI/momentum
+                    if momentum['strength'] > 50:
+                        return RegimeType.TRANSITION
+                    return RegimeType.TRENDING_BEAR  # Suivre ADX/DI
+
+        # === FALLBACK (ne devrait presque jamais arriver) ===
+        # Si ADX < 25 et pas de condition ci-dessus remplie
+        logger.debug(f"Régime par défaut TRANSITION - ADX: {adx:.1f}, trend slope: {trend.get('slope'):.4f}, momentum: {momentum.get('strength')}")
+        return RegimeType.TRANSITION
     
     def _calculate_regime_strength(self, volatility: Dict, trend: Dict, momentum: Dict) -> RegimeStrength:
         """Calcule la force du régime avec seuils adaptés crypto."""

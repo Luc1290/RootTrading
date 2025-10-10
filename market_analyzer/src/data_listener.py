@@ -55,7 +55,9 @@ class DataListener:
                 max_size=25,  # Augmenté de 10 à 25
                 command_timeout=30,  # Timeout requêtes longues
                 server_settings={
-                    'application_name': 'market_analyzer_pool'
+                    'application_name': 'market_analyzer_pool',
+                    'statement_timeout': '30000',  # 30s timeout pour statements
+                    'idle_in_transaction_session_timeout': '60000'  # Tuer les "idle in transaction" après 60s
                 }
             )
             
@@ -65,7 +67,12 @@ class DataListener:
                 port=db_config['port'],
                 database=db_config['database'],
                 user=db_config['user'],
-                password=db_config['password']
+                password=db_config['password'],
+                server_settings={
+                    'application_name': 'market_analyzer_listener',
+                    'statement_timeout': '60000',  # 60s timeout pour LISTEN
+                    'idle_in_transaction_session_timeout': '120000'  # 2min pour listener
+                }
             )
             
             # Initialiser le processeur d'indicateurs

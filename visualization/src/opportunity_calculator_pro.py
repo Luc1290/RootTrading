@@ -384,17 +384,21 @@ class OpportunityCalculatorPro:
         else:
             tp3_dist = None
 
-        # Ajuster si résistance proche
+        # Ajuster si résistance proche MAIS pas trop proche
         if nearest_resistance > 0 and current_price > 0:
             res_dist_pct = (nearest_resistance - current_price) / current_price
 
-            # Si résistance entre prix et TP1, ajuster TP1 juste avant
-            if res_dist_pct < tp1_dist:
-                tp1_dist = res_dist_pct * 0.95
+            # Si résistance est TRÈS proche (< 0.5%), ne pas ajuster les TP
+            # car cela donnerait des gains ridicules. Mieux vaut garder TP basés sur ATR
+            # et laisser le validator rejeter si nécessaire
+            if res_dist_pct > 0.005:  # Résistance > 0.5%
+                # Si résistance entre prix et TP1, ajuster TP1 juste avant
+                if res_dist_pct < tp1_dist:
+                    tp1_dist = max(res_dist_pct * 0.95, 0.005)  # Minimum 0.5%
 
-            # Si résistance entre TP1 et TP2, ajuster TP2 juste avant
-            if res_dist_pct < tp2_dist:
-                tp2_dist = res_dist_pct * 0.98
+                # Si résistance entre TP1 et TP2, ajuster TP2 juste avant
+                if res_dist_pct < tp2_dist:
+                    tp2_dist = max(res_dist_pct * 0.98, 0.008)  # Minimum 0.8%
 
         tp1 = round(current_price * (1 + tp1_dist), 8)
         tp2 = round(current_price * (1 + tp2_dist), 8)
