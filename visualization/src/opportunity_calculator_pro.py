@@ -118,7 +118,7 @@ class OpportunityCalculatorPro:
             return self._create_no_data_opportunity(symbol, current_price)
 
         # === ÉTAPE 1: SCORING ===
-        score = self.scorer.calculate_opportunity_score(analyzer_data)
+        score = self.scorer.calculate_opportunity_score(analyzer_data, current_price)
 
         # === ÉTAPE 2: VALIDATION ===
         validation = self.validator.validate_opportunity(
@@ -211,28 +211,62 @@ class OpportunityCalculatorPro:
         warnings = []
         recommendations = []
 
-        # Si validation échouée = AVOID automatique
+        # CHANGEMENT: Ne plus rejeter sur all_passed binaire
+        # Utiliser le score de validation comme pondération
+        # Exceptions: Data Quality DOIT passer (données fiables requises)
         if not validation.all_passed:
-            action = 'AVOID'
-            confidence = 0.0
-            reasons.append(f"❌ Validation échouée: {len(validation.blocking_issues)} problèmes")
-            reasons.extend(validation.blocking_issues)
-            warnings.extend(validation.warnings)
-            recommendations.append("Attendre résolution des problèmes bloquants")
-            return action, confidence, reasons, warnings, recommendations
+            # Vérifier si c'est Data Quality qui a échoué
+            data_quality_failed = any(
+                issue.startswith("❌ Qualité données")
+                for issue in validation.blocking_issues
+            )
 
-        # Si validation passée, décision basée sur score
+            if data_quality_failed:
+                # Data Quality = Gate stricte conservée
+                action = 'AVOID'
+                confidence = 0.0
+                reasons.append(f"❌ Qualité données insuffisante - Indicateurs non fiables")
+                reasons.extend(validation.blocking_issues)
+                warnings.extend(validation.warnings)
+                recommendations.append("Attendre données de meilleure qualité")
+                return action, confidence, reasons, warnings, recommendations
+
+            # Autres validations échouées: continuer avec pénalité au lieu de rejet
+            # Le score de validation (0-100) sera utilisé comme multiplicateur
+            warnings.append(f"⚠️ Validation partielle: {validation.overall_score:.0f}/100")
+            warnings.extend(validation.warnings)
+            for issue in validation.blocking_issues:
+                warnings.append(issue)
+
+        # Décision basée sur score + validation pondérée
         total_score = score.total_score
         score_confidence = score.confidence
 
-        # BUY_NOW: Score S/A (>80) + confiance >70
-        if score.grade in ['S', 'A'] and score_confidence >= 70:
-            action = 'BUY_NOW'
-            confidence = min(total_score, score_confidence)
+        # Appliquer pénalité validation si non parfaite
+        # Score validation 80/100 → multiplicateur 0.9 (10% de pénalité)
+        validation_multiplier = validation.overall_score / 100.0
+        adjusted_score = total_score * validation_multiplier
+        adjusted_confidence = score_confidence * validation_multiplier
 
-            reasons.append(f"✅ Score excellent: {total_score:.0f}/100 (Grade {score.grade})")
-            reasons.append(f"✅ Confiance élevée: {score_confidence:.0f}%")
-            reasons.append(f"✅ Validation passée: {validation.overall_score:.0f}/100")
+        # Détecter pump context pour assouplir seuil confiance
+        vol_spike = self.safe_float(ad.get('volume_spike_multiplier'), 1.0)
+        rel_volume = self.safe_float(ad.get('relative_volume'), 1.0)
+        market_regime = ad.get('market_regime', '').upper()
+
+        is_pump = (vol_spike > 2.5 or rel_volume > 2.5) and market_regime in ['TRENDING_BULL', 'BREAKOUT_BULL']
+
+        # BUY_NOW: Score ajusté >80 + confiance >70 (ou >65 si pump)
+        # Exemple: Score 85, Validation 80% → 85*0.8 = 68 → Grade B au lieu de A
+        confidence_threshold = 65 if is_pump else 70
+        if adjusted_score >= 80 and adjusted_confidence >= confidence_threshold:
+            action = 'BUY_NOW'
+            confidence = min(adjusted_score, adjusted_confidence)
+
+            reasons.append(f"✅ Score brut: {total_score:.0f}/100 (Grade {score.grade})")
+            if validation_multiplier < 1.0:
+                reasons.append(f"⚠️ Score ajusté validation: {adjusted_score:.0f}/100 ({validation_multiplier*100:.0f}%)")
+            reasons.append(f"✅ Confiance: {adjusted_confidence:.0f}%")
+            reasons.append(f"✅ Validation: {validation.overall_score:.0f}/100")
 
             # Ajouter détails des meilleures catégories
             from opportunity_scoring import ScoreCategory
@@ -249,14 +283,16 @@ class OpportunityCalculatorPro:
             recommendations.append("🚀 ACHETER MAINTENANT - Setup optimal")
             recommendations.extend(score.reasons)
 
-        # BUY_DCA: Score B/C (60-80) + confiance >60
-        elif score.grade in ['B', 'C'] and score_confidence >= 60:
+        # BUY_DCA: Score ajusté 60-80 + confiance >60
+        elif adjusted_score >= 60 and adjusted_confidence >= 60:
             action = 'BUY_DCA'
-            confidence = min(total_score * 0.85, score_confidence)
+            confidence = min(adjusted_score * 0.85, adjusted_confidence)
 
-            reasons.append(f"✅ Score bon: {total_score:.0f}/100 (Grade {score.grade})")
-            reasons.append(f"✅ Validation passée: {validation.overall_score:.0f}/100")
-            reasons.append("⚠️ Entrée progressive recommandée")
+            reasons.append(f"✅ Score brut: {total_score:.0f}/100 (Grade {score.grade})")
+            if validation_multiplier < 1.0:
+                reasons.append(f"⚠️ Score ajusté validation: {adjusted_score:.0f}/100")
+            reasons.append(f"✅ Validation: {validation.overall_score:.0f}/100")
+            reasons.append("⚠️ Entrée progressive recommandée (DCA)")
 
             recommendations.append("📊 ACHETER EN DCA - Diviser en 2-3 tranches")
             recommendations.append("Zone d'achat: entry_optimal → entry_aggressive")
@@ -267,13 +303,15 @@ class OpportunityCalculatorPro:
                 if cat_score.score < 60:
                     warnings.append(f"⚠️ {cat.value.title()} faible: {cat_score.score:.0f}/100")
 
-        # WAIT: Score D ou confiance faible
-        elif score.grade == 'D' or score_confidence < 60:
+        # WAIT: Score ajusté < 60 ou confiance < 60
+        elif adjusted_score < 60 or adjusted_confidence < 60:
             action = 'WAIT'
-            confidence = max(total_score * 0.7, 40.0)
+            confidence = max(adjusted_score * 0.7, 40.0)
 
-            reasons.append(f"⏸️ Score moyen: {total_score:.0f}/100 (Grade {score.grade})")
-            reasons.append(f"⚠️ Confiance insuffisante: {score_confidence:.0f}%")
+            reasons.append(f"⏸️ Score brut: {total_score:.0f}/100 (Grade {score.grade})")
+            if validation_multiplier < 1.0:
+                reasons.append(f"⚠️ Score ajusté validation: {adjusted_score:.0f}/100")
+            reasons.append(f"⚠️ Confiance: {adjusted_confidence:.0f}%")
 
             recommendations.append("⏸️ ATTENDRE - Conditions pas optimales")
             recommendations.append("Surveiller amélioration du score")
@@ -291,12 +329,14 @@ class OpportunityCalculatorPro:
                     for issue in cat_score.issues[:2]:  # Top 2 issues
                         warnings.append(f"   {issue}")
 
-        # AVOID: Score F
+        # AVOID: Score ajusté très faible
         else:
             action = 'AVOID'
-            confidence = max(total_score * 0.5, 20.0)
+            confidence = max(adjusted_score * 0.5, 20.0)
 
-            reasons.append(f"❌ Score faible: {total_score:.0f}/100 (Grade {score.grade})")
+            reasons.append(f"❌ Score brut: {total_score:.0f}/100 (Grade {score.grade})")
+            if validation_multiplier < 1.0:
+                reasons.append(f"❌ Score ajusté validation: {adjusted_score:.0f}/100")
             reasons.append("❌ Setup non favorable")
 
             recommendations.append("🛑 NE PAS ACHETER - Risque élevé")

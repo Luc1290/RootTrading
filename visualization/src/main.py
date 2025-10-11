@@ -418,6 +418,25 @@ async def get_trading_opportunity(symbol: str):
             analyzer_dict_5m = dict(analyzer_data_5m) if analyzer_data_5m else None
             signals_dict = dict(signals_data) if signals_data else {}
 
+            # Fallback: Si nearest_resistance/support manquant, récupérer dernière valeur connue
+            if analyzer_dict_1m.get('nearest_resistance') is None or analyzer_dict_1m.get('nearest_support') is None:
+                fallback_query = """
+                    SELECT nearest_resistance, nearest_support
+                    FROM analyzer_data
+                    WHERE symbol = $1
+                    AND timeframe = '1m'
+                    AND nearest_resistance IS NOT NULL
+                    AND nearest_support IS NOT NULL
+                    ORDER BY time DESC
+                    LIMIT 1
+                """
+                fallback_data = await conn.fetchrow(fallback_query, symbol)
+                if fallback_data:
+                    if analyzer_dict_1m.get('nearest_resistance') is None:
+                        analyzer_dict_1m['nearest_resistance'] = float(fallback_data['nearest_resistance'])
+                    if analyzer_dict_1m.get('nearest_support') is None:
+                        analyzer_dict_1m['nearest_support'] = float(fallback_data['nearest_support'])
+
             # Calculer l'opportunité via le calculateur PRO (avec contexte 5m)
             opportunity = opportunity_calculator.calculate_opportunity(
                 symbol=symbol,
@@ -430,8 +449,8 @@ async def get_trading_opportunity(symbol: str):
             # Convertir en dict pour l'API
             response_data = opportunity_calculator.to_dict(opportunity)
 
-            # Envoyer notification Telegram uniquement pour les signaux BUY
-            if opportunity.action == "BUY_NOW":
+            # Envoyer notification Telegram pour BUY_NOW et BUY_DCA
+            if opportunity.action in ["BUY_NOW", "BUY_DCA"]:
                 try:
                     from notifications.telegram_service import get_notifier
                     notifier = get_notifier()
@@ -674,17 +693,18 @@ async def get_top_signals(
                     SELECT
                         symbol,
                         side,
-                        COUNT(DISTINCT strategy) as strategy_count,
+                        COUNT(*) as consensus_count,
                         AVG(confidence) as avg_confidence,
                         MAX(timestamp) as last_signal_time
                     FROM trading_signals
                     WHERE timestamp > NOW() - INTERVAL '1 minute' * $1
+                      AND strategy = 'CONSENSUS'
                     GROUP BY symbol, side
                 ),
                 buy_signals AS (
                     SELECT
                         symbol,
-                        strategy_count as buy_count,
+                        consensus_count as buy_count,
                         avg_confidence as buy_confidence,
                         last_signal_time as buy_time
                     FROM signal_counts WHERE side = 'BUY'
@@ -692,7 +712,7 @@ async def get_top_signals(
                 sell_signals AS (
                     SELECT
                         symbol,
-                        strategy_count as sell_count,
+                        consensus_count as sell_count,
                         avg_confidence as sell_confidence,
                         last_signal_time as sell_time
                     FROM signal_counts WHERE side = 'SELL'

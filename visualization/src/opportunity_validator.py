@@ -192,7 +192,9 @@ class OpportunityValidator:
 
         missing = []
         for ind in critical_indicators:
-            if ad.get(ind) is None:
+            val = ad.get(ind)
+            # Considérer comme manquant seulement si None ou clé absente (pas si 0 ou False)
+            if val is None and ind not in ad:
                 missing.append(ind)
 
         if missing:
@@ -238,15 +240,15 @@ class OpportunityValidator:
         regime = ad.get('market_regime', '').upper()
         regime_conf = self.safe_float(ad.get('regime_confidence'))
 
+        # CHANGEMENT: Malus progressif au lieu de rejet binaire
+        # Un setup excellent peut justifier une contre-tendance
         if regime in ['TRENDING_BEAR', 'BREAKOUT_BEAR']:
-            return ValidationResult(
-                level=ValidationLevel.MARKET_CONDITIONS,
-                passed=False,
-                score=0.0,
-                reason=f"❌ Régime baissier: {regime}",
-                details={'regime': regime, 'confidence': regime_conf},
-                warnings=[]
-            )
+            score -= 40  # Malus lourd mais pas bloquant
+            warnings.append(f"⚠️⚠️ RÉGIME BAISSIER: {regime} - Contre-tendance très risquée!")
+            details['regime_bear_warning'] = True
+        elif regime == 'TRANSITION':
+            score -= 10
+            warnings.append(f"⚠️ Régime transition - Direction incertaine")
 
         # Confiance régime
         if regime_conf < 50:
@@ -269,15 +271,11 @@ class OpportunityValidator:
 
         # 3. Directional Bias
         bias = ad.get('directional_bias', '').upper()
+        # CHANGEMENT: Malus progressif au lieu de rejet binaire
         if bias == 'BEARISH':
-            return ValidationResult(
-                level=ValidationLevel.MARKET_CONDITIONS,
-                passed=False,
-                score=0.0,
-                reason=f"❌ Biais directionnel baissier: {bias}",
-                details=details,
-                warnings=[]
-            )
+            score -= 30  # Malus mais pas bloquant
+            warnings.append(f"⚠️⚠️ BIAIS BAISSIER: {bias} - Setup contre-tendance!")
+            details['bias_bear_warning'] = True
         elif bias == 'NEUTRAL':
             warnings.append("⚠️ Biais neutre - Pas de direction claire")
             score -= 10
@@ -290,16 +288,12 @@ class OpportunityValidator:
             htf_rsi = self.safe_float(higher_tf.get('rsi_14'))
             htf_macd = higher_tf.get('macd_trend', '').upper()
 
-            # Rejet si HTF bearish
+            # CHANGEMENT: Malus progressif au lieu de rejet binaire
+            # 5m bearish n'empêche pas un trade 1m si setup excellent
             if htf_regime in ['TRENDING_BEAR', 'BREAKOUT_BEAR']:
-                return ValidationResult(
-                    level=ValidationLevel.MARKET_CONDITIONS,
-                    passed=False,
-                    score=0.0,
-                    reason=f"❌ Timeframe supérieur baissier: {htf_regime}",
-                    details={**details, 'htf_regime': htf_regime},
-                    warnings=[]
-                )
+                score -= 35  # Malus lourd
+                warnings.append(f"⚠️⚠️ 5M BAISSIER: {htf_regime} - Trade contre-tendance HTF!")
+                details['htf_bear_warning'] = True
 
             # Warning si divergence
             if htf_rsi < 50 and htf_macd == 'BEARISH':
@@ -312,8 +306,10 @@ class OpportunityValidator:
             warnings.append("ℹ️ Pas de validation timeframe supérieur")
             score -= 5
 
-        # Validation passée si score >60
-        passed = score >= 60
+        # Validation passée si score >30 (abaissé de 60 pour tolérer contre-tendances)
+        # Avec malus progressifs: Bear -40, Bias Bear -30, HTF Bear -35 = score peut descendre à 0-30
+        # Score 35-50 = contre-tendance risquée mais acceptable si reste du setup excellent
+        passed = score >= 30
 
         return ValidationResult(
             level=ValidationLevel.MARKET_CONDITIONS,
@@ -393,15 +389,19 @@ class OpportunityValidator:
         # Cela permet de valider les setups où TP2 est atteignable
         rr_ratio = tp_dist_moderate / sl_dist if sl_dist > 0 else 0
 
+        # CHANGEMENT: Malus progressif au lieu de rejet binaire
+        # R/R 1.4 acceptable, R/R 0.8 très mauvais
         if rr_ratio < 1.5:
-            return ValidationResult(
-                level=ValidationLevel.RISK_MANAGEMENT,
-                passed=False,
-                score=0.0,
-                reason=f"❌ R/R trop faible: {rr_ratio:.2f} < 1.5",
-                details={**details, 'rr_ratio': rr_ratio},
-                warnings=[]
-            )
+            # Malus proportionnel : RR 1.4 = -3pts, RR 1.0 = -15pts, RR 0.5 = -30pts
+            rr_penalty = max(0, min((1.5 - rr_ratio) * 30, 50))
+            score -= rr_penalty
+
+            if rr_ratio < 1.0:
+                warnings.append(f"⚠️⚠️ R/R TRÈS FAIBLE: {rr_ratio:.2f} < 1.5 (-{rr_penalty:.0f}pts)")
+                details['rr_critical_warning'] = True
+            else:
+                warnings.append(f"⚠️ R/R sous-optimal: {rr_ratio:.2f} < 1.5 (-{rr_penalty:.0f}pts)")
+                details['rr_suboptimal'] = True
 
         details['rr_ratio'] = rr_ratio
 
@@ -441,8 +441,9 @@ class OpportunityValidator:
 
             details['break_probability'] = break_prob * 100
 
-        # Validation passée si score >70
-        passed = score >= 70
+        # Validation passée si score >50 (abaissé de 70 pour tolérer R/R suboptimal)
+        # Avec scoring progressif, un score de 60 = R/R 1.2-1.3 acceptable
+        passed = score >= 50
 
         return ValidationResult(
             level=ValidationLevel.RISK_MANAGEMENT,
@@ -463,12 +464,26 @@ class OpportunityValidator:
         - Momentum positif
         - Pattern favorable ou neutre
         - Pas de divergence négative
+
+        EXCEPTION PUMP: Tolérance RSI/MFI élevés si pump validé
         """
         details = {}
         warnings = []
         score = 100.0
 
-        # 1. Overbought Check
+        # Détecter si c'est un pump validé (volume fort + regime bull + context breakout)
+        vol_spike = self.safe_float(ad.get('volume_spike_multiplier'), 1.0)
+        rel_volume = self.safe_float(ad.get('relative_volume'), 1.0)
+        market_regime = ad.get('market_regime', '').upper()
+        vol_context = ad.get('volume_context', '').upper()
+
+        is_pump_context = (
+            (vol_spike > 2.5 or rel_volume > 2.5) and
+            market_regime in ['TRENDING_BULL', 'BREAKOUT_BULL'] and
+            vol_context in ['CONSOLIDATION_BREAK', 'BREAKOUT', 'PUMP_START', 'HIGH_VOLATILITY']
+        )
+
+        # 1. Overbought Check (avec tolérance pump)
         rsi = self.safe_float(ad.get('rsi_14'))
         mfi = self.safe_float(ad.get('mfi_14'))
         stoch_k = self.safe_float(ad.get('stoch_k'))
@@ -476,17 +491,33 @@ class OpportunityValidator:
 
         overbought_issues = []
 
-        if rsi > 80:
+        # Seuils adaptatifs selon contexte
+        if is_pump_context:
+            # Pendant un pump validé, tolérer RSI/MFI plus élevés
+            rsi_extreme_threshold = 95
+            rsi_high_threshold = 85
+            mfi_extreme_threshold = 95
+            mfi_high_threshold = 85
+            details['pump_context_detected'] = True
+        else:
+            # Conditions normales, seuils stricts
+            rsi_extreme_threshold = 80
+            rsi_high_threshold = 75
+            mfi_extreme_threshold = 85
+            mfi_high_threshold = 80
+            details['pump_context_detected'] = False
+
+        if rsi > rsi_extreme_threshold:
             overbought_issues.append(f"RSI extrême ({rsi:.0f})")
             score -= 20
-        elif rsi > 75:
+        elif rsi > rsi_high_threshold:
             warnings.append(f"⚠️ RSI élevé ({rsi:.0f})")
             score -= 10
 
-        if mfi > 85:
+        if mfi > mfi_extreme_threshold:
             overbought_issues.append(f"MFI extrême ({mfi:.0f})")
             score -= 15
-        elif mfi > 80:
+        elif mfi > mfi_high_threshold:
             warnings.append(f"⚠️ MFI élevé ({mfi:.0f})")
             score -= 10
 
@@ -500,25 +531,25 @@ class OpportunityValidator:
         details['rsi'] = rsi
         details['mfi'] = mfi
 
-        # 2. Volume Confirmation
-        vol_context = ad.get('volume_context', '').upper()
-        rel_volume = self.safe_float(ad.get('relative_volume'), 1.0)
+        # 2. Volume Confirmation (variables déjà déclarées au début)
         obv_osc = self.safe_float(ad.get('obv_oscillator'))
 
-        # Volume trop faible = rejet (seuil ajusté pour crypto 1m)
-        # Ancien seuil 0.8x était trop strict, nouveau seuil 0.5x
+        # CHANGEMENT: Malus progressif au lieu de rejet binaire
+        # Volume 0.4x sur un setup excellent peut passer si tout le reste compense
         if rel_volume < 0.5:
-            return ValidationResult(
-                level=ValidationLevel.ENTRY_TIMING,
-                passed=False,
-                score=0.0,
-                reason=f"❌ Volume trop faible: {rel_volume:.2f}x",
-                details=details,
-                warnings=[]
-            )
+            # Malus proportionnel : 0.4x = -10pts, 0.3x = -20pts, 0.2x = -30pts, 0.1x = -40pts
+            vol_penalty = max(0, min((0.5 - rel_volume) * 100, 50))
+            score -= vol_penalty
+
+            if rel_volume < 0.3:
+                warnings.append(f"⚠️⚠️ VOLUME TRÈS FAIBLE: {rel_volume:.2f}x (-{vol_penalty:.0f}pts)")
+                details['volume_critical_warning'] = True
+            else:
+                warnings.append(f"⚠️ Volume faible: {rel_volume:.2f}x (-{vol_penalty:.0f}pts)")
+                details['volume_low_warning'] = True
 
         # Warning si volume modéré (0.5-0.8x)
-        if rel_volume < 0.8:
+        elif rel_volume < 0.8:
             warnings.append(f"⚠️ Volume modéré: {rel_volume:.2f}x")
             score -= 10
 
@@ -556,10 +587,15 @@ class OpportunityValidator:
         # 4. Pattern Check
         pattern = ad.get('pattern_detected', '').upper()
 
-        bearish_patterns = ['PRICE_SPIKE_DOWN', 'LIQUIDITY_SWEEP']
-        if pattern in bearish_patterns:
+        # IMPORTANT: PRICE_SPIKE_DOWN peut être un pullback sain pendant un pump
+        # LIQUIDITY_SWEEP est OK si on est en TRENDING_BULL (sweep des shorts)
+        # Ne pénaliser que si vraiment baissier (pas de pump context)
+        if pattern == 'PRICE_SPIKE_DOWN' and not is_pump_context:
             warnings.append(f"⚠️ Pattern baissier: {pattern}")
             score -= 15
+        elif pattern == 'LIQUIDITY_SWEEP' and market_regime not in ['TRENDING_BULL', 'BREAKOUT_BULL']:
+            warnings.append(f"⚠️ Pattern baissier: {pattern}")
+            score -= 10
 
         details['pattern'] = pattern
 

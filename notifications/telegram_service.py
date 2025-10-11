@@ -130,10 +130,10 @@ class TelegramNotifier:
     ) -> str:
         """Construit le message formaté pour Telegram"""
 
-        # Emoji et titre selon l'action (PRO: BUY_DCA ajouté)
+        # Emoji et titre selon l'action (PRO: BUY_DCA renommé en BUY)
         action_config = {
-            "BUY_NOW": {"emoji": "🟢", "title": "SIGNAL BUY", "score_emojis": True},
-            "BUY_DCA": {"emoji": "🔵", "title": "SIGNAL BUY DCA", "score_emojis": True},
+            "BUY_NOW": {"emoji": "🟢", "title": "SIGNAL BUY NOW", "score_emojis": True},
+            "BUY_DCA": {"emoji": "🔵", "title": "SIGNAL BUY", "score_emojis": True},
             "WAIT_PULLBACK": {"emoji": "🟡", "title": "ATTENDRE BAISSE", "score_emojis": False},
             "WAIT_BREAKOUT": {"emoji": "🔵", "title": "ATTENDRE CASSURE", "score_emojis": False},
             "WAIT_OVERSOLD": {"emoji": "🔵", "title": "ATTENDRE REBOND", "score_emojis": False},

@@ -125,12 +125,13 @@ class OpportunityScoring:
         except (ValueError, TypeError):
             return default
 
-    def calculate_opportunity_score(self, analyzer_data: dict) -> OpportunityScore:
+    def calculate_opportunity_score(self, analyzer_data: dict, current_price: float = 0.0) -> OpportunityScore:
         """
         Calcule le score global d'opportunité.
 
         Args:
             analyzer_data: Données de analyzer_data (tous les 108 indicateurs)
+            current_price: Prix actuel (requis pour calcul S/R correct)
 
         Returns:
             OpportunityScore complet avec détails par catégorie
@@ -159,7 +160,7 @@ class OpportunityScoring:
 
         # 5. SUPPORT/RESISTANCE SCORE
         category_scores[ScoreCategory.SUPPORT_RESISTANCE] = self._score_support_resistance(
-            analyzer_data, weights[ScoreCategory.SUPPORT_RESISTANCE]
+            analyzer_data, current_price, weights[ScoreCategory.SUPPORT_RESISTANCE]
         )
 
         # 6. PATTERN SCORE
@@ -335,24 +336,48 @@ class OpportunityScoring:
         - Stochastic (K, D, RSI, divergence, signal)
         - Momentum score composite
         - ROC
+
+        PUMP TOLERANCE: RSI/MFI élevés sont OK si pump validé
         """
         details = {}
         issues = []
         score = 0.0
+
+        # Détecter pump context (même logique que validator)
+        vol_spike = self.safe_float(ad.get('volume_spike_multiplier'), 1.0)
+        rel_volume = self.safe_float(ad.get('relative_volume'), 1.0)
+        market_regime = ad.get('market_regime', '').upper()
+        vol_context = ad.get('volume_context', '').upper()
+
+        is_pump = (
+            (vol_spike > 2.5 or rel_volume > 2.5) and
+            market_regime in ['TRENDING_BULL', 'BREAKOUT_BULL'] and
+            vol_context in ['CONSOLIDATION_BREAK', 'BREAKOUT', 'PUMP_START', 'HIGH_VOLATILITY']
+        )
 
         # 1. RSI (20 points max)
         rsi_14 = self.safe_float(ad.get('rsi_14'))
         rsi_21 = self.safe_float(ad.get('rsi_21'))
 
         if rsi_14 > 0:
-            # Zone bullish: 50-70 optimal, éviter overbought >75
+            # Zone bullish: 50-70 optimal
+            # PUMP: Accepter RSI élevé comme signal de force
             if 55 <= rsi_14 <= 70:
                 rsi_score = 20
             elif 50 <= rsi_14 < 55 or 70 < rsi_14 <= 75:
                 rsi_score = 15
+            elif 75 < rsi_14 <= 85 and is_pump:
+                # Pump context: RSI 75-85 = momentum fort = BONUS
+                rsi_score = 18
+                issues.append(f"RSI pump ({rsi_14:.0f})")
+            elif rsi_14 > 85 and is_pump:
+                # Pump extrême: RSI >85 = toujours bullish pendant pump
+                rsi_score = 15
+                issues.append(f"RSI pump extrême ({rsi_14:.0f})")
             elif 45 <= rsi_14 < 50:
                 rsi_score = 10
-            elif rsi_14 > 75:
+            elif rsi_14 > 75 and not is_pump:
+                # Sans pump context, RSI >75 = overbought = pénalité
                 rsi_score = 5
                 issues.append(f"RSI overbought ({rsi_14:.0f})")
             else:
@@ -399,6 +424,10 @@ class OpportunityScoring:
             # Zone bullish: 40-80
             if 40 <= stoch_k <= 80 and 40 <= stoch_d <= 80:
                 stoch_score = 10
+            elif (stoch_k > 80 or stoch_d > 80) and is_pump:
+                # Pump context: Stoch >80 acceptable
+                stoch_score = 8
+                issues.append(f"Stoch pump ({stoch_k:.0f}/{stoch_d:.0f})")
             elif stoch_k > 80 or stoch_d > 80:
                 stoch_score = 3
                 issues.append(f"Stoch overbought ({stoch_k:.0f}/{stoch_d:.0f})")
@@ -462,6 +491,10 @@ class OpportunityScoring:
                 mfi_score = 10
             elif 40 <= mfi < 50 or 70 < mfi <= 80:
                 mfi_score = 7
+            elif mfi > 80 and is_pump:
+                # Pump context: MFI >80 = argent entrant = BULLISH
+                mfi_score = 9
+                issues.append(f"MFI pump ({mfi:.0f})")
             elif mfi > 80:
                 mfi_score = 3
                 issues.append(f"MFI overbought ({mfi:.0f})")
@@ -726,7 +759,7 @@ class OpportunityScoring:
             issues=issues
         )
 
-    def _score_support_resistance(self, ad: dict, weight: float) -> CategoryScore:
+    def _score_support_resistance(self, ad: dict, current_price: float, weight: float) -> CategoryScore:
         """
         Score SUPPORT/RESISTANCE (0-100) basé sur:
         - Distance à la résistance
@@ -735,6 +768,11 @@ class OpportunityScoring:
         - Support strength
         - Pivot count
         - Support/Resistance levels (JSONB)
+
+        Args:
+            ad: analyzer_data
+            current_price: Prix actuel (REQUIS - ne pas utiliser nearest_support comme proxy!)
+            weight: Pondération de la catégorie
         """
         details = {}
         issues = []
@@ -742,7 +780,6 @@ class OpportunityScoring:
 
         # 1. Distance à la résistance (40 points max)
         nearest_resistance = self.safe_float(ad.get('nearest_resistance'))
-        current_price = self.safe_float(ad.get('nearest_support'))  # Proxy via support
 
         if nearest_resistance > 0 and current_price > 0:
             dist_pct = ((nearest_resistance - current_price) / current_price) * 100
@@ -830,6 +867,8 @@ class OpportunityScoring:
         Score PATTERN (0-100) basé sur:
         - Pattern detected (PRICE_SPIKE_UP, LIQUIDITY_SWEEP, etc.)
         - Pattern confidence
+
+        PUMP TOLERANCE: PRICE_SPIKE_DOWN et LIQUIDITY_SWEEP OK si pump
         """
         details = {}
         issues = []
@@ -838,15 +877,35 @@ class OpportunityScoring:
         pattern = ad.get('pattern_detected', '').upper()
         pattern_conf = self.safe_float(ad.get('pattern_confidence'))
 
+        # Détecter pump context (même logique)
+        vol_spike = self.safe_float(ad.get('volume_spike_multiplier'), 1.0)
+        rel_volume = self.safe_float(ad.get('relative_volume'), 1.0)
+        market_regime = ad.get('market_regime', '').upper()
+        vol_context = ad.get('volume_context', '').upper()
+
+        is_pump = (
+            (vol_spike > 2.5 or rel_volume > 2.5) and
+            market_regime in ['TRENDING_BULL', 'BREAKOUT_BULL'] and
+            vol_context in ['CONSOLIDATION_BREAK', 'BREAKOUT', 'PUMP_START', 'HIGH_VOLATILITY']
+        )
+
         # Patterns bullish
         bullish_patterns = ['PRICE_SPIKE_UP', 'COMBINED_SPIKE', 'VOLUME_SPIKE_UP']
-        bearish_patterns = ['PRICE_SPIKE_DOWN', 'LIQUIDITY_SWEEP']
 
         if pattern in bullish_patterns:
             base_score = 60
         elif pattern == 'NORMAL' or not pattern:
             base_score = 30
-        elif pattern in bearish_patterns:
+        elif pattern == 'PRICE_SPIKE_DOWN' and is_pump:
+            # Pendant un pump, PRICE_SPIKE_DOWN = pullback sain
+            base_score = 40
+            issues.append(f"Pattern pullback pump ({pattern})")
+        elif pattern == 'LIQUIDITY_SWEEP' and market_regime in ['TRENDING_BULL', 'BREAKOUT_BULL']:
+            # LIQUIDITY_SWEEP en bull = sweep des shorts = bullish
+            base_score = 50
+            issues.append(f"Pattern sweep shorts ({pattern})")
+        elif pattern in ['PRICE_SPIKE_DOWN', 'LIQUIDITY_SWEEP']:
+            # Vraiment baissier si pas de pump context
             base_score = 0
             issues.append(f"Pattern {pattern}")
         else:

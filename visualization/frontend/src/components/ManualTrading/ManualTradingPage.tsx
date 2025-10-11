@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { apiService } from '@/services/api';
 import { formatCurrency, formatPercent } from '@/utils';
 import { OpportunityCard } from './OpportunityCard';
+import { MarketSentiment } from '@/components/Shared/MarketSentiment';
 
 interface AutoSignal {
   has_signal: boolean;
@@ -288,28 +289,31 @@ function ManualTradingPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Retrier les opportunités quand topSignals change
+  // Retrier les opportunités par score PRO
   useEffect(() => {
-    if (opportunities.length > 0 && topSignals.length > 0) {
+    if (opportunities.length > 0) {
       const sorted = [...opportunities].sort((a, b) => {
-        // BUY_NOW en premier
+        // 1. BUY_NOW en premier absolu
         if (a.action === 'BUY_NOW' && b.action !== 'BUY_NOW') return -1;
         if (a.action !== 'BUY_NOW' && b.action === 'BUY_NOW') return 1;
 
-        // Si aucun BUY_NOW, utiliser le net_signal des top signaux
-        const aSignal = topSignals.find(s => s.symbol === a.symbol);
-        const bSignal = topSignals.find(s => s.symbol === b.symbol);
+        // 2. BUY_DCA en deuxième
+        if (a.action === 'BUY_DCA' && b.action !== 'BUY_DCA' && b.action !== 'BUY_NOW') return -1;
+        if (b.action === 'BUY_DCA' && a.action !== 'BUY_DCA' && a.action !== 'BUY_NOW') return 1;
 
-        if (aSignal && bSignal) {
-          return bSignal.net_signal - aSignal.net_signal;
+        // 3. Ensuite par score total (système PRO)
+        const aScore = a.score?.total || 0;
+        const bScore = b.score?.total || 0;
+
+        if (aScore !== bScore) {
+          return bScore - aScore; // Score décroissant
         }
-        if (aSignal) return -1;
-        if (bSignal) return 1;
 
-        // Sinon par nombre de conditions remplies
-        const aConditions = a.conditions ? Object.values(a.conditions).filter(Boolean).length : 0;
-        const bConditions = b.conditions ? Object.values(b.conditions).filter(Boolean).length : 0;
-        return bConditions - aConditions;
+        // 4. Si scores égaux, par validation score
+        const aValidation = a.validation?.overall_score || 0;
+        const bValidation = b.validation?.overall_score || 0;
+
+        return bValidation - aValidation;
       });
 
       // Vérifier si l'ordre a changé avant de mettre à jour (éviter boucle infinie)
@@ -318,7 +322,7 @@ function ManualTradingPage() {
         setOpportunities(sorted);
       }
     }
-  }, [topSignals, opportunities]);
+  }, [opportunities]); // Plus besoin de topSignals
 
   // Calculateur variation en temps réel
   useEffect(() => {
@@ -386,7 +390,7 @@ function ManualTradingPage() {
   const getActionText = (action: string) => {
     switch (action) {
       case 'BUY_NOW': return 'ACHETER MAINTENANT ✅';
-      case 'BUY_DCA': return 'ACHETER EN DCA 📊';
+      case 'BUY_DCA': return 'ACHETER 📊';
       case 'WAIT': return 'ATTENDRE ⏳';
       case 'WAIT_HIGHER_TF': return 'ATTENDRE - 5m pas aligné 📊';
       case 'WAIT_QUALITY_GATE': return 'BLOQUÉ - SETUP POURRI 🚫';
@@ -449,6 +453,9 @@ function ManualTradingPage() {
     <div className="flex gap-6">
       {/* Contenu principal */}
       <div className="flex-1 space-y-6">
+      {/* Sentiment Marché */}
+      <MarketSentiment />
+
       {/* En-tête */}
       <div className="bg-dark-200 border border-gray-700 rounded-lg p-6">
         <div className="flex items-center justify-between">

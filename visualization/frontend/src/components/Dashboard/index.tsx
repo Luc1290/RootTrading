@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import CryptoSection from './CryptoSection';
 import { apiService } from '@/services/api';
+import { MarketSentiment } from '@/components/Shared/MarketSentiment';
 
 interface TopSignal {
   symbol: string;
@@ -20,6 +21,7 @@ interface CryptoWithSignal {
 
 function Dashboard() {
   const [allCryptos, setAllCryptos] = useState<CryptoWithSignal[]>([]);
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Charger TOUTES les cryptos configurées + leurs signaux
@@ -53,6 +55,11 @@ function Dashboard() {
       cryptosWithSignals.sort((a, b) => b.netSignal - a.netSignal);
 
       setAllCryptos(cryptosWithSignals);
+
+      // Sélectionner automatiquement la meilleure opportunité
+      if (cryptosWithSignals.length > 0 && !selectedSymbol) {
+        setSelectedSymbol(cryptosWithSignals[0].symbol);
+      }
     } catch (error) {
       console.error('Erreur chargement cryptos:', error);
     } finally {
@@ -76,17 +83,25 @@ function Dashboard() {
     );
   }
 
+  // Séparer les cryptos avec signaux positifs et les autres
+  const cryptosWithSignals = allCryptos.filter(c => c.netSignal > 0);
+  const cryptosWithoutSignals = allCryptos.filter(c => c.netSignal <= 0);
+  const selectedCrypto = allCryptos.find(c => c.symbol === selectedSymbol);
+
   return (
-    <div className="space-y-8 p-6">
-      {/* En-tête */}
+    <div className="space-y-6 p-6">
+      {/* Market Sentiment */}
+      <MarketSentiment />
+
+      {/* En-tête + Bandeau opportunités */}
       <div className="bg-dark-200 border border-gray-700 rounded-lg p-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-3xl font-bold text-white mb-2">
-              📊 Dashboard Multi-Crypto
+              📊 Dashboard Trading
             </h1>
             <p className="text-gray-400">
-              {allCryptos.length} cryptos configurées • {allCryptos.filter(c => c.netSignal > 0).length} avec signaux BUY récents (15min)
+              {cryptosWithSignals.length} opportunités actives • {allCryptos.length} cryptos configurées
             </p>
           </div>
           <button
@@ -98,23 +113,101 @@ function Dashboard() {
             {loading ? '⏳ Chargement...' : '🔄 Rafraîchir'}
           </button>
         </div>
+
+        {/* Bandeau toutes les cryptos (opportunités d'abord, puis les autres) */}
+        {allCryptos.length > 0 && (
+          <div className="border-t border-gray-700 pt-4 space-y-3">
+            {/* Cryptos avec signaux positifs */}
+            {cryptosWithSignals.length > 0 && (
+              <div>
+                <div className="text-sm text-gray-400 mb-2 font-semibold">🔥 Opportunités actives</div>
+                <div className="flex flex-wrap gap-2">
+                  {cryptosWithSignals.map((crypto) => {
+                const baseAsset = crypto.symbol.replace('USDC', '');
+                const isSelected = crypto.symbol === selectedSymbol;
+                const bgColor = isSelected
+                  ? 'bg-blue-600 border-blue-500'
+                  : crypto.netSignal >= 5
+                  ? 'bg-green-900/20 border-green-500/50 hover:bg-green-800/30'
+                  : crypto.netSignal >= 3
+                  ? 'bg-blue-900/20 border-blue-500/50 hover:bg-blue-800/30'
+                  : 'bg-gray-800/20 border-gray-600 hover:bg-gray-700/30';
+
+                return (
+                  <button
+                    key={crypto.symbol}
+                    onClick={() => setSelectedSymbol(crypto.symbol)}
+                    className={`px-4 py-2 rounded-lg border-2 transition-all cursor-pointer ${bgColor}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-base font-bold text-white">{baseAsset}</span>
+                      <span className={`text-sm font-bold ${
+                        crypto.netSignal >= 5 ? 'text-green-400' :
+                        crypto.netSignal >= 3 ? 'text-blue-400' : 'text-gray-400'
+                      }`}>
+                        +{crypto.netSignal}
+                      </span>
+                      <div className="flex items-center gap-1 text-xs">
+                        <span className="text-green-400">{crypto.buyCount}🟢</span>
+                        <span className="text-red-400">{crypto.sellCount}🔴</span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+              </div>
+            )}
+
+            {/* Cryptos sans signaux */}
+            {cryptosWithoutSignals.length > 0 && (
+              <div>
+                <div className="text-sm text-gray-500 mb-2 font-semibold">📋 Autres cryptos</div>
+                <div className="flex flex-wrap gap-2">
+                  {cryptosWithoutSignals.map((crypto) => {
+                    const baseAsset = crypto.symbol.replace('USDC', '');
+                    const isSelected = crypto.symbol === selectedSymbol;
+                    const bgColor = isSelected
+                      ? 'bg-blue-600 border-blue-500'
+                      : 'bg-gray-800/20 border-gray-600 hover:bg-gray-700/30';
+
+                    return (
+                      <button
+                        key={crypto.symbol}
+                        onClick={() => setSelectedSymbol(crypto.symbol)}
+                        className={`px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${bgColor}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-gray-300">{baseAsset}</span>
+                          {crypto.netSignal !== 0 && (
+                            <span className="text-xs text-gray-500">{crypto.netSignal}</span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Sections par crypto */}
-      {allCryptos.map((crypto) => (
+      {/* Affichage de la crypto sélectionnée */}
+      {selectedCrypto ? (
         <CryptoSection
-          key={crypto.symbol}
-          symbol={crypto.symbol}
-          netSignal={crypto.netSignal}
-          buyCount={crypto.buyCount}
-          sellCount={crypto.sellCount}
+          key={selectedCrypto.symbol}
+          symbol={selectedCrypto.symbol}
+          netSignal={selectedCrypto.netSignal}
+          buyCount={selectedCrypto.buyCount}
+          sellCount={selectedCrypto.sellCount}
         />
-      ))}
-
-      {allCryptos.length === 0 && (
-        <div className="text-center py-12">
+      ) : (
+        <div className="text-center py-12 bg-dark-200 border border-gray-700 rounded-lg">
           <div className="text-gray-400 text-lg">
-            Aucune crypto configurée
+            {allCryptos.length === 0
+              ? 'Aucune crypto configurée'
+              : 'Aucune opportunité détectée'}
           </div>
         </div>
       )}

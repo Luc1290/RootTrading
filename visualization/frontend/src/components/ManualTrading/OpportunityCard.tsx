@@ -45,254 +45,239 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity: o
   const tp2Gain = tp2.percent ? (capital * tp2.percent / 100) : 0;
   const slLoss = sl.percent ? (capital * sl.percent / 100) : 0;
 
+  // Traduction actions
+  const actionText: Record<string, string> = {
+    'BUY_NOW': 'Acheter maintenant',
+    'BUY_DCA': 'Acheter',
+    'WAIT': 'Attendre',
+    'WAIT_HIGHER_TF': 'Attendre (5m)',
+    'WAIT_QUALITY_GATE': 'Setup faible',
+    'AVOID': 'Éviter'
+  };
+
+  // Trier les scores par valeur décroissante
+  const sortedScores = opp.categoryScores
+    ? Object.entries(opp.categoryScores).sort(([, a]: [string, any], [, b]: [string, any]) => {
+        return (b.score || 0) - (a.score || 0);
+      })
+    : [];
+
+  // Lien Binance
+  const baseAsset = opp.symbol.replace('USDC', '');
+  const binanceUrl = `https://www.binance.com/en/trade/${baseAsset}_USDC?type=spot`;
+
   return (
-    <div className="bg-dark-200 rounded-lg border border-gray-700 hover:border-gray-600 transition-all">
+    <div
+      className="bg-dark-200 rounded border border-gray-700 hover:border-gray-600 transition-all p-4 cursor-pointer hover:shadow-lg"
+      onClick={() => window.open(binanceUrl, '_blank')}
+      title={`Cliquer pour ouvrir ${baseAsset}/USDC sur Binance`}
+    >
       {/* === HEADER COMPACT === */}
-      <div className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          {/* Symbol + Rank */}
-          <div className="flex items-center gap-3">
-            <div className="text-2xl">{getRankEmoji(rank)}</div>
+      <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-700">
+        <div className="flex items-center gap-4">
+          {/* Rank + Symbol */}
+          <div className="flex items-center gap-2">
+            <span className="text-xl">{getRankEmoji(rank)}</span>
             <div>
-              <h3 className="text-lg font-bold text-white">{opp.symbol}</h3>
-              <div className="text-sm text-gray-400">{formatCurrency(currentPrice)}</div>
+              <h3 className="text-xl font-bold text-white">{opp.symbol}</h3>
+              <div className="text-xs text-gray-500">{formatCurrency(currentPrice)}</div>
             </div>
           </div>
 
-          {/* Score + Grade + Action */}
-          <div className="flex items-center gap-3">
-            {/* Grade Badge */}
-            <div className={`px-3 py-1 rounded-lg bg-gradient-to-r ${gradeColor} text-white font-bold text-sm`}>
-              {opp.score?.total?.toFixed(0) || 0}/100
-              <div className="text-xs opacity-90">{grade}</div>
+          {/* Score + Grade */}
+          <div className="text-center px-3 py-1 bg-dark-300 rounded">
+            <div className={`text-2xl font-bold ${
+              grade === 'S' || grade === 'A' ? 'text-green-400' :
+              grade === 'B' ? 'text-blue-400' :
+              grade === 'C' ? 'text-yellow-400' :
+              grade === 'D' ? 'text-orange-400' : 'text-gray-400'
+            }`}>
+              {opp.score?.total?.toFixed(0) || 0}
+              <span className="text-sm text-gray-500">/100</span>
             </div>
-
-            {/* Action Badge */}
-            <div className={`${config.bg} ${config.text} px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2`}>
-              <span>{config.emoji}</span>
-              <span>{opp.action.replace('_', ' ')}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* === VALIDATION STATUS === */}
-        {!opp.validation?.all_passed && opp.validationDetails?.blocking_issues && (
-          <div className="mb-3 p-3 bg-red-900/20 border border-red-500/30 rounded-lg">
-            <div className="flex items-start gap-2">
-              <XCircle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
-              <div className="flex-1">
-                <div className="text-sm font-semibold text-red-400 mb-1">
-                  🚫 Validation échouée - {opp.validationDetails.blocking_issues.length} problème(s)
-                </div>
-                <ul className="text-xs text-red-300 space-y-0.5">
-                  {opp.validationDetails.blocking_issues.map((issue: string, i: number) => (
-                    <li key={i}>• {issue}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* === GRID PRINCIPAL === */}
-        <div className="grid grid-cols-3 gap-3">
-          {/* Colonne 1: Targets */}
-          <div className="bg-dark-300 p-3 rounded-lg border border-gray-700">
-            <div className="text-xs text-gray-400 mb-2 font-semibold">🎯 Targets</div>
-            <div className="space-y-1.5">
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-green-400">TP1 (+{tp1.percent?.toFixed(1)}%)</span>
-                <div className="text-right">
-                  <div className="text-white font-semibold">{formatCurrency(tp1.price)}</div>
-                  <div className="text-green-400 text-[10px]">+{formatCurrency(tp1Gain)}</div>
-                </div>
-              </div>
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-green-400">TP2 (+{tp2.percent?.toFixed(1)}%)</span>
-                <div className="text-right">
-                  <div className="text-white font-semibold">{formatCurrency(tp2.price)}</div>
-                  <div className="text-green-400 text-[10px]">+{formatCurrency(tp2Gain)}</div>
-                </div>
-              </div>
-              <div className="flex justify-between items-center text-xs border-t border-gray-600 pt-1.5">
-                <span className="text-red-400">SL (-{sl.percent?.toFixed(1)}%)</span>
-                <div className="text-right">
-                  <div className="text-white font-semibold">{formatCurrency(sl.price)}</div>
-                  <div className="text-red-400 text-[10px]">-{formatCurrency(slLoss)}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Colonne 2: Risk */}
-          <div className="bg-dark-300 p-3 rounded-lg border border-gray-700">
-            <div className="text-xs text-gray-400 mb-2 font-semibold">⚖️ Risk</div>
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-400">R/R Ratio:</span>
-                <span className={`font-bold ${
-                  (opp.risk?.rr_ratio || 0) >= 2 ? 'text-green-400' :
-                  (opp.risk?.rr_ratio || 0) >= 1.5 ? 'text-yellow-400' : 'text-red-400'
-                }`}>
-                  {opp.risk?.rr_ratio?.toFixed(2) || 'N/A'}
-                </span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-400">Risk Level:</span>
-                <span className={`font-semibold ${
-                  opp.risk?.risk_level === 'LOW' ? 'text-green-400' :
-                  opp.risk?.risk_level === 'MEDIUM' ? 'text-yellow-400' :
-                  opp.risk?.risk_level === 'HIGH' ? 'text-orange-400' : 'text-red-400'
-                }`}>
-                  {opp.risk?.risk_level || 'N/A'}
-                </span>
-              </div>
-              <div className="flex justify-between text-xs border-t border-gray-600 pt-1.5">
-                <span className="text-gray-400">Max Position:</span>
-                <span className="text-white font-bold">
-                  {opp.risk?.max_position_size_pct?.toFixed(1) || 'N/A'}%
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Colonne 3: Régime */}
-          <div className="bg-dark-300 p-3 rounded-lg border border-gray-700">
-            <div className="text-xs text-gray-400 mb-2 font-semibold">📊 Régime</div>
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-400">Marché:</span>
-                <span className={`font-semibold text-xs ${getRegimeColor(opp.regime)}`}>
-                  {opp.regime || 'N/A'}
-                </span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-400">ADX:</span>
-                <span className="text-white font-semibold">{opp.adx?.toFixed(1) || 'N/A'}</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-400">RSI:</span>
-                <span className={`font-semibold ${
-                  (opp.rsi || 0) > 70 ? 'text-red-400' :
-                  (opp.rsi || 0) < 30 ? 'text-green-400' : 'text-gray-300'
-                }`}>
-                  {opp.rsi?.toFixed(0) || 'N/A'}
-                </span>
-              </div>
-            </div>
+            <div className="text-xs text-gray-400">Grade {grade}</div>
           </div>
         </div>
 
-        {/* === EXPAND BUTTON === */}
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="w-full mt-3 py-2 text-xs text-gray-400 hover:text-white flex items-center justify-center gap-2 border border-gray-700 rounded hover:border-gray-600 transition-colors"
-        >
-          <span>{expanded ? 'Masquer détails' : 'Afficher détails'}</span>
-          {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-        </button>
+        {/* Action button */}
+        <div className={`px-6 py-2 rounded ${getActionBg(opp.action)}`}>
+          <div className={`text-base font-bold ${getActionTextColor(opp.action)}`}>
+            {actionText[opp.action] || opp.action}
+          </div>
+        </div>
       </div>
 
-      {/* === EXPANDED DETAILS === */}
-      {expanded && (
-        <div className="border-t border-gray-700 p-4 space-y-4 bg-dark-300/50">
-          {/* Catégories Score */}
-          {opp.categoryScores && (
-            <div>
-              <div className="text-sm font-semibold text-gray-300 mb-3">📈 Catégories PRO</div>
-              <div className="grid grid-cols-4 gap-2">
-                {Object.entries(opp.categoryScores).map(([key, value]: [string, any]) => (
-                  <div key={key} className="bg-dark-200 p-2 rounded border border-gray-700">
-                    <div className="text-xs text-gray-400 capitalize">{key.replace('_', ' ')}</div>
-                    <div className="text-lg font-bold text-white">{value.score?.toFixed(0) || 0}</div>
-                    <div className="text-[10px] text-gray-500">Conf: {value.confidence?.toFixed(0) || 0}%</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+      {/* === VALIDATION WARNINGS === */}
+      {!opp.validation?.all_passed && opp.validationDetails?.blocking_issues && opp.validationDetails.blocking_issues.length > 0 && (
+        <div className="mb-4 p-3 bg-orange-900/20 border border-orange-500/40 rounded-lg">
+          <div className="font-semibold text-orange-300 mb-1">⚠️ Problèmes bloquants</div>
+          <div className="text-sm text-orange-400 space-y-1">
+            {opp.validationDetails.blocking_issues.map((issue: string, i: number) => (
+              <div key={i}>• {issue}</div>
+            ))}
+          </div>
+        </div>
+      )}
 
-          {/* Divergence Auto/Manuel */}
-          {autoSignal && (
-            <div>
-              <div className="text-sm font-semibold text-gray-300 mb-3">🔀 Comparaison Sources</div>
-              <div className="grid grid-cols-2 gap-3">
-                {/* Manuel */}
-                <div className="bg-dark-200 p-3 rounded border border-purple-500/30">
-                  <div className="text-xs text-purple-400 font-semibold mb-2">📊 MANUEL</div>
-                  <div className="space-y-1 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Score:</span>
-                      <span className="font-bold text-white">{opp.score?.total?.toFixed(0) || 0}/100</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Grade:</span>
-                      <span className="font-bold text-white">{grade}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Action:</span>
-                      <span className={`font-semibold ${getActionTextColor(opp.action)}`}>
-                        {opp.action}
+      {/* === LAYOUT 2 COLONNES === */}
+      <div className="grid grid-cols-2 gap-6">
+        {/* ========== COLONNE GAUCHE: SCORES + CONTEXTE ========== */}
+        <div className="space-y-4">
+          {/* Bloc Scores (triés) */}
+          <div className="bg-dark-300 rounded-lg p-4">
+            <h4 className="text-xs text-gray-500 uppercase font-semibold mb-3 tracking-wide">📊 Scores Catégories</h4>
+            <div className="space-y-2">
+              {sortedScores.map(([key, value]: [string, any]) => {
+                const score = value.score || 0;
+                const categoryName = getCategoryName(key);
+                return (
+                  <div key={key} className="flex items-center justify-between">
+                    <span className="text-sm text-gray-300">{categoryName}</span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full ${
+                            score >= 80 ? 'bg-green-400' :
+                            score >= 60 ? 'bg-blue-400' :
+                            score >= 40 ? 'bg-yellow-400' : 'bg-gray-500'
+                          }`}
+                          style={{ width: `${score}%` }}
+                        />
+                      </div>
+                      <span className={`text-base font-bold w-8 text-right ${
+                        score >= 80 ? 'text-green-400' :
+                        score >= 60 ? 'text-blue-400' :
+                        score >= 40 ? 'text-yellow-400' : 'text-gray-500'
+                      }`}>
+                        {score.toFixed(0)}
                       </span>
                     </div>
                   </div>
-                </div>
+                );
+              })}
+            </div>
+          </div>
 
-                {/* Auto */}
-                <div className={`bg-dark-200 p-3 rounded border ${
-                  autoSignal.validated ? 'border-green-500/30' : 'border-red-500/30'
-                }`}>
-                  <div className="text-xs text-blue-400 font-semibold mb-2">🤖 AUTO</div>
-                  {autoSignal.has_signal ? (
-                    <div className="space-y-1 text-xs">
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Consensus:</span>
-                        <span className="font-bold text-blue-400">
-                          {autoSignal.consensus_strength?.toFixed(2) || 'N/A'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Stratégies:</span>
-                        <span className="text-white font-semibold">{autoSignal.strategies_count || 0}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Side:</span>
-                        <span className={`font-semibold ${
-                          autoSignal.side === 'BUY' ? 'text-green-400' : 'text-red-400'
-                        }`}>
-                          {autoSignal.side}
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-xs text-gray-400">Aucun signal récent</div>
-                  )}
+          {/* Bloc Contexte */}
+          <div className="bg-dark-300 rounded-lg p-4">
+            <h4 className="text-xs text-gray-500 uppercase font-semibold mb-3 tracking-wide">🌍 Contexte</h4>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-400">Régime</span>
+                <span className={`text-sm font-bold ${getRegimeColor(opp.regime)}`}>
+                  {(opp.regime || 'N/A').replace('TRENDING_', '').replace('BREAKOUT_', '')}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-400">Validation</span>
+                <span className="text-sm font-bold text-white">
+                  {opp.validation?.overall_score?.toFixed(0) || 0}/100
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-400">Volatilité</span>
+                <span className="text-sm font-bold text-white">
+                  {opp.categoryScores?.volatility?.score?.toFixed(0) || 'N/A'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ========== COLONNE DROITE: TRADING + INDICATEURS ========== */}
+        <div className="space-y-4">
+          {/* Bloc Trading */}
+          <div className="bg-dark-300 rounded-lg p-4">
+            <h4 className="text-xs text-gray-500 uppercase font-semibold mb-3 tracking-wide">💰 Niveaux Trading</h4>
+            <div className="space-y-3">
+              {/* TP1 */}
+              <div className="flex items-center justify-between pb-2 border-b border-gray-700">
+                <span className="text-sm text-gray-400 font-medium">TP1</span>
+                <div className="text-right">
+                  <div className="text-base font-bold text-white">{formatCurrency(tp1.price)}</div>
+                  <div className="text-xs text-green-400 font-semibold">+{tp1.percent?.toFixed(2)}%</div>
                 </div>
               </div>
 
-              {/* Divergence warning */}
-              {autoSignal.has_signal && autoSignal.side !== opp.action.split('_')[0] && (
-                <div className="mt-2 p-2 bg-yellow-900/20 border border-yellow-500/30 rounded text-xs text-yellow-400">
-                  ⚠️ DIVERGENCE: Auto dit {autoSignal.side}, Manuel dit {opp.action}
+              {/* TP2 */}
+              <div className="flex items-center justify-between pb-2 border-b border-gray-700">
+                <span className="text-sm text-gray-400 font-medium">TP2</span>
+                <div className="text-right">
+                  <div className="text-base font-bold text-white">{formatCurrency(tp2.price)}</div>
+                  <div className="text-xs text-green-400 font-semibold">+{tp2.percent?.toFixed(2)}%</div>
                 </div>
-              )}
-            </div>
-          )}
+              </div>
 
-          {/* Warnings */}
-          {opp.validationDetails?.warnings && opp.validationDetails.warnings.length > 0 && (
-            <div>
-              <div className="text-sm font-semibold text-gray-300 mb-2">⚠️ Avertissements</div>
-              <ul className="space-y-1">
-                {opp.validationDetails.warnings.map((warning: string, i: number) => (
-                  <li key={i} className="text-xs text-yellow-400 flex items-start gap-2">
-                    <AlertCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                    <span>{warning}</span>
-                  </li>
-                ))}
-              </ul>
+              {/* SL */}
+              <div className="flex items-center justify-between pb-2 border-b border-gray-700">
+                <span className="text-sm text-gray-400 font-medium">Stop Loss</span>
+                <div className="text-right">
+                  <div className="text-base font-bold text-white">{formatCurrency(sl.price)}</div>
+                  <div className="text-xs text-red-400 font-semibold">-{sl.percent?.toFixed(2)}%</div>
+                </div>
+              </div>
+
+              {/* R/R + Risk */}
+              <div className="grid grid-cols-2 gap-4 pt-1">
+                <div>
+                  <div className="text-xs text-gray-500">Risk/Reward</div>
+                  <div className={`text-lg font-bold ${
+                    (opp.risk?.rr_ratio || 0) >= 2 ? 'text-green-400' :
+                    (opp.risk?.rr_ratio || 0) >= 1.5 ? 'text-yellow-400' : 'text-orange-400'
+                  }`}>
+                    {opp.risk?.rr_ratio?.toFixed(2) || 'N/A'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">Risk Level</div>
+                  <div className="text-lg font-bold text-white">{opp.risk?.risk_level || 'N/A'}</div>
+                </div>
+              </div>
             </div>
-          )}
+          </div>
+
+          {/* Bloc Indicateurs Techniques */}
+          <div className="bg-dark-300 rounded-lg p-4">
+            <h4 className="text-xs text-gray-500 uppercase font-semibold mb-3 tracking-wide">📈 Indicateurs</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-xs text-gray-500">RSI</div>
+                <div className={`text-lg font-bold ${
+                  (opp.rsi || 0) > 70 ? 'text-orange-400' :
+                  (opp.rsi || 0) < 30 ? 'text-blue-400' : 'text-white'
+                }`}>
+                  {opp.rsi?.toFixed(0) || 'N/A'}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">MFI</div>
+                <div className="text-lg font-bold text-white">{opp.mfi?.toFixed(0) || 'N/A'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">ADX</div>
+                <div className="text-lg font-bold text-white">{opp.adx?.toFixed(1) || 'N/A'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">Volume</div>
+                <div className="text-lg font-bold text-white">{opp.volumeRatio?.toFixed(2)}x</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* === BLOC AVERTISSEMENTS (en dessous des 2 colonnes) === */}
+      {opp.validationDetails?.warnings && opp.validationDetails.warnings.length > 0 && (
+        <div className="mt-4 bg-yellow-900/10 border border-yellow-500/30 rounded-lg p-4">
+          <h4 className="text-xs text-yellow-400 uppercase font-semibold mb-2 tracking-wide">⚠️ Avertissements</h4>
+          <div className="text-xs text-yellow-300/90 space-y-1">
+            {opp.validationDetails.warnings.map((w: string, i: number) => (
+              <div key={i} className="flex items-start gap-1">
+                <span className="text-yellow-500">•</span>
+                <span>{w}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -317,8 +302,28 @@ const getRegimeColor = (regime: string): string => {
 };
 
 const getActionTextColor = (action: string): string => {
-  if (action === 'BUY_NOW') return 'text-green-400';
-  if (action === 'BUY_DCA') return 'text-blue-400';
-  if (action === 'WAIT') return 'text-yellow-400';
-  return 'text-red-400';
+  if (action === 'BUY_NOW') return 'text-white';
+  if (action === 'BUY_DCA') return 'text-white';
+  if (action === 'WAIT') return 'text-black';
+  return 'text-white';
+};
+
+const getActionBg = (action: string): string => {
+  if (action === 'BUY_NOW') return 'bg-green-600';
+  if (action === 'BUY_DCA') return 'bg-blue-600';
+  if (action === 'WAIT') return 'bg-yellow-600';
+  return 'bg-red-600';
+};
+
+const getCategoryName = (key: string): string => {
+  const names: Record<string, string> = {
+    'trend': 'Tendance',
+    'momentum': 'Momentum',
+    'volume': 'Volume',
+    'volatility': 'Volatilité',
+    'support_resistance': 'S/R',
+    'pattern': 'Pattern',
+    'confluence': 'Confluence'
+  };
+  return names[key] || key;
 };

@@ -16,7 +16,7 @@ interface CryptoSectionProps {
 
 function CryptoSection({ symbol, netSignal, buyCount, sellCount }: CryptoSectionProps) {
   const [interval, setInterval] = React.useState<string>('1m');
-  const [limit, setLimit] = React.useState<number>(1000);
+  const [limit, setLimit] = React.useState<number>(2000);
   const { data, loading } = useCryptoData(symbol as any, interval, limit);
 
   // Créer un store dédié pour cette crypto
@@ -33,14 +33,6 @@ function CryptoSection({ symbol, netSignal, buyCount, sellCount }: CryptoSection
     }
   }, [data, symbol, interval, setConfig, setMarketData, setSignals, setIndicators]);
 
-  if (loading) {
-    return (
-      <div className="bg-dark-200 border border-gray-700 rounded-lg p-4">
-        <div className="text-white">Chargement {symbol}...</div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4 pb-8 border-b-4 border-gray-700">
       {/* En-tête crypto */}
@@ -51,7 +43,9 @@ function CryptoSection({ symbol, netSignal, buyCount, sellCount }: CryptoSection
             <div className={`text-xl font-bold ${netSignal > 0 ? 'text-green-400' : 'text-red-400'}`}>
               {netSignal > 0 ? `+${netSignal}` : netSignal}
             </div>
-            {data && (
+            {loading ? (
+              <div className="text-sm text-gray-400 animate-pulse">Chargement...</div>
+            ) : data && (
               <div className="text-lg text-gray-300">
                 {formatNumber(data.marketData.close[data.marketData.close.length - 1], 4)} USDC
               </div>
@@ -102,24 +96,48 @@ function CryptoSection({ symbol, netSignal, buyCount, sellCount }: CryptoSection
       {/* Market + Signaux */}
       <div className="chart-container">
         <div className="chart-title">📈 Market + Signaux</div>
-        <MarketChart height={700} useStore={useStore} />
+        {loading ? (
+          <div className="h-[700px] flex items-center justify-center bg-dark-300 rounded animate-pulse">
+            <div className="text-gray-500">Chargement du graphique...</div>
+          </div>
+        ) : (
+          <MarketChart height={700} useStore={useStore} />
+        )}
       </div>
 
       {/* Volume */}
       <div className="chart-container">
         <div className="chart-title">📊 Volume</div>
-        <VolumeChart height={200} useStore={useStore} />
+        {loading ? (
+          <div className="h-[200px] flex items-center justify-center bg-dark-300 rounded animate-pulse">
+            <div className="text-gray-500 text-sm">Chargement volume...</div>
+          </div>
+        ) : (
+          <VolumeChart height={200} useStore={useStore} />
+        )}
       </div>
 
       {/* RSI + MACD */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="chart-container">
           <div className="chart-title">📉 RSI</div>
-          <RSIChart height={200} useStore={useStore} />
+          {loading ? (
+            <div className="h-[200px] flex items-center justify-center bg-dark-300 rounded animate-pulse">
+              <div className="text-gray-500 text-sm">Chargement RSI...</div>
+            </div>
+          ) : (
+            <RSIChart height={200} useStore={useStore} />
+          )}
         </div>
         <div className="chart-container">
           <div className="chart-title">📉 MACD</div>
-          <MACDChart height={200} useStore={useStore} />
+          {loading ? (
+            <div className="h-[200px] flex items-center justify-center bg-dark-300 rounded animate-pulse">
+              <div className="text-gray-500 text-sm">Chargement MACD...</div>
+            </div>
+          ) : (
+            <MACDChart height={200} useStore={useStore} />
+          )}
         </div>
       </div>
     </div>
