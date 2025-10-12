@@ -62,11 +62,17 @@ export const MarketSentiment: React.FC = () => {
       const processSentiment = (data: any): SentimentData => {
         const signals = data.signals || [];
 
-        // Compter les symboles avec consensus BUY ou SELL (pas la somme des counts)
-        const buySignals = signals.filter((s: any) => s.net_signal > 0).length;
-        const sellSignals = signals.filter((s: any) => s.net_signal < 0).length;
+        // Compter TOUS les signaux BUY et SELL (somme des counts)
+        const buySignals = signals.reduce((sum: number, s: any) => {
+          return sum + (s.buy_count || 0);
+        }, 0);
+        const sellSignals = signals.reduce((sum: number, s: any) => {
+          return sum + (s.sell_count || 0);
+        }, 0);
         const netSignal = buySignals - sellSignals;
-        const opportunitiesCount = buySignals; // Les opportunités = consensus BUY
+
+        // Opportunités = nombre de symboles avec net_signal positif
+        const opportunitiesCount = signals.filter((s: any) => s.net_signal > 0).length;
 
         // Trouver le top symbole
         const topSignal = signals.reduce((max: any, s: any) => {

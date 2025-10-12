@@ -497,6 +497,19 @@ async def get_trading_opportunity(symbol: str):
             analyzer_dict_5m = dict(analyzer_data_5m) if analyzer_data_5m else None
             signals_dict = dict(signals_data) if signals_data else {}
 
+            # Récupérer les 10 dernières périodes 1m pour early detector
+            historical_query = """
+                SELECT *
+                FROM analyzer_data
+                WHERE symbol = $1
+                  AND timeframe = '1m'
+                ORDER BY time DESC
+                LIMIT 10
+                OFFSET 1
+            """
+            historical_rows = await conn.fetch(historical_query, symbol)
+            historical_data = [dict(row) for row in reversed(historical_rows)] if historical_rows else None
+
             # Fallback: Si nearest_resistance/support manquant, récupérer dernière valeur connue
             if analyzer_dict_1m.get('nearest_resistance') is None or analyzer_dict_1m.get('nearest_support') is None:
                 fallback_query = """
@@ -516,13 +529,14 @@ async def get_trading_opportunity(symbol: str):
                     if analyzer_dict_1m.get('nearest_support') is None:
                         analyzer_dict_1m['nearest_support'] = float(fallback_data['nearest_support'])
 
-            # Calculer l'opportunité via le calculateur PRO (avec contexte 5m)
+            # Calculer l'opportunité via le calculateur PRO (avec contexte 5m + early detection)
             opportunity = opportunity_calculator.calculate_opportunity(
                 symbol=symbol,
                 current_price=current_price,
                 analyzer_data=analyzer_dict_1m,
                 higher_tf_data=analyzer_dict_5m,
-                signals_data=signals_dict
+                signals_data=signals_dict,
+                historical_data=historical_data  # NOUVEAU: Pour early detector
             )
 
             # Convertir en dict pour l'API
@@ -549,6 +563,17 @@ async def get_trading_opportunity(symbol: str):
                     # Score PRO (0-100 direct)
                     score = opportunity.score.total_score
 
+                    # Préparer early_signal pour Telegram (dict serializable)
+                    early_signal_dict = None
+                    if opportunity.early_signal and opportunity.is_early_entry:
+                        early_signal_dict = {
+                            'level': opportunity.early_signal.level.value,
+                            'score': opportunity.early_signal.score,
+                            'estimated_entry_window_seconds': opportunity.early_signal.estimated_entry_window_seconds,
+                            'velocity_score': opportunity.early_signal.velocity_score,
+                            'volume_buildup_score': opportunity.early_signal.volume_buildup_score
+                        }
+
                     success = notifier.send_buy_signal(
                         symbol=symbol,
                         score=score,
@@ -567,7 +592,8 @@ async def get_trading_opportunity(symbol: str):
                         estimated_hold_time=opportunity.estimated_hold_time,
                         grade=opportunity.score.grade,
                         rr_ratio=opportunity.rr_ratio,
-                        risk_level=opportunity.risk_level
+                        risk_level=opportunity.risk_level,
+                        early_signal=early_signal_dict  # NOUVEAU
                     )
 
                     # Fermer la connexion synchrone
@@ -952,10 +978,13 @@ async def get_ema_sentiment(
 
 @app.get("/api/top-signals")
 async def get_top_signals(
-    timeframe_minutes: int = 15,
+    timeframe_minutes: int = 180,  # MODIFIÉ: 180min (3h) au lieu de 15min pour capter tous signaux actifs
     limit: int = 50
 ):
-    """Get all trading signals ranked by net signal strength (BUY - SELL)"""
+    """Get all trading signals ranked by net signal strength (BUY - SELL)
+
+    Note: timeframe_minutes=180 (3h) pour capter tous les signaux actifs depuis plusieurs heures
+    """
     try:
         if data_manager is None or not data_manager.postgres_pool:
             raise HTTPException(status_code=503, detail="Data manager not available")

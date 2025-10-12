@@ -615,7 +615,7 @@ class IndicatorProcessor:
                             'nearest_resistance': resistances[0].price if resistances else None,
                             'support_strength': str(supports[0].strength.value).upper() if supports else 'MODERATE',
                             'resistance_strength': str(resistances[0].strength.value).upper() if resistances else 'MODERATE',
-                            'break_probability': float(supports[0].break_probability if supports else 0.5),
+                            'break_probability': float(resistances[0].break_probability if resistances else 0.5),  # FIXÉ: resistances au lieu de supports
                             'pivot_count': len(sr_levels)
                         })
                 except Exception as e:
@@ -630,15 +630,28 @@ class IndicatorProcessor:
                         lows=lows,
                         symbol=symbol
                     )
-                    
+
                     if volume_result:
+                        # Calculer le nombre RÉEL de périodes de buildup (pas juste la config)
+                        buildup_count = self.volume_analyzer.get_buildup_period_count(volumes) if volume_result.buildup_detected else 0
+
+                        # volume_spike_multiplier: Calculer le multiplicateur réel du spike
+                        # Si spike détecté, c'est le ratio vs moyenne des 4 périodes précédentes
+                        # Sinon, c'est toujours le ratio actuel (cohérent avec relative_volume)
+                        if volume_result.spike_detected and len(volumes) >= 5:
+                            # Spike = volume actuel vs moyenne des 4 dernières (excluant actuelle)
+                            spike_multiplier = volumes[-1] / np.mean(volumes[-5:-1]) if np.mean(volumes[-5:-1]) > 0 else 1.0
+                        else:
+                            # Pas de spike, mais on garde le ratio pour cohérence
+                            spike_multiplier = volume_result.current_volume_ratio
+
                         indicators.update({
                             'volume_context': str(volume_result.context.context_type.value).upper(),
                             'volume_pattern': str(volume_result.context.pattern_detected.value).upper(),
                             'volume_quality_score': float(volume_result.quality_score),
                             'relative_volume': float(volume_result.current_volume_ratio),
-                            'volume_buildup_periods': int(self.volume_analyzer.buildup_lookback if volume_result.buildup_detected else 0),
-                            'volume_spike_multiplier': float(volume_result.current_volume_ratio if volume_result.spike_detected else 1.0)
+                            'volume_buildup_periods': int(buildup_count),  # FIXÉ: nombre réel au lieu de constante
+                            'volume_spike_multiplier': float(spike_multiplier)  # FIXÉ: multiplicateur réel du spike
                         })
                 except Exception as e:
                     logger.debug(f"VolumeContextAnalyzer error: {e}")

@@ -362,17 +362,43 @@ class VolumeContextAnalyzer:
         """Détecte une accumulation progressive de volume."""
         if len(volumes) < self.buildup_lookback + 1:
             return False
-        
+
         recent_volumes = volumes[-self.buildup_lookback:]
         increases = 0
         min_increase = 1.1  # 10% d'augmentation minimum
-        
+
         for i in range(1, len(recent_volumes)):
             if recent_volumes[i] > recent_volumes[i-1] * min_increase:
                 increases += 1
-        
+
         # Au moins 60% des périodes doivent montrer une augmentation
         return increases / (len(recent_volumes) - 1) >= 0.6
+
+    def get_buildup_period_count(self, volumes: np.ndarray) -> int:
+        """
+        Retourne le nombre de périodes consécutives avec augmentation de volume.
+
+        Utilisé pour volume_buildup_periods dans analyzer_data.
+
+        Returns:
+            Nombre de périodes consécutives (0 si pas de buildup)
+        """
+        if len(volumes) < self.buildup_lookback + 1:
+            return 0
+
+        recent_volumes = volumes[-self.buildup_lookback:]
+        consecutive_increases = 0
+        min_increase = 1.1  # 10% d'augmentation minimum
+
+        # Compter les augmentations consécutives depuis la fin
+        for i in range(len(recent_volumes) - 1, 0, -1):
+            if recent_volumes[i] > recent_volumes[i-1] * min_increase:
+                consecutive_increases += 1
+            else:
+                break  # Arrêter à la première non-augmentation
+
+        # Retourner le nombre de périodes (incluant la période actuelle si augmentation)
+        return consecutive_increases if consecutive_increases > 0 else 0
     
     def _detect_volume_spike(self, volumes: np.ndarray) -> bool:
         """Détecte un pic de volume soudain."""

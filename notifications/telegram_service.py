@@ -54,7 +54,8 @@ class TelegramNotifier:
         estimated_hold_time: Optional[str] = None,
         grade: Optional[str] = None,
         rr_ratio: Optional[float] = None,
-        risk_level: Optional[str] = None
+        risk_level: Optional[str] = None,
+        early_signal: Optional[Dict] = None
     ) -> bool:
         """
         Envoie une notification Telegram pour un signal BUY
@@ -86,7 +87,7 @@ class TelegramNotifier:
         # Construire le message
         message = self._build_message(
             symbol, score, price, action, targets, stop_loss, reason,
-            momentum, volume_ratio, regime, estimated_hold_time, grade, rr_ratio, risk_level
+            momentum, volume_ratio, regime, estimated_hold_time, grade, rr_ratio, risk_level, early_signal
         )
 
         # Envoyer la notification
@@ -151,7 +152,8 @@ class TelegramNotifier:
         estimated_hold_time: Optional[str],
         grade: Optional[str],
         rr_ratio: Optional[float],
-        risk_level: Optional[str]
+        risk_level: Optional[str],
+        early_signal: Optional[Dict]
     ) -> str:
         """Construit le message formaté pour Telegram"""
 
@@ -210,7 +212,21 @@ class TelegramNotifier:
 
 <b>{symbol}</b>
 📊 Score: <b>{score:.0f}/100</b>{score_emoji}
-💰 Prix: <b>{price_str}</b>
+💰 Prix: <b>{price_str}</b>"""
+
+        # BADGE EARLY ENTRY (NOUVEAU)
+        if early_signal and early_signal.get('level') in ['entry_now', 'prepare']:
+            early_level = early_signal.get('level', '').upper()
+            early_score = early_signal.get('score', 0)
+            entry_window = early_signal.get('estimated_entry_window_seconds', 0)
+
+            early_emoji = "🚀" if early_level == 'ENTRY_NOW' else "⚡"
+            message += f"""
+
+{early_emoji} <b>EARLY ENTRY SIGNAL</b> - {early_level}
+   Score Early: <b>{early_score:.0f}/100</b> | Entry window: ~{entry_window}s"""
+
+        message += f"""
 
 <b>🎯 TARGETS:</b>
 TP1: {format_price(targets.get('tp1', 0))} (+{tp1_gain:.2f}%)

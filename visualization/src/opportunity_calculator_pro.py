@@ -3,19 +3,21 @@ Opportunity Calculator PRO - Professional Trading System
 Orchestre scoring + validation pour décisions de trading optimales
 
 Architecture:
-1. OpportunityScoring: Calcule score 0-100 sur 7 catégories (tous les 108 indicateurs)
-2. OpportunityValidator: Validation 4 niveaux (data/market/risk/timing)
-3. Décision finale: BUY_NOW / BUY_DCA / WAIT / AVOID
-4. Gestion risque intelligente: TP/SL adaptatifs, taille position optimale
+1. OpportunityEarlyDetector: Détection précoce avec leading indicators (NOUVEAU)
+2. OpportunityScoring: Calcule score 0-100 sur 7 catégories (tous les 108 indicateurs)
+3. OpportunityValidator: Validation 4 niveaux (data/market/risk/timing)
+4. Décision finale: BUY_NOW / BUY_DCA / WAIT / AVOID
+5. Gestion risque intelligente: TP/SL adaptatifs, taille position optimale
 
-Version: 2.0 - Professional Grade (Real Money Ready)
+Version: 2.1 - Professional Grade + Early Warning System
 """
 import logging
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from dataclasses import dataclass, asdict
 
 from opportunity_scoring import OpportunityScoring, OpportunityScore
 from opportunity_validator import OpportunityValidator, ValidationSummary
+from opportunity_early_detector import OpportunityEarlyDetector, EarlySignal
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,10 @@ class TradingOpportunity:
     confidence: float  # 0-100
     score: OpportunityScore
     validation: ValidationSummary
+
+    # Early Warning (NOUVEAU)
+    early_signal: Optional[EarlySignal]  # Signal early warning si disponible
+    is_early_entry: bool  # True si détecté par early detector
 
     # Pricing
     current_price: float
@@ -80,10 +86,15 @@ class OpportunityCalculatorPro:
     Utilise TOUS les 108 indicateurs disponibles dans analyzer_data.
     """
 
-    def __init__(self):
-        """Initialise le calculateur professionnel."""
+    def __init__(self, enable_early_detection: bool = True):
+        """Initialise le calculateur professionnel.
+
+        Args:
+            enable_early_detection: Active le système early warning (défaut: True)
+        """
         self.scorer = OpportunityScoring()
         self.validator = OpportunityValidator()
+        self.early_detector = OpportunityEarlyDetector() if enable_early_detection else None
 
     @staticmethod
     def safe_float(value, default=0.0):
@@ -99,7 +110,8 @@ class OpportunityCalculatorPro:
         current_price: float,
         analyzer_data: dict,
         higher_tf_data: Optional[dict] = None,
-        signals_data: Optional[dict] = None
+        signals_data: Optional[dict] = None,
+        historical_data: Optional[List[dict]] = None
     ) -> TradingOpportunity:
         """
         Calcule une opportunité de trading complète.
@@ -110,12 +122,28 @@ class OpportunityCalculatorPro:
             analyzer_data: analyzer_data complet (108 indicateurs)
             higher_tf_data: Données timeframe supérieur pour validation
             signals_data: (optionnel) Données signaux externes
+            historical_data: (optionnel) Liste des 5-10 dernières périodes analyzer_data pour early detection
 
         Returns:
             TradingOpportunity complète avec action, TP/SL, sizing, etc.
         """
         if not analyzer_data:
             return self._create_no_data_opportunity(symbol, current_price)
+
+        # === ÉTAPE 0: EARLY DETECTION (NOUVEAU) ===
+        early_signal = None
+        is_early_entry = False
+
+        if self.early_detector and historical_data:
+            early_signal = self.early_detector.detect_early_opportunity(
+                current_data=analyzer_data,
+                historical_data=historical_data
+            )
+
+            # Si early signal fort (ENTRY_NOW ou PREPARE), on peut bypass certaines validations
+            if early_signal.level.value in ['entry_now', 'prepare'] and early_signal.score >= 65:
+                is_early_entry = True
+                logger.info(f"🚀 Early entry detected for {symbol}: {early_signal.level.value} (score: {early_signal.score:.0f})")
 
         # === ÉTAPE 1: SCORING ===
         score = self.scorer.calculate_opportunity_score(analyzer_data, current_price)
@@ -125,9 +153,9 @@ class OpportunityCalculatorPro:
             analyzer_data, current_price, higher_tf_data
         )
 
-        # === ÉTAPE 3: DÉCISION ===
+        # === ÉTAPE 3: DÉCISION (avec early signal) ===
         action, confidence, reasons, warnings, recommendations = self._make_decision(
-            score, validation, analyzer_data
+            score, validation, analyzer_data, early_signal, is_early_entry
         )
 
         # === ÉTAPE 4: PRICING ===
@@ -164,6 +192,8 @@ class OpportunityCalculatorPro:
             confidence=confidence,
             score=score,
             validation=validation,
+            early_signal=early_signal,  # NOUVEAU
+            is_early_entry=is_early_entry,  # NOUVEAU
             current_price=current_price,
             entry_price_optimal=entry_optimal,
             entry_price_aggressive=entry_aggressive,
@@ -196,7 +226,9 @@ class OpportunityCalculatorPro:
         self,
         score: OpportunityScore,
         validation: ValidationSummary,
-        ad: dict
+        ad: dict,
+        early_signal: Optional[EarlySignal] = None,
+        is_early_entry: bool = False
     ) -> tuple[str, float, list[str], list[str], list[str]]:
         """
         Décision finale combinant score + validation.
@@ -238,15 +270,34 @@ class OpportunityCalculatorPro:
             for issue in validation.blocking_issues:
                 warnings.append(issue)
 
-        # Décision basée sur score + validation pondérée
+        # Décision basée sur score + validation pondérée + early signal
         total_score = score.total_score
         score_confidence = score.confidence
+
+        # === EARLY SIGNAL BOOST (NOUVEAU) ===
+        # Si early signal fort, on peut améliorer le score/confiance
+        early_boost = 0.0
+        if early_signal and is_early_entry:
+            # Bonus selon niveau early signal
+            if early_signal.level.value == 'entry_now' and early_signal.score >= 75:
+                early_boost = 10.0  # +10 points au score
+                warnings.append(f"🚀 Early entry signal FORT: {early_signal.score:.0f}/100")
+            elif early_signal.level.value == 'entry_now' and early_signal.score >= 65:
+                early_boost = 5.0  # +5 points
+                warnings.append(f"⚡ Early entry signal: {early_signal.score:.0f}/100")
+            elif early_signal.level.value == 'prepare':
+                early_boost = 3.0  # +3 points
+                warnings.append(f"👀 Early prepare signal: {early_signal.score:.0f}/100")
+
+            # Ajouter top reasons early
+            for reason in early_signal.reasons[:2]:
+                reasons.append(f"  Early: {reason}")
 
         # Appliquer pénalité validation si non parfaite
         # Score validation 80/100 → multiplicateur 0.9 (10% de pénalité)
         validation_multiplier = validation.overall_score / 100.0
-        adjusted_score = total_score * validation_multiplier
-        adjusted_confidence = score_confidence * validation_multiplier
+        adjusted_score = min(100.0, (total_score + early_boost) * validation_multiplier)
+        adjusted_confidence = min(100.0, (score_confidence + early_boost * 0.5) * validation_multiplier)
 
         # Détecter pump context pour assouplir seuil confiance
         vol_spike = self.safe_float(ad.get('volume_spike_multiplier'), 1.0)
@@ -680,6 +731,8 @@ class OpportunityCalculatorPro:
             confidence=0.0,
             score=score,
             validation=validation,
+            early_signal=None,  # NOUVEAU
+            is_early_entry=False,  # NOUVEAU
             current_price=current_price,
             entry_price_optimal=current_price,
             entry_price_aggressive=current_price,
@@ -710,10 +763,31 @@ class OpportunityCalculatorPro:
 
     def to_dict(self, opportunity: TradingOpportunity) -> dict:
         """Convertit TradingOpportunity en dict pour export/API."""
+        # Sérialiser early_signal si présent
+        early_signal_dict = None
+        if opportunity.early_signal:
+            early_signal_dict = {
+                'level': opportunity.early_signal.level.value,
+                'score': opportunity.early_signal.score,
+                'confidence': opportunity.early_signal.confidence,
+                'velocity_score': opportunity.early_signal.velocity_score,
+                'volume_buildup_score': opportunity.early_signal.volume_buildup_score,
+                'micro_pattern_score': opportunity.early_signal.micro_pattern_score,
+                'order_flow_score': opportunity.early_signal.order_flow_score,
+                'estimated_entry_window_seconds': opportunity.early_signal.estimated_entry_window_seconds,
+                'estimated_move_completion_pct': opportunity.early_signal.estimated_move_completion_pct,
+                'reasons': opportunity.early_signal.reasons[:5],  # Top 5
+                'warnings': opportunity.early_signal.warnings,
+                'recommendations': opportunity.early_signal.recommendations
+            }
+
         return {
             'symbol': opportunity.symbol,
             'action': opportunity.action,
             'confidence': opportunity.confidence,
+            'is_early_entry': opportunity.is_early_entry,  # NOUVEAU
+
+            'early_signal': early_signal_dict,  # NOUVEAU
 
             'pricing': {
                 'current_price': opportunity.current_price,
@@ -779,6 +853,12 @@ class OpportunityCalculatorPro:
 # ===========================================================
 if __name__ == "__main__":
     import json
+    import sys
+    import io
+
+    # Fix Windows encoding
+    if sys.platform == 'win32':
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
     print("="*80)
     print("OPPORTUNITY CALCULATOR PRO - Test Example")

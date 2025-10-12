@@ -107,6 +107,53 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity: o
         </div>
       </div>
 
+      {/* === EARLY SIGNAL WARNING (NOUVEAU) === */}
+      {opp.is_early_entry && opp.early_signal && (
+        <div className="mb-4 p-3 bg-purple-900/20 border border-purple-500/40 rounded-lg">
+          <div className="flex items-center justify-between mb-2">
+            <div className="font-semibold text-purple-300">
+              🚀 EARLY ENTRY SIGNAL
+            </div>
+            <div className="text-sm text-purple-400 font-mono">
+              Score: {opp.early_signal.score?.toFixed(0)}/100
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div>
+              <span className="text-purple-400">Niveau:</span>
+              <span className="ml-2 text-white font-semibold uppercase">
+                {opp.early_signal.level}
+              </span>
+            </div>
+            <div>
+              <span className="text-purple-400">Entry window:</span>
+              <span className="ml-2 text-white font-semibold">
+                ~{opp.early_signal.estimated_entry_window_seconds}s
+              </span>
+            </div>
+            <div>
+              <span className="text-purple-400">Vélocité:</span>
+              <span className="ml-2 text-white">
+                {opp.early_signal.velocity_score?.toFixed(0)}/35
+              </span>
+            </div>
+            <div>
+              <span className="text-purple-400">Volume Buildup:</span>
+              <span className="ml-2 text-white">
+                {opp.early_signal.volume_buildup_score?.toFixed(0)}/25
+              </span>
+            </div>
+          </div>
+          {opp.early_signal.reasons && opp.early_signal.reasons.length > 0 && (
+            <div className="mt-2 text-xs text-purple-300 space-y-0.5">
+              {opp.early_signal.reasons.slice(0, 3).map((reason: string, i: number) => (
+                <div key={i}>• {reason}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* === VALIDATION WARNINGS === */}
       {!opp.validation?.all_passed && opp.validationDetails?.blocking_issues && opp.validationDetails.blocking_issues.length > 0 && (
         <div className="mb-4 p-3 bg-orange-900/20 border border-orange-500/40 rounded-lg">
