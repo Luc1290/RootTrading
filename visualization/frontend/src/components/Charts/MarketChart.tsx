@@ -60,7 +60,7 @@ function MarketChart({ height = 750, useStore }: MarketChartProps) {
     const fetchTelegramSignals = async () => {
       try {
         console.log('[MarketChart] Fetching Telegram signals for', config.symbol);
-        const response = await apiService.getTelegramSignals(config.symbol, 24);
+        const response = await apiService.getTelegramSignals(config.symbol, 72); // 72h pour capturer plus de signaux
         console.log('[MarketChart] Telegram signals received:', response.signals);
         setTelegramSignals(response.signals || []);
       } catch (error) {
@@ -394,17 +394,36 @@ function MarketChart({ height = 750, useStore }: MarketChartProps) {
 
     // Créer les marqueurs pour les signaux Telegram (cercles dorés)
     const telegramMarkers = telegramSignals.map((signal: any) => {
+      const signalTime = Math.floor(new Date(signal.timestamp).getTime() / 1000);
       const marker = {
-        time: Math.floor(new Date(signal.timestamp).getTime() / 1000),
+        time: signalTime,
         position: signal.side === 'BUY' ? 'belowBar' as const : 'aboveBar' as const,
         color: '#FFD700', // Or
         shape: 'circle' as const,
-        text: `TG ${signal.action}`,
+        text: `TG ${signal.action} (Score: ${signal.score})`,
         size: 3, // Plus grand pour être visible
       };
-      console.log('[MarketChart] Created Telegram marker:', marker);
+      console.log('[MarketChart] Created Telegram marker:', {
+        ...marker,
+        signalTimestamp: signal.timestamp,
+        signalTimeUnix: signalTime,
+        signalDate: new Date(signalTime * 1000).toISOString()
+      });
       return marker;
     });
+
+    // Log des timestamps de marché pour comparaison
+    if (marketData?.timestamps && marketData.timestamps.length > 0) {
+      const firstMarketTime = Math.floor(new Date(marketData.timestamps[0]).getTime() / 1000);
+      const lastMarketTime = Math.floor(new Date(marketData.timestamps[marketData.timestamps.length - 1]).getTime() / 1000);
+      console.log('[MarketChart] Market data time range:', {
+        first: new Date(firstMarketTime * 1000).toISOString(),
+        last: new Date(lastMarketTime * 1000).toISOString(),
+        firstUnix: firstMarketTime,
+        lastUnix: lastMarketTime,
+        totalCandles: marketData.timestamps.length
+      });
+    }
 
     console.log('[MarketChart] Total markers - Buy:', buyMarkers.length, 'Sell:', sellMarkers.length, 'Telegram:', telegramMarkers.length);
 

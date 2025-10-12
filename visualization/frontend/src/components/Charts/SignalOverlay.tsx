@@ -21,7 +21,7 @@ function SignalOverlay({ chart, candlestickSeries }: SignalOverlayProps) {
     const fetchTelegramSignals = async () => {
       try {
         console.log('[SignalOverlay] Fetching Telegram signals for', config.symbol);
-        const response = await apiService.getTelegramSignals(config.symbol, 24);
+        const response = await apiService.getTelegramSignals(config.symbol, 72); // 72h pour capturer plus de signaux
         console.log('[SignalOverlay] Telegram signals received:', response.signals);
         setTelegramSignals(response.signals || []);
       } catch (error) {

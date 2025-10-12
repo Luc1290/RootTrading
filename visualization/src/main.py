@@ -531,23 +531,33 @@ async def get_trading_opportunity(symbol: str):
             # Envoyer notification Telegram pour BUY_NOW et BUY_DCA
             if opportunity.action in ["BUY_NOW", "BUY_DCA"]:
                 try:
+                    import psycopg2
                     from notifications.telegram_service import get_notifier
-                    notifier = get_notifier()
+
+                    # Créer une connexion psycopg2 synchrone pour TelegramNotifier
+                    db_config = {
+                        'host': os.getenv('DB_HOST', 'db'),
+                        'port': int(os.getenv('DB_PORT', '5432')),
+                        'database': os.getenv('DB_NAME', 'trading'),
+                        'user': os.getenv('DB_USER', 'postgres'),
+                        'password': os.getenv('DB_PASSWORD', 'postgres')
+                    }
+                    sync_conn = psycopg2.connect(**db_config)
+
+                    notifier = get_notifier(db_connection=sync_conn)
 
                     # Score PRO (0-100 direct)
                     score = opportunity.score.total_score
 
-                    notifier.send_buy_signal(
+                    success = notifier.send_buy_signal(
                         symbol=symbol,
                         score=score,
                         price=current_price,
                         action=opportunity.action,
                         targets={
                             'tp1': opportunity.tp1,
-                            'tp1_percent': opportunity.tp1_percent,
                             'tp2': opportunity.tp2,
-                            'tp2_percent': opportunity.tp2_percent,
-                            'tp3': opportunity.tp3 if opportunity.tp3 else 0
+                            'tp3': opportunity.tp3 if opportunity.tp3 else None
                         },
                         stop_loss=opportunity.stop_loss,
                         reason="\n".join(opportunity.reasons),
@@ -559,8 +569,17 @@ async def get_trading_opportunity(symbol: str):
                         rr_ratio=opportunity.rr_ratio,
                         risk_level=opportunity.risk_level
                     )
+
+                    # Fermer la connexion synchrone
+                    sync_conn.close()
+
+                    if success:
+                        logger.info(f"✅ Signal Telegram envoyé et stocké pour {symbol}")
+                    else:
+                        logger.warning(f"⚠️ Signal Telegram non envoyé pour {symbol} (cooldown ou erreur)")
+
                 except Exception as e:
-                    logger.warning(f"Erreur envoi notification Telegram pour {symbol}: {e}")
+                    logger.error(f"❌ Erreur envoi notification Telegram pour {symbol}: {e}", exc_info=True)
 
             return response_data
 

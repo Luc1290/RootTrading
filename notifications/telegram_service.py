@@ -341,9 +341,18 @@ SL: {format_price(stop_loss)} ({sl_loss:.2f}%)
 _notifier: Optional[TelegramNotifier] = None
 
 
-def get_notifier() -> TelegramNotifier:
-    """Retourne l'instance du notifier (singleton)"""
+def get_notifier(db_connection=None) -> TelegramNotifier:
+    """
+    Retourne l'instance du notifier (singleton).
+
+    Args:
+        db_connection: Connexion PostgreSQL (psycopg2) pour stocker les signaux.
+                      Si fournie, met à jour la connexion de l'instance existante.
+    """
     global _notifier
     if _notifier is None:
-        _notifier = TelegramNotifier()
+        _notifier = TelegramNotifier(db_connection=db_connection)
+    elif db_connection is not None:
+        # Mettre à jour la connexion DB si fournie
+        _notifier.db_connection = db_connection
     return _notifier
