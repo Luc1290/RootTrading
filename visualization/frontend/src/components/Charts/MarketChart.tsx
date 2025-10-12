@@ -21,6 +21,9 @@ function MarketChart({ height = 750, useStore }: MarketChartProps) {
     ema99?: ISeriesApi<'Line'>;
   }>({});
 
+  // État pour les signaux Telegram
+  const [telegramSignals, setTelegramSignals] = useState<any[]>([]);
+
   // État pour l'infobulle des signaux
   const [tooltip, setTooltip] = useState<{
     visible: boolean;
@@ -51,7 +54,28 @@ function MarketChart({ height = 750, useStore }: MarketChartProps) {
   // Cycles désactivés pour performance
   // const [tradeCycles, setTradeCycles] = useState<TradeCycle[]>([]);
   // const cycleSeriesRef = useRef<(ISeriesApi<'Line'> | ISeriesApi<'Area'>)[]>([]);
-  
+
+  // Récupérer les signaux Telegram
+  useEffect(() => {
+    const fetchTelegramSignals = async () => {
+      try {
+        console.log('[MarketChart] Fetching Telegram signals for', config.symbol);
+        const response = await apiService.getTelegramSignals(config.symbol, 24);
+        console.log('[MarketChart] Telegram signals received:', response.signals);
+        setTelegramSignals(response.signals || []);
+      } catch (error) {
+        console.error('[MarketChart] Error fetching Telegram signals:', error);
+      }
+    };
+
+    if (config.symbol) {
+      fetchTelegramSignals();
+      // Rafraîchir toutes les 30 secondes
+      const interval = setInterval(fetchTelegramSignals, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [config.symbol]);
+
   // Configuration de la précision basée sur le symbole
   const getPriceFormat = () => {
     const symbol = config.symbol;
@@ -367,7 +391,23 @@ function MarketChart({ height = 750, useStore }: MarketChartProps) {
       text: `SELL`,
       size: 1,
     }));
-    
+
+    // Créer les marqueurs pour les signaux Telegram (cercles dorés)
+    const telegramMarkers = telegramSignals.map((signal: any) => {
+      const marker = {
+        time: Math.floor(new Date(signal.timestamp).getTime() / 1000),
+        position: signal.side === 'BUY' ? 'belowBar' as const : 'aboveBar' as const,
+        color: '#FFD700', // Or
+        shape: 'circle' as const,
+        text: `TG ${signal.action}`,
+        size: 3, // Plus grand pour être visible
+      };
+      console.log('[MarketChart] Created Telegram marker:', marker);
+      return marker;
+    });
+
+    console.log('[MarketChart] Total markers - Buy:', buyMarkers.length, 'Sell:', sellMarkers.length, 'Telegram:', telegramMarkers.length);
+
     // Créer un mapping des signaux par timestamp pour la recherche rapide
     // Utiliser un tableau pour chaque timestamp pour gérer les signaux multiples
     const signalMap = new Map();
@@ -388,8 +428,9 @@ function MarketChart({ height = 750, useStore }: MarketChartProps) {
 
     // Log removed for performance
 
-    // Appliquer tous les marqueurs à la série candlestick
-    const allMarkers = [...buyMarkers, ...sellMarkers].sort((a, b) => (a.time as number) - (b.time as number));
+    // Appliquer tous les marqueurs à la série candlestick (incluant Telegram)
+    const allMarkers = [...buyMarkers, ...sellMarkers, ...telegramMarkers].sort((a, b) => (a.time as number) - (b.time as number));
+    console.log('[MarketChart] Setting', allMarkers.length, 'total markers on chart');
     candlestickSeriesRef.current.setMarkers(allMarkers as any);
 
     // Hover désactivé pour performance - seulement clic
@@ -434,7 +475,7 @@ function MarketChart({ height = 750, useStore }: MarketChartProps) {
         setTooltip(prev => ({ ...prev, isPinned: false, visible: false }));
       }
     });
-  }, [signals, config.signalFilter]);
+  }, [signals, config.signalFilter, telegramSignals]);
   
   // Cycles désactivés pour performance
   // useEffect(() => {

@@ -17,23 +17,46 @@ interface TimeframeSentiment {
   '4h': SentimentData | null;
 }
 
+interface EmaSentimentData {
+  sentiment: 'BULLISH' | 'BEARISH' | 'NEUTRAL' | 'MIXED';
+  bullish_count: number;
+  bearish_count: number;
+  neutral_count: number;
+  mixed_count: number;
+  total_symbols: number;
+  bullish_percent: number;
+  bearish_percent: number;
+  top_bullish: Array<{
+    symbol: string;
+    score: number;
+    sentiment: string;
+  }>;
+  top_bearish: Array<{
+    symbol: string;
+    score: number;
+    sentiment: string;
+  }>;
+}
+
 export const MarketSentiment: React.FC = () => {
   const [sentiments, setSentiments] = useState<TimeframeSentiment>({
     '15m': null,
     '1h': null,
     '4h': null
   });
+  const [emaSentiment, setEmaSentiment] = useState<EmaSentimentData | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadSentiment = async () => {
     try {
       setLoading(true);
 
-      // Charger les 3 timeframes en parallèle
-      const [data15m, data1h, data4h] = await Promise.all([
+      // Charger les 3 timeframes + EMA sentiment en parallèle
+      const [data15m, data1h, data4h, emaData] = await Promise.all([
         fetch('/api/top-signals?timeframe_minutes=15&limit=100').then(r => r.json()),
         fetch('/api/top-signals?timeframe_minutes=60&limit=100').then(r => r.json()),
-        fetch('/api/top-signals?timeframe_minutes=240&limit=100').then(r => r.json())
+        fetch('/api/top-signals?timeframe_minutes=240&limit=100').then(r => r.json()),
+        fetch('/api/ema-sentiment?timeframe=1m&limit=100').then(r => r.json()).catch(() => null)
       ]);
 
       const processSentiment = (data: any): SentimentData => {
@@ -73,6 +96,11 @@ export const MarketSentiment: React.FC = () => {
         '1h': processSentiment(data1h),
         '4h': processSentiment(data4h)
       });
+
+      // Stocker le sentiment EMA
+      if (emaData) {
+        setEmaSentiment(emaData);
+      }
     } catch (error) {
       console.error('Erreur chargement sentiment:', error);
     } finally {
@@ -119,10 +147,10 @@ export const MarketSentiment: React.FC = () => {
 
   return (
     <div className="bg-dark-200 border border-gray-700 rounded-lg p-4">
-      <div className="flex items-start justify-between gap-6">
+      <div className="flex items-start justify-between gap-4">
 
-        {/* Colonne gauche - Sentiment principal */}
-        <div className="flex-shrink-0 w-80">
+        {/* Colonne 1 - Sentiment principal */}
+        <div className="flex-shrink-0 w-72">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-bold text-white">📊 Sentiment Marché</h3>
             <div className={`px-3 py-1 rounded-lg ${getSentimentBg(mainSentiment.sentiment)}`}>
@@ -159,8 +187,8 @@ export const MarketSentiment: React.FC = () => {
           </div>
         </div>
 
-        {/* Colonne centrale - Statistiques */}
-        <div className="flex-1 grid grid-cols-3 gap-4">
+        {/* Colonne 2 - Statistiques */}
+        <div className="flex-1 grid grid-cols-3 gap-3">
           <div className="bg-dark-300 rounded-lg p-4 text-center">
             <div className="text-2xl font-bold text-blue-400 mb-1">{mainSentiment.opportunitiesCount}</div>
             <div className="text-xs text-gray-500">Opportunités</div>
@@ -207,9 +235,9 @@ export const MarketSentiment: React.FC = () => {
           </div>
         </div>
 
-        {/* Colonne droite - Tendances timeframes */}
-        <div className="flex-shrink-0 w-72">
-          <div className="text-sm text-gray-400 mb-3 font-semibold">📉 Tendances multi-timeframes</div>
+        {/* Colonne 3 - Tendances timeframes */}
+        <div className="flex-shrink-0 w-56">
+          <div className="text-sm text-gray-400 mb-3 font-semibold">📉 Multi-timeframes</div>
           <div className="space-y-2">
             {(['15m', '1h', '4h'] as const).map((tf) => {
               const data = sentiments[tf];
@@ -217,14 +245,13 @@ export const MarketSentiment: React.FC = () => {
 
               return (
                 <div key={tf} className="bg-dark-300 rounded-lg p-3 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
                     <div className="text-xs font-bold text-gray-400 w-8">{tf}</div>
-                    <div className={`text-2xl ${getSentimentColor(data.sentiment)}`}>
+                    <div className={`text-xl ${getSentimentColor(data.sentiment)}`}>
                       {getSentimentEmoji(data.sentiment)}
                     </div>
-                    <div className="text-sm text-gray-400">{data.sentiment}</div>
                   </div>
-                  <div className={`text-lg font-bold ${data.netSignal >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  <div className={`text-base font-bold ${data.netSignal >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     {data.netSignal >= 0 ? '+' : ''}{data.netSignal}
                   </div>
                 </div>
@@ -232,6 +259,73 @@ export const MarketSentiment: React.FC = () => {
             })}
           </div>
         </div>
+
+        {/* Colonne 4 - Sentiment EMA */}
+        {emaSentiment && (
+          <div className="flex-shrink-0 w-56">
+            <div className="text-sm text-gray-400 mb-3 font-semibold">🔀 Alignement EMA</div>
+            <div className="bg-dark-300 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className={`text-2xl ${getSentimentColor(emaSentiment.sentiment)}`}>
+                    {getSentimentEmoji(emaSentiment.sentiment)}
+                  </div>
+                  <div className="text-sm font-bold text-white">{emaSentiment.sentiment}</div>
+                </div>
+                <div className="text-xs text-gray-500">
+                  {emaSentiment.total_symbols}
+                </div>
+              </div>
+
+              {/* Distribution */}
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span className="text-gray-400">Bull</span>
+                  </div>
+                  <span className="text-green-400 font-bold">
+                    {emaSentiment.bullish_count} ({emaSentiment.bullish_percent.toFixed(0)}%)
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                    <span className="text-gray-400">Bear</span>
+                  </div>
+                  <span className="text-red-400 font-bold">
+                    {emaSentiment.bearish_count} ({emaSentiment.bearish_percent.toFixed(0)}%)
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
+                    <span className="text-gray-400">Mix</span>
+                  </div>
+                  <span className="text-gray-400 font-bold">
+                    {emaSentiment.neutral_count + emaSentiment.mixed_count}
+                  </span>
+                </div>
+              </div>
+
+              {/* Top cryptos */}
+              {emaSentiment.top_bullish.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-700">
+                  <div className="text-xs text-gray-500 mb-1">Top:</div>
+                  <div className="flex flex-wrap gap-1">
+                    {emaSentiment.top_bullish.slice(0, 3).map((s) => (
+                      <span key={s.symbol} className="text-xs bg-green-900/30 text-green-400 px-2 py-1 rounded">
+                        {s.symbol.replace('USDC', '')}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

@@ -307,10 +307,53 @@ CREATE TABLE IF NOT EXISTS trading_signals (
     metadata JSONB,
     processed BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT NOW(),
-    
+
     -- Contrainte unique pour prévenir les signaux dupliqués
-    CONSTRAINT unique_signal_constraint 
+    CONSTRAINT unique_signal_constraint
     UNIQUE (strategy, symbol, side, timestamp, confidence)
+);
+
+-- Table des signaux Telegram
+CREATE TABLE IF NOT EXISTS telegram_signals (
+    id SERIAL PRIMARY KEY,
+    symbol VARCHAR(20) NOT NULL,
+    side VARCHAR(10) NOT NULL CHECK (side IN ('BUY', 'SELL')),
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    -- Informations du signal Telegram
+    score INTEGER NOT NULL CHECK (score >= 0 AND score <= 100),
+    price DECIMAL(20,8) NOT NULL,
+    action VARCHAR(30) NOT NULL,
+
+    -- Targets et Stop Loss
+    tp1 DECIMAL(20,8),
+    tp2 DECIMAL(20,8),
+    tp3 DECIMAL(20,8),
+    stop_loss DECIMAL(20,8),
+
+    -- Métadonnées d'analyse
+    reason TEXT,
+    momentum DECIMAL(10,2),
+    volume_ratio DECIMAL(10,4),
+    regime VARCHAR(30),
+    estimated_hold_time VARCHAR(50),
+    grade VARCHAR(5),
+    rr_ratio DECIMAL(10,4),
+    risk_level VARCHAR(20),
+
+    -- Métadonnées système
+    telegram_sent BOOLEAN DEFAULT TRUE,
+    telegram_message_id VARCHAR(100),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+
+    -- Métadonnées additionnelles (JSON pour flexibilité)
+    metadata JSONB,
+
+    CONSTRAINT telegram_signals_symbol_check CHECK (symbol ~ '^[A-Z0-9]+$'),
+    CONSTRAINT telegram_signals_action_check CHECK (action IN (
+        'BUY_NOW', 'BUY_DCA', 'WAIT_PULLBACK', 'WAIT_BREAKOUT',
+        'WAIT_OVERSOLD', 'WAIT', 'SELL_OVERBOUGHT', 'AVOID'
+    ))
 );
 
 -- Table de configuration des stratégies
@@ -385,6 +428,15 @@ CREATE INDEX IF NOT EXISTS trading_signals_timestamp_idx ON trading_signals(time
 CREATE INDEX IF NOT EXISTS trading_signals_processed_idx ON trading_signals(processed);
 CREATE INDEX IF NOT EXISTS trading_signals_metadata_idx ON trading_signals USING GIN (metadata);
 
+-- Index pour telegram_signals
+CREATE INDEX IF NOT EXISTS telegram_signals_symbol_idx ON telegram_signals(symbol);
+CREATE INDEX IF NOT EXISTS telegram_signals_timestamp_idx ON telegram_signals(timestamp DESC);
+CREATE INDEX IF NOT EXISTS telegram_signals_symbol_timestamp_idx ON telegram_signals(symbol, timestamp DESC);
+CREATE INDEX IF NOT EXISTS telegram_signals_side_idx ON telegram_signals(side);
+CREATE INDEX IF NOT EXISTS telegram_signals_action_idx ON telegram_signals(action);
+CREATE INDEX IF NOT EXISTS telegram_signals_metadata_idx ON telegram_signals USING GIN (metadata);
+CREATE INDEX IF NOT EXISTS telegram_signals_performance_idx ON telegram_signals(symbol, timestamp DESC, side);
+
 -- Index pour strategy_configs
 CREATE INDEX IF NOT EXISTS strategy_configs_symbol_idx ON strategy_configs(symbol);
 CREATE INDEX IF NOT EXISTS strategy_configs_active_idx ON strategy_configs(active);
@@ -414,6 +466,7 @@ COMMENT ON COLUMN analyzer_data.confluence_score IS 'Score de confluence entre d
 COMMENT ON TABLE trade_executions IS 'Exécutions d''ordres avec métadonnées complètes';
 COMMENT ON TABLE trade_cycles IS 'Cycles de trading complets avec gestion des statuts';
 COMMENT ON TABLE trading_signals IS 'Signaux générés par les stratégies d''analyse';
+COMMENT ON TABLE telegram_signals IS 'Signaux de trading envoyés via Telegram avec métadonnées complètes pour affichage sur les graphiques';
 COMMENT ON TABLE strategy_configs IS 'Configuration des stratégies de trading';
 COMMENT ON TABLE positions IS 'Suivi des positions ouvertes et fermées';
 COMMENT ON TABLE portfolio_balances IS 'Historique des balances du portefeuille par asset';

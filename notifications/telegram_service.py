@@ -7,6 +7,8 @@ from typing import Dict, Optional
 from datetime import datetime, timedelta
 import requests
 from dotenv import load_dotenv
+import psycopg2
+from psycopg2.extras import Json
 
 load_dotenv()
 
@@ -16,10 +18,11 @@ logger = logging.getLogger(__name__)
 class TelegramNotifier:
     """Gère l'envoi de notifications Telegram pour les signaux de trading"""
 
-    def __init__(self):
+    def __init__(self, db_connection=None):
         self.bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
         self.chat_id = os.getenv("TELEGRAM_CHAT_ID")
         self.base_url = f"https://api.telegram.org/bot{self.bot_token}"
+        self.db_connection = db_connection
 
         # Anti-spam: tracker des dernières notifications par symbole
         self._last_notification: Dict[str, datetime] = {}
@@ -102,6 +105,28 @@ class TelegramNotifier:
             if response.status_code == 200:
                 self._last_notification[symbol] = datetime.now()
                 logger.info(f"✅ Notification Telegram envoyée pour {symbol}")
+
+                # Stocker le signal en DB
+                response_data = response.json()
+                message_id = response_data.get('result', {}).get('message_id')
+                self._store_signal_in_db(
+                    symbol=symbol,
+                    score=score,
+                    price=price,
+                    action=action,
+                    targets=targets,
+                    stop_loss=stop_loss,
+                    reason=reason,
+                    momentum=momentum,
+                    volume_ratio=volume_ratio,
+                    regime=regime,
+                    estimated_hold_time=estimated_hold_time,
+                    grade=grade,
+                    rr_ratio=rr_ratio,
+                    risk_level=risk_level,
+                    message_id=str(message_id) if message_id else None
+                )
+
                 return True
             else:
                 logger.error(f"❌ Erreur Telegram API: {response.status_code} - {response.text}")
@@ -217,6 +242,82 @@ SL: {format_price(stop_loss)} ({sl_loss:.2f}%)
 ⏰ {datetime.now().strftime('%H:%M:%S')}"""
 
         return message
+
+    def _store_signal_in_db(
+        self,
+        symbol: str,
+        score: int,
+        price: float,
+        action: str,
+        targets: Dict[str, float],
+        stop_loss: float,
+        reason: str,
+        momentum: Optional[float],
+        volume_ratio: Optional[float],
+        regime: Optional[str],
+        estimated_hold_time: Optional[str],
+        grade: Optional[str],
+        rr_ratio: Optional[float],
+        risk_level: Optional[str],
+        message_id: Optional[str]
+    ) -> None:
+        """Stocke le signal Telegram en base de données"""
+        if not self.db_connection:
+            logger.warning("Pas de connexion DB, signal non stocké")
+            return
+
+        try:
+            with self.db_connection.cursor() as cursor:
+                # Déterminer le side (BUY pour BUY_NOW et BUY_DCA, sinon déduire du contexte)
+                side = 'BUY' if action in ['BUY_NOW', 'BUY_DCA'] else 'SELL' if action in ['SELL_OVERBOUGHT', 'AVOID'] else 'BUY'
+
+                # Métadonnées additionnelles
+                metadata = {
+                    'targets': targets,
+                    'grade': grade,
+                    'rr_ratio': rr_ratio,
+                    'risk_level': risk_level
+                }
+
+                insert_query = """
+                    INSERT INTO telegram_signals
+                    (symbol, side, score, price, action, tp1, tp2, tp3, stop_loss,
+                     reason, momentum, volume_ratio, regime, estimated_hold_time,
+                     grade, rr_ratio, risk_level, telegram_message_id, metadata)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+
+                cursor.execute(insert_query, (
+                    symbol,
+                    side,
+                    score,
+                    price,
+                    action,
+                    targets.get('tp1'),
+                    targets.get('tp2'),
+                    targets.get('tp3'),
+                    stop_loss,
+                    reason,
+                    momentum,
+                    volume_ratio,
+                    regime,
+                    estimated_hold_time,
+                    grade,
+                    rr_ratio,
+                    risk_level,
+                    message_id,
+                    Json(metadata)
+                ))
+
+                self.db_connection.commit()
+                logger.debug(f"Signal Telegram stocké en DB pour {symbol}")
+
+        except Exception as e:
+            logger.error(f"❌ Erreur stockage signal Telegram en DB: {e}")
+            try:
+                self.db_connection.rollback()
+            except:
+                pass
 
     def send_test_notification(self) -> bool:
         """Envoie une notification de test"""

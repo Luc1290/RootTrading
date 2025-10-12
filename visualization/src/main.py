@@ -179,7 +179,7 @@ async def get_signals_chart(
     try:
         if chart_service is None:
             raise HTTPException(status_code=503, detail="Chart service not available")
-            
+
         data = await chart_service.get_signals_chart(
             symbol=symbol,
             strategy=strategy,
@@ -189,6 +189,85 @@ async def get_signals_chart(
         return data
     except Exception as e:
         logger.error(f"Error getting signals chart: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/charts/telegram-signals/{symbol}")
+async def get_telegram_signals(
+    symbol: str,
+    hours: int = 24,
+    limit: int = 100
+):
+    """Get Telegram signals for a specific symbol"""
+    try:
+        if data_manager is None or not data_manager.postgres_pool:
+            raise HTTPException(status_code=503, detail="Data manager not available")
+
+        async with data_manager.postgres_pool.acquire() as conn:
+            query = """
+                SELECT
+                    id,
+                    symbol,
+                    side,
+                    timestamp,
+                    score,
+                    price,
+                    action,
+                    tp1, tp2, tp3,
+                    stop_loss,
+                    reason,
+                    momentum,
+                    volume_ratio,
+                    regime,
+                    estimated_hold_time,
+                    grade,
+                    rr_ratio,
+                    risk_level,
+                    telegram_message_id,
+                    metadata,
+                    created_at
+                FROM telegram_signals
+                WHERE symbol = $1
+                  AND timestamp > NOW() - INTERVAL '1 hour' * $2
+                ORDER BY timestamp DESC
+                LIMIT $3
+            """
+
+            rows = await conn.fetch(query, symbol, hours, limit)
+
+            signals = []
+            for row in rows:
+                signal = {
+                    "id": row['id'],
+                    "symbol": row['symbol'],
+                    "side": row['side'],
+                    "timestamp": row['timestamp'].isoformat(),
+                    "score": row['score'],
+                    "price": float(row['price']),
+                    "action": row['action'],
+                    "targets": {
+                        "tp1": float(row['tp1']) if row['tp1'] else None,
+                        "tp2": float(row['tp2']) if row['tp2'] else None,
+                        "tp3": float(row['tp3']) if row['tp3'] else None,
+                    },
+                    "stop_loss": float(row['stop_loss']) if row['stop_loss'] else None,
+                    "reason": row['reason'],
+                    "momentum": float(row['momentum']) if row['momentum'] else None,
+                    "volume_ratio": float(row['volume_ratio']) if row['volume_ratio'] else None,
+                    "regime": row['regime'],
+                    "estimated_hold_time": row['estimated_hold_time'],
+                    "grade": row['grade'],
+                    "rr_ratio": float(row['rr_ratio']) if row['rr_ratio'] else None,
+                    "risk_level": row['risk_level'],
+                    "telegram_message_id": row['telegram_message_id'],
+                    "metadata": row['metadata'],
+                    "created_at": row['created_at'].isoformat()
+                }
+                signals.append(signal)
+
+            return {"signals": signals}
+
+    except Exception as e:
+        logger.error(f"Error getting Telegram signals: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/charts/performance")
@@ -675,6 +754,181 @@ async def get_strategy_comparison():
         return comparison
     except Exception as e:
         logger.error(f"Error getting strategy comparison: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/ema-sentiment")
+async def get_ema_sentiment(
+    timeframe: str = "1m",
+    limit: int = 100
+):
+    """Get EMA alignment sentiment across all symbols"""
+    try:
+        if data_manager is None or not data_manager.postgres_pool:
+            raise HTTPException(status_code=503, detail="Data manager not available")
+
+        # Récupérer les symboles actifs depuis .env TRADING_SYMBOLS
+        trading_symbols_env = os.getenv("TRADING_SYMBOLS", "")
+        if not trading_symbols_env:
+            raise HTTPException(status_code=500, detail="TRADING_SYMBOLS not configured in .env")
+        active_symbols = [s.strip() for s in trading_symbols_env.split(",")]
+
+        async with data_manager.postgres_pool.acquire() as conn:
+            # Récupérer uniquement les symboles actifs
+            query = """
+                WITH latest_data AS (
+                    SELECT DISTINCT ON (symbol)
+                        symbol,
+                        ema_7,
+                        ema_26,
+                        ema_99,
+                        time
+                    FROM analyzer_data
+                    WHERE timeframe = $1
+                      AND symbol = ANY($3)
+                      AND ema_7 IS NOT NULL
+                      AND ema_26 IS NOT NULL
+                      AND ema_99 IS NOT NULL
+                    ORDER BY symbol, time DESC
+                ),
+                current_prices AS (
+                    SELECT DISTINCT ON (symbol)
+                        symbol,
+                        close as price
+                    FROM market_data
+                    WHERE timeframe = $1
+                      AND symbol = ANY($3)
+                    ORDER BY symbol, time DESC
+                )
+                SELECT
+                    l.symbol,
+                    l.ema_7,
+                    l.ema_26,
+                    l.ema_99,
+                    p.price,
+                    l.time
+                FROM latest_data l
+                JOIN current_prices p ON l.symbol = p.symbol
+                LIMIT $2
+            """
+
+            rows = await conn.fetch(query, timeframe, limit, active_symbols)
+
+            bullish_count = 0
+            bearish_count = 0
+            neutral_count = 0
+            mixed_count = 0
+
+            symbols_detail = []
+
+            for row in rows:
+                symbol = row['symbol']
+                price = float(row['price'])
+                ema7 = float(row['ema_7'])
+                ema26 = float(row['ema_26'])
+                ema99 = float(row['ema_99'])
+
+                # Déterminer l'alignement EMA
+                # BULLISH: Prix > EMA7 > EMA26 > EMA99
+                # BEARISH: Prix < EMA7 < EMA26 < EMA99
+                # MIXED: Alignement partiel ou croisements
+
+                if price > ema7 > ema26 > ema99:
+                    sentiment = "BULLISH"
+                    bullish_count += 1
+                    score = 100  # Alignement parfait
+                elif price < ema7 < ema26 < ema99:
+                    sentiment = "BEARISH"
+                    bearish_count += 1
+                    score = 0  # Alignement baissier parfait
+                else:
+                    # Calculer un score basé sur les croisements partiels
+                    alignment_score = 0
+                    if price > ema7:
+                        alignment_score += 25
+                    if ema7 > ema26:
+                        alignment_score += 25
+                    if ema26 > ema99:
+                        alignment_score += 25
+                    if price > ema99:
+                        alignment_score += 25
+
+                    score = alignment_score
+
+                    if 40 <= score <= 60:
+                        sentiment = "NEUTRAL"
+                        neutral_count += 1
+                    else:
+                        sentiment = "MIXED"
+                        mixed_count += 1
+
+                # Distance du prix par rapport aux EMAs (en %)
+                distance_ema7 = ((price - ema7) / ema7) * 100
+                distance_ema26 = ((price - ema26) / ema26) * 100
+                distance_ema99 = ((price - ema99) / ema99) * 100
+
+                symbols_detail.append({
+                    "symbol": symbol,
+                    "sentiment": sentiment,
+                    "score": score,
+                    "price": price,
+                    "ema_7": ema7,
+                    "ema_26": ema26,
+                    "ema_99": ema99,
+                    "distance_ema7_percent": round(distance_ema7, 2),
+                    "distance_ema26_percent": round(distance_ema26, 2),
+                    "distance_ema99_percent": round(distance_ema99, 2),
+                    "timestamp": row['time'].isoformat()
+                })
+
+            # Calculer le sentiment global
+            total_symbols = len(symbols_detail)
+            if total_symbols == 0:
+                return {
+                    "sentiment": "NEUTRAL",
+                    "bullish_count": 0,
+                    "bearish_count": 0,
+                    "neutral_count": 0,
+                    "mixed_count": 0,
+                    "total_symbols": 0,
+                    "bullish_percent": 0,
+                    "bearish_percent": 0,
+                    "symbols": [],
+                    "timeframe": timeframe
+                }
+
+            bullish_percent = (bullish_count / total_symbols) * 100
+            bearish_percent = (bearish_count / total_symbols) * 100
+
+            # Déterminer le sentiment global
+            if bullish_percent >= 60:
+                global_sentiment = "BULLISH"
+            elif bearish_percent >= 60:
+                global_sentiment = "BEARISH"
+            elif abs(bullish_percent - bearish_percent) <= 20:
+                global_sentiment = "NEUTRAL"
+            else:
+                global_sentiment = "MIXED"
+
+            # Trier par score (meilleurs alignements en premier)
+            symbols_detail.sort(key=lambda x: x['score'], reverse=True)
+
+            return {
+                "sentiment": global_sentiment,
+                "bullish_count": bullish_count,
+                "bearish_count": bearish_count,
+                "neutral_count": neutral_count,
+                "mixed_count": mixed_count,
+                "total_symbols": total_symbols,
+                "bullish_percent": round(bullish_percent, 1),
+                "bearish_percent": round(bearish_percent, 1),
+                "top_bullish": [s for s in symbols_detail if s['sentiment'] == 'BULLISH'][:5],
+                "top_bearish": [s for s in symbols_detail if s['sentiment'] == 'BEARISH'][:5],
+                "symbols": symbols_detail,
+                "timeframe": timeframe
+            }
+
+    except Exception as e:
+        logger.error(f"Error getting EMA sentiment: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/top-signals")

@@ -77,6 +77,14 @@ class ApiService {
   ): Promise<{ signals: { buy: TradingSignal[]; sell: TradingSignal[] } }> {
     return this.request(`/api/charts/signals/${symbol}`);
   }
+
+  // Signaux Telegram
+  async getTelegramSignals(
+    symbol: TradingSymbol,
+    hours: number = 24
+  ): Promise<{ signals: any[] }> {
+    return this.request(`/api/charts/telegram-signals/${symbol}?hours=${hours}`);
+  }
   
   // Données de performance
   async getPerformanceData(
