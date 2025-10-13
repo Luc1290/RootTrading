@@ -417,27 +417,58 @@ class OpportunityValidator:
         if nearest_resistance > 0 and current_price > 0:
             res_dist_pct = ((nearest_resistance - current_price) / current_price) * 100
 
-            # Résistance trop proche?
-            if res_dist_pct < 0.5:
-                warnings.append(f"⚠️ Résistance très proche: {res_dist_pct:.1f}%")
-                score -= 15
-            elif res_dist_pct < 1.0:
-                warnings.append(f"⚠️ Résistance proche: {res_dist_pct:.1f}%")
-                score -= 10
+            # Récupérer momentum_score pour contextualiser
+            momentum_score = self.safe_float(ad.get('momentum_score'), 50)
+            logger.info(f"Résistance {res_dist_pct:.1f}% - momentum_score={momentum_score:.1f}")
+
+            # SCALPING/DAY TRADING: Résistances <2% sont du bruit, pénalités minimales
+            # On ne pénalise vraiment QUE si momentum très faible + résistance proche
+            if res_dist_pct < 1.0:
+                if momentum_score < 45:
+                    # Momentum TRÈS faible = risque réel de rejet
+                    warning_msg = f"⚠️ Momentum très faible ({momentum_score:.0f}) vs résistance {res_dist_pct:.1f}%"
+                    warnings.append(warning_msg)
+                    logger.info(f"WARNING AJOUTÉ: {warning_msg}")
+                    score -= 8  # Réduit de -15 à -8
+                elif momentum_score < 55:
+                    # Momentum faible mais acceptable en scalping
+                    warning_msg = f"ℹ️ Momentum {momentum_score:.0f} moyen, résistance {res_dist_pct:.1f}% franchissable"
+                    warnings.append(warning_msg)
+                    logger.info(f"INFO AJOUTÉ: {warning_msg}")
+                    score -= 3  # Réduit de -15/-10 à -3
+                else:
+                    # Momentum OK = setup breakout
+                    warning_msg = f"✅ Setup breakout: Momentum {momentum_score:.0f} vs résistance {res_dist_pct:.1f}%"
+                    warnings.append(warning_msg)
+                    logger.info(f"INFO AJOUTÉ: {warning_msg}")
+                    score -= 1  # Quasi aucune pénalité
+            elif res_dist_pct < 2.0:
+                # Entre 1-2%: pénalité uniquement si momentum vraiment faible
+                if momentum_score < 40:
+                    warnings.append(f"⚠️ Momentum faible ({momentum_score:.0f}), résistance à {res_dist_pct:.1f}%")
+                    score -= 5
+                else:
+                    # Sinon on ignore, c'est trop loin pour du scalping
+                    score -= 1
 
             details['resistance_distance_pct'] = res_dist_pct
 
-            # Vérifier si TP atteignable (utiliser TP2 pour cohérence avec le R/R)
-            if tp_dist_moderate * 100 > res_dist_pct:
-                warnings.append("⚠️ TP au-delà de la résistance")
-                score -= 10
+            # SUPPRIMER le warning "TP au-delà résistance" - c'est le but d'un breakout!
+            # On veut justement que le TP soit au-delà pour capturer le mouvement
+            # if tp_dist_moderate * 100 > res_dist_pct:
+            #     warnings.append("⚠️ TP au-delà de la résistance")
+            #     score -= 10
 
         # 4. Break probability
         break_prob = self.safe_float(ad.get('break_probability'))
         if break_prob > 0:
-            if break_prob < 0.4:
+            if break_prob < 0.35:  # Abaissé de 0.4 à 0.35
                 warnings.append(f"⚠️ Probabilité cassure faible: {break_prob*100:.0f}%")
                 score -= 10
+            elif break_prob < 0.45:
+                # Zone intermédiaire: warning informatif seulement
+                warnings.append(f"ℹ️ Break probability modérée: {break_prob*100:.0f}%")
+                score -= 3
 
             details['break_probability'] = break_prob * 100
 
@@ -477,8 +508,9 @@ class OpportunityValidator:
         market_regime = ad.get('market_regime', '').upper()
         vol_context = ad.get('volume_context', '').upper()
 
+        # AJUSTÉ: 2.0x (compromis 20 cryptos: P95 varie de 1.4x à 8.3x)
         is_pump_context = (
-            (vol_spike > 2.5 or rel_volume > 2.5) and
+            (vol_spike > 2.0 or rel_volume > 2.0) and
             market_regime in ['TRENDING_BULL', 'BREAKOUT_BULL'] and
             vol_context in ['CONSOLIDATION_BREAK', 'BREAKOUT', 'PUMP_START', 'HIGH_VOLATILITY']
         )

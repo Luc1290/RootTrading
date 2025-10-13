@@ -542,8 +542,8 @@ async def get_trading_opportunity(symbol: str):
             # Convertir en dict pour l'API
             response_data = opportunity_calculator.to_dict(opportunity)
 
-            # Envoyer notification Telegram pour BUY_NOW et BUY_DCA
-            if opportunity.action in ["BUY_NOW", "BUY_DCA"]:
+            # Envoyer notification Telegram pour BUY_NOW, BUY_DCA et EARLY_ENTRY
+            if opportunity.action in ["BUY_NOW", "BUY_DCA", "EARLY_ENTRY"]:
                 try:
                     import psycopg2
                     from notifications.telegram_service import get_notifier

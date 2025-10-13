@@ -76,20 +76,20 @@ class OpportunityScoring:
     # Pondérations selon régime
     REGIME_WEIGHTS = {
         'TRENDING_BULL': {
-            ScoreCategory.TREND: 0.30,
-            ScoreCategory.MOMENTUM: 0.25,
-            ScoreCategory.VOLUME: 0.15,
+            ScoreCategory.TREND: 0.25,           # ↓ de 0.30
+            ScoreCategory.MOMENTUM: 0.30,        # ↑ de 0.25 - PRIORITÉ pendant pump
+            ScoreCategory.VOLUME: 0.20,          # ↑ de 0.15
             ScoreCategory.VOLATILITY: 0.05,
-            ScoreCategory.SUPPORT_RESISTANCE: 0.15,
+            ScoreCategory.SUPPORT_RESISTANCE: 0.10,  # ↓ de 0.15 - résistance moins critique
             ScoreCategory.PATTERN: 0.05,
             ScoreCategory.CONFLUENCE: 0.05
         },
         'BREAKOUT_BULL': {
-            ScoreCategory.TREND: 0.20,
-            ScoreCategory.MOMENTUM: 0.20,
-            ScoreCategory.VOLUME: 0.30,
+            ScoreCategory.TREND: 0.15,           # ↓ de 0.20
+            ScoreCategory.MOMENTUM: 0.25,        # ↑ de 0.20 - momentum clé pour breakout
+            ScoreCategory.VOLUME: 0.35,          # ↑ de 0.30 - volume critique
             ScoreCategory.VOLATILITY: 0.10,
-            ScoreCategory.SUPPORT_RESISTANCE: 0.10,
+            ScoreCategory.SUPPORT_RESISTANCE: 0.05,  # ↓ de 0.10 - on casse la résistance!
             ScoreCategory.PATTERN: 0.05,
             ScoreCategory.CONFLUENCE: 0.05
         },
@@ -349,8 +349,9 @@ class OpportunityScoring:
         market_regime = ad.get('market_regime', '').upper()
         vol_context = ad.get('volume_context', '').upper()
 
+        # AJUSTÉ: 2.0x (compromis 20 cryptos: P95 varie de 1.4x à 8.3x)
         is_pump = (
-            (vol_spike > 2.5 or rel_volume > 2.5) and
+            (vol_spike > 2.0 or rel_volume > 2.0) and
             market_regime in ['TRENDING_BULL', 'BREAKOUT_BULL'] and
             vol_context in ['CONSOLIDATION_BREAK', 'BREAKOUT', 'PUMP_START', 'HIGH_VOLATILITY']
         )
@@ -780,34 +781,51 @@ class OpportunityScoring:
 
         # 1. Distance à la résistance (40 points max)
         nearest_resistance = self.safe_float(ad.get('nearest_resistance'))
+        break_prob = self.safe_float(ad.get('break_probability'))
 
-        if nearest_resistance > 0 and current_price > 0:
+        # NOUVEAU: Si nearest_resistance est NULL/0 = PAS DE PLAFOND = BULLISH!
+        # Cela signifie qu'aucune résistance n'a été détectée dans les 100 dernières périodes
+        if nearest_resistance == 0 or nearest_resistance is None:
+            # Pas de résistance = bonus maximal + extra
+            score += 50  # 50 au lieu de 40 car c'est TRÈS bullish
+            details['resistance_distance'] = 50
+            details['no_resistance_detected'] = True
+            issues.append("✅ Pas de résistance détectée = Ciel dégagé!")
+        elif nearest_resistance > 0 and current_price > 0:
             dist_pct = ((nearest_resistance - current_price) / current_price) * 100
 
-            # Plus la résistance est loin, mieux c'est
-            if dist_pct > 3.0:
-                dist_score = 40
-            elif dist_pct > 2.0:
-                dist_score = 30
-            elif dist_pct > 1.5:
-                dist_score = 20
-            elif dist_pct > 1.0:
-                dist_score = 10
-            elif dist_pct > 0.5:
-                dist_score = 5
+            # NOUVEAU: Si break_probability élevée, tolérer résistance proche
+            # Une résistance à 0.1% avec break_prob 60%+ est un SETUP, pas un problème
+            if break_prob > 0.6 and dist_pct < 1.0:
+                # Résistance proche MAIS cassable = score basé sur break_prob
+                dist_score = min(40, int(break_prob * 50))  # break_prob 0.7 → 35pts
+                details['breakout_setup'] = True
+                issues.append(f"Résistance proche ({dist_pct:.1f}%) mais cassable ({break_prob*100:.0f}%)")
             else:
-                dist_score = 0
-                issues.append(f"Résistance très proche ({dist_pct:.1f}%)")
+                # Scoring normal
+                if dist_pct > 3.0:
+                    dist_score = 40
+                elif dist_pct > 2.0:
+                    dist_score = 30
+                elif dist_pct > 1.5:
+                    dist_score = 20
+                elif dist_pct > 1.0:
+                    dist_score = 10
+                elif dist_pct > 0.5:
+                    dist_score = 5
+                elif dist_pct > 0.2:
+                    # Résistance 0.2-0.5% = OK si momentum fort
+                    dist_score = 3
+                    # Pas de warning si momentum fort (sera géré dans validator)
+                else:
+                    # < 0.2% = vraiment collé
+                    dist_score = 1
+                    # Pas de warning ici (sera contextuel dans validator)
 
             score += dist_score
             details['resistance_distance'] = dist_score
-        else:
-            # Pas de résistance détectée = bonus
-            score += 40
-            details['resistance_distance'] = 40
 
         # 2. Break Probability (30 points max)
-        break_prob = self.safe_float(ad.get('break_probability'))
         if break_prob > 0:
             # break_probability: 0-1 (probabilité de casser la résistance)
             prob_score = break_prob * 30
@@ -895,7 +913,8 @@ class OpportunityScoring:
         if pattern in bullish_patterns:
             base_score = 60
         elif pattern == 'NORMAL' or not pattern:
-            base_score = 30
+            # NORMAL = marché calme en TRENDING_BULL = OK, pas négatif
+            base_score = 50  # Augmenté de 30 → 50 (neutre positif)
         elif pattern == 'PRICE_SPIKE_DOWN' and is_pump:
             # Pendant un pump, PRICE_SPIKE_DOWN = pullback sain
             base_score = 40

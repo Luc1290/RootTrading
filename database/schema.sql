@@ -351,7 +351,7 @@ CREATE TABLE IF NOT EXISTS telegram_signals (
 
     CONSTRAINT telegram_signals_symbol_check CHECK (symbol ~ '^[A-Z0-9]+$'),
     CONSTRAINT telegram_signals_action_check CHECK (action IN (
-        'BUY_NOW', 'BUY_DCA', 'WAIT_PULLBACK', 'WAIT_BREAKOUT',
+        'BUY_NOW', 'BUY_DCA', 'EARLY_ENTRY', 'WAIT_PULLBACK', 'WAIT_BREAKOUT',
         'WAIT_OVERSOLD', 'WAIT', 'SELL_OVERBOUGHT', 'AVOID'
     ))
 );

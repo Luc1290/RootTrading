@@ -161,6 +161,7 @@ class TelegramNotifier:
         action_config = {
             "BUY_NOW": {"emoji": "🟢", "title": "SIGNAL BUY NOW", "score_emojis": True},
             "BUY_DCA": {"emoji": "🔵", "title": "SIGNAL BUY", "score_emojis": True},
+            "EARLY_ENTRY": {"emoji": "🟣", "title": "⚡ EARLY ENTRY", "score_emojis": True},
             "WAIT_PULLBACK": {"emoji": "🟡", "title": "ATTENDRE BAISSE", "score_emojis": False},
             "WAIT_BREAKOUT": {"emoji": "🔵", "title": "ATTENDRE CASSURE", "score_emojis": False},
             "WAIT_OVERSOLD": {"emoji": "🔵", "title": "ATTENDRE REBOND", "score_emojis": False},
@@ -192,14 +193,20 @@ class TelegramNotifier:
             price_str = f"${price:.8f}"
 
         # Calculer les gains potentiels en %
-        tp1_gain = ((targets.get("tp1", 0) - price) / price) * 100
-        tp2_gain = ((targets.get("tp2", 0) - price) / price) * 100
-        tp3_gain = ((targets.get("tp3", 0) - price) / price) * 100
-        sl_loss = ((stop_loss - price) / price) * 100
+        tp1_val = targets.get("tp1") or 0
+        tp2_val = targets.get("tp2") or 0
+        tp3_val = targets.get("tp3") or 0
+
+        tp1_gain = ((tp1_val - price) / price) * 100 if tp1_val else 0
+        tp2_gain = ((tp2_val - price) / price) * 100 if tp2_val else 0
+        tp3_gain = ((tp3_val - price) / price) * 100 if tp3_val else 0
+        sl_loss = ((stop_loss - price) / price) * 100 if stop_loss else 0
 
         # Formater targets et SL avec même logique
         def format_price(p):
-            if p >= 1:
+            if p is None or p == 0:
+                return "$0.00"
+            elif p >= 1:
                 return f"${p:,.2f}"
             elif p >= 0.01:
                 return f"${p:.4f}"
@@ -284,8 +291,8 @@ SL: {format_price(stop_loss)} ({sl_loss:.2f}%)
 
         try:
             with self.db_connection.cursor() as cursor:
-                # Déterminer le side (BUY pour BUY_NOW et BUY_DCA, sinon déduire du contexte)
-                side = 'BUY' if action in ['BUY_NOW', 'BUY_DCA'] else 'SELL' if action in ['SELL_OVERBOUGHT', 'AVOID'] else 'BUY'
+                # Déterminer le side (BUY pour BUY_NOW, BUY_DCA et EARLY_ENTRY, sinon déduire du contexte)
+                side = 'BUY' if action in ['BUY_NOW', 'BUY_DCA', 'EARLY_ENTRY'] else 'SELL' if action in ['SELL_OVERBOUGHT', 'AVOID'] else 'BUY'
 
                 # Métadonnées additionnelles
                 metadata = {

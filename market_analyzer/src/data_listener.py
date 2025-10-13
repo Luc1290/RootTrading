@@ -88,9 +88,23 @@ class DataListener:
             raise
 
     async def _setup_database_trigger(self):
-        """Configure le trigger PostgreSQL pour notifier les nouveaux inserts."""
-        
-        # Fonction trigger qui envoie une notification
+        """
+        Configure le trigger PostgreSQL pour notifier les nouveaux inserts.
+
+        IDEMPOTENT: Nettoie d'abord les anciens triggers/fonctions avant de recréer.
+        Safe pour rebuild/restart sans intervention manuelle.
+        """
+
+        # ÉTAPE 1: Nettoyer proprement les anciens triggers et fonctions
+        cleanup_sql = """
+            -- Supprimer le trigger s'il existe
+            DROP TRIGGER IF EXISTS market_data_change_trigger ON market_data;
+
+            -- Supprimer l'ancienne fonction (CASCADE pour forcer si référencée)
+            DROP FUNCTION IF EXISTS notify_market_data_change() CASCADE;
+        """
+
+        # ÉTAPE 2: Créer la nouvelle fonction trigger
         trigger_function = """
             CREATE OR REPLACE FUNCTION notify_market_data_change()
             RETURNS TRIGGER AS $$
@@ -109,26 +123,36 @@ class DataListener:
             END;
             $$ LANGUAGE plpgsql;
         """
-        
-        # Trigger qui appelle la fonction sur INSERT/UPDATE
+
+        # ÉTAPE 3: Créer le trigger
         trigger_definition = """
-            DROP TRIGGER IF EXISTS market_data_change_trigger ON market_data;
             CREATE TRIGGER market_data_change_trigger
                 AFTER INSERT OR UPDATE ON market_data
                 FOR EACH ROW
                 EXECUTE FUNCTION notify_market_data_change();
         """
-        
+
         try:
             async with self.db_pool.acquire() as conn:
+                # Exécuter le nettoyage d'abord
+                logger.info("🧹 Nettoyage des anciens triggers...")
+                await conn.execute(cleanup_sql)
+
+                # Créer la fonction
+                logger.info("🔧 Création de la fonction trigger...")
                 await conn.execute(trigger_function)
+
+                # Créer le trigger
+                logger.info("🎯 Création du trigger...")
                 await conn.execute(trigger_definition)
-                
+
             logger.info("✅ Trigger PostgreSQL configuré pour market_data")
-            
+
         except Exception as e:
             logger.error(f"❌ Erreur configuration trigger: {e}")
-            raise
+            # Ne pas raise pour permettre au service de démarrer quand même
+            logger.warning("⚠️ Service démarré sans trigger (mode dégradé)")
+            # raise  # Commenté pour ne pas bloquer le démarrage
 
     async def start_listening(self):
         """Démarre l'écoute des notifications."""
@@ -421,21 +445,52 @@ class DataListener:
             }
 
     async def _cleanup(self):
-        """Nettoie les ressources."""
+        """
+        Nettoie les ressources proprement.
+
+        IMPORTANT: Ferme toutes les connexions pour éviter les orphelins
+        lors d'un rebuild du container.
+        """
         try:
+            # Stopper l'écoute des notifications
             if self.listen_conn:
-                await self.listen_conn.remove_listener('market_data_change', self._handle_notification)
-                await self.listen_conn.close()
-                
-            await self.indicator_processor.close()
-            
+                try:
+                    await self.listen_conn.remove_listener('market_data_change', self._handle_notification)
+                    await self.listen_conn.close()
+                    logger.info("✅ Connexion LISTEN fermée")
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur fermeture LISTEN: {e}")
+
+            # Fermer le processeur d'indicateurs
+            try:
+                await self.indicator_processor.close()
+                logger.info("✅ Indicator processor fermé")
+            except Exception as e:
+                logger.warning(f"⚠️ Erreur fermeture processor: {e}")
+
+            # Fermer le pool de connexions
             if self.db_pool:
-                await self.db_pool.close()
-                
-            logger.info("🧹 DataListener nettoyé")
-            
+                try:
+                    # Attendre que toutes les connexions se terminent (timeout 5s)
+                    await asyncio.wait_for(self.db_pool.close(), timeout=5.0)
+                    logger.info("✅ Pool DB fermé proprement")
+                except asyncio.TimeoutError:
+                    logger.warning("⚠️ Timeout fermeture pool - connexions forcées")
+                    # Force terminate si timeout
+                    await self.db_pool.terminate()
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur fermeture pool: {e}")
+
+            logger.info("🧹 DataListener nettoyé complètement")
+
         except Exception as e:
-            logger.error(f"❌ Erreur nettoyage: {e}")
+            logger.error(f"❌ Erreur critique nettoyage: {e}")
+            # Toujours essayer de terminer le pool
+            if self.db_pool:
+                try:
+                    await self.db_pool.terminate()
+                except:
+                    pass
 
     async def stop(self):
         """Arrête l'écoute."""

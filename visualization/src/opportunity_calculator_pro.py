@@ -175,7 +175,7 @@ class OpportunityCalculatorPro:
 
         # === ÉTAPE 7: RISK MANAGEMENT ===
         rr_ratio, risk_level, max_position_pct = self._calculate_risk_metrics(
-            current_price, tp1, stop_loss, score, validation, analyzer_data
+            current_price, tp1, stop_loss, score, validation, analyzer_data, action
         )
 
         # === ÉTAPE 8: TIMING ===
@@ -274,24 +274,75 @@ class OpportunityCalculatorPro:
         total_score = score.total_score
         score_confidence = score.confidence
 
-        # === EARLY SIGNAL BOOST (NOUVEAU) ===
-        # Si early signal fort, on peut améliorer le score/confiance
-        early_boost = 0.0
-        if early_signal and is_early_entry:
-            # Bonus selon niveau early signal
-            if early_signal.level.value == 'entry_now' and early_signal.score >= 75:
-                early_boost = 10.0  # +10 points au score
-                warnings.append(f"🚀 Early entry signal FORT: {early_signal.score:.0f}/100")
-            elif early_signal.level.value == 'entry_now' and early_signal.score >= 65:
-                early_boost = 5.0  # +5 points
-                warnings.append(f"⚡ Early entry signal: {early_signal.score:.0f}/100")
-            elif early_signal.level.value == 'prepare':
-                early_boost = 3.0  # +3 points
-                warnings.append(f"👀 Early prepare signal: {early_signal.score:.0f}/100")
+        # === MODE HYBRIDE INTELLIGENT: EARLY SIGNAL ===
+        # Trois modes selon force du signal early:
+        # MODE 1 (score ≥70): Early shunt validation partielle → EARLY_ENTRY indépendant
+        # MODE 2 (40-70): Boost au scoring (assistant)
+        # MODE 3 (<40): Aucun effet
 
-            # Ajouter top reasons early
-            for reason in early_signal.reasons[:2]:
-                reasons.append(f"  Early: {reason}")
+        early_boost = 0.0
+        bypass_validation = False
+
+        if early_signal:
+            # === MODE 1: EARLY SIGNAL FORT (≥70) - INDÉPENDANCE ===
+            if early_signal.score >= 70 and early_signal.level.value == 'entry_now':
+                logger.info(f"🚀 EARLY MODE 1: Signal fort {early_signal.score:.0f} - Bypass validation partielle")
+
+                # Bypass Market Conditions & Entry Timing (garde Data Quality & Risk Management)
+                bypass_validation = True
+
+                # Action = EARLY_ENTRY (nouveau type)
+                action = 'EARLY_ENTRY'
+                confidence = min(early_signal.score, early_signal.confidence)
+
+                reasons.append(f"🚀 EARLY ENTRY DÉTECTÉ - Score: {early_signal.score:.0f}/100")
+                reasons.append(f"⏱️ Entry window: ~{early_signal.estimated_entry_window_seconds}s")
+                reasons.append(f"📊 Mouvement: {early_signal.estimated_move_completion_pct:.0f}% complété")
+
+                # Ajouter top reasons early
+                for reason in early_signal.reasons[:3]:
+                    reasons.append(f"  • {reason}")
+
+                # Warnings spécifiques early
+                warnings.append(f"⚡ MODE EARLY ENTRY - Risque élevé (moins de confirmation)")
+                warnings.append(f"💡 Réduire taille position de 30% vs BUY_NOW classique")
+
+                if early_signal.estimated_move_completion_pct > 40:
+                    warnings.append(f"⚠️ Mouvement déjà {early_signal.estimated_move_completion_pct:.0f}% avancé")
+
+                # Ajouter recommendations early
+                recommendations.extend(early_signal.recommendations[:3])
+
+                # Stop loss plus serré pour early entry
+                warnings.append("🛡️ Stop loss recommandé: -1.5% (serré)")
+
+                # Retourner directement pour ce mode (bypass reste de la logique)
+                return action, confidence, reasons, warnings, recommendations
+
+            # === MODE 2: EARLY SIGNAL MOYEN (40-69) - BOOST ===
+            elif early_signal.score >= 40 and is_early_entry:
+                logger.info(f"⚡ EARLY MODE 2: Signal moyen {early_signal.score:.0f} - Boost au scoring")
+
+                # Bonus selon niveau
+                if early_signal.score >= 60 and early_signal.level.value == 'entry_now':
+                    early_boost = 8.0  # +8 points
+                    warnings.append(f"⚡ Early entry signal: {early_signal.score:.0f}/100")
+                elif early_signal.score >= 50 and early_signal.level.value == 'entry_now':
+                    early_boost = 5.0  # +5 points
+                    warnings.append(f"⚡ Early entry signal: {early_signal.score:.0f}/100")
+                elif early_signal.level.value == 'prepare':
+                    early_boost = 3.0  # +3 points
+                    warnings.append(f"👀 Early prepare signal: {early_signal.score:.0f}/100")
+                else:
+                    early_boost = 2.0  # +2 points minimal
+
+                # Ajouter top reasons early
+                for reason in early_signal.reasons[:2]:
+                    reasons.append(f"  Early: {reason}")
+
+            # === MODE 3: EARLY SIGNAL FAIBLE (<40) - AUCUN EFFET ===
+            else:
+                logger.debug(f"⏸️ EARLY MODE 3: Signal faible {early_signal.score:.0f} - Aucun effet")
 
         # Appliquer pénalité validation si non parfaite
         # Score validation 80/100 → multiplicateur 0.9 (10% de pénalité)
@@ -304,12 +355,15 @@ class OpportunityCalculatorPro:
         rel_volume = self.safe_float(ad.get('relative_volume'), 1.0)
         market_regime = ad.get('market_regime', '').upper()
 
-        is_pump = (vol_spike > 2.5 or rel_volume > 2.5) and market_regime in ['TRENDING_BULL', 'BREAKOUT_BULL']
+        # AJUSTÉ: 2.0x (compromis 20 cryptos: P95 varie de 1.4x à 8.3x)
+        # BTC/ETH P95=2.9x, BNB/XRP P95=1.4x, Altcoins P95=3-8x
+        is_pump = (vol_spike > 2.0 or rel_volume > 2.0) and market_regime in ['TRENDING_BULL', 'BREAKOUT_BULL']
 
-        # BUY_NOW: Score ajusté >80 + confiance >70 (ou >65 si pump)
-        # Exemple: Score 85, Validation 80% → 85*0.8 = 68 → Grade B au lieu de A
-        confidence_threshold = 65 if is_pump else 70
-        if adjusted_score >= 80 and adjusted_confidence >= confidence_threshold:
+        # BUY_NOW: Score ajusté >70 (abaissé de 80) + confiance >65 (abaissé de 70)
+        # RATIONALE: Un score 75 avec validation 90% = setup solide à ne pas rater
+        # Pump context: seuil confiance >60 au lieu de >65
+        confidence_threshold = 60 if is_pump else 65
+        if adjusted_score >= 70 and adjusted_confidence >= confidence_threshold:
             action = 'BUY_NOW'
             confidence = min(adjusted_score, adjusted_confidence)
 
@@ -334,8 +388,9 @@ class OpportunityCalculatorPro:
             recommendations.append("🚀 ACHETER MAINTENANT - Setup optimal")
             recommendations.extend(score.reasons)
 
-        # BUY_DCA: Score ajusté 60-80 + confiance >60
-        elif adjusted_score >= 60 and adjusted_confidence >= 60:
+        # BUY_DCA: Score ajusté 55-70 + confiance >55
+        # RATIONALE: DCA est fait pour les setups moyens, pas excellent
+        elif adjusted_score >= 55 and adjusted_confidence >= 55:
             action = 'BUY_DCA'
             confidence = min(adjusted_score * 0.85, adjusted_confidence)
 
@@ -560,7 +615,8 @@ class OpportunityCalculatorPro:
         stop_loss: float,
         score: OpportunityScore,
         validation: ValidationSummary,
-        ad: dict
+        ad: dict,
+        action: str = 'WAIT'
     ) -> tuple[float, str, float]:
         """
         Calcule métriques de risque + position sizing.
@@ -608,6 +664,11 @@ class OpportunityCalculatorPro:
             base_pct *= 0.8
 
         max_position_pct = round(min(base_pct, 10.0), 2)  # Cap à 10%
+
+        # Réduire position pour EARLY_ENTRY (plus risqué)
+        if action == 'EARLY_ENTRY':
+            max_position_pct *= 0.7  # Réduction de 30%
+            max_position_pct = round(max_position_pct, 2)
 
         return round(rr_ratio, 2), risk_level, max_position_pct
 

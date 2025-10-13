@@ -25,6 +25,7 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity: o
   const actionConfig: Record<string, { bg: string; text: string; icon: string; emoji: string }> = {
     'BUY_NOW': { bg: 'bg-green-600', text: 'text-white', icon: '🚀', emoji: '✅' },
     'BUY_DCA': { bg: 'bg-blue-600', text: 'text-white', icon: '📊', emoji: '🔵' },
+    'EARLY_ENTRY': { bg: 'bg-purple-600', text: 'text-white', icon: '⚡', emoji: '🟣' },
     'WAIT': { bg: 'bg-yellow-600', text: 'text-black', icon: '⏸️', emoji: '⚪' },
     'AVOID': { bg: 'bg-red-600', text: 'text-white', icon: '🛑', emoji: '🔴' }
   };
@@ -35,9 +36,30 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity: o
 
   // Prix et targets
   const currentPrice = opp.pricing?.current_price || opp.currentPrice || 0;
-  const tp1 = typeof opp.targets?.tp1 === 'object' ? opp.targets.tp1 : { price: opp.targets?.tp1 || 0, percent: 0 };
-  const tp2 = typeof opp.targets?.tp2 === 'object' ? opp.targets.tp2 : { price: opp.targets?.tp2 || 0, percent: 0 };
-  const sl = typeof opp.stopLoss === 'object' ? opp.stopLoss : { price: opp.stopLoss || 0, percent: 0 };
+
+  // Calculer les pourcentages si non fournis
+  const calculatePercent = (targetPrice: number, currentPrice: number) => {
+    if (!targetPrice || !currentPrice) return 0;
+    return ((targetPrice - currentPrice) / currentPrice) * 100;
+  };
+
+  const tp1Raw = typeof opp.targets?.tp1 === 'object' ? opp.targets.tp1 : { price: opp.targets?.tp1 || 0, percent: 0 };
+  const tp2Raw = typeof opp.targets?.tp2 === 'object' ? opp.targets.tp2 : { price: opp.targets?.tp2 || 0, percent: 0 };
+  const slRaw = typeof opp.stopLoss === 'object' ? opp.stopLoss : { price: opp.stopLoss || 0, percent: 0 };
+
+  // Fallback: calculer percent si manquant
+  const tp1 = {
+    price: tp1Raw.price || 0,
+    percent: tp1Raw.percent || calculatePercent(tp1Raw.price, currentPrice)
+  };
+  const tp2 = {
+    price: tp2Raw.price || 0,
+    percent: tp2Raw.percent || calculatePercent(tp2Raw.price, currentPrice)
+  };
+  const sl = {
+    price: slRaw.price || 0,
+    percent: slRaw.percent || Math.abs(calculatePercent(slRaw.price, currentPrice))
+  };
 
   // Calculer gains potentiels (sur 5000 USDC)
   const capital = 5000;
@@ -49,6 +71,7 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity: o
   const actionText: Record<string, string> = {
     'BUY_NOW': 'Acheter maintenant',
     'BUY_DCA': 'Acheter',
+    'EARLY_ENTRY': '⚡ Entry Précoce',
     'WAIT': 'Attendre',
     'WAIT_HIGHER_TF': 'Attendre (5m)',
     'WAIT_QUALITY_GATE': 'Setup faible',
@@ -351,6 +374,7 @@ const getRegimeColor = (regime: string): string => {
 const getActionTextColor = (action: string): string => {
   if (action === 'BUY_NOW') return 'text-white';
   if (action === 'BUY_DCA') return 'text-white';
+  if (action === 'EARLY_ENTRY') return 'text-white';
   if (action === 'WAIT') return 'text-black';
   return 'text-white';
 };
@@ -358,6 +382,7 @@ const getActionTextColor = (action: string): string => {
 const getActionBg = (action: string): string => {
   if (action === 'BUY_NOW') return 'bg-green-600';
   if (action === 'BUY_DCA') return 'bg-blue-600';
+  if (action === 'EARLY_ENTRY') return 'bg-purple-600';
   if (action === 'WAIT') return 'bg-yellow-600';
   return 'bg-red-600';
 };

@@ -97,7 +97,7 @@ interface TradingOpportunity {
   recommendedSize: { min: number; max: number };
 
   // Action
-  action: 'BUY_NOW' | 'BUY_DCA' | 'WAIT' | 'AVOID' | 'WAIT_HIGHER_TF' | 'WAIT_QUALITY_GATE';
+  action: 'BUY_NOW' | 'BUY_DCA' | 'EARLY_ENTRY' | 'WAIT' | 'AVOID' | 'WAIT_HIGHER_TF' | 'WAIT_QUALITY_GATE';
   reason: string;
   reasons?: string[];
   warnings?: string[];
@@ -297,9 +297,13 @@ function ManualTradingPage() {
         if (a.action === 'BUY_NOW' && b.action !== 'BUY_NOW') return -1;
         if (a.action !== 'BUY_NOW' && b.action === 'BUY_NOW') return 1;
 
-        // 2. BUY_DCA en deuxième
-        if (a.action === 'BUY_DCA' && b.action !== 'BUY_DCA' && b.action !== 'BUY_NOW') return -1;
-        if (b.action === 'BUY_DCA' && a.action !== 'BUY_DCA' && a.action !== 'BUY_NOW') return 1;
+        // 2. EARLY_ENTRY en deuxième (signaux précoces prioritaires)
+        if (a.action === 'EARLY_ENTRY' && !['BUY_NOW'].includes(b.action)) return -1;
+        if (b.action === 'EARLY_ENTRY' && !['BUY_NOW'].includes(a.action)) return 1;
+
+        // 3. BUY_DCA en troisième
+        if (a.action === 'BUY_DCA' && !['BUY_NOW', 'EARLY_ENTRY'].includes(b.action)) return -1;
+        if (b.action === 'BUY_DCA' && !['BUY_NOW', 'EARLY_ENTRY'].includes(a.action)) return 1;
 
         // 3. Ensuite par score total (système PRO)
         const aScore = a.score?.total || 0;
@@ -375,6 +379,7 @@ function ManualTradingPage() {
   const getActionColor = (action: string) => {
     switch (action) {
       case 'BUY_NOW': return 'bg-green-500/20 text-green-400 border-green-500/50';
+      case 'EARLY_ENTRY': return 'bg-purple-500/20 text-purple-400 border-purple-500/50';
       case 'BUY_DCA': return 'bg-blue-500/20 text-blue-400 border-blue-500/50';
       case 'SELL_OVERBOUGHT': return 'bg-red-500/20 text-red-400 border-red-500/50';
       case 'WAIT': return 'bg-gray-500/20 text-gray-300 border-gray-500/50';
@@ -390,6 +395,7 @@ function ManualTradingPage() {
   const getActionText = (action: string) => {
     switch (action) {
       case 'BUY_NOW': return 'ACHETER MAINTENANT ✅';
+      case 'EARLY_ENTRY': return '⚡ ENTRY PRÉCOCE';
       case 'BUY_DCA': return 'ACHETER 📊';
       case 'WAIT': return 'ATTENDRE ⏳';
       case 'WAIT_HIGHER_TF': return 'ATTENDRE - 5m pas aligné 📊';
@@ -402,6 +408,7 @@ function ManualTradingPage() {
   const getActionIcon = (action: string) => {
     switch (action) {
       case 'BUY_NOW': return '🟢';
+      case 'EARLY_ENTRY': return '🟣';
       case 'BUY_DCA': return '🔵';
       case 'WAIT': return '⚪';
       case 'WAIT_HIGHER_TF': return '🟡';

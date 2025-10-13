@@ -533,26 +533,63 @@ class IndicatorProcessor:
                         trend_alignment = max(-100, min(100, regime_result.trend_slope * 10))
                         
                         # Calculer momentum_score (0-100, où 50 = neutre)
-                        # Utiliser trend_slope et strength pour un momentum plus dynamique
-                        # trend_slope est généralement entre -10 et +10
-                        normalized_slope = max(-1, min(1, regime_result.trend_slope / 5))  # Normaliser entre -1 et 1
-                        
-                        # Calculer le momentum en fonction du slope ET de la force du régime
-                        # Base: 50 (neutre), puis ajuster selon la direction et la force
-                        strength_multiplier = 1.0  # MODERATE par défaut (neutre)
-                        regime_strength = str(regime_result.strength.value if hasattr(regime_result.strength, 'value') else regime_result.strength).upper()
-                        if regime_strength == 'EXTREME':
-                            strength_multiplier = 2.0  # Amplification maximale
-                        elif regime_strength == 'STRONG':
-                            strength_multiplier = 1.5  # Amplification forte
-                        elif regime_strength == 'MODERATE':
-                            strength_multiplier = 1.0  # Neutre
-                        elif regime_strength == 'WEAK':
-                            strength_multiplier = 0.5  # Atténuation
-                            
-                        # Score de -50 à +50 basé sur le slope, puis converti en 0-100
-                        momentum_deviation = normalized_slope * 50 * strength_multiplier
-                        momentum_score = max(0, min(100, 50 + momentum_deviation))
+                        # FIXÉ: Utiliser RSI + MACD + ADX au lieu de trend_slope qui varie peu
+
+                        # Composantes du momentum (chacune 0-100, moyenne = score final)
+                        momentum_components = []
+
+                        # 1. RSI Component (40 pts max)
+                        rsi_14 = indicators.get('rsi_14')
+                        if rsi_14 is not None:
+                            # RSI 50 = neutre (50pts), RSI 70 = bullish (80pts), RSI 30 = bearish (20pts)
+                            rsi_score = rsi_14  # RSI est déjà 0-100
+                            momentum_components.append(('rsi', rsi_score, 40))  # Poids 40%
+
+                        # 2. MACD Histogram Component (30 pts max)
+                        macd_hist = indicators.get('macd_histogram')
+                        if macd_hist is not None:
+                            # Normaliser MACD histogram (typiquement -50 à +50 pour crypto)
+                            # Positif = bullish, négatif = bearish
+                            macd_normalized = max(-50, min(50, macd_hist))  # Limiter à ±50
+                            macd_score = 50 + macd_normalized  # Convertir en 0-100
+                            momentum_components.append(('macd', macd_score, 30))  # Poids 30%
+
+                        # 3. ADX Component (20 pts max)
+                        adx_14 = indicators.get('adx_14')
+                        plus_di = indicators.get('plus_di')
+                        minus_di = indicators.get('minus_di')
+                        if adx_14 is not None and plus_di is not None and minus_di is not None:
+                            # ADX mesure la force de la tendance (0-100)
+                            # +DI vs -DI donne la direction
+                            if plus_di > minus_di:
+                                # Tendance haussière: score = 50 + (ADX/2)
+                                # ADX 25 → 62.5, ADX 50 → 75
+                                adx_score = min(100, 50 + (adx_14 / 2))
+                            else:
+                                # Tendance baissière: score = 50 - (ADX/2)
+                                adx_score = max(0, 50 - (adx_14 / 2))
+                            momentum_components.append(('adx', adx_score, 20))  # Poids 20%
+
+                        # 4. ROC Component (10 pts max)
+                        roc_10 = indicators.get('roc_10')
+                        if roc_10 is not None:
+                            # ROC typiquement -5% à +5% pour 1m crypto
+                            # Normaliser autour de 50
+                            roc_normalized = max(-5, min(5, roc_10 * 100))  # Convertir en %
+                            roc_score = 50 + (roc_normalized * 10)  # ±50 points max
+                            momentum_components.append(('roc', roc_score, 10))  # Poids 10%
+
+                        # Calculer moyenne pondérée
+                        if momentum_components:
+                            total_weighted = sum(score * weight for _, score, weight in momentum_components)
+                            total_weight = sum(weight for _, _, weight in momentum_components)
+                            momentum_score = total_weighted / total_weight
+                        else:
+                            # Fallback si aucun composant disponible
+                            momentum_score = 50.0
+
+                        # Limiter entre 0-100
+                        momentum_score = max(0, min(100, momentum_score))
                         
                         indicators.update({
                             'market_regime': str(regime_result.regime_type.value if hasattr(regime_result.regime_type, 'value') else regime_result.regime_type).upper(),
