@@ -2,6 +2,7 @@
 Schémas partagés pour la validation des données entre microservices.
 Utilise Pydantic pour définir et valider la structure des messages.
 """
+
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
@@ -9,8 +10,10 @@ from pydantic import BaseModel, Field, validator
 
 from .enums import OrderSide, OrderStatus, TradeRole, CycleStatus, SignalStrength
 
+
 class MarketData(BaseModel):
     """Données de marché provenant de Binance."""
+
     symbol: str
     start_time: int
     close_time: int
@@ -20,16 +23,18 @@ class MarketData(BaseModel):
     close: float
     volume: float
     timestamp: Optional[datetime] = None
-    
-    @validator('timestamp', pre=True, always=True)
+
+    @validator("timestamp", pre=True, always=True)
     def set_timestamp(cls, v, values):
         """Si timestamp n'est pas fourni, le calculer à partir de start_time."""
-        if v is None and 'start_time' in values:
-            return datetime.fromtimestamp(values['start_time'] / 1000)
+        if v is None and "start_time" in values:
+            return datetime.fromtimestamp(values["start_time"] / 1000)
         return v
+
 
 class StrategySignal(BaseModel):
     """Signal généré par une stratégie de trading."""
+
     strategy: str
     symbol: str
     side: OrderSide
@@ -38,12 +43,14 @@ class StrategySignal(BaseModel):
     confidence: Optional[float] = None
     strength: Optional[SignalStrength] = None
     metadata: Optional[Dict[str, Any]] = Field(default_factory=lambda: {})
-    
+
     class Config:
         use_enum_values = True
 
+
 class TradeOrder(BaseModel):
     """Ordre de trading à exécuter sur Binance."""
+
     symbol: str
     side: OrderSide
     quantity: float
@@ -55,12 +62,14 @@ class TradeOrder(BaseModel):
     trailing_delta: Optional[float] = None
     leverage: Optional[int] = Field(1, ge=1, le=10)  # Levier (1-10x)
     demo: bool = False
-    
+
     class Config:
         use_enum_values = True
 
+
 class TradeExecution(BaseModel):
     """Exécution d'un ordre sur Binance."""
+
     order_id: str
     symbol: str
     side: OrderSide
@@ -73,17 +82,21 @@ class TradeExecution(BaseModel):
     role: Optional[TradeRole] = None
     timestamp: datetime
     demo: bool = False
-    
+
     class Config:
         use_enum_values = True
 
+
 class TradeCycle(BaseModel):
     """Cycle complet de trading (entrée + sortie)."""
+
     id: str
     symbol: str
     strategy: str
     status: CycleStatus
-    side: OrderSide  # Direction du cycle: BUY (position longue) ou SELL (position courte)
+    side: (
+        OrderSide  # Direction du cycle: BUY (position longue) ou SELL (position courte)
+    )
     entry_order_id: Optional[str] = None
     exit_order_id: Optional[str] = None
     entry_price: Optional[float] = None
@@ -101,36 +114,45 @@ class TradeCycle(BaseModel):
     confirmed: bool = False
     demo: bool = False
     metadata: Optional[Dict[str, Any]] = Field(default_factory=lambda: {})
-    
+
     class Config:
         use_enum_values = True
 
+
 class AssetBalance(BaseModel):
     """Solde d'un actif dans un portefeuille."""
+
     asset: str
     free: float
     locked: float
     total: float
     value_usdc: Optional[float] = None
 
+
 class PortfolioSummary(BaseModel):
     """Résumé du portefeuille complet."""
+
     balances: List[AssetBalance]
     total_value: float
     performance_24h: Optional[float] = None
     performance_7d: Optional[float] = None
     active_trades: int = 0
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
 class ErrorMessage(BaseModel):
     """Message d'erreur standardisé."""
+
     service: str
     error_type: str
     message: str
     details: Optional[Dict[str, Any]] = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
+
 class StrategyConfig(BaseModel):
     """Configuration d'une stratégie de trading."""
+
     name: str
     mode: str
     params: Dict[str, Any]
@@ -138,8 +160,10 @@ class StrategyConfig(BaseModel):
     max_simultaneous_trades: int = 3
     enabled: bool = True
 
+
 class LogMessage(BaseModel):
     """Message de log standardisé."""
+
     service: str
     level: str
     message: str

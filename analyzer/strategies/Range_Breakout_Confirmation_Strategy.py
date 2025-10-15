@@ -12,115 +12,116 @@ logger = logging.getLogger(__name__)
 class Range_Breakout_Confirmation_Strategy(BaseStrategy):
     """
     Stratégie utilisant les breakouts de ranges (consolidation) avec confirmations multiples.
-    
+
     Un range breakout se produit quand le prix sort d'une zone de consolidation horizontale :
     - Range = zone entre support et résistance bien définis
     - Breakout = prix casse avec volume et momentum
     - Confirmation = reteste et confirme la cassure
-    
+
     Signaux générés:
     - BUY: Breakout au-dessus résistance + volume + momentum + confirmations
     - SELL: Breakout en-dessous support + volume + momentum + confirmations
     """
-    
+
     def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
         super().__init__(symbol, data, indicators)
         # Paramètres Range Breakout ASSOUPLIS selon données DB réelles
-        self.min_range_width = 0.008   # Largeur minimum (0.8%) - assoupli
-        self.max_range_width = 0.20   # Largeur maximum (20%) - élargi
+        self.min_range_width = 0.008  # Largeur minimum (0.8%) - assoupli
+        self.max_range_width = 0.20  # Largeur maximum (20%) - élargi
         self.breakout_threshold = 0.003  # Distance minimum (0.3%) - assoupli
         self.volume_breakout_threshold = 1.2  # Volume minimum (1.2x) - réaliste
-        self.retest_tolerance = 0.01   # Tolérance retest (1%) - élargi
-        self.min_confirmations = 2      # Maintenu mais avec seuils accessibles
-        
+        self.retest_tolerance = 0.01  # Tolérance retest (1%) - élargi
+        self.min_confirmations = 2  # Maintenu mais avec seuils accessibles
+
     def _get_current_values(self) -> Dict[str, Optional[float]]:
         """Récupère les valeurs actuelles des indicateurs pour range breakout."""
         return {
             # Support/Résistance pour définir le range
-            'support_levels': self.indicators.get('support_levels'),
-            'resistance_levels': self.indicators.get('resistance_levels'),
-            'nearest_support': self.indicators.get('nearest_support'),
-            'nearest_resistance': self.indicators.get('nearest_resistance'),
-            'support_strength': self.indicators.get('support_strength'),
-            'resistance_strength': self.indicators.get('resistance_strength'),
-            'break_probability': self.indicators.get('break_probability'),
+            "support_levels": self.indicators.get("support_levels"),
+            "resistance_levels": self.indicators.get("resistance_levels"),
+            "nearest_support": self.indicators.get("nearest_support"),
+            "nearest_resistance": self.indicators.get("nearest_resistance"),
+            "support_strength": self.indicators.get("support_strength"),
+            "resistance_strength": self.indicators.get("resistance_strength"),
+            "break_probability": self.indicators.get("break_probability"),
             # Bollinger Bands pour range identification
-            'bb_upper': self.indicators.get('bb_upper'),
-            'bb_lower': self.indicators.get('bb_lower'),
-            'bb_width': self.indicators.get('bb_width'),
-            'bb_position': self.indicators.get('bb_position'),
-            'bb_squeeze': self.indicators.get('bb_squeeze'),
-            'bb_expansion': self.indicators.get('bb_expansion'),
-            'bb_breakout_direction': self.indicators.get('bb_breakout_direction'),
+            "bb_upper": self.indicators.get("bb_upper"),
+            "bb_lower": self.indicators.get("bb_lower"),
+            "bb_width": self.indicators.get("bb_width"),
+            "bb_position": self.indicators.get("bb_position"),
+            "bb_squeeze": self.indicators.get("bb_squeeze"),
+            "bb_expansion": self.indicators.get("bb_expansion"),
+            "bb_breakout_direction": self.indicators.get("bb_breakout_direction"),
             # Volume pour confirmation breakout
-            'volume_ratio': self.indicators.get('volume_ratio'),
-            'volume_quality_score': self.indicators.get('volume_quality_score'),
-            'trade_intensity': self.indicators.get('trade_intensity'),
-            'relative_volume': self.indicators.get('relative_volume'),
-            'volume_buildup_periods': self.indicators.get('volume_buildup_periods'),
-            'volume_spike_multiplier': self.indicators.get('volume_spike_multiplier'),
+            "volume_ratio": self.indicators.get("volume_ratio"),
+            "volume_quality_score": self.indicators.get("volume_quality_score"),
+            "trade_intensity": self.indicators.get("trade_intensity"),
+            "relative_volume": self.indicators.get("relative_volume"),
+            "volume_buildup_periods": self.indicators.get("volume_buildup_periods"),
+            "volume_spike_multiplier": self.indicators.get("volume_spike_multiplier"),
             # Momentum pour confirmer la direction
-            'momentum_score': self.indicators.get('momentum_score'),
-            'rsi_14': self.indicators.get('rsi_14'),
-            'stoch_k': self.indicators.get('stoch_k'),
-            'stoch_d': self.indicators.get('stoch_d'),
-            'williams_r': self.indicators.get('williams_r'),
-            'cci_20': self.indicators.get('cci_20'),
+            "momentum_score": self.indicators.get("momentum_score"),
+            "rsi_14": self.indicators.get("rsi_14"),
+            "stoch_k": self.indicators.get("stoch_k"),
+            "stoch_d": self.indicators.get("stoch_d"),
+            "williams_r": self.indicators.get("williams_r"),
+            "cci_20": self.indicators.get("cci_20"),
             # ADX pour force du breakout
-            'adx_14': self.indicators.get('adx_14'),
-            'plus_di': self.indicators.get('plus_di'),
-            'minus_di': self.indicators.get('minus_di'),
-            'trend_strength': self.indicators.get('trend_strength'),
-            'directional_bias': self.indicators.get('directional_bias'),
+            "adx_14": self.indicators.get("adx_14"),
+            "plus_di": self.indicators.get("plus_di"),
+            "minus_di": self.indicators.get("minus_di"),
+            "trend_strength": self.indicators.get("trend_strength"),
+            "directional_bias": self.indicators.get("directional_bias"),
             # ATR pour volatilité et targets
-            'atr_14': self.indicators.get('atr_14'),
-            'atr_percentile': self.indicators.get('atr_percentile'),
-            'volatility_regime': self.indicators.get('volatility_regime'),
+            "atr_14": self.indicators.get("atr_14"),
+            "atr_percentile": self.indicators.get("atr_percentile"),
+            "volatility_regime": self.indicators.get("volatility_regime"),
             # VWAP levels
-            'vwap_10': self.indicators.get('vwap_10'),
-            'vwap_upper_band': self.indicators.get('vwap_upper_band'),
-            'vwap_lower_band': self.indicators.get('vwap_lower_band'),
-            'anchored_vwap': self.indicators.get('anchored_vwap'),
+            "vwap_10": self.indicators.get("vwap_10"),
+            "vwap_upper_band": self.indicators.get("vwap_upper_band"),
+            "vwap_lower_band": self.indicators.get("vwap_lower_band"),
+            "anchored_vwap": self.indicators.get("anchored_vwap"),
             # Market context
-            'market_regime': self.indicators.get('market_regime'),
-            'regime_strength': self.indicators.get('regime_strength'),
-            'regime_confidence': self.indicators.get('regime_confidence'),
+            "market_regime": self.indicators.get("market_regime"),
+            "regime_strength": self.indicators.get("regime_strength"),
+            "regime_confidence": self.indicators.get("regime_confidence"),
             # Pattern recognition
-            'pattern_detected': self.indicators.get('pattern_detected'),
-            'pattern_confidence': self.indicators.get('pattern_confidence'),
-            'signal_strength': self.indicators.get('signal_strength'),
-            'confluence_score': self.indicators.get('confluence_score')
+            "pattern_detected": self.indicators.get("pattern_detected"),
+            "pattern_confidence": self.indicators.get("pattern_confidence"),
+            "signal_strength": self.indicators.get("signal_strength"),
+            "confluence_score": self.indicators.get("confluence_score"),
         }
-        
+
     def _get_current_price(self) -> Optional[float]:
         """Récupère le prix actuel depuis les données OHLCV."""
         try:
-            if self.data and 'close' in self.data and self.data['close']:
-                return float(self.data['close'][-1])
+            if self.data and "close" in self.data and self.data["close"]:
+                return float(self.data["close"][-1])
         except (IndexError, ValueError, TypeError):
             pass
         return None
-        
+
     def _get_recent_highs_lows(self) -> Optional[Dict[str, float]]:
         """Récupère les highs/lows récents pour analyser le range."""
         try:
-            if self.data and all(k in self.data for k in ['high', 'low', 'close']):
-                if len(self.data['high']) >= 10 and len(self.data['low']) >= 10:
-                    recent_highs = [float(h) for h in self.data['high'][-10:]]
-                    recent_lows = [float(l) for l in self.data['low'][-10:]]
-                    recent_closes = [float(c) for c in self.data['close'][-5:]]
-                    
+            if self.data and all(k in self.data for k in ["high", "low", "close"]):
+                if len(self.data["high"]) >= 10 and len(self.data["low"]) >= 10:
+                    recent_highs = [float(h) for h in self.data["high"][-10:]]
+                    recent_lows = [float(l) for l in self.data["low"][-10:]]
+                    recent_closes = [float(c) for c in self.data["close"][-5:]]
+
                     return {
-                        'recent_high': max(recent_highs),
-                        'recent_low': min(recent_lows),
-                        'avg_recent_high': sum(recent_highs[-5:]) / 5,
-                        'avg_recent_low': sum(recent_lows[-5:]) / 5,
-                        'price_trend': recent_closes[-1] - recent_closes[0]  # Direction sur 5 périodes
+                        "recent_high": max(recent_highs),
+                        "recent_low": min(recent_lows),
+                        "avg_recent_high": sum(recent_highs[-5:]) / 5,
+                        "avg_recent_low": sum(recent_lows[-5:]) / 5,
+                        "price_trend": recent_closes[-1]
+                        - recent_closes[0],  # Direction sur 5 périodes
                     }
         except (IndexError, ValueError, TypeError):
             pass
         return None
-        
+
     def generate_signal(self) -> Dict[str, Any]:
         """
         Génère un signal basé sur les breakouts de range confirmés.
@@ -131,22 +132,22 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": "Données insuffisantes",
-                "metadata": {"strategy": self.name}
+                "metadata": {"strategy": self.name},
             }
-            
+
         values = self._get_current_values()
         current_price = self._get_current_price()
         price_data = self._get_recent_highs_lows()
-        
+
         if current_price is None or price_data is None:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": "Prix ou données historiques non disponibles",
-                "metadata": {"strategy": self.name}
+                "metadata": {"strategy": self.name},
             }
-            
+
         # Identifier le range principal
         range_info = self._identify_range(values, current_price, price_data)
         if range_info is None:
@@ -155,262 +156,308 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": "Aucun range clair identifié",
-                "metadata": {"strategy": self.name}
+                "metadata": {"strategy": self.name},
             }
-            
+
         # Analyser le breakout
-        breakout_analysis = self._analyze_breakout(values, current_price, range_info, price_data)
+        breakout_analysis = self._analyze_breakout(
+            values, current_price, range_info, price_data
+        )
         if breakout_analysis is None:
             return {
                 "side": None,
                 "confidence": 0.0,
                 "strength": "weak",
                 "reason": "Aucun breakout détecté",
-                "metadata": {"strategy": self.name}
+                "metadata": {"strategy": self.name},
             }
-            
-        return self._create_breakout_signal(values, current_price, range_info, breakout_analysis, price_data)
-        
-    def _identify_range(self, values: Dict[str, Any], current_price: float, price_data: Dict[str, float]) -> Optional[Dict[str, Any]]:
+
+        return self._create_breakout_signal(
+            values, current_price, range_info, breakout_analysis, price_data
+        )
+
+    def _identify_range(
+        self, values: Dict[str, Any], current_price: float, price_data: Dict[str, float]
+    ) -> Optional[Dict[str, Any]]:
         """Identifie un range trading valide."""
         range_info = None
-        
+
         # Méthode 1: Support/Résistance avec FALLBACK BB - CORRECTION MAJEURE
-        nearest_support = values.get('nearest_support')
-        nearest_resistance = values.get('nearest_resistance')
-        
+        nearest_support = values.get("nearest_support")
+        nearest_resistance = values.get("nearest_resistance")
+
         # Support/Résistance PURS - plus de fallback BB conceptuel
-        
+
         if nearest_support is not None and nearest_resistance is not None:
             try:
                 support_val = float(nearest_support)
                 resistance_val = float(nearest_resistance)
-                
-                if support_val < resistance_val and support_val > 0:  # Vérification logique + division par zéro
+
+                if (
+                    support_val < resistance_val and support_val > 0
+                ):  # Vérification logique + division par zéro
                     range_width = (resistance_val - support_val) / support_val
-                    
+
                     if self.min_range_width <= range_width <= self.max_range_width:
                         # Vérifier que le prix est dans le range ou près des bords
                         price_in_range = support_val <= current_price <= resistance_val
-                        near_edges = (abs(current_price - support_val) / current_price <= 0.01 or
-                                    abs(current_price - resistance_val) / current_price <= 0.01)
-                        
+                        near_edges = (
+                            abs(current_price - support_val) / current_price <= 0.01
+                            or abs(current_price - resistance_val) / current_price
+                            <= 0.01
+                        )
+
                         # CORRECTION: Conditions plus permissives pour prix dans range
-                        price_in_range = support_val * 0.98 <= current_price <= resistance_val * 1.02  # 2% tolérance
-                        near_edges = (abs(current_price - support_val) / current_price <= 0.02 or
-                                    abs(current_price - resistance_val) / current_price <= 0.02)  # 2% tolérance
-                        
+                        price_in_range = (
+                            support_val * 0.98 <= current_price <= resistance_val * 1.02
+                        )  # 2% tolérance
+                        near_edges = (
+                            abs(current_price - support_val) / current_price <= 0.02
+                            or abs(current_price - resistance_val) / current_price
+                            <= 0.02
+                        )  # 2% tolérance
+
                         if price_in_range or near_edges:
                             range_info = {
-                                'method': 'support_resistance_pure',
-                                'support': support_val,
-                                'resistance': resistance_val,
-                                'width': range_width,
-                                'mid_point': (support_val + resistance_val) / 2
+                                "method": "support_resistance_pure",
+                                "support": support_val,
+                                "resistance": resistance_val,
+                                "width": range_width,
+                                "mid_point": (support_val + resistance_val) / 2,
                             }
             except (ValueError, TypeError):
                 pass
-                
+
         # Méthode 2: Bollinger Bands comme range - FALLBACK COMPLET AMÉLIORÉ
         if range_info is None:
-            bb_upper = values.get('bb_upper')
-            bb_lower = values.get('bb_lower')
-            bb_squeeze = values.get('bb_squeeze')
-            
+            bb_upper = values.get("bb_upper")
+            bb_lower = values.get("bb_lower")
+            bb_squeeze = values.get("bb_squeeze")
+
             # CORRECTION: Accepter BB même sans squeeze obligatoire
             if all(x is not None for x in [bb_upper, bb_lower]):
                 try:
                     upper_val = float(bb_upper)
                     lower_val = float(bb_lower)
-                    
+
                     if lower_val > 0 and upper_val > lower_val:
                         range_width = (upper_val - lower_val) / lower_val
-                        
+
                         # BB range avec seuils réalistes
                         if 0.005 <= range_width <= 0.10:  # Entre 0.5% et 10%
                             range_info = {
-                                'method': 'bollinger_bands_separate',
-                                'support': lower_val,
-                                'resistance': upper_val,
-                                'width': range_width,
-                                'strength': 'STATISTICAL',
-                                'mid_point': (lower_val + upper_val) / 2,
-                                'note': 'Statistical range - different from S/R levels'
+                                "method": "bollinger_bands_separate",
+                                "support": lower_val,
+                                "resistance": upper_val,
+                                "width": range_width,
+                                "strength": "STATISTICAL",
+                                "mid_point": (lower_val + upper_val) / 2,
+                                "note": "Statistical range - different from S/R levels",
                             }
                 except (ValueError, TypeError):
                     pass
-                    
+
         # Méthode 3: Highs/Lows récents
         if range_info is None:
-            recent_high = price_data.get('recent_high')
-            recent_low = price_data.get('recent_low')
-            
+            recent_high = price_data.get("recent_high")
+            recent_low = price_data.get("recent_low")
+
             if recent_high is not None and recent_low is not None:
                 range_width = (recent_high - recent_low) / recent_low
-                
+
                 if self.min_range_width <= range_width <= self.max_range_width:
                     # Vérifier que les prix récents restent dans ce range
-                    price_stability = abs(price_data.get('price_trend', 0)) < (recent_high - recent_low) * 0.3
-                    
+                    price_stability = (
+                        abs(price_data.get("price_trend", 0))
+                        < (recent_high - recent_low) * 0.3
+                    )
+
                     if price_stability:
                         range_info = {
-                            'method': 'recent_highs_lows',
-                            'support': recent_low,
-                            'resistance': recent_high,
-                            'width': range_width,
-                            'mid_point': (recent_high + recent_low) / 2
+                            "method": "recent_highs_lows",
+                            "support": recent_low,
+                            "resistance": recent_high,
+                            "width": range_width,
+                            "mid_point": (recent_high + recent_low) / 2,
                         }
-                        
+
         return range_info
-        
-    def _analyze_breakout(self, values: Dict[str, Any], current_price: float, 
-                         range_info: Dict[str, Any], price_data: Dict[str, float]) -> Optional[Dict[str, Any]]:
+
+    def _analyze_breakout(
+        self,
+        values: Dict[str, Any],
+        current_price: float,
+        range_info: Dict[str, Any],
+        price_data: Dict[str, float],
+    ) -> Optional[Dict[str, Any]]:
         """Analyse si un breakout valide est en cours."""
-        support = range_info['support']
-        resistance = range_info['resistance']
-        
+        support = range_info["support"]
+        resistance = range_info["resistance"]
+
         # Déterminer le type de breakout
         breakout_type = None
         breakout_level = None
         breakout_distance = 0
-        
+
         # Breakout haussier (au-dessus résistance)
         if current_price > resistance and resistance > 0:
             breakout_distance = (current_price - resistance) / resistance
             if breakout_distance >= self.breakout_threshold:
                 breakout_type = "BULLISH"
                 breakout_level = resistance
-                
-        # Breakout baissier (en-dessous support)  
+
+        # Breakout baissier (en-dessous support)
         elif current_price < support:
             breakout_distance = (support - current_price) / current_price
             if breakout_distance >= self.breakout_threshold:
                 breakout_type = "BEARISH"
                 breakout_level = support
-                
+
         if breakout_type is None:
             return None
-            
+
         # Vérifier les confirmations du breakout
-        confirmations = self._check_breakout_confirmations(values, breakout_type, current_price)
-        
+        confirmations = self._check_breakout_confirmations(
+            values, breakout_type, current_price
+        )
+
         # Vérifier confirmations
         confirmed_count = sum(confirmations.values())
         if confirmed_count >= self.min_confirmations:
             return {
-                'type': breakout_type,
-                'level': breakout_level,
-                'distance': breakout_distance,
-                'confirmations': confirmations,
-                'confirmed_count': confirmed_count
+                "type": breakout_type,
+                "level": breakout_level,
+                "distance": breakout_distance,
+                "confirmations": confirmations,
+                "confirmed_count": confirmed_count,
             }
-            
+
         return None
-        
-    def _check_breakout_confirmations(self, values: Dict[str, Any], breakout_type: str, current_price: float) -> Dict[str, bool]:
+
+    def _check_breakout_confirmations(
+        self, values: Dict[str, Any], breakout_type: str, current_price: float
+    ) -> Dict[str, bool]:
         """Vérifie les confirmations du breakout."""
         confirmations = {
-            'volume_confirmed': False,
-            'momentum_confirmed': False,
-            'trend_confirmed': False,
-            'pattern_confirmed': False
+            "volume_confirmed": False,
+            "momentum_confirmed": False,
+            "trend_confirmed": False,
+            "pattern_confirmed": False,
         }
-        
+
         # Confirmation Volume
-        volume_ratio = values.get('volume_ratio')
+        volume_ratio = values.get("volume_ratio")
         if volume_ratio is not None:
             try:
                 vol_ratio = float(volume_ratio)
                 if vol_ratio >= self.volume_breakout_threshold:
-                    confirmations['volume_confirmed'] = True
+                    confirmations["volume_confirmed"] = True
             except (ValueError, TypeError):
                 pass
-                
+
         # Confirmation Momentum
-        momentum_score = values.get('momentum_score')
-        rsi_14 = values.get('rsi_14')
-        
+        momentum_score = values.get("momentum_score")
+        rsi_14 = values.get("rsi_14")
+
         if momentum_score is not None:
             try:
                 momentum = float(momentum_score)
                 # Format 0-100, 50=neutre - SEUILS RÉALISTES selon DB
-                if breakout_type == "BULLISH" and momentum > 50.5:  # 18% des cas (P90=50.8)
-                    confirmations['momentum_confirmed'] = True
-                elif breakout_type == "BEARISH" and momentum < 49.5:  # 18% des cas (P10=49.4)
-                    confirmations['momentum_confirmed'] = True
+                if (
+                    breakout_type == "BULLISH" and momentum > 50.5
+                ):  # 18% des cas (P90=50.8)
+                    confirmations["momentum_confirmed"] = True
+                elif (
+                    breakout_type == "BEARISH" and momentum < 49.5
+                ):  # 18% des cas (P10=49.4)
+                    confirmations["momentum_confirmed"] = True
             except (ValueError, TypeError):
                 pass
-                
+
         # RSI comme confirmation momentum additionnelle
-        if rsi_14 is not None and not confirmations['momentum_confirmed']:
+        if rsi_14 is not None and not confirmations["momentum_confirmed"]:
             try:
                 rsi = float(rsi_14)
-                if breakout_type == "BULLISH" and 50 < rsi < 75:  # Zone favorable sans surachat
-                    confirmations['momentum_confirmed'] = True
-                elif breakout_type == "BEARISH" and 25 < rsi < 50:  # Zone favorable sans survente
-                    confirmations['momentum_confirmed'] = True
+                if (
+                    breakout_type == "BULLISH" and 50 < rsi < 75
+                ):  # Zone favorable sans surachat
+                    confirmations["momentum_confirmed"] = True
+                elif (
+                    breakout_type == "BEARISH" and 25 < rsi < 50
+                ):  # Zone favorable sans survente
+                    confirmations["momentum_confirmed"] = True
             except (ValueError, TypeError):
                 pass
-                
+
         # Confirmation Trend (ADX)
-        adx_14 = values.get('adx_14')
-        plus_di = values.get('plus_di')
-        minus_di = values.get('minus_di')
-        
+        adx_14 = values.get("adx_14")
+        plus_di = values.get("plus_di")
+        minus_di = values.get("minus_di")
+
         if all(x is not None for x in [adx_14, plus_di, minus_di]):
             try:
                 adx = float(adx_14) if adx_14 is not None else 0.0
                 plus_val = float(plus_di) if plus_di is not None else 0.0
                 minus_val = float(minus_di) if minus_di is not None else 0.0
-                
+
                 if adx > 20:  # Tendance confirmée (46% des cas au lieu de 22%)
                     if breakout_type == "BULLISH" and plus_val > minus_val:
-                        confirmations['trend_confirmed'] = True
+                        confirmations["trend_confirmed"] = True
                     elif breakout_type == "BEARISH" and minus_val > plus_val:
-                        confirmations['trend_confirmed'] = True
+                        confirmations["trend_confirmed"] = True
             except (ValueError, TypeError):
                 pass
-                
+
         # Pattern confirmation
-        bb_breakout_direction = values.get('bb_breakout_direction')
+        bb_breakout_direction = values.get("bb_breakout_direction")
         if bb_breakout_direction is not None:
-            if (breakout_type == "BULLISH" and bb_breakout_direction == "UP") or \
-               (breakout_type == "BEARISH" and bb_breakout_direction == "DOWN"):
-                confirmations['pattern_confirmed'] = True
-                
+            if (breakout_type == "BULLISH" and bb_breakout_direction == "UP") or (
+                breakout_type == "BEARISH" and bb_breakout_direction == "DOWN"
+            ):
+                confirmations["pattern_confirmed"] = True
+
         return confirmations
-        
-    def _create_breakout_signal(self, values: Dict[str, Any], current_price: float,
-                               range_info: Dict[str, Any], breakout_analysis: Dict[str, Any],
-                               price_data: Dict[str, float]) -> Dict[str, Any]:
+
+    def _create_breakout_signal(
+        self,
+        values: Dict[str, Any],
+        current_price: float,
+        range_info: Dict[str, Any],
+        breakout_analysis: Dict[str, Any],
+        price_data: Dict[str, float],
+    ) -> Dict[str, Any]:
         """Crée le signal final pour le breakout."""
-        breakout_type = breakout_analysis['type']
-        breakout_level = breakout_analysis['level']
-        confirmations = breakout_analysis['confirmations']
-        
+        breakout_type = breakout_analysis["type"]
+        breakout_level = breakout_analysis["level"]
+        confirmations = breakout_analysis["confirmations"]
+
         signal_side = "BUY" if breakout_type == "BULLISH" else "SELL"
         base_confidence = 0.65  # Standardisé à 0.65 pour équité avec autres stratégies
         confidence_boost = 0.0
-        
+
         # Construction de la raison
-        direction = "au-dessus résistance" if breakout_type == "BULLISH" else "en-dessous support"
+        direction = (
+            "au-dessus résistance"
+            if breakout_type == "BULLISH"
+            else "en-dessous support"
+        )
         reason = f"Breakout {direction} {breakout_level:.4f} - distance {breakout_analysis['distance']:.3f}"
-        
+
         # Bonus selon les confirmations
         confirmed_count = sum(confirmations.values())
         confidence_boost += confirmed_count * 0.1  # +10% par confirmation
-        
-        if confirmations['volume_confirmed']:
+
+        if confirmations["volume_confirmed"]:
             reason += " + volume confirmé"
-        if confirmations['momentum_confirmed']:
+        if confirmations["momentum_confirmed"]:
             reason += " + momentum confirmé"
-        if confirmations['trend_confirmed']:
+        if confirmations["trend_confirmed"]:
             reason += " + tendance confirmée"
-        if confirmations['pattern_confirmed']:
+        if confirmations["pattern_confirmed"]:
             reason += " + pattern confirmé"
-            
+
         # Bonus selon largeur du range - SEUILS AJUSTÉS
-        range_width = range_info['width']
+        range_width = range_info["width"]
         if range_width > 0.06:  # Range large (>6%)
             confidence_boost += 0.18
             reason += " - range très large"
@@ -423,45 +470,58 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
         else:
             confidence_boost += 0.03  # Range étroit - bonus minimal
             reason += " - range étroit"
-            
+
         # Confirmation additionnelle avec VWAP
-        vwap_10 = values.get('vwap_10')
+        vwap_10 = values.get("vwap_10")
         if vwap_10 is not None:
             try:
                 vwap = float(vwap_10)
-                if (signal_side == "BUY" and current_price > vwap) or \
-                   (signal_side == "SELL" and current_price < vwap):
+                if (signal_side == "BUY" and current_price > vwap) or (
+                    signal_side == "SELL" and current_price < vwap
+                ):
                     confidence_boost += 0.08
                     reason += " + VWAP aligné"
             except (ValueError, TypeError):
                 pass
-                
+
         # CORRECTION MAGISTRALE: ATR volatilité avec psychologie des breakouts
-        atr_percentile = values.get('atr_percentile')
-        volatility_regime = values.get('volatility_regime')
-        
+        atr_percentile = values.get("atr_percentile")
+        volatility_regime = values.get("volatility_regime")
+
         if atr_percentile is not None:
             try:
                 atr_percentile = float(atr_percentile)
-                
+
                 if signal_side == "BUY":
                     # Breakout haussier : volatilité contrôlée idéale, haute volatilité = piège
                     if 15 <= atr_percentile <= 30:  # Zone idéale compression/expansion
                         confidence_boost += 0.18
-                        reason += f" + compression idéale breakout ({atr_percentile:.0f}%)"
+                        reason += (
+                            f" + compression idéale breakout ({atr_percentile:.0f}%)"
+                        )
                     elif 30 < atr_percentile <= 50:  # Volatilité normale pour breakout
                         confidence_boost += 0.12
-                        reason += f" + volatilité normale breakout ({atr_percentile:.0f}%)"
+                        reason += (
+                            f" + volatilité normale breakout ({atr_percentile:.0f}%)"
+                        )
                     elif 50 < atr_percentile <= 70:  # Volatilité modérée à élevée
                         confidence_boost += 0.06
-                        reason += f" + volatilité modérée breakout ({atr_percentile:.0f}%)"
-                    elif 75 < atr_percentile <= 90:  # Volatilité très élevée = risque faux breakout
+                        reason += (
+                            f" + volatilité modérée breakout ({atr_percentile:.0f}%)"
+                        )
+                    elif (
+                        75 < atr_percentile <= 90
+                    ):  # Volatilité très élevée = risque faux breakout
                         confidence_boost -= 0.10
-                        reason += f" mais volatilité élevée risque ({atr_percentile:.0f}%)"
+                        reason += (
+                            f" mais volatilité élevée risque ({atr_percentile:.0f}%)"
+                        )
                     else:  # atr_percentile > 90 : Volatilité extrême = piège probable
                         confidence_boost -= 0.18
-                        reason += f" mais volatilité extrême piège ({atr_percentile:.0f}%)"
-                        
+                        reason += (
+                            f" mais volatilité extrême piège ({atr_percentile:.0f}%)"
+                        )
+
                 else:  # SELL
                     # Breakdown baissier : peut profiter de volatilité élevée (panique)
                     if atr_percentile < 25:  # Volatilité très faible = breakdown faible
@@ -469,48 +529,61 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
                         reason += f" + breakdown contrôlé ({atr_percentile:.0f}%)"
                     elif 25 <= atr_percentile <= 60:  # Volatilité normale à modérée
                         confidence_boost += 0.12
-                        reason += f" + volatilité favorable breakdown ({atr_percentile:.0f}%)"
-                    elif 60 < atr_percentile <= 85:  # Volatilité élevée = panique favorable
+                        reason += (
+                            f" + volatilité favorable breakdown ({atr_percentile:.0f}%)"
+                        )
+                    elif (
+                        60 < atr_percentile <= 85
+                    ):  # Volatilité élevée = panique favorable
                         confidence_boost += 0.16
-                        reason += f" + volatilité élevée panique ({atr_percentile:.0f}%)"
+                        reason += (
+                            f" + volatilité élevée panique ({atr_percentile:.0f}%)"
+                        )
                     else:  # atr_percentile > 85 : Volatilité extrême = continuation baissière forte
                         confidence_boost += 0.20
                         reason += f" + volatilité extrême continuation ({atr_percentile:.0f}%)"
-                        
+
             except (ValueError, TypeError):
                 pass
-                
+
         # Market regime avec REJET des contradictions fortes
-        market_regime = values.get('market_regime')
-        regime_strength = values.get('regime_strength')
-        bb_squeeze = values.get('bb_squeeze')
-        
+        market_regime = values.get("market_regime")
+        regime_strength = values.get("regime_strength")
+        bb_squeeze = values.get("bb_squeeze")
+
         # REJET regime contradictoire fort
         if market_regime is not None:
-            if (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or \
-               (signal_side == "SELL" and market_regime == "TRENDING_BULL"):
+            if (signal_side == "BUY" and market_regime == "TRENDING_BEAR") or (
+                signal_side == "SELL" and market_regime == "TRENDING_BULL"
+            ):
                 return {
                     "side": None,
                     "confidence": 0.0,
                     "strength": "weak",
                     "reason": f"Rejet breakout {signal_side}: régime contradictoire ({market_regime})",
-                    "metadata": {"strategy": self.name, "market_regime": market_regime}
+                    "metadata": {"strategy": self.name, "market_regime": market_regime},
                 }
-        
+
         if market_regime is not None:
             try:
-                regime_str = float(regime_strength) if regime_strength is not None else 0.5
+                regime_str = (
+                    float(regime_strength) if regime_strength is not None else 0.5
+                )
                 squeeze_val = bb_squeeze if bb_squeeze is not None else False
-                
+
                 if signal_side == "BUY":
                     # Breakout haussier : plus la consolidation est forte/longue, plus le breakout est puissant
                     if market_regime == "RANGING":
                         if regime_str > 0.8 and squeeze_val:  # Range parfait + squeeze
                             confidence_boost += 0.25
-                            reason += f" + consolidation parfaite breakout ({regime_str:.2f})"
+                            reason += (
+                                f" + consolidation parfaite breakout ({regime_str:.2f})"
+                            )
                         elif regime_str > 0.6:  # Range fort
                             confidence_boost += 0.20
-                            reason += f" + consolidation forte breakout ({regime_str:.2f})"
+                            reason += (
+                                f" + consolidation forte breakout ({regime_str:.2f})"
+                            )
                         elif regime_str > 0.4:  # Range modéré
                             confidence_boost += 0.15
                             reason += f" + consolidation modérée ({regime_str:.2f})"
@@ -527,35 +600,43 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
                     elif market_regime == "VOLATILE":
                         confidence_boost -= 0.08  # Chaos = faux breakouts fréquents
                         reason += " mais marché chaotique défavorable"
-                        
+
                 else:  # SELL
                     # Breakdown baissier : efficace en ranging et continuation trend baissier
                     if market_regime == "RANGING":
-                        if regime_str > 0.7 and squeeze_val:  # Range + squeeze = breakdown puissant
+                        if (
+                            regime_str > 0.7 and squeeze_val
+                        ):  # Range + squeeze = breakdown puissant
                             confidence_boost += 0.22
                             reason += f" + consolidation parfaite breakdown ({regime_str:.2f})"
                         elif regime_str > 0.5:  # Range modéré à fort
                             confidence_boost += 0.18
-                            reason += f" + consolidation forte breakdown ({regime_str:.2f})"
+                            reason += (
+                                f" + consolidation forte breakdown ({regime_str:.2f})"
+                            )
                         else:  # Range faible
                             confidence_boost += 0.12
                             reason += f" + consolidation breakdown ({regime_str:.2f})"
                     elif market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
                         if regime_str > 0.6:  # Trend fort = continuation baissière
                             confidence_boost += 0.15
-                            reason += f" + continuation baissière forte ({regime_str:.2f})"
+                            reason += (
+                                f" + continuation baissière forte ({regime_str:.2f})"
+                            )
                         else:  # Trend faible
                             confidence_boost += 0.08
                             reason += f" + continuation baissière ({regime_str:.2f})"
                     elif market_regime == "VOLATILE":
-                        confidence_boost += 0.05  # Chaos moins défavorable aux breakdowns
+                        confidence_boost += (
+                            0.05  # Chaos moins défavorable aux breakdowns
+                        )
                         reason += " + marché chaotique neutre breakdown"
-                        
+
             except (ValueError, TypeError):
                 pass
-            
+
         # Confluence score
-        confluence_score = values.get('confluence_score')
+        confluence_score = values.get("confluence_score")
         if confluence_score is not None:
             try:
                 confluence = float(confluence_score)
@@ -564,10 +645,12 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
                     reason += " + confluence élevée"
             except (ValueError, TypeError):
                 pass
-                
-        confidence = min(1.0, self.calculate_confidence(base_confidence, 1 + confidence_boost))
+
+        confidence = min(
+            1.0, self.calculate_confidence(base_confidence, 1 + confidence_boost)
+        )
         strength = self.get_strength_from_confidence(confidence)
-        
+
         return {
             "side": signal_side,
             "confidence": confidence,
@@ -579,45 +662,47 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
                 "current_price": current_price,
                 "breakout_type": breakout_type,
                 "breakout_level": breakout_level,
-                "breakout_distance": breakout_analysis['distance'],
-                "range_method": range_info['method'],
-                "range_support": range_info['support'],
-                "range_resistance": range_info['resistance'],
-                "range_width": range_info['width'],
-                "range_mid_point": range_info['mid_point'],
+                "breakout_distance": breakout_analysis["distance"],
+                "range_method": range_info["method"],
+                "range_support": range_info["support"],
+                "range_resistance": range_info["resistance"],
+                "range_width": range_info["width"],
+                "range_mid_point": range_info["mid_point"],
                 "confirmations": confirmations,
                 "confirmed_count": confirmed_count,
-                "volume_ratio": values.get('volume_ratio'),
-                "momentum_score": values.get('momentum_score'),
-                "adx_14": values.get('adx_14'),
-                "rsi_14": values.get('rsi_14'),
-                "bb_breakout_direction": values.get('bb_breakout_direction'),
-                "market_regime": values.get('market_regime'),
-                "confluence_score": values.get('confluence_score')
-            }
+                "volume_ratio": values.get("volume_ratio"),
+                "momentum_score": values.get("momentum_score"),
+                "adx_14": values.get("adx_14"),
+                "rsi_14": values.get("rsi_14"),
+                "bb_breakout_direction": values.get("bb_breakout_direction"),
+                "market_regime": values.get("market_regime"),
+                "confluence_score": values.get("confluence_score"),
+            },
         }
-        
+
     def validate_data(self) -> bool:
         """Valide que les données nécessaires pour range breakout sont présentes."""
         if not super().validate_data():
             return False
-            
+
         # Au minimum, il faut des niveaux ou des Bollinger Bands ou des données OHLC
         required_any = [
-            ['nearest_support', 'nearest_resistance'],
-            ['bb_upper', 'bb_lower'],
+            ["nearest_support", "nearest_resistance"],
+            ["bb_upper", "bb_lower"],
             # Les données OHLC sont vérifiées dans super().validate_data()
         ]
-        
+
         for group in required_any:
-            if all(indicator in self.indicators and self.indicators[indicator] is not None 
-                   for indicator in group):
+            if all(
+                indicator in self.indicators and self.indicators[indicator] is not None
+                for indicator in group
+            ):
                 return True
-                
+
         # Si on a les données OHLC, on peut construire le range
-        if self.data and all(k in self.data for k in ['high', 'low', 'close']):
-            if all(len(self.data[k]) >= 10 for k in ['high', 'low', 'close']):
+        if self.data and all(k in self.data for k in ["high", "low", "close"]):
+            if all(len(self.data[k]) >= 10 for k in ["high", "low", "close"]):
                 return True
-                
+
         logger.warning(f"{self.name}: Aucun indicateur de range disponible")
         return False

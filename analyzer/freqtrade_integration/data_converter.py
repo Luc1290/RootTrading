@@ -19,7 +19,7 @@ class DataConverter:
     def root_to_dataframe(
         data: Dict[str, Any],
         indicators: Dict[str, Any],
-        historical_data: Optional[List[Dict]] = None
+        historical_data: Optional[List[Dict]] = None,
     ) -> pd.DataFrame:
         """
         Convertit données ROOT (dict) → DataFrame Freqtrade.
@@ -39,12 +39,12 @@ class DataConverter:
 
                 # Normaliser les noms de colonnes
                 column_mapping = {
-                    'timestamp': 'date',
-                    'open_price': 'open',
-                    'high_price': 'high',
-                    'low_price': 'low',
-                    'close_price': 'close',
-                    'volume': 'volume'
+                    "timestamp": "date",
+                    "open_price": "open",
+                    "high_price": "high",
+                    "low_price": "low",
+                    "close_price": "close",
+                    "volume": "volume",
                 }
 
                 for old_col, new_col in column_mapping.items():
@@ -53,20 +53,24 @@ class DataConverter:
 
             else:
                 # Créer DataFrame à partir d'un seul point de données
-                df = pd.DataFrame([{
-                    'date': data.get('timestamp', datetime.now()),
-                    'open': data.get('open_price', 0),
-                    'high': data.get('high_price', 0),
-                    'low': data.get('low_price', 0),
-                    'close': data.get('close_price', 0),
-                    'volume': data.get('volume', 0)
-                }])
+                df = pd.DataFrame(
+                    [
+                        {
+                            "date": data.get("timestamp", datetime.now()),
+                            "open": data.get("open_price", 0),
+                            "high": data.get("high_price", 0),
+                            "low": data.get("low_price", 0),
+                            "close": data.get("close_price", 0),
+                            "volume": data.get("volume", 0),
+                        }
+                    ]
+                )
 
             # Convertir timestamp en datetime si nécessaire
-            if 'date' in df.columns:
-                if not pd.api.types.is_datetime64_any_dtype(df['date']):
-                    df['date'] = pd.to_datetime(df['date'])
-                df.set_index('date', inplace=True)
+            if "date" in df.columns:
+                if not pd.api.types.is_datetime64_any_dtype(df["date"]):
+                    df["date"] = pd.to_datetime(df["date"])
+                df.set_index("date", inplace=True)
 
             # Ajouter les indicateurs au DataFrame
             if indicators:
@@ -85,12 +89,11 @@ class DataConverter:
         except Exception as e:
             logger.error(f"Erreur conversion ROOT → DataFrame: {e}")
             # Retourner DataFrame vide avec structure minimale
-            return pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume'])
+            return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
 
     @staticmethod
     def dataframe_to_root(
-        df: pd.DataFrame,
-        symbol: str
+        df: pd.DataFrame, symbol: str
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
         """
         Convertit DataFrame Freqtrade → format ROOT (data + indicators).
@@ -110,17 +113,21 @@ class DataConverter:
             last_row = df.iloc[-1]
 
             # Colonnes OHLCV standard
-            ohlcv_columns = {'open', 'high', 'low', 'close', 'volume'}
+            ohlcv_columns = {"open", "high", "low", "close", "volume"}
 
             # Construire dict data
             data = {
-                'symbol': symbol,
-                'timestamp': last_row.name if isinstance(df.index, pd.DatetimeIndex) else datetime.now(),
-                'open_price': float(last_row.get('open', 0)),
-                'high_price': float(last_row.get('high', 0)),
-                'low_price': float(last_row.get('low', 0)),
-                'close_price': float(last_row.get('close', 0)),
-                'volume': float(last_row.get('volume', 0))
+                "symbol": symbol,
+                "timestamp": (
+                    last_row.name
+                    if isinstance(df.index, pd.DatetimeIndex)
+                    else datetime.now()
+                ),
+                "open_price": float(last_row.get("open", 0)),
+                "high_price": float(last_row.get("high", 0)),
+                "low_price": float(last_row.get("low", 0)),
+                "close_price": float(last_row.get("close", 0)),
+                "volume": float(last_row.get("volume", 0)),
             }
 
             # Construire dict indicators (toutes les colonnes sauf OHLCV)
@@ -132,7 +139,11 @@ class DataConverter:
                     if pd.isna(value):
                         indicators[col] = None
                     else:
-                        indicators[col] = float(value) if isinstance(value, (int, float, np.number)) else value
+                        indicators[col] = (
+                            float(value)
+                            if isinstance(value, (int, float, np.number))
+                            else value
+                        )
 
             return data, indicators
 
@@ -142,8 +153,7 @@ class DataConverter:
 
     @staticmethod
     def merge_historical_with_indicators(
-        historical_df: pd.DataFrame,
-        indicators: Dict[str, Any]
+        historical_df: pd.DataFrame, indicators: Dict[str, Any]
     ) -> pd.DataFrame:
         """
         Fusionne données historiques avec indicateurs calculés par ROOT.
@@ -191,7 +201,7 @@ class DataConverter:
         Returns:
             True si valide, False sinon
         """
-        required_columns = {'open', 'high', 'low', 'close', 'volume'}
+        required_columns = {"open", "high", "low", "close", "volume"}
 
         if df.empty:
             logger.error("DataFrame vide")
@@ -210,10 +220,7 @@ class DataConverter:
         return True
 
     @staticmethod
-    def resample_dataframe(
-        df: pd.DataFrame,
-        timeframe: str = '5m'
-    ) -> pd.DataFrame:
+    def resample_dataframe(df: pd.DataFrame, timeframe: str = "5m") -> pd.DataFrame:
         """
         Rééchantillonne un DataFrame vers une timeframe différente.
 
@@ -231,24 +238,38 @@ class DataConverter:
 
             # Mapping timeframe string → pandas offset
             timeframe_map = {
-                '1m': '1T', '5m': '5T', '15m': '15T', '30m': '30T',
-                '1h': '1H', '2h': '2H', '4h': '4H', '6h': '6H', '12h': '12H',
-                '1d': '1D', '1w': '1W'
+                "1m": "1T",
+                "5m": "5T",
+                "15m": "15T",
+                "30m": "30T",
+                "1h": "1H",
+                "2h": "2H",
+                "4h": "4H",
+                "6h": "6H",
+                "12h": "12H",
+                "1d": "1D",
+                "1w": "1W",
             }
 
             offset = timeframe_map.get(timeframe, timeframe)
 
             # Rééchantillonner OHLCV
-            resampled = df.resample(offset).agg({
-                'open': 'first',
-                'high': 'max',
-                'low': 'min',
-                'close': 'last',
-                'volume': 'sum'
-            })
+            resampled = df.resample(offset).agg(
+                {
+                    "open": "first",
+                    "high": "max",
+                    "low": "min",
+                    "close": "last",
+                    "volume": "sum",
+                }
+            )
 
             # Pour les indicateurs, prendre la dernière valeur
-            indicator_cols = [col for col in df.columns if col not in {'open', 'high', 'low', 'close', 'volume'}]
+            indicator_cols = [
+                col
+                for col in df.columns
+                if col not in {"open", "high", "low", "close", "volume"}
+            ]
             for col in indicator_cols:
                 resampled[col] = df[col].resample(offset).last()
 

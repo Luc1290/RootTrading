@@ -19,6 +19,7 @@ from .data_converter import DataConverter
 # Import conditionnel Freqtrade
 try:
     from freqtrade.strategy import IStrategy
+
     FREQTRADE_AVAILABLE = True
 except ImportError:
     FREQTRADE_AVAILABLE = False
@@ -42,8 +43,7 @@ class FreqtradeToRootAdapter:
         """
         if not FREQTRADE_AVAILABLE:
             raise ImportError(
-                "Freqtrade n'est pas installé. "
-                "Installez avec: pip install freqtrade"
+                "Freqtrade n'est pas installé. " "Installez avec: pip install freqtrade"
             )
 
         self.freqtrade_strategy_class = freqtrade_strategy_class
@@ -53,8 +53,7 @@ class FreqtradeToRootAdapter:
         self.ft_strategy_instance = freqtrade_strategy_class()
 
     def convert(
-        self,
-        confidence_mapping: Optional[Dict[str, float]] = None
+        self, confidence_mapping: Optional[Dict[str, float]] = None
     ) -> Type[BaseStrategy]:
         """
         Convertit la stratégie Freqtrade en stratégie ROOT.
@@ -72,10 +71,10 @@ class FreqtradeToRootAdapter:
         # Mapping par défaut
         if confidence_mapping is None:
             confidence_mapping = {
-                'very_strong': 0.85,
-                'strong': 0.7,
-                'moderate': 0.55,
-                'weak': 0.4
+                "very_strong": 0.85,
+                "strong": 0.7,
+                "moderate": 0.55,
+                "weak": 0.4,
             }
 
         class AdaptedRootStrategy(BaseStrategy):
@@ -85,14 +84,16 @@ class FreqtradeToRootAdapter:
             _ft_strategy = ft_instance
             _confidence_map = confidence_mapping
 
-            def __init__(self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]):
+            def __init__(
+                self, symbol: str, data: Dict[str, Any], indicators: Dict[str, Any]
+            ):
                 super().__init__(symbol, data, indicators)
                 self.name = f"{strategy_name}_ROOT"
 
                 # Métadonnées Freqtrade
-                self.timeframe = getattr(self._ft_strategy, 'timeframe', '5m')
-                self.stoploss = getattr(self._ft_strategy, 'stoploss', -0.05)
-                self.minimal_roi = getattr(self._ft_strategy, 'minimal_roi', {})
+                self.timeframe = getattr(self._ft_strategy, "timeframe", "5m")
+                self.stoploss = getattr(self._ft_strategy, "stoploss", -0.05)
+                self.minimal_roi = getattr(self._ft_strategy, "minimal_roi", {})
 
             def generate_signal(self) -> Dict[str, Any]:
                 """
@@ -108,64 +109,73 @@ class FreqtradeToRootAdapter:
 
                     # Convertir données ROOT → DataFrame Freqtrade
                     df = DataConverter.root_to_dataframe(
-                        data=self.data,
-                        indicators=self.indicators
+                        data=self.data, indicators=self.indicators
                     )
 
                     if df.empty or len(df) < 2:
                         return self._no_signal("DataFrame insuffisant")
 
                     # Appeler populate_indicators
-                    df = self._ft_strategy.populate_indicators(df, {'pair': self.symbol})
+                    df = self._ft_strategy.populate_indicators(
+                        df, {"pair": self.symbol}
+                    )
 
                     # Appeler populate_entry_trend
-                    df = self._ft_strategy.populate_entry_trend(df, {'pair': self.symbol})
+                    df = self._ft_strategy.populate_entry_trend(
+                        df, {"pair": self.symbol}
+                    )
 
                     # Appeler populate_exit_trend
-                    df = self._ft_strategy.populate_exit_trend(df, {'pair': self.symbol})
+                    df = self._ft_strategy.populate_exit_trend(
+                        df, {"pair": self.symbol}
+                    )
 
                     # Extraire signal de la dernière ligne
                     last_row = df.iloc[-1]
 
                     # Analyser signal BUY
-                    if last_row.get('enter_long', 0) == 1:
-                        enter_tag = last_row.get('enter_tag', '')
-                        confidence, strength = self._extract_confidence_strength(enter_tag)
+                    if last_row.get("enter_long", 0) == 1:
+                        enter_tag = last_row.get("enter_tag", "")
+                        confidence, strength = self._extract_confidence_strength(
+                            enter_tag
+                        )
 
                         return {
-                            'side': 'BUY',
-                            'confidence': confidence,
-                            'strength': strength,
-                            'reason': f"Freqtrade entry signal: {enter_tag}",
-                            'metadata': {
-                                'source': 'freqtrade',
-                                'strategy': strategy_name,
-                                'enter_tag': enter_tag,
-                                'timeframe': self.timeframe,
-                                'stoploss': self.stoploss
-                            }
+                            "side": "BUY",
+                            "confidence": confidence,
+                            "strength": strength,
+                            "reason": f"Freqtrade entry signal: {enter_tag}",
+                            "metadata": {
+                                "source": "freqtrade",
+                                "strategy": strategy_name,
+                                "enter_tag": enter_tag,
+                                "timeframe": self.timeframe,
+                                "stoploss": self.stoploss,
+                            },
                         }
 
                     # Analyser signal SELL
-                    if last_row.get('exit_long', 0) == 1:
-                        exit_tag = last_row.get('exit_tag', '')
-                        confidence, strength = self._extract_confidence_strength(exit_tag)
+                    if last_row.get("exit_long", 0) == 1:
+                        exit_tag = last_row.get("exit_tag", "")
+                        confidence, strength = self._extract_confidence_strength(
+                            exit_tag
+                        )
 
                         return {
-                            'side': 'SELL',
-                            'confidence': confidence,
-                            'strength': strength,
-                            'reason': f"Freqtrade exit signal: {exit_tag}",
-                            'metadata': {
-                                'source': 'freqtrade',
-                                'strategy': strategy_name,
-                                'exit_tag': exit_tag,
-                                'timeframe': self.timeframe
-                            }
+                            "side": "SELL",
+                            "confidence": confidence,
+                            "strength": strength,
+                            "reason": f"Freqtrade exit signal: {exit_tag}",
+                            "metadata": {
+                                "source": "freqtrade",
+                                "strategy": strategy_name,
+                                "exit_tag": exit_tag,
+                                "timeframe": self.timeframe,
+                            },
                         }
 
                     # Analyser signal SHORT (si stratégie supporte)
-                    if last_row.get('enter_short', 0) == 1:
+                    if last_row.get("enter_short", 0) == 1:
                         # ROOT utilise uniquement SPOT (BUY/SELL), pas de SHORT
                         logger.debug("Signal SHORT ignoré (ROOT = SPOT only)")
 
@@ -176,10 +186,7 @@ class FreqtradeToRootAdapter:
                     logger.error(f"Erreur génération signal Freqtrade→ROOT: {e}")
                     return self._no_signal(f"Erreur: {str(e)}")
 
-            def _extract_confidence_strength(
-                self,
-                tag: str
-            ) -> tuple[float, str]:
+            def _extract_confidence_strength(self, tag: str) -> tuple[float, str]:
                 """
                 Extrait confidence et strength depuis un tag Freqtrade.
 
@@ -194,28 +201,23 @@ class FreqtradeToRootAdapter:
 
                 # Chercher mots-clés dans le tag
                 for keyword, confidence in sorted(
-                    self._confidence_map.items(),
-                    key=lambda x: x[1],
-                    reverse=True
+                    self._confidence_map.items(), key=lambda x: x[1], reverse=True
                 ):
                     if keyword in tag_lower:
                         strength = self.get_strength_from_confidence(confidence)
                         return confidence, strength
 
                 # Défaut: moderate
-                return 0.55, 'moderate'
+                return 0.55, "moderate"
 
             def _no_signal(self, reason: str) -> Dict[str, Any]:
                 """Retourne un signal vide."""
                 return {
-                    'side': None,
-                    'confidence': 0.0,
-                    'strength': 'weak',
-                    'reason': reason,
-                    'metadata': {
-                        'source': 'freqtrade',
-                        'strategy': strategy_name
-                    }
+                    "side": None,
+                    "confidence": 0.0,
+                    "strength": "weak",
+                    "reason": reason,
+                    "metadata": {"source": "freqtrade", "strategy": strategy_name},
                 }
 
             def validate_data(self) -> bool:
@@ -225,7 +227,7 @@ class FreqtradeToRootAdapter:
                     return False
 
                 # Vérifier présence OHLCV
-                required_fields = ['close_price', 'volume']
+                required_fields = ["close_price", "volume"]
                 for field in required_fields:
                     if field not in self.data or self.data[field] is None:
                         logger.warning(f"{self.name}: {field} manquant")
@@ -239,11 +241,7 @@ class FreqtradeToRootAdapter:
 
         return AdaptedRootStrategy
 
-    def export_to_file(
-        self,
-        output_path: str,
-        include_docstring: bool = True
-    ) -> None:
+    def export_to_file(self, output_path: str, include_docstring: bool = True) -> None:
         """
         Exporte la stratégie convertie vers un fichier Python.
 
@@ -255,7 +253,11 @@ class FreqtradeToRootAdapter:
             strategy_class = self.convert()
 
             # Générer code Python
-            docstring = f'"""\n{self.freqtrade_strategy_class.__doc__}\n"""' if include_docstring else ''
+            docstring = (
+                f'"""\n{self.freqtrade_strategy_class.__doc__}\n"""'
+                if include_docstring
+                else ""
+            )
 
             code = f'''"""
 Stratégie ROOT générée automatiquement depuis Freqtrade.
@@ -295,7 +297,7 @@ class {strategy_class.__name__}(BaseStrategy):
         }}
 '''
 
-            with open(output_path, 'w', encoding='utf-8') as f:
+            with open(output_path, "w", encoding="utf-8") as f:
                 f.write(code)
 
             logger.info(f"Stratégie exportée: {output_path}")
@@ -315,21 +317,22 @@ class {strategy_class.__name__}(BaseStrategy):
             ft_strategy = self.ft_strategy_instance
 
             info = {
-                'name': self.strategy_name,
-                'timeframe': getattr(ft_strategy, 'timeframe', 'unknown'),
-                'stoploss': getattr(ft_strategy, 'stoploss', None),
-                'trailing_stop': getattr(ft_strategy, 'trailing_stop', False),
-                'minimal_roi': getattr(ft_strategy, 'minimal_roi', {}),
-                'use_exit_signal': getattr(ft_strategy, 'use_exit_signal', True),
-                'startup_candle_count': getattr(ft_strategy, 'startup_candle_count', 0),
-                'has_custom_indicators': hasattr(ft_strategy, 'populate_indicators'),
-                'has_entry_signal': hasattr(ft_strategy, 'populate_entry_trend'),
-                'has_exit_signal': hasattr(ft_strategy, 'populate_exit_trend'),
-                'supports_short': hasattr(ft_strategy, 'can_short') and ft_strategy.can_short
+                "name": self.strategy_name,
+                "timeframe": getattr(ft_strategy, "timeframe", "unknown"),
+                "stoploss": getattr(ft_strategy, "stoploss", None),
+                "trailing_stop": getattr(ft_strategy, "trailing_stop", False),
+                "minimal_roi": getattr(ft_strategy, "minimal_roi", {}),
+                "use_exit_signal": getattr(ft_strategy, "use_exit_signal", True),
+                "startup_candle_count": getattr(ft_strategy, "startup_candle_count", 0),
+                "has_custom_indicators": hasattr(ft_strategy, "populate_indicators"),
+                "has_entry_signal": hasattr(ft_strategy, "populate_entry_trend"),
+                "has_exit_signal": hasattr(ft_strategy, "populate_exit_trend"),
+                "supports_short": hasattr(ft_strategy, "can_short")
+                and ft_strategy.can_short,
             }
 
             return info
 
         except Exception as e:
             logger.error(f"Erreur analyse stratégie: {e}")
-            return {'error': str(e)}
+            return {"error": str(e)}

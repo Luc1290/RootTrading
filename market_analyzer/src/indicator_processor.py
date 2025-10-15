@@ -23,10 +23,18 @@ from shared.src.config import get_db_config
 
 # Import DIRECT de tous vos modules existants
 from market_analyzer.indicators import (
-    calculate_rsi, calculate_rsi_series, calculate_ema, calculate_ema_series, calculate_sma, calculate_macd_series,
-    calculate_bollinger_bands_series, 
-    calculate_stochastic_series, calculate_williams_r, calculate_cci,
-    calculate_obv_series, calculate_vwap_series
+    calculate_rsi,
+    calculate_rsi_series,
+    calculate_ema,
+    calculate_ema_series,
+    calculate_sma,
+    calculate_macd_series,
+    calculate_bollinger_bands_series,
+    calculate_stochastic_series,
+    calculate_williams_r,
+    calculate_cci,
+    calculate_obv_series,
+    calculate_vwap_series,
 )
 
 # Import ADX complet
@@ -34,56 +42,84 @@ from market_analyzer.indicators.trend.adx import calculate_adx_full
 
 # Import des moyennes avancées
 from market_analyzer.indicators.trend.moving_averages import (
-    calculate_wma, calculate_dema, calculate_tema, calculate_hull_ma, calculate_adaptive_ma
+    calculate_wma,
+    calculate_dema,
+    calculate_tema,
+    calculate_hull_ma,
+    calculate_adaptive_ma,
 )
 
 # Import des indicateurs de momentum
 from market_analyzer.indicators.momentum.momentum import (
-    calculate_momentum, calculate_roc, calculate_price_oscillator
+    calculate_momentum,
+    calculate_roc,
+    calculate_price_oscillator,
 )
 from market_analyzer.indicators.momentum.rsi import calculate_stoch_rsi
 
-# Import des indicateurs de volatilité  
+# Import des indicateurs de volatilité
 from market_analyzer.indicators.volatility.atr import (
-    calculate_atr, calculate_natr, volatility_regime, calculate_atr_percentile
+    calculate_atr,
+    calculate_natr,
+    volatility_regime,
+    calculate_atr_percentile,
 )
-from market_analyzer.indicators.volatility.bollinger import calculate_bollinger_squeeze, calculate_keltner_channels
+from market_analyzer.indicators.volatility.bollinger import (
+    calculate_bollinger_squeeze,
+    calculate_keltner_channels,
+)
 
 # Import des indicateurs de volume
-from market_analyzer.indicators.volume.obv import calculate_obv_ma, calculate_obv_oscillator
-from market_analyzer.indicators.volume.vwap import calculate_vwap_bands, calculate_vwap_quote_series
+from market_analyzer.indicators.volume.obv import (
+    calculate_obv_ma,
+    calculate_obv_oscillator,
+)
+from market_analyzer.indicators.volume.vwap import (
+    calculate_vwap_bands,
+    calculate_vwap_quote_series,
+)
 from market_analyzer.indicators.volume.advanced_metrics import (
-    calculate_quote_volume_ratio, calculate_avg_trade_size, calculate_trade_intensity
+    calculate_quote_volume_ratio,
+    calculate_avg_trade_size,
+    calculate_trade_intensity,
 )
 
 # Import des détecteurs
 from market_analyzer.detectors.regime_detector import RegimeDetector
-from market_analyzer.detectors.support_resistance_detector import SupportResistanceDetector
+from market_analyzer.detectors.support_resistance_detector import (
+    SupportResistanceDetector,
+)
 from market_analyzer.detectors.volume_context_analyzer import VolumeContextAnalyzer
 from market_analyzer.detectors.spike_detector import SpikeDetector
 
 # Import des modules composites
-from market_analyzer.indicators.composite.confluence import calculate_confluence_score, ConfluenceType
-from market_analyzer.indicators.composite.signal_strength import calculate_signal_strength
+from market_analyzer.indicators.composite.confluence import (
+    calculate_confluence_score,
+    ConfluenceType,
+)
+from market_analyzer.indicators.composite.signal_strength import (
+    calculate_signal_strength,
+)
 
 logger = logging.getLogger(__name__)
+
 
 class IndicatorProcessor:
     """
     Processeur simple qui appelle vos modules existants et sauvegarde en DB.
     """
-    
+
     def __init__(self) -> None:
         self.db_pool = None
         self.running = False
         self.redis_client: Optional[redis.Redis] = None
-        
+
         # Initialiser les détecteurs
         self.regime_detector = RegimeDetector()
         self.sr_detector = SupportResistanceDetector()
         self.volume_analyzer = VolumeContextAnalyzer()
         self.spike_detector = SpikeDetector()
-        
+
         logger.info("🧮 IndicatorProcessor initialisé")
 
     async def initialize(self):
@@ -91,13 +127,13 @@ class IndicatorProcessor:
         try:
             db_config = get_db_config()
             self.db_pool = await asyncpg.create_pool(
-                host=db_config['host'],
-                port=db_config['port'],
-                database=db_config['database'],
-                user=db_config['user'],
-                password=db_config['password'],
+                host=db_config["host"],
+                port=db_config["port"],
+                database=db_config["database"],
+                user=db_config["user"],
+                password=db_config["password"],
                 min_size=2,
-                max_size=10
+                max_size=10,
             )
             self.running = True
             logger.info("✅ IndicatorProcessor connecté à la base de données")
@@ -108,7 +144,7 @@ class IndicatorProcessor:
     async def process_new_data(self, symbol: str, timeframe: str, timestamp: datetime):
         """
         Traite une nouvelle donnée OHLCV : appelle tous vos modules et sauvegarde.
-        
+
         Args:
             symbol: Symbole (ex: BTCUSDC)
             timeframe: Timeframe (ex: 1m, 5m, 1h)
@@ -116,27 +152,39 @@ class IndicatorProcessor:
         """
         try:
             logger.debug(f"🔄 Traitement {symbol} {timeframe} @ {timestamp}")
-            
+
             # Récupérer les données historiques nécessaires JUSQU'AU timestamp en cours
             # Optimisé: 500 points suffisent largement pour tous les indicateurs (EMA99, ADX, etc.)
-            ohlcv_data = await self._get_historical_data(symbol, timeframe, limit=500, up_to_timestamp=timestamp)
-            
+            ohlcv_data = await self._get_historical_data(
+                symbol, timeframe, limit=500, up_to_timestamp=timestamp
+            )
+
             if len(ohlcv_data) < 20:
-                logger.debug(f"⏭️ Pas assez de données pour {symbol} {timeframe}: {len(ohlcv_data)} < 20")
+                logger.debug(
+                    f"⏭️ Pas assez de données pour {symbol} {timeframe}: {len(ohlcv_data)} < 20"
+                )
                 return
-            
+
             # Appeler TOUS vos modules et collecter les résultats
-            indicators_data = await self._call_all_indicator_modules(symbol, timeframe, ohlcv_data, timestamp)
-            
+            indicators_data = await self._call_all_indicator_modules(
+                symbol, timeframe, ohlcv_data, timestamp
+            )
+
             # Sauvegarder en DB
             await self._save_indicators_to_db(indicators_data)
-            
+
             logger.info(f"✅ Indicateurs sauvegardés: {symbol} {timeframe}")
-            
+
         except Exception as e:
             logger.error(f"❌ Erreur traitement {symbol} {timeframe}: {e}")
 
-    async def _get_historical_data(self, symbol: str, timeframe: str, limit: int = 1000000, up_to_timestamp: Optional[datetime] = None) -> List[Dict]:
+    async def _get_historical_data(
+        self,
+        symbol: str,
+        timeframe: str,
+        limit: int = 1000000,
+        up_to_timestamp: Optional[datetime] = None,
+    ) -> List[Dict]:
         """Récupère les données OHLCV historiques depuis market_data jusqu'à un timestamp donné."""
         if up_to_timestamp:
             query = """
@@ -158,363 +206,637 @@ class IndicatorProcessor:
                 LIMIT $3
             """
             params = [symbol, timeframe, limit]
-        
+
         if self.db_pool is None:
             raise RuntimeError("Database pool not initialized")
         async with self.db_pool.acquire() as conn:
             rows = await conn.fetch(query, *params)
-            
+
             # Inverser pour ordre chronologique ASC (nécessaire pour les calculs d'indicateurs)
             data = []
             for row in reversed(rows):
-                data.append({
-                    'time': row['time'],
-                    'open': float(row['open']),
-                    'high': float(row['high']),
-                    'low': float(row['low']),
-                    'close': float(row['close']),
-                    'volume': float(row['volume']),
-                    'quote_asset_volume': float(row['quote_asset_volume']) if row['quote_asset_volume'] else 0,
-                    'number_of_trades': row['number_of_trades'] if row['number_of_trades'] else 0
-                })
-            
+                data.append(
+                    {
+                        "time": row["time"],
+                        "open": float(row["open"]),
+                        "high": float(row["high"]),
+                        "low": float(row["low"]),
+                        "close": float(row["close"]),
+                        "volume": float(row["volume"]),
+                        "quote_asset_volume": (
+                            float(row["quote_asset_volume"])
+                            if row["quote_asset_volume"]
+                            else 0
+                        ),
+                        "number_of_trades": (
+                            row["number_of_trades"] if row["number_of_trades"] else 0
+                        ),
+                    }
+                )
+
             return data
 
-    async def _call_all_indicator_modules(self, symbol: str, timeframe: str, ohlcv_data: List[Dict], timestamp: datetime) -> Dict:
+    async def _call_all_indicator_modules(
+        self, symbol: str, timeframe: str, ohlcv_data: List[Dict], timestamp: datetime
+    ) -> Dict:
         """
         Appelle DIRECTEMENT tous vos modules indicator/detector existants.
         """
         start_time = time.time()
-        
+
         # Extraire les arrays
-        opens = [d['open'] for d in ohlcv_data]
-        highs = [d['high'] for d in ohlcv_data]
-        lows = [d['low'] for d in ohlcv_data]
-        closes = [d['close'] for d in ohlcv_data]
-        volumes = [d['volume'] for d in ohlcv_data]
-        
+        opens = [d["open"] for d in ohlcv_data]
+        highs = [d["high"] for d in ohlcv_data]
+        lows = [d["low"] for d in ohlcv_data]
+        closes = [d["close"] for d in ohlcv_data]
+        volumes = [d["volume"] for d in ohlcv_data]
+
         # Résultat final
         indicators = {
-            'time': timestamp,
-            'symbol': symbol,
-            'timeframe': timeframe,
-            'analysis_timestamp': datetime.now(),
-            'analyzer_version': '1.0'
+            "time": timestamp,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "analysis_timestamp": datetime.now(),
+            "analyzer_version": "1.0",
         }
-        
+
         try:
             # === APPEL DIRECT DE VOS MODULES INDICATORS ===
-            
-            # RSI - Utiliser VOS modules directement 
+
+            # RSI - Utiliser VOS modules directement
             if len(closes) >= 14:
-                rsi_14_series = self._safe_call(lambda: calculate_rsi_series(closes, 14))
-                indicators['rsi_14'] = rsi_14_series[-1] if rsi_14_series and len(rsi_14_series) > 0 else None
-                    
+                rsi_14_series = self._safe_call(
+                    lambda: calculate_rsi_series(closes, 14)
+                )
+                indicators["rsi_14"] = (
+                    rsi_14_series[-1]
+                    if rsi_14_series and len(rsi_14_series) > 0
+                    else None
+                )
+
             if len(closes) >= 21:
-                rsi_21_series = self._safe_call(lambda: calculate_rsi_series(closes, 21))
-                indicators['rsi_21'] = rsi_21_series[-1] if rsi_21_series and len(rsi_21_series) > 0 else None
-            
+                rsi_21_series = self._safe_call(
+                    lambda: calculate_rsi_series(closes, 21)
+                )
+                indicators["rsi_21"] = (
+                    rsi_21_series[-1]
+                    if rsi_21_series and len(rsi_21_series) > 0
+                    else None
+                )
+
             # Stochastic RSI
             if len(closes) >= 14:
-                indicators['stoch_rsi'] = self._safe_call(lambda: calculate_stoch_rsi(closes, 14, 14))
-            
+                indicators["stoch_rsi"] = self._safe_call(
+                    lambda: calculate_stoch_rsi(closes, 14, 14)
+                )
+
             # EMAs - Utiliser les modules existants avec series pour obtenir la dernière valeur
             if len(closes) >= 7:
                 ema_7_series = self._safe_call(lambda: calculate_ema_series(closes, 7))
-                indicators['ema_7'] = ema_7_series[-1] if ema_7_series and len(ema_7_series) > 0 else None
+                indicators["ema_7"] = (
+                    ema_7_series[-1] if ema_7_series and len(ema_7_series) > 0 else None
+                )
             if len(closes) >= 12:
-                ema_12_series = self._safe_call(lambda: calculate_ema_series(closes, 12))
-                indicators['ema_12'] = ema_12_series[-1] if ema_12_series and len(ema_12_series) > 0 else None
+                ema_12_series = self._safe_call(
+                    lambda: calculate_ema_series(closes, 12)
+                )
+                indicators["ema_12"] = (
+                    ema_12_series[-1]
+                    if ema_12_series and len(ema_12_series) > 0
+                    else None
+                )
             if len(closes) >= 26:
-                ema_26_series = self._safe_call(lambda: calculate_ema_series(closes, 26))
-                indicators['ema_26'] = ema_26_series[-1] if ema_26_series and len(ema_26_series) > 0 else None
+                ema_26_series = self._safe_call(
+                    lambda: calculate_ema_series(closes, 26)
+                )
+                indicators["ema_26"] = (
+                    ema_26_series[-1]
+                    if ema_26_series and len(ema_26_series) > 0
+                    else None
+                )
             if len(closes) >= 50:
-                ema_50_series = self._safe_call(lambda: calculate_ema_series(closes, 50))
-                indicators['ema_50'] = ema_50_series[-1] if ema_50_series and len(ema_50_series) > 0 else None
+                ema_50_series = self._safe_call(
+                    lambda: calculate_ema_series(closes, 50)
+                )
+                indicators["ema_50"] = (
+                    ema_50_series[-1]
+                    if ema_50_series and len(ema_50_series) > 0
+                    else None
+                )
             if len(closes) >= 99:
-                ema_99_series = self._safe_call(lambda: calculate_ema_series(closes, 99))
-                indicators['ema_99'] = ema_99_series[-1] if ema_99_series and len(ema_99_series) > 0 else None
-            
+                ema_99_series = self._safe_call(
+                    lambda: calculate_ema_series(closes, 99)
+                )
+                indicators["ema_99"] = (
+                    ema_99_series[-1]
+                    if ema_99_series and len(ema_99_series) > 0
+                    else None
+                )
+
             # SMAs
             if len(closes) >= 20:
-                indicators['sma_20'] = self._safe_call(lambda: calculate_sma(closes, 20))
+                indicators["sma_20"] = self._safe_call(
+                    lambda: calculate_sma(closes, 20)
+                )
             if len(closes) >= 50:
-                indicators['sma_50'] = self._safe_call(lambda: calculate_sma(closes, 50))
-            
+                indicators["sma_50"] = self._safe_call(
+                    lambda: calculate_sma(closes, 50)
+                )
+
             # Moyennes avancées
             if len(closes) >= 20:
-                indicators['wma_20'] = self._safe_call(lambda: calculate_wma(closes, 20))
-                indicators['hull_20'] = self._safe_call(lambda: calculate_hull_ma(closes, 20))
+                indicators["wma_20"] = self._safe_call(
+                    lambda: calculate_wma(closes, 20)
+                )
+                indicators["hull_20"] = self._safe_call(
+                    lambda: calculate_hull_ma(closes, 20)
+                )
             if len(closes) >= 12:
-                indicators['dema_12'] = self._safe_call(lambda: calculate_dema(closes, 12))
-                indicators['tema_12'] = self._safe_call(lambda: calculate_tema(closes, 12))
+                indicators["dema_12"] = self._safe_call(
+                    lambda: calculate_dema(closes, 12)
+                )
+                indicators["tema_12"] = self._safe_call(
+                    lambda: calculate_tema(closes, 12)
+                )
             if len(closes) >= 14:
-                indicators['kama_14'] = self._safe_call(lambda: calculate_adaptive_ma(closes, 14))
-            
+                indicators["kama_14"] = self._safe_call(
+                    lambda: calculate_adaptive_ma(closes, 14)
+                )
+
             # MACD - Utiliser VOS modules directement
             if len(closes) >= 26:
-                macd_series = self._safe_call(lambda: calculate_macd_series(closes, fast_period=12, slow_period=26, signal_period=9))
+                macd_series = self._safe_call(
+                    lambda: calculate_macd_series(
+                        closes, fast_period=12, slow_period=26, signal_period=9
+                    )
+                )
                 if macd_series and isinstance(macd_series, dict):
                     # Vos modules retournent déjà le bon format
-                    macd_line_series = macd_series.get('macd_line', [])
-                    macd_signal_series = macd_series.get('macd_signal', [])
-                    macd_histogram_series = macd_series.get('macd_histogram', [])
-                    
-                    indicators.update({
-                        'macd_line': macd_line_series[-1] if macd_line_series else None,
-                        'macd_signal': macd_signal_series[-1] if macd_signal_series else None,
-                        'macd_histogram': macd_histogram_series[-1] if macd_histogram_series else None
-                    })
-                    
+                    macd_line_series = macd_series.get("macd_line", [])
+                    macd_signal_series = macd_series.get("macd_signal", [])
+                    macd_histogram_series = macd_series.get("macd_histogram", [])
+
+                    indicators.update(
+                        {
+                            "macd_line": (
+                                macd_line_series[-1] if macd_line_series else None
+                            ),
+                            "macd_signal": (
+                                macd_signal_series[-1] if macd_signal_series else None
+                            ),
+                            "macd_histogram": (
+                                macd_histogram_series[-1]
+                                if macd_histogram_series
+                                else None
+                            ),
+                        }
+                    )
+
                     # MACD Signaux binaires
-                    from ..indicators.trend.macd import macd_zero_cross, macd_signal_cross, calculate_macd_trend, calculate_ppo
-                    if macd_line_series and macd_signal_series and len(macd_line_series) >= 2:
+                    from ..indicators.trend.macd import (
+                        macd_zero_cross,
+                        macd_signal_cross,
+                        calculate_macd_trend,
+                        calculate_ppo,
+                    )
+
+                    if (
+                        macd_line_series
+                        and macd_signal_series
+                        and len(macd_line_series) >= 2
+                    ):
                         current_macd = {
-                            'macd_line': macd_line_series[-1],
-                            'macd_signal': macd_signal_series[-1],
-                            'macd_histogram': macd_histogram_series[-1] if macd_histogram_series else None
+                            "macd_line": macd_line_series[-1],
+                            "macd_signal": macd_signal_series[-1],
+                            "macd_histogram": (
+                                macd_histogram_series[-1]
+                                if macd_histogram_series
+                                else None
+                            ),
                         }
                         prev_macd = {
-                            'macd_line': macd_line_series[-2],
-                            'macd_signal': macd_signal_series[-2],
-                            'macd_histogram': macd_histogram_series[-2] if macd_histogram_series and len(macd_histogram_series) >= 2 else None
+                            "macd_line": macd_line_series[-2],
+                            "macd_signal": macd_signal_series[-2],
+                            "macd_histogram": (
+                                macd_histogram_series[-2]
+                                if macd_histogram_series
+                                and len(macd_histogram_series) >= 2
+                                else None
+                            ),
                         }
-                        
+
                         # Croisements
-                        zero_cross = self._safe_call(lambda: macd_zero_cross(current_macd, prev_macd))
-                        signal_cross = self._safe_call(lambda: macd_signal_cross(current_macd, prev_macd))
-                        trend = self._safe_call(lambda: calculate_macd_trend(current_macd, prev_macd))
-                        
-                        indicators.update({
-                            'macd_zero_cross': bool(zero_cross not in [None, 'none']),
-                            'macd_signal_cross': bool(signal_cross not in [None, 'none']),
-                            'macd_trend': trend.upper() if trend and trend != 'none' else 'NEUTRAL'
-                        })
-                
+                        zero_cross = self._safe_call(
+                            lambda: macd_zero_cross(current_macd, prev_macd)
+                        )
+                        signal_cross = self._safe_call(
+                            lambda: macd_signal_cross(current_macd, prev_macd)
+                        )
+                        trend = self._safe_call(
+                            lambda: calculate_macd_trend(current_macd, prev_macd)
+                        )
+
+                        indicators.update(
+                            {
+                                "macd_zero_cross": bool(
+                                    zero_cross not in [None, "none"]
+                                ),
+                                "macd_signal_cross": bool(
+                                    signal_cross not in [None, "none"]
+                                ),
+                                "macd_trend": (
+                                    trend.upper()
+                                    if trend and trend != "none"
+                                    else "NEUTRAL"
+                                ),
+                            }
+                        )
+
                 # PPO (Percentage Price Oscillator) - pas Price Oscillator !
                 ppo_result = self._safe_call(lambda: calculate_ppo(closes, 12, 26, 9))
                 if ppo_result and isinstance(ppo_result, dict):
-                    indicators['ppo'] = ppo_result.get('ppo_line')
-            
+                    indicators["ppo"] = ppo_result.get("ppo_line")
+
             # ADX
             if len(closes) >= 14:
-                adx_full = self._safe_call(lambda: calculate_adx_full(highs, lows, closes, 14))
+                adx_full = self._safe_call(
+                    lambda: calculate_adx_full(highs, lows, closes, 14)
+                )
                 if adx_full and isinstance(adx_full, dict):
-                    indicators.update({
-                        'adx_14': adx_full.get('adx'),
-                        'plus_di': adx_full.get('plus_di'),
-                        'minus_di': adx_full.get('minus_di'),
-                        'dx': adx_full.get('dx'),
-                        'adxr': adx_full.get('adxr')
-                    })
-                    
+                    indicators.update(
+                        {
+                            "adx_14": adx_full.get("adx"),
+                            "plus_di": adx_full.get("plus_di"),
+                            "minus_di": adx_full.get("minus_di"),
+                            "dx": adx_full.get("dx"),
+                            "adxr": adx_full.get("adxr"),
+                        }
+                    )
+
                     # Calculer trend_strength depuis ADX (string: "weak", "strong", etc.)
-                    from ..indicators.trend.adx import adx_trend_strength, calculate_directional_bias
-                    adx_value = adx_full.get('adx')
+                    from ..indicators.trend.adx import (
+                        adx_trend_strength,
+                        calculate_directional_bias,
+                    )
+
+                    adx_value = adx_full.get("adx")
                     if adx_value is not None:
-                        indicators['trend_strength'] = adx_trend_strength(adx_value)
-                    
+                        indicators["trend_strength"] = adx_trend_strength(adx_value)
+
                     # Calculer directional_bias depuis +DI et -DI
-                    plus_di = adx_full.get('plus_di')
-                    minus_di = adx_full.get('minus_di')
+                    plus_di = adx_full.get("plus_di")
+                    minus_di = adx_full.get("minus_di")
                     if plus_di is not None and minus_di is not None:
-                        indicators['directional_bias'] = calculate_directional_bias(plus_di, minus_di, adx_value)
-            
+                        indicators["directional_bias"] = calculate_directional_bias(
+                            plus_di, minus_di, adx_value
+                        )
+
             # Trend Angle
             if len(closes) >= 14:
                 from ..indicators.trend.adx import calculate_trend_angle
-                indicators['trend_angle'] = self._safe_call(lambda: calculate_trend_angle(closes, 14))
-            
+
+                indicators["trend_angle"] = self._safe_call(
+                    lambda: calculate_trend_angle(closes, 14)
+                )
+
             # ATR et volatilité (calculer d'abord car utilisé par Keltner)
             atr = None
             if len(closes) >= 14:
                 atr = self._safe_call(lambda: calculate_atr(highs, lows, closes, 14))
-                indicators['atr_14'] = atr
-                
+                indicators["atr_14"] = atr
+
                 if atr and closes[-1] > 0:
-                    indicators['natr'] = self._safe_call(lambda: calculate_natr(highs, lows, closes, 14))
-                    
+                    indicators["natr"] = self._safe_call(
+                        lambda: calculate_natr(highs, lows, closes, 14)
+                    )
+
                     # Régime de volatilité
-                    volatility_reg = self._safe_call(lambda: volatility_regime(highs, lows, closes, 14, 20))  # Réduire lookback de 50 à 20
-                    indicators['volatility_regime'] = volatility_reg
-                    
+                    volatility_reg = self._safe_call(
+                        lambda: volatility_regime(highs, lows, closes, 14, 20)
+                    )  # Réduire lookback de 50 à 20
+                    indicators["volatility_regime"] = volatility_reg
+
                     # ATR stop loss calculé manuellement
                     atr_multiplier = 2.0
-                    indicators.update({
-                        'atr_stop_long': closes[-1] - (atr * atr_multiplier),
-                        'atr_stop_short': closes[-1] + (atr * atr_multiplier)
-                    })
+                    indicators.update(
+                        {
+                            "atr_stop_long": closes[-1] - (atr * atr_multiplier),
+                            "atr_stop_short": closes[-1] + (atr * atr_multiplier),
+                        }
+                    )
 
             # Bollinger Bands
             if len(closes) >= 20:
-                bb_series = self._safe_call(lambda: calculate_bollinger_bands_series(closes, 20, 2.0))
+                bb_series = self._safe_call(
+                    lambda: calculate_bollinger_bands_series(closes, 20, 2.0)
+                )
                 if bb_series and isinstance(bb_series, dict):
                     # bb_series is a dict with lists for each key
-                    bb_upper_series = bb_series.get('upper', [])
-                    bb_middle_series = bb_series.get('middle', [])
-                    bb_lower_series = bb_series.get('lower', [])
-                    bb_percent_b_series = bb_series.get('percent_b', [])
-                    bb_bandwidth_series = bb_series.get('bandwidth', [])
-                    
-                    indicators.update({
-                        'bb_upper': bb_upper_series[-1] if bb_upper_series else None,
-                        'bb_middle': bb_middle_series[-1] if bb_middle_series else None,
-                        'bb_lower': bb_lower_series[-1] if bb_lower_series else None,
-                        'bb_position': bb_percent_b_series[-1] if bb_percent_b_series else None,
-                        'bb_width': bb_bandwidth_series[-1] if bb_bandwidth_series else None
-                    })
-                    
+                    bb_upper_series = bb_series.get("upper", [])
+                    bb_middle_series = bb_series.get("middle", [])
+                    bb_lower_series = bb_series.get("lower", [])
+                    bb_percent_b_series = bb_series.get("percent_b", [])
+                    bb_bandwidth_series = bb_series.get("bandwidth", [])
+
+                    indicators.update(
+                        {
+                            "bb_upper": (
+                                bb_upper_series[-1] if bb_upper_series else None
+                            ),
+                            "bb_middle": (
+                                bb_middle_series[-1] if bb_middle_series else None
+                            ),
+                            "bb_lower": (
+                                bb_lower_series[-1] if bb_lower_series else None
+                            ),
+                            "bb_position": (
+                                bb_percent_b_series[-1] if bb_percent_b_series else None
+                            ),
+                            "bb_width": (
+                                bb_bandwidth_series[-1] if bb_bandwidth_series else None
+                            ),
+                        }
+                    )
+
                     # Bollinger Signaux binaires
-                    from ..indicators.volatility.bollinger import calculate_bollinger_squeeze, calculate_bollinger_expansion, calculate_bollinger_breakout_direction
-                    squeeze_data = self._safe_call(lambda: calculate_bollinger_squeeze(closes, 20, 2.0, 20))
-                    expansion = self._safe_call(lambda: calculate_bollinger_expansion(closes, 20, 2.0, 10))
-                    breakout_dir = self._safe_call(lambda: calculate_bollinger_breakout_direction(closes, 20, 2.0, 3))
-                    
-                    indicators.update({
-                        'bb_squeeze': bool(squeeze_data.get('in_squeeze', False)) if squeeze_data else False,
-                        'bb_expansion': bool(expansion) if expansion is not None else False,
-                        'bb_breakout_direction': breakout_dir if breakout_dir else 'NONE'
-                    })
-                
+                    from ..indicators.volatility.bollinger import (
+                        calculate_bollinger_squeeze,
+                        calculate_bollinger_expansion,
+                        calculate_bollinger_breakout_direction,
+                    )
+
+                    squeeze_data = self._safe_call(
+                        lambda: calculate_bollinger_squeeze(closes, 20, 2.0, 20)
+                    )
+                    expansion = self._safe_call(
+                        lambda: calculate_bollinger_expansion(closes, 20, 2.0, 10)
+                    )
+                    breakout_dir = self._safe_call(
+                        lambda: calculate_bollinger_breakout_direction(
+                            closes, 20, 2.0, 3
+                        )
+                    )
+
+                    indicators.update(
+                        {
+                            "bb_squeeze": (
+                                bool(squeeze_data.get("in_squeeze", False))
+                                if squeeze_data
+                                else False
+                            ),
+                            "bb_expansion": (
+                                bool(expansion) if expansion is not None else False
+                            ),
+                            "bb_breakout_direction": (
+                                breakout_dir if breakout_dir else "NONE"
+                            ),
+                        }
+                    )
+
                 # Keltner Channels (utilise la fonction dédiée)
                 if len(highs) >= 20 and len(lows) >= 20:
-                    keltner = self._safe_call(lambda: calculate_keltner_channels(
-                        closes, highs, lows,
-                        period=20,
-                        atr_period=10,
-                        multiplier=2.0
-                    ))
+                    keltner = self._safe_call(
+                        lambda: calculate_keltner_channels(
+                            closes,
+                            highs,
+                            lows,
+                            period=20,
+                            atr_period=10,
+                            multiplier=2.0,
+                        )
+                    )
                     if keltner and isinstance(keltner, dict):
-                        indicators.update({
-                            'keltner_upper': keltner.get('upper'),
-                            'keltner_lower': keltner.get('lower')
-                        })
-            
+                        indicators.update(
+                            {
+                                "keltner_upper": keltner.get("upper"),
+                                "keltner_lower": keltner.get("lower"),
+                            }
+                        )
+
             # Stochastic
             if len(closes) >= 14:
-                stoch_series = self._safe_call(lambda: calculate_stochastic_series(highs, lows, closes, 14, 3))
+                stoch_series = self._safe_call(
+                    lambda: calculate_stochastic_series(highs, lows, closes, 14, 3)
+                )
                 if stoch_series and isinstance(stoch_series, dict):
                     # stoch_series is a dict with 'k' and 'd' keys containing lists
-                    stoch_k_series = stoch_series.get('k', [])
-                    stoch_d_series = stoch_series.get('d', [])
-                    
-                    indicators.update({
-                        'stoch_k': stoch_k_series[-1] if stoch_k_series else None,
-                        'stoch_d': stoch_d_series[-1] if stoch_d_series else None
-                    })
-                
+                    stoch_k_series = stoch_series.get("k", [])
+                    stoch_d_series = stoch_series.get("d", [])
+
+                    indicators.update(
+                        {
+                            "stoch_k": stoch_k_series[-1] if stoch_k_series else None,
+                            "stoch_d": stoch_d_series[-1] if stoch_d_series else None,
+                        }
+                    )
+
                 # Fast Stochastic
-                fast_stoch_series = self._safe_call(lambda: calculate_stochastic_series(highs, lows, closes, 14, 1))
+                fast_stoch_series = self._safe_call(
+                    lambda: calculate_stochastic_series(highs, lows, closes, 14, 1)
+                )
                 if fast_stoch_series and isinstance(fast_stoch_series, dict):
                     # fast_stoch_series is a dict with 'k' and 'd' keys containing lists
-                    fast_k_series = fast_stoch_series.get('k', [])
-                    fast_d_series = fast_stoch_series.get('d', [])
-                    
-                    indicators.update({
-                        'stoch_fast_k': fast_k_series[-1] if fast_k_series else None,
-                        'stoch_fast_d': fast_d_series[-1] if fast_d_series else None
-                    })
-                    
+                    fast_k_series = fast_stoch_series.get("k", [])
+                    fast_d_series = fast_stoch_series.get("d", [])
+
+                    indicators.update(
+                        {
+                            "stoch_fast_k": (
+                                fast_k_series[-1] if fast_k_series else None
+                            ),
+                            "stoch_fast_d": (
+                                fast_d_series[-1] if fast_d_series else None
+                            ),
+                        }
+                    )
+
                     # Stochastic Signaux binaires
-                    from ..indicators.oscillators.stochastic import calculate_stochastic_divergence, calculate_stochastic_signal
-                    divergence = self._safe_call(lambda: calculate_stochastic_divergence(closes, highs, lows, closes))
-                    signal = self._safe_call(lambda: calculate_stochastic_signal(highs, lows, closes, 14, 3))
-                    
-                    indicators.update({
-                        'stoch_divergence': bool(divergence not in [None, 'none']) if divergence else False,
-                        'stoch_signal': signal.upper() if signal and signal != 'none' else 'NEUTRAL'
-                    })
-            
+                    from ..indicators.oscillators.stochastic import (
+                        calculate_stochastic_divergence,
+                        calculate_stochastic_signal,
+                    )
+
+                    divergence = self._safe_call(
+                        lambda: calculate_stochastic_divergence(
+                            closes, highs, lows, closes
+                        )
+                    )
+                    signal = self._safe_call(
+                        lambda: calculate_stochastic_signal(highs, lows, closes, 14, 3)
+                    )
+
+                    indicators.update(
+                        {
+                            "stoch_divergence": (
+                                bool(divergence not in [None, "none"])
+                                if divergence
+                                else False
+                            ),
+                            "stoch_signal": (
+                                signal.upper()
+                                if signal and signal != "none"
+                                else "NEUTRAL"
+                            ),
+                        }
+                    )
+
             # Williams %R
             if len(closes) >= 14:
-                indicators['williams_r'] = self._safe_call(lambda: calculate_williams_r(highs, lows, closes, 14))
-            
+                indicators["williams_r"] = self._safe_call(
+                    lambda: calculate_williams_r(highs, lows, closes, 14)
+                )
+
             # MFI (Money Flow Index)
             if len(closes) >= 15 and len(volumes) >= 15:  # Need period + 1
                 from ..indicators.momentum.mfi import calculate_mfi
-                indicators['mfi_14'] = self._safe_call(lambda: calculate_mfi(highs, lows, closes, volumes, 14))
-            
+
+                indicators["mfi_14"] = self._safe_call(
+                    lambda: calculate_mfi(highs, lows, closes, volumes, 14)
+                )
+
             # CCI
             if len(closes) >= 20:
-                indicators['cci_20'] = self._safe_call(lambda: calculate_cci(highs, lows, closes, 20))
-            
+                indicators["cci_20"] = self._safe_call(
+                    lambda: calculate_cci(highs, lows, closes, 20)
+                )
+
             # Momentum et ROC
             if len(closes) >= 10:
-                indicators['momentum_10'] = self._safe_call(lambda: calculate_momentum(closes, 10))
-                indicators['roc_10'] = self._safe_call(lambda: calculate_roc(closes, 10))
+                indicators["momentum_10"] = self._safe_call(
+                    lambda: calculate_momentum(closes, 10)
+                )
+                indicators["roc_10"] = self._safe_call(
+                    lambda: calculate_roc(closes, 10)
+                )
             if len(closes) >= 20:
-                indicators['roc_20'] = self._safe_call(lambda: calculate_roc(closes, 20))
-            
+                indicators["roc_20"] = self._safe_call(
+                    lambda: calculate_roc(closes, 20)
+                )
+
             # Volume (OBV et VWAP)
             if len(volumes) >= 10:
-                obv_series = self._safe_call(lambda: calculate_obv_series(closes, volumes))
+                obv_series = self._safe_call(
+                    lambda: calculate_obv_series(closes, volumes)
+                )
                 if obv_series and isinstance(obv_series, list) and len(obv_series) > 0:
-                    indicators['obv'] = obv_series[-1]
-                    
+                    indicators["obv"] = obv_series[-1]
+
                     # OBV MA et oscillateur
                     if len(obv_series) >= 10:
-                        indicators['obv_ma_10'] = self._safe_call(lambda: calculate_obv_ma(closes, volumes, 10))
-                        indicators['obv_oscillator'] = self._safe_call(lambda: calculate_obv_oscillator(closes, volumes, 10))
-                
+                        indicators["obv_ma_10"] = self._safe_call(
+                            lambda: calculate_obv_ma(closes, volumes, 10)
+                        )
+                        indicators["obv_oscillator"] = self._safe_call(
+                            lambda: calculate_obv_oscillator(closes, volumes, 10)
+                        )
+
                 # A/D Line (Accumulation/Distribution Line)
-                from ..indicators.volume.obv import calculate_volume_accumulation_distribution
-                indicators['ad_line'] = self._safe_call(lambda: calculate_volume_accumulation_distribution(highs, lows, closes, volumes))
-                
-                vwap_series = self._safe_call(lambda: calculate_vwap_series(highs, lows, closes, volumes))
-                if vwap_series and isinstance(vwap_series, list) and len(vwap_series) > 0:
-                    indicators['vwap_10'] = vwap_series[-1]
-                
+                from ..indicators.volume.obv import (
+                    calculate_volume_accumulation_distribution,
+                )
+
+                indicators["ad_line"] = self._safe_call(
+                    lambda: calculate_volume_accumulation_distribution(
+                        highs, lows, closes, volumes
+                    )
+                )
+
+                vwap_series = self._safe_call(
+                    lambda: calculate_vwap_series(highs, lows, closes, volumes)
+                )
+                if (
+                    vwap_series
+                    and isinstance(vwap_series, list)
+                    and len(vwap_series) > 0
+                ):
+                    indicators["vwap_10"] = vwap_series[-1]
+
                 # VWAP Quote (plus précis avec quote_asset_volume)
-                quote_volumes = [d.get('quote_asset_volume', 0) for d in ohlcv_data]
-                vwap_quote_series = self._safe_call(lambda: calculate_vwap_quote_series(highs, lows, closes, quote_volumes))
-                if vwap_quote_series and isinstance(vwap_quote_series, list) and len(vwap_quote_series) > 0:
-                    indicators['vwap_quote_10'] = vwap_quote_series[-1]
-                
+                quote_volumes = [d.get("quote_asset_volume", 0) for d in ohlcv_data]
+                vwap_quote_series = self._safe_call(
+                    lambda: calculate_vwap_quote_series(
+                        highs, lows, closes, quote_volumes
+                    )
+                )
+                if (
+                    vwap_quote_series
+                    and isinstance(vwap_quote_series, list)
+                    and len(vwap_quote_series) > 0
+                ):
+                    indicators["vwap_quote_10"] = vwap_quote_series[-1]
+
                 # Anchored VWAP (utilise un point d'ancrage significatif)
                 from ..indicators.volume.vwap import calculate_anchored_vwap
+
                 if len(closes) >= 20:  # Minimum de données nécessaires
                     # Utilise les 50 derniers points comme ancrage ou début des données si moins de 50 points
                     anchor_index = max(0, len(closes) - 50) if len(closes) > 50 else 0
-                    indicators['anchored_vwap'] = self._safe_call(lambda: calculate_anchored_vwap(highs, lows, closes, volumes, anchor_index))
-                
+                    indicators["anchored_vwap"] = self._safe_call(
+                        lambda: calculate_anchored_vwap(
+                            highs, lows, closes, volumes, anchor_index
+                        )
+                    )
+
                 # VWAP Bands (upper/lower bands pour support/résistance)
                 from ..indicators.volume.vwap import calculate_vwap_bands
+
                 if len(closes) >= 20:
-                    vwap_bands = self._safe_call(lambda: calculate_vwap_bands(highs, lows, closes, volumes))
+                    vwap_bands = self._safe_call(
+                        lambda: calculate_vwap_bands(highs, lows, closes, volumes)
+                    )
                     if vwap_bands and isinstance(vwap_bands, dict):
-                        indicators['vwap_upper_band'] = vwap_bands.get('upper_band')
-                        indicators['vwap_lower_band'] = vwap_bands.get('lower_band')
-                
+                        indicators["vwap_upper_band"] = vwap_bands.get("upper_band")
+                        indicators["vwap_lower_band"] = vwap_bands.get("lower_band")
+
                 # Volume context avec métriques avancées
                 if len(volumes) >= 20:
                     avg_volume = sum(volumes[-20:]) / 20
-                    
+
                     # Extraire les données pour les métriques avancées
-                    quote_volumes = [d.get('quote_asset_volume', 0) for d in ohlcv_data]
-                    trades_counts = [d.get('number_of_trades', 0) for d in ohlcv_data]
-                    
-                    indicators.update({
-                        'avg_volume_20': avg_volume,
-                        'volume_ratio': volumes[-1] / avg_volume if avg_volume > 0 else 1,
-                        'quote_volume_ratio': self._safe_call(lambda: calculate_quote_volume_ratio(quote_volumes, 20)),
-                        'avg_trade_size': self._safe_call(lambda: calculate_avg_trade_size(volumes[-1], trades_counts[-1])),
-                        'trade_intensity': self._safe_call(lambda: calculate_trade_intensity(trades_counts, 20))
-                    })
-                
+                    quote_volumes = [d.get("quote_asset_volume", 0) for d in ohlcv_data]
+                    trades_counts = [d.get("number_of_trades", 0) for d in ohlcv_data]
+
+                    indicators.update(
+                        {
+                            "avg_volume_20": avg_volume,
+                            "volume_ratio": (
+                                volumes[-1] / avg_volume if avg_volume > 0 else 1
+                            ),
+                            "quote_volume_ratio": self._safe_call(
+                                lambda: calculate_quote_volume_ratio(quote_volumes, 20)
+                            ),
+                            "avg_trade_size": self._safe_call(
+                                lambda: calculate_avg_trade_size(
+                                    volumes[-1], trades_counts[-1]
+                                )
+                            ),
+                            "trade_intensity": self._safe_call(
+                                lambda: calculate_trade_intensity(trades_counts, 20)
+                            ),
+                        }
+                    )
+
                 # Volume Profile (POC, VAH, VAL)
                 if len(volumes) >= 20:
                     from ..indicators.volume.vwap import find_poc, calculate_value_area
-                    indicators['volume_profile_poc'] = self._safe_call(lambda: find_poc(closes, volumes, 20))
-                    
-                    value_area = self._safe_call(lambda: calculate_value_area(closes, volumes, 0.7, 20))
+
+                    indicators["volume_profile_poc"] = self._safe_call(
+                        lambda: find_poc(closes, volumes, 20)
+                    )
+
+                    value_area = self._safe_call(
+                        lambda: calculate_value_area(closes, volumes, 0.7, 20)
+                    )
                     if value_area and isinstance(value_area, dict):
-                        indicators['volume_profile_vah'] = value_area.get('vah')
-                        indicators['volume_profile_val'] = value_area.get('val')
-            
+                        indicators["volume_profile_vah"] = value_area.get("vah")
+                        indicators["volume_profile_val"] = value_area.get("val")
+
             # === APPEL DIRECT DE VOS MODULES DETECTORS ===
-            logger.debug(f"🔍 {symbol} {timeframe}: {len(closes)} closes disponibles (min 100 requis pour régime)")
+            logger.debug(
+                f"🔍 {symbol} {timeframe}: {len(closes)} closes disponibles (min 100 requis pour régime)"
+            )
             if len(closes) >= 100:  # Assez de données pour les détecteurs
-                
+
                 # RegimeDetector
                 try:
                     regime_result = self.regime_detector.detect_regime(
@@ -524,14 +846,18 @@ class IndicatorProcessor:
                         volumes=volumes,
                         symbol=symbol,
                         include_analysis=True,
-                        enable_cache=True
+                        enable_cache=True,
                     )
-                    
+
                     if regime_result:
-                        logger.debug(f"✅ Régime détecté pour {symbol} {timeframe}: {regime_result.regime_type.value}")
+                        logger.debug(
+                            f"✅ Régime détecté pour {symbol} {timeframe}: {regime_result.regime_type.value}"
+                        )
                         # Calculer trend_alignment à partir du trend_slope (normaliser entre -100 et 100)
-                        trend_alignment = max(-100, min(100, regime_result.trend_slope * 10))
-                        
+                        trend_alignment = max(
+                            -100, min(100, regime_result.trend_slope * 10)
+                        )
+
                         # Calculer momentum_score (0-100, où 50 = neutre)
                         # FIXÉ: Utiliser RSI + MACD + ADX au lieu de trend_slope qui varie peu
 
@@ -539,26 +865,36 @@ class IndicatorProcessor:
                         momentum_components = []
 
                         # 1. RSI Component (40 pts max)
-                        rsi_14 = indicators.get('rsi_14')
+                        rsi_14 = indicators.get("rsi_14")
                         if rsi_14 is not None:
                             # RSI 50 = neutre (50pts), RSI 70 = bullish (80pts), RSI 30 = bearish (20pts)
                             rsi_score = rsi_14  # RSI est déjà 0-100
-                            momentum_components.append(('rsi', rsi_score, 40))  # Poids 40%
+                            momentum_components.append(
+                                ("rsi", rsi_score, 40)
+                            )  # Poids 40%
 
                         # 2. MACD Histogram Component (30 pts max)
-                        macd_hist = indicators.get('macd_histogram')
+                        macd_hist = indicators.get("macd_histogram")
                         if macd_hist is not None:
                             # Normaliser MACD histogram (typiquement -50 à +50 pour crypto)
                             # Positif = bullish, négatif = bearish
-                            macd_normalized = max(-50, min(50, macd_hist))  # Limiter à ±50
+                            macd_normalized = max(
+                                -50, min(50, macd_hist)
+                            )  # Limiter à ±50
                             macd_score = 50 + macd_normalized  # Convertir en 0-100
-                            momentum_components.append(('macd', macd_score, 30))  # Poids 30%
+                            momentum_components.append(
+                                ("macd", macd_score, 30)
+                            )  # Poids 30%
 
                         # 3. ADX Component (20 pts max)
-                        adx_14 = indicators.get('adx_14')
-                        plus_di = indicators.get('plus_di')
-                        minus_di = indicators.get('minus_di')
-                        if adx_14 is not None and plus_di is not None and minus_di is not None:
+                        adx_14 = indicators.get("adx_14")
+                        plus_di = indicators.get("plus_di")
+                        minus_di = indicators.get("minus_di")
+                        if (
+                            adx_14 is not None
+                            and plus_di is not None
+                            and minus_di is not None
+                        ):
                             # ADX mesure la force de la tendance (0-100)
                             # +DI vs -DI donne la direction
                             if plus_di > minus_di:
@@ -568,21 +904,32 @@ class IndicatorProcessor:
                             else:
                                 # Tendance baissière: score = 50 - (ADX/2)
                                 adx_score = max(0, 50 - (adx_14 / 2))
-                            momentum_components.append(('adx', adx_score, 20))  # Poids 20%
+                            momentum_components.append(
+                                ("adx", adx_score, 20)
+                            )  # Poids 20%
 
                         # 4. ROC Component (10 pts max)
-                        roc_10 = indicators.get('roc_10')
+                        roc_10 = indicators.get("roc_10")
                         if roc_10 is not None:
                             # ROC typiquement -5% à +5% pour 1m crypto
                             # Normaliser autour de 50
-                            roc_normalized = max(-5, min(5, roc_10 * 100))  # Convertir en %
+                            roc_normalized = max(
+                                -5, min(5, roc_10 * 100)
+                            )  # Convertir en %
                             roc_score = 50 + (roc_normalized * 10)  # ±50 points max
-                            momentum_components.append(('roc', roc_score, 10))  # Poids 10%
+                            momentum_components.append(
+                                ("roc", roc_score, 10)
+                            )  # Poids 10%
 
                         # Calculer moyenne pondérée
                         if momentum_components:
-                            total_weighted = sum(score * weight for _, score, weight in momentum_components)
-                            total_weight = sum(weight for _, _, weight in momentum_components)
+                            total_weighted = sum(
+                                score * weight
+                                for _, score, weight in momentum_components
+                            )
+                            total_weight = sum(
+                                weight for _, _, weight in momentum_components
+                            )
                             momentum_score = total_weighted / total_weight
                         else:
                             # Fallback si aucun composant disponible
@@ -590,16 +937,26 @@ class IndicatorProcessor:
 
                         # Limiter entre 0-100
                         momentum_score = max(0, min(100, momentum_score))
-                        
-                        indicators.update({
-                            'market_regime': str(regime_result.regime_type.value if hasattr(regime_result.regime_type, 'value') else regime_result.regime_type).upper(),
-                            'regime_strength': str(regime_result.strength.value if hasattr(regime_result.strength, 'value') else regime_result.strength).upper(),
-                            'regime_confidence': float(regime_result.confidence),
-                            'regime_duration': int(regime_result.duration),
-                            'trend_alignment': float(trend_alignment),
-                            'momentum_score': float(momentum_score)
-                        })
-                        
+
+                        indicators.update(
+                            {
+                                "market_regime": str(
+                                    regime_result.regime_type.value
+                                    if hasattr(regime_result.regime_type, "value")
+                                    else regime_result.regime_type
+                                ).upper(),
+                                "regime_strength": str(
+                                    regime_result.strength.value
+                                    if hasattr(regime_result.strength, "value")
+                                    else regime_result.strength
+                                ).upper(),
+                                "regime_confidence": float(regime_result.confidence),
+                                "regime_duration": int(regime_result.duration),
+                                "trend_alignment": float(trend_alignment),
+                                "momentum_score": float(momentum_score),
+                            }
+                        )
+
                         # Calculer atr_percentile en utilisant la fonction dédiée
                         try:
                             atr_percentile = calculate_atr_percentile(
@@ -608,18 +965,20 @@ class IndicatorProcessor:
                                 closes=closes,
                                 period=14,
                                 lookback=100,
-                                max_lookback=500
+                                max_lookback=500,
                             )
                             if atr_percentile is not None:
-                                indicators['atr_percentile'] = float(atr_percentile)
+                                indicators["atr_percentile"] = float(atr_percentile)
                             else:
-                                indicators['atr_percentile'] = 50.0  # Valeur neutre par défaut
+                                indicators["atr_percentile"] = (
+                                    50.0  # Valeur neutre par défaut
+                                )
                         except Exception as e:
                             logger.debug(f"Erreur calcul atr_percentile: {e}")
-                            indicators['atr_percentile'] = 50.0
+                            indicators["atr_percentile"] = 50.0
                 except Exception as e:
                     logger.warning(f"RegimeDetector error: {e}")
-                
+
                 # SupportResistanceDetector
                 try:
                     sr_levels = self.sr_detector.detect_levels(
@@ -628,36 +987,74 @@ class IndicatorProcessor:
                         closes=closes,
                         volumes=volumes,
                         current_price=closes[-1],
-                        timeframe=timeframe
+                        timeframe=timeframe,
                     )
-                    
+
                     if sr_levels:
                         # Séparer supports et résistances
                         current_price = closes[-1]
-                        supports = [level for level in sr_levels if level.price < current_price]
-                        resistances = [level for level in sr_levels if level.price > current_price]
-                        
+                        supports = [
+                            level for level in sr_levels if level.price < current_price
+                        ]
+                        resistances = [
+                            level for level in sr_levels if level.price > current_price
+                        ]
+
                         # Trier par proximité pour trouver les plus proches
-                        supports.sort(key=lambda x: current_price - x.price)  # Plus proche en premier
-                        resistances.sort(key=lambda x: x.price - current_price)  # Plus proche en premier
-                        
+                        supports.sort(
+                            key=lambda x: current_price - x.price
+                        )  # Plus proche en premier
+                        resistances.sort(
+                            key=lambda x: x.price - current_price
+                        )  # Plus proche en premier
+
                         # Extraire les prix pour JSONB (garder l'ordre par force pour la liste)
-                        support_prices = [level.price for level in sorted(supports, key=lambda x: -self._strength_to_number(x.strength))[:5]]
-                        resistance_prices = [level.price for level in sorted(resistances, key=lambda x: -self._strength_to_number(x.strength))[:5]]
-                        
-                        indicators.update({
-                            'support_levels': support_prices,
-                            'resistance_levels': resistance_prices,
-                            'nearest_support': supports[0].price if supports else None,
-                            'nearest_resistance': resistances[0].price if resistances else None,
-                            'support_strength': str(supports[0].strength.value).upper() if supports else 'MODERATE',
-                            'resistance_strength': str(resistances[0].strength.value).upper() if resistances else 'MODERATE',
-                            'break_probability': float(resistances[0].break_probability if resistances else 0.5),  # FIXÉ: resistances au lieu de supports
-                            'pivot_count': len(sr_levels)
-                        })
+                        support_prices = [
+                            level.price
+                            for level in sorted(
+                                supports,
+                                key=lambda x: -self._strength_to_number(x.strength),
+                            )[:5]
+                        ]
+                        resistance_prices = [
+                            level.price
+                            for level in sorted(
+                                resistances,
+                                key=lambda x: -self._strength_to_number(x.strength),
+                            )[:5]
+                        ]
+
+                        indicators.update(
+                            {
+                                "support_levels": support_prices,
+                                "resistance_levels": resistance_prices,
+                                "nearest_support": (
+                                    supports[0].price if supports else None
+                                ),
+                                "nearest_resistance": (
+                                    resistances[0].price if resistances else None
+                                ),
+                                "support_strength": (
+                                    str(supports[0].strength.value).upper()
+                                    if supports
+                                    else "MODERATE"
+                                ),
+                                "resistance_strength": (
+                                    str(resistances[0].strength.value).upper()
+                                    if resistances
+                                    else "MODERATE"
+                                ),
+                                "break_probability": float(
+                                    resistances[0].break_probability
+                                    if resistances
+                                    else 0.5
+                                ),  # FIXÉ: resistances au lieu de supports
+                                "pivot_count": len(sr_levels),
+                            }
+                        )
                 except Exception as e:
                     logger.warning(f"SupportResistanceDetector error: {e}")
-                
+
                 # VolumeContextAnalyzer
                 try:
                     volume_result = self.volume_analyzer.analyze_volume_context(
@@ -665,34 +1062,56 @@ class IndicatorProcessor:
                         closes=closes,
                         highs=highs,
                         lows=lows,
-                        symbol=symbol
+                        symbol=symbol,
                     )
 
                     if volume_result:
                         # Calculer le nombre RÉEL de périodes de buildup (pas juste la config)
-                        buildup_count = self.volume_analyzer.get_buildup_period_count(volumes) if volume_result.buildup_detected else 0
+                        buildup_count = (
+                            self.volume_analyzer.get_buildup_period_count(volumes)
+                            if volume_result.buildup_detected
+                            else 0
+                        )
 
                         # volume_spike_multiplier: Calculer le multiplicateur réel du spike
                         # Si spike détecté, c'est le ratio vs moyenne des 4 périodes précédentes
                         # Sinon, c'est toujours le ratio actuel (cohérent avec relative_volume)
                         if volume_result.spike_detected and len(volumes) >= 5:
                             # Spike = volume actuel vs moyenne des 4 dernières (excluant actuelle)
-                            spike_multiplier = volumes[-1] / np.mean(volumes[-5:-1]) if np.mean(volumes[-5:-1]) > 0 else 1.0
+                            spike_multiplier = (
+                                volumes[-1] / np.mean(volumes[-5:-1])
+                                if np.mean(volumes[-5:-1]) > 0
+                                else 1.0
+                            )
                         else:
                             # Pas de spike, mais on garde le ratio pour cohérence
                             spike_multiplier = volume_result.current_volume_ratio
 
-                        indicators.update({
-                            'volume_context': str(volume_result.context.context_type.value).upper(),
-                            'volume_pattern': str(volume_result.context.pattern_detected.value).upper(),
-                            'volume_quality_score': float(volume_result.quality_score),
-                            'relative_volume': float(volume_result.current_volume_ratio),
-                            'volume_buildup_periods': int(buildup_count),  # FIXÉ: nombre réel au lieu de constante
-                            'volume_spike_multiplier': float(spike_multiplier)  # FIXÉ: multiplicateur réel du spike
-                        })
+                        indicators.update(
+                            {
+                                "volume_context": str(
+                                    volume_result.context.context_type.value
+                                ).upper(),
+                                "volume_pattern": str(
+                                    volume_result.context.pattern_detected.value
+                                ).upper(),
+                                "volume_quality_score": float(
+                                    volume_result.quality_score
+                                ),
+                                "relative_volume": float(
+                                    volume_result.current_volume_ratio
+                                ),
+                                "volume_buildup_periods": int(
+                                    buildup_count
+                                ),  # FIXÉ: nombre réel au lieu de constante
+                                "volume_spike_multiplier": float(
+                                    spike_multiplier
+                                ),  # FIXÉ: multiplicateur réel du spike
+                            }
+                        )
                 except Exception as e:
                     logger.debug(f"VolumeContextAnalyzer error: {e}")
-                
+
                 # SpikeDetector avec vérification de fraîcheur
                 try:
                     spike_events = self.spike_detector.detect_spikes(
@@ -700,65 +1119,82 @@ class IndicatorProcessor:
                         lows=lows,
                         closes=closes,
                         volumes=volumes,
-                        timestamps=None  # Will be auto-generated
+                        timestamps=None,  # Will be auto-generated
                     )
-                    
+
                     if spike_events:
                         # Prendre le spike le plus récent
                         latest_spike = spike_events[0] if spike_events else None
-                        
+
                         # Vérifier la fraîcheur du pattern pour éviter la persistance
-                        if latest_spike and self._is_pattern_fresh(latest_spike, closes, volumes):
-                            indicators.update({
-                                'pattern_detected': str(latest_spike.spike_type.value).upper(),
-                                'pattern_confidence': float(latest_spike.confidence)
-                            })
+                        if latest_spike and self._is_pattern_fresh(
+                            latest_spike, closes, volumes
+                        ):
+                            indicators.update(
+                                {
+                                    "pattern_detected": str(
+                                        latest_spike.spike_type.value
+                                    ).upper(),
+                                    "pattern_confidence": float(
+                                        latest_spike.confidence
+                                    ),
+                                }
+                            )
                         else:
                             # Pattern trop ancien ou non significatif
-                            indicators.update({
-                                'pattern_detected': 'NORMAL',
-                                'pattern_confidence': 0.0
-                            })
+                            indicators.update(
+                                {
+                                    "pattern_detected": "NORMAL",
+                                    "pattern_confidence": 0.0,
+                                }
+                            )
                     else:
-                        indicators.update({
-                            'pattern_detected': 'NORMAL',
-                            'pattern_confidence': 0.0
-                        })
+                        indicators.update(
+                            {"pattern_detected": "NORMAL", "pattern_confidence": 0.0}
+                        )
                 except Exception as e:
                     logger.warning(f"SpikeDetector error: {e}")
-                    indicators.update({
-                        'pattern_detected': 'NORMAL',
-                        'pattern_confidence': 0.0
-                    })
-            
+                    indicators.update(
+                        {"pattern_detected": "NORMAL", "pattern_confidence": 0.0}
+                    )
+
             # === CALCUL CONFLUENCE SCORE ===
-            confluence_score = self._safe_call(lambda: calculate_confluence_score(
-                indicators, 
-                closes[-1] if closes else None,
-                ConfluenceType.MONO_TIMEFRAME
-            ))
-            indicators['confluence_score'] = confluence_score
-            
+            confluence_score = self._safe_call(
+                lambda: calculate_confluence_score(
+                    indicators,
+                    closes[-1] if closes else None,
+                    ConfluenceType.MONO_TIMEFRAME,
+                )
+            )
+            indicators["confluence_score"] = confluence_score
+
             # === CALCUL SIGNAL STRENGTH ===
-            signal_strength = self._safe_call(lambda: calculate_signal_strength(indicators))
-            indicators['signal_strength'] = signal_strength
-            
+            signal_strength = self._safe_call(
+                lambda: calculate_signal_strength(indicators)
+            )
+            indicators["signal_strength"] = signal_strength
+
             # Métadonnées
             calculation_time = int((time.time() - start_time) * 1000)
-            indicators['calculation_time_ms'] = calculation_time
-            indicators['data_quality'] = 'EXCELLENT' if len(ohlcv_data) >= 100 else 'GOOD'
-            indicators['anomaly_detected'] = False
-            
-            logger.debug(f"🧮 {len([k for k, v in indicators.items() if v is not None])} indicateurs calculés en {calculation_time}ms")
-            
+            indicators["calculation_time_ms"] = calculation_time
+            indicators["data_quality"] = (
+                "EXCELLENT" if len(ohlcv_data) >= 100 else "GOOD"
+            )
+            indicators["anomaly_detected"] = False
+
+            logger.debug(
+                f"🧮 {len([k for k, v in indicators.items() if v is not None])} indicateurs calculés en {calculation_time}ms"
+            )
+
         except Exception as e:
             import traceback
+
             logger.error(f"❌ Erreur lors des calculs: {e}")
             logger.error(f"❌ Type d'erreur: {type(e).__name__}")
             logger.error(f"❌ Traceback: {traceback.format_exc()}")
-            indicators['data_quality'] = 'POOR'
-            indicators['anomaly_detected'] = True
-        
+            indicators["data_quality"] = "POOR"
+            indicators["anomaly_detected"] = True
+
         return indicators
 
     def _safe_call(self, func):
@@ -771,49 +1207,46 @@ class IndicatorProcessor:
             return result
         except Exception as e:
             import traceback
+
             logger.debug(f"Appel échoué: {e}")
             logger.debug(f"Type d'erreur: {type(e).__name__}")
             logger.debug(f"Traceback: {traceback.format_exc()}")
             return None
-    
+
     def _strength_to_number(self, strength):
         """Convertit la force en nombre pour le tri."""
-        strength_map = {
-            'WEAK': 1,
-            'MODERATE': 2,
-            'STRONG': 3,
-            'MAJOR': 4
-        }
-        if hasattr(strength, 'value'):
+        strength_map = {"WEAK": 1, "MODERATE": 2, "STRONG": 3, "MAJOR": 4}
+        if hasattr(strength, "value"):
             return strength_map.get(strength.value.upper(), 0)
         return strength_map.get(str(strength).upper(), 0)
-    
+
     def _sanitize_numeric_value(self, value, max_abs_value=1e19):
         """Sanitise une valeur numérique pour éviter les débordements DB (DECIMAL(28,8) -> max ~1e19)."""
         if value is None:
             return None
-        
+
         try:
             value = float(value)
-            
+
             # Vérifier si la valeur est finie
-            if not (isinstance(value, (int, float)) and abs(value) < float('inf')):
+            if not (isinstance(value, (int, float)) and abs(value) < float("inf")):
                 return None
-            
+
             # Limiter la valeur absolue pour éviter les débordements DB
             if abs(value) > max_abs_value:
-                logger.warning(f"Valeur trop grande pour la DB: {value}, limitée à {max_abs_value}")
+                logger.warning(
+                    f"Valeur trop grande pour la DB: {value}, limitée à {max_abs_value}"
+                )
                 return max_abs_value if value > 0 else -max_abs_value
-            
+
             return value
-            
+
         except (ValueError, TypeError, OverflowError):
             return None
 
-
     async def _save_indicators_to_db(self, indicators: Dict):
         """Sauvegarde tous les indicateurs dans analyzer_data."""
-        
+
         query = """
             INSERT INTO analyzer_data (
                 time, symbol, timeframe, analysis_timestamp, analyzer_version,
@@ -881,134 +1314,150 @@ class IndicatorProcessor:
                 bb_upper = EXCLUDED.bb_upper,
                 calculation_time_ms = EXCLUDED.calculation_time_ms
         """
-        
+
         try:
             # Sanitize all numeric values to prevent DB overflow - ORDRE EXACT DU SCHEMA
             sanitized_params = [
-                indicators['time'], indicators['symbol'], indicators['timeframe'],
-                indicators['analysis_timestamp'], indicators['analyzer_version'],
+                indicators["time"],
+                indicators["symbol"],
+                indicators["timeframe"],
+                indicators["analysis_timestamp"],
+                indicators["analyzer_version"],
                 # Moyennes mobiles avancées
-                self._sanitize_numeric_value(indicators.get('wma_20')),
-                self._sanitize_numeric_value(indicators.get('dema_12')), 
-                self._sanitize_numeric_value(indicators.get('tema_12')), 
-                self._sanitize_numeric_value(indicators.get('hull_20')), 
-                self._sanitize_numeric_value(indicators.get('kama_14')),
+                self._sanitize_numeric_value(indicators.get("wma_20")),
+                self._sanitize_numeric_value(indicators.get("dema_12")),
+                self._sanitize_numeric_value(indicators.get("tema_12")),
+                self._sanitize_numeric_value(indicators.get("hull_20")),
+                self._sanitize_numeric_value(indicators.get("kama_14")),
                 # Indicateurs de base
-                self._sanitize_numeric_value(indicators.get('rsi_14')), 
-                self._sanitize_numeric_value(indicators.get('rsi_21')), 
-                self._sanitize_numeric_value(indicators.get('ema_7')), 
-                self._sanitize_numeric_value(indicators.get('ema_12')), 
-                self._sanitize_numeric_value(indicators.get('ema_26')), 
-                self._sanitize_numeric_value(indicators.get('ema_50')), 
-                self._sanitize_numeric_value(indicators.get('ema_99')),
-                self._sanitize_numeric_value(indicators.get('sma_20')), 
-                self._sanitize_numeric_value(indicators.get('sma_50')), 
+                self._sanitize_numeric_value(indicators.get("rsi_14")),
+                self._sanitize_numeric_value(indicators.get("rsi_21")),
+                self._sanitize_numeric_value(indicators.get("ema_7")),
+                self._sanitize_numeric_value(indicators.get("ema_12")),
+                self._sanitize_numeric_value(indicators.get("ema_26")),
+                self._sanitize_numeric_value(indicators.get("ema_50")),
+                self._sanitize_numeric_value(indicators.get("ema_99")),
+                self._sanitize_numeric_value(indicators.get("sma_20")),
+                self._sanitize_numeric_value(indicators.get("sma_50")),
                 # MACD
-                self._sanitize_numeric_value(indicators.get('macd_line')), 
-                self._sanitize_numeric_value(indicators.get('macd_signal')), 
-                self._sanitize_numeric_value(indicators.get('macd_histogram')), 
-                self._sanitize_numeric_value(indicators.get('ppo')),
-                indicators.get('macd_zero_cross', False),
-                indicators.get('macd_signal_cross', False),
-                indicators.get('macd_trend', 'NEUTRAL'),
+                self._sanitize_numeric_value(indicators.get("macd_line")),
+                self._sanitize_numeric_value(indicators.get("macd_signal")),
+                self._sanitize_numeric_value(indicators.get("macd_histogram")),
+                self._sanitize_numeric_value(indicators.get("ppo")),
+                indicators.get("macd_zero_cross", False),
+                indicators.get("macd_signal_cross", False),
+                indicators.get("macd_trend", "NEUTRAL"),
                 # Bollinger Bands
-                self._sanitize_numeric_value(indicators.get('bb_upper')), 
-                self._sanitize_numeric_value(indicators.get('bb_middle')), 
-                self._sanitize_numeric_value(indicators.get('bb_lower')),
-                self._sanitize_numeric_value(indicators.get('bb_position')), 
-                self._sanitize_numeric_value(indicators.get('bb_width')),
-                indicators.get('bb_squeeze', False),
-                indicators.get('bb_expansion', False),
-                indicators.get('bb_breakout_direction', 'NONE'),
-                self._sanitize_numeric_value(indicators.get('keltner_upper')), 
-                self._sanitize_numeric_value(indicators.get('keltner_lower')),
+                self._sanitize_numeric_value(indicators.get("bb_upper")),
+                self._sanitize_numeric_value(indicators.get("bb_middle")),
+                self._sanitize_numeric_value(indicators.get("bb_lower")),
+                self._sanitize_numeric_value(indicators.get("bb_position")),
+                self._sanitize_numeric_value(indicators.get("bb_width")),
+                indicators.get("bb_squeeze", False),
+                indicators.get("bb_expansion", False),
+                indicators.get("bb_breakout_direction", "NONE"),
+                self._sanitize_numeric_value(indicators.get("keltner_upper")),
+                self._sanitize_numeric_value(indicators.get("keltner_lower")),
                 # Stochastic
-                self._sanitize_numeric_value(indicators.get('stoch_k')), 
-                self._sanitize_numeric_value(indicators.get('stoch_d')), 
-                self._sanitize_numeric_value(indicators.get('stoch_rsi')),
-                self._sanitize_numeric_value(indicators.get('stoch_fast_k')), 
-                self._sanitize_numeric_value(indicators.get('stoch_fast_d')),
-                indicators.get('stoch_divergence', False),
-                indicators.get('stoch_signal', 'NEUTRAL'),
+                self._sanitize_numeric_value(indicators.get("stoch_k")),
+                self._sanitize_numeric_value(indicators.get("stoch_d")),
+                self._sanitize_numeric_value(indicators.get("stoch_rsi")),
+                self._sanitize_numeric_value(indicators.get("stoch_fast_k")),
+                self._sanitize_numeric_value(indicators.get("stoch_fast_d")),
+                indicators.get("stoch_divergence", False),
+                indicators.get("stoch_signal", "NEUTRAL"),
                 # ATR & Volatilité
-                self._sanitize_numeric_value(indicators.get('atr_14')),
-                self._sanitize_numeric_value(indicators.get('atr_percentile')),
-                self._sanitize_numeric_value(indicators.get('natr')),
-                indicators.get('volatility_regime'),
-                self._sanitize_numeric_value(indicators.get('atr_stop_long')), 
-                self._sanitize_numeric_value(indicators.get('atr_stop_short')),
+                self._sanitize_numeric_value(indicators.get("atr_14")),
+                self._sanitize_numeric_value(indicators.get("atr_percentile")),
+                self._sanitize_numeric_value(indicators.get("natr")),
+                indicators.get("volatility_regime"),
+                self._sanitize_numeric_value(indicators.get("atr_stop_long")),
+                self._sanitize_numeric_value(indicators.get("atr_stop_short")),
                 # ADX
-                self._sanitize_numeric_value(indicators.get('adx_14')),
-                self._sanitize_numeric_value(indicators.get('plus_di')),
-                self._sanitize_numeric_value(indicators.get('minus_di')),
-                self._sanitize_numeric_value(indicators.get('dx')),
-                self._sanitize_numeric_value(indicators.get('adxr')),
-                indicators.get('trend_strength'),
-                indicators.get('directional_bias', 'NEUTRAL'),
-                self._sanitize_numeric_value(indicators.get('trend_angle')),
+                self._sanitize_numeric_value(indicators.get("adx_14")),
+                self._sanitize_numeric_value(indicators.get("plus_di")),
+                self._sanitize_numeric_value(indicators.get("minus_di")),
+                self._sanitize_numeric_value(indicators.get("dx")),
+                self._sanitize_numeric_value(indicators.get("adxr")),
+                indicators.get("trend_strength"),
+                indicators.get("directional_bias", "NEUTRAL"),
+                self._sanitize_numeric_value(indicators.get("trend_angle")),
                 # Oscillateurs
-                self._sanitize_numeric_value(indicators.get('williams_r')),
-                self._sanitize_numeric_value(indicators.get('mfi_14')),
-                self._sanitize_numeric_value(indicators.get('cci_20')), 
-                self._sanitize_numeric_value(indicators.get('momentum_10')),
-                self._sanitize_numeric_value(indicators.get('roc_10')), 
-                self._sanitize_numeric_value(indicators.get('roc_20')),
+                self._sanitize_numeric_value(indicators.get("williams_r")),
+                self._sanitize_numeric_value(indicators.get("mfi_14")),
+                self._sanitize_numeric_value(indicators.get("cci_20")),
+                self._sanitize_numeric_value(indicators.get("momentum_10")),
+                self._sanitize_numeric_value(indicators.get("roc_10")),
+                self._sanitize_numeric_value(indicators.get("roc_20")),
                 # Volume avancé
-                self._sanitize_numeric_value(indicators.get('vwap_10')), 
-                self._sanitize_numeric_value(indicators.get('vwap_quote_10')),
-                self._sanitize_numeric_value(indicators.get('anchored_vwap')),
-                self._sanitize_numeric_value(indicators.get('vwap_upper_band')),
-                self._sanitize_numeric_value(indicators.get('vwap_lower_band')),
-                self._sanitize_numeric_value(indicators.get('volume_ratio')),
-                self._sanitize_numeric_value(indicators.get('avg_volume_20')), 
-                self._sanitize_numeric_value(indicators.get('quote_volume_ratio')), 
-                self._sanitize_numeric_value(indicators.get('avg_trade_size')), 
-                self._sanitize_numeric_value(indicators.get('trade_intensity')),
-                self._sanitize_numeric_value(indicators.get('obv')), 
-                self._sanitize_numeric_value(indicators.get('obv_ma_10')), 
-                self._sanitize_numeric_value(indicators.get('obv_oscillator')),
-                self._sanitize_numeric_value(indicators.get('ad_line')),
-                self._sanitize_numeric_value(indicators.get('volume_profile_poc')),
-                self._sanitize_numeric_value(indicators.get('volume_profile_vah')),
-                self._sanitize_numeric_value(indicators.get('volume_profile_val')),
+                self._sanitize_numeric_value(indicators.get("vwap_10")),
+                self._sanitize_numeric_value(indicators.get("vwap_quote_10")),
+                self._sanitize_numeric_value(indicators.get("anchored_vwap")),
+                self._sanitize_numeric_value(indicators.get("vwap_upper_band")),
+                self._sanitize_numeric_value(indicators.get("vwap_lower_band")),
+                self._sanitize_numeric_value(indicators.get("volume_ratio")),
+                self._sanitize_numeric_value(indicators.get("avg_volume_20")),
+                self._sanitize_numeric_value(indicators.get("quote_volume_ratio")),
+                self._sanitize_numeric_value(indicators.get("avg_trade_size")),
+                self._sanitize_numeric_value(indicators.get("trade_intensity")),
+                self._sanitize_numeric_value(indicators.get("obv")),
+                self._sanitize_numeric_value(indicators.get("obv_ma_10")),
+                self._sanitize_numeric_value(indicators.get("obv_oscillator")),
+                self._sanitize_numeric_value(indicators.get("ad_line")),
+                self._sanitize_numeric_value(indicators.get("volume_profile_poc")),
+                self._sanitize_numeric_value(indicators.get("volume_profile_vah")),
+                self._sanitize_numeric_value(indicators.get("volume_profile_val")),
                 # Régime de marché
-                indicators.get('market_regime'), indicators.get('regime_strength'), 
-                self._sanitize_numeric_value(indicators.get('regime_confidence')),
-                indicators.get('regime_duration'), 
-                self._sanitize_numeric_value(indicators.get('trend_alignment')), 
-                self._sanitize_numeric_value(indicators.get('momentum_score')),
+                indicators.get("market_regime"),
+                indicators.get("regime_strength"),
+                self._sanitize_numeric_value(indicators.get("regime_confidence")),
+                indicators.get("regime_duration"),
+                self._sanitize_numeric_value(indicators.get("trend_alignment")),
+                self._sanitize_numeric_value(indicators.get("momentum_score")),
                 # Support/Résistance (JSONB)
-                json.dumps(indicators.get('support_levels', [])) if indicators.get('support_levels') else None, 
-                json.dumps(indicators.get('resistance_levels', [])) if indicators.get('resistance_levels') else None,
-                self._sanitize_numeric_value(indicators.get('nearest_support')), 
-                self._sanitize_numeric_value(indicators.get('nearest_resistance')),
-                indicators.get('support_strength'), indicators.get('resistance_strength'),
-                self._sanitize_numeric_value(indicators.get('break_probability')), 
-                indicators.get('pivot_count'),
+                (
+                    json.dumps(indicators.get("support_levels", []))
+                    if indicators.get("support_levels")
+                    else None
+                ),
+                (
+                    json.dumps(indicators.get("resistance_levels", []))
+                    if indicators.get("resistance_levels")
+                    else None
+                ),
+                self._sanitize_numeric_value(indicators.get("nearest_support")),
+                self._sanitize_numeric_value(indicators.get("nearest_resistance")),
+                indicators.get("support_strength"),
+                indicators.get("resistance_strength"),
+                self._sanitize_numeric_value(indicators.get("break_probability")),
+                indicators.get("pivot_count"),
                 # Volume contexte
-                indicators.get('volume_context'), indicators.get('volume_pattern'),
-                self._sanitize_numeric_value(indicators.get('volume_quality_score')), 
-                self._sanitize_numeric_value(indicators.get('relative_volume')),
-                indicators.get('volume_buildup_periods'), 
-                self._sanitize_numeric_value(indicators.get('volume_spike_multiplier')),
+                indicators.get("volume_context"),
+                indicators.get("volume_pattern"),
+                self._sanitize_numeric_value(indicators.get("volume_quality_score")),
+                self._sanitize_numeric_value(indicators.get("relative_volume")),
+                indicators.get("volume_buildup_periods"),
+                self._sanitize_numeric_value(indicators.get("volume_spike_multiplier")),
                 # Patterns
-                indicators.get('pattern_detected'), 
-                self._sanitize_numeric_value(indicators.get('pattern_confidence')),
+                indicators.get("pattern_detected"),
+                self._sanitize_numeric_value(indicators.get("pattern_confidence")),
                 # Indicateurs composites
-                indicators.get('signal_strength'),
-                self._sanitize_numeric_value(indicators.get('confluence_score')),
+                indicators.get("signal_strength"),
+                self._sanitize_numeric_value(indicators.get("confluence_score")),
                 # Métadonnées
-                indicators.get('calculation_time_ms'), indicators.get('data_quality'), indicators.get('anomaly_detected')
+                indicators.get("calculation_time_ms"),
+                indicators.get("data_quality"),
+                indicators.get("anomaly_detected"),
             ]
-            
+
             if self.db_pool is None:
                 raise RuntimeError("Database pool not initialized")
             async with self.db_pool.acquire() as conn:
                 await conn.execute(query, *sanitized_params)
-                
+
                 # Notification Redis simple : nouvelles données analysées disponibles
                 await self._notify_analyzer_ready(indicators)
-                
+
         except Exception as e:
             logger.error(f"❌ Erreur sauvegarde analyzer_data: {e}")
             raise
@@ -1018,19 +1467,28 @@ class IndicatorProcessor:
         try:
             if not self.redis_client:
                 # Connexion Redis paresseuse
-                self.redis_client = redis.from_url('redis://redis:6379')
-            
+                self.redis_client = redis.from_url("redis://redis:6379")
+
             notification = {
-                'event': 'analyzer_data_ready',
-                'symbol': indicators.get('symbol'),
-                'timeframe': indicators.get('timeframe'),
-                'timestamp': indicators.get('time').isoformat() if indicators.get('time') is not None and hasattr(indicators.get('time'), 'isoformat') else None
+                "event": "analyzer_data_ready",
+                "symbol": indicators.get("symbol"),
+                "timeframe": indicators.get("timeframe"),
+                "timestamp": (
+                    indicators.get("time").isoformat()
+                    if indicators.get("time") is not None
+                    and hasattr(indicators.get("time"), "isoformat")
+                    else None
+                ),
             }
-            
+
             if self.redis_client:
-                await self.redis_client.publish('analyzer_trigger', json.dumps(notification))
-            logger.debug(f"📢 Notification envoyée: {indicators.get('symbol')} {indicators.get('timeframe')}")
-            
+                await self.redis_client.publish(
+                    "analyzer_trigger", json.dumps(notification)
+                )
+            logger.debug(
+                f"📢 Notification envoyée: {indicators.get('symbol')} {indicators.get('timeframe')}"
+            )
+
         except Exception as e:
             # Ne pas faire échouer la sauvegarde si Redis fail
             logger.warning(f"⚠️ Erreur notification Redis: {e}")
@@ -1039,45 +1497,78 @@ class IndicatorProcessor:
         """Vérifie si le pattern détecté est récent et significatif."""
         if not latest_spike:
             return False
-            
+
         try:
             # Vérifier la fraîcheur temporelle (pattern ne doit pas être trop ancien)
             # En l'absence de timestamps réels, on utilise la position dans la série
             max_age_periods = 3  # Maximum 3 périodes d'âge
-            
+
             # Vérifier si les conditions de marché ont significativement changé
             # depuis la détection du pattern
             if len(closes) >= 5:
                 recent_closes = closes[-5:]
-                volatility_current = self._safe_call(lambda: float(np.std(recent_closes[-3:]))) if len(recent_closes) >= 3 else 0
-                volatility_previous = self._safe_call(lambda: float(np.std(recent_closes[:3]))) if len(recent_closes) >= 3 else 0
-                
+                volatility_current = (
+                    self._safe_call(lambda: float(np.std(recent_closes[-3:])))
+                    if len(recent_closes) >= 3
+                    else 0
+                )
+                volatility_previous = (
+                    self._safe_call(lambda: float(np.std(recent_closes[:3])))
+                    if len(recent_closes) >= 3
+                    else 0
+                )
+
                 # Si la volatilité a significativement changé, le pattern n'est plus frais
-                if volatility_previous and volatility_previous > 0 and abs(volatility_current - volatility_previous) / volatility_previous > 0.5:
+                if (
+                    volatility_previous
+                    and volatility_previous > 0
+                    and abs(volatility_current - volatility_previous)
+                    / volatility_previous
+                    > 0.5
+                ):
                     return False
-            
+
             # Vérifier la cohérence du volume avec le pattern détecté
             if len(volumes) >= 3:
-                recent_volume_avg = self._safe_call(lambda: float(np.mean(volumes[-3:])))
-                older_volume_avg = self._safe_call(lambda: float(np.mean(volumes[-6:-3]))) if len(volumes) >= 6 else recent_volume_avg
-                
+                recent_volume_avg = self._safe_call(
+                    lambda: float(np.mean(volumes[-3:]))
+                )
+                older_volume_avg = (
+                    self._safe_call(lambda: float(np.mean(volumes[-6:-3])))
+                    if len(volumes) >= 6
+                    else recent_volume_avg
+                )
+
                 # Si le volume a drastiquement diminué, le pattern perd sa validité
-                if older_volume_avg and older_volume_avg > 0 and recent_volume_avg and recent_volume_avg / older_volume_avg < 0.5:
+                if (
+                    older_volume_avg
+                    and older_volume_avg > 0
+                    and recent_volume_avg
+                    and recent_volume_avg / older_volume_avg < 0.5
+                ):
                     return False
-            
+
             # Vérifier la cohérence du prix avec le type de pattern
             if len(closes) >= 2:
                 price_change = (closes[-1] - closes[-2]) / closes[-2]
-                
+
                 # Pour un PRICE_SPIKE_UP, le prix ne devrait pas chuter drastiquement
-                if (hasattr(latest_spike.spike_type, 'value') and latest_spike.spike_type.value == 'price_spike_up' and price_change < -0.02):
+                if (
+                    hasattr(latest_spike.spike_type, "value")
+                    and latest_spike.spike_type.value == "price_spike_up"
+                    and price_change < -0.02
+                ):
                     return False
-                # Pour un PRICE_SPIKE_DOWN, le prix ne devrait pas monter drastiquement  
-                elif (hasattr(latest_spike.spike_type, 'value') and latest_spike.spike_type.value == 'price_spike_down' and price_change > 0.02):
+                # Pour un PRICE_SPIKE_DOWN, le prix ne devrait pas monter drastiquement
+                elif (
+                    hasattr(latest_spike.spike_type, "value")
+                    and latest_spike.spike_type.value == "price_spike_down"
+                    and price_change > 0.02
+                ):
                     return False
-            
+
             return True
-            
+
         except Exception as e:
             logger.error(f"Erreur vérification fraîcheur pattern: {e}")
             return False

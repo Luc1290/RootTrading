@@ -2,6 +2,7 @@
 Configuration centralisée pour tous les services RootTrading.
 Charge les variables d'environnement depuis .env et les rend disponibles dans l'application.
 """
+
 import os
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
@@ -34,15 +35,17 @@ PGPORT = int(os.getenv("PGPORT", 5432))
 DB_MIN_CONNECTIONS = int(os.getenv("DB_MIN_CONNECTIONS", "5"))
 DB_MAX_CONNECTIONS = int(os.getenv("DB_MAX_CONNECTIONS", "50"))
 
+
 def get_db_config() -> Dict[str, Any]:
     """Retourne la configuration de la base de données."""
     return {
-        'host': PGHOST,
-        'port': PGPORT,
-        'database': PGDATABASE,
-        'user': PGUSER,
-        'password': PGPASSWORD
+        "host": PGHOST,
+        "port": PGPORT,
+        "database": PGDATABASE,
+        "user": PGUSER,
+        "password": PGPASSWORD,
     }
+
 
 # Paramètres de trading
 DEFAULT_SYMBOL = os.getenv("DEFAULT_SYMBOL")
@@ -51,7 +54,9 @@ SYMBOLS = os.getenv("TRADING_SYMBOLS").split(",")
 INTERVAL = "1m"
 VALIDATION_INTERVAL = "3m"
 SCALPING_INTERVALS = ["1m", "3m", "5m", "15m"]
-TRADING_MODE = os.getenv("TRADING_MODE")  # 'demo' ou 'live' - reste dans .env car peut changer
+TRADING_MODE = os.getenv(
+    "TRADING_MODE"
+)  # 'demo' ou 'live' - reste dans .env car peut changer
 
 # Configuration des canaux Redis
 CHANNEL_PREFIX = "roottrading"
@@ -77,13 +82,16 @@ DISPATCHER_PORT = 5004
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
+
 def get_db_url() -> str:
     """Retourne l'URL de connexion à la base de données PostgreSQL."""
     return f"postgresql://{PGUSER}:{PGPASSWORD}@{PGHOST}:{PGPORT}/{PGDATABASE}"
 
+
 def is_live_mode() -> bool:
     """Vérifie si le bot est en mode réel (live) ou démo."""
-    return TRADING_MODE.lower() == 'live'
+    return TRADING_MODE.lower() == "live"
+
 
 def get_redis_channel(channel_type: str, symbol: Optional[str] = None) -> str:
     """Génère un nom de canal Redis basé sur le type et le symbole."""

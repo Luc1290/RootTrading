@@ -26,8 +26,7 @@ from analyzer.strategies.EMA_Cross_Strategy import EMA_Cross_Strategy
 
 # Configurer logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -64,7 +63,8 @@ def backtest_root_strategy_simple():
     # 4. Instructions pour backtesting
     logger.info("\n3. Pour exécuter le backtest avec Freqtrade CLI:")
     logger.info("   " + "─" * 60)
-    logger.info(f"""
+    logger.info(
+        f"""
    # Télécharger données historiques (si pas déjà fait)
    freqtrade download-data \\
        --exchange binance \\
@@ -81,7 +81,8 @@ def backtest_root_strategy_simple():
 
    # Voir résultats détaillés
    freqtrade backtesting-analysis
-    """)
+    """
+    )
     logger.info("   " + "─" * 60)
 
     return output_file
@@ -104,26 +105,21 @@ def backtest_with_config():
                 "ETH/USDT",
                 "BNB/USDT",
                 "SOL/USDT",
-                "ADA/USDT"
+                "ADA/USDT",
             ],
-            "pair_blacklist": []
+            "pair_blacklist": [],
         },
         "timeframe": "5m",
         "stake_currency": "USDT",
         "stake_amount": 100,
         "dry_run": True,
         "max_open_trades": 3,
-        "minimal_roi": {
-            "0": 0.10,
-            "30": 0.05,
-            "60": 0.02,
-            "120": 0.01
-        },
+        "minimal_roi": {"0": 0.10, "30": 0.05, "60": 0.02, "120": 0.01},
         "stoploss": -0.05,
         "trailing_stop": True,
         "trailing_stop_positive": 0.01,
         "trailing_stop_positive_offset": 0.02,
-        "trailing_only_offset_is_reached": True
+        "trailing_only_offset_is_reached": True,
     }
 
     # Exporter config
@@ -133,17 +129,20 @@ def backtest_with_config():
     config_file = output_dir / "backtest_config.json"
 
     import json
-    with open(config_file, 'w', encoding='utf-8') as f:
+
+    with open(config_file, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
 
     logger.info(f"✓ Configuration générée: {config_file}")
 
     logger.info("\nPour utiliser cette config:")
-    logger.info(f"""
+    logger.info(
+        f"""
    freqtrade backtesting \\
        --config {config_file.absolute()} \\
        --timerange 20240101-20240131
-    """)
+    """
+    )
 
     return config_file
 
@@ -170,23 +169,26 @@ def batch_backtest_all_strategies():
 
     script_file = output_dir / "backtest_all.sh"
 
-    with open(script_file, 'w', encoding='utf-8') as f:
+    with open(script_file, "w", encoding="utf-8") as f:
         f.write("#!/bin/bash\n\n")
         f.write("# Script de backtesting batch pour toutes les stratégies ROOT\n")
         f.write("# Généré automatiquement\n\n")
 
-        strategies_dir = Path(analyzer_root) / "analyzer/freqtrade_integration/converted_strategies/freqtrade"
+        strategies_dir = (
+            Path(analyzer_root)
+            / "analyzer/freqtrade_integration/converted_strategies/freqtrade"
+        )
 
-        f.write(f"STRATEGY_PATH=\"{strategies_dir.absolute()}\"\n")
-        f.write("TIMERANGE=\"20240101-20240131\"\n")
-        f.write("TIMEFRAME=\"5m\"\n\n")
+        f.write(f'STRATEGY_PATH="{strategies_dir.absolute()}"\n')
+        f.write('TIMERANGE="20240101-20240131"\n')
+        f.write('TIMEFRAME="5m"\n\n')
 
         # Pour chaque stratégie convertie
         if strategies_dir.exists():
             for strategy_file in strategies_dir.glob("*_freqtrade.py"):
                 strategy_name = strategy_file.stem
 
-                f.write(f"echo \"Backtesting {strategy_name}...\"\n")
+                f.write(f'echo "Backtesting {strategy_name}..."\n')
                 f.write(f"freqtrade backtesting \\\n")
                 f.write(f"    --strategy {strategy_name} \\\n")
                 f.write(f"    --strategy-path $STRATEGY_PATH \\\n")
@@ -206,7 +208,8 @@ def analyze_backtest_results():
     logger.info("\n=== Analyse Résultats Backtest ===\n")
 
     logger.info("Après avoir exécuté un backtest, analysez les résultats avec:")
-    logger.info("""
+    logger.info(
+        """
    # Voir résumé
    freqtrade backtesting-show
 
@@ -223,7 +226,8 @@ def analyze_backtest_results():
    freqtrade backtesting \\
        --strategy EMA_Cross_Strategy_Freqtrade \\
        --export trades
-    """)
+    """
+    )
 
     logger.info("\nFichiers de résultats typiques:")
     logger.info("  - user_data/backtest_results/backtest-result-*.json")
@@ -240,7 +244,7 @@ def compare_strategies():
         "EMA_Cross_Strategy",
         "MACD_Crossover_Strategy",
         "RSI_Cross_Strategy",
-        "Bollinger_Touch_Strategy"
+        "Bollinger_Touch_Strategy",
     ]
 
     logger.info("Stratégies à comparer:")
@@ -248,7 +252,8 @@ def compare_strategies():
         logger.info(f"  - {strat}")
 
     logger.info("\nPour comparer avec Freqtrade:")
-    logger.info("""
+    logger.info(
+        """
    # Backtester chaque stratégie
    for strategy in EMA_Cross MACD_Crossover RSI_Cross Bollinger_Touch; do
        freqtrade backtesting \\
@@ -266,7 +271,8 @@ def compare_strategies():
    # - Sharpe Ratio
    # - Profit Factor
    # - Avg Trade Duration
-    """)
+    """
+    )
 
 
 def main():

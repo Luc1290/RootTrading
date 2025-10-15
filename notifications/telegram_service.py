@@ -26,10 +26,14 @@ class TelegramNotifier:
 
         # Anti-spam: tracker des dernières notifications par symbole
         self._last_notification: Dict[str, datetime] = {}
-        self._cooldown_minutes = 5  # Cooldown de 5 minutes entre notifications pour le même symbole
+        self._cooldown_minutes = (
+            5  # Cooldown de 5 minutes entre notifications pour le même symbole
+        )
 
         if not self.bot_token or not self.chat_id:
-            raise ValueError("TELEGRAM_BOT_TOKEN et TELEGRAM_CHAT_ID doivent être définis dans .env")
+            raise ValueError(
+                "TELEGRAM_BOT_TOKEN et TELEGRAM_CHAT_ID doivent être définis dans .env"
+            )
 
     def _can_send_notification(self, symbol: str) -> bool:
         """Vérifie si on peut envoyer une notification (anti-spam)"""
@@ -55,7 +59,7 @@ class TelegramNotifier:
         grade: Optional[str] = None,
         rr_ratio: Optional[float] = None,
         risk_level: Optional[str] = None,
-        early_signal: Optional[Dict] = None
+        early_signal: Optional[Dict] = None,
     ) -> bool:
         """
         Envoie une notification Telegram pour un signal BUY
@@ -86,8 +90,21 @@ class TelegramNotifier:
 
         # Construire le message
         message = self._build_message(
-            symbol, score, price, action, targets, stop_loss, reason,
-            momentum, volume_ratio, regime, estimated_hold_time, grade, rr_ratio, risk_level, early_signal
+            symbol,
+            score,
+            price,
+            action,
+            targets,
+            stop_loss,
+            reason,
+            momentum,
+            volume_ratio,
+            regime,
+            estimated_hold_time,
+            grade,
+            rr_ratio,
+            risk_level,
+            early_signal,
         )
 
         # Envoyer la notification
@@ -98,9 +115,9 @@ class TelegramNotifier:
                     "chat_id": self.chat_id,
                     "text": message,
                     "parse_mode": "HTML",
-                    "disable_web_page_preview": True
+                    "disable_web_page_preview": True,
                 },
-                timeout=10
+                timeout=10,
             )
 
             if response.status_code == 200:
@@ -109,7 +126,7 @@ class TelegramNotifier:
 
                 # Stocker le signal en DB
                 response_data = response.json()
-                message_id = response_data.get('result', {}).get('message_id')
+                message_id = response_data.get("result", {}).get("message_id")
                 self._store_signal_in_db(
                     symbol=symbol,
                     score=score,
@@ -125,12 +142,14 @@ class TelegramNotifier:
                     grade=grade,
                     rr_ratio=rr_ratio,
                     risk_level=risk_level,
-                    message_id=str(message_id) if message_id else None
+                    message_id=str(message_id) if message_id else None,
                 )
 
                 return True
             else:
-                logger.error(f"❌ Erreur Telegram API: {response.status_code} - {response.text}")
+                logger.error(
+                    f"❌ Erreur Telegram API: {response.status_code} - {response.text}"
+                )
                 return False
 
         except Exception as e:
@@ -153,7 +172,7 @@ class TelegramNotifier:
         grade: Optional[str],
         rr_ratio: Optional[float],
         risk_level: Optional[str],
-        early_signal: Optional[Dict]
+        early_signal: Optional[Dict],
     ) -> str:
         """Construit le message formaté pour Telegram"""
 
@@ -161,16 +180,38 @@ class TelegramNotifier:
         action_config = {
             "BUY_NOW": {"emoji": "🟢", "title": "SIGNAL BUY NOW", "score_emojis": True},
             "BUY_DCA": {"emoji": "🔵", "title": "SIGNAL BUY", "score_emojis": True},
-            "EARLY_ENTRY": {"emoji": "🟣", "title": "⚡ EARLY ENTRY", "score_emojis": True},
-            "WAIT_PULLBACK": {"emoji": "🟡", "title": "ATTENDRE BAISSE", "score_emojis": False},
-            "WAIT_BREAKOUT": {"emoji": "🔵", "title": "ATTENDRE CASSURE", "score_emojis": False},
-            "WAIT_OVERSOLD": {"emoji": "🔵", "title": "ATTENDRE REBOND", "score_emojis": False},
+            "EARLY_ENTRY": {
+                "emoji": "🟣",
+                "title": "⚡ EARLY ENTRY",
+                "score_emojis": True,
+            },
+            "WAIT_PULLBACK": {
+                "emoji": "🟡",
+                "title": "ATTENDRE BAISSE",
+                "score_emojis": False,
+            },
+            "WAIT_BREAKOUT": {
+                "emoji": "🔵",
+                "title": "ATTENDRE CASSURE",
+                "score_emojis": False,
+            },
+            "WAIT_OVERSOLD": {
+                "emoji": "🔵",
+                "title": "ATTENDRE REBOND",
+                "score_emojis": False,
+            },
             "WAIT": {"emoji": "⚪", "title": "OBSERVER", "score_emojis": False},
-            "SELL_OVERBOUGHT": {"emoji": "🔴", "title": "VENDRE/ÉVITER", "score_emojis": False},
+            "SELL_OVERBOUGHT": {
+                "emoji": "🔴",
+                "title": "VENDRE/ÉVITER",
+                "score_emojis": False,
+            },
             "AVOID": {"emoji": "⚫", "title": "NE PAS TOUCHER", "score_emojis": False},
         }
 
-        config = action_config.get(action, {"emoji": "⚪", "title": action, "score_emojis": False})
+        config = action_config.get(
+            action, {"emoji": "⚪", "title": action, "score_emojis": False}
+        )
 
         # Emoji selon le score (seulement pour BUY_NOW) - Score sur 100
         score_emoji = ""
@@ -179,7 +220,7 @@ class TelegramNotifier:
                 score_emoji = " 🔥🔥🔥"
             elif score >= 74:  # 74/100 = 74%
                 score_emoji = " 🔥🔥"
-            elif score >= 63:   # 63/100 = 63%
+            elif score >= 63:  # 63/100 = 63%
                 score_emoji = " 🔥"
 
         # Formater le prix intelligemment selon sa valeur
@@ -222,12 +263,12 @@ class TelegramNotifier:
 💰 Prix: <b>{price_str}</b>"""
 
         # BADGE EARLY ENTRY (NOUVEAU)
-        if early_signal and early_signal.get('level') in ['entry_now', 'prepare']:
-            early_level = early_signal.get('level', '').upper()
-            early_score = early_signal.get('score', 0)
-            entry_window = early_signal.get('estimated_entry_window_seconds', 0)
+        if early_signal and early_signal.get("level") in ["entry_now", "prepare"]:
+            early_level = early_signal.get("level", "").upper()
+            early_score = early_signal.get("score", 0)
+            entry_window = early_signal.get("estimated_entry_window_seconds", 0)
 
-            early_emoji = "🚀" if early_level == 'ENTRY_NOW' else "⚡"
+            early_emoji = "🚀" if early_level == "ENTRY_NOW" else "⚡"
             message += f"""
 
 {early_emoji} <b>EARLY ENTRY SIGNAL</b> - {early_level}
@@ -282,7 +323,7 @@ SL: {format_price(stop_loss)} ({sl_loss:.2f}%)
         grade: Optional[str],
         rr_ratio: Optional[float],
         risk_level: Optional[str],
-        message_id: Optional[str]
+        message_id: Optional[str],
     ) -> None:
         """Stocke le signal Telegram en base de données"""
         if not self.db_connection:
@@ -292,14 +333,18 @@ SL: {format_price(stop_loss)} ({sl_loss:.2f}%)
         try:
             with self.db_connection.cursor() as cursor:
                 # Déterminer le side (BUY pour BUY_NOW, BUY_DCA et EARLY_ENTRY, sinon déduire du contexte)
-                side = 'BUY' if action in ['BUY_NOW', 'BUY_DCA', 'EARLY_ENTRY'] else 'SELL' if action in ['SELL_OVERBOUGHT', 'AVOID'] else 'BUY'
+                side = (
+                    "BUY"
+                    if action in ["BUY_NOW", "BUY_DCA", "EARLY_ENTRY"]
+                    else "SELL" if action in ["SELL_OVERBOUGHT", "AVOID"] else "BUY"
+                )
 
                 # Métadonnées additionnelles
                 metadata = {
-                    'targets': targets,
-                    'grade': grade,
-                    'rr_ratio': rr_ratio,
-                    'risk_level': risk_level
+                    "targets": targets,
+                    "grade": grade,
+                    "rr_ratio": rr_ratio,
+                    "risk_level": risk_level,
                 }
 
                 insert_query = """
@@ -310,27 +355,30 @@ SL: {format_price(stop_loss)} ({sl_loss:.2f}%)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
 
-                cursor.execute(insert_query, (
-                    symbol,
-                    side,
-                    score,
-                    price,
-                    action,
-                    targets.get('tp1'),
-                    targets.get('tp2'),
-                    targets.get('tp3'),
-                    stop_loss,
-                    reason,
-                    momentum,
-                    volume_ratio,
-                    regime,
-                    estimated_hold_time,
-                    grade,
-                    rr_ratio,
-                    risk_level,
-                    message_id,
-                    Json(metadata)
-                ))
+                cursor.execute(
+                    insert_query,
+                    (
+                        symbol,
+                        side,
+                        score,
+                        price,
+                        action,
+                        targets.get("tp1"),
+                        targets.get("tp2"),
+                        targets.get("tp3"),
+                        stop_loss,
+                        reason,
+                        momentum,
+                        volume_ratio,
+                        regime,
+                        estimated_hold_time,
+                        grade,
+                        rr_ratio,
+                        risk_level,
+                        message_id,
+                        Json(metadata),
+                    ),
+                )
 
                 self.db_connection.commit()
                 logger.debug(f"Signal Telegram stocké en DB pour {symbol}")
@@ -350,9 +398,9 @@ SL: {format_price(stop_loss)} ({sl_loss:.2f}%)
                 json={
                     "chat_id": self.chat_id,
                     "text": "✅ <b>RootTrading Notifications</b>\n\nLe système de notifications Telegram est opérationnel ! 🚀",
-                    "parse_mode": "HTML"
+                    "parse_mode": "HTML",
                 },
-                timeout=10
+                timeout=10,
             )
             return response.status_code == 200
         except Exception as e:

@@ -24,10 +24,18 @@ momentum_analysis = indicators.get_momentum_analysis(closes)
 # Import all main indicator functions with caching support
 from .momentum.rsi import calculate_rsi, calculate_rsi_series
 from .momentum.cci import calculate_cci, calculate_cci_series
-from .trend.moving_averages import calculate_ema, calculate_ema_series, calculate_sma, calculate_sma_series
+from .trend.moving_averages import (
+    calculate_ema,
+    calculate_ema_series,
+    calculate_sma,
+    calculate_sma_series,
+)
 from .trend.macd import calculate_macd, calculate_macd_series
 from .trend.adx import calculate_adx, calculate_adx_series
-from .volatility.bollinger import calculate_bollinger_bands, calculate_bollinger_bands_series
+from .volatility.bollinger import (
+    calculate_bollinger_bands,
+    calculate_bollinger_bands_series,
+)
 from .volatility.atr import calculate_atr, calculate_atr_series
 from .oscillators.stochastic import calculate_stochastic, calculate_stochastic_series
 from .oscillators.williams import calculate_williams_r, calculate_williams_r_series
@@ -35,40 +43,42 @@ from .volume.obv import calculate_obv, calculate_obv_series
 from .volume.vwap import calculate_vwap, calculate_vwap_series
 
 # Import factory for advanced usage
-from .cached_indicator_factory import get_cached_indicators, quick_analysis, cached_indicators
+from .cached_indicator_factory import (
+    get_cached_indicators,
+    quick_analysis,
+    cached_indicators,
+)
 
 __all__ = [
     # Core indicator functions (with automatic caching when symbol provided)
-    'calculate_rsi',
-    'calculate_rsi_series',
-    'calculate_cci',
-    'calculate_cci_series',
-    'calculate_ema', 
-    'calculate_ema_series',
-    'calculate_sma',
-    'calculate_sma_series',
-    'calculate_macd',
-    'calculate_macd_series',
-    'calculate_adx',
-    'calculate_adx_series',
-    'calculate_bollinger_bands',
-    'calculate_bollinger_bands_series',
-    'calculate_atr',
-    'calculate_atr_series',
-    'calculate_stochastic',
-    'calculate_stochastic_series',
-    'calculate_williams_r',
-    'calculate_williams_r_series',
-    'calculate_obv',
-    'calculate_obv_series',
-    'calculate_vwap',
-    'calculate_vwap_series',
-    
+    "calculate_rsi",
+    "calculate_rsi_series",
+    "calculate_cci",
+    "calculate_cci_series",
+    "calculate_ema",
+    "calculate_ema_series",
+    "calculate_sma",
+    "calculate_sma_series",
+    "calculate_macd",
+    "calculate_macd_series",
+    "calculate_adx",
+    "calculate_adx_series",
+    "calculate_bollinger_bands",
+    "calculate_bollinger_bands_series",
+    "calculate_atr",
+    "calculate_atr_series",
+    "calculate_stochastic",
+    "calculate_stochastic_series",
+    "calculate_williams_r",
+    "calculate_williams_r_series",
+    "calculate_obv",
+    "calculate_obv_series",
+    "calculate_vwap",
+    "calculate_vwap_series",
     # Advanced factory interface
-    'get_cached_indicators',
-    'quick_analysis',
-    'cached_indicators',
-
+    "get_cached_indicators",
+    "quick_analysis",
+    "cached_indicators",
 ]
 
 
@@ -76,35 +86,35 @@ __all__ = [
 def get_trend_indicators(prices, symbol=None):
     """Get all trend indicators for a price series."""
     return {
-        'ema7': calculate_ema(prices, 7, symbol),
-        'ema26': calculate_ema(prices, 26, symbol), 
-        'ema99': calculate_ema(prices, 99, symbol),
-        'sma20': calculate_sma(prices, 20),
-        'sma50': calculate_sma(prices, 50),
-        'macd': calculate_macd_series(prices)
+        "ema7": calculate_ema(prices, 7, symbol),
+        "ema26": calculate_ema(prices, 26, symbol),
+        "ema99": calculate_ema(prices, 99, symbol),
+        "sma20": calculate_sma(prices, 20),
+        "sma50": calculate_sma(prices, 50),
+        "macd": calculate_macd_series(prices),
     }
 
 
 def get_momentum_indicators(prices, symbol=None):
     """Get all momentum indicators for a price series."""
     return {
-        'rsi14': calculate_rsi(prices, 14, symbol),
-        'rsi21': calculate_rsi(prices, 21, symbol),
-        'macd': calculate_macd_series(prices)
+        "rsi14": calculate_rsi(prices, 14, symbol),
+        "rsi21": calculate_rsi(prices, 21, symbol),
+        "macd": calculate_macd_series(prices),
     }
 
 
 def get_volatility_indicators(highs, lows, closes, symbol=None):
     """Get all volatility indicators."""
     return {
-        'atr14': calculate_atr(highs, lows, closes, 14),
-        'bollinger': calculate_bollinger_bands_series(closes, 20, 2.0)
+        "atr14": calculate_atr(highs, lows, closes, 14),
+        "bollinger": calculate_bollinger_bands_series(closes, 20, 2.0),
     }
 
 
 def get_volume_indicators(highs, lows, closes, volumes):
     """Get all volume indicators."""
     return {
-        'obv': calculate_obv_series(closes, volumes),
-        'vwap': calculate_vwap_series(highs, lows, closes, volumes)
+        "obv": calculate_obv_series(closes, volumes),
+        "vwap": calculate_vwap_series(highs, lows, closes, volumes),
     }

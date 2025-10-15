@@ -20,6 +20,7 @@ from .data_converter import DataConverter
 try:
     from freqtrade.strategy import IStrategy
     import talib.abstract as ta
+
     FREQTRADE_AVAILABLE = True
 except ImportError:
     FREQTRADE_AVAILABLE = False
@@ -43,8 +44,7 @@ class RootToFreqtradeAdapter:
         """
         if not FREQTRADE_AVAILABLE:
             raise ImportError(
-                "Freqtrade n'est pas installé. "
-                "Installez avec: pip install freqtrade"
+                "Freqtrade n'est pas installé. " "Installez avec: pip install freqtrade"
             )
 
         self.root_strategy_class = root_strategy_class
@@ -65,10 +65,10 @@ class RootToFreqtradeAdapter:
 
             # Métadonnées Freqtrade
             minimal_roi = {
-                "0": 0.10,   # 10% ROI
+                "0": 0.10,  # 10% ROI
                 "30": 0.05,  # 5% après 30min
                 "60": 0.02,  # 2% après 1h
-                "120": 0.01  # 1% après 2h
+                "120": 0.01,  # 1% après 2h
             }
 
             stoploss = -0.05  # -5% stop loss
@@ -78,7 +78,7 @@ class RootToFreqtradeAdapter:
             trailing_stop_positive_offset = 0.02
             trailing_only_offset_is_reached = True
 
-            timeframe = '5m'
+            timeframe = "5m"
 
             # Désactiver confirmations supplémentaires
             use_exit_signal = True
@@ -90,16 +90,18 @@ class RootToFreqtradeAdapter:
 
             # Paramètres d'ordre
             order_types = {
-                'entry': 'limit',
-                'exit': 'limit',
-                'stoploss': 'market',
-                'stoploss_on_exchange': False
+                "entry": "limit",
+                "exit": "limit",
+                "stoploss": "market",
+                "stoploss_on_exchange": False,
             }
 
             # Conserve référence à la classe ROOT originale
             _root_strategy_class = root_strategy_class
 
-            def populate_indicators(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
+            def populate_indicators(
+                self, dataframe: pd.DataFrame, metadata: dict
+            ) -> pd.DataFrame:
                 """
                 Calcule les indicateurs nécessaires.
                 Note: On suppose que ROOT utilise des indicateurs déjà calculés.
@@ -109,83 +111,90 @@ class RootToFreqtradeAdapter:
 
                 # EMA
                 for period in [7, 12, 26, 50, 99, 200]:
-                    col_name = f'ema_{period}'
+                    col_name = f"ema_{period}"
                     if col_name not in dataframe.columns:
                         dataframe[col_name] = ta.EMA(dataframe, timeperiod=period)
 
                 # SMA
                 for period in [20, 50, 100, 200]:
-                    col_name = f'sma_{period}'
+                    col_name = f"sma_{period}"
                     if col_name not in dataframe.columns:
                         dataframe[col_name] = ta.SMA(dataframe, timeperiod=period)
 
                 # RSI
-                if 'rsi' not in dataframe.columns:
-                    dataframe['rsi'] = ta.RSI(dataframe, timeperiod=14)
+                if "rsi" not in dataframe.columns:
+                    dataframe["rsi"] = ta.RSI(dataframe, timeperiod=14)
 
                 # MACD
-                if 'macd_line' not in dataframe.columns:
-                    macd = ta.MACD(dataframe, fastperiod=12, slowperiod=26, signalperiod=9)
-                    dataframe['macd_line'] = macd['macd']
-                    dataframe['macd_signal'] = macd['macdsignal']
-                    dataframe['macd_histogram'] = macd['macdhist']
+                if "macd_line" not in dataframe.columns:
+                    macd = ta.MACD(
+                        dataframe, fastperiod=12, slowperiod=26, signalperiod=9
+                    )
+                    dataframe["macd_line"] = macd["macd"]
+                    dataframe["macd_signal"] = macd["macdsignal"]
+                    dataframe["macd_histogram"] = macd["macdhist"]
 
                 # Bollinger Bands
-                if 'bb_upperband' not in dataframe.columns:
-                    bollinger = ta.BBANDS(dataframe, timeperiod=20, nbdevup=2, nbdevdn=2)
-                    dataframe['bb_upperband'] = bollinger['upperband']
-                    dataframe['bb_middleband'] = bollinger['middleband']
-                    dataframe['bb_lowerband'] = bollinger['lowerband']
+                if "bb_upperband" not in dataframe.columns:
+                    bollinger = ta.BBANDS(
+                        dataframe, timeperiod=20, nbdevup=2, nbdevdn=2
+                    )
+                    dataframe["bb_upperband"] = bollinger["upperband"]
+                    dataframe["bb_middleband"] = bollinger["middleband"]
+                    dataframe["bb_lowerband"] = bollinger["lowerband"]
 
                 # ATR
-                if 'atr' not in dataframe.columns:
-                    dataframe['atr'] = ta.ATR(dataframe, timeperiod=14)
+                if "atr" not in dataframe.columns:
+                    dataframe["atr"] = ta.ATR(dataframe, timeperiod=14)
 
                 # ADX
-                if 'adx' not in dataframe.columns:
-                    dataframe['adx'] = ta.ADX(dataframe, timeperiod=14)
+                if "adx" not in dataframe.columns:
+                    dataframe["adx"] = ta.ADX(dataframe, timeperiod=14)
 
                 # Volume moyens
-                if 'volume_ma_20' not in dataframe.columns:
-                    dataframe['volume_ma_20'] = dataframe['volume'].rolling(window=20).mean()
+                if "volume_ma_20" not in dataframe.columns:
+                    dataframe["volume_ma_20"] = (
+                        dataframe["volume"].rolling(window=20).mean()
+                    )
 
                 return dataframe
 
-            def populate_entry_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
+            def populate_entry_trend(
+                self, dataframe: pd.DataFrame, metadata: dict
+            ) -> pd.DataFrame:
                 """
                 Génère les signaux d'entrée en appelant la stratégie ROOT.
                 """
                 # Initialiser les colonnes de signal
-                dataframe['enter_long'] = 0
-                dataframe['enter_tag'] = ''
+                dataframe["enter_long"] = 0
+                dataframe["enter_tag"] = ""
 
                 # Pour chaque ligne (chandeliers), évaluer la stratégie ROOT
                 for idx in range(len(dataframe)):
                     try:
                         # Convertir ligne actuelle en format ROOT
                         current_data, current_indicators = self._row_to_root_format(
-                            dataframe.iloc[:idx + 1],
-                            metadata.get('pair', 'UNKNOWN')
+                            dataframe.iloc[: idx + 1], metadata.get("pair", "UNKNOWN")
                         )
 
                         # Instancier stratégie ROOT
                         root_strategy = self._root_strategy_class(
-                            symbol=metadata.get('pair', 'UNKNOWN'),
+                            symbol=metadata.get("pair", "UNKNOWN"),
                             data=current_data,
-                            indicators=current_indicators
+                            indicators=current_indicators,
                         )
 
                         # Générer signal
                         signal = root_strategy.generate_signal()
 
                         # Interpréter signal ROOT
-                        if signal and signal.get('side') == 'BUY':
-                            confidence = signal.get('confidence', 0.5)
+                        if signal and signal.get("side") == "BUY":
+                            confidence = signal.get("confidence", 0.5)
 
                             # Filtrer signaux faibles (confidence < 0.4)
                             if confidence >= 0.4:
-                                dataframe.loc[dataframe.index[idx], 'enter_long'] = 1
-                                dataframe.loc[dataframe.index[idx], 'enter_tag'] = (
+                                dataframe.loc[dataframe.index[idx], "enter_long"] = 1
+                                dataframe.loc[dataframe.index[idx], "enter_tag"] = (
                                     f"{strategy_name}_{signal.get('strength', 'moderate')}"
                                 )
 
@@ -195,54 +204,55 @@ class RootToFreqtradeAdapter:
 
                 return dataframe
 
-            def populate_exit_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
+            def populate_exit_trend(
+                self, dataframe: pd.DataFrame, metadata: dict
+            ) -> pd.DataFrame:
                 """
                 Génère les signaux de sortie en appelant la stratégie ROOT.
                 """
                 # Initialiser colonnes de signal
-                dataframe['exit_long'] = 0
-                dataframe['exit_tag'] = ''
+                dataframe["exit_long"] = 0
+                dataframe["exit_tag"] = ""
 
                 # Pour chaque ligne, évaluer la stratégie ROOT
                 for idx in range(len(dataframe)):
                     try:
                         # Convertir ligne actuelle en format ROOT
                         current_data, current_indicators = self._row_to_root_format(
-                            dataframe.iloc[:idx + 1],
-                            metadata.get('pair', 'UNKNOWN')
+                            dataframe.iloc[: idx + 1], metadata.get("pair", "UNKNOWN")
                         )
 
                         # Instancier stratégie ROOT
                         root_strategy = self._root_strategy_class(
-                            symbol=metadata.get('pair', 'UNKNOWN'),
+                            symbol=metadata.get("pair", "UNKNOWN"),
                             data=current_data,
-                            indicators=current_indicators
+                            indicators=current_indicators,
                         )
 
                         # Générer signal
                         signal = root_strategy.generate_signal()
 
                         # Interpréter signal ROOT
-                        if signal and signal.get('side') == 'SELL':
-                            confidence = signal.get('confidence', 0.5)
+                        if signal and signal.get("side") == "SELL":
+                            confidence = signal.get("confidence", 0.5)
 
                             # Filtrer signaux faibles
                             if confidence >= 0.4:
-                                dataframe.loc[dataframe.index[idx], 'exit_long'] = 1
-                                dataframe.loc[dataframe.index[idx], 'exit_tag'] = (
+                                dataframe.loc[dataframe.index[idx], "exit_long"] = 1
+                                dataframe.loc[dataframe.index[idx], "exit_tag"] = (
                                     f"{strategy_name}_{signal.get('strength', 'moderate')}"
                                 )
 
                     except Exception as e:
-                        logger.debug(f"Erreur évaluation stratégie ROOT exit idx {idx}: {e}")
+                        logger.debug(
+                            f"Erreur évaluation stratégie ROOT exit idx {idx}: {e}"
+                        )
                         continue
 
                 return dataframe
 
             def _row_to_root_format(
-                self,
-                dataframe_slice: pd.DataFrame,
-                symbol: str
+                self, dataframe_slice: pd.DataFrame, symbol: str
             ) -> tuple[Dict[str, Any], Dict[str, Any]]:
                 """
                 Convertit une ligne de DataFrame en format ROOT (data + indicators).
@@ -296,7 +306,7 @@ class {strategy_class.__name__}(IStrategy):
     # Voir stratégie ROOT source: {self.root_strategy_class.__module__}
 '''
 
-            with open(output_path, 'w', encoding='utf-8') as f:
+            with open(output_path, "w", encoding="utf-8") as f:
                 f.write(code)
 
             logger.info(f"Stratégie exportée: {output_path}")

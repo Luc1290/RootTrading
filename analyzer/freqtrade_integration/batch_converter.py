@@ -22,6 +22,7 @@ from .freqtrade_to_root import FreqtradeToRootAdapter
 # Import conditionnel Freqtrade
 try:
     from freqtrade.strategy import IStrategy
+
     FREQTRADE_AVAILABLE = True
 except ImportError:
     FREQTRADE_AVAILABLE = False
@@ -39,24 +40,20 @@ class BatchConverter:
     def __init__(self):
         """Initialise le convertisseur batch."""
         self.strategies_path = Path(analyzer_root) / "strategies"
-        self.output_path = Path(analyzer_root) / "freqtrade_integration" / "converted_strategies"
+        self.output_path = (
+            Path(analyzer_root) / "freqtrade_integration" / "converted_strategies"
+        )
 
         # Créer dossier de sortie si nécessaire
         self.output_path.mkdir(parents=True, exist_ok=True)
 
         # Stats de conversion
-        self.stats = {
-            'total': 0,
-            'success': 0,
-            'failed': 0,
-            'skipped': 0,
-            'errors': []
-        }
+        self.stats = {"total": 0, "success": 0, "failed": 0, "skipped": 0, "errors": []}
 
     def convert_all_root_to_freqtrade(
         self,
         output_dir: Optional[str] = None,
-        exclude_patterns: Optional[List[str]] = None
+        exclude_patterns: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Convertit toutes les stratégies ROOT vers Freqtrade.
@@ -70,10 +67,10 @@ class BatchConverter:
         """
         if not FREQTRADE_AVAILABLE:
             logger.error("Freqtrade non installé")
-            return {'error': 'Freqtrade not installed'}
+            return {"error": "Freqtrade not installed"}
 
         # Réinitialiser stats
-        self.stats = {'total': 0, 'success': 0, 'failed': 0, 'skipped': 0, 'errors': []}
+        self.stats = {"total": 0, "success": 0, "failed": 0, "skipped": 0, "errors": []}
 
         # Définir dossier de sortie
         if output_dir:
@@ -85,7 +82,7 @@ class BatchConverter:
 
         # Patterns à exclure par défaut
         if exclude_patterns is None:
-            exclude_patterns = ['base_strategy', '__init__', '__pycache__']
+            exclude_patterns = ["base_strategy", "__init__", "__pycache__"]
 
         logger.info(f"Conversion ROOT → Freqtrade: {self.strategies_path}")
         logger.info(f"Sortie: {output_path}")
@@ -97,21 +94,20 @@ class BatchConverter:
             # Vérifier exclusions
             if any(pattern in strategy_name for pattern in exclude_patterns):
                 logger.debug(f"Skip: {strategy_name}")
-                self.stats['skipped'] += 1
+                self.stats["skipped"] += 1
                 continue
 
-            self.stats['total'] += 1
+            self.stats["total"] += 1
 
             try:
                 # Charger la classe de stratégie
                 strategy_class = self._load_root_strategy(strategy_name)
 
                 if not strategy_class:
-                    self.stats['failed'] += 1
-                    self.stats['errors'].append({
-                        'strategy': strategy_name,
-                        'error': 'Failed to load class'
-                    })
+                    self.stats["failed"] += 1
+                    self.stats["errors"].append(
+                        {"strategy": strategy_name, "error": "Failed to load class"}
+                    )
                     continue
 
                 # Convertir vers Freqtrade
@@ -122,15 +118,14 @@ class BatchConverter:
                 output_file = output_path / f"{strategy_name}_freqtrade.py"
                 adapter.export_to_file(str(output_file))
 
-                self.stats['success'] += 1
+                self.stats["success"] += 1
                 logger.info(f"✓ Converti: {strategy_name} → {output_file.name}")
 
             except Exception as e:
-                self.stats['failed'] += 1
-                self.stats['errors'].append({
-                    'strategy': strategy_name,
-                    'error': str(e)
-                })
+                self.stats["failed"] += 1
+                self.stats["errors"].append(
+                    {"strategy": strategy_name, "error": str(e)}
+                )
                 logger.error(f"✗ Erreur {strategy_name}: {e}")
 
         # Résumé
@@ -140,9 +135,9 @@ class BatchConverter:
         logger.info(f"Échecs: {self.stats['failed']}")
         logger.info(f"Ignorés: {self.stats['skipped']}")
 
-        if self.stats['errors']:
+        if self.stats["errors"]:
             logger.warning(f"\nErreurs ({len(self.stats['errors'])}):")
-            for error in self.stats['errors']:
+            for error in self.stats["errors"]:
                 logger.warning(f"  - {error['strategy']}: {error['error']}")
 
         return self.stats.copy()
@@ -151,7 +146,7 @@ class BatchConverter:
         self,
         freqtrade_dir: str,
         output_dir: Optional[str] = None,
-        exclude_patterns: Optional[List[str]] = None
+        exclude_patterns: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Convertit toutes les stratégies Freqtrade vers ROOT.
@@ -166,10 +161,10 @@ class BatchConverter:
         """
         if not FREQTRADE_AVAILABLE:
             logger.error("Freqtrade non installé")
-            return {'error': 'Freqtrade not installed'}
+            return {"error": "Freqtrade not installed"}
 
         # Réinitialiser stats
-        self.stats = {'total': 0, 'success': 0, 'failed': 0, 'skipped': 0, 'errors': []}
+        self.stats = {"total": 0, "success": 0, "failed": 0, "skipped": 0, "errors": []}
 
         # Définir dossier de sortie
         if output_dir:
@@ -181,11 +176,11 @@ class BatchConverter:
 
         # Patterns à exclure
         if exclude_patterns is None:
-            exclude_patterns = ['__init__', '__pycache__', 'test_']
+            exclude_patterns = ["__init__", "__pycache__", "test_"]
 
         freqtrade_path = Path(freqtrade_dir)
         if not freqtrade_path.exists():
-            return {'error': f'Directory not found: {freqtrade_dir}'}
+            return {"error": f"Directory not found: {freqtrade_dir}"}
 
         logger.info(f"Conversion Freqtrade → ROOT: {freqtrade_path}")
         logger.info(f"Sortie: {output_path}")
@@ -200,21 +195,23 @@ class BatchConverter:
             # Vérifier exclusions
             if any(pattern in strategy_name for pattern in exclude_patterns):
                 logger.debug(f"Skip: {strategy_name}")
-                self.stats['skipped'] += 1
+                self.stats["skipped"] += 1
                 continue
 
-            self.stats['total'] += 1
+            self.stats["total"] += 1
 
             try:
                 # Charger la classe de stratégie Freqtrade
                 strategy_class = self._load_freqtrade_strategy(strategy_file)
 
                 if not strategy_class:
-                    self.stats['failed'] += 1
-                    self.stats['errors'].append({
-                        'strategy': strategy_name,
-                        'error': 'Failed to load Freqtrade class'
-                    })
+                    self.stats["failed"] += 1
+                    self.stats["errors"].append(
+                        {
+                            "strategy": strategy_name,
+                            "error": "Failed to load Freqtrade class",
+                        }
+                    )
                     continue
 
                 # Convertir vers ROOT
@@ -225,15 +222,14 @@ class BatchConverter:
                 output_file = output_path / f"{strategy_name}_root.py"
                 adapter.export_to_file(str(output_file))
 
-                self.stats['success'] += 1
+                self.stats["success"] += 1
                 logger.info(f"✓ Converti: {strategy_name} → {output_file.name}")
 
             except Exception as e:
-                self.stats['failed'] += 1
-                self.stats['errors'].append({
-                    'strategy': strategy_name,
-                    'error': str(e)
-                })
+                self.stats["failed"] += 1
+                self.stats["errors"].append(
+                    {"strategy": strategy_name, "error": str(e)}
+                )
                 logger.error(f"✗ Erreur {strategy_name}: {e}")
 
         # Résumé
@@ -243,9 +239,9 @@ class BatchConverter:
         logger.info(f"Échecs: {self.stats['failed']}")
         logger.info(f"Ignorés: {self.stats['skipped']}")
 
-        if self.stats['errors']:
+        if self.stats["errors"]:
             logger.warning(f"\nErreurs ({len(self.stats['errors'])}):")
-            for error in self.stats['errors']:
+            for error in self.stats["errors"]:
                 logger.warning(f"  - {error['strategy']}: {error['error']}")
 
         return self.stats.copy()
@@ -267,9 +263,11 @@ class BatchConverter:
 
             # Chercher classe héritant de BaseStrategy
             for name, obj in inspect.getmembers(module, inspect.isclass):
-                if (issubclass(obj, BaseStrategy) and
-                    obj != BaseStrategy and
-                    obj.__module__ == module.__name__):
+                if (
+                    issubclass(obj, BaseStrategy)
+                    and obj != BaseStrategy
+                    and obj.__module__ == module.__name__
+                ):
                     return obj
 
             logger.warning(f"Aucune classe BaseStrategy trouvée dans {strategy_name}")
@@ -292,8 +290,7 @@ class BatchConverter:
         try:
             # Charger le module
             spec = importlib.util.spec_from_file_location(
-                strategy_file.stem,
-                strategy_file
+                strategy_file.stem, strategy_file
             )
             if not spec or not spec.loader:
                 return None
@@ -303,16 +300,20 @@ class BatchConverter:
 
             # Chercher classe héritant de IStrategy
             for name, obj in inspect.getmembers(module, inspect.isclass):
-                if (issubclass(obj, IStrategy) and
-                    obj != IStrategy and
-                    obj.__module__ == module.__name__):
+                if (
+                    issubclass(obj, IStrategy)
+                    and obj != IStrategy
+                    and obj.__module__ == module.__name__
+                ):
                     return obj
 
             logger.warning(f"Aucune classe IStrategy trouvée dans {strategy_file.name}")
             return None
 
         except Exception as e:
-            logger.error(f"Erreur chargement stratégie Freqtrade {strategy_file.name}: {e}")
+            logger.error(
+                f"Erreur chargement stratégie Freqtrade {strategy_file.name}: {e}"
+            )
             return None
 
     def generate_report(self, output_file: str = "conversion_report.txt") -> None:
@@ -325,7 +326,7 @@ class BatchConverter:
         try:
             report_path = self.output_path / output_file
 
-            with open(report_path, 'w', encoding='utf-8') as f:
+            with open(report_path, "w", encoding="utf-8") as f:
                 f.write("=" * 60 + "\n")
                 f.write("RAPPORT DE CONVERSION FREQTRADE ↔ ROOT\n")
                 f.write("=" * 60 + "\n\n")
@@ -335,11 +336,11 @@ class BatchConverter:
                 f.write(f"Échecs: {self.stats['failed']}\n")
                 f.write(f"Ignorés: {self.stats['skipped']}\n\n")
 
-                if self.stats['errors']:
+                if self.stats["errors"]:
                     f.write("=" * 60 + "\n")
                     f.write("ERREURS\n")
                     f.write("=" * 60 + "\n")
-                    for error in self.stats['errors']:
+                    for error in self.stats["errors"]:
                         f.write(f"\nStratégie: {error['strategy']}\n")
                         f.write(f"Erreur: {error['error']}\n")
 
@@ -353,39 +354,28 @@ def main():
     """Point d'entrée pour conversion en ligne de commande."""
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Convertisseur batch ROOT ↔ Freqtrade"
-    )
+    parser = argparse.ArgumentParser(description="Convertisseur batch ROOT ↔ Freqtrade")
     parser.add_argument(
-        'direction',
-        choices=['root2ft', 'ft2root'],
-        help='Direction de conversion (root2ft ou ft2root)'
+        "direction",
+        choices=["root2ft", "ft2root"],
+        help="Direction de conversion (root2ft ou ft2root)",
     )
+    parser.add_argument("--input", help="Dossier d'entrée (requis pour ft2root)")
+    parser.add_argument("--output", help="Dossier de sortie (optionnel)")
     parser.add_argument(
-        '--input',
-        help='Dossier d\'entrée (requis pour ft2root)'
-    )
-    parser.add_argument(
-        '--output',
-        help='Dossier de sortie (optionnel)'
-    )
-    parser.add_argument(
-        '--report',
-        action='store_true',
-        help='Générer rapport de conversion'
+        "--report", action="store_true", help="Générer rapport de conversion"
     )
 
     args = parser.parse_args()
 
     # Configurer logging
     logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
 
     converter = BatchConverter()
 
-    if args.direction == 'root2ft':
+    if args.direction == "root2ft":
         stats = converter.convert_all_root_to_freqtrade(output_dir=args.output)
     else:
         if not args.input:
@@ -393,13 +383,12 @@ def main():
             return
 
         stats = converter.convert_all_freqtrade_to_root(
-            freqtrade_dir=args.input,
-            output_dir=args.output
+            freqtrade_dir=args.input, output_dir=args.output
         )
 
     if args.report:
         converter.generate_report()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

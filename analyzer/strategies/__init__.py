@@ -32,4 +32,33 @@ from .Spike_Reaction_Buy_Strategy import Spike_Reaction_Buy_Strategy
 from .Range_Breakout_Confirmation_Strategy import Range_Breakout_Confirmation_Strategy
 from .MultiTF_ConfluentEntry_Strategy import MultiTF_ConfluentEntry_Strategy
 
-__all__ = ['BaseStrategy'] + ['RSI_Cross_Strategy', 'StochRSI_Rebound_Strategy', 'CCI_Reversal_Strategy', 'ROC_Threshold_Strategy', 'TRIX_Crossover_Strategy', 'PPO_Crossover_Strategy', 'MACD_Crossover_Strategy', 'ADX_Direction_Strategy', 'EMA_Cross_Strategy', 'TEMA_Slope_Strategy', 'HullMA_Slope_Strategy', 'Supertrend_Reversal_Strategy', 'ParabolicSAR_Bounce_Strategy', 'Bollinger_Touch_Strategy', 'ATR_Breakout_Strategy', 'Stochastic_Oversold_Buy_Strategy', 'WilliamsR_Rebound_Strategy', 'OBV_Crossover_Strategy', 'VWAP_Support_Resistance_Strategy', 'Donchian_Breakout_Strategy', 'ZScore_Extreme_Reversal_Strategy', 'Support_Breakout_Strategy', 'Resistance_Rejection_Strategy', 'Liquidity_Sweep_Buy_Strategy', 'Pump_Dump_Pattern_Strategy', 'Spike_Reaction_Buy_Strategy', 'Range_Breakout_Confirmation_Strategy', 'MultiTF_ConfluentEntry_Strategy']
+__all__ = ["BaseStrategy"] + [
+    "RSI_Cross_Strategy",
+    "StochRSI_Rebound_Strategy",
+    "CCI_Reversal_Strategy",
+    "ROC_Threshold_Strategy",
+    "TRIX_Crossover_Strategy",
+    "PPO_Crossover_Strategy",
+    "MACD_Crossover_Strategy",
+    "ADX_Direction_Strategy",
+    "EMA_Cross_Strategy",
+    "TEMA_Slope_Strategy",
+    "HullMA_Slope_Strategy",
+    "Supertrend_Reversal_Strategy",
+    "ParabolicSAR_Bounce_Strategy",
+    "Bollinger_Touch_Strategy",
+    "ATR_Breakout_Strategy",
+    "Stochastic_Oversold_Buy_Strategy",
+    "WilliamsR_Rebound_Strategy",
+    "OBV_Crossover_Strategy",
+    "VWAP_Support_Resistance_Strategy",
+    "Donchian_Breakout_Strategy",
+    "ZScore_Extreme_Reversal_Strategy",
+    "Support_Breakout_Strategy",
+    "Resistance_Rejection_Strategy",
+    "Liquidity_Sweep_Buy_Strategy",
+    "Pump_Dump_Pattern_Strategy",
+    "Spike_Reaction_Buy_Strategy",
+    "Range_Breakout_Confirmation_Strategy",
+    "MultiTF_ConfluentEntry_Strategy",
+]

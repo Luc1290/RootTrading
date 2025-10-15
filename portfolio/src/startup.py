@@ -2,6 +2,7 @@
 Module de démarrage pour le service Portfolio.
 Contient la logique de synchronisation initiale avec Binance.
 """
+
 import logging
 
 from models import DBManager, SharedCache
@@ -10,6 +11,7 @@ from models import PortfolioModel
 from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY
 
 logger = logging.getLogger(__name__)
+
 
 async def initial_sync_binance():
     """Force une synchronisation avec Binance à l'initialisation"""
@@ -38,8 +40,8 @@ async def initial_sync_binance():
         portfolio.close()
         db.close()
 
-        SharedCache.clear('latest_balances')
-        SharedCache.clear('portfolio_summary')
+        SharedCache.clear("latest_balances")
+        SharedCache.clear("portfolio_summary")
         logger.info("♻️ Cache invalidé après synchronisation")
     except BinanceApiError as e:
         logger.error(f"❌ Erreur API Binance: {str(e)}")

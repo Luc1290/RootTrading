@@ -15,17 +15,17 @@ from .advanced_metrics import (
     calculate_avg_trade_size,
     calculate_trade_intensity,
     analyze_volume_quality,
-    detect_volume_anomaly
+    detect_volume_anomaly,
 )
 
 __all__ = [
-    'calculate_obv',
-    'calculate_vwap',
-    'calculate_vwap_quote',
-    'calculate_vwap_quote_series',
-    'calculate_quote_volume_ratio',
-    'calculate_avg_trade_size',
-    'calculate_trade_intensity',
-    'analyze_volume_quality',
-    'detect_volume_anomaly'
+    "calculate_obv",
+    "calculate_vwap",
+    "calculate_vwap_quote",
+    "calculate_vwap_quote_series",
+    "calculate_quote_volume_ratio",
+    "calculate_avg_trade_size",
+    "calculate_trade_intensity",
+    "analyze_volume_quality",
+    "detect_volume_anomaly",
 ]
