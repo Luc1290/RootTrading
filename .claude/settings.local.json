@@ -1,37 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(sudo apt install:*)",
-      "Bash(grep:*)",
-      "Bash(awk:*)",
-      "Bash(find:*)",
-      "Bash(rg:*)",
-      "Bash(ls:*)",
-      "Bash(mkdir:*)",
-      "Bash(echo:*)",
-      "Bash(python3:*)",
-      "Bash(chmod:*)",
-      "Bash(bash:*)",
-      "Bash(rm:*)",
-      "Bash(python:*)",
-      "Bash(sqlite3:*)",
-      "Bash(curl:*)",
-      "Bash(psql:*)",
-      "Bash(sudo dmidecode:*)",
-      "Bash(cat:*)",
-      "Bash(iostat:*)",
-      "Bash(cp:*)",
-      "Bash(apt list:*)",
-      "Bash(npm install:*)",
-      "Bash(mypy:*)",
-      "Bash(ruff check:*)",
-      "Bash(sed:*)",
-      "Bash(docker exec:*)",
-      "Bash(docker compose exec:*)",
-      "Bash(docker exec roottrading-db-1 psql -U postgres -c "\l")"
+      "Bash(cat:*)"
     ],
-    "deny": [
-      "Kill Bash(Kill shell: *)"
-    ]
+    "deny": [],
+    "ask": []
   }
 }

@@ -1,4 +1,15 @@
 {
+  "name": "root-trading",
+  "version": "1.0.9.924",
+  "description": "ROOT Trading Bot - Système de trading crypto automatisé",
+  "scripts": {
+    "lint": "ruff check .",
+    "lint:fix": "ruff check . --fix",
+    "format": "ruff format .",
+    "type-check": "mypy .",
+    "quality": "python debug/scripts/run_quality_checks.py",
+    "quality:fix": "ruff check . --fix && ruff format ."
+  },
   "dependencies": {
     "rustup": "^1.0.10"
   }

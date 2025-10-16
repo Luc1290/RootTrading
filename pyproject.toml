@@ -1,0 +1,260 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# 🤖 ROOT Trading Bot - Python Project Configuration
+# ═══════════════════════════════════════════════════════════════════════════
+
+[project]
+name = "root-trading"
+version = "1.0.9.924"
+description = "Système de trading crypto automatisé avec cycles BUY optimisés"
+requires-python = ">=3.10"
+readme = "README.md"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 🔍 RUFF - Linter & Formatter Ultra-Rapide
+# ═══════════════════════════════════════════════════════════════════════════
+
+[tool.ruff]
+# Cibles Python 3.10+
+target-version = "py310"
+line-length = 100
+
+# Dossiers à EXCLURE du linting
+exclude = [
+    ".git",
+    ".venv",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "__pycache__",
+    "*.egg-info",
+    "build",
+    "dist",
+    "node_modules",
+
+    # ❌ Dossiers spécifiques ROOT à ignorer
+    "debug/",
+    "rootia/",
+    "dcv/",
+    "opcode/",
+    "capture/",
+    "tests/",
+    "analyzer/freqtrade_integration/",
+    "visualization/frontend/node_modules/",
+
+    # ❌ Fichiers générés/temporaires
+    "*.pyc",
+    "*.pyo",
+    "*.pyd",
+    ".DS_Store",
+    "nul",  # Fichier spécial Windows
+]
+
+# Dossiers à inclure dans le linting
+include = [
+    "analyzer/**/*.py",
+    "coordinator/**/*.py",
+    "dispatcher/**/*.py",
+    "gateway/**/*.py",
+    "market_analyzer/**/*.py",
+    "notifications/**/*.py",
+    "portfolio/**/*.py",
+    "shared/**/*.py",
+    "signal_aggregator/**/*.py",
+    "trader/**/*.py",
+    "database/**/*.py",
+    "journal/**/*.py",
+    "visualization/**/*.py"
+]
+
+[tool.ruff.lint]
+# 🎯 Règles activées (codes Ruff)
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort (imports)
+    "N",      # pep8-naming
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "DTZ",    # flake8-datetimez
+    "T10",    # flake8-debugger
+    "EM",     # flake8-errmsg
+    "ICN",    # flake8-import-conventions
+    "PIE",    # flake8-pie
+    "PT",     # flake8-pytest-style
+    "RET",    # flake8-return
+    "SIM",    # flake8-simplify
+    "TCH",    # flake8-type-checking
+    "ARG",    # flake8-unused-arguments
+    "PTH",    # flake8-use-pathlib
+    "PL",     # pylint
+    "TRY",    # tryceratops
+    "RUF",    # ruff-specific rules
+]
+
+# ⚠️ Règles à ignorer (trop strictes pour trading bot)
+ignore = [
+    "E501",   # line too long (géré par line-length)
+    "B008",   # function calls in argument defaults (FastAPI Depends)
+    "B905",   # zip strict (Python 3.10+)
+    "TRY003", # long messages in exceptions (ok pour le trading)
+    "PLR0913", # too many arguments (stratégies complexes)
+    "PLR0912", # too many branches (logique métier)
+    "PLR0915", # too many statements (orchestration)
+    "PLR2004", # magic values (seuils de trading)
+    "EM101",  # raw string in exception (lisibilité)
+    "EM102",  # f-string in exception (lisibilité)
+]
+
+# Task tags (TODO/FIXME autorisés)
+task-tags = ["TODO", "FIXME", "XXX", "HACK", "NOTE"]
+
+# Configuration isort (tri des imports)
+[tool.ruff.lint.isort]
+known-first-party = [
+    "analyzer",
+    "coordinator",
+    "dispatcher",
+    "gateway",
+    "market_analyzer",
+    "notifications",
+    "portfolio",
+    "shared",
+    "signal_aggregator",
+    "trader",
+    "database",
+    "journal",
+]
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder",
+]
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 🔎 MYPY - Type Checker Statique
+# ═══════════════════════════════════════════════════════════════════════════
+
+[tool.mypy]
+python_version = "3.10"
+
+# Dossiers à EXCLURE (regex patterns)
+exclude = [
+    "debug",
+    "rootia",
+    "dcv",
+    "opcode",
+    "capture",
+    "tests",
+    "freqtrade_integration",
+    "\\.venv",
+    "\\.mypy_cache",
+    "node_modules",
+    "nul",  # Fichier spécial Windows
+]
+
+# 🎯 Strictness (équilibré pour projet legacy)
+check_untyped_defs = true
+disallow_any_generics = false  # trop strict pour début
+disallow_incomplete_defs = false  # activer progressivement
+disallow_untyped_calls = false    # activer progressivement
+disallow_untyped_defs = false     # activer progressivement
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = false  # trop de warnings au début
+warn_unreachable = true
+explicit_package_bases = true
+
+# Imports
+ignore_missing_imports = false  # ON VEUT les erreurs d'imports
+# Ignorer seulement les libs externes connues sans stubs
+[[tool.mypy.overrides]]
+module = [
+    "psycopg2.*",
+    "redis.*",
+    "aiohttp.*",
+    "ccxt.*",
+    "pandas.*",
+    "numpy.*",
+    "ta.*",
+    "freqtrade.*",
+]
+ignore_missing_imports = true
+follow_imports = "normal"
+show_error_codes = true
+show_column_numbers = true
+pretty = true
+
+# Performance
+cache_dir = ".mypy_cache"
+incremental = true
+
+# Pas d'erreur pour les modules sans py.typed
+no_implicit_reexport = false
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 🧪 PYTEST - Test Framework
+# ═══════════════════════════════════════════════════════════════════════════
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-ra",                    # show extra test summary info
+    "--strict-markers",       # markers must be registered
+    "--strict-config",        # config errors fail
+    "--showlocals",          # show local vars in tracebacks
+    "-v",                    # verbose
+]
+markers = [
+    "integration: Integration tests requiring external services",
+    "slow: Slow tests (> 1s)",
+    "unit: Fast unit tests",
+]
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 📦 COVERAGE - Code Coverage
+# ═══════════════════════════════════════════════════════════════════════════
+
+[tool.coverage.run]
+source = [
+    "analyzer",
+    "coordinator",
+    "dispatcher",
+    "gateway",
+    "market_analyzer",
+    "notifications",
+    "portfolio",
+    "shared",
+    "signal_aggregator",
+    "trader",
+    "visualization",
+]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/.venv/*",
+    "*/debug/*",
+    "*/rootia/*",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+    "@overload",
+]
