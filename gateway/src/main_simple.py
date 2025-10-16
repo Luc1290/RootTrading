@@ -18,13 +18,9 @@ from .gap_detector import GapDetector
 from .simple_binance_ws import SimpleBinanceWebSocket
 from .simple_data_fetcher import SimpleDataFetcher
 
-# Configuration du logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(), logging.FileHandler("gateway.log")],
-)
-logger = logging.getLogger("gateway")
+# Configuration du logging centralisée
+from shared.logging_config import setup_logging
+logger = setup_logging("gateway", log_level="INFO")
 
 
 class SmartDataFetcher:

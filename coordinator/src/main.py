@@ -5,7 +5,6 @@ Valide et transmet les signaux de trading au service Trader.
 
 from shared.src.redis_client import RedisClient
 from coordinator import Coordinator  # type: ignore
-import logging
 import os
 import signal
 import sys
@@ -24,13 +23,9 @@ sys.path.append(
             "../../")))
 
 
-# Configuration du logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(), logging.FileHandler("coordinator.log")],
-)
-logger = logging.getLogger("coordinator")
+# Configuration du logging centralisée
+from shared.logging_config import setup_logging
+logger = setup_logging("coordinator", log_level="INFO")
 
 
 class CoordinatorService:

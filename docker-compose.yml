@@ -212,6 +212,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
     - roottrading-net
   market_analyzer:
@@ -252,6 +257,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
     - roottrading-net
   gateway:
@@ -281,6 +291,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
     - roottrading-net
   analyzer:
@@ -321,6 +336,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
     - roottrading-net
   signal_aggregator:
@@ -361,6 +381,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
     - roottrading-net
   trader:
@@ -394,6 +419,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
     - roottrading-net
   portfolio:
@@ -424,6 +454,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     ports:
     - 8000:8000
     networks:
@@ -459,6 +494,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
     - roottrading-net
   visualization:
@@ -502,5 +542,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
     - roottrading-net

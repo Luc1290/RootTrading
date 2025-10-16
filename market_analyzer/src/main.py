@@ -23,15 +23,9 @@ sys.path.append(
             "../../")))
 
 
-# Configuration du logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler("market_analyzer.log")],
-)
-logger = logging.getLogger("market_analyzer")
+# Configuration du logging centralisée
+from shared.logging_config import setup_logging
+logger = setup_logging("market_analyzer", log_level="INFO")
 
 # Variables globales
 data_listener = None

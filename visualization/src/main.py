@@ -1,6 +1,5 @@
 import asyncio
 import json
-import logging
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -28,8 +27,9 @@ sys.path.insert(
             os.path.dirname(__file__),
             "../..")))
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Configuration du logging centralisée
+from shared.logging_config import setup_logging
+logger = setup_logging("visualization", log_level="INFO")
 
 data_manager: DataManager | None = None
 chart_service: ChartService | None = None

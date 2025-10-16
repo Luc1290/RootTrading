@@ -20,16 +20,10 @@ from .multiproc_manager import MultiProcessManager
 from .redis_subscriber import RedisPublisher
 from .strategy_loader import StrategyLoader
 
-# Configuration du logging
-log_level = (
-    logging.DEBUG
-    if os.getenv("DEBUG_LOGS", "false").lower() == "true"
-    else logging.INFO
-)
-logging.basicConfig(
-    level=log_level,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
+# Configuration du logging centralisée
+from shared.logging_config import setup_logging
+log_level = "DEBUG" if os.getenv("DEBUG_LOGS", "false").lower() == "true" else "INFO"
+logger = setup_logging("analyzer", log_level=log_level)
 
 # Logger spécialisé pour les statistiques
 stats_logger = logging.getLogger("analyzer.stats")

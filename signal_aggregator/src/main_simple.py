@@ -17,16 +17,10 @@ from .context_manager import ContextManager
 from .database_manager import DatabaseManager
 from .signal_aggregator_simple import SimpleSignalAggregatorService
 
-# Configuration du logging
-log_level = (
-    logging.DEBUG
-    if os.getenv("DEBUG_LOGS", "false").lower() == "true"
-    else logging.INFO
-)
-logging.basicConfig(
-    level=log_level,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
+# Configuration du logging centralisée
+from shared.logging_config import setup_logging
+log_level = "DEBUG" if os.getenv("DEBUG_LOGS", "false").lower() == "true" else "INFO"
+logger = setup_logging("signal_aggregator", log_level=log_level)
 
 
 class SimpleSignalAggregatorApp:

@@ -11,7 +11,8 @@
       "Bash(pyreverse:*)",
       "Bash(find:*)",
       "Bash(pip uninstall:*)",
-      "Bash(pip index:*)"
+      "Bash(pip index:*)",
+      "Bash(test:*)"
     ],
     "deny": [],
     "ask": []

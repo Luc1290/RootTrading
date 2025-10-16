@@ -25,14 +25,9 @@ sys.path.append(
             "../../")))
 
 
-# Configuration du logging
-log_level = getattr(logging, LOG_LEVEL.upper(), logging.INFO)
-logging.basicConfig(
-    level=log_level,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(), logging.FileHandler("dispatcher.log")],
-)
-logger = logging.getLogger("dispatcher")
+# Configuration du logging centralisée
+from shared.logging_config import setup_logging
+logger = setup_logging("dispatcher", log_level=LOG_LEVEL)
 
 
 class DispatcherHTTPServer(HTTPServer):
