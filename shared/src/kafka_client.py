@@ -11,8 +11,8 @@ from typing import Dict, Any, Callable, List, Optional, Union, Set
 from queue import Queue, Empty
 import queue
 
-from confluent_kafka import Producer, Consumer, KafkaError, KafkaException
-from confluent_kafka.admin import AdminClient, NewTopic
+from confluent_kafka import Producer, Consumer, KafkaError, KafkaException  # type: ignore[import-untyped]
+from confluent_kafka.admin import AdminClient, NewTopic  # type: ignore[import-untyped]
 
 from .config import KAFKA_BROKER, KAFKA_GROUP_ID
 
@@ -529,15 +529,16 @@ class KafkaClientPool:
                     logger.info(
                         "✅ Message reproduit avec succès après recréation du producteur"
                     )
-                    return
                 except Exception as retry_error:
                     logger.error(
                         f"❌ Échec après recréation du producteur: {str(retry_error)}"
                     )
-
-            logger.error(f"❌ Erreur lors de la production du message: {error_msg}")
-            self.metrics.record_delivery_failure()
-            raise
+                    self.metrics.record_delivery_failure()
+                    raise
+            else:
+                logger.error(f"❌ Erreur lors de la production du message: {error_msg}")
+                self.metrics.record_delivery_failure()
+                raise
 
         except Exception as e:
             error_msg = str(e).replace("{", "{{").replace("}", "}}")
@@ -558,8 +559,6 @@ class KafkaClientPool:
                 logger.warning(
                     f"⚠️ {remaining} messages non envoyés après timeout de {timeout}s"
                 )
-            else:
-                logger.info("✅ Tous les messages ont été envoyés")
 
     def consume(
         self,
@@ -883,7 +882,6 @@ class KafkaClientPool:
         if self._producer:
             logger.info("Vidage du producteur Kafka...")
             self.producer.flush(timeout=5.0)
-            logger.info("✅ Producteur Kafka vidé")
             self._producer = None
 
         # Réinitialiser les caches

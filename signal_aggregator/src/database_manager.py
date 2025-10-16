@@ -26,7 +26,7 @@ class DatabaseManager:
         self.db_connection = db_connection
 
         # Statistiques de stockage
-        self.stats = {
+        self.stats: Dict[str, Any] = {
             "signals_stored": 0,
             "storage_errors": 0,
             "last_storage_time": None,
@@ -63,7 +63,7 @@ class DatabaseManager:
                 self.db_connection.commit()
 
                 # Mise à jour des statistiques
-                self.stats["signals_stored"] += 1
+                self.stats["signals_stored"] = int(self.stats.get("signals_stored", 0)) + 1
                 self.stats["last_storage_time"] = datetime.utcnow()
 
                 logger.debug(f"Signal stocké en DB avec ID: {signal_id}")
@@ -71,7 +71,7 @@ class DatabaseManager:
 
         except Exception as e:
             logger.error(f"Erreur stockage signal en DB: {e}")
-            self.stats["storage_errors"] += 1
+            self.stats["storage_errors"] = int(self.stats.get("storage_errors", 0)) + 1
 
             # Rollback en cas d'erreur
             try:
@@ -278,14 +278,14 @@ class DatabaseManager:
                     except Exception as e:
                         logger.error(f"Erreur stockage signal individuel: {e}")
                         signal_ids.append(None)
-                        self.stats["storage_errors"] += 1
+                        self.stats["storage_errors"] = int(self.stats.get("storage_errors", 0)) + 1
 
                 # Commit de toutes les insertions
                 self.db_connection.commit()
 
                 # Mise à jour des statistiques
                 successful_stores = len([sid for sid in signal_ids if sid is not None])
-                self.stats["signals_stored"] += successful_stores
+                self.stats["signals_stored"] = int(self.stats.get("signals_stored", 0)) + successful_stores
                 self.stats["last_storage_time"] = datetime.utcnow()
 
                 logger.info(
@@ -294,7 +294,7 @@ class DatabaseManager:
 
         except Exception as e:
             logger.error(f"Erreur stockage batch signaux: {e}")
-            self.stats["storage_errors"] += len(validated_signals)
+            self.stats["storage_errors"] = int(self.stats.get("storage_errors", 0)) + len(validated_signals)
 
             # Rollback en cas d'erreur
             try:
@@ -485,18 +485,21 @@ class DatabaseManager:
         Returns:
             Dictionnaire des statistiques de stockage
         """
+        signals_stored = int(self.stats.get("signals_stored", 0))
+        storage_errors = int(self.stats.get("storage_errors", 0))
+        last_storage_time = self.stats.get("last_storage_time")
+
         return {
-            "signals_stored": self.stats["signals_stored"],
-            "storage_errors": self.stats["storage_errors"],
+            "signals_stored": signals_stored,
+            "storage_errors": storage_errors,
             "last_storage_time": (
-                self.stats["last_storage_time"].isoformat()
-                if self.stats["last_storage_time"]
+                last_storage_time.isoformat()
+                if last_storage_time and isinstance(last_storage_time, datetime)
                 else None
             ),
             "success_rate": (
-                self.stats["signals_stored"]
-                / (self.stats["signals_stored"] + self.stats["storage_errors"])
-                if (self.stats["signals_stored"] + self.stats["storage_errors"]) > 0
+                signals_stored / (signals_stored + storage_errors)
+                if (signals_stored + storage_errors) > 0
                 else 1.0
             ),
         }

@@ -32,7 +32,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
         self.min_volume_spike = 1.5  # Volume 50% au-dessus moyenne
         self.support_strength_min = 0.5  # Force minimum du support (MODERATE+)
 
-    def _convert_support_strength_to_score(self, strength_str: str) -> float:
+    def _convert_support_strength_to_score(self, strength_str: str | int | float) -> float:
         """Convertit support_strength string en score numérique."""
         # Si déjà converti en float par main.py, le retourner directement
         if isinstance(strength_str, (int, float)):
@@ -259,7 +259,7 @@ class Liquidity_Sweep_Buy_Strategy(BaseStrategy):
                 if values["nearest_support"] is not None
                 else None
             )
-            support_strength_raw = values["support_strength"]
+            support_strength_raw: str | int | float | None = values["support_strength"]
 
             # Fallback support si nearest_support manque
             if (

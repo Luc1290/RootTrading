@@ -34,7 +34,7 @@ class OrderManager:
         self.start_time = time.time()
 
         # Initialiser les composants
-        demo_mode = TRADING_MODE.lower() == "demo"
+        demo_mode = TRADING_MODE is not None and TRADING_MODE.lower() == "demo"
         self.binance_executor = BinanceExecutor(
             api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY, demo_mode=demo_mode
         )

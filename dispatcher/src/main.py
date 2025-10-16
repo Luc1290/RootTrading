@@ -32,8 +32,14 @@ logging.basicConfig(
 logger = logging.getLogger("dispatcher")
 
 
+class DispatcherHTTPServer(HTTPServer):
+    """HTTPServer personnalisé avec référence au DispatcherService."""
+    dispatcher_service: 'DispatcherService'
+
+
 class HealthHandler(BaseHTTPRequestHandler):
     """Gestionnaire des requêtes HTTP pour les endpoints de santé."""
+    server: DispatcherHTTPServer  # Type hint pour self.server
 
     def do_GET(self):
         """Gère les requêtes GET pour les endpoints de santé et diagnostic."""
@@ -161,7 +167,7 @@ class DispatcherService:
             port: Port pour le serveur HTTP
         """
         try:
-            self.http_server = HTTPServer(("0.0.0.0", port), HealthHandler)
+            self.http_server = DispatcherHTTPServer(("0.0.0.0", port), HealthHandler)
             self.http_server.dispatcher_service = self
 
             # Démarrer dans un thread séparé pour ne pas bloquer

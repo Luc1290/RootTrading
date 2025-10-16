@@ -20,11 +20,8 @@ import sys
 import os
 from datetime import datetime, timedelta
 
-# Ajouter le répertoire src au path pour les imports locaux
-sys.path.append(os.path.dirname(__file__))
-
-from signal_buffer import IntelligentSignalBuffer
-from signal_processor_simple import SimpleSignalProcessor
+from .signal_buffer import IntelligentSignalBuffer
+from .signal_processor_simple import SimpleSignalProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +60,7 @@ class SimpleSignalAggregatorService:
         )
 
         # Configuration Redis
-        self.redis_client = None
+        self.redis_client: Optional[redis.Redis] = None
         self.redis_url = "redis://redis:6379"
 
         # Canaux Redis
@@ -128,6 +125,10 @@ class SimpleSignalAggregatorService:
         """Écoute les signaux depuis Redis."""
         logger.info(f"🎧 Écoute signaux depuis {self.input_channel}")
 
+        if self.redis_client is None:
+            logger.error("❌ Redis client non initialisé")
+            return
+
         pubsub = self.redis_client.pubsub()
         await pubsub.subscribe(self.input_channel)
 
@@ -156,7 +157,7 @@ class SimpleSignalAggregatorService:
             self.stats["errors"] += 1
 
     async def _process_signal_batch_simple(
-        self, signals: list, context_key: tuple = None
+        self, signals: list, context_key: tuple | None = None
     ):
         """
         Traite un batch de signaux avec le système ultra-simplifié.
@@ -213,7 +214,7 @@ class SimpleSignalAggregatorService:
                     await self._validate_signal_group(signals)
             else:
                 # Grouper par symbol + side (logique simple)
-                signal_groups = {}
+                signal_groups: Dict[str, List] = {}
                 for signal in signals:
                     key = f"{signal['symbol']}_{signal['side']}"
                     if key not in signal_groups:
@@ -368,6 +369,10 @@ class SimpleSignalAggregatorService:
     async def _send_validated_signal(self, signal: Dict[str, Any]):
         """Envoie le signal validé vers le coordinator."""
         try:
+            if self.redis_client is None:
+                logger.error("❌ Redis client non initialisé")
+                return
+
             signal_json = json.dumps(signal, default=str)
             await self.redis_client.publish(self.output_channel, signal_json)
 

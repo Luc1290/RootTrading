@@ -126,14 +126,14 @@ if DUPLICATE_MEMBERSHIPS:
     print("⚠️  Doublons de familles détectés:", DUPLICATE_MEMBERSHIPS)
 
 # Mapping inverse : stratégie -> famille PRIMAIRE (évite l'écrasement silencieux)
-STRATEGY_TO_FAMILY = {}
+STRATEGY_TO_FAMILY: dict[str, str] = {}
 for family, config in STRATEGY_FAMILIES.items():
     for strategy in config["strategies"]:
         # setdefault pour ne PAS écraser la famille primaire (première occurrence)
         STRATEGY_TO_FAMILY.setdefault(strategy, family)
 
 # Mapping complet : stratégie -> toutes ses familles (pour features avancées)
-STRATEGY_FAMILY_TAGS = defaultdict(list)
+STRATEGY_FAMILY_TAGS: dict[str, list[str]] = defaultdict(list)
 for family, cfg in STRATEGY_FAMILIES.items():
     for s in cfg["strategies"]:
         if family not in STRATEGY_FAMILY_TAGS[s]:
@@ -401,7 +401,7 @@ def is_strategy_acceptable_for_regime(strategy_name: str, market_regime: str) ->
 
 
 def should_allow_counter_trend_rebound(
-    market_regime: str, signal_side: str, market_indicators: dict = None
+    market_regime: str, signal_side: str, market_indicators: dict | None = None
 ) -> bool:
     """
     Vérifie si on doit permettre un signal contre-tendance (rebond) basé sur les conditions de marché.
@@ -548,7 +548,7 @@ class AdaptiveRegimeAdjuster:
 
         return base_multiplier * adjustment
 
-    def get_regime_statistics(self, regime: str = None) -> dict:
+    def get_regime_statistics(self, regime: str | None = None) -> dict:
         """
         Retourne les statistiques de performance par régime.
 
@@ -576,7 +576,7 @@ def get_enhanced_regime_adjustment(
     strategy_name: str,
     market_regime: str,
     signal_side: str,
-    market_indicators: dict = None,
+    market_indicators: dict | None = None,
 ) -> float:
     """
     Version améliorée avec détection de rebonds et ajustement adaptatif.

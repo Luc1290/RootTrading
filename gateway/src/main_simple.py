@@ -13,12 +13,9 @@ import time
 from aiohttp import web
 from typing import Callable
 
-# Ajouter le répertoire parent au path pour les imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
-
-from simple_data_fetcher import SimpleDataFetcher
-from simple_binance_ws import SimpleBinanceWebSocket
-from gap_detector import GapDetector
+from .simple_data_fetcher import SimpleDataFetcher
+from .simple_binance_ws import SimpleBinanceWebSocket
+from .gap_detector import GapDetector
 from shared.src.config import SYMBOLS, INTERVAL
 
 # Configuration du logging
@@ -173,10 +170,10 @@ async def diagnostic(request):
         "data_type": "raw_ohlcv_only",
     }
 
+    is_operational = data_fetcher is not None and data_fetcher.running
+
     diagnostic_info = {
-        "status": (
-            "operational" if (data_fetcher and data_fetcher.running) else "stopped"
-        ),
+        "status": "operational" if is_operational else "stopped",
         "timestamp": time.time(),
         "uptime": time.time() - start_time,
         "data_fetcher": fetcher_status,
@@ -215,13 +212,13 @@ async def shutdown(signal_type, loop):
 
     try:
         # Arrêter les services avec timeout
-        shutdown_tasks = []
+        shutdown_tasks: list[asyncio.Task] = []
 
-        if ws_client:
+        if ws_client is not None:
             logger.info("Arrêt WebSocket client...")
             shutdown_tasks.append(asyncio.wait_for(ws_client.stop(), timeout=5.0))
 
-        if data_fetcher:
+        if data_fetcher is not None:
             logger.info("Arrêt Data fetcher...")
             shutdown_tasks.append(asyncio.wait_for(data_fetcher.stop(), timeout=5.0))
 

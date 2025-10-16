@@ -11,8 +11,7 @@ from collections import defaultdict
 import sys
 import os
 
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-from strategy_classification import get_strategy_family
+from .strategy_classification import get_strategy_family
 
 logger = logging.getLogger(__name__)
 
@@ -262,15 +261,12 @@ class IntelligentSignalBuffer:
         if winning_signals:
             # Envoyer les signaux gagnants au batch processor
             if self.batch_processor:
-                try:
-                    # Créer une clé spéciale pour les signaux de vague
-                    wave_context_key = (symbol, "wave_winner")
-                    await self.batch_processor(winning_signals, wave_context_key)
-                    self.stats["wave_completed"] += 1
+                # Créer une clé spéciale pour les signaux de vague
+                wave_context_key = (symbol, "wave_winner")
+                await self.batch_processor(winning_signals, wave_context_key)
+                self.stats["wave_completed"] += 1
 
-                    # Pas de log ici car on ne sait pas encore si la validation va réussir
-                except Exception as e:
-                    logger.error(f"❌ Erreur envoi signaux gagnants {symbol}: {e}")
+                # Pas de log ici car on ne sait pas encore si la validation va réussir
         else:
             logger.info(f"🚫 Vague {symbol}: aucun gagnant, signal ignoré")
 
@@ -438,7 +434,7 @@ class IntelligentSignalBuffer:
         winning_signals: List[Dict[str, Any]],
         winning_score: float,
         losing_score: float,
-        wave_total: int = None,
+        wave_total: int | None = None,
     ) -> List[Dict[str, Any]]:
         """
         NOUVEAU: Prépare les signaux gagnants en ajoutant les métadonnées de résolution de conflit.
@@ -630,7 +626,7 @@ class IntelligentSignalBuffer:
             self.last_signal_time[symbol] = now
 
             # Démarrer le monitor de timeout si pas actif
-            if not self.timeout_task or self.timeout_task.done():
+            if self.timeout_task is None or self.timeout_task.done():
                 self.timeout_task = asyncio.create_task(self._wave_timeout_monitor())
 
             side = signal.get("side", "UNKNOWN")
@@ -807,8 +803,8 @@ class IntelligentSignalBuffer:
 
         # Nettoyer le buffer
         del self.signal_buffer[context_key]
-        if context_key in self.first_signal_time:
-            del self.first_signal_time[context_key]
+        if context_key in self.first_mtf_signal_time:
+            del self.first_mtf_signal_time[context_key]
 
         logger.info(
             f"Traitement contexte {context_key}: {len(signals)} signaux (trigger: {trigger})"
@@ -854,8 +850,8 @@ class IntelligentSignalBuffer:
         for context_key in contexts_to_clean:
             if context_key in self.signal_buffer:
                 del self.signal_buffer[context_key]
-            if context_key in self.first_signal_time:
-                del self.first_signal_time[context_key]
+            if context_key in self.first_mtf_signal_time:
+                del self.first_mtf_signal_time[context_key]
 
         # Trier par priorité de timeframe (plus élevé = plus important)
         signals.sort(
@@ -879,13 +875,10 @@ class IntelligentSignalBuffer:
 
         # Traiter le batch MTF si on a un processor
         if self.batch_processor and final_signals:
-            try:
-                # Créer une clé spéciale pour le batch MTF incluant la direction
-                mtf_context_key = (symbol, f"multi_timeframe_{side}")
-                await self.batch_processor(final_signals, mtf_context_key)
-                self.stats["mtf_batches_processed"] += 1
-            except Exception as e:
-                logger.error(f"Erreur traitement batch MTF {symbol} {side}: {e}")
+            # Créer une clé spéciale pour le batch MTF incluant la direction
+            mtf_context_key = (symbol, f"multi_timeframe_{side}")
+            await self.batch_processor(final_signals, mtf_context_key)
+            self.stats["mtf_batches_processed"] += 1
 
     def _analyze_mtf_conflicts(self, signals: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
@@ -959,7 +952,7 @@ class IntelligentSignalBuffer:
 
     async def cleanup(self) -> None:
         """Nettoie les ressources du buffer."""
-        if self.timeout_task and not self.timeout_task.done():
+        if self.timeout_task is not None and not self.timeout_task.done():
             self.timeout_task.cancel()
             try:
                 await self.timeout_task

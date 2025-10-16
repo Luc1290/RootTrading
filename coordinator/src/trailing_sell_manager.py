@@ -42,7 +42,7 @@ class TrailingSellManager:
         logger.info("✅ TrailingSellManager initialisé")
 
     def _get_redis_key(
-        self, key_type: str, symbol: str, position_id: str = None
+        self, key_type: str, symbol: str, position_id: str | None = None
     ) -> str:
         """
         Génère une clé Redis unique avec namespace position_id.
@@ -70,7 +70,7 @@ class TrailingSellManager:
         current_price: float,
         entry_price: float,
         entry_time: Any,
-        position_id: str = None,
+        position_id: str | None = None,
     ) -> Tuple[bool, str]:
         """
         Vérifie si on doit exécuter le SELL selon la logique de trailing sell améliorée.
@@ -346,7 +346,7 @@ class TrailingSellManager:
             return True, f"Erreur technique, SELL autorisé par défaut"
 
     def update_max_price_if_needed(
-        self, symbol: str, current_price: float, position_id: str = None
+        self, symbol: str, current_price: float, position_id: str | None = None
     ) -> bool:
         """
         Met à jour le prix max si le prix actuel est plus élevé.
@@ -396,7 +396,7 @@ class TrailingSellManager:
         symbol: str,
         current_price: float,
         entry_price: float,
-        position_id: str = None,
+        position_id: str | None = None,
     ) -> float:
         """
         Récupère et met à jour le prix max historique du cycle.
@@ -444,7 +444,7 @@ class TrailingSellManager:
         return historical_max
 
     def _get_previous_sell_price(
-        self, symbol: str, position_id: str = None
+        self, symbol: str, position_id: str | None = None
     ) -> Optional[float]:
         """
         Récupère le prix du SELL précédent stocké en référence.
@@ -505,7 +505,7 @@ class TrailingSellManager:
             return None
 
     def _update_sell_reference(
-        self, symbol: str, price: float, position_id: str = None
+        self, symbol: str, price: float, position_id: str | None = None
     ) -> None:
         """
         Met à jour la référence de prix SELL pour un symbole.
@@ -523,7 +523,7 @@ class TrailingSellManager:
         except Exception as e:
             logger.error(f"Erreur mise à jour sell reference pour {symbol}: {e}")
 
-    def _clear_sell_reference(self, symbol: str, position_id: str = None) -> None:
+    def _clear_sell_reference(self, symbol: str, position_id: str | None = None) -> None:
         """
         Supprime la référence de prix SELL pour un symbole.
 
@@ -539,7 +539,7 @@ class TrailingSellManager:
             logger.error(f"Erreur suppression sell reference pour {symbol}: {e}")
 
     def _update_cycle_max_price(
-        self, symbol: str, price: float, position_id: str = None
+        self, symbol: str, price: float, position_id: str | None = None
     ) -> None:
         """
         Met à jour le prix maximum historique d'un cycle.
@@ -558,7 +558,7 @@ class TrailingSellManager:
         except Exception as e:
             logger.error(f"Erreur mise à jour prix max pour {symbol}: {e}")
 
-    def _clear_cycle_max_price(self, symbol: str, position_id: str = None) -> None:
+    def _clear_cycle_max_price(self, symbol: str, position_id: str | None = None) -> None:
         """
         Supprime le prix maximum historique d'un cycle.
 
@@ -1006,7 +1006,7 @@ class TrailingSellManager:
             return None
 
     def _check_progressive_take_profit(
-        self, symbol: str, gain_percent: float, position_id: str = None
+        self, symbol: str, gain_percent: float, position_id: str | None = None
     ) -> Tuple[bool, str]:
         """
         Take profit progressif AMÉLIORÉ : vend si rechute significative depuis le palier atteint.
@@ -1101,7 +1101,7 @@ class TrailingSellManager:
         )
 
     def _update_max_tp_level(
-        self, symbol: str, tp_level: float, position_id: str = None
+        self, symbol: str, tp_level: float, position_id: str | None = None
     ) -> None:
         """
         Met à jour le palier TP maximum atteint pour un symbole.
@@ -1120,7 +1120,7 @@ class TrailingSellManager:
         except Exception as e:
             logger.error(f"Erreur mise à jour palier TP pour {symbol}: {e}")
 
-    def _clear_max_tp_level(self, symbol: str, position_id: str = None) -> None:
+    def _clear_max_tp_level(self, symbol: str, position_id: str | None = None) -> None:
         """
         Supprime le palier TP maximum pour un symbole.
 
@@ -1164,7 +1164,7 @@ class TrailingSellManager:
 
         return margin
 
-    def _cleanup_references(self, symbol: str, position_id: str = None) -> None:
+    def _cleanup_references(self, symbol: str, position_id: str | None = None) -> None:
         """
         Nettoie toutes les références pour un symbole après une vente.
 

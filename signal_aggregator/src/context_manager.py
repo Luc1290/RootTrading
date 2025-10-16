@@ -7,7 +7,7 @@ import logging
 from typing import Dict, Any, Optional, List
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from field_converters import FieldConverter
+from .field_converters import FieldConverter  # type: ignore[import-not-found]
 
 logger = logging.getLogger(__name__)
 
@@ -29,14 +29,14 @@ class ContextManager:
             self.db_connection = None
         else:
             self.db_connection = db_connection
-            self.db_config = None
+            self.db_config: Optional[Dict[str, Any]] = None
 
         # Cache pour optimiser les requêtes répétées avec TTL dynamique
         self.context_cache = {}
         self.base_cache_ttl = 5  # TTL de base en secondes
 
     def get_unified_market_regime(
-        self, symbol: str, signal_timeframe: str = None
+        self, symbol: str, signal_timeframe: str | None = None
     ) -> Dict[str, Any]:
         """
         Récupère le régime de marché unifié adapté au timeframe du signal.
@@ -62,6 +62,16 @@ class ContextManager:
 
         try:
             # Créer un curseur sans utiliser le context manager de transaction
+            if self.db_connection is None:
+                return {
+                    "market_regime": "UNKNOWN",
+                    "regime_strength": 0.5,
+                    "regime_confidence": 50.0,
+                    "directional_bias": "NEUTRAL",
+                    "volatility_regime": "normal",
+                    "regime_source": "error",
+                    "regime_timestamp": None,
+                }
             cursor = self.db_connection.cursor(cursor_factory=RealDictCursor)
             try:
                 # Récupérer le régime du timeframe de référence (plus récent)
@@ -225,10 +235,10 @@ class ContextManager:
                 # Sauvegarder le régime original du timeframe
                 if original_regime:
                     context["timeframe_regime"] = original_regime
-                    context["timeframe_regime_strength"] = original_regime_strength
-                    context["timeframe_regime_confidence"] = original_regime_confidence
-                    context["timeframe_directional_bias"] = original_directional_bias
-                    context["timeframe_volatility_regime"] = original_volatility_regime
+                    context["timeframe_regime_strength"] = original_regime_strength if original_regime_strength is not None else 0.5
+                    context["timeframe_regime_confidence"] = original_regime_confidence if original_regime_confidence is not None else 50.0
+                    context["timeframe_directional_bias"] = original_directional_bias if original_directional_bias is not None else "NEUTRAL"
+                    context["timeframe_volatility_regime"] = original_volatility_regime if original_volatility_regime is not None else "normal"
 
             # Ajouter les données HTF au contexte pour validation MTF
             if htf_data:
@@ -273,12 +283,12 @@ class ContextManager:
             # Fallback pour current_price si absent - avec protection ohlcv vide
             if "current_price" not in context:
                 if ohlcv_data and len(ohlcv_data) > 0:
-                    context["current_price"] = ohlcv_data[-1]["close"]
+                    context["current_price"] = float(ohlcv_data[-1]["close"])
                 else:
                     logger.warning(
                         f"Pas de données OHLCV pour {symbol} {timeframe}, current_price = 0"
                     )
-                    context["current_price"] = 0
+                    context["current_price"] = 0.0
 
             # Mise en cache avec timestamp
             self.context_cache[cache_key] = (context, current_time)
@@ -702,10 +712,10 @@ class ContextManager:
                         )
 
                         # Calculer ratio ATR 15m pour les filtres
-                        if htf_data.get("mtf_atr15m") and htf_data["mtf_atr15m_ma"] > 0:
-                            htf_data["mtf_atr15m_ratio"] = (
-                                htf_data["mtf_atr15m"] / htf_data["mtf_atr15m_ma"]
-                            )
+                        atr15m_val = htf_data.get("mtf_atr15m")
+                        atr15m_ma_val = htf_data.get("mtf_atr15m_ma")
+                        if atr15m_val is not None and atr15m_ma_val is not None and atr15m_ma_val > 0:
+                            htf_data["mtf_atr15m_ratio"] = float(atr15m_val) / float(atr15m_ma_val)
 
             finally:
                 cursor.close()

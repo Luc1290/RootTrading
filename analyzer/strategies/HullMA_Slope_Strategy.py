@@ -42,6 +42,14 @@ class HullMA_Slope_Strategy(BaseStrategy):
         self.momentum_bullish_min = 50.1  # Momentum > neutre pour BUY
         self.momentum_bearish_max = 49.9  # Momentum < neutre pour SELL
 
+        # Anciens paramètres contrarian (conservés pour compatibilité)
+        self.price_pullback_min = 0.005  # 0.5% pullback minimum
+        self.price_pullback_max = 0.03  # 3% pullback maximum
+        self.price_bounce_min = 0.005  # 0.5% bounce minimum
+        self.price_bounce_max = 0.03  # 3% bounce maximum
+        self.rsi_oversold_entry = 35  # RSI pour pullback entry
+        self.rsi_overbought_entry = 65  # RSI pour bounce entry
+
         # Filtres qualité PLUS PERMISSIFS pour CRYPTO
         self.min_volume_ratio = 0.8  # Volume minimum ACCESSIBLE
         self.min_confluence_score = 15  # Confluence minimum ASSOUPLI (15 vs 35)
@@ -454,8 +462,8 @@ class HullMA_Slope_Strategy(BaseStrategy):
             }
 
         try:
-            hull_val = float(hull_20)
-            price_val = float(current_price)
+            hull_val = float(hull_20) if hull_20 is not None else 0.0
+            price_val = float(current_price) if current_price is not None else 0.0
         except (ValueError, TypeError) as e:
             return {
                 "side": None,
@@ -472,7 +480,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
             volume_penalty = -0.05  # Légère pénalité si pas de données volume valides
         else:
             try:
-                vol_val = float(volume_ratio)
+                vol_val = float(volume_ratio) if volume_ratio is not None else 0.0
                 if vol_val < 0.8:  # Volume sous la normale = problématique (assoupli)
                     volume_penalty = -0.10  # Pénalité réduite (assoupli)
             except (ValueError, TypeError):
@@ -485,7 +493,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
             confluence_penalty = -0.08  # Pénalité si pas de données confluence valides
         else:
             try:
-                conf_val = float(confluence_score)
+                conf_val = float(confluence_score) if confluence_score is not None else 0.0
                 if conf_val < 15:  # Confluence trop faible = rejet net (assoupli)
                     return {
                         "side": None,
@@ -719,7 +727,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
         # Bonus volume élevé avec validation NaN
         if self._is_valid(volume_ratio):
             try:
-                vol_ratio = float(volume_ratio)
+                vol_ratio = float(volume_ratio) if volume_ratio is not None else 0.0
                 if vol_ratio >= 2.0:
                     confidence_boost += 0.15
                     reason += f" + volume très élevé ({vol_ratio:.1f}x)"
@@ -735,7 +743,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
         # Bonus confluence avec validation NaN
         if self._is_valid(confluence_score):
             try:
-                conf_val = float(confluence_score)
+                conf_val = float(confluence_score) if confluence_score is not None else 0.0
                 if conf_val >= 70:
                     confidence_boost += 0.18
                     reason += f" + confluence excellente ({conf_val:.0f})"
@@ -761,7 +769,7 @@ class HullMA_Slope_Strategy(BaseStrategy):
         trend_alignment = values.get("trend_alignment")
         if self._is_valid(trend_alignment):
             try:
-                alignment = float(trend_alignment)
+                alignment = float(trend_alignment) if trend_alignment is not None else 0.0
                 if abs(alignment) >= 0.3:
                     confidence_boost += 0.10
                     reason += " + MA alignées"
@@ -770,9 +778,9 @@ class HullMA_Slope_Strategy(BaseStrategy):
 
         # Bonus market regime favorable
         market_regime = values.get("market_regime")
-        if market_regime in ["TRENDING_BULL", "TRENDING_BEAR"]:
+        if market_regime is not None and str(market_regime) in ["TRENDING_BULL", "TRENDING_BEAR"]:
             confidence_boost += 0.08
-            reason += f" + marché {market_regime.lower()}"
+            reason += f" + marché {str(market_regime).lower()}"
 
         # === FILTRE FINAL ===
 

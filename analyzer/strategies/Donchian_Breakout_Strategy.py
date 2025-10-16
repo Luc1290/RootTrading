@@ -38,7 +38,7 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         self.extreme_volume_threshold = 2.5  # Volume extrême pour gros breakouts
         self.donchian_period = 20  # Période pour canal Donchian pur
 
-    def _get_current_values(self) -> Dict[str, Optional[float]]:
+    def _get_current_values(self) -> Dict[str, Any]:
         """Récupère les valeurs actuelles des indicateurs."""
         return {
             # Support/Résistance (proxy pour canaux Donchian)
@@ -107,7 +107,7 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         }
 
     def _calculate_donchian_levels(
-        self, period: int = None
+        self, period: Optional[int] = None
     ) -> Dict[str, Optional[float]]:
         """Calcule les niveaux Donchian purs depuis les données OHLC."""
         if period is None:
@@ -148,10 +148,12 @@ class Donchian_Breakout_Strategy(BaseStrategy):
         price_data = self._get_current_price_data()
 
         # Helper pour valider les nombres (anti-NaN)
-        def _is_valid(x):
+        def _is_valid(x: Any) -> bool:
+            if x is None:
+                return False
             try:
-                x = float(x) if x is not None else None
-                return x is not None and not math.isnan(x)
+                val = float(x)
+                return not math.isnan(val)
             except (TypeError, ValueError):
                 return False
 

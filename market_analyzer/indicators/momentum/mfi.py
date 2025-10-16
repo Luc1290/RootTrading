@@ -106,7 +106,7 @@ def calculate_mfi_series(
     if len(highs) == 0:
         return []
 
-    result = []
+    result: List[Optional[float]] = []
 
     for i in range(len(highs)):
         if i < period:

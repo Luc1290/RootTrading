@@ -15,17 +15,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
-import psutil
+import psutil  # type: ignore[import-untyped]
 import os
 
-# Importer les modules partagés
-import sys
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
-
 from shared.src.schemas import AssetBalance, PortfolioSummary
-from models import PortfolioModel, DBManager, SharedCache
-from binance_account_manager import BinanceAccountManager
+from .models import PortfolioModel, DBManager, SharedCache
+from .binance_account_manager import BinanceAccountManager
 
 # Mesure des performances et des ressources
 process = psutil.Process(os.getpid())
@@ -993,23 +988,23 @@ async def lifespan(app: FastAPI):
 
     try:
         # Initialiser la synchronisation Binance
-        from startup import initial_sync_binance
+        from .startup import initial_sync_binance
 
         await initial_sync_binance()
 
         # Démarrer les tâches de synchronisation
-        from sync import start_sync_tasks
+        from .sync import start_sync_tasks
 
         start_sync_tasks()
 
         # Démarrer les abonnements Redis
-        from redis_subscriber import start_redis_subscriptions
+        from .redis_subscriber import start_redis_subscriptions
 
         start_redis_subscriptions()
 
         # Afficher le portfolio initial
         try:
-            from models import DBManager, PortfolioModel
+            from .models import DBManager, PortfolioModel
 
             db = DBManager()
             portfolio = PortfolioModel(db)

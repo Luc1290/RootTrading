@@ -51,12 +51,12 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
 
         # Direction simple basée sur bias + momentum
         directional_bias = values.get("directional_bias")
-        momentum_score = values.get("momentum_score", 50)
+        momentum_score = values.get("momentum_score")
 
         try:
-            momentum_val = float(momentum_score)
+            momentum_val = float(momentum_score) if momentum_score is not None else 50.0
         except (ValueError, TypeError):
-            momentum_val = 50
+            momentum_val = 50.0
 
         # REJETS CRITIQUES avant signal
 
@@ -109,9 +109,9 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
         # Bonus simples crypto
 
         # Volume durci
-        volume_ratio = values.get("volume_ratio", 1.0)
+        volume_ratio = values.get("volume_ratio")
         try:
-            vol_ratio = float(volume_ratio)
+            vol_ratio = float(volume_ratio) if volume_ratio is not None else 1.0
             if vol_ratio >= 2.0:
                 confidence_boost += 0.15
                 reason += f" + volume exceptionnel ({vol_ratio:.1f}x)"
@@ -124,11 +124,11 @@ class Supertrend_Reversal_Strategy(BaseStrategy):
 
         # Trend strength avec condition confluence
         trend_strength = values.get("trend_strength")
-        confluence_score = values.get("confluence_score", 0)
+        confluence_score = values.get("confluence_score")
         try:
-            conf_val = float(confluence_score)
+            conf_val = float(confluence_score) if confluence_score is not None else 0.0
         except (ValueError, TypeError):
-            conf_val = 0
+            conf_val = 0.0
 
         if trend_strength:
             trend_str = str(trend_strength).lower()

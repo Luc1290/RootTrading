@@ -411,10 +411,9 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
 
         # Signal_strength ULTRA-ASSOUPLI avec fallback
         valid_strengths = ["WEAK", "MODERATE", "STRONG", "VERY_STRONG"]
-        if signal_strength not in valid_strengths or signal_strength is None:
-            signal_strength = (
-                "MODERATE"  # Default optimiste pour valeurs manquantes/invalides
-            )
+        signal_strength_str = str(signal_strength) if signal_strength is not None else ""
+        if signal_strength_str not in valid_strengths:
+            signal_strength_str = "MODERATE"  # Default optimiste pour valeurs manquantes/invalides
 
         # Vérification ADX pour tendance suffisante (déplacée ici)
         adx_14 = values.get("adx_14")
@@ -427,7 +426,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
 
         # Signal strength ASSOUPLI - Accepter WEAK avec pénalité
         weak_signal_penalty = 0.0
-        if signal_strength == "WEAK":
+        if signal_strength_str == "WEAK":
             weak_signal_penalty = -0.20  # Pénalité au lieu de rejet
 
         # Vérification trend_alignment avec pénalité au lieu de rejet
@@ -549,10 +548,10 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
             reason += f" [confluence excellente: {confluence_score:.0f}]"
 
         # 2. Signal strength (déjà validé comme STRONG+)
-        if signal_strength == "VERY_STRONG":
+        if signal_strength_str == "VERY_STRONG":
             confidence_boost += 0.12
             reason += " + VERY_STRONG"
-        elif signal_strength == "STRONG":
+        elif signal_strength_str == "STRONG":
             confidence_boost += 0.08
             reason += " + STRONG"
 
@@ -565,12 +564,13 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
             reason += f" + trend fort ({trend_alignment:.2f})"
 
         # 4. ADX exceptionnel (déjà validé > 20)
-        if adx_value >= 40:
-            confidence_boost += 0.12
-            reason += f" + ADX EXTRÊEME ({adx_value:.1f})"
-        elif adx_value >= self.strong_adx_trend:
-            confidence_boost += 0.08
-            reason += f" + ADX fort ({adx_value:.1f})"
+        if adx_value is not None:
+            if adx_value >= 40:
+                confidence_boost += 0.12
+                reason += f" + ADX EXTRÊEME ({adx_value:.1f})"
+            elif adx_value >= self.strong_adx_trend:
+                confidence_boost += 0.08
+                reason += f" + ADX fort ({adx_value:.1f})"
 
         # VALIDATION DIRECTIONAL BIAS - PÉNALITÉ au lieu de rejet
         directional_bias = values.get("directional_bias")
@@ -697,7 +697,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                     "rejected_signal": signal_side,
                     "rejected_confidence": confidence,
                     "confluence_score": confluence_score,
-                    "signal_strength": signal_strength,
+                    "signal_strength": signal_strength_str,
                     "trend_alignment": trend_alignment,
                 },
             }
@@ -713,7 +713,7 @@ class MultiTF_ConfluentEntry_Strategy(BaseStrategy):
                 "symbol": self.symbol,
                 "current_price": current_price,
                 "confluence_score": confluence_score,
-                "signal_strength": signal_strength,
+                "signal_strength": signal_strength_str,
                 "trend_alignment": trend_alignment,
                 "ma_analysis": ma_analysis,
                 "osc_analysis": osc_analysis,

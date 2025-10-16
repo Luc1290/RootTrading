@@ -237,8 +237,8 @@ class Range_Breakout_Confirmation_Strategy(BaseStrategy):
             # CORRECTION: Accepter BB même sans squeeze obligatoire
             if all(x is not None for x in [bb_upper, bb_lower]):
                 try:
-                    upper_val = float(bb_upper)
-                    lower_val = float(bb_lower)
+                    upper_val = float(bb_upper) if bb_upper is not None else 0.0
+                    lower_val = float(bb_lower) if bb_lower is not None else 0.0
 
                     if lower_val > 0 and upper_val > lower_val:
                         range_width = (upper_val - lower_val) / lower_val

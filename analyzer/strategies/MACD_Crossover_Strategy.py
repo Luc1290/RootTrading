@@ -120,18 +120,18 @@ class MACD_Crossover_Strategy(BaseStrategy):
 
         # Vérification des indicateurs MACD essentiels avec protection NaN
         try:
+            macd_line_val = values.get("macd_line")
+            macd_signal_val = values.get("macd_signal")
+            macd_histogram_val = values.get("macd_histogram")
+
             macd_line = (
-                float(values["macd_line"]) if _is_valid(values["macd_line"]) else None
+                float(macd_line_val) if _is_valid(macd_line_val) else None
             )
             macd_signal = (
-                float(values["macd_signal"])
-                if _is_valid(values["macd_signal"])
-                else None
+                float(macd_signal_val) if _is_valid(macd_signal_val) else None
             )
             macd_histogram = (
-                float(values["macd_histogram"])
-                if _is_valid(values["macd_histogram"])
-                else None
+                float(macd_histogram_val) if _is_valid(macd_histogram_val) else None
             )
         except (ValueError, TypeError) as e:
             return {
@@ -152,6 +152,15 @@ class MACD_Crossover_Strategy(BaseStrategy):
             }
 
         # Analyse du croisement MACD
+        if macd_line is None or macd_signal is None:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": "MACD line ou signal est None",
+                "metadata": {"strategy": self.name},
+            }
+
         macd_above_signal = macd_line > macd_signal
         macd_distance = abs(macd_line - macd_signal)
 
@@ -243,7 +252,7 @@ class MACD_Crossover_Strategy(BaseStrategy):
             if is_strong_uptrend:
                 conditions_bonus += 0.15
                 reason += " + tendance haussière forte"
-            elif macd_line > 0:
+            elif macd_line is not None and macd_line > 0:
                 conditions_bonus += 0.08
                 reason += " + MACD positif"
 
@@ -268,7 +277,7 @@ class MACD_Crossover_Strategy(BaseStrategy):
             if is_strong_downtrend:
                 conditions_bonus += 0.15
                 reason += " + tendance baissière forte"
-            elif macd_line < 0:
+            elif macd_line is not None and macd_line < 0:
                 conditions_bonus += 0.08
                 reason += " + MACD négatif"
 
@@ -286,7 +295,7 @@ class MACD_Crossover_Strategy(BaseStrategy):
         confidence_boost += conditions_bonus
 
         # Bonus selon la force de la séparation - SEUILS PLUS STRICTS
-        separation_strength = abs(macd_line - macd_signal)
+        separation_strength = abs(macd_line - macd_signal) if macd_line is not None and macd_signal is not None else 0.0
         if separation_strength >= self.strong_separation_threshold:  # 0.02
             confidence_boost += 0.18
             reason += f" - séparation TRÈS forte ({separation_strength:.4f})"
@@ -330,18 +339,19 @@ class MACD_Crossover_Strategy(BaseStrategy):
                 reason += f" MAIS histogram CONTRADICTOIRE ({macd_histogram:.4f})"
 
         # Bonus si MACD dans la bonne zone par rapport à zéro
-        if signal_side == "BUY" and macd_line > 0:
-            confidence_boost += self.zero_line_bonus
-            reason += " + MACD au-dessus zéro"
-        elif signal_side == "SELL" and macd_line < 0:
-            confidence_boost += self.zero_line_bonus
-            reason += " + MACD en-dessous zéro"
-        elif signal_side == "BUY" and macd_line < -0.01:
-            confidence_boost -= 0.05
-            reason += " mais MACD très négatif"
-        elif signal_side == "SELL" and macd_line > 0.01:
-            confidence_boost -= 0.05
-            reason += " mais MACD très positif"
+        if macd_line is not None:
+            if signal_side == "BUY" and macd_line > 0:
+                confidence_boost += self.zero_line_bonus
+                reason += " + MACD au-dessus zéro"
+            elif signal_side == "SELL" and macd_line < 0:
+                confidence_boost += self.zero_line_bonus
+                reason += " + MACD en-dessous zéro"
+            elif signal_side == "BUY" and macd_line < -0.01:
+                confidence_boost -= 0.05
+                reason += " mais MACD très négatif"
+            elif signal_side == "SELL" and macd_line > 0.01:
+                confidence_boost -= 0.05
+                reason += " mais MACD très positif"
 
         # Confirmation avec macd_trend pré-calculé
         macd_trend = values.get("macd_trend")
@@ -459,8 +469,8 @@ class MACD_Crossover_Strategy(BaseStrategy):
         stoch_d = values.get("stoch_d")
         if stoch_k is not None and stoch_d is not None:
             try:
-                k = float(stoch_k)
-                d = float(stoch_d)
+                k = float(stoch_k) if stoch_k is not None else 0.0
+                d = float(stoch_d) if stoch_d is not None else 0.0
                 stoch_cross = k > d
 
                 if (signal_side == "BUY" and stoch_cross) or (

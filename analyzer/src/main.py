@@ -16,18 +16,9 @@ from psycopg2.extras import RealDictCursor
 import redis.asyncio as redis
 from aiohttp import web
 
-# Ajouter les répertoires nécessaires au path pour les imports
-sys.path.append(
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
-)  # Pour shared
-sys.path.append(
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))
-)  # Pour strategies
-sys.path.append(os.path.dirname(__file__))  # Pour les modules src locaux
-
-from strategy_loader import StrategyLoader
-from multiproc_manager import MultiProcessManager
-from redis_subscriber import RedisPublisher
+from .strategy_loader import StrategyLoader
+from .multiproc_manager import MultiProcessManager
+from .redis_subscriber import RedisPublisher
 
 # Configuration du logging
 log_level = (
@@ -88,7 +79,13 @@ class AnalyzerService:
     async def connect_db(self):
         """Établit la connexion à la base de données."""
         try:
-            self.db_connection = psycopg2.connect(**self.db_config)
+            self.db_connection = psycopg2.connect(
+                host=str(self.db_config["host"]),
+                port=int(self.db_config["port"]),
+                database=str(self.db_config["database"]),
+                user=str(self.db_config["user"]),
+                password=str(self.db_config["password"])
+            )
             logger.info("Connexion à la base de données établie")
         except Exception as e:
             logger.error(f"Erreur connexion DB: {e}")

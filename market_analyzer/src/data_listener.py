@@ -6,7 +6,7 @@ Système trigger-based pour traitement temps réel.
 
 import logging
 import asyncio
-import asyncpg
+import asyncpg  # type: ignore
 import json
 from datetime import datetime
 from typing import Dict, Any, Optional, List
@@ -134,6 +134,8 @@ class DataListener:
         """
 
         try:
+            if not self.db_pool:
+                raise RuntimeError("db_pool not initialized")
             async with self.db_pool.acquire() as conn:
                 # Exécuter le nettoyage d'abord
                 logger.info("🧹 Nettoyage des anciens triggers...")
@@ -162,6 +164,8 @@ class DataListener:
 
         try:
             # S'abonner aux notifications
+            if not self.listen_conn:
+                raise RuntimeError("listen_conn not initialized")
             await self.listen_conn.add_listener(
                 "market_data_change", self._handle_notification
             )
@@ -254,6 +258,8 @@ class DataListener:
         """
 
         try:
+            if not self.db_pool:
+                raise RuntimeError("db_pool not initialized")
             async with self.db_pool.acquire() as conn:
                 result = await asyncio.wait_for(
                     conn.fetchval(query, symbol, timeframe, timestamp), timeout=5.0
@@ -305,14 +311,16 @@ class DataListener:
             SELECT DISTINCT md.symbol
             FROM market_data md
             LEFT JOIN analyzer_data ad ON (
-                md.symbol = ad.symbol AND 
-                md.timeframe = ad.timeframe AND 
+                md.symbol = ad.symbol AND
+                md.timeframe = ad.timeframe AND
                 md.time = ad.time
             )
             WHERE ad.time IS NULL
             ORDER BY md.symbol
         """
 
+        if not self.db_pool:
+            raise RuntimeError("db_pool not initialized")
         async with self.db_pool.acquire() as conn:
             rows = await conn.fetch(query)
             return [row["symbol"] for row in rows]
@@ -336,7 +344,7 @@ class DataListener:
             )
         """
 
-        params = [symbol]
+        params: List[Any] = [symbol]
 
         if timeframe:
             query += " AND md.timeframe = $2"
@@ -348,6 +356,8 @@ class DataListener:
         total_processed = 0
 
         try:
+            if not self.db_pool:
+                raise RuntimeError("db_pool not initialized")
             async with self.db_pool.acquire() as conn:
                 rows = await asyncio.wait_for(conn.fetch(query, *params), timeout=10.0)
 
@@ -434,6 +444,8 @@ class DataListener:
         """
 
         try:
+            if not self.db_pool:
+                raise RuntimeError("db_pool not initialized")
             async with self.db_pool.acquire() as conn:
                 row = await conn.fetchrow(stats_query)
 

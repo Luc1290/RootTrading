@@ -5,9 +5,9 @@ Contient la logique de synchronisation initiale avec Binance.
 
 import logging
 
-from models import DBManager, SharedCache
-from binance_account_manager import BinanceAccountManager, BinanceApiError
-from models import PortfolioModel
+from .models import DBManager, SharedCache
+from .binance_account_manager import BinanceAccountManager, BinanceApiError
+from .models import PortfolioModel
 from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY
 
 logger = logging.getLogger(__name__)

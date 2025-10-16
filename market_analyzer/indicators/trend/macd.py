@@ -267,10 +267,10 @@ def calculate_ppo(
         return {"ppo_line": None, "ppo_signal": None, "ppo_histogram": None}
 
     # PPO line as percentage
-    ppo_line = ((ema_fast - ema_slow) / ema_slow) * 100
+    ppo_line: float = float(((ema_fast - ema_slow) / ema_slow) * 100)
 
     # Need to calculate PPO series for signal line
-    ppo_series = []
+    ppo_series: List[float] = []
     ema_fast_series = calculate_ema_series(prices_array, fast_period)
     ema_slow_series = calculate_ema_series(prices_array, slow_period)
 
@@ -279,17 +279,17 @@ def calculate_ppo(
         slow_val = ema_slow_series[i]
         if fast_val is not None and slow_val is not None and slow_val != 0:
             ppo_val = ((fast_val - slow_val) / slow_val) * 100
-            ppo_series.append(ppo_val)
+            ppo_series.append(float(ppo_val))
         else:
             ppo_series.append(0.0)
 
     # Signal line (EMA of PPO)
-    ppo_signal = calculate_ema([x for x in ppo_series if x is not None], signal_period)
+    ppo_signal: Optional[float] = calculate_ema([x for x in ppo_series if x is not None], signal_period)
 
     if ppo_signal is None:
         return {"ppo_line": ppo_line, "ppo_signal": None, "ppo_histogram": None}
 
-    ppo_histogram = ppo_line - ppo_signal
+    ppo_histogram: float = float(ppo_line - ppo_signal)
 
     return {
         "ppo_line": round(ppo_line, 4),
@@ -408,13 +408,20 @@ def calculate_macd_trend(
     ):
         return "NEUTRAL"
 
-    macd_line = macd_values["macd_line"]
-    signal_line = macd_values["macd_signal"]
+    macd_line_val = macd_values["macd_line"]
+    signal_line_val = macd_values["macd_signal"]
     histogram = macd_values.get("macd_histogram")
 
+    # Assert non-None for type checker
+    assert macd_line_val is not None
+    assert signal_line_val is not None
+
+    macd_line: float = float(macd_line_val)
+    signal_line: float = float(signal_line_val)
+
     # Primary trend signals
-    bullish_signals = 0
-    bearish_signals = 0
+    bullish_signals: float = 0.0
+    bearish_signals: float = 0.0
 
     # 1. MACD line above/below signal line
     if macd_line > signal_line:
@@ -437,7 +444,9 @@ def calculate_macd_trend(
 
     # 4. Momentum analysis with previous values
     if prev_macd_values and prev_macd_values.get("macd_line") is not None:
-        prev_macd = prev_macd_values["macd_line"]
+        prev_macd_val = prev_macd_values["macd_line"]
+        assert prev_macd_val is not None
+        prev_macd: float = float(prev_macd_val)
 
         # MACD line direction
         if macd_line > prev_macd:
@@ -447,7 +456,9 @@ def calculate_macd_trend(
 
         # Signal line comparison with previous
         if prev_macd_values.get("macd_signal") is not None:
-            prev_signal = prev_macd_values["macd_signal"]
+            prev_signal_val = prev_macd_values["macd_signal"]
+            assert prev_signal_val is not None
+            prev_signal: float = float(prev_signal_val)
             if signal_line > prev_signal:
                 bullish_signals += 0.5
             elif signal_line < prev_signal:

@@ -30,7 +30,7 @@ class CircuitBreaker:
         self.failure_threshold = failure_threshold
         self.reset_timeout = reset_timeout
         self.failure_count = 0
-        self.last_failure_time = None
+        self.last_failure_time: Optional[datetime] = None
         self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
 
     def call_succeeded(self):
@@ -53,14 +53,11 @@ class CircuitBreaker:
             return True
 
         if self.state == "OPEN":
-            if (
-                self.last_failure_time is not None
-                and datetime.now() - self.last_failure_time
-                > timedelta(seconds=self.reset_timeout)
-            ):
-                self.state = "HALF_OPEN"
-                logger.info("Circuit breaker passé en HALF_OPEN")
-                return True
+            if self.last_failure_time is not None:
+                if datetime.now() - self.last_failure_time > timedelta(seconds=self.reset_timeout):
+                    self.state = "HALF_OPEN"
+                    logger.info("Circuit breaker passé en HALF_OPEN")
+                    return True
             return False
 
         # HALF_OPEN
@@ -179,11 +176,12 @@ class ServiceClient:
             # Appeler le service portfolio pour récupérer les positions actives
             response = self._make_request("portfolio", "/positions/active")
 
-            if response and isinstance(response, list):
-                # Filtrer par symbole si spécifié
-                if symbol:
-                    return [pos for pos in response if pos.get("symbol") == symbol]
-                return response
+            if response:
+                if isinstance(response, list):
+                    # Filtrer par symbole si spécifié
+                    if symbol:
+                        return [pos for pos in response if pos.get("symbol") == symbol]
+                    return response
 
             return []
 
@@ -459,7 +457,7 @@ class ServiceClient:
         if response:
             # Response is a list of balance objects, convert to dict
             if isinstance(response, list):
-                balances = {}
+                balances: Dict[str, Dict[str, float]] = {}
                 for balance in response:
                     if isinstance(balance, dict) and "asset" in balance:
                         asset = balance["asset"]
@@ -468,7 +466,8 @@ class ServiceClient:
                             "value_usdc": balance.get("value_usdc", 0.0),
                         }
                 return balances
-            return response
+            elif isinstance(response, dict):
+                return response
 
         return {}
 

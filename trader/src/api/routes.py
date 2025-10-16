@@ -168,6 +168,9 @@ def create_order():
     try:
         data = request.json
 
+        if data is None:
+            return jsonify({"error": "Corps de requête JSON manquant"}), 400
+
         # Valider les paramètres requis
         if not all(k in data for k in ["symbol", "side", "quantity"]):
             return (

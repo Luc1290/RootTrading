@@ -216,8 +216,8 @@ class TRIX_Crossover_Strategy(BaseStrategy):
             return {"is_crossover": False, "direction": None, "strength": 0}
 
         try:
-            t = float(tema_12)
-            d = float(dema_12)
+            t = float(tema_12) if tema_12 is not None else 0.0
+            d = float(dema_12) if dema_12 is not None else 0.0
 
             # Différence relative actuelle
             diff = (t - d) / (t or 1e-12)
@@ -547,9 +547,9 @@ class TRIX_Crossover_Strategy(BaseStrategy):
 
             if None not in (close, ema_12, atr_14):
                 try:
-                    close_val = float(close)
-                    ema12_val = float(ema_12)
-                    atr_val = float(atr_14)
+                    close_val = float(close) if close is not None else 0.0
+                    ema12_val = float(ema_12) if ema_12 is not None else 0.0
+                    atr_val = float(atr_14) if atr_14 is not None else 0.0
 
                     # Détection sur-extension assouplie: prix > EMA12 * 1.01 OU prix - EMA12 > 1.5*ATR
                     overextended = (close_val > ema12_val * 1.01) or (

@@ -286,14 +286,14 @@ class VolumeContextAnalyzer:
 
         try:
             # RSI (avec cache si symbol fourni)
-            from ..indicators.momentum.rsi import calculate_rsi  # type: ignore
+            from ..indicators.momentum.rsi import calculate_rsi
 
             rsi = calculate_rsi(closes, 14, symbol, enable_cache)
             if rsi is not None:
                 indicators["rsi"] = rsi
 
             # CCI (avec cache si symbol fourni)
-            from ..indicators.momentum.cci import calculate_cci  # type: ignore
+            from ..indicators.momentum.cci import calculate_cci
 
             if highs is not None and lows is not None:
                 cci = calculate_cci(highs, lows, closes, 20)
@@ -301,7 +301,7 @@ class VolumeContextAnalyzer:
                     indicators["cci"] = cci
 
             # ADX (sans cache - non supporté)
-            from ..indicators.trend.adx import calculate_adx  # type: ignore
+            from ..indicators.trend.adx import calculate_adx
 
             if highs is not None and lows is not None:
                 adx = calculate_adx(highs, lows, closes, 14)

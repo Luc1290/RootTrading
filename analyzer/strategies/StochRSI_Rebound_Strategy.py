@@ -324,11 +324,12 @@ class StochRSI_Rebound_Strategy(BaseStrategy):
                     },
                 }
             # Bonus confluence si bonne
-            if confluence_score >= 60:
-                confidence_boost += 0.20
-                reason += " + confluence"
-            elif confluence_score >= 45:
-                confidence_boost += 0.10
+            if confluence_score is not None:
+                if confluence_score >= 60:
+                    confidence_boost += 0.20
+                    reason += " + confluence"
+                elif confluence_score >= 45:
+                    confidence_boost += 0.10
 
             # Utilisation du signal_strength pré-calculé
             signal_strength_calc = values.get("signal_strength")

@@ -144,12 +144,12 @@ class CCI_Reversal_Strategy(BaseStrategy):
 
             # Momentum validation ULTRA STRICTE pour winrate - LOGIQUE CORRIGÉE
             momentum_score_raw = values.get("momentum_score")
-            momentum_score = 0
+            momentum_score = 0.0
             if momentum_score_raw is not None:
                 try:
                     momentum_score = float(momentum_score_raw)
                 except (ValueError, TypeError):
-                    momentum_score = 0
+                    momentum_score = 0.0
 
             if momentum_score != 0:
                 # Rejets momentum contradictoires STRICTS
@@ -210,12 +210,12 @@ class CCI_Reversal_Strategy(BaseStrategy):
 
             # Utilisation du confluence_score avec niveaux multiples
             confluence_score_raw = values.get("confluence_score")
-            confluence_score = 0
+            confluence_score = 0.0
             if confluence_score_raw is not None:
                 try:
                     confluence_score = float(confluence_score_raw)
                 except (ValueError, TypeError):
-                    confluence_score = 0
+                    confluence_score = 0.0
 
             # Rejet confluence faible strict
             if confluence_score < 30:
@@ -241,12 +241,12 @@ class CCI_Reversal_Strategy(BaseStrategy):
             # Utilisation du pattern_detected et pattern_confidence avec conversion sécurisée
             pattern_detected = values.get("pattern_detected")
             pattern_confidence_raw = values.get("pattern_confidence")
-            pattern_confidence = 0
+            pattern_confidence = 0.0
             if pattern_confidence_raw is not None:
                 try:
                     pattern_confidence = float(pattern_confidence_raw)
                 except (ValueError, TypeError):
-                    pattern_confidence = 0
+                    pattern_confidence = 0.0
 
             if pattern_detected and pattern_confidence > 60:
                 confidence_boost += 0.1

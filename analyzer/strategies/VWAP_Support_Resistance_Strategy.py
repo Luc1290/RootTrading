@@ -593,15 +593,15 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
             }
 
         # REJETS CRITIQUES AJOUTÉS - contradictions momentum/bias/regime
-        momentum_val = values.get("momentum_score", 50)
+        momentum_val = values.get("momentum_score")
         directional_bias = values.get("directional_bias")
         market_regime = values.get("market_regime")
         regime_strength = values.get("regime_strength")
 
         try:
-            momentum_score = float(momentum_val)
+            momentum_score = float(momentum_val) if momentum_val is not None else 50.0
         except (ValueError, TypeError):
-            momentum_score = 50
+            momentum_score = 50.0
 
         # Rejet momentum contradictoire
         if signal_side == "BUY" and momentum_score < 40:
@@ -973,26 +973,22 @@ class VWAP_Support_Resistance_Strategy(BaseStrategy):
                     resistance_analysis if signal_side == "SELL" else None
                 ),
                 "volume_ratio": (
-                    float(values.get("volume_ratio"))
-                    if values.get("volume_ratio") is not None
+                    float(vol_ratio_val) if (vol_ratio_val := values.get("volume_ratio")) is not None
                     else None
                 ),
                 "trend_alignment": (
-                    float(values.get("trend_alignment"))
-                    if values.get("trend_alignment") is not None
+                    float(trend_align_val) if (trend_align_val := values.get("trend_alignment")) is not None
                     else None
                 ),
                 "market_regime": values.get("market_regime"),
                 "volatility_regime": values.get("volatility_regime"),
                 "confluence_score": (
-                    float(values.get("confluence_score"))
-                    if values.get("confluence_score") is not None
+                    float(conf_score_val) if (conf_score_val := values.get("confluence_score")) is not None
                     else None
                 ),
                 "pattern_detected": values.get("pattern_detected"),
                 "pattern_confidence": (
-                    float(values.get("pattern_confidence"))
-                    if values.get("pattern_confidence") is not None
+                    float(pattern_conf_val) if (pattern_conf_val := values.get("pattern_confidence")) is not None
                     else None
                 ),
             },

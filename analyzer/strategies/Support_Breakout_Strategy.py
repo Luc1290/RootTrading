@@ -142,13 +142,13 @@ class Support_Breakout_Strategy(BaseStrategy):
         reason = breakout_analysis["reason"]
 
         # REJETS CRITIQUES - cohérence momentum/bias
-        momentum_score = values.get("momentum_score", 50)
+        momentum_score = values.get("momentum_score")
         directional_bias = values.get("directional_bias")
 
         try:
-            momentum_val = float(momentum_score)
+            momentum_val = float(momentum_score) if momentum_score is not None else 50.0
         except (ValueError, TypeError):
-            momentum_val = 50
+            momentum_val = 50.0
 
         # Rejet momentum DURCI - plus tranchant
         if signal_side == "BUY" and momentum_val < 50:
@@ -188,9 +188,9 @@ class Support_Breakout_Strategy(BaseStrategy):
         # Bonus simples
 
         # Volume DURCI - évite breakouts neutres
-        volume_ratio = values.get("volume_ratio", 1.0)
+        volume_ratio = values.get("volume_ratio")
         try:
-            vol_ratio = float(volume_ratio)
+            vol_ratio = float(volume_ratio) if volume_ratio is not None else 1.0
             if vol_ratio >= 1.8:  # Seuil plus strict
                 confidence_boost += 0.15
                 reason += f" + volume fort ({vol_ratio:.1f}x)"
@@ -209,11 +209,11 @@ class Support_Breakout_Strategy(BaseStrategy):
             pass
 
         # Confluence avec rejet
-        confluence_score = values.get("confluence_score", 0)
+        confluence_score = values.get("confluence_score")
         try:
-            conf_val = float(confluence_score)
+            conf_val = float(confluence_score) if confluence_score is not None else 0.0
         except (ValueError, TypeError):
-            conf_val = 0
+            conf_val = 0.0
 
         if conf_val < 40:  # Rejet si confluence trop faible
             return {

@@ -9,8 +9,9 @@ from typing import Dict, Any, Optional
 import json
 import uuid
 import hashlib
-from adaptive_consensus import AdaptiveConsensusAnalyzer
-from critical_filters import CriticalFilters
+
+from .adaptive_consensus import AdaptiveConsensusAnalyzer
+from .critical_filters import CriticalFilters
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ class SimpleSignalProcessor:
         self.base_cache_ttl = 5  # Base 5 secondes
 
         # Statistiques détaillées pour debug et optimisation
-        self.stats = {
+        self.stats: Dict[str, Any] = {
             "signals_processed": 0,
             "signals_validated": 0,
             "consensus_rejected": 0,
@@ -54,8 +55,8 @@ class SimpleSignalProcessor:
             "errors": 0,
             "rejections_by_regime": {},  # Par régime de marché
             "rejections_by_family": {},  # Par famille de stratégies
-            "avg_strategies_per_consensus": 0,
-            "avg_confidence_validated": 0,
+            "avg_strategies_per_consensus": 0.0,
+            "avg_confidence_validated": 0.0,
             "consensus_strength_distribution": [],  # Pour analyser les seuils
             "wave_winner_signals": 0,  # Signaux post-vague
             "cache_hits": 0,
@@ -456,7 +457,7 @@ class SimpleSignalProcessor:
         """Vérifie si un signal a déjà été stocké (simple cache en mémoire)."""
         # Pour l'instant, cache simple en mémoire (peut être amélioré avec Redis)
         if not hasattr(self, "_stored_signals_cache"):
-            self._stored_signals_cache = set()
+            self._stored_signals_cache: set[str] = set()
 
         cache_key = f"{signal_hash}_{consensus_id}"
         if cache_key in self._stored_signals_cache:
@@ -475,7 +476,7 @@ class SimpleSignalProcessor:
         consensus_analysis: Dict[str, Any],
         filter_status: str,
         is_wave_winner: bool = False,
-        consensus_id: str = None,
+        consensus_id: str | None = None,
         normalized_confidence: float = 0.0,
     ) -> Dict[str, Any]:
         """Construit le signal de consensus final."""
@@ -485,7 +486,7 @@ class SimpleSignalProcessor:
         avg_confidence = sum(float(s["confidence"]) for s in signals) / strategies_count
 
         # Analyser la distribution des timeframes
-        timeframe_distribution = {}
+        timeframe_distribution: Dict[str, int] = {}
         for signal in signals:
             tf = signal.get(
                 "timeframe", timeframe
@@ -493,7 +494,7 @@ class SimpleSignalProcessor:
             timeframe_distribution[tf] = timeframe_distribution.get(tf, 0) + 1
 
         dominant_timeframe = (
-            max(timeframe_distribution, key=timeframe_distribution.get)
+            max(timeframe_distribution, key=lambda x: timeframe_distribution.get(x, 0))
             if timeframe_distribution
             else timeframe
         )
@@ -552,23 +553,25 @@ class SimpleSignalProcessor:
 
     def get_stats(self) -> Dict[str, Any]:
         """Retourne les statistiques détaillées du processeur."""
-        total_processed = self.stats["signals_processed"]
+        total_processed: int = int(self.stats["signals_processed"])
         if total_processed > 0:
-            success_rate = (self.stats["signals_validated"] / total_processed) * 100
+            success_rate = (int(self.stats["signals_validated"]) / total_processed) * 100
         else:
             success_rate = 0
 
         # Statistiques de cache
-        total_cache_requests = self.stats["cache_hits"] + self.stats["cache_misses"]
+        cache_hits: int = int(self.stats["cache_hits"])
+        cache_misses: int = int(self.stats["cache_misses"])
+        total_cache_requests = cache_hits + cache_misses
         cache_hit_rate = (
-            (self.stats["cache_hits"] / total_cache_requests * 100)
+            (cache_hits / total_cache_requests * 100)
             if total_cache_requests > 0
             else 0
         )
 
         # Statistiques de consensus strength (valeurs brutes seulement)
-        consensus_strengths = self.stats["consensus_strength_distribution"]
-        consensus_stats = {}
+        consensus_strengths: list = list(self.stats["consensus_strength_distribution"])
+        consensus_stats: Dict[str, Any] = {}
         if consensus_strengths:
             consensus_stats = {
                 "raw_min": min(consensus_strengths),
@@ -590,14 +593,14 @@ class SimpleSignalProcessor:
             ),
             "performance": {
                 "avg_strategies_per_consensus": round(
-                    self.stats["avg_strategies_per_consensus"], 2
+                    float(self.stats["avg_strategies_per_consensus"]), 2
                 ),
                 "avg_confidence_validated": round(
-                    self.stats["avg_confidence_validated"], 3
+                    float(self.stats["avg_confidence_validated"]), 3
                 ),
                 "wave_winner_percentage": (
-                    self.stats["wave_winner_signals"]
-                    / max(1, self.stats["signals_validated"])
+                    int(self.stats["wave_winner_signals"])
+                    / max(1, int(self.stats["signals_validated"]))
                 )
                 * 100,
             },

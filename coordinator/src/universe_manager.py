@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Set, Optional, Tuple
 from dataclasses import dataclass, field
 import numpy as np
-from scipy import stats
+from scipy import stats  # type: ignore[import-untyped]
 import json
 
 logger = logging.getLogger(__name__)
@@ -319,7 +319,7 @@ class UniverseManager:
         if std == 0:
             return 0.0
 
-        return (value - mean) / std
+        return float((value - mean) / std)
 
     def _calculate_range_penalty(self, adx: float, atr_pct: float) -> float:
         """Calcule la pénalité ranging basée sur ADX et ATR"""
@@ -545,7 +545,7 @@ class UniverseManager:
 
     def _get_all_recent_scores(self) -> List[PairScore]:
         """Récupère les scores récents de toutes les paires"""
-        scores = []
+        scores: List[PairScore] = []
 
         # Récupérer la liste des symboles depuis Redis
         symbols_data = self.redis.get("trading:symbols")
@@ -558,9 +558,11 @@ class UniverseManager:
             if symbol in self.market_data_cache:
                 cache_entry = self.market_data_cache[symbol]
                 if (datetime.now() - cache_entry["timestamp"]).seconds < 180:
-                    scores.append(cache_entry.get("score"))
+                    score = cache_entry.get("score")
+                    if isinstance(score, PairScore):
+                        scores.append(score)
 
-        return [s for s in scores if s is not None]
+        return scores
 
     def apply_hysteresis(self, symbol: str, current_score: float) -> bool:
         """Applique l'hystérésis pour éviter le ping-pong"""
@@ -724,8 +726,9 @@ class UniverseManager:
             "pair_states": {},
         }
 
+        pair_states_dict: Dict[str, Dict] = {}
         for symbol, state in self.pair_states.items():
-            stats["pair_states"][symbol] = {
+            pair_states_dict[symbol] = {
                 "is_selected": state.is_selected,
                 "recent_scores": (
                     state.score_history[-5:] if state.score_history else []
@@ -734,6 +737,8 @@ class UniverseManager:
                     state.cooldown_until.isoformat() if state.cooldown_until else None
                 ),
             }
+
+        stats["pair_states"] = pair_states_dict
 
         return stats
 

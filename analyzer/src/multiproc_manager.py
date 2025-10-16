@@ -23,8 +23,8 @@ class MultiProcessManager:
         self.max_workers = max_workers or min(mp.cpu_count(), 8)
 
         # Executors pour différents types de tâches
-        self.process_executor = None
-        self.thread_executor = None
+        self.process_executor: Optional[ProcessPoolExecutor] = None
+        self.thread_executor: Optional[ThreadPoolExecutor] = None
 
         # Métriques de performance
         self.metrics = {
@@ -57,17 +57,13 @@ class MultiProcessManager:
 
     async def stop(self):
         """Arrête les executors proprement."""
-        try:
-            if self.process_executor:
-                self.process_executor.shutdown(wait=True)
-                logger.info("Process executor arrêté")
+        if self.process_executor is not None:
+            self.process_executor.shutdown(wait=True)
+            logger.info("Process executor arrêté")
 
-            if self.thread_executor:
-                self.thread_executor.shutdown(wait=True)
-                logger.info("Thread executor arrêté")
-
-        except Exception as e:
-            logger.error(f"Erreur arrêt executors: {e}")
+        if self.thread_executor is not None:
+            self.thread_executor.shutdown(wait=True)
+            logger.info("Thread executor arrêté")
 
     async def execute_strategies_parallel(
         self, strategy_tasks: List[Dict[str, Any]]
@@ -307,7 +303,7 @@ class MultiProcessManager:
     def _get_memory_usage(self) -> float:
         """Récupère l'utilisation mémoire du processus."""
         try:
-            import psutil
+            import psutil  # type: ignore[import-untyped]
 
             process = psutil.Process(os.getpid())
             return process.memory_info().rss / 1024 / 1024  # MB
@@ -323,12 +319,14 @@ class MultiProcessManager:
             test_task = asyncio.create_task(asyncio.sleep(0.001))
             await asyncio.wait_for(test_task, timeout=1.0)
 
+            executors_running = (
+                self.process_executor is not None
+                and self.thread_executor is not None
+            )
+
             health_status = {
                 "status": "healthy",
-                "executors_running": (
-                    self.process_executor is not None
-                    and self.thread_executor is not None
-                ),
+                "executors_running": executors_running,
                 "metrics": self.get_metrics(),
                 "timestamp": datetime.utcnow().isoformat(),
             }

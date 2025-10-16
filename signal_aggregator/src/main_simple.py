@@ -8,15 +8,14 @@ import logging
 import os
 import sys
 from datetime import datetime
+from typing import Optional
 import psycopg2
+import psycopg2.extensions
 from aiohttp import web
 
-# Ajouter les répertoires nécessaires au path pour les imports
-sys.path.append(os.path.dirname(__file__))  # Pour les modules src locaux
-
-from context_manager import ContextManager
-from signal_aggregator_simple import SimpleSignalAggregatorService
-from database_manager import DatabaseManager
+from .context_manager import ContextManager
+from .signal_aggregator_simple import SimpleSignalAggregatorService
+from .database_manager import DatabaseManager
 
 # Configuration du logging
 log_level = (
@@ -44,10 +43,10 @@ class SimpleSignalAggregatorApp:
         }
 
         # Modules simplifiés
-        self.db_connection = None
-        self.context_manager = None
-        self.database_manager = None
-        self.aggregator_service = None
+        self.db_connection: Optional[psycopg2.extensions.connection] = None
+        self.context_manager: Optional[ContextManager] = None
+        self.database_manager: Optional[DatabaseManager] = None
+        self.aggregator_service: Optional[SimpleSignalAggregatorService] = None
 
         # Web server pour health checks
         self.web_app = None
@@ -82,7 +81,13 @@ class SimpleSignalAggregatorApp:
     async def connect_db(self):
         """Établit la connexion à la base de données."""
         try:
-            self.db_connection = psycopg2.connect(**self.db_config)
+            self.db_connection = psycopg2.connect(
+                host=str(self.db_config["host"]),
+                port=int(self.db_config["port"]),
+                database=str(self.db_config["database"]),
+                user=str(self.db_config["user"]),
+                password=str(self.db_config["password"])
+            )
             self.db_connection.autocommit = (
                 True  # Important pour éviter les transactions bloquées
             )
@@ -94,10 +99,19 @@ class SimpleSignalAggregatorApp:
     def ensure_db_connection(self):
         """Vérifie et recrée la connexion DB si nécessaire."""
         try:
+            if self.db_connection is None:
+                raise psycopg2.OperationalError("Connection is None")
+
             # Tester si la connexion est toujours valide
             if self.db_connection.closed:
                 logger.warning("Connexion DB fermée, reconnexion...")
-                self.db_connection = psycopg2.connect(**self.db_config)
+                self.db_connection = psycopg2.connect(
+                    host=str(self.db_config["host"]),
+                    port=int(self.db_config["port"]),
+                    database=str(self.db_config["database"]),
+                    user=str(self.db_config["user"]),
+                    password=str(self.db_config["password"])
+                )
                 self.db_connection.autocommit = True
                 logger.info("✅ Reconnexion DB réussie")
                 return self.db_connection
@@ -110,7 +124,13 @@ class SimpleSignalAggregatorApp:
         except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
             logger.warning(f"Connexion DB invalide: {e}, reconnexion...")
             try:
-                self.db_connection = psycopg2.connect(**self.db_config)
+                self.db_connection = psycopg2.connect(
+                    host=str(self.db_config["host"]),
+                    port=int(self.db_config["port"]),
+                    database=str(self.db_config["database"]),
+                    user=str(self.db_config["user"]),
+                    password=str(self.db_config["password"])
+                )
                 self.db_connection.autocommit = True
                 logger.info("✅ Reconnexion DB réussie")
                 return self.db_connection
@@ -141,9 +161,12 @@ class SimpleSignalAggregatorApp:
             uptime = (datetime.utcnow() - self.start_time).total_seconds()
 
             # Test connexion DB
-            with self.db_connection.cursor() as cursor:
-                cursor.execute("SELECT 1")
-                db_status = "OK"
+            if self.db_connection is None:
+                db_status = "ERROR"
+            else:
+                with self.db_connection.cursor() as cursor:
+                    cursor.execute("SELECT 1")
+                    db_status = "OK"
 
             # Stats du service simplifié
             stats = (
@@ -232,6 +255,8 @@ class SimpleSignalAggregatorApp:
         """Lance le service d'agrégation simplifié."""
         try:
             logger.info("🚀 Démarrage service d'agrégation SIMPLIFIÉ...")
+            if self.aggregator_service is None:
+                raise RuntimeError("Aggregator service not initialized")
             await self.aggregator_service.start()
 
         except KeyboardInterrupt:

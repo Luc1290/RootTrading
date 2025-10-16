@@ -77,11 +77,13 @@ class ADX_Direction_Strategy(BaseStrategy):
 
         # Vérification des indicateurs essentiels avec protection NaN
         try:
-            adx = float(values["adx_14"]) if _is_valid(values["adx_14"]) else None
-            plus_di = float(values["plus_di"]) if _is_valid(values["plus_di"]) else None
-            minus_di = (
-                float(values["minus_di"]) if _is_valid(values["minus_di"]) else None
-            )
+            adx_val = values.get("adx_14")
+            plus_di_val = values.get("plus_di")
+            minus_di_val = values.get("minus_di")
+
+            adx = float(adx_val) if _is_valid(adx_val) else None
+            plus_di = float(plus_di_val) if _is_valid(plus_di_val) else None
+            minus_di = float(minus_di_val) if _is_valid(minus_di_val) else None
         except (ValueError, TypeError) as e:
             return {
                 "side": None,
@@ -102,6 +104,15 @@ class ADX_Direction_Strategy(BaseStrategy):
 
         # ADX est le critère principal - on vérifie d'abord la force de tendance
         # ADX trop faible = pas de tendance claire (seuil relevé)
+        if adx is None or plus_di is None or minus_di is None:
+            return {
+                "side": None,
+                "confidence": 0.0,
+                "strength": "weak",
+                "reason": "ADX ou DI est None après validation",
+                "metadata": {"strategy": self.name},
+            }
+
         if adx < self.adx_threshold:
             return {
                 "side": None,
@@ -145,7 +156,10 @@ class ADX_Direction_Strategy(BaseStrategy):
                 momentum_center = 50  # Neutre à 50
 
                 # Direction déterminée par DI
-                adx_direction = "bullish" if plus_di > minus_di else "bearish"
+                if plus_di is not None and minus_di is not None:
+                    adx_direction = "bullish" if plus_di > minus_di else "bearish"
+                else:
+                    continue
 
                 # Rejet seulement si momentum fortement opposé (utilise variable d'instance)
                 if adx_direction == "bullish" and momentum_val < (
@@ -183,7 +197,7 @@ class ADX_Direction_Strategy(BaseStrategy):
         confidence_boost = 0.0
 
         # Gérer égalité DI comme neutre (pas arbitraire SELL)
-        if plus_di == minus_di:
+        if plus_di is not None and minus_di is not None and plus_di == minus_di:
             return {
                 "side": None,
                 "confidence": 0.0,
@@ -198,7 +212,7 @@ class ADX_Direction_Strategy(BaseStrategy):
             }
 
         # Logique de signal basée sur la direction des DI
-        if plus_di > minus_di:
+        if plus_di is not None and minus_di is not None and plus_di > minus_di:
             # Tendance haussière
             signal_side = "BUY"
             reason = f"ADX ({adx:.1f}) avec tendance haussière (+DI > -DI)"
@@ -285,15 +299,19 @@ class ADX_Direction_Strategy(BaseStrategy):
             try:
                 momentum_val = float(momentum_score)
                 # Bonus progressif selon alignement momentum (seuils plus tolérants)
-                if (signal_side == "BUY" and momentum_val > 60) or (
-                    signal_side == "SELL" and momentum_val < 40
+                if momentum_val is not None and (
+                    (signal_side == "BUY" and momentum_val > 60) or (
+                        signal_side == "SELL" and momentum_val < 40
+                    )
                 ):
                     confidence_boost += 0.12
                     confirmations_count += 1
                     confirmations_details.append("momentum_strong")
                     reason += f" avec momentum FORT ({momentum_val:.1f})"
-                elif (signal_side == "BUY" and momentum_val > 55) or (
-                    signal_side == "SELL" and momentum_val < 45
+                elif momentum_val is not None and (
+                    (signal_side == "BUY" and momentum_val > 55) or (
+                        signal_side == "SELL" and momentum_val < 45
+                    )
                 ):
                     confidence_boost += 0.08
                     confirmations_count += 1
@@ -438,7 +456,8 @@ class ADX_Direction_Strategy(BaseStrategy):
             if indicator not in self.indicators:
                 logger.warning(f"{self.name}: Indicateur manquant: {indicator}")
                 return False
-            if self.indicators[indicator] is None:
+            indicator_val = self.indicators.get(indicator)
+            if indicator_val is None:
                 logger.warning(f"{self.name}: Indicateur null: {indicator}")
                 return False
 

@@ -569,9 +569,13 @@ class CriticalFilters:
                 logger.warning("EMAs 15m manquantes dans le contexte")
                 return True, "EMAs 15m manquantes"  # On laisse passer si pas de données
 
-            close_15m = float(close_15m)
-            ema20_15m = float(ema20_15m)
-            ema100_15m = float(ema100_15m)
+            close_15m_val = close_15m
+            ema20_15m_val = ema20_15m
+            ema100_15m_val = ema100_15m
+
+            close_15m = float(close_15m_val) if close_15m_val is not None else 0.0
+            ema20_15m = float(ema20_15m_val) if ema20_15m_val is not None else 0.0
+            ema100_15m = float(ema100_15m_val) if ema100_15m_val is not None else 0.0
 
             # Déterminer la direction HTF (15m)
             htf_direction = None
@@ -709,9 +713,13 @@ class CriticalFilters:
                 logger.warning("EMAs 3m manquantes pour timing pullback")
                 return True, "EMAs 3m manquantes"
 
-            current_price = float(current_price)
-            ema20_3m = float(ema20_3m)
-            ema100_3m = float(ema100_3m)
+            current_price_val = current_price
+            ema20_3m_val = ema20_3m
+            ema100_3m_val = ema100_3m
+
+            current_price = float(current_price_val) if current_price_val is not None else 0.0
+            ema20_3m = float(ema20_3m_val) if ema20_3m_val is not None else 0.0
+            ema100_3m = float(ema100_3m_val) if ema100_3m_val is not None else 0.0
 
             distance_to_ema20 = abs(current_price - ema20_3m)
 
@@ -853,13 +861,17 @@ class CriticalFilters:
             nearest_support = context.get("nearest_support")
             nearest_resistance = context.get("nearest_resistance")
 
-            swing_distance = 0
+            swing_distance = 0.0
             if current_price and nearest_support:
                 # Pour un BUY, distance au support = potentiel SL
-                swing_distance = abs(float(current_price) - float(nearest_support))
+                cp_val = current_price
+                ns_val = nearest_support
+                swing_distance = abs(float(cp_val) - float(ns_val)) if cp_val is not None and ns_val is not None else 0.0
             elif current_price and nearest_resistance:
                 # Pour un SELL, distance à la résistance = potentiel SL
-                swing_distance = abs(float(current_price) - float(nearest_resistance))
+                cp_val = current_price
+                nr_val = nearest_resistance
+                swing_distance = abs(float(cp_val) - float(nr_val)) if cp_val is not None and nr_val is not None else 0.0
 
             # Calculer SL et TP estimés
             sl_estimated = (
@@ -926,7 +938,7 @@ class CriticalFilters:
 
     def get_filter_stats(self) -> Dict[str, Any]:
         """Retourne les statistiques de configuration des filtres."""
-        quota_stats = self.get_quota_stats()
+        quota_stats: Dict[str, Any] = {}
 
         return {
             "mode": "STRICT_MTF" if self.strict_mtf_enabled else "STANDARD",

@@ -6,8 +6,8 @@ Gère les tâches de synchronisation continue avec Binance et la base de donnée
 import asyncio
 import threading
 import logging
-from models import PortfolioModel, DBManager, SharedCache
-from binance_account_manager import BinanceAccountManager
+from .models import PortfolioModel, DBManager, SharedCache
+from .binance_account_manager import BinanceAccountManager
 from shared.src.config import BINANCE_API_KEY, BINANCE_SECRET_KEY
 
 logger = logging.getLogger(__name__)

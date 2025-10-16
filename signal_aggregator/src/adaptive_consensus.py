@@ -9,11 +9,8 @@ Au lieu d'exiger un nombre fixe de stratégies, le consensus s'adapte selon :
 
 import logging
 from typing import Dict, List, Any, Tuple
-import sys
-import os
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "../config"))
-from strategy_classification import (
+from .strategy_classification import (
     get_strategy_family,
     is_strategy_optimal_for_regime,
     is_strategy_acceptable_for_regime,
@@ -137,8 +134,8 @@ class AdaptiveConsensusAnalyzer:
         self,
         signals: List[Dict[str, Any]],
         market_regime: str,
-        timeframe: str = None,
-        volatility_regime: str = None,
+        timeframe: str | None = None,
+        volatility_regime: str | None = None,
     ) -> Tuple[bool, Dict[str, Any]]:
         """
         Analyse si un groupe de signaux forme un consensus adapté au régime.
@@ -169,6 +166,10 @@ class AdaptiveConsensusAnalyzer:
                 if vr:
                     volatility_regime = vr
                     break
+
+        # S'assurer que volatility_regime n'est jamais None après cette section
+        if volatility_regime is None:
+            volatility_regime = "normal"
 
         # UNIFIÉ: Une seule logique de normalisation
         vol_level = str(volatility_regime or "normal").lower()
@@ -202,8 +203,8 @@ class AdaptiveConsensusAnalyzer:
         logger.info(f"🔍 Side des signaux: {signal_side}, volatilité: {vol_level}")
 
         # Classifier les signaux par famille
-        families_count = {}
-        families_signals = {}
+        families_count: Dict[str, int] = {}
+        families_signals: Dict[str, List[Dict[str, Any]]] = {}
         adaptability_scores = []
 
         for signal in signals:
@@ -341,10 +342,10 @@ class AdaptiveConsensusAnalyzer:
 
         regime_requirements = self.regime_family_requirements[regime]
         if signal_side in regime_requirements:
-            requirements = regime_requirements[signal_side]
+            requirements: Dict[str, int] = regime_requirements[signal_side]  # type: ignore
         else:
             # Fallback si le side n'existe pas (ancien format)
-            requirements = regime_requirements
+            requirements: Dict[str, int] = regime_requirements  # type: ignore
 
         logger.debug(f"🔍 Requirements pour {regime}/{signal_side}: {requirements}")
 
@@ -511,7 +512,7 @@ class AdaptiveConsensusAnalyzer:
             weighted_score += count * weight
             total_weight += weight
 
-        consensus_strength = weighted_score / max(1, total_weight)
+        consensus_strength: float = weighted_score / max(1, total_weight)
 
         # PÉNALITÉ DIVERSITÉ PROGRESSIVE : Réduction lissée selon nombre de familles
         unique_families = len(
@@ -634,7 +635,7 @@ class AdaptiveConsensusAnalyzer:
             weighted_score += count * weight
             total_weight += weight
 
-        return weighted_score / max(1, total_weight)
+        return float(weighted_score) / max(1, total_weight)
 
     def get_dynamic_consensus_threshold(
         self, regime: str, timeframe: str, volatility_level: str = "normal"
@@ -689,7 +690,7 @@ class AdaptiveConsensusAnalyzer:
         signals: List[Dict[str, Any]],
         market_regime: str,
         original_signal_count: int,
-        timeframe: str = None,
+        timeframe: str | None = None,
     ) -> Tuple[bool, Dict[str, Any]]:
         """
         Analyse le consensus pour les signaux MTF post-conflit avec des critères assouplis.
@@ -720,8 +721,8 @@ class AdaptiveConsensusAnalyzer:
         effective_strategy_count = max(len(signals), original_signal_count)
 
         # Classifier les signaux par famille (sur les signaux restants)
-        families_count = {}
-        families_signals = {}
+        families_count: Dict[str, int] = {}
+        families_signals: Dict[str, List[Dict[str, Any]]] = {}
         adaptability_scores = []
 
         for signal in signals:
@@ -760,10 +761,10 @@ class AdaptiveConsensusAnalyzer:
         # Obtenir les requirements selon le side (MTF)
         regime_requirements = self.regime_family_requirements[regime]
         if signal_side in regime_requirements:
-            requirements = regime_requirements[signal_side]
+            requirements: Dict[str, int] = regime_requirements[signal_side]  # type: ignore
         else:
             # Fallback si le side n'existe pas (ancien format)
-            requirements = regime_requirements
+            requirements: Dict[str, int] = regime_requirements  # type: ignore
 
         # Ajuster le minimum pour MTF post-conflit
         # Avec 28 stratégies actives, même après conflit on devrait avoir assez de signaux
@@ -809,7 +810,7 @@ class AdaptiveConsensusAnalyzer:
             weighted_score += count * weight
             total_weight += weight
 
-        consensus_strength = weighted_score / max(1, total_weight)
+        consensus_strength: float = weighted_score / max(1, total_weight)
 
         # Plus permissif pour MTF post-conflit (seuils baissés)
         min_consensus_strength = 1.5 if avg_adaptability > 0.6 else 2.0
@@ -838,7 +839,7 @@ class AdaptiveConsensusAnalyzer:
         market_regime: str,
         available_families: List[str],
         signal_side: str = "BUY",
-        avg_confidence: float = None,
+        avg_confidence: float | None = None,
     ) -> int:
         """
         Retourne le nombre minimum de stratégies ajusté selon le régime et les familles disponibles.
@@ -857,10 +858,10 @@ class AdaptiveConsensusAnalyzer:
         # Obtenir les requirements selon le side
         regime_requirements = self.regime_family_requirements[regime]
         if signal_side in regime_requirements:
-            requirements = regime_requirements[signal_side]
+            requirements: Dict[str, int] = regime_requirements[signal_side]  # type: ignore
         else:
             # Fallback si le side n'existe pas (ancien format)
-            requirements = regime_requirements
+            requirements: Dict[str, int] = regime_requirements  # type: ignore
 
         base_min = requirements.get("total_min", 5)
 

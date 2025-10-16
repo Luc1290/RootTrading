@@ -170,16 +170,7 @@ class TEMA_Slope_Strategy(BaseStrategy):
                 "metadata": {"strategy": self.name},
             }
 
-        # Créer le signal avec confirmations
-        if current_price is None:
-            return {
-                "side": None,
-                "confidence": 0.0,
-                "strength": "weak",
-                "reason": "Prix actuel non disponible",
-                "metadata": {"strategy": self.name},
-            }
-
+        # Créer le signal avec confirmations (current_price déjà validé non-None)
         return self._create_tema_slope_signal(
             values, current_price, tema_analysis, signal_condition
         )

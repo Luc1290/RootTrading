@@ -5,9 +5,10 @@ Expose des endpoints pour interagir avec le système de trading.
 
 import logging
 import threading
-import psutil
+import psutil  # type: ignore[import-untyped]
 import os
 from flask import Flask
+from typing import Optional
 
 from trader.src.trading.order_manager import OrderManager
 from trader.src.api.routes import register_routes
@@ -34,7 +35,7 @@ class RestApiServer:
         self.port = port
         self.process = psutil.Process(os.getpid())
         self.app = Flask(__name__)
-        self.api_thread = None
+        self.api_thread: Optional[threading.Thread] = None
 
         # Configurer les routes via le module routes.py
         register_routes(self.app, self.order_manager)
@@ -45,7 +46,7 @@ class RestApiServer:
         """
         Démarre le serveur API Flask dans un thread séparé.
         """
-        if self.api_thread and self.api_thread.is_alive():
+        if self.api_thread is not None and self.api_thread.is_alive():
             logger.warning("Le serveur API est déjà en cours d'exécution")
             return
 

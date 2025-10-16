@@ -201,8 +201,8 @@ class RegimeDetector:
         enable_cache: bool = True,
     ) -> Dict:
         """Analyse la volatilité du marché."""
-        from ..indicators.volatility.atr import calculate_atr_series  # type: ignore
-        from ..indicators.volatility.bollinger import calculate_bollinger_bands_series  # type: ignore
+        from ..indicators.volatility.atr import calculate_atr_series
+        from ..indicators.volatility.bollinger import calculate_bollinger_bands_series
 
         # ATR pour volatilité absolue
         atr_series = calculate_atr_series(highs, lows, closes)
@@ -219,14 +219,15 @@ class RegimeDetector:
         bb_widths = []
 
         for i in range(len(bb_series["upper"])):
+            upper_val = bb_series["upper"][i]
+            lower_val = bb_series["lower"][i]
+            middle_val = bb_series["middle"][i]
             if (
-                bb_series["upper"][i] is not None
-                and bb_series["lower"][i] is not None
-                and bb_series["middle"][i] is not None
+                upper_val is not None
+                and lower_val is not None
+                and middle_val is not None
             ):
-                width = (bb_series["upper"][i] - bb_series["lower"][i]) / bb_series[
-                    "middle"
-                ][i]
+                width = (float(upper_val) - float(lower_val)) / float(middle_val)
                 bb_widths.append(width)
 
         bb_width_percentile = 50.0
@@ -260,8 +261,8 @@ class RegimeDetector:
         enable_cache: bool = True,
     ) -> Dict:
         """Analyse la tendance."""
-        from ..indicators.trend.moving_averages import calculate_ema_series  # type: ignore
-        from ..indicators.trend.adx import calculate_adx, calculate_adx_full  # type: ignore
+        from ..indicators.trend.moving_averages import calculate_ema_series
+        from ..indicators.trend.adx import calculate_adx, calculate_adx_full
 
         # === CALCUL ADX (prioritaire pour classification régime) ===
         adx_full = calculate_adx_full(highs, lows, closes, period=14)
@@ -373,8 +374,8 @@ class RegimeDetector:
         enable_cache: bool = True,
     ) -> Dict:
         """Analyse le momentum."""
-        from ..indicators.momentum.rsi import calculate_rsi_series, calculate_rsi  # type: ignore
-        from ..indicators.trend.macd import calculate_macd, calculate_macd_series  # type: ignore
+        from ..indicators.momentum.rsi import calculate_rsi_series, calculate_rsi
+        from ..indicators.trend.macd import calculate_macd, calculate_macd_series
 
         # RSI pour momentum (with caching if symbol provided)
         if symbol and enable_cache:
@@ -389,15 +390,15 @@ class RegimeDetector:
         rsi_values = [x for x in rsi_series if x is not None]
 
         momentum_direction = "neutral"
-        momentum_strength = 0
+        momentum_strength: float = 0.0
 
         if current_rsi is not None:
             if current_rsi > 60:
                 momentum_direction = "bullish"
-                momentum_strength = min((current_rsi - 50) * 2, 100)
+                momentum_strength = float(min((current_rsi - 50) * 2, 100))
             elif current_rsi < 40:
                 momentum_direction = "bearish"
-                momentum_strength = min((50 - current_rsi) * 2, 100)
+                momentum_strength = float(min((50 - current_rsi) * 2, 100))
 
         # MACD pour confirmation
         macd_series = calculate_macd_series(closes)
@@ -407,8 +408,10 @@ class RegimeDetector:
         macd_signal = macd_series["macd_signal"]
 
         for i in range(len(macd_line) - 1, -1, -1):
-            if macd_line[i] is not None and macd_signal[i] is not None:
-                if macd_line[i] > macd_signal[i]:
+            macd_val = macd_line[i]
+            signal_val = macd_signal[i]
+            if macd_val is not None and signal_val is not None:
+                if float(macd_val) > float(signal_val):
                     macd_direction = "bullish"
                 else:
                     macd_direction = "bearish"

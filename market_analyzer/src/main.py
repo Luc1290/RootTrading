@@ -60,11 +60,11 @@ async def get_stats(request):
     if data_listener:
         stats = await data_listener.get_stats()
         return web.json_response(stats)
-    else:
-        return web.json_response(
-            {"error": "DataListener not initialized", "status": "not_running"},
-            status=503,
-        )
+
+    return web.json_response(
+        {"error": "DataListener not initialized", "status": "not_running"},
+        status=503,
+    )
 
 
 @routes.post("/process-historical")
@@ -102,6 +102,7 @@ async def process_historical(request):
         return web.json_response(
             {"error": f"Erreur lancement traitement: {e}"}, status=500
         )
+    return None  # type: ignore
 
 
 @routes.get("/coverage")
@@ -115,7 +116,7 @@ async def get_coverage(request):
     try:
         # Statistiques par symbole/timeframe
         coverage_query = """
-            SELECT 
+            SELECT
                 md.symbol,
                 md.timeframe,
                 COUNT(md.*) as market_data_count,
@@ -123,8 +124,8 @@ async def get_coverage(request):
                 ROUND((COUNT(ad.*)::FLOAT / COUNT(md.*)) * 100, 2) as coverage_percent
             FROM market_data md
             LEFT JOIN analyzer_data ad ON (
-                md.symbol = ad.symbol AND 
-                md.timeframe = ad.timeframe AND 
+                md.symbol = ad.symbol AND
+                md.timeframe = ad.timeframe AND
                 md.time = ad.time
             )
             GROUP BY md.symbol, md.timeframe
@@ -160,6 +161,7 @@ async def get_coverage(request):
         return web.json_response(
             {"error": f"Erreur analyse couverture: {e}"}, status=500
         )
+    return None  # type: ignore
 
 
 async def start_http_server():
@@ -215,6 +217,7 @@ async def shutdown(signal_type, loop):
     logger.info("Market Analyzer terminé")
 
     # NE PAS appeler loop.stop() ici - laisser le main() se terminer naturellement
+    return None
 
 
 async def main():

@@ -35,25 +35,16 @@ def to_numpy_array(
     if data is None:
         raise ValueError("Input data cannot be None")
 
-    # Convert based on type
-    if isinstance(data, pd.Series):
-        array = data.values
-    elif isinstance(data, list):
-        if not data:
-            raise ValueError("Input list cannot be empty")
-        array = np.array(data, dtype=float)
-    elif isinstance(data, np.ndarray):
-        array = np.asarray(data, dtype=float)
-    else:
-        try:
-            array = np.array(data, dtype=float)
-        except (TypeError, ValueError) as e:
-            raise ValueError(f"Cannot convert data to numpy array: {e}")
+    if isinstance(data, list) and not data:
+        raise ValueError("Input list cannot be empty")
 
-    # Convert to numpy array if needed
-    if hasattr(array, "values"):  # pandas Series/DataFrame
-        array = array.values
-    array = np.asarray(array, dtype=float)
+    try:
+        if isinstance(data, pd.Series):
+            array = data.values
+        else:
+            array = np.asarray(data, dtype=float)
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"Cannot convert data to numpy array: {e}")
 
     # Validate array
     if array.size == 0:

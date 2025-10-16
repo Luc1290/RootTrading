@@ -173,8 +173,7 @@ class RedisClientPool:
                 connection_params["password"] = self.password
 
             # Créer le pool avec 5 connexions minimum et 50 maximum
-            # Type ignore pour MyPy car ConnectionPool accepte bien ces paramètres
-            pool = ConnectionPool(max_connections=50, **connection_params)  # type: ignore
+            pool = ConnectionPool(max_connections=50, **connection_params)
 
             # Tester le pool de connexions
             test_redis = Redis(connection_pool=pool)
@@ -263,7 +262,9 @@ class RedisClientPool:
                 raise
 
         # Si on arrive ici, c'est que l'erreur persiste
-        raise last_error
+        if last_error is not None:
+            raise last_error
+        raise Exception("Operation failed with unknown error")
 
     def _reconnect(self):
         """Réinitialise le pool de connexions."""

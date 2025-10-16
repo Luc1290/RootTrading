@@ -12,16 +12,12 @@ import time
 import os
 import uvicorn
 
-# Ajouter le répertoire parent au path pour les imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
-
-# Maintenant que le chemin est configuré, importer les modules nécessaires
 from shared.src.config import LOG_LEVEL
-from utils.logging_config import setup_logging
-from models import DBManager
-from sync import start_sync_tasks
-from redis_subscriber import start_redis_subscriptions
-from startup import initial_sync_binance
+from .utils.logging_config import setup_logging
+from .models import DBManager
+from .sync import start_sync_tasks
+from .redis_subscriber import start_redis_subscriptions
+from .startup import initial_sync_binance
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -125,7 +121,7 @@ class PortfolioService:
         app.add_middleware(GZipMiddleware, minimum_size=1000)
 
         # Importer et enregistrer les routes
-        from api import register_routes
+        from .api import register_routes
 
         register_routes(app)
 

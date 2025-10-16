@@ -265,7 +265,7 @@ class WilliamsR_Rebound_Strategy(BaseStrategy):
         self, values: Dict[str, Any], signal_direction: str
     ) -> Dict[str, Any]:
         """Détecte la confluence avec autres oscillateurs."""
-        confluence_score = 0
+        confluence_score = 0.0
         confluence_indicators = []
 
         # RSI confluence

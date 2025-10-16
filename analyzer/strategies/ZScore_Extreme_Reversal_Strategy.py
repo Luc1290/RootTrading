@@ -523,14 +523,14 @@ class ZScore_Extreme_Reversal_Strategy(BaseStrategy):
             }
 
         # REJETS CRITIQUES HEDGE FUND - contradictions inacceptables
-        momentum_val = values.get("momentum_score", 50)
+        momentum_val = values.get("momentum_score")
         directional_bias = values.get("directional_bias")
         market_regime = values.get("market_regime")
 
         try:
-            momentum_score = float(momentum_val)
+            momentum_score = float(momentum_val) if momentum_val is not None else 50.0
         except (ValueError, TypeError):
-            momentum_score = 50
+            momentum_score = 50.0
 
         # Rejet momentum contradictoire
         if signal_side == "BUY" and momentum_score < 40:

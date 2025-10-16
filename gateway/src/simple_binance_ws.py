@@ -10,7 +10,7 @@ import time
 from typing import Dict, Any, List, Optional
 import asyncio
 import websockets
-from websockets.client import ClientProtocol as WebSocketClientProtocol
+from websockets.client import WebSocketClientProtocol
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 # Importer les clients partagés
@@ -128,7 +128,7 @@ class SimpleBinanceWebSocket:
                 await self._handle_message(message)
                 self.last_message_time = time.time()
 
-    async def _handle_message(self, message: str):
+    async def _handle_message(self, message: str | bytes):
         """
         Traite un message reçu du WebSocket.
 
@@ -136,6 +136,10 @@ class SimpleBinanceWebSocket:
             message: Message JSON brut du WebSocket
         """
         try:
+            # Convertir bytes en string si nécessaire
+            if isinstance(message, bytes):
+                message = message.decode('utf-8')
+
             data = json.loads(message)
 
             # Traiter uniquement les messages kline
@@ -255,7 +259,7 @@ class SimpleBinanceWebSocket:
         logger.info("🛑 Arrêt de la connexion WebSocket...")
         self.running = False
 
-        if self.ws:
+        if self.ws is not None:
             await self.ws.close()
             self.ws = None
 

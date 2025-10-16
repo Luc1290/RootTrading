@@ -43,10 +43,10 @@ class ParabolicSAR_Bounce_Strategy(BaseStrategy):
         self.required_confirmations = 2  # Confirmations minimales
 
         # Cache SAR pour performance
-        self.sar_history = []
-        self.af_history = []
-        self.ep_history = []
-        self.trend_history = []
+        self.sar_history: list[float] = []
+        self.af_history: list[float] = []
+        self.ep_history: list[float] = []
+        self.trend_history: list[int] = []
 
     def _calculate_parabolic_sar(
         self, highs: list, lows: list, closes: list

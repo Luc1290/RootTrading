@@ -16,9 +16,9 @@ from shared.src.db_pool import DBConnectionPool
 from shared.src.redis_client import RedisClient
 from shared.src.enums import OrderSide, SignalStrength
 from shared.src.schemas import StrategySignal
-from service_client import ServiceClient
-from trailing_sell_manager import TrailingSellManager
-from universe_manager import UniverseManager
+from .service_client import ServiceClient
+from .trailing_sell_manager import TrailingSellManager
+from .universe_manager import UniverseManager
 
 logger = logging.getLogger(__name__)
 
@@ -101,13 +101,8 @@ class Coordinator:
         # Obtenir une connexion DB dédiée pour le trailing manager
         trailing_db_connection = None
         if self.db_pool:
-            try:
-                trailing_db_connection = self.db_pool.get_connection()
-                logger.info("Connexion DB dédiée créée pour TrailingSellManager")
-            except Exception as e:
-                logger.error(
-                    f"Erreur création connexion DB pour TrailingSellManager: {e}"
-                )
+            trailing_db_connection = self.db_pool.get_connection()
+            logger.info("Connexion DB dédiée créée pour TrailingSellManager")
 
         # Initialiser le gestionnaire de trailing sell avec une connexion directe
         self.trailing_db_connection = trailing_db_connection  # Garder la référence
@@ -240,8 +235,8 @@ class Coordinator:
                 return force, 1, signal.confidence / 100
 
             # Méthode 3 : Enum strength
-            if hasattr(signal, "strength"):
-                strength_map = {
+            if hasattr(signal, "strength") and signal.strength is not None:
+                strength_map: Dict[SignalStrength, float] = {
                     SignalStrength.VERY_STRONG: 2.5,
                     SignalStrength.STRONG: 2.0,
                     SignalStrength.MODERATE: 1.5,
@@ -1222,27 +1217,18 @@ class Coordinator:
 
             # Libérer la connexion dédiée du trailing manager
             if hasattr(self, "trailing_db_connection") and self.trailing_db_connection:
-                try:
-                    self.db_pool.release_connection(self.trailing_db_connection)
-                    logger.info("Connexion DB TrailingSellManager libérée")
-                except Exception as e:
-                    logger.error(f"Erreur libération connexion trailing: {e}")
+                self.db_pool.release_connection(self.trailing_db_connection)
+                logger.info("Connexion DB TrailingSellManager libérée")
 
             # Fermer le pool DB
             if self.db_pool:
-                try:
-                    self.db_pool.close()
-                    logger.info("Pool DB fermé")
-                except Exception as e:
-                    logger.error(f"Erreur fermeture pool DB: {e}")
+                self.db_pool.close()
+                logger.info("Pool DB fermé")
 
             # Nettoyer le client Redis (si nécessaire)
             if hasattr(self.redis_client, "close"):
-                try:
-                    self.redis_client.close()
-                    logger.info("Client Redis fermé")
-                except Exception as e:
-                    logger.error(f"Erreur fermeture Redis: {e}")
+                self.redis_client.close()
+                logger.info("Client Redis fermé")
 
             logger.info("✅ Coordinator arrêté proprement")
 

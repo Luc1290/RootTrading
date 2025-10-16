@@ -11,7 +11,7 @@ import json
 import numpy as np
 from datetime import datetime
 from typing import Dict, List, Optional, Any
-import asyncpg
+import asyncpg  # type: ignore
 import redis.asyncio as redis
 import sys
 import os
@@ -209,6 +209,7 @@ class IndicatorProcessor:
 
         if self.db_pool is None:
             raise RuntimeError("Database pool not initialized")
+
         async with self.db_pool.acquire() as conn:
             rows = await conn.fetch(query, *params)
 
@@ -658,7 +659,7 @@ class IndicatorProcessor:
 
                     divergence = self._safe_call(
                         lambda: calculate_stochastic_divergence(
-                            closes, highs, lows, closes
+                            closes, highs, lows, 14
                         )
                     )
                     signal = self._safe_call(
@@ -879,7 +880,7 @@ class IndicatorProcessor:
                             # Normaliser MACD histogram (typiquement -50 à +50 pour crypto)
                             # Positif = bullish, négatif = bearish
                             macd_normalized = max(
-                                -50, min(50, macd_hist)
+                                -50, min(50, float(macd_hist))
                             )  # Limiter à ±50
                             macd_score = 50 + macd_normalized  # Convertir en 0-100
                             momentum_components.append(
@@ -897,13 +898,13 @@ class IndicatorProcessor:
                         ):
                             # ADX mesure la force de la tendance (0-100)
                             # +DI vs -DI donne la direction
-                            if plus_di > minus_di:
+                            if float(plus_di) > float(minus_di):
                                 # Tendance haussière: score = 50 + (ADX/2)
                                 # ADX 25 → 62.5, ADX 50 → 75
-                                adx_score = min(100, 50 + (adx_14 / 2))
+                                adx_score = min(100, 50 + (float(adx_14) / 2))
                             else:
                                 # Tendance baissière: score = 50 - (ADX/2)
-                                adx_score = max(0, 50 - (adx_14 / 2))
+                                adx_score = max(0, 50 - (float(adx_14) / 2))
                             momentum_components.append(
                                 ("adx", adx_score, 20)
                             )  # Poids 20%
@@ -914,7 +915,7 @@ class IndicatorProcessor:
                             # ROC typiquement -5% à +5% pour 1m crypto
                             # Normaliser autour de 50
                             roc_normalized = max(
-                                -5, min(5, roc_10 * 100)
+                                -5, min(5, float(roc_10) * 100)
                             )  # Convertir en %
                             roc_score = 50 + (roc_normalized * 10)  # ±50 points max
                             momentum_components.append(
@@ -1068,7 +1069,7 @@ class IndicatorProcessor:
                     if volume_result:
                         # Calculer le nombre RÉEL de périodes de buildup (pas juste la config)
                         buildup_count = (
-                            self.volume_analyzer.get_buildup_period_count(volumes)
+                            self.volume_analyzer.get_buildup_period_count(np.array(volumes))
                             if volume_result.buildup_detected
                             else 0
                         )
@@ -1452,6 +1453,7 @@ class IndicatorProcessor:
 
             if self.db_pool is None:
                 raise RuntimeError("Database pool not initialized")
+
             async with self.db_pool.acquire() as conn:
                 await conn.execute(query, *sanitized_params)
 
@@ -1469,14 +1471,15 @@ class IndicatorProcessor:
                 # Connexion Redis paresseuse
                 self.redis_client = redis.from_url("redis://redis:6379")
 
+            time_value = indicators.get("time")
             notification = {
                 "event": "analyzer_data_ready",
                 "symbol": indicators.get("symbol"),
                 "timeframe": indicators.get("timeframe"),
                 "timestamp": (
-                    indicators.get("time").isoformat()
-                    if indicators.get("time") is not None
-                    and hasattr(indicators.get("time"), "isoformat")
+                    time_value.isoformat()  # type: ignore
+                    if time_value is not None
+                    and hasattr(time_value, "isoformat")
                     else None
                 ),
             }
@@ -1579,3 +1582,4 @@ class IndicatorProcessor:
         if self.db_pool:
             await self.db_pool.close()
             logger.info("🔌 IndicatorProcessor fermé")
+        return None

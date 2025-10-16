@@ -50,7 +50,8 @@ def get_db_config() -> Dict[str, Any]:
 # Paramètres de trading
 DEFAULT_SYMBOL = os.getenv("DEFAULT_SYMBOL")
 # Les symboles sont définis dans .env via TRADING_SYMBOLS
-SYMBOLS = os.getenv("TRADING_SYMBOLS").split(",")
+trading_symbols_env = os.getenv("TRADING_SYMBOLS")
+SYMBOLS = trading_symbols_env.split(",") if trading_symbols_env else []
 INTERVAL = "1m"
 VALIDATION_INTERVAL = "3m"
 SCALPING_INTERVALS = ["1m", "3m", "5m", "15m"]
@@ -90,7 +91,7 @@ def get_db_url() -> str:
 
 def is_live_mode() -> bool:
     """Vérifie si le bot est en mode réel (live) ou démo."""
-    return TRADING_MODE.lower() == "live"
+    return TRADING_MODE.lower() == "live" if TRADING_MODE else False
 
 
 def get_redis_channel(channel_type: str, symbol: Optional[str] = None) -> str:

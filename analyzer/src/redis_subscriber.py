@@ -18,7 +18,7 @@ class RedisPublisher:
 
     def __init__(self, redis_url: str = "redis://localhost:6379"):
         self.redis_url = redis_url
-        self.redis_client = None
+        self.redis_client: Optional[redis.Redis] = None
 
         # Canaux Redis pour les différents types de messages
         self.channels = {
@@ -40,7 +40,7 @@ class RedisPublisher:
 
     async def disconnect(self):
         """Ferme la connexion Redis."""
-        if self.redis_client:
+        if self.redis_client is not None:
             await self.redis_client.close()
             logger.info("Connexion Redis Publisher fermée")
 
@@ -187,20 +187,15 @@ class RedisPublisher:
             channel: Canal Redis
             message: Message à publier
         """
-        if not self.redis_client:
+        if self.redis_client is None:
             logger.warning("Client Redis non connecté")
             return
 
-        try:
-            # Sérialisation JSON
-            message_json = json.dumps(message, default=str)
+        # Sérialisation JSON
+        message_json = json.dumps(message, default=str)
 
-            # Publication
-            await self.redis_client.publish(channel, message_json)
-
-        except Exception as e:
-            logger.error(f"Erreur publication sur {channel}: {e}")
-            raise
+        # Publication
+        await self.redis_client.publish(channel, message_json)
 
     async def publish_strategy_performance(
         self, strategy_name: str, performance_data: Dict[str, Any]
@@ -234,8 +229,8 @@ class RedisSubscriber:
 
     def __init__(self, redis_url: str = "redis://localhost:6379"):
         self.redis_url = redis_url
-        self.redis_client = None
-        self.pubsub = None
+        self.redis_client: Optional[redis.Redis] = None
+        self.pubsub: Optional[redis.client.PubSub] = None
         self.running = False
 
         # Canaux d'abonnement
@@ -264,11 +259,11 @@ class RedisSubscriber:
         """Ferme les connexions Redis."""
         self.running = False
 
-        if self.pubsub:
+        if self.pubsub is not None:
             await self.pubsub.unsubscribe()
             await self.pubsub.close()
 
-        if self.redis_client:
+        if self.redis_client is not None:
             await self.redis_client.close()
 
         logger.info("Redis Subscriber déconnecté")
@@ -280,7 +275,7 @@ class RedisSubscriber:
         Args:
             message_handler: Fonction de traitement des messages
         """
-        if not self.pubsub:
+        if self.pubsub is None:
             logger.error("PubSub non initialisé")
             return
 

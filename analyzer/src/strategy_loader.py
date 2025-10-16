@@ -11,11 +11,12 @@ import sys
 from pathlib import Path
 from typing import Dict, Type, List, Optional, Any
 
-# Ajouter le répertoire parent au path pour les imports
+# Ajouter le répertoire parent au path pour les imports dynamiques
 analyzer_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))
-sys.path.append(analyzer_root)
+if analyzer_root not in sys.path:
+    sys.path.insert(0, analyzer_root)
 
-from strategies.base_strategy import BaseStrategy
+from strategies.base_strategy import BaseStrategy  # type: ignore[import-not-found]
 
 logger = logging.getLogger(__name__)
 

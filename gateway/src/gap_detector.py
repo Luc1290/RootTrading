@@ -6,7 +6,7 @@ Optimise le rechargement après coupure en ne chargeant que les données manquan
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 from shared.src.config import get_db_config, SYMBOLS
 
 logger = logging.getLogger(__name__)
@@ -18,8 +18,8 @@ class GapDetector:
     """
 
     def __init__(self):
-        self.db_pool = None
-        self.gap_report = {}
+        self.db_pool: Optional[asyncpg.Pool] = None
+        self.gap_report: Dict = {}
 
     async def initialize(self):
         """Initialize la connexion DB"""
@@ -109,6 +109,9 @@ class GapDetector:
         FROM gap_calculation
         WHERE seconds_since_last > interval_seconds * 2  -- Plus de 2 intervalles de retard
         """
+
+        if self.db_pool is None:
+            return []
 
         async with self.db_pool.acquire() as conn:
             rows = await conn.fetch(
@@ -220,6 +223,9 @@ class GapDetector:
         WHERE symbol = $1 AND timeframe = $2
         """
 
+        if self.db_pool is None:
+            return []
+
         async with self.db_pool.acquire() as conn:
             row = await conn.fetchrow(query, symbol, timeframe)
             current_count = row["count"] if row else 0
@@ -311,6 +317,9 @@ class GapDetector:
         AND enhanced = true
         """
 
+        if self.db_pool is None:
+            return None
+
         async with self.db_pool.acquire() as conn:
             row = await conn.fetchrow(query, symbol, timeframe)
             return row["last_time"] if row and row["last_time"] else None
@@ -342,11 +351,13 @@ class GapDetector:
                 # Convertir gap_start en datetime SANS TIMEZONE
                 if not isinstance(gap_start, datetime):
                     if hasattr(gap_start, "hour"):  # datetime complet avec timezone
-                        gap_start = (
-                            gap_start.replace(tzinfo=None)
-                            if hasattr(gap_start, "replace")
-                            else gap_start
-                        )
+                        if hasattr(gap_start, "replace"):
+                            gap_start = gap_start.replace(tzinfo=None)
+                        else:
+                            logger.warning(
+                                f"Impossible de convertir gap_start {type(gap_start)}: {gap_start}"
+                            )
+                            continue
                     elif hasattr(gap_start, "replace"):  # date only
                         gap_start = datetime.combine(gap_start, datetime.min.time())
                     elif isinstance(gap_start, str):
@@ -363,11 +374,13 @@ class GapDetector:
                 # Convertir gap_end en datetime SANS TIMEZONE
                 if not isinstance(gap_end, datetime):
                     if hasattr(gap_end, "hour"):  # datetime complet avec timezone
-                        gap_end = (
-                            gap_end.replace(tzinfo=None)
-                            if hasattr(gap_end, "replace")
-                            else gap_end
-                        )
+                        if hasattr(gap_end, "replace"):
+                            gap_end = gap_end.replace(tzinfo=None)
+                        else:
+                            logger.warning(
+                                f"Impossible de convertir gap_end {type(gap_end)}: {gap_end}"
+                            )
+                            continue
                     elif hasattr(gap_end, "replace"):  # date only
                         gap_end = datetime.combine(gap_end, datetime.min.time())
                     elif isinstance(gap_end, str):
@@ -414,18 +427,6 @@ class GapDetector:
         current_end = sorted_gaps[0][1]
 
         for gap_start, gap_end in sorted_gaps[1:]:
-            # S'assurer que nous avons des objets datetime
-            if not isinstance(gap_start, datetime):
-                logger.warning(
-                    f"Gap start n'est pas datetime: {type(gap_start)} - {gap_start}"
-                )
-                continue
-            if not isinstance(current_end, datetime):
-                logger.warning(
-                    f"Current end n'est pas datetime: {type(current_end)} - {current_end}"
-                )
-                continue
-
             # Si le gap suivant est proche, fusionner
             try:
                 if gap_start - current_end < merge_threshold:
@@ -448,13 +449,6 @@ class GapDetector:
         final_periods = []
         for start, end in fetch_periods:
             try:
-                # Vérifier les types avant calcul
-                if not isinstance(start, datetime) or not isinstance(end, datetime):
-                    logger.warning(
-                        f"Période invalide - start: {type(start)}, end: {type(end)}"
-                    )
-                    continue
-
                 duration = end - start
                 if duration > max_duration:
                     # Diviser en sous-périodes

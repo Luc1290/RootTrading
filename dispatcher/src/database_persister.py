@@ -5,7 +5,7 @@ Sauve les données Kafka vers PostgreSQL/TimescaleDB.
 
 import logging
 import asyncio
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 from datetime import datetime
 from typing import Dict, Any, Optional
 from shared.src.config import get_db_config
@@ -21,7 +21,7 @@ class DatabasePersister:
     def __init__(self) -> None:
         self.db_pool: Optional[asyncpg.Pool] = None
         self.running = False
-        self.loop = None
+        self.loop: Optional[asyncio.AbstractEventLoop] = None
 
     async def initialize(self):
         """Initialise la connexion à la base de données."""
@@ -134,21 +134,23 @@ class DatabasePersister:
                 data["time"] = datetime.fromisoformat(data["time"])
 
         # Exécuter l'insertion en async
-        if self.loop is not None:
-            future = asyncio.run_coroutine_threadsafe(
-                self._insert_market_data(data), self.loop
-            )
+        if self.loop is None:
+            return
 
-            # Attendre le résultat avec timeout
-            try:
-                future.result(timeout=5.0)
-            except Exception as e:
-                import traceback
+        future = asyncio.run_coroutine_threadsafe(
+            self._insert_market_data(data), self.loop
+        )
 
-                logger.error(f"Erreur lors de l'insertion des données de marché: {e}")
-                logger.error(f"Type d'erreur: {type(e).__name__}")
-                logger.error(f"Traceback complet: {traceback.format_exc()}")
-                logger.error(f"Données problématiques: {data}")
+        # Attendre le résultat avec timeout
+        try:
+            future.result(timeout=5.0)
+        except Exception as e:
+            import traceback
+
+            logger.error(f"Erreur lors de l'insertion des données de marché: {e}")
+            logger.error(f"Type d'erreur: {type(e).__name__}")
+            logger.error(f"Traceback complet: {traceback.format_exc()}")
+            logger.error(f"Données problématiques: {data}")
 
     async def _insert_market_data(self, data: Dict[str, Any]):
         """

@@ -5,7 +5,7 @@ import time
 import logging
 from typing import Dict, Optional
 from datetime import datetime, timedelta
-import requests
+import requests  # type: ignore[import-untyped]
 from dotenv import load_dotenv
 import psycopg2
 from psycopg2.extras import Json

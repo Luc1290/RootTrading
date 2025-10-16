@@ -83,7 +83,7 @@ def circuit_breaker(
         Fonction décorée
     """
     # État du circuit breaker
-    state = {"failures": 0, "open": False, "last_failure": 0, "lock": threading.RLock()}
+    state: Dict[str, Any] = {"failures": 0, "open": False, "last_failure": 0.0, "lock": threading.RLock()}
 
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
@@ -164,10 +164,10 @@ def redis_lock(lock_name: str, timeout: int = 30) -> Callable:
             lock_key = f"roottrading:lock:{lock_name}"
 
             # Client Redis
-            redis = RedisClient()
+            redis_client = RedisClient()
 
-            # Essayer d'acquérir le verrou
-            acquired = redis.set(lock_key, lock_id, nx=True, expiration=timeout)
+            # Essayer d'acquérir le verrou (utiliser la méthode native Redis)
+            acquired = redis_client.redis.set(lock_key, lock_id, nx=True, ex=timeout)
 
             if not acquired:
                 logger.warning(
@@ -181,9 +181,9 @@ def redis_lock(lock_name: str, timeout: int = 30) -> Callable:
             finally:
                 # Libérer le verrou seulement si on est propriétaire
                 try:
-                    current_value = redis.get(lock_key)
+                    current_value = redis_client.get(lock_key)
                     if current_value == lock_id:
-                        redis.delete(lock_key)
+                        redis_client.delete(lock_key)
                         logger.debug(f"Verrou Redis libéré pour {func.__name__}")
                 except Exception as e:
                     logger.error(
