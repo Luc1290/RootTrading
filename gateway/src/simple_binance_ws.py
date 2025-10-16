@@ -20,9 +20,7 @@ from shared.src.kafka_client import KafkaClient
 
 sys.path.append(str(Path(__file__).parent.parent.parent.resolve()))
 
-
-if TYPE_CHECKING:
-    from websockets.client import WebSocketClientProtocol
+from websockets.client import WebSocketClientProtocol
 
 # Configuration du logging
 logging.basicConfig(
