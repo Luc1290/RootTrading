@@ -13,7 +13,6 @@ import time
 from shared.src.config import LOG_LEVEL, SYMBOLS
 from trader.src.api.rest_server import RestApiServer
 from trader.src.trading.order_manager import OrderManager
-from trader.src.utils.logging_config import setup_logging
 
 # Ajouter le répertoire parent au path pour les imports
 sys.path.append(
@@ -24,9 +23,10 @@ sys.path.append(
 
 # Maintenant que le chemin est configuré, importer les modules nécessaires
 
-# Configuration du logging
-logger = logging.getLogger("trader")
+# Configuration du logging centralisée
+from shared.logging_config import setup_logging
 
+logger = setup_logging("market_analyzer", log_level="INFO")
 
 class TraderService:
     """
@@ -137,7 +137,7 @@ def setup_signal_handlers(trader_service):
         trader_service: Instance du service Trader
     """
 
-    def signal_handler(sig, frame):
+    def signal_handler(sig, _frame):
         logger.info(f"Signal {sig} reçu, arrêt en cours...")
         trader_service.stop()
         sys.exit(0)

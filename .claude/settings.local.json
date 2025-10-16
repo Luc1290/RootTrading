@@ -14,7 +14,8 @@
       "Bash(pip index:*)",
       "Bash(test:*)",
       "Bash(ruff check:*)",
-      "Bash(awk:*)"
+      "Bash(awk:*)",
+      "Bash(vulture:*)"
     ],
     "deny": [],
     "ask": []

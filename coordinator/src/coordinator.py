@@ -684,8 +684,8 @@ class Coordinator:
                         f"Valeur position trop faible: {value_usdc:.2f} USDC < {self.min_absolute_trade_usdc} USDC (minimum augmenté)",
                     )
 
-            else:
-                return True, "OK"
+                else:
+                    return True, "OK"
 
         except Exception as e:
             logger.exception("Erreur vérification faisabilité")

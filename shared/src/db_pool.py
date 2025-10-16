@@ -806,7 +806,7 @@ class DBContextManager:
             else:
                 logger.debug("Aucune transaction active à annuler")
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, _exc_tb):
         end_time = time.time()
         duration = end_time - self.start_time
 

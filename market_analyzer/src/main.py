@@ -97,8 +97,6 @@ async def process_historical(request):
         return web.json_response(
             {"error": f"Erreur lancement traitement: {e}"}, status=500
         )
-    return None  # type: ignore
-
 
 @routes.get("/coverage")
 async def get_coverage(_request):
@@ -155,8 +153,6 @@ async def get_coverage(_request):
         return web.json_response(
             {"error": f"Erreur analyse couverture: {e}"}, status=500
         )
-    return None  # type: ignore
-
 
 async def start_http_server():
     """Démarre le serveur HTTP pour l'API."""
