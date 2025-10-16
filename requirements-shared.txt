@@ -1,12 +1,29 @@
-# Requirements partagés pour tous les services
-python-dotenv==1.0.0
-pydantic==2.4.2
-redis==4.6.0
-confluent-kafka==2.2.0
-psycopg2-binary==2.9.7
-asyncpg==0.29.0
-python-dateutil==2.8.2
-PyYAML==6.0.1
-numpy==1.23.5
-pandas==2.0.3
-# TA-Lib installé séparément dans chaque Dockerfile pour éviter les conflits
+# ============================================================================
+# ROOT TRADING - Requirements Partagés (Shared)
+# ============================================================================
+# Packages communs à TOUS les services Docker
+# Dernière mise à jour: 2025-10-16
+# ============================================================================
+
+# ─── CONFIGURATION & VALIDATION ─────────────────────────────────────────────
+python-dotenv>=1.0.0
+pydantic>=2.12.2
+PyYAML>=6.0.2
+
+# ─── DATA PROCESSING ────────────────────────────────────────────────────────
+numpy>=2.3.4
+pandas>=2.3.3
+
+# ─── DATABASE ───────────────────────────────────────────────────────────────
+asyncpg>=0.30.0
+psycopg2-binary>=2.9.11
+redis>=6.4.0
+
+# ─── MESSAGING ──────────────────────────────────────────────────────────────
+confluent-kafka>=2.12.0
+
+# ─── DATE & TIME ────────────────────────────────────────────────────────────
+python-dateutil>=2.9.0
+pytz>=2025.2
+
+# NOTE: TA-Lib installé séparément dans chaque Dockerfile pour éviter conflits

@@ -1,21 +1,40 @@
-# Dockerfile de base avec TA-Lib pour tous les services RootTrading
+# ============================================================================
+# ROOT TRADING - Base Image avec TA-Lib précompilé
+# ============================================================================
+# Cette image de base contient TA-Lib compilé depuis les sources
+# Réutilisable par analyzer et market_analyzer pour accélérer les builds
+# ============================================================================
+
 FROM python:3.10-slim
 
-# Mise à jour du système et installation des dépendances
+LABEL maintainer="Root Trading Team"
+LABEL description="Base image with TA-Lib precompiled"
+
+WORKDIR /app
+
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    g++ \
     build-essential \
     librdkafka-dev \
     wget \
+    make \
     && rm -rf /var/lib/apt/lists/*
 
-# Installation de TA-Lib C library (requis pour ta-lib Python)
-RUN cd /tmp && \
-    wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz && \
+# Install TA-Lib from source (COMPILATION UNIQUE)
+RUN wget -q http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz && \
     tar -xzf ta-lib-0.4.0-src.tar.gz && \
     cd ta-lib/ && \
     ./configure --prefix=/usr && \
-    make && \
+    make -j$(nproc) && \
     make install && \
-    cd / && \
-    rm -rf /tmp/ta-lib*
+    cd .. && \
+    rm -rf ta-lib ta-lib-0.4.0-src.tar.gz
+
+# Update ld cache
+RUN ldconfig
+
+# Verification that TA-Lib is installed
+RUN ls -la /usr/lib/libta_lib* || echo "TA-Lib not found!"
+

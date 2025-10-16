@@ -1,6 +1,14 @@
 # Requirements pour le service Coordinator
 -r ../requirements-shared.txt
-requests==2.31.0
-flask==2.3.3
-types-requests==2.31.0.10
-scipy==1.11.4
+
+# ─── API & WEB ──────────────────────────────────────────────────────────────
+flask>=3.1.2
+
+# ─── HTTP & REQUESTS ────────────────────────────────────────────────────────
+requests>=2.32.5
+
+# ─── MACHINE LEARNING & SCIENCE ─────────────────────────────────────────────
+scipy>=1.16.2
+
+# ─── TYPE HINTS ─────────────────────────────────────────────────────────────
+types-requests>=2.32.0

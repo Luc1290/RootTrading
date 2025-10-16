@@ -1,7 +1,9 @@
 # Requirements pour le service Gateway Enhanced
 -r ../requirements-shared.txt
-websockets==11.0.3
-requests==2.31.0
-asyncio==3.4.3
-aiohttp==3.10.11
-# numpy et pandas maintenant dans requirements-shared.txt
+
+# ─── API & WEB ──────────────────────────────────────────────────────────────
+websockets>=15.0.1
+aiohttp>=3.13.0
+
+# ─── HTTP & REQUESTS ────────────────────────────────────────────────────────
+requests>=2.32.5

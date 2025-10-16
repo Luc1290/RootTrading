@@ -1,53 +1,42 @@
+# ============================================================================
+# ROOT TRADING - Gateway Service (OPTIMIZED)
+# ============================================================================
+# Service simple sans TA-Lib - websockets + kafka uniquement
+# ============================================================================
+
 FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install build dependencies including TA-Lib (COPIE EXACTE DE ANALYZER)
+# Install minimal build dependencies (pour confluent-kafka)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
-    g++ \
-    build-essential \
     librdkafka-dev \
-    wget \
-    make \
     && rm -rf /var/lib/apt/lists/*
 
-# Install TA-Lib from source (COPIE EXACTE DE ANALYZER)
-RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz && \
-    tar -xzf ta-lib-0.4.0-src.tar.gz && \
-    cd ta-lib/ && \
-    ./configure --prefix=/usr && \
-    make && \
-    make install && \
-    cd .. && \
-    rm -rf ta-lib ta-lib-0.4.0-src.tar.gz
-
-# Copy shared requirements first
+# Copy requirements files (layer cache optimization)
 COPY requirements-shared.txt /app/
+COPY gateway/requirements.txt /app/gateway-requirements.txt
 
-# Copy gateway requirements and modify
-COPY gateway/requirements.txt /app/
-RUN sed -i 's|-r ../requirements-shared.txt|-r /app/requirements-shared.txt|g' /app/requirements.txt
+# Fix relative path in requirements
+RUN sed -i 's|-r ../requirements-shared.txt|-r /app/requirements-shared.txt|g' /app/gateway-requirements.txt
 
-# Install NumPy first at a compatible version (COPIE EXACTE DE ANALYZER)
-RUN pip install --no-cache-dir numpy==1.23.5
-
-# Install other dependencies
+# Install Python dependencies
 RUN pip install --no-cache-dir -r /app/requirements-shared.txt && \
-    pip install --no-cache-dir -r /app/requirements.txt
+    pip install --no-cache-dir -r /app/gateway-requirements.txt
 
-# Install TA-Lib Python wrapper separately with NumPy already installed (COPIE EXACTE DE ANALYZER)
-# Version 0.4.32 fixes const pointer compatibility issues
-RUN pip install --no-cache-dir ta-lib==0.4.32
-
-# Copie des modules partagés
+# Copy shared modules
 COPY shared /app/shared
 
-# Copie du code du service
+# Copy gateway code
 COPY gateway /app/gateway
 
-# Exposition du port
+# Expose port
 EXPOSE 5010
 
-# Commande de démarrage SIMPLE - données brutes uniquement
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5010/health').read()" || exit 1
+
+# Start command
 CMD ["python", "gateway/src/main_simple.py"]

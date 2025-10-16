@@ -1,30 +1,29 @@
 # Requirements pour les tests ROOT Trading System
-pytest==7.4.3
-pytest-cov==4.1.0
-pytest-mock==3.12.0
-pytest-asyncio==0.21.1
 
-# Base de données et schémas
-pydantic==2.5.0
-sqlalchemy==2.0.23
+# ─── TESTING FRAMEWORK ──────────────────────────────────────────────────────
+pytest>=8.3.5
+pytest-cov>=6.0.0
+pytest-mock>=3.14.0
+pytest-asyncio>=0.25.2
+pytest-benchmark>=5.1.0
 
-# Calculs techniques
-numpy==1.24.3
-pandas==2.0.3
-# talib==0.4.26  # Commenté - installation complexe sur Windows
+# ─── DATABASE & SCHEMAS ─────────────────────────────────────────────────────
+pydantic>=2.12.2
+sqlalchemy>=2.0.44
 
-# Date et time
-python-dateutil==2.8.2
+# ─── DATA PROCESSING ────────────────────────────────────────────────────────
+numpy>=2.3.4
+pandas>=2.3.3
 
-# Tests de performance (optionnel)
-pytest-benchmark==4.0.0
+# ─── DATE & TIME ────────────────────────────────────────────────────────────
+python-dateutil>=2.9.0
 
-# Coverage reporting
-coverage==7.3.2
+# ─── COVERAGE & REPORTING ───────────────────────────────────────────────────
+coverage>=7.6.0
 
-# Mock et fixtures
-factory-boy==3.3.0
-freezegun==1.2.2
+# ─── MOCK & FIXTURES ────────────────────────────────────────────────────────
+factory-boy>=3.3.1
+freezegun>=1.5.1
 
-# Logging pour tests
-loguru==0.7.2
+# ─── LOGGING ────────────────────────────────────────────────────────────────
+loguru>=0.7.3

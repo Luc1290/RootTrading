@@ -1,47 +1,23 @@
-FROM python:3.10-slim
+# ============================================================================
+# ROOT TRADING - Analyzer Service (OPTIMIZED)
+# ============================================================================
+# Utilise l'image de base avec TA-Lib précompilé
+# ============================================================================
+
+FROM roottrading-base:latest
 
 WORKDIR /app
 
-# Install build dependencies including TA-Lib
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    g++ \
-    build-essential \
-    librdkafka-dev \
-    wget \
-    make \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install TA-Lib from source
-RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz && \
-    tar -xzf ta-lib-0.4.0-src.tar.gz && \
-    cd ta-lib/ && \
-    ./configure --prefix=/usr && \
-    make && \
-    make install && \
-    cd .. && \
-    rm -rf ta-lib ta-lib-0.4.0-src.tar.gz
-
-# Copy shared requirements first
+# Copy requirements files (layer cache optimization)
 COPY requirements-shared.txt /app/
+COPY analyzer/requirements.txt /app/analyzer-requirements.txt
 
-# Copy analyzer requirements and modify
-COPY analyzer/requirements.txt /app/
-RUN sed -i 's|-r ../requirements-shared.txt|-r /app/requirements-shared.txt|g' /app/requirements.txt
+# Fix relative path in requirements
+RUN sed -i 's|-r ../requirements-shared.txt|-r /app/requirements-shared.txt|g' /app/analyzer-requirements.txt
 
-# Install NumPy first at a compatible version
-RUN pip install --no-cache-dir numpy==1.23.5
-
-# Install other dependencies but exclude TA-Lib
+# Install Python dependencies
 RUN pip install --no-cache-dir -r /app/requirements-shared.txt && \
-    grep -v "ta-lib" /app/requirements.txt | pip install --no-cache-dir -r /dev/stdin
-
-# Install TA-Lib Python wrapper separately with NumPy already installed
-# Version 0.4.32 fixes const pointer compatibility issues
-RUN pip install --no-cache-dir ta-lib==0.4.32
-
-# Note: pandas-ta removed - incompatible with Python 3.10
-# Using TA-Lib for technical indicators instead
+    pip install --no-cache-dir -r /app/analyzer-requirements.txt
 
 # Copy shared modules
 COPY shared /app/shared
@@ -51,6 +27,10 @@ COPY analyzer /app/analyzer
 
 # Expose port
 EXPOSE 5012
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5012/health').read()" || exit 1
 
 # Start command
 CMD ["python", "analyzer/src/main.py"]

@@ -1,23 +1,14 @@
 # Market Analyzer Service Dependencies
 -r ../requirements-shared.txt
 
-# Technical Analysis Library
-# Use 0.4.32 for compatibility with newer TA-Lib C library
-ta-lib==0.4.32
+# ─── TECHNICAL ANALYSIS ─────────────────────────────────────────────────────
+ta-lib>=0.4.32
 
-# Additional scientific computing
-scipy==1.9.3
-scikit-learn==1.1.3
+# ─── MACHINE LEARNING & SCIENCE ─────────────────────────────────────────────
+scipy>=1.16.2
+scikit-learn>=1.7.2
+statsmodels>=0.14.4
+numba>=0.61.0
 
-# Statistical analysis
-statsmodels==0.13.5
-
-# HTTP client for health checks  
-aiohttp==3.8.6
-
-# Time series analysis (already in requirements-shared.txt)
-# pandas==2.0.3
-
-# Performance optimization
-numba==0.57.1
-
+# ─── API & WEB ──────────────────────────────────────────────────────────────
+aiohttp>=3.13.0

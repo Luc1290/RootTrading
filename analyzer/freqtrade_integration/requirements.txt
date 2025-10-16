@@ -1,15 +1,15 @@
 # Requirements pour Freqtrade Integration
 
-# Core Freqtrade
-freqtrade>=2024.1
+# ─── TRADING CORE ───────────────────────────────────────────────────────────
+freqtrade>=2025.9.1
 
-# Technical Analysis
-TA-Lib>=0.4.28
-pandas-ta>=0.3.14b0
+# ─── TECHNICAL ANALYSIS ─────────────────────────────────────────────────────
+TA-Lib>=0.4.32
+ft-pandas-ta>=0.2.20
 
-# Plotting (optionnel)
-plotly>=5.14.1
+# ─── VISUALIZATION (Optional) ───────────────────────────────────────────────
+plotly>=6.0.0
 
-# Hyperopt optimization (optionnel)
-scikit-learn>=1.3.0
-scikit-optimize>=0.9.0
+# ─── HYPEROPT OPTIMIZATION (Optional) ───────────────────────────────────────
+scikit-learn>=1.7.2
+scikit-optimize>=0.10.2

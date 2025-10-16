@@ -1,17 +1,15 @@
 # Requirements pour le service Trader
 -r ../requirements-shared.txt
-# psycopg2-binary, python-dateutil, pydantic, python-dotenv maintenant dans requirements-shared.txt
 
-# API requirements
-flask==2.3.3
-flask-cors==4.0.0
-Werkzeug==2.3.7
+# ─── API & WEB ──────────────────────────────────────────────────────────────
+flask>=3.1.2
+flask-cors>=5.0.0
 
-# Monitoring requirements
-psutil==5.9.5
+# ─── HTTP & REQUESTS ────────────────────────────────────────────────────────
+requests>=2.32.5
 
-# HTTP Requests
-requests==2.31.0
+# ─── MONITORING & SYSTEM ────────────────────────────────────────────────────
+psutil>=7.1.0
 
-# Additional utility libraries
-tenacity==8.2.3  # Retrying functionality
+# ─── UTILITIES ──────────────────────────────────────────────────────────────
+tenacity>=9.0.0

@@ -124,6 +124,7 @@ known-first-party = [
     "trader",
     "database",
     "journal",
+    "visualization",
 ]
 section-order = [
     "future",

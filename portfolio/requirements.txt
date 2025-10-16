@@ -1,7 +1,12 @@
 # Requirements pour le service Portfolio
 -r ../requirements-shared.txt
-fastapi==0.103.1
-uvicorn==0.23.2
-psycopg2-binary==2.9.7
-psutil==5.9.5
-requests==2.31.0
+
+# ─── API & WEB ──────────────────────────────────────────────────────────────
+fastapi>=0.119.0
+uvicorn>=0.37.0
+
+# ─── HTTP & REQUESTS ────────────────────────────────────────────────────────
+requests>=2.32.5
+
+# ─── MONITORING & SYSTEM ────────────────────────────────────────────────────
+psutil>=7.1.0
