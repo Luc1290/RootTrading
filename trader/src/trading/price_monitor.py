@@ -7,7 +7,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timezone
 
 from shared.src.redis_client import RedisClient
 

@@ -874,20 +874,20 @@ class Coordinator:
                 quantity = trade_amount / signal.price
 
             # Pour un SELL, vendre toute la position
-            elif isinstance(balances, dict):
-                quantity = balances.get(base_asset, {}).get("free", 0)
-            else:
-                quantity = next(
-                    (
-                        b.get("free", 0)
-                        for b in balances
-                        if b.get("asset") == base_asset
-                    ),
-                    0,
-                )
+            else:  # SELL
+                if isinstance(balances, dict):
+                    quantity = balances.get(base_asset, {}).get("free", 0)
+                else:
+                    quantity = next(
+                        (
+                            b.get("free", 0)
+                            for b in balances
+                            if b.get("asset") == base_asset
+                        ),
+                        0,
+                    )
 
-            else:
-                return quantity
+            return quantity
 
         except Exception:
             logger.exception("Erreur calcul quantité")
